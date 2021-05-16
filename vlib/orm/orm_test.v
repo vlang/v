@@ -126,6 +126,12 @@ fn test_orm_sqlite() {
 	assert users3[0].age == 29
 	assert users3[1].age == 31
 	//
+	missing_user := sql db {
+		select from User where id == 8777
+	}
+	println('missing_user:')
+	println(missing_user) // zero struct
+	//
 	new_user := User{
 		name: 'New user'
 		age: 30

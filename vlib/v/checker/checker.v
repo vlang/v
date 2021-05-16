@@ -309,18 +309,19 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 
 pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-	if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
+	if c.file.mod.name !in ['time', 'builtin'] {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
 	typ_sym := c.table.get_type_symbol(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-		c.error("type `$typ_sym.name` doesn't exist", node.pos)
+		c.error('unknown type `$typ_sym.name`', node.type_pos)
 	} else if typ_sym.kind == .alias {
 		orig_sym := c.table.get_type_symbol((typ_sym.info as ast.Alias).parent_type)
 		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
-			node.pos)
+			node.type_pos)
 	} else if typ_sym.kind == .chan {
-		c.error('aliases of `chan` types are not allowed.', node.pos)
+		c.error('aliases of `chan` types are not allowed.', node.type_pos)
 	}
 }
 
@@ -329,14 +330,16 @@ pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	typ_sym := c.table.get_type_symbol(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
+	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos) or {}
 	ret_sym := c.table.get_type_symbol(fn_info.return_type)
 	if ret_sym.kind == .placeholder {
-		c.error("type `$ret_sym.name` doesn't exist", node.pos)
+		c.error('unknown type `$ret_sym.name`', fn_info.return_type_pos)
 	}
 	for arg in fn_info.params {
+		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		arg_sym := c.table.get_type_symbol(arg.typ)
 		if arg_sym.kind == .placeholder {
-			c.error("type `$arg_sym.name` doesn't exist", node.pos)
+			c.error('unknown type `$arg_sym.name`', arg.type_pos)
 		}
 	}
 }
@@ -348,12 +351,13 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		if variant.typ.is_ptr() {
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
+		c.ensure_type_exists(variant.typ, variant.pos) or {}
 		mut sym := c.table.get_type_symbol(variant.typ)
 		if sym.name in names_used {
 			c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
-			c.error("type `$sym.name` doesn't exist", variant.pos)
+			c.error('unknown type `$sym.name`', variant.pos)
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
 		}
@@ -3098,6 +3102,11 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	if decl.fields.len == 0 {
 		c.error('enum cannot be empty', decl.pos)
 	}
+	/*
+	if decl.is_pub && c.mod == 'builtin' {
+		c.error('`builtin` module cannot have enums', decl.pos)
+	}
+	*/
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -7012,7 +7021,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for arg in node.params {
-			c.ensure_type_exists(arg.typ, node.pos) or { return }
+			c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
@@ -7025,7 +7034,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.return_type != ast.Type(0) {
-		c.ensure_type_exists(node.return_type, node.pos) or { return }
+		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
 			if node.return_type != ast.string_type {
 				c.error('.str() methods should return `string`', node.pos)
@@ -7208,6 +7217,9 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 		}
 		.array {
 			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) ?
+		}
+		.array_fixed {
+			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) ?
 		}
 		.map {
 			info := sym.info as ast.Map

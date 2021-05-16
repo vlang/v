@@ -1651,6 +1651,10 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 				f.write(', ')
 			}
 		}
+		// avoid `<Foo<int>>` => `<Foo<int> >`
+		if f.out.last_n(1) == '>' {
+			f.write(' ')
+		}
 		f.write('>')
 	}
 }

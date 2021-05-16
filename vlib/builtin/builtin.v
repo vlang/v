@@ -123,7 +123,7 @@ pub:
 	typ    int
 }
 
-pub enum AttributeKind {
+enum AttributeKind {
 	plain // [name]
 	string // ['name']
 	number // [123]

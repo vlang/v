@@ -21,6 +21,7 @@ fn test_sqlite() {
 	code = db.exec_none('vacuum')
 	assert code == 101
 	user := db.exec_one('select * from users where id = 3') or { panic(err) }
+	println(user)
 	assert user.vals.len == 2
 	db.close() or { panic(err) }
 	assert !db.is_open

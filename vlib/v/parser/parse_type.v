@@ -5,6 +5,7 @@ module parser
 
 import v.ast
 import v.util
+import v.token
 
 pub fn (mut p Parser) parse_array_type() ast.Type {
 	p.check(.lsbr)
@@ -203,17 +204,21 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		}
 	}
 	mut return_type := ast.void_type
+	mut return_type_pos := token.Position{}
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
+		return_type_pos = p.tok.position()
 		return_type = p.parse_type()
 		if return_type.has_flag(.generic) {
 			has_generic = true
 		}
+		return_type_pos = return_type_pos.extend(p.prev_tok.position())
 	}
 	func := ast.Fn{
 		name: name
 		params: args
 		is_variadic: is_variadic
 		return_type: return_type
+		return_type_pos: return_type_pos
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
