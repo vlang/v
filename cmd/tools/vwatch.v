@@ -80,6 +80,8 @@ mut:
 	silent          bool     // when true, watch will not print a timestamp line before each re-run
 	add_files       []string // path to additional files that have to be watched for changes
 	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
+	cmd_before_run  string   // a command to run before each re-run
+	cmd_after_run   string   // a command to run after each re-run
 }
 
 [if debug_vwatch]
@@ -202,23 +204,39 @@ fn (mut context Context) kill_pgroup() {
 	context.child_process.wait()
 }
 
+fn (mut context Context) run_before_cmd() {
+	if context.cmd_before_run != '' {
+		context.elog('> run_before_cmd: "$context.cmd_before_run"')
+		os.system(context.cmd_before_run)
+	}
+}
+
+fn (mut context Context) run_after_cmd() {
+	if context.cmd_after_run != '' {
+		context.elog('> run_after_cmd: "$context.cmd_after_run"')
+		os.system(context.cmd_after_run)
+	}
+}
+
 fn (mut context Context) compilation_runner_loop() {
 	cmd := '"$context.vexe" ${context.opts.join(' ')}'
 	_ := <-context.rerun_channel
 	for {
 		context.elog('>> loop: v_cycles: $context.v_cycles')
+		if context.clear_terminal {
+			term.clear()
+		}
+		context.run_before_cmd()
 		timestamp := time.now().format_ss_milli()
 		context.child_process = os.new_process(context.vexe)
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
-		if context.clear_terminal {
-			term.clear()
-		}
 		if !context.silent {
 			eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
 		for {
+			mut notalive_count := 0
 			mut cmds := []RerunCommand{}
 			for {
 				if context.is_exiting {
@@ -226,6 +244,11 @@ fn (mut context Context) compilation_runner_loop() {
 				}
 				if !context.child_process.is_alive() {
 					context.child_process.wait()
+					notalive_count++
+					if notalive_count == 1 {
+						// a short lived process finished, do cleanup:
+						context.run_after_cmd()
+					}
 				}
 				select {
 					action := <-context.rerun_channel {
@@ -249,6 +272,10 @@ fn (mut context Context) compilation_runner_loop() {
 			if !context.child_process.is_alive() {
 				context.child_process.wait()
 				context.child_process.close()
+				if notalive_count == 0 {
+					// a long running process was killed, do cleanup:
+					context.run_after_cmd()
+				}
 				break
 			}
 		}
@@ -278,9 +305,11 @@ fn main() {
 	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
 	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
-	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, when you want to change *both* the compiler, and the feature.v file.').split(',')
+	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split(',')
 	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
+	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
+	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
 	if show_help {
 		println(fp.usage())
 		exit(0)

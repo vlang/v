@@ -18,3 +18,8 @@ Options:
                             Useful with `v watch -ignore=.db run vwebserver.v`,
                             if your `vwebserver` writes to an sqlite.db file in the
                             same folder.
+
+  --before <string>         A command to execute *before* each re-run. Example: --before 'v wipe-cache'
+  
+  --after <string>          A command to execute *after* each re-run. Example: --after 'rm -rf /tmp/v/'
+	
