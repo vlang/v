@@ -288,7 +288,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 				ident_.name = tmp_var
 				ident_.kind = .variable
-				info.typ = info.typ.set_nr_muls(1)
+				info.typ = info.typ.set_nr_muls(info.typ.nr_muls() + 1)
 				ident_.info = info
 				g.defer_org_vars[defer_stmt.idx_in_fn][i] = ident
 				g.defer_tmp_vars[defer_stmt.idx_in_fn][i] = ident_
@@ -749,6 +749,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
+		if g.inside_defer {
+			g.write('&')
+		}
 		g.expr(node.left)
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
@@ -1365,22 +1368,24 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 				mut out := []ast.AsmIO{}
 				mut inpt := []ast.AsmIO{}
 				for o in stmt.output {
+					expr, typ := g.edit_defer_expr(o.expr, o.typ)
 					out << ast.AsmIO{
 						alias: o.alias
 						constraint: o.constraint
-						expr: g.edit_defer_expr(o.expr)
+						expr: expr
 						comments: o.comments
-						typ: o.typ
+						typ: typ
 						pos: o.pos
 					}
 				}
 				for inp in stmt.input {
+					expr, typ := g.edit_defer_expr(inp.expr, inp.typ)
 					inpt << ast.AsmIO{
 						alias: inp.alias
 						constraint: inp.constraint
-						expr: g.edit_defer_expr(inp.expr)
+						expr: expr
 						comments: inp.comments
-						typ: inp.typ
+						typ: typ
 						pos: inp.pos
 					}
 				}
@@ -1388,16 +1393,14 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 				stmt.input = inpt
 			}
 			ast.AssertStmt {
-				stmt.expr = g.edit_defer_expr(stmt.expr)
+				stmt.expr, _ = g.edit_defer_expr(stmt.expr, ast.Type(0))
 			}
 			ast.AssignStmt {
 				for ii, rh in stmt.right {
-					mut r := g.edit_defer_expr(rh)
-					stmt.right[ii] = r
+					stmt.right[ii], stmt.right_types[ii] = g.edit_defer_expr(rh, stmt.right_types[ii])
 				}
 				for ii, lh in stmt.left {
-					mut l := g.edit_defer_expr(lh)
-					stmt.left[ii] = l
+					stmt.left[ii], stmt.left_types[ii] = g.edit_defer_expr(lh, stmt.left_types[ii])
 				}
 			}
 			ast.Block {
@@ -1410,18 +1413,18 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 				}
 			}
 			ast.ExprStmt {
-				mut e := g.edit_defer_expr(stmt.expr)
+				e, t := g.edit_defer_expr(stmt.expr, stmt.typ)
 				stmt = ast.ExprStmt{
 					expr: e
 					pos: stmt.pos
 					comments: stmt.comments
 					is_expr: stmt.is_expr
-					typ: stmt.typ
+					typ: t
 				}
 			}
 			ast.ForInStmt {
-				mut cond := g.edit_defer_expr(stmt.cond)
-				mut high := g.edit_defer_expr(stmt.high)
+				cond, cond_type := g.edit_defer_expr(stmt.cond, stmt.cond_type)
+				high, _ := g.edit_defer_expr(stmt.high, ast.Type(0))
 				mut st := stmt.stmts
 				g.edit_defer_stmts(mut st)
 				stmt = ast.ForInStmt{
@@ -1435,14 +1438,14 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 					val_is_mut: stmt.val_is_mut
 					key_type: stmt.key_type
 					val_type: stmt.val_type
-					cond_type: stmt.cond_type
+					cond_type: cond_type
 					kind: stmt.kind
 					label: stmt.label
 					scope: stmt.scope
 				}
 			}
 			ast.ForStmt {
-				mut cond := g.edit_defer_expr(stmt.cond)
+				cond, _ := g.edit_defer_expr(stmt.cond, ast.Type(0))
 				mut st := stmt.stmts
 				g.edit_defer_stmts(mut st)
 				stmt = ast.ForStmt{
@@ -1456,7 +1459,7 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 			}
 			ast.ForCStmt {
 				mut init := []ast.Stmt{len: 1, init: stmt.init}
-				mut cond := g.edit_defer_expr(stmt.cond)
+				cond, _ := g.edit_defer_expr(stmt.cond, ast.Type(0))
 				mut inc := []ast.Stmt{len: 1, init: stmt.inc}
 				mut st := stmt.stmts
 				g.edit_defer_stmts(mut init)
@@ -1483,7 +1486,8 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 }
 
 // TODO add all nessecary expression which can get used in defer statements
-fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
+fn (mut g Gen) edit_defer_expr(expr ast.Expr, typ ast.Type) (ast.Expr, ast.Type) {
+	mut tt := typ
 	match mut expr {
 		ast.Ident {
 			if expr.name in g.defer_org_var_names[g.defer_idx] {
@@ -1493,19 +1497,21 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 						idx = i
 					}
 				}
-				return g.defer_tmp_vars[g.defer_idx][idx]
+				tt = (g.defer_tmp_vars[g.defer_idx][idx].info as ast.IdentVar).typ
+				return ast.Expr(g.defer_tmp_vars[g.defer_idx][idx]), tt
 			}
 		}
 		ast.CallExpr {
-			expr.left = g.edit_defer_expr(expr.left)
+			expr.left, expr.left_type = g.edit_defer_expr(expr.left, expr.left_type)
 			mut callargs := []ast.CallArg{}
 			for arg in expr.args {
+				e, t := g.edit_defer_expr(arg.expr, arg.typ)
 				callargs << ast.CallArg{
 					is_mut: arg.is_mut
 					share: arg.share
-					expr: g.edit_defer_expr(arg.expr)
+					expr: e
 					comments: arg.comments
-					typ: arg.typ
+					typ: t
 					is_tmp_autofree: arg.is_tmp_autofree
 					pos: arg.pos
 				}
@@ -1520,12 +1526,15 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 			}
 		}
 		ast.SelectorExpr {
-			expr.expr = g.edit_defer_expr(expr.expr)
+			expr.expr, expr.expr_type = g.edit_defer_expr(expr.expr, expr.expr_type)
 		}
 		ast.StringInterLiteral {
 			mut exprs := []ast.Expr{}
-			for e in expr.exprs {
-				exprs << g.edit_defer_expr(e)
+			mut expr_types := []ast.Type{}
+			for i, e in expr.exprs {
+				ee, t := g.edit_defer_expr(e, expr.expr_types[i])
+				expr_types << t
+				exprs << ee
 			}
 			expr = ast.StringInterLiteral{
 				vals: expr.vals
@@ -1536,42 +1545,45 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				fills: expr.fills
 				fmt_poss: expr.fmt_poss
 				pos: expr.pos
-				expr_types: expr.expr_types
+				expr_types: expr_types
 				fmts: expr.fmts
 				need_fmts: expr.need_fmts
 			}
 		}
 		ast.StructInit {
-			expr.update_expr = g.edit_defer_expr(expr.update_expr)
+			expr.update_expr, expr.update_expr_type = g.edit_defer_expr(expr.update_expr,
+				expr.update_expr_type)
 			for i, field in expr.fields {
+				ee, t := g.edit_defer_expr(field.expr, field.typ)
 				expr.fields[i] = ast.StructInitField{
-					expr: g.edit_defer_expr(field.expr)
+					expr: ee
 					pos: field.pos
 					name_pos: field.name_pos
 					comments: field.comments
 					next_comments: field.next_comments
 					name: field.name
-					typ: field.typ
+					typ: t
 					expected_type: field.expected_type
 					parent_type: field.parent_type
 				}
 			}
 
 			for i, embed in expr.embeds {
+				ee, t := g.edit_defer_expr(embed.expr, embed.typ)
 				expr.embeds[i] = ast.StructInitEmbed{
-					expr: g.edit_defer_expr(embed.expr)
+					expr: ee
 					pos: embed.pos
 					comments: embed.comments
 					next_comments: embed.next_comments
 					name: embed.name
-					typ: embed.typ
+					typ: t
 					expected_type: embed.expected_type
 				}
 			}
 		}
 		ast.InfixExpr {
-			expr.left = g.edit_defer_expr(expr.left)
-			expr.right = g.edit_defer_expr(expr.right)
+			expr.left, expr.left_type = g.edit_defer_expr(expr.left, expr.left_type)
+			expr.right, expr.right_type = g.edit_defer_expr(expr.right, expr.right_type)
 			mut stmts := expr.or_block.stmts
 			g.edit_defer_stmts(mut stmts)
 			expr.or_block = ast.OrExpr{
@@ -1581,15 +1593,16 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 			}
 		}
 		ast.PostfixExpr {
+			ee, _ := g.edit_defer_expr(expr.expr, ast.Type(0))
 			expr = ast.PostfixExpr{
 				op: expr.op
-				expr: g.edit_defer_expr(expr.expr)
+				expr: ee
 				pos: expr.pos
 				auto_locked: expr.auto_locked
 			}
 		}
 		ast.PrefixExpr {
-			expr.right = g.edit_defer_expr(expr.right)
+			expr.right, _ = g.edit_defer_expr(expr.right, ast.Type(0))
 			mut stmts := expr.or_block.stmts
 			g.edit_defer_stmts(mut stmts)
 			expr.or_block = ast.OrExpr{
@@ -1601,16 +1614,18 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 		ast.IndexExpr {
 			mut stmts := expr.or_expr.stmts
 			g.edit_defer_stmts(mut stmts)
+			idx, _ := g.edit_defer_expr(expr.index, ast.Type(0))
+			left, left_type := g.edit_defer_expr(expr.left, expr.left_type)
 			expr = ast.IndexExpr{
 				pos: expr.pos
-				index: g.edit_defer_expr(expr.index)
+				index: idx
 				or_expr: ast.OrExpr{
 					stmts: stmts
 					kind: expr.or_expr.kind
 					pos: expr.or_expr.pos
 				}
-				left: g.edit_defer_expr(expr.left)
-				left_type: expr.left_type
+				left: left
+				left_type: left_type
 				is_setter: expr.is_setter
 				is_map: expr.is_map
 				is_array: expr.is_array
@@ -1622,8 +1637,9 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 			for i, branch in expr.branches {
 				mut stmts := branch.stmts
 				g.edit_defer_stmts(mut stmts)
+				cond, _ := g.edit_defer_expr(branch.cond, ast.Type(0))
 				expr.branches[i] = ast.IfBranch{
-					cond: g.edit_defer_expr(branch.cond)
+					cond: cond
 					pos: branch.pos
 					body_pos: branch.body_pos
 					comments: branch.comments
@@ -1631,21 +1647,23 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 					scope: branch.scope
 				}
 			}
+			left, t := g.edit_defer_expr(expr.left, expr.typ)
 			expr = ast.IfExpr{
 				is_comptime: expr.is_comptime
 				tok_kind: expr.tok_kind
-				left: g.edit_defer_expr(expr.left)
+				left: left
 				pos: expr.pos
 				post_comments: expr.post_comments
 				branches: expr.branches
 				is_expr: expr.is_expr
-				typ: expr.typ
+				typ: t
 				has_else: expr.has_else
 			}
 		}
 		ast.UnsafeExpr {
+			e, _ := g.edit_defer_expr(expr.expr, ast.Type(0))
 			expr = ast.UnsafeExpr{
-				expr: g.edit_defer_expr(expr.expr)
+				expr: e
 				pos: expr.pos
 			}
 		}
@@ -1653,7 +1671,8 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 			mut stmts := expr.stmts
 			g.edit_defer_stmts(mut stmts)
 			for i, l in expr.lockeds {
-				expr.lockeds[i] = g.edit_defer_expr(ast.Expr(l)) as ast.Ident
+				e, _ := g.edit_defer_expr(l, ast.Type(0))
+				expr.lockeds[i] = e as ast.Ident
 			}
 			expr = ast.LockExpr{
 				stmts: stmts
@@ -1662,6 +1681,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				lockeds: expr.lockeds
 				is_expr: expr.is_expr
 				typ: expr.typ
+				scope: expr.scope
 			}
 		}
 		ast.MatchExpr {
@@ -1672,7 +1692,8 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				g.edit_defer_stmts(mut stmts)
 				mut exprs := []ast.Expr{}
 				for e in b.exprs {
-					exprs << g.edit_defer_expr(e)
+					ee, _ := g.edit_defer_expr(e, ast.Type(0))
+					exprs << ee
 				}
 				branches << ast.MatchBranch{
 					exprs: exprs
@@ -1684,15 +1705,16 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 					scope: b.scope
 				}
 			}
+			e, t := g.edit_defer_expr(expr.cond, expr.cond_type)
 			expr = ast.MatchExpr{
 				tok_kind: expr.tok_kind
-				cond: g.edit_defer_expr(expr.cond)
+				cond: e
 				branches: branches
 				pos: expr.pos
 				comments: expr.comments
 				is_expr: expr.is_expr
 				return_type: expr.return_type
-				cond_type: expr.cond_type
+				cond_type: t
 				expected_type: expr.expected_type
 				is_sum_type: expr.is_sum_type
 			}
@@ -1725,26 +1747,29 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 			}
 		}
 		ast.AsCast {
+			e, t := g.edit_defer_expr(expr.expr, expr.typ)
 			expr = ast.AsCast{
-				expr: g.edit_defer_expr(expr.expr)
-				typ: expr.typ
+				expr: e
+				typ: t
 				pos: expr.pos
 				expr_type: expr.expr_type
 			}
 		}
 		ast.CastExpr {
+			e, et := g.edit_defer_expr(expr.expr, expr.expr_type)
+			a, at := g.edit_defer_expr(expr.arg, expr.typ)
 			expr = ast.CastExpr{
-				expr: g.edit_defer_expr(expr.expr)
-				arg: g.edit_defer_expr(expr.arg)
-				typ: expr.typ
+				expr: e
+				arg: a
+				typ: at
 				pos: expr.pos
 				typname: expr.typname
-				expr_type: expr.expr_type
+				expr_type: et
 				has_arg: expr.has_arg
 				in_prexpr: expr.in_prexpr
 			}
 		}
 		else {}
 	}
-	return expr
+	return expr, tt
 }

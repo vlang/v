@@ -1887,7 +1887,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt {
+		if (deref_will_match || got_is_opt) && !g.inside_defer {
 			g.write('*')
 		}
 	}
@@ -3814,8 +3814,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			g.write('array_push((array*)')
-			eprintln(node.left)
-			eprintln(left_type.is_ptr())
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
@@ -4549,6 +4547,10 @@ fn (mut g Gen) ident(nd ast.Ident) {
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
+		if g.inside_defer {
+			g.write('/*defer*/(*$name)')
+			return
+		}
 		if node_info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
 			styp := g.base_type(node_info.typ)

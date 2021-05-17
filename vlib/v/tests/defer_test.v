@@ -134,3 +134,11 @@ fn test_defer_arrays() {
 		ia << 1
 	}
 }
+
+fn test_defer_str_interpol() {
+	mut t := []string{}
+	defer {
+		t << 'test'
+		t << '${t[0]}'
+	}
+}
