@@ -469,6 +469,16 @@ pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 	return h.data[data_key][0]
 }
 
+// Gets the first value for the starts_with header, or none if the key does not exist.
+pub fn (h Header) starts_with(key string) ?string {
+	for k in h.keys {
+		if k.starts_with(key) {
+			return k
+		}
+	}
+	return none
+}
+
 // Gets all values for the CommonHeader.
 pub fn (h Header) values(key CommonHeader) []string {
 	return h.custom_values(key.str())
