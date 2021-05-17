@@ -2,6 +2,10 @@ module dl
 
 #include <dlfcn.h>
 
+$if linux {
+	#flag -ldl
+}
+
 pub const (
 	rtld_now  = C.RTLD_NOW
 	rtld_lazy = C.RTLD_LAZY

@@ -727,6 +727,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
+	if stmt.is_top_level {
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
@@ -1647,6 +1650,10 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 			if !is_last {
 				f.write(', ')
 			}
+		}
+		// avoid `<Foo<int>>` => `<Foo<int> >`
+		if f.out.last_n(1) == '>' {
+			f.write(' ')
 		}
 		f.write('>')
 	}

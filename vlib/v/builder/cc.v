@@ -380,19 +380,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module
 		&& v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
-		ccoptions.linker_flags << '-lm'
-		ccoptions.linker_flags << '-lpthread'
-		// -ldl is a Linux only thing. BSDs have it in libc.
-		if v.pref.os == .linux {
-			ccoptions.linker_flags << '-ldl'
-		}
 		if v.pref.os in [.freebsd, .netbsd] {
 			// Free/NetBSD: backtrace needs execinfo library while linking
 			ccoptions.linker_flags << '-lexecinfo'
 		}
-	}
-	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
-		ccoptions.linker_flags << '-lm'
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS')

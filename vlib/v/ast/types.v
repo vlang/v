@@ -426,7 +426,7 @@ pub mut:
 }
 
 pub struct FnType {
-pub:
+pub mut:
 	is_anon  bool
 	has_decl bool
 	func     Fn
@@ -741,7 +741,7 @@ pub mut:
 
 pub struct Interface {
 pub mut:
-	types   []Type
+	types   []Type // all types that implement this interface
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type

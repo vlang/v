@@ -13,6 +13,8 @@ pub interface Reader {
 // (e.g. for use in struct initialisation)
 // (this shouldnt need to be a thing but until coercion gets made better
 // it is required)
+[deprecated: 'use just `x` instead of `io.make_reader(x)`. Interfaces are now checked against all types.']
+[deprecated_after: '2021-05-27']
 pub fn make_reader(r Reader) Reader {
 	return r
 }

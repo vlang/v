@@ -20,7 +20,11 @@ fn (mut s StringReader) read(mut buf []byte) ?int {
 }
 
 fn reader(s string) &io.BufferedReader {
-	return io.new_buffered_reader(reader: io.make_reader(&StringReader{ text: s }))
+	return io.new_buffered_reader(
+		reader: &StringReader{
+			text: s
+		}
+	)
 }
 
 fn test_parse_request_not_http() {

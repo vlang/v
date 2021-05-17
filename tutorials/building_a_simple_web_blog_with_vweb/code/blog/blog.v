@@ -7,13 +7,13 @@ import json
 
 struct App {
 	vweb.Context
-mut:
+pub mut:
 	db      sqlite.DB [server_var]
 	user_id string
 }
 
 fn main() {
-	vweb.run<App>(8081)
+	vweb.run(&App{}, 8081)
 }
 
 /*

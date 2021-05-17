@@ -28,7 +28,7 @@ fn read_from_string(text string, capacity int) []byte {
 	mut str := StringReader{
 		text: text
 	}
-	mut stream := io.new_buffered_reader(reader: io.make_reader(str), cap: capacity)
+	mut stream := io.new_buffered_reader(reader: str, cap: capacity)
 	//
 	mut buf := []byte{len: 1}
 	mut res := []byte{}

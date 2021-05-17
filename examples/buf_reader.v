@@ -9,7 +9,7 @@ fn main() {
 	// Simple http HEAD request for a file
 	conn.write_string('GET /index.html HTTP/1.0\r\n\r\n') ?
 	// Wrap in a buffered reader
-	mut r := io.new_buffered_reader(reader: io.make_reader(conn))
+	mut r := io.new_buffered_reader(reader: conn)
 	for {
 		l := r.read_line() or { break }
 		println('$l')
