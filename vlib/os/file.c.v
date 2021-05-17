@@ -17,6 +17,9 @@ fn C.fseeko(voidptr, u64, int) int
 
 fn C._fseeki64(voidptr, u64, int) int
 
+[inline]
+fn C.getc(voidptr) int
+
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
@@ -360,6 +363,39 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 		return []
 	}
 	return arr[0..nreadbytes]
+}
+
+// read_bytes_into_newline reads from the beginning of the file into the provided buffer.
+// Each consecutive call on the same file continues reading where it previously ended.
+// A read call is either stopped, if the buffer is full, a newline was read or EOF.
+pub fn (f &File) read_bytes_into_newline(mut buf []byte) int {
+	if buf.len == 0 {
+		panic(@FN + ': `buf.len` == 0')
+	}
+	newline := '\n'[0]
+	mut c := 0
+	mut buf_ptr := 0
+	mut nbytes := 0
+
+	for _likely_(buf_ptr < buf.len) {
+		c = C.getc(f.cfile)
+		match c {
+			C.EOF {
+				return nbytes
+			}
+			newline {
+				buf[buf_ptr] = byte(c)
+				nbytes++
+				return nbytes
+			}
+			else {
+				buf[buf_ptr] = byte(c)
+				buf_ptr++
+				nbytes++
+			}
+		}
+	}
+	return nbytes
 }
 
 // read_bytes_into fills `buf` with bytes at the given position in the file.
