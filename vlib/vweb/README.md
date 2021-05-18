@@ -72,7 +72,7 @@ To start with vweb, you have to import the module `vweb`.  After the import,
 define a struct to hold vweb.Context (and any other variables your program will
 need).
 
-The web server can be started by calling `vweb.run<App>(&App{}, port)`.
+The web server can be started by calling `vweb.run(&App{}, port)`.
 
 **Example:**
 
@@ -84,7 +84,7 @@ struct App {
 }
 
 fn main() {
-	vweb.run<App>(&App{}, 8080)
+	vweb.run(&App{}, 8080)
 }
 ```
 

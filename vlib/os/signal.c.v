@@ -2,38 +2,44 @@ module os
 
 #include <signal.h>
 
+// os.Signal - enumerate possible POSIX signals and
+// their integer codes.
+// NB: the integer codes are given here explicitly,
+// to make it easier to lookup, without needing to
+// consult man pages / signal.h .
+
 pub enum Signal {
 	hup = 1
-	int
-	quit
-	ill
-	trap
-	abrt
-	bus
-	fpe
-	kill
-	usr1
-	segv
-	usr2
-	pipe
-	alrm
-	term
-	stkflt
-	chld
-	cont
-	stop
-	tstp
-	ttin
-	ttou
-	urg
-	xcpu
-	xfsz
-	vtalrm
-	prof
-	winch
-	poll
-	pwr
-	sys
+	int = 2
+	quit = 3
+	ill = 4
+	trap = 5
+	abrt = 6
+	bus = 7
+	fpe = 8
+	kill = 9
+	usr1 = 10
+	segv = 11
+	usr2 = 12
+	pipe = 13
+	alrm = 14
+	term = 15
+	stkflt = 16
+	chld = 17
+	cont = 18
+	stop = 19
+	tstp = 20
+	ttin = 21
+	ttou = 22
+	urg = 23
+	xcpu = 24
+	xfsz = 25
+	vtalrm = 26
+	prof = 27
+	winch = 28
+	poll = 29
+	pwr = 30
+	sys = 31
 }
 
 type SignalHandler = fn (Signal)
@@ -41,7 +47,7 @@ type SignalHandler = fn (Signal)
 fn C.signal(signal int, handlercb SignalHandler) voidptr
 
 [deprecated: 'use os.signal_opt() instead']
-[deprecated_after: '2021-05-18']
+[deprecated_after: '2021-06-18']
 pub fn signal(signum int, handler voidptr) voidptr {
 	return voidptr(signal_opt(Signal(signum), handler) or { C.SIG_ERR })
 }
