@@ -18,6 +18,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'__new_array',
 		'__new_array_with_default',
 		'__new_array_with_array_default',
+		'v_realloc' /* needed for _STR */,
+		'v_malloc' /* needed for _STR */,
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
