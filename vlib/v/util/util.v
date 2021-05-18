@@ -478,14 +478,17 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 	}
 }
 
+[inline]
 pub fn strip_mod_name(name string) string {
 	return name.all_after_last('.')
 }
 
+[inline]
 pub fn strip_main_name(name string) string {
 	return name.replace('main.', '')
 }
 
+[inline]
 pub fn no_dots(s string) string {
 	return s.replace('.', '__')
 }
