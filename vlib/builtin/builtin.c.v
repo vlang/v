@@ -237,30 +237,24 @@ pub fn malloc(n int) &byte {
 	}
 	mut res := &byte(0)
 	$if prealloc {
-		res = g_m2_ptr
+		res = unsafe { prealloc_malloc(n) }
+	} $else $if gcboehm ? {
 		unsafe {
-			g_m2_ptr += n
+			res = C.GC_MALLOC(n)
 		}
-		nr_mallocs++
+	} $else $if freestanding {
+		mut e := Errno{}
+		res, e = mm_alloc(u64(n))
+		if e != .enoerror {
+			eprint('malloc() failed: ')
+			eprintln(e.str())
+			panic('malloc() failed')
+		}
 	} $else {
-		$if gcboehm ? {
-			unsafe {
-				res = C.GC_MALLOC(n)
-			}
-		} $else $if freestanding {
-			mut e := Errno{}
-			res, e = mm_alloc(u64(n))
-			if e != .enoerror {
-				eprint('malloc() failed: ')
-				eprintln(e.str())
-				panic('malloc() failed')
-			}
-		} $else {
-			res = unsafe { C.malloc(n) }
-		}
-		if res == 0 {
-			panic('malloc($n) failed')
-		}
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		panic('malloc($n) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0, so it is easier to spot
@@ -310,12 +304,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 [unsafe]
 pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 	$if prealloc {
-		unsafe {
-			new_ptr := malloc(new_size)
-			min_size := if old_size < new_size { old_size } else { new_size }
-			C.memcpy(new_ptr, old_data, min_size)
-			return new_ptr
-		}
+		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
 	$if debug_realloc ? {
 		// NB: this is slower, but helps debugging memory problems.
@@ -356,16 +345,22 @@ pub fn vcalloc(n int) &byte {
 	} else if n == 0 {
 		return &byte(0)
 	}
+	$if prealloc {
+		return unsafe { prealloc_calloc(n) }
+	}
 	$if gcboehm ? {
-		return &byte(C.GC_MALLOC(n))
+		return unsafe { &byte(C.GC_MALLOC(n)) }
 	} $else {
-		return C.calloc(1, n)
+		return unsafe { C.calloc(1, n) }
 	}
 }
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
 pub fn vcalloc_noscan(n int) &byte {
+	$if prealloc {
+		return unsafe { prealloc_calloc(n) }
+	}
 	$if gcboehm ? {
 		$if vplayground ? {
 			if n > 10000 {
@@ -375,7 +370,7 @@ pub fn vcalloc_noscan(n int) &byte {
 		if n < 0 {
 			panic('calloc(<0)')
 		}
-		return &byte(unsafe { C.memset(C.GC_MALLOC_ATOMIC(n), 0, n) })
+		return unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
 	} $else {
 		return unsafe { vcalloc(n) }
 	}
@@ -394,7 +389,7 @@ pub fn free(ptr voidptr) {
 		//
 		// The exception is doing leak detection for manual memory management:
 		$if gcboehm_leak ? {
-			C.GC_FREE(ptr)
+			unsafe { C.GC_FREE(ptr) }
 		}
 		return
 	}

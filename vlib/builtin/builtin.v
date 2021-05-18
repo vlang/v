@@ -3,11 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global (
-	g_m2_buf &byte
-	g_m2_ptr &byte
-)
-
 // isnil returns true if an object is nil (only for C objects).
 [inline]
 pub fn isnil(v voidptr) bool {
