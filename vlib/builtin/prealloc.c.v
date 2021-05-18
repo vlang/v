@@ -94,7 +94,7 @@ fn prealloc_realloc(old_data &byte, old_size int, new_size int) &byte {
 }
 
 [unsafe]
-pub fn prealloc_calloc(n int) &byte {
+fn prealloc_calloc(n int) &byte {
 	new_ptr := unsafe { vmemory_block_malloc(n) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr
