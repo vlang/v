@@ -105,15 +105,10 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 		// TODO: filename*
 		if 'filename' in disposition {
 			filename := disposition['filename']
-			// Parse Content-Type header
-			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
-				continue
-			}
-			mut ct := lines[1].split_nth(':', 2)[1]
-			ct = ct.trim_left(' \t')
+			_, content_type := parse_header(if lines.len > 1 { lines[1] } else { '' }) or { '', '' }
 			files[name] << FileData{
 				filename: filename
-				content_type: ct
+				content_type: content_type
 				data: data
 			}
 			continue
