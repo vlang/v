@@ -162,6 +162,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			all_fn_root_names << k
 			continue
 		}
+		if pref.prealloc && k.starts_with('prealloc_') {
+			all_fn_root_names << k
+			continue
+		}
 	}
 
 	// handle assertions and testing framework callbacks:
