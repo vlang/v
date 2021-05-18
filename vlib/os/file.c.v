@@ -17,7 +17,6 @@ fn C.fseeko(voidptr, u64, int) int
 
 fn C._fseeki64(voidptr, u64, int) int
 
-[inline]
 fn C.getc(voidptr) int
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
