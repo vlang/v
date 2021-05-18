@@ -93,10 +93,14 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 
 	for field in fields {
 		// TODO: do not split into lines; do same parsing for HTTP body
-		lines := field.split_into_lines()[1..]
-		disposition := parse_disposition(lines[0])
-		// Grab everything between the double quotes
+		crnl := field.contains('\r\n\r\n')
+		mut section_start := field.index('\r\n\r\n') or { field.index('\n\n') or { 0 } }
+		lines := field[0..section_start].split_into_lines()[1..]
+		disposition := parse_disposition(if lines.len > 0 { lines[0] } else { '' })
 		name := disposition['name'] or { continue }
+		section_start += if section_start > 0 && crnl { 4 } else { 2 }
+		section_end := field.last_index('\n') or { field.len }
+		data := field[section_start..section_end].trim_right('\r')
 		// Parse files
 		// TODO: filename*
 		if 'filename' in disposition {
@@ -107,7 +111,6 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 			}
 			mut ct := lines[1].split_nth(':', 2)[1]
 			ct = ct.trim_left(' \t')
-			data := lines_to_string(field.len, lines, 3, lines.len - 1)
 			files[name] << FileData{
 				filename: filename
 				content_type: ct
@@ -115,7 +118,6 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 			}
 			continue
 		}
-		data := lines_to_string(field.len, lines, 2, lines.len - 1)
 		form[name] = data
 	}
 	return form, files
