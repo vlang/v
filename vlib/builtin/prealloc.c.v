@@ -12,7 +12,8 @@ module builtin
 // mode program), for a ~8-10% speed increase.
 // NB: `-prealloc` is NOT safe to be used for multithreaded programs!
 
-const prealloc_block_size = 16*1024*1024 // size of the preallocated chunk
+// size of the preallocated chunk
+const prealloc_block_size = 16 * 1024 * 1024
 
 __global g_memory_block &VMemoryBlock
 [heap]
