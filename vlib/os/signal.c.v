@@ -41,7 +41,7 @@ type SignalHandler = fn (Signal)
 fn C.signal(signal int, handlercb SignalHandler) voidptr
 
 [deprecated: 'use os.signal_opt() instead']
-[deprecated_after: '2021-05-18']
+[deprecated_after: '2021-06-18']
 pub fn signal(signum int, handler voidptr) voidptr {
 	return voidptr(signal_opt(Signal(signum), handler) or { C.SIG_ERR })
 }
