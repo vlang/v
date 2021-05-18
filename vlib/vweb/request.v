@@ -1,7 +1,6 @@
 module vweb
 
 import io
-import strings
 import net.http
 import net.urllib
 
@@ -136,16 +135,4 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
-}
-
-[manualfree]
-fn lines_to_string(len int, lines []string, start int, end int) string {
-	mut sb := strings.new_builder(len)
-	for i in start .. end {
-		sb.writeln(lines[i])
-	}
-	sb.cut_last(1) // last newline
-	res := sb.str()
-	unsafe { sb.free() }
-	return res
 }
