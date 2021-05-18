@@ -2313,7 +2313,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							styp := g.typ(info.elem_type)
 							g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
 						}
-						if left.left_type.is_ptr() {
+						if left.left_type.is_ptr() && !g.inside_defer {
 							g.write('*')
 						}
 						needs_clone := info.elem_type == ast.string_type && g.is_autofree
@@ -3814,7 +3814,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			g.write('array_push((array*)')
-			if !left_type.is_ptr() {
+			if !left_type.is_ptr() || g.inside_defer {
 				g.write('&')
 			}
 			g.expr(node.left)

@@ -726,7 +726,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
 		if !node.left_type.has_flag(.shared_f) {
-			g.write('/*rec*/*')
+			g.write('/*rec*/${'*'.repeat(node.left_type.nr_muls())}')
 		}
 	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
 		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()

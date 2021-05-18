@@ -120,7 +120,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('(($array_ptr_type_str)')
 		} else if is_op_assign {
 			g.write('(*($array_ptr_type_str)array_get(')
-			if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+			if left_is_ptr && !node.left_type.has_flag(.shared_f) && !g.inside_defer {
 				g.write('*')
 			}
 		} else {
@@ -207,14 +207,14 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.write_fn_ptr_decl(&elem_typ.info, '')
 					g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 				}
-				if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+				if left_is_ptr && !node.left_type.has_flag(.shared_f) && !g.inside_defer {
 					g.write('*')
 				}
 			} else if is_direct_array_access {
 				g.write('(($array_ptr_type_str)')
 			} else {
 				g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
-				if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+				if left_is_ptr && !node.left_type.has_flag(.shared_f) && !g.inside_defer {
 					g.write('*')
 				}
 			}
@@ -318,7 +318,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('(*(($elem_type_str*)map_get((map*)')
 			}
 		}
-		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+		if !left_is_ptr || node.left_type.has_flag(.shared_f) || g.inside_defer {
 			g.write('&')
 		}
 		if node.left is ast.IndexExpr {
@@ -356,7 +356,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.write('(*($elem_type_str*)map_get((map*)')
 		}
-		if !left_is_ptr {
+		if !left_is_ptr || g.inside_defer {
 			g.write('&')
 		}
 		g.expr(node.left)
