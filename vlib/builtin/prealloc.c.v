@@ -51,7 +51,9 @@ fn vmemory_block_malloc(n int) &byte {
 fn prealloc_vinit() {
 	unsafe {
 		g_memory_block = vmemory_block_new(voidptr(0), prealloc_block_size)
-		C.atexit(prealloc_vcleanup)
+		$if !freestanding {
+			C.atexit(prealloc_vcleanup)
+		}
 	}
 }
 
