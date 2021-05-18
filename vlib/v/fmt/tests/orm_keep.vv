@@ -1,4 +1,5 @@
 import sqlite
+import mymodule { ModDbStruct }
 
 struct Customer {
 	id        int
@@ -55,5 +56,12 @@ fn main() {
 	sql db {
 		update Customer set name = 'Queen Elizabeth II', age = 150, nr_orders = 42, country = 'Great Britain'
 		where id == 5
+	}
+	// DB is a selective import
+	sql db {
+		delete from ModDbStruct where id == 1
+	}
+	_ := sql db {
+		select from ModDbStruct
 	}
 }
