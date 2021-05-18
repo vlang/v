@@ -40,12 +40,8 @@ struct VCastTypeIndexName {
 	tname  string
 }
 
-__global (
-	total_m              = i64(0)
-	nr_mallocs           = int(0)
-	// will be filled in cgen
-	as_cast_type_indexes []VCastTypeIndexName
-)
+// will be filled in cgen
+__global as_cast_type_indexes []VCastTypeIndexName
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {

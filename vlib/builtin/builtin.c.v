@@ -217,6 +217,7 @@ pub fn println(s string) {
 	}
 }
 
+__global total_m = i64(0)
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
