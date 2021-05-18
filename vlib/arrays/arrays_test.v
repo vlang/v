@@ -85,3 +85,9 @@ fn test_group() {
 	assert z2 == [[8, 2], [9, 1]]
 	assert group<int>(x, []int{}) == [][]int{}
 }
+
+fn test_sum() {
+	data := [1, 3, 4, 5, 6, 9]
+	z := sum<int>(data)
+	assert z == 28
+}

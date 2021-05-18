@@ -5,6 +5,14 @@ module arrays
 // - idx_min / idx_max - return the index of the first minumum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
 
+pub fn sum<T>(a []T) f32 {
+	mut value := f32(0)
+	for index := 0; index < a.len; index++ {
+		value += a[index]
+	}
+	return value
+}
+
 // min returns the minimum
 pub fn min<T>(a []T) T {
 	if a.len == 0 {
