@@ -5535,7 +5535,7 @@ fn (mut g Gen) write_init_function() {
 		// g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
 	}
 	if g.pref.prealloc {
-		g.writeln('g_m2_buf = malloc(150 * 1000 * 1000);')
+		g.writeln('g_m2_buf = malloc(300 * 1000 * 1000);')
 		g.writeln('g_m2_ptr = g_m2_buf;')
 	}
 	// NB: the as_cast table should be *before* the other constant initialize calls,
@@ -5575,6 +5575,9 @@ fn (mut g Gen) write_init_function() {
 		}
 		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
+	}
+	if g.pref.prealloc {
+		g.writeln('free(g_m2_buf);')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
