@@ -2,9 +2,6 @@ import dotenv
 import os
 
 fn test_env() {
-	dotenv.loadenv() or {
-		panic(err)
-		return
-	}
+	dotenv.loadenv()
 	println(os.getenv('DATA'))
 }

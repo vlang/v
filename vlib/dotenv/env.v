@@ -1,6 +1,6 @@
 module dotenv
 
-import os { is_file, read_file, setenv, join_path, dir }
+import os { dir, is_file, join_path, read_file, setenv }
 
 // Load all the variables in the list of
 // variables passed in as the parameter
@@ -14,23 +14,15 @@ fn load(variables []EnvironmentVariable) {
 
 // The public loadenv function that the user
 // have access to
-pub fn loadenv() ?int {
+pub fn loadenv() {
 	filename := join_path(dir(@FILE), '.env')
+
 	// Checks if the file exists, else throw
 	// an error
 	if is_file(filename) {
 		// Read the file and create variables
-		file_content := read_file(filename) or {
-			panic('Error reading $filename')
-			return 0
-		}
-		data := create_env_variables(tokenise(file_content)) or {
-			panic(err)
-			return 0
-		}
+		file_content := read_file(filename) or { panic(err) }
+		data := create_env_variables(tokenise(file_content)) or { panic(err) }
 		load(data)
-		return 0
-	} else {
-		return error('$filename is not a file')
 	}
 }
