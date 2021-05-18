@@ -376,7 +376,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) int {
 	mut buf_ptr := 0
 	mut nbytes := 0
 
-	for _likely_(buf_ptr < buf.len) {
+	for (buf_ptr < buf.len) {
 		c = C.getc(f.cfile)
 		match c {
 			C.EOF {
