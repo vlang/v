@@ -1,6 +1,18 @@
 module builtin
 
-const prealloc_block_size = 16777216
+// With -prealloc, V calls libc's malloc to get chunks, each at least 16MB
+// in size, as needed. Once a chunk is available, all malloc() calls within
+// V code, that can fit inside the chunk, will use it instead, each bumping a
+// pointer, till the chunk is filled. Once a chunk is filled, a new chunk will
+// be allocated by calling libc's malloc, and the process continues.
+// Each new chunk has a pointer to the old one, and at the end of the program,
+// the entire linked list of chunks is freed.
+// The goal of all this is to amortize the cost of calling libc's malloc,
+// trading higher memory usage for a compiler (or any single threaded batch
+// mode program), for a ~8-10% speed increase.
+// NB: `-prealloc` is NOT safe to be used for multithreaded programs!
+
+const prealloc_block_size = 16*1024*1024 // size of the preallocated chunk
 
 __global g_memory_block &VMemoryBlock
 [heap]
