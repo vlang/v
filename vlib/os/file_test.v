@@ -92,7 +92,7 @@ fn test_read_bytes_into_newline_text() ? {
 fn test_read_bytes_into_newline_binary() ? {
 	mut bw := []byte{len: 15}
 	bw[9] = 0xff
-	bw[12] = '\n'[0]
+	bw[12] = 10 // newline
 
 	n0_bytes := bw[0..10]
 	n1_bytes := bw[10..13]

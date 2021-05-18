@@ -371,7 +371,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) int {
 	if buf.len == 0 {
 		panic(@FN + ': `buf.len` == 0')
 	}
-	newline := '\n'[0]
+	newline := 10
 	mut c := 0
 	mut buf_ptr := 0
 	mut nbytes := 0
