@@ -462,7 +462,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				g.write('\n $cur_line $tmp_opt /*U*/')
 			} else {
 				if !g.inside_const {
-					g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+					g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
 				} else {
 					g.write('\n $cur_line $tmp_opt')
 				}
