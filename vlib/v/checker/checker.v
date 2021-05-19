@@ -608,6 +608,56 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	}
 }
 
+fn (mut c Checker) unwrap_generics_struct_init(struct_type ast.Type) ast.Type {
+	ts := c.table.get_type_symbol(struct_type)
+	if ts.info is ast.Struct {
+		if ts.info.is_generic {
+			mut nrt := '$ts.name<'
+			mut c_nrt := '${ts.name}_T_'
+			for i in 0 .. ts.info.generic_types.len {
+				gts := c.table.get_type_symbol(c.unwrap_generic(ts.info.generic_types[i]))
+				nrt += gts.name
+				c_nrt += gts.name
+				if i != ts.info.generic_types.len - 1 {
+					nrt += ','
+					c_nrt += '_'
+				}
+			}
+			nrt += '>'
+			idx := c.table.type_idxs[nrt]
+			if idx != 0 && c.table.type_symbols[idx].kind != .placeholder {
+				return ast.new_type(idx).derive(struct_type).clear_flag(.generic)
+			} else {
+				mut fields := ts.info.fields.clone()
+				if ts.info.generic_types.len == c.cur_concrete_types.len {
+					generic_names := ts.info.generic_types.map(c.table.get_type_symbol(it).name)
+					for i in 0 .. fields.len {
+						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
+							generic_names, c.cur_concrete_types, true)
+						{
+							fields[i].typ = t_typ
+						}
+					}
+					mut info := ts.info
+					info.is_generic = false
+					info.concrete_types = c.cur_concrete_types.clone()
+					info.parent_type = struct_type
+					info.fields = fields
+					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
+						kind: .struct_
+						name: nrt
+						cname: util.no_dots(c_nrt)
+						mod: c.mod
+						info: info
+					})
+					return ast.new_type(stru_idx).derive(struct_type).clear_flag(.generic)
+				}
+			}
+		}
+	}
+	return struct_type
+}
+
 pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
@@ -626,7 +676,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			struct_init.typ = c.expected_type
 		}
 	}
-	utyp := c.unwrap_generic(struct_init.typ)
+	utyp := c.unwrap_generics_struct_init(struct_init.typ)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
@@ -756,7 +806,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				if is_embed {
 					expected_type = embed_type
 					c.expected_type = expected_type
-					expr_type = c.expr(field.expr)
+					expr_type = c.unwrap_generic(c.expr(field.expr))
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
@@ -771,7 +821,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
 					expected_type = info_field.typ
 					c.expected_type = expected_type
-					expr_type = c.expr(field.expr)
+					expr_type = c.unwrap_generic(c.expr(field.expr))
 					if !info_field.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
@@ -881,7 +931,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			c.error('expression is not an lvalue', struct_init.update_expr.position())
 		}
 	}
-	return struct_init.typ
+	return utyp
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
@@ -2924,7 +2974,14 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
-	expected_type := c.unwrap_generic(c.expected_type)
+	mut expected_type := c.unwrap_generic(c.expected_type)
+	if expected_type.has_flag(.generic) && c.table.get_type_symbol(expected_type).kind == .struct_ {
+		if t_typ := c.table.resolve_generic_to_concrete(expected_type, c.table.cur_fn.generic_names,
+			c.cur_concrete_types, true)
+		{
+			expected_type = t_typ
+		}
+	}
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if return_stmt.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
