@@ -261,7 +261,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr && !is_var_mut {
-			g.write('_STR("&%.*s\\000", 2, ')
+			if g.inside_defer && expr is ast.Ident
+				&& (expr as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] && ((expr as ast.Ident).info as ast.IdentVar).typ.nr_muls() - 1 == 0 {
+				g.write('_STR("%.*s\\000", 2, ')
+			} else {
+				g.write('_STR("&%.*s\\000", 2, ')
+			}
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {

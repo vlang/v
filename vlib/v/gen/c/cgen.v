@@ -2188,10 +2188,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
 				g.expr(left0) // assign_stmt.left[0])
 				g.writeln('); // free $type_to_free on re-assignment2')
-				g.writeln(';//${type_to_free}_free(&$sref_name);')
 				defer {
 					if af {
-						g.writeln(';//${type_to_free}_free(&$sref_name);')
+						g.writeln('${type_to_free}_free(&$sref_name);')
 					}
 				}
 			} else {
@@ -3471,7 +3470,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
-		if node.expr_type.nr_muls() - 1 == 0 && g.inside_defer && node.expr is ast.Ident && (node.expr as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] {
+		if node.expr_type.nr_muls() - 1 == 0 && g.inside_defer && node.expr is ast.Ident
+			&& (node.expr as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] {
 			g.write('.')
 		} else {
 			g.write('->')
@@ -4528,7 +4528,7 @@ fn (mut g Gen) ident(nd ast.Ident) {
 					}
 				}
 				if idx != -1 {
-					node = g.defer_tmp_vars[g.defer_idx][idx]				
+					node = g.defer_tmp_vars[g.defer_idx][idx]
 				}
 			}
 		}
