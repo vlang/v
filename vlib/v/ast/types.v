@@ -848,12 +848,6 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
-	/*
-	if t.pref.is_verbose {
-	print_backtrace()
-	exit(0)
-	}
-	*/
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
 	match sym.kind {
@@ -956,6 +950,19 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
+		}
+		.generic_struct_inst {
+			info := sym.info as GenericStructInst
+			res = sym.name.all_before('<')
+			res += '<'
+			for i, ctyp in info.concrete_types {
+				res += t.get_type_symbol(ctyp).name
+				if i != info.concrete_types.len - 1 {
+					res += ', '
+				}
+			}
+			res += '>'
+			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 		.void {
 			if typ.has_flag(.optional) {
