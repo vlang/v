@@ -20,9 +20,9 @@ fn use_as_generic(ngs NonGenericStruct<V>) NonGenericStruct<V> {
 	return NonGenericStruct{}
 }
 
-struct GenericStruct<W> {}
+struct GenericStruct<A, B> {}
 
-fn proper_generics(gs GenericStruct<W>) GenericStruct<W> {
+fn proper_generics(gs GenericStruct<A, B>) GenericStruct<A, B> {
 	return gs
 }
 

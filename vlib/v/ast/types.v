@@ -951,6 +951,19 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
+		.generic_struct_inst {
+			info := sym.info as GenericStructInst
+			res = sym.name.all_before('<')
+			res += '<'
+			for i, ctyp in info.concrete_types {
+				res += t.get_type_symbol(ctyp).name
+				if i != info.concrete_types.len - 1 {
+					res += ', '
+				}
+			}
+			res += '>'
+			res = t.shorten_user_defined_typenames(res, import_aliases)
+		}
 		.void {
 			if typ.has_flag(.optional) {
 				return '?'
