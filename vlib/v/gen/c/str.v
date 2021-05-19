@@ -5,7 +5,6 @@ module c
 import v.ast
 import v.util
 
-[inline]
 fn (mut g Gen) write_str_fn_definitions() {
 	g.writeln(c_str_fn_defs)
 }
