@@ -129,6 +129,37 @@ ${contents[1]}
 	}
 }
 
+fn test_parse_multipart_form_data() {
+	boundary := '6844a625b1f0b300'
+	names := ['foo', 'text']
+	file := 'bar.v'
+	ct := 'application/octet-stream'
+	contents := ['ABCdef123 \t\v\r\r\n\r\n'.repeat(6400), 'deadbeef']
+	data := "--------------------------$boundary\r
+Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"\r
+Content-Type: $ct\r
+\r
+${contents[0]}\r
+--------------------------$boundary\r
+Content-Disposition: form-data; name=\"${names[1]}\"\r
+\r
+${contents[1]}\r
+--------------------------$boundary--\r
+"
+	form, files := parse_multipart_form(data, boundary)
+	assert files == map{
+		names[0]: [FileData{
+			filename: file
+			content_type: ct
+			data: contents[0]
+		}]
+	}
+
+	assert form == map{
+		names[1]: contents[1]
+	}
+}
+
 fn test_parse_large_body() ? {
 	body := 'A'.repeat(101) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
