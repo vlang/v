@@ -71,16 +71,16 @@ fn test_read_bytes_into_newline_text() ? {
 	f = os.open_file(tfile, 'r') ?
 	mut buf := []byte{len: 8}
 
-	n0 := f.read_bytes_into_newline(mut buf)
+	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 8
 
-	n1 := f.read_bytes_into_newline(mut buf)
+	n1 := f.read_bytes_into_newline(mut buf) ?
 	assert n1 == 5
 
-	n2 := f.read_bytes_into_newline(mut buf)
+	n2 := f.read_bytes_into_newline(mut buf) ?
 	assert n2 == 8
 
-	n3 := f.read_bytes_into_newline(mut buf)
+	n3 := f.read_bytes_into_newline(mut buf) ?
 	assert n3 == 6
 
 	f.close()
@@ -105,15 +105,15 @@ fn test_read_bytes_into_newline_binary() ? {
 	f = os.open_file(tfile, 'r') ?
 	mut buf := []byte{len: 10}
 
-	n0 := f.read_bytes_into_newline(mut buf)
+	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 10
 	assert buf[..n0] == n0_bytes
 
-	n1 := f.read_bytes_into_newline(mut buf)
+	n1 := f.read_bytes_into_newline(mut buf) ?
 	assert n1 == 3
 	assert buf[..n1] == n1_bytes
 
-	n2 := f.read_bytes_into_newline(mut buf)
+	n2 := f.read_bytes_into_newline(mut buf) ?
 	assert n2 == 2
 	assert buf[..n2] == n2_bytes
 	f.close()
