@@ -103,7 +103,9 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 		// TODO: filename*
 		if 'filename' in disposition {
 			filename := disposition['filename']
-			_, content_type := parse_header(if headers.len > 1 { headers[1] } else { '' }) or { '', '' }
+			_, content_type := parse_header(if headers.len > 1 { headers[1] } else { '' }) or {
+				'', ''
+			}
 			files[name] << FileData{
 				filename: filename
 				content_type: content_type
