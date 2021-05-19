@@ -66,11 +66,7 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		}
 		// increase buffer (somewhat exponentially)
 		*memsize += guess + 3 * (*memsize) / 2;
-#ifdef _VGCBOEHM
-		*refbufp = (char*)GC_REALLOC((void*)*refbufp, *memsize);
-#else
-		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
-#endif
+		*refbufp = (char*)v_realloc((void*)*refbufp, *memsize);
 	}
 	va_end(args);
 }
@@ -79,11 +75,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_list argptr;
 	int memsize = 128;
 	int nbytes = 0;
-#ifdef _VGCBOEHM
-	char* buf = (char*)GC_MALLOC(memsize);
-#else
-	char* buf = (char*)malloc(memsize);
-#endif
+	char* buf = (char*)v_malloc(memsize);
 	va_start(argptr, nfmts);
 	for (int i=0; i<nfmts; ++i) {
 		int k = strlen(fmt);

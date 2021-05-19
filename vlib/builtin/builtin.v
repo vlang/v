@@ -3,11 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global (
-	g_m2_buf &byte
-	g_m2_ptr &byte
-)
-
 // isnil returns true if an object is nil (only for C objects).
 [inline]
 pub fn isnil(v voidptr) bool {
@@ -45,12 +40,8 @@ struct VCastTypeIndexName {
 	tname  string
 }
 
-__global (
-	total_m              = i64(0)
-	nr_mallocs           = int(0)
-	// will be filled in cgen
-	as_cast_type_indexes []VCastTypeIndexName
-)
+// will be filled in cgen
+__global as_cast_type_indexes []VCastTypeIndexName
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
