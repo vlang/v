@@ -2,6 +2,8 @@ import os
 import benchmark
 import term
 
+const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
+
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
 	$if !amd64 {
@@ -33,7 +35,11 @@ fn test_native() {
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '$wrkdir/x.v'
 		os.cp(full_test_path, work_test_path) or {}
-		res_native := os.execute('$vexe -o exe -native $work_test_path')
+		cmd := '$vexe -o exe -native $work_test_path'
+		if is_verbose {
+			println(cmd)
+		}
+		res_native := os.execute(cmd)
 		if res_native.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('native $test failed'))
