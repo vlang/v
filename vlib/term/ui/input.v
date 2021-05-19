@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module ui
 
+import os
+
 pub enum KeyCode {
 	null                 = 0
 	tab                  = 9
@@ -208,8 +210,8 @@ pub struct Config {
 	capture_events       bool
 	use_alternate_buffer bool = true
 	skip_init_checks     bool
-	// All kill signals to set up exit listeners on
-	reset                []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
+	// All kill signals to set up exit listeners on:
+	reset []os.Signal = [.hup, .int, .quit, .ill, .abrt, .bus, .fpe, .kill, .segv, .pipe, .alrm, .term, .stop]
 }
 
 [inline]

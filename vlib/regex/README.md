@@ -2,172 +2,193 @@
 
 [TOC]
 
-## Introduction, differences with PCRE
+## Introduction
 
-The first thing we must point out is that the **V-Regex module is not PCRE compliant** and
-thus some behaviour will be different.
-This module is born upon the V philosophy to have one way and keep it simple.
+Here are the assumptions made during the writing of the implementation, that
+are valid for all the `regex` module features:
+
+1. The matching stops at the end of the string, *not* at newline characters.
+
+2. The basic atomic elements of this regex engine are the tokens. 
+In a query string a simple character is a token.
+
+
+## Differences with PCRE:
+
+NB: We must point out that the **V-Regex module is not PCRE compliant** and thus 
+some behaviour will be different. This difference is due to the V philosophy,
+to have one way and keep it simple.
+
 The main differences can be summarized in the following points:
 
-- The basic element **is the token not the sequence of symbols**, the most simple token
-is  simple char.
+- The basic element **is the token not the sequence of symbols**, and the most
+simple token, is a single character.
 
-- `|` **OR operator act on token,** for example `abc|ebc` is not `abc` OR `ebc` it 
-is evaluated like `ab` followed by `c OR e` followed by`bc`, this because the **token is
-the base element** not the sequence of symbols.
-- The **match operation stop at the end of the string** not at the new line chars.
+- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not 
+`abc` OR `ebc`. Instead it is evaluated like `ab`, followed by `c OR e`,
+followed by `bc`, because the **token is the base element**,
+not the sequence of symbols.
 
-Further information can be found in the other part of this document.
+- The **match operation stops at the end of the string**. It does *NOT* stop 
+at new line characters.
 
-## Basic assumption
-
-In this release, during the writing of the code some assumptions are made
-and are valid for all the features.
-
-1. The matching stops at the end of the string not at the newline chars.
-2. The basic elements of this regex engine are the tokens,
-    in a query string a simple char is a token. The token is the atomic unit of this regex engine.
-
-## Match positional limiter
-
-The module supports the following features:
-
-- `$` `^` delimiter
-
-`^` (Caret.) Matches at the start of the string
-
-`$` Matches at the end of the string
 
 ## Tokens
 
-The tokens are the atomic units used by this regex engine and can be ones of the following:
+The tokens are the atomic units, used by this regex engine.
+They can be one of the following:
+
 
 ### Simple char
 
-this token is a simple single character like `a`.
+This token is a simple single character like `a` or `b` etc.
+
+
+### Match positional delimiters
+
+`^` Matches the start of the string.
+
+`$` Matches the end of the string.
+
 
 ### Char class (cc)
 
-The cc matches all the chars specified inside, it is delimited by square brackets `[ ]`
+The character classes match all the chars specified inside. Use square 
+brackets `[ ]` to enclose them.
 
-the sequence of chars in the class is evaluated with an OR operation.
+The sequence of the chars in the character class, is evaluated with an OR op.
 
-For example, the following cc `[abc]` matches any char that is `a` or `b` or `c`
-but doesn't match `C` or `z`.
+For example, the cc `[abc]`, matches any character, that is `a` or `b` or `c`,
+but it doesn't match `C` or `z`.
 
-Inside a cc is possible to specify a "range" of chars,
-for example `[ad-f]` is equivalent to write `[adef]`.
+Inside a cc, it is possible to specify a "range" of characters, for example
+`[ad-h]` is equivalent to writing `[adefgh]`.
 
-A cc can have different ranges at the same time like `[a-zA-z0-9]` that matches all the lowercase,
-uppercase and numeric chars.
+A cc can have different ranges at the same time, for example `[a-zA-z0-9]` 
+matches all the latin lowercase, uppercase and numeric characters.
 
-It is possible negate the cc using the caret char at the start of the cc like: `[^abc]`
-that matches every char that is not `a` or `b` or `c`.
+It is possible to negate the meaning of a cc, using the caret char at the
+start of the cc like this: `[^abc]` . That matches every char that is NOT
+`a` or `b` or `c`.
 
-A cc can contain meta-chars like: `[a-z\d]` that matches all the lowercase latin chars `a-z`
-and all the digits `\d`.
+A cc can contain meta-chars like: `[a-z\d]`, that match all the lowercase
+latin chars `a-z` and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
-**Note:** In order to match the `-` (minus) char, it must be preceded by a backslash
- in the cc, for example `[\-_\d\a]` will match `-` minus, `_`underscore, `\d` numeric chars,
- `\a` lower case chars.
+NB: In order to match the `-` (minus) char, it must be preceded by
+    a backslash in the cc, for example `[\-_\d\a]` will match:
+      `-` minus,
+      `_` underscore, 
+      `\d` numeric chars,
+	  `\a` lower case chars.
 
 ### Meta-chars
 
-A meta-char is specified by a backslash before a char like `\w` in this case the meta-char is `w`.
+A meta-char is specified by a backslash, before a character. 
+For example `\w` is the meta-char `w`.
 
-A meta-char can match different type of chars.
+A meta-char can match different types of characters.
 
 * `\w` matches an alphanumeric char `[a-zA-Z0-9_]`
 * `\W` matches a non alphanumeric char
 * `\d` matches a digit `[0-9]`
 * `\D` matches a non digit
-* `\s`matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
+* `\s` matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
 * `\S` matches a non space char
 * `\a` matches only a lowercase char `[a-z]`
 * `\A` matches only an uppercase char `[A-Z]`
 
 ### Quantifier
 
-Each token can have a quantifier that specify how many times the char can or must be matched.
+Each token can have a quantifier, that specifies how many times the character
+must be matched.
 
-#### **Short quantifier**
+#### **Short quantifiers**
 
 - `?` matches 0 or 1 time, `a?b` matches both `ab` or `b`
-- `+` matches at minimum 1 time, `a+` matches both `aaa` or `a`
-- `*` matches 0 or more time, `a*b` matches both `aaab` or `ab` or `b`
+- `+` matches *at least* 1 time, for example, `a+` matches both `aaa` or `a`
+- `*` matches 0 or more times, for example, `a*b` matches `aaab`, `ab` or `b`
 
-#### **Long quantifier**
+#### **Long quantifiers**
 
-- `{x}` matches exactly x time, `a{2}` matches `aa` but doesn't match `aaa` or `a`
-- `{min,}` matches at minimum min time, `a{2,}` matches `aaa` or `aa` but doesn't match `a`
-- `{,max}` matches at least 0 time and maximum max time,
-    `a{,2}` matches `a` and `aa` but doesn't match `aaa`
-- `{min,max}` matches from min times to max times,
-    `a{2,3}` matches `aa` and `aaa` but doesn't match `a` or `aaaa`
+- `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`
+- `{min,}` matches at least min times, `a{2,}` matches `aaa` or `aa`, not `a`
+- `{,max}` matches at least 0 times and at maximum max times,
+   for example, `a{,2}` matches `a` and `aa`, but doesn't match `aaa`
+- `{min,max}` matches from min times, to max times, for example
+    `a{2,3}` matches `aa` and `aaa`, but doesn't match `a` or `aaaa`
 
-a long quantifier may have a `greedy off` flag that is the `?` char after the brackets,
-`{2,4}?` means to match the minimum number possible tokens in this case 2.
+A long quantifier, may have a `greedy off` flag, that is the `?`
+character after the brackets. `{2,4}?` means to match the minimum
+number of possible tokens, in this case 2.
 
-### dot char
+### Dot char
 
-the dot is a particular meta char that matches  "any char",
-is more simple explain it with an example:
+The dot is a particular meta-char, that matches "any char".
 
-suppose to have `abccc ddeef` as source string to parse with regex,
-the following table show the query strings and the result of parsing source string.
+It is simpler to explain it with an example:
 
-| query string | result |
-| ------------ | ------ |
-| `.*c`        | `abc`  |
-|  `.*dd`		 |  `abcc dd` |
-| `ab.*e` | `abccc dde` |
+Suppose you have `abccc ddeef` as a source string, that you want to parse 
+with a regex. The following table show the query strings and the result of
+parsing source string.
+
++--------------+-------------+
+| query string |   result    |
+|--------------|-------------|
+| `.*c`        | `abc`       |
+| `.*dd`	   | `abcc dd`   |
+| `ab.*e`      | `abccc dde` |
 | `ab.{3} .*e` | `abccc dde` |
++--------------+-------------+
 
-the dot char matches any char until the next token match is satisfied.
+The dot matches any character, until the next token match is satisfied.
 
 ### OR token
 
-the token `|` is a logic OR operation between two consecutive tokens,
-`a|b` matches a char that is `a` or `b`.
+The token `|`, means a logic OR operation between two consecutive tokens,
+i.e. `a|b` matches a character that is `a` or `b`.
 
-The OR token can work in a "chained way": `a|(b)|cd ` test first `a` if the char is not `a`
-then test the group `(b)` and if the group doesn't match test the token `c`.
+The OR token can work in a "chained way": `a|(b)|cd ` means test first `a`,
+if the char is not `a`, then test the group `(b)`, and if the group doesn't 
+match too, finally test the token `c`.
 
-**note: The OR work at token level! It doesn't work at concatenation level!**
+NB: ** unlike in PCRE, the OR operation works at token level!** 
+It doesn't work at concatenation level!
 
-A query string like `abc|bde` is not equal to `(abc)|(bde)`!!
-The OR work only on `c|b` not at char concatenation level.
+That also means, that a query string like `abc|bde` is not equal to 
+`(abc)|(bde)`, but instead to `ab(c|b)de.
+The OR operation works only for `c|b`, not at char concatenation level.
 
 ### Groups
 
-Groups are a method to create complex patterns with repetition of blocks of tokens.
-
-The groups are delimited by round brackets `( )`,
-groups can be nested and can have a quantifier as all the tokens.
+Groups are a method to create complex patterns with repetitions of blocks
+of tokens. The groups are delimited by round brackets `( )`. Groups can be
+nested. Like all other tokens, groups can have a quantifier too.
 
 `c(pa)+z` match `cpapaz` or `cpaz` or `cpapapaz` .
 
 `(c(pa)+z ?)+` matches `cpaz cpapaz cpapapaz` or `cpapaz`
 
-let analyze this last case, first we have the group `#0`
-that are the most outer round brackets `(...)+`,
-this group has a quantifier that say to match its content at least one time `+`.
+Lets analyze this last case, first we have the group `#0`, that is the most
+outer round brackets `(...)+`. This group has a quantifier `+`, that say to
+match its content *at least one time*.
 
-After we have a simple char token `c` and a second group that is the number `#1` :`(pa)+`,
-this group try to match the sequence `pa` at least one time as specified by the `+` quantifier.
+Then we have a simple char token `c`, and a second group `#1`: `(pa)+`.
+This group also tries to match the sequence `pa`, *at least one time*, 
+as specified by the `+` quantifier.
 
-After, we have another simple token `z` and another simple token ` ?`
-that is the space char (ascii code 32) followed by the `?` quantifier
-that say to capture the space char 0 or 1 time.
+Then, we have another simple token `z` and another simple token ` ?`,
+i.e. the space char (ascii code 32) followed by the `?` quantifier,
+which means that the preceding space should be matched 0 or 1 time.
 
-This explain because the `(c(pa)+z ?)+` query string can match `cpaz cpapaz cpapapaz` .
+This explains why the `(c(pa)+z ?)+` query string,
+can match `cpaz cpapaz cpapapaz` .
 
-In this implementation the groups are "capture groups",
-it means that the last temporal result for each group can be retrieved from the `RE` struct.
+In this implementation the groups are "capture groups". This means that the
+last temporal result for each group, can be retrieved from the `RE` struct.
 
-The "capture groups" are store as couple of index in the field `groups`
+The "capture groups" are stored as indexes in the field `groups`, 
 that is an `[]int` inside the `RE` struct.
 
 **example:**
@@ -177,7 +198,8 @@ text := 'cpaz cpapaz cpapapaz'
 query := r'(c(pa)+z ?)+'
 mut re := regex.regex_opt(query) or { panic(err) }
 println(re.get_query())
-// #0(c#1(pa)+z ?)+  // #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
+// #0(c#1(pa)+z ?)+
+// #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
 start, end := re.match_string(text)
 // [start=0, end=20]  match => [cpaz cpapaz cpapapaz]
 mut gi := 0
@@ -195,7 +217,7 @@ for gi < re.groups.len {
 **note:** *to show the `group id number` in the result of the `get_query()`*
 *the flag `debug` of the RE object must be `1` or `2`*
 
-In order to simplify the use of the captured groups it possible to use the
+In order to simplify the use of the captured groups, it possible to use the
 utility function: `get_group_list`.
 
 This function return a list of groups using this support struct:
@@ -212,9 +234,9 @@ Here an example of use:
 
 ```v oksyntax
 /*
-This simple function convert an HTML RGB value with 3 or 6 hex digits to an u32 value,
-this function is not optimized and it si only for didatical purpose
-example: #A0B0CC #A9F
+This simple function converts an HTML RGB value with 3 or 6 hex digits to
+an u32 value, this function is not optimized and it is only for didatical
+purpose. Example: #A0B0CC #A9F
 */
 fn convert_html_rgb(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
@@ -250,29 +272,29 @@ for g_index := 0; g_index < re.group_count ; g_index++ {
 }
 ```
 
-more helper functions are listed in the **Groups query functions** section.
+More helper functions are listed in the **Groups query functions** section.
 
 ### Groups Continuous saving
 
-In particular situations it is useful have a continuous save of the groups,
-this is possible initializing the saving array field in `RE` struct: `group_csave`.
+In particular situations, it is useful to have a continuous group saving.
+This is possible by initializing the `group_csave` field in the `RE` struct.
 
-This feature allow to collect data in a  continuous way.
+This feature allows you to collect data in a continuous/streaming way.
 
-In the example we pass a text followed by a integer list that we want collect.
-To achieve this task we can use the continuous saving of the group 
-enabling the right flag: `re.group_csave_flag = true`.
+In the example, we can pass a text, followed by an integer list,
+that we wish to collect. To achieve this task, we can use the continuous
+group saving, by enabling the right flag: `re.group_csave_flag = true`.
 
-The array will be filled with the following logic:
+The `.group_csave` array will be filled then, following this logic:
 
-`re.group_csave[0]` number of total saved records
+`re.group_csave[0]` - number of total saved records
+`re.group_csave[1+n*3]` - id of the saved group
+`re.group_csave[1+n*3]` - start index in the source string of the saved group
+`re.group_csave[1+n*3]` - end index in the source string of the saved group
 
-`re.group_csave[1+n*3]` id of the saved group
-`re.group_csave[1+n*3]` start index in the source string of the saved group
-`re.group_csave[1+n*3]` end index in the source string of the saved group
-
-The regex save until finish or found that the array have no space.
-If the space ends no error is raised, further records will not be saved.
+The regex will save groups, until it finishes, or finds that the array has no 
+more space. If the space ends, no error is raised, and further records will 
+not be saved.
 
 ```v ignore
 import regex
@@ -327,19 +349,18 @@ cg[1] 42 46:[html]
 
 ### Named capturing groups
 
-This regex module support partially the question mark `?` PCRE syntax for groups.
+This regex module supports partially the question mark `?` PCRE syntax for groups.
 
-`(?:abcd)` **non capturing group**:  the content of the group will not be saved
+`(?:abcd)` **non capturing group**:  the content of the group will not be saved.
 
-`(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled as `mygroup`
+`(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled 
+as `mygroup`.
 
-The label of the groups is saved in the `group_map` of the `RE` struct,
-this is a map from `string` to `int` where the value is the index in `group_csave` list of index.
+The label of the groups is saved in the `group_map` of the `RE` struct, 
+that is a map from `string` to `int`, where the value is the index in 
+`group_csave` list of indexes.
 
-Have a look at the example for the use of them.
-
-example:
-
+Here is an example for how to use them:
 ```v ignore
 import regex
 fn main(){
@@ -376,17 +397,17 @@ group:'format' 	=> [http] bounds: (0, 4)
 group:'token' 	=> [html] bounds: (42, 46)
 ```
 
-In order to simplify the use of the named groups it possible to use names map in the `re`
-struct using the function `re.get_group_by_name`.
+In order to simplify the use of the named groups, it is possible to
+use a name map in the `re` struct, using the function `re.get_group_by_name`.
 
-Here a more complex example of use:
-
+Here is a more complex example of using them:
 ```v oksyntax
 // This function demostrate the use of the named groups
 fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
-	query := '#(?P<red>[a-fA-F0-9]{$n_digit})(?P<green>[a-fA-F0-9]{$n_digit})(?P<blue>[a-fA-F0-9]{$n_digit})'
+	query := '#(?P<red>[a-fA-F0-9]{$n_digit})' + '(?P<green>[a-fA-F0-9]{$n_digit})' +
+		'(?P<blue>[a-fA-F0-9]{$n_digit})'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
 	println('start: $start, end: $end')
@@ -405,8 +426,8 @@ fn convert_html_rgb_n(in_col string) u32 {
 }
 ```
 
-Others utility functions are `get_group_by_name` and `get_group_bounds_by_name`
-that get  directly the string of a group using its `name`:
+Other utilities are `get_group_by_name` and `get_group_bounds_by_name`,
+that return the string of a group using its `name`:
 
 ```v ignore
 txt := "my used string...."
@@ -447,7 +468,8 @@ pub fn (re RE) get_group_list() []Re_group
 
 ## Flags
 
-It is possible to set some flags in the regex parser that change the behavior of the parser itself.
+It is possible to set some flags in the regex parser, that change
+the behavior of the parser itself.
 
 ```v ignore
 // example of flag settings
@@ -457,12 +479,16 @@ re.flag = regex.F_BIN
 
 - `F_BIN`: parse a string as bytes, utf-8 management disabled.
 
-- `F_EFM`: exit on the first char matches in the query, used by the find function.
-- `F_MS`: matches only if the index of the start match is 0,
-    same as `^` at the start of the query string.
-- `F_ME`: matches only if the end index of the match is the last char of the input string,
-    same as `$` end of query string.
-- `F_NL`: stop the matching if found a new line char `\n` or `\r`
+- `F_EFM`: exit on the first char matches in the query, used by the 
+           find function.
+		   
+- `F_MS`:  matches only if the index of the start match is 0,
+           same as `^` at the start of the query string.
+		   
+- `F_ME`:  matches only if the end index of the match is the last char
+           of the input string, same as `$` end of query string.
+		   
+- `F_NL`:  stop the matching if found a new line char `\n` or `\r`
 
 ## Functions
 
@@ -486,13 +512,15 @@ pub fn new() RE
 
 ```
 #### **Custom initialization**
-For some particular needs it is possible initialize a fully manually customized regex:
+For some particular needs, it is possible to initialize a fully customized regex:
 ```v ignore
 pattern = r"ab(.*)(ac)"
 // init custom regex
 mut re := regex.RE{}
-re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern
-re.cc   = []CharClass{len: pattern.len}     // can not be more char class the the length of the pattern
+// max program length, can not be longer then the pattern
+re.prog = []Token    {len: pattern.len + 1}
+// can not be more char class the the length of the pattern
+re.cc   = []CharClass{len: pattern.len}
 
 re.group_csave_flag = false          // true enable continuos group saving if needed
 re.group_max_nested = 128            // set max 128 group nested possible
@@ -566,7 +594,7 @@ Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
 
 **Note:** in the replace strings can be used only groups from `0` to `9`.
 
-If the usage of `groups` in the replace process is not needed it is possible
+If the usage of `groups` in the replace process, is not needed, it is possible
 to use a quick function:
 
 ```v ignore
@@ -576,10 +604,12 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 
 #### Custom replace function
 
-For complex find and replace operations it is available the function `replace_by_fn` .
-The`replace_by_fn` use a custom replace function making possible customizations. 
-**The custom function is called for every non overlapped find.**
-The custom function must be of the type:
+For complex find and replace operations, you can use `replace_by_fn` .
+The `replace_by_fn`, uses a custom replace callback function, thus 
+allowing customizations. The custom callback function is called for
+every non overlapped find.
+
+The custom callback function must be of the type:
 
 ```v ignore
 // type of function used for custom replace
@@ -590,7 +620,7 @@ The custom function must be of the type:
 fn (re RE, in_txt string, start int, end int) string 
 ```
 
-The following example will clarify the use:
+The following example will clarify its usage:
 
 ```v ignore
 import regex
@@ -624,11 +654,12 @@ today *[*John*]* is gone to his house with *(*Jack*)* and *[*Marie*]*.
 
 ## Debugging
 
-This module has few small utilities to help the writing of regex expressions.
+This module has few small utilities to you write regex patterns.
 
 ### **Syntax errors highlight**
 
-the following example code show how to visualize the syntax errors in the compilation phase:
+The next example code shows how to visualize regex pattern syntax errors
+in the compilation phase:
 
 ```v oksyntax
 query := r'ciao da ab[ab-]'
@@ -676,40 +707,36 @@ PC: 10 ist: 88000000 PROG_END {  0,  0}
 
 ### **Log debug**
 
-The log debugger allow to print the status of the regex parser when the parser is running.
+The log debugger allow to print the status of the regex parser when the
+parser is running. It is possible to have two different levels of
+debug information: 1 is normal, while 2 is verbose.
 
-It is possible to have two different level of debug: 1 is normal while 2 is verbose.
+Here is an example:
 
-here an example:
+*normal* - list only the token instruction with their values
 
-*normal*
-
-list only the token instruction with their values
-
-```
+```ignore
 // re.flag = 1 // log level normal
 flags: 00000000
-#   2 s:     ist_load PC:   0=>7fffffff i,ch,len:[  0,'a',1] f.m:[ -1, -1] query_ch: [a]{1,1}:0 (#-1)
-#   5 s:     ist_load PC:   1=>7fffffff i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [b]{2,3}:0? (#-1)
-#   7 s:     ist_load PC:   1=>7fffffff i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
+#   2 s:     ist_load PC:   i,ch,len:[  0,'a',1] f.m:[ -1, -1] query_ch: [a]{1,1}:0 (#-1)
+#   5 s:     ist_load PC:   i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [b]{2,3}:0? (#-1)
+#   7 s:     ist_load PC:   i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
 #  10 PROG_END
 ```
 
-*verbose*
+*verbose* - list all the instructions and states of the parser
 
-list all the instructions and states of the parser
-
-```
+```ignore
 flags: 00000000
 #   0 s:        start PC: NA
 #   1 s:     ist_next PC: NA
-#   2 s:     ist_load PC:   0=>7fffffff i,ch,len:[  0,'a',1] f.m:[ -1, -1] query_ch: [a]{1,1}:0 (#-1)
-#   3 s:  ist_quant_p PC:   0=>7fffffff i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [a]{1,1}:1 (#-1)
+#   2 s:     ist_load PC:   i,ch,len:[  0,'a',1] f.m:[ -1, -1] query_ch: [a]{1,1}:0 (#-1)
+#   3 s:  ist_quant_p PC:   i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [a]{1,1}:1 (#-1)
 #   4 s:     ist_next PC: NA
-#   5 s:     ist_load PC:   1=>7fffffff i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [b]{2,3}:0? (#-1)
-#   6 s:  ist_quant_p PC:   1=>7fffffff i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
-#   7 s:     ist_load PC:   1=>7fffffff i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
-#   8 s:  ist_quant_p PC:   1=>7fffffff i,ch,len:[  3,'b',1] f.m:[  0,  2] query_ch: [b]{2,3}:2? (#-1)
+#   5 s:     ist_load PC:   i,ch,len:[  1,'b',1] f.m:[  0,  0] query_ch: [b]{2,3}:0? (#-1)
+#   6 s:  ist_quant_p PC:   i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
+#   7 s:     ist_load PC:   i,ch,len:[  2,'b',1] f.m:[  0,  1] query_ch: [b]{2,3}:1? (#-1)
+#   8 s:  ist_quant_p PC:   i,ch,len:[  3,'b',1] f.m:[  0,  2] query_ch: [b]{2,3}:2? (#-1)
 #   9 s:     ist_next PC: NA
 #  10 PROG_END
 #  11 PROG_END
@@ -738,7 +765,8 @@ the columns have the following meaning:
 ### **Custom Logger output**
 
 The debug functions output uses the `stdout` as default,
-it is possible to  provide an alternative output setting a custom output function:
+it is possible to provide an alternative output, by setting a custom
+output function:
 
 ```v oksyntax
 // custom print function, the input will be the regex debug string
@@ -790,12 +818,17 @@ fn main(){
 
     // init regex
     mut re := regex.RE{}
-    re.prog = []regex.Token    {len: query.len + 1} // max program length, can not be longer then the query
-    re.cc   = []regex.CharClass{len: query.len}     // can not be more char class the the length of the query
+	// max program length, can not be longer then the query
+    re.prog = []regex.Token    {len: query.len + 1} 
+	// can not be more char class the the length of the query
+    re.cc   = []regex.CharClass{len: query.len}     
     re.prog = []regex.Token    {len: query.len+1}
-    re.group_csave_flag = true         // enable continuos group saving
-    re.group_max_nested = 128          // set max 128 group nested
-    re.group_max        = query.len>>1 // we can't have more groups than the half of the query legth 
+	// enable continuos group saving
+    re.group_csave_flag = true         
+	// set max 128 group nested
+    re.group_max_nested = 128          
+	// we can't have more groups than the half of the query legth 
+    re.group_max        = query.len>>1 
     
     // compile the query
     re.compile_opt(query) or { panic(err) }
@@ -837,6 +870,5 @@ fn main(){
 }
 ```
 
-
-
-more example code is available in the test code for the `regex` module `vlib\regex\regex_test.v`.
+More examples are available in the test code for the `regex` module,
+see `vlib/regex/regex_test.v`.

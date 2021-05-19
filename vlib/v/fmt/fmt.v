@@ -1253,6 +1253,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
+	f.mark_types_import_as_used(node.table_expr.typ)
 	f.write('\t')
 	match node.kind {
 		.insert {
