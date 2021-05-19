@@ -91,11 +91,10 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 	mut files := map[string][]FileData{}
 
 	for field in fields {
-		// TODO: do not split into lines; do same parsing for HTTP body
 		crnl := field.contains('\r\n\r\n')
 		mut section_start := field.index('\r\n\r\n') or { field.index('\n\n') or { 0 } }
-		lines := field[0..section_start].split_into_lines()[1..]
-		disposition := parse_disposition(if lines.len > 0 { lines[0] } else { '' })
+		headers := field[0..section_start].split_into_lines()[1..]
+		disposition := parse_disposition(if headers.len > 0 { headers[0] } else { '' })
 		name := disposition['name'] or { continue }
 		section_start += if section_start > 0 && crnl { 4 } else { 2 }
 		section_end := field.last_index('\n') or { field.len }
@@ -104,7 +103,7 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 		// TODO: filename*
 		if 'filename' in disposition {
 			filename := disposition['filename']
-			_, content_type := parse_header(if lines.len > 1 { lines[1] } else { '' }) or { '', '' }
+			_, content_type := parse_header(if headers.len > 1 { headers[1] } else { '' }) or { '', '' }
 			files[name] << FileData{
 				filename: filename
 				content_type: content_type
