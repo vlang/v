@@ -68,3 +68,10 @@ fn test_raw_indexing() {
 	assert utf8.raw_index(a, 7) == 'g'
 	assert utf8.raw_index(a, 8) == '!'
 }
+
+fn test_reversed() {
+	a := '我是V Lang!'
+	b := '你好世界hello world'
+	assert utf8.reverse(a) == '!gnaL V是我'
+	assert utf8.reverse(b) == 'dlrow olleh界世好你'
+}
