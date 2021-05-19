@@ -34,7 +34,6 @@ const (
 		'vlib/v/tests/fn_high_test.v', /* param name removed */
 		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
-		'vlib/v/tests/generics_test.v', /* multi_generic_args<Foo<int>, Foo<int> >(...) becomes .... Foo<int>>(...) which does not parse */
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 		'examples/c_interop_wkhtmltopdf.v' /* &charptr --> &&char */,
