@@ -848,12 +848,6 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
-	/*
-	if t.pref.is_verbose {
-	print_backtrace()
-	exit(0)
-	}
-	*/
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
 	match sym.kind {
