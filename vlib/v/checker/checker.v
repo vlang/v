@@ -3894,6 +3894,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				if id.info is ast.IdentVar {
 					mut info := id.info as ast.IdentVar
 					typ := c.ident(mut id)
+					if typ == ast.error_type_idx {
+						continue
+					}
 					info.typ = typ
 					id.info = info
 					node.used_vars[i] = id

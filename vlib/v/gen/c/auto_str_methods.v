@@ -503,7 +503,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	} else {
 		g.auto_str_funcs.write_string('\treturn _STR("$clean_struct_v_type_name{\\n"')
 		for field in info.fields {
-			mut fmt := if field.typ.is_ptr() { '&' } else { '' }
+			mut fmt := if field.typ.is_ptr() { '&/*abc*/' } else { '' }
 			fmt += g.type_to_fmt(field.typ)
 			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
 		}

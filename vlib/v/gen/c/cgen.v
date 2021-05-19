@@ -110,6 +110,7 @@ mut:
 	defer_tmp_vars         [][]ast.Ident
 	defer_org_vars         [][]ast.Ident
 	defer_org_var_names    [][]string
+	defer_tmp_var_names    [][]string
 	defer_used_vars        map[string]string
 	inside_defer           bool
 	defer_idx              int
@@ -1189,11 +1190,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
-			for i in 0 .. g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
-				g.ident(g.defer_tmp_vars[defer_stmt.idx_in_fn][i])
-				g.write(' = &(')
-				g.ident(g.defer_org_vars[defer_stmt.idx_in_fn][i])
-				g.writeln(');')
+			if g.defer_tmp_vars.len > 0 {
+				for i in 0 .. g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
+					g.ident(g.defer_tmp_vars[defer_stmt.idx_in_fn][i])
+					g.write(' = &(')
+					g.ident(g.defer_org_vars[defer_stmt.idx_in_fn][i])
+					g.writeln(');')
+				}
 			}
 			g.defer_stmts << defer_stmt
 		}
@@ -2185,9 +2188,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
 				g.expr(left0) // assign_stmt.left[0])
 				g.writeln('); // free $type_to_free on re-assignment2')
+				g.writeln(';//${type_to_free}_free(&$sref_name);')
 				defer {
 					if af {
-						g.writeln('${type_to_free}_free(&$sref_name);')
+						g.writeln(';//${type_to_free}_free(&$sref_name);')
 					}
 				}
 			} else {
@@ -3467,7 +3471,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
-		g.write('->')
+		if node.expr_type.nr_muls() - 1 == 0 && g.inside_defer && node.expr is ast.Ident && (node.expr as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] {
+			g.write('.')
+		} else {
+			g.write('->')
+		}
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 		g.write('.')
@@ -3746,7 +3754,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// `str == ''` -> `str.len == 0` optimization
 		if node.op in [.eq, .ne] && node.right is ast.StringLiteral
 			&& (node.right as ast.StringLiteral).val == '' {
-			arrow := if left_type.is_ptr() { '->' } else { '.' }
+			arrow := if left_type.is_ptr() && !g.inside_defer { '->' } else { '.' }
 			g.write('(')
 			g.expr(node.left)
 			g.write(')')
@@ -4511,18 +4519,18 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 fn (mut g Gen) ident(nd ast.Ident) {
 	mut node := nd
 	if g.inside_defer {
-		if node in g.defer_org_vars[g.defer_idx] {
-			mut idx := -1
-			for i, n in g.defer_org_vars[g.defer_idx] {
-				if n == node {
-					idx = i
+		if g.defer_tmp_vars.len > 0 {
+			if node.name in g.defer_org_var_names[g.defer_idx] {
+				mut idx := -1
+				for i, n in g.defer_org_vars[g.defer_idx] {
+					if n.mod == node.mod && n.info == node.info && node.name == n.name {
+						idx = i
+					}
+				}
+				if idx != -1 {
+					node = g.defer_tmp_vars[g.defer_idx][idx]				
 				}
 			}
-			if idx == -1 {
-				g.error('Defer tmp var was not found', nd.pos)
-				return
-			}
-			node = g.defer_tmp_vars[g.defer_idx][idx]
 		}
 	}
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
@@ -4547,7 +4555,7 @@ fn (mut g Gen) ident(nd ast.Ident) {
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
-		if g.inside_defer {
+		if g.inside_defer && node_info.typ != ast.error_type {
 			g.write('/*defer*/(*$name)')
 			return
 		}
