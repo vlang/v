@@ -114,6 +114,9 @@ fn test_read_bytes_into_newline_binary() ? {
 	assert buf[..n1] == n1_bytes
 
 	n2 := f.read_bytes_into_newline(mut buf) ?
+	// At this point the buffer should look like this: Why does MacOS fail?
+	// [`\0`, `\0`, `\n`, `\0`, `\0`, `\0`, `\0`, `\0`, `\0`, 0xff]
+	println(buf)
 	assert n2 == 2
 	assert buf[..n2] == n2_bytes
 	f.close()
