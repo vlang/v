@@ -82,13 +82,13 @@ pub fn init(cfg Config) &Context {
 	}
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
-		os.signal(code, fn () {
+		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ui.ctx_ptr
 			if c != 0 {
 				c.cleanup()
 			}
 			exit(0)
-		})
+		}) or {}
 	}
 
 	ctx.stdin_handle = stdin_handle

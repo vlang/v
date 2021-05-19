@@ -8,7 +8,7 @@ pub const (
 #flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
-#flag linux -lX11 -lGL -lXcursor -lXi
+#flag linux -lX11 -lGL -lXcursor -lXi -lpthread
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 // METAL
@@ -39,6 +39,8 @@ $if ios {
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
+
+#flag linux -ldl
 
 $if gcboehm ? {
 	#define SOKOL_MALLOC GC_MALLOC

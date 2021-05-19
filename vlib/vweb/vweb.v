@@ -322,6 +322,7 @@ pub fn run<T>(global_app &T, port int) {
 		} $else {
 			// println('vweb no db')
 		}
+		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		// request_app.Context = Context{
 		// conn: 0
 		//}
@@ -351,7 +352,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	app.Context = Context{
 		req: req
-		conn: unsafe { conn }
+		conn: conn
 		form: map[string]string{}
 		static_files: app.static_files
 		static_mime_types: app.static_mime_types
@@ -385,7 +386,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		eprintln('error parsing path: $err')
 		return
 	}
-	if serve_static<T>(mut app, url) {
+	if serve_if_static<T>(mut app, url) {
 		// successfully served a static file
 		return
 	}
@@ -528,7 +529,8 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
-fn serve_static<T>(mut app T, url urllib.URL) bool {
+[manualfree]
+fn serve_if_static<T>(mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path]
 	mime_type := app.static_mime_types[url.path]

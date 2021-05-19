@@ -7,6 +7,10 @@ mut:
 	breed string
 }
 
+fn new_cat(breed string) Cat {
+	return Cat{breed}
+}
+
 fn (c &Cat) name() string {
 	if c.breed != '' {
 		assert c.breed == 'Persian'
@@ -101,10 +105,12 @@ fn test_perform_speak() {
 	perform_speak(Cat{
 		breed: 'Persian'
 	})
+	perform_speak(new_cat('Persian'))
 	perform_speak_on_ptr(cat)
 	perform_speak_on_ptr(Cat{
 		breed: 'Persian'
 	})
+	perform_speak_on_ptr(new_cat('Persian'))
 	handle_animals([dog, cat])
 	/*
 	f := Foo {

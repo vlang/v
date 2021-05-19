@@ -19,7 +19,7 @@ const (
 		'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace',
 		'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
 		'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile',
-		'while', 'template']
+		'while', 'template', 'stdout', 'stdin', 'stderr']
 	c_reserved_map = string_array_to_map(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -1768,6 +1768,26 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
 	g.auto_fn_definitions << sb.str()
 }
 
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_styp string) {
+	mut rparen_n := 1
+	if exp_is_ptr {
+		g.write('HEAP($exp_styp, ')
+		rparen_n++
+	}
+	g.write('${fname}(')
+	if !got_is_ptr {
+		if !expr.is_lvalue()
+			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
+			g.write('ADDR($got_styp, (')
+			rparen_n += 2
+		} else {
+			g.write('&')
+		}
+	}
+	g.expr(expr)
+	g.write(')'.repeat(rparen_n))
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := g.table.mktyp(got_type_raw)
@@ -1787,18 +1807,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type, true)
 		exp_styp := g.cc_type(expected_type, true)
-		if expected_is_ptr {
-			g.write('HEAP($exp_styp, ')
-		}
-		g.write('I_${got_styp}_to_Interface_${exp_styp}(')
-		if !got_is_ptr {
-			g.write('&')
-		}
-		g.expr(expr)
-		g.write(')')
-		if expected_is_ptr {
-			g.write(')')
-		}
+		fname := 'I_${got_styp}_to_Interface_$exp_styp'
+		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
+			got_styp)
 		return
 	}
 	// cast to sum type
@@ -1827,21 +1838,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.expr(expr)
 			} else {
 				g.write_sumtype_casting_fn(got_type, expected_type)
-				if expected_is_ptr {
-					g.write('HEAP($exp_sym.cname, ')
-				}
-				g.write('${got_sym.cname}_to_sumtype_${exp_sym.cname}(')
-				if !got_is_ptr {
-					g.write('ADDR($got_styp, (')
-					g.expr(expr)
-					g.write(')))')
-				} else {
-					g.expr(expr)
-					g.write(')')
-				}
-				if expected_is_ptr {
-					g.write(')')
-				}
+				fname := '${got_sym.cname}_to_sumtype_$exp_sym.cname'
+				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
+					got_is_ptr, got_styp)
 			}
 			return
 		}
@@ -3101,7 +3100,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
-				g.write("L'$node.val'")
+				if utf8_str_len(node.val) < node.val.len {
+					g.write("L'$node.val'")
+				} else {
+					g.write("'$node.val'")
+				}
 			}
 		}
 		ast.DumpExpr {
@@ -3957,35 +3960,45 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	if node.lockeds.len == 0 {
 		// this should not happen
 	} else if node.lockeds.len == 1 {
-		id := node.lockeds[0]
-		name := id.name
-		deref := if id.is_mut { '->' } else { '.' }
 		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
-		g.writeln('sync__RwMutex_${lock_prefix}lock(&$name${deref}mtx);')
+		g.write('sync__RwMutex_${lock_prefix}lock(&')
+		g.expr(node.lockeds[0])
+		g.writeln('->mtx);')
 	} else {
 		mtxs = g.new_tmp_var()
 		g.writeln('uintptr_t _arr_$mtxs[$node.lockeds.len];')
 		g.writeln('bool _isrlck_$mtxs[$node.lockeds.len];')
 		mut j := 0
-		for i, id in node.lockeds {
-			if !node.is_rlock[i] {
-				name := id.name
-				deref := if id.is_mut { '->' } else { '.' }
-				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name${deref}mtx;')
+		for i, is_rlock in node.is_rlock {
+			if !is_rlock {
+				g.write('_arr_$mtxs[$j] = (uintptr_t)&')
+				g.expr(node.lockeds[i])
+				g.writeln('->mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = false;')
 				j++
 			}
 		}
-		for i, id in node.lockeds {
-			if node.is_rlock[i] {
-				name := id.name
-				deref := if id.is_mut { '->' } else { '.' }
-				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name${deref}mtx;')
+		for i, is_rlock in node.is_rlock {
+			if is_rlock {
+				g.write('_arr_$mtxs[$j] = (uintptr_t)&')
+				g.expr(node.lockeds[i])
+				g.writeln('->mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = true;')
 				j++
 			}
 		}
-		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
+		if node.lockeds.len == 2 {
+			g.writeln('if (_arr_$mtxs[0] > _arr_$mtxs[1]) {')
+			g.writeln('\tuintptr_t _ptr_$mtxs = _arr_$mtxs[0];')
+			g.writeln('\t_arr_$mtxs[0] = _arr_$mtxs[1];')
+			g.writeln('\t_arr_$mtxs[1] = _ptr_$mtxs;')
+			g.writeln('\tbool _bool_$mtxs = _isrlck_$mtxs[0];')
+			g.writeln('\t_isrlck_$mtxs[0] = _isrlck_$mtxs[1];')
+			g.writeln('\t_isrlck_$mtxs[1] = _bool_$mtxs;')
+			g.writeln('}')
+		} else {
+			g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
+		}
 		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
 		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
 		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
@@ -3994,12 +4007,10 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('}')
 	}
-	println('')
 	g.mtxs = mtxs
 	defer {
 		g.mtxs = ''
 	}
-
 	g.writeln('/*lock*/ {')
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
 	if node.is_expr {
@@ -4017,11 +4028,10 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 fn (mut g Gen) unlock_locks() {
 	if g.cur_lock.lockeds.len == 0 {
 	} else if g.cur_lock.lockeds.len == 1 {
-		id := g.cur_lock.lockeds[0]
-		name := id.name
-		deref := if id.is_mut { '->' } else { '.' }
 		lock_prefix := if g.cur_lock.is_rlock[0] { 'r' } else { '' }
-		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
+		g.write('sync__RwMutex_${lock_prefix}unlock(&')
+		g.expr(g.cur_lock.lockeds[0])
+		g.write('->mtx);')
 	} else {
 		g.writeln('for (int $g.mtxs=${g.cur_lock.lockeds.len - 1}; $g.mtxs>=0; $g.mtxs--) {')
 		g.writeln('\tif ($g.mtxs && _arr_$g.mtxs[$g.mtxs] == _arr_$g.mtxs[$g.mtxs-1]) continue;')
@@ -5113,11 +5123,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		*/
 		field_expr := field.expr
 		match field.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
-				// "Simple" expressions are not going to need multiple statements,
-				// only the ones which are inited later, so it's safe to use expr_string
-				g.const_decl_simple_define(name, g.expr_string(field_expr))
-			}
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
@@ -5147,10 +5152,26 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+				if is_simple_define_const(field) {
+					// "Simple" expressions are not going to need multiple statements,
+					// only the ones which are inited later, so it's safe to use expr_string
+					g.const_decl_simple_define(name, g.expr_string(field_expr))
+				} else {
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+				}
 			}
 		}
 	}
+}
+
+fn is_simple_define_const(obj ast.ScopeObject) bool {
+	if obj is ast.ConstField {
+		return match obj.expr {
+			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
+			else { false }
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {

@@ -401,7 +401,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			if typ.has_flag(.shared_f) {
 				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
 					action := if what == 'argument' { 'passed' } else { 'used' }
-					c.error('$expr.name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+					c.error('`$expr.name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
 						expr.pos)
 				}
 			}
@@ -409,7 +409,17 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		}
 		ast.SelectorExpr {
 			pos = expr.pos
-			c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+			if typ.has_flag(.shared_f) {
+				expr_name := '${expr.expr}.$expr.field_name'
+				if expr_name !in c.rlocked_names && expr_name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('`$expr_name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+				return
+			} else {
+				c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+			}
 		}
 		ast.IndexExpr {
 			pos = expr.left.position().extend(expr.pos)
@@ -508,14 +518,12 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
 				to_set = c.table.mktyp(arg.typ)
-				mut sym := c.table.get_type_symbol(arg.typ)
-				if mut sym.info is ast.FnType {
-					if !sym.info.is_anon {
-						sym.info.func.name = ''
-						idx := c.table.find_or_register_fn_type(c.mod, sym.info.func,
-							true, false)
-						to_set = ast.new_type(idx).derive(arg.typ)
-					}
+				sym := c.table.get_type_symbol(arg.typ)
+				if sym.info is ast.FnType {
+					mut func := sym.info.func
+					func.name = ''
+					idx := c.table.find_or_register_fn_type(c.mod, func, true, false)
+					to_set = ast.new_type(idx).derive(arg.typ)
 				}
 				if arg.expr.is_auto_deref_var() {
 					to_set = to_set.deref()
@@ -549,6 +557,13 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
+				} else if arg_sym.kind == .struct_ && param.typ.has_flag(.generic) {
+					info := arg_sym.info as ast.Struct
+					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
+					if gt_name in generic_names {
+						idx := generic_names.index(gt_name)
+						typ = info.concrete_types[idx]
+					}
 				}
 			}
 

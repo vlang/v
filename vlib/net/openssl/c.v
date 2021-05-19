@@ -5,9 +5,10 @@ module openssl
 // openssl from libssl-dev. If there is no local openssl,
 // the next flag is harmless, since it will still use the
 // (older) system openssl.
-#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+#flag linux -I/usr/local/include/openssl -L/usr/local/lib 
 #flag windows -l libssl -l libcrypto
-#flag -l ssl -l crypto
+#flag -lssl -lcrypto
+#flag linux -ldl -lpthread
 // MacPorts
 #flag darwin -I/opt/local/include
 #flag darwin -L/opt/local/lib

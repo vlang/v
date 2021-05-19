@@ -309,18 +309,19 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 
 pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-	if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
+	if c.file.mod.name !in ['time', 'builtin'] {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
 	typ_sym := c.table.get_type_symbol(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-		c.error("type `$typ_sym.name` doesn't exist", node.pos)
+		c.error('unknown type `$typ_sym.name`', node.type_pos)
 	} else if typ_sym.kind == .alias {
 		orig_sym := c.table.get_type_symbol((typ_sym.info as ast.Alias).parent_type)
 		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
-			node.pos)
+			node.type_pos)
 	} else if typ_sym.kind == .chan {
-		c.error('aliases of `chan` types are not allowed.', node.pos)
+		c.error('aliases of `chan` types are not allowed.', node.type_pos)
 	}
 }
 
@@ -329,14 +330,16 @@ pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	typ_sym := c.table.get_type_symbol(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
+	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos) or {}
 	ret_sym := c.table.get_type_symbol(fn_info.return_type)
 	if ret_sym.kind == .placeholder {
-		c.error("type `$ret_sym.name` doesn't exist", node.pos)
+		c.error('unknown type `$ret_sym.name`', fn_info.return_type_pos)
 	}
 	for arg in fn_info.params {
+		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		arg_sym := c.table.get_type_symbol(arg.typ)
 		if arg_sym.kind == .placeholder {
-			c.error("type `$arg_sym.name` doesn't exist", node.pos)
+			c.error('unknown type `$arg_sym.name`', arg.type_pos)
 		}
 	}
 }
@@ -348,12 +351,13 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		if variant.typ.is_ptr() {
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
+		c.ensure_type_exists(variant.typ, variant.pos) or {}
 		mut sym := c.table.get_type_symbol(variant.typ)
 		if sym.name in names_used {
 			c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
-			c.error("type `$sym.name` doesn't exist", variant.pos)
+			c.error('unknown type `$sym.name`', variant.pos)
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
 		}
@@ -939,7 +943,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
-	if infix_expr.op != .key_is {
+	if !c.pref.use_cache && infix_expr.op != .key_is {
 		match mut infix_expr.left {
 			ast.Ident, ast.SelectorExpr {
 				if infix_expr.left.is_mut {
@@ -1401,17 +1405,29 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-					if !field_info.is_mut && !c.pref.translated {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
-							expr.pos)
-					}
 					if field_info.typ.has_flag(.shared_f) {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`',
-							expr.pos)
+						expr_name := '${expr.expr}.$expr.field_name'
+						if expr_name !in c.locked_names {
+							if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+								if expr_name in c.rlocked_names {
+									c.error('$expr_name has an `rlock` but needs a `lock`',
+										expr.pos)
+								} else {
+									c.error('$expr_name must be added to the `lock` list above',
+										expr.pos)
+								}
+							}
+							to_lock = expr_name
+							pos = expr.pos
+						}
+					} else {
+						if !field_info.is_mut && !c.pref.translated {
+							type_str := c.table.type_to_str(expr.expr_type)
+							c.error('field `$expr.field_name` of struct `$type_str` is immutable',
+								expr.pos)
+						}
+						to_lock, pos = c.fail_if_immutable(expr.expr)
 					}
-					to_lock, pos = c.fail_if_immutable(expr.expr)
 					if to_lock != '' {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
@@ -3086,6 +3102,11 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	if decl.fields.len == 0 {
 		c.error('enum cannot be empty', decl.pos)
 	}
+	/*
+	if decl.is_pub && c.mod == 'builtin' {
+		c.error('`builtin` module cannot have enums', decl.pos)
+	}
+	*/
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -5061,7 +5082,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		if ident.tok_kind == .assign && ident.is_mut {
+		if !c.pref.use_cache && ident.tok_kind == .assign && ident.is_mut {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
 		if obj := ident.scope.find(ident.name) {
@@ -5679,24 +5700,22 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
 	}
 	for i in 0 .. node.lockeds.len {
-		c.ident(mut node.lockeds[i])
-		id := node.lockeds[i]
-		if mut id.obj is ast.Var {
-			if id.obj.typ.share() != .shared_t {
-				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
-			}
-		} else {
-			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
+		e_typ := c.expr(node.lockeds[i])
+		id_name := node.lockeds[i].str()
+		if !e_typ.has_flag(.shared_f) {
+			obj_type := if node.lockeds[i] is ast.Ident { 'variable' } else { 'struct element' }
+			c.error('`$id_name` must be declared as `shared` $obj_type to be locked',
+				node.lockeds[i].position())
 		}
-		if id.name in c.locked_names {
-			c.error('`$id.name` is already locked', id.pos)
-		} else if id.name in c.rlocked_names {
-			c.error('`$id.name` is already read-locked', id.pos)
+		if id_name in c.locked_names {
+			c.error('`$id_name` is already locked', node.lockeds[i].position())
+		} else if id_name in c.rlocked_names {
+			c.error('`$id_name` is already read-locked', node.lockeds[i].position())
 		}
 		if node.is_rlock[i] {
-			c.rlocked_names << id.name
+			c.rlocked_names << id_name
 		} else {
-			c.locked_names << id.name
+			c.locked_names << id_name
 		}
 	}
 	c.stmts(node.stmts)
@@ -7002,7 +7021,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for arg in node.params {
-			c.ensure_type_exists(arg.typ, node.pos) or { return }
+			c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
@@ -7015,7 +7034,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.return_type != ast.Type(0) {
-		c.ensure_type_exists(node.return_type, node.pos) or { return }
+		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
 			if node.return_type != ast.string_type {
 				c.error('.str() methods should return `string`', node.pos)
@@ -7198,6 +7217,9 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 		}
 		.array {
 			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) ?
+		}
+		.array_fixed {
+			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) ?
 		}
 		.map {
 			info := sym.info as ast.Map

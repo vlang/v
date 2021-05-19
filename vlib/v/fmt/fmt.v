@@ -727,6 +727,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
+	if stmt.is_top_level {
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
@@ -1250,6 +1253,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
+	f.mark_types_import_as_used(node.table_expr.typ)
 	f.write('\t')
 	match node.kind {
 		.insert {
@@ -1647,6 +1651,10 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 			if !is_last {
 				f.write(', ')
 			}
+		}
+		// avoid `<Foo<int>>` => `<Foo<int> >`
+		if f.out.last_n(1) == '>' {
+			f.write(' ')
 		}
 		f.write('>')
 	}
