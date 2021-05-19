@@ -89,6 +89,7 @@ mut:
 	inside_println_arg       bool
 	inside_decl_rhs          bool
 	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
+	is_c_call                bool // remove once C.c_call("string") deprecation is removed
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -2165,6 +2166,11 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 }
 
 pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
+	was_c_call := c.is_c_call
+	c.is_c_call = call_expr.language == .c
+	defer {
+		c.is_c_call = was_c_call
+	}
 	fn_name := call_expr.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
@@ -4736,6 +4742,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.byte_type.set_nr_muls(1)
+			}
+			if node.language != .c && c.is_c_call {
+				c.warn("automatic string to C-string conversion is deprecated and will be removed on 2021-06-19, use `c'<string_value>'` and set the C function parameter type to `&u8`",
+					node.pos)
 			}
 			return ast.string_type
 		}
