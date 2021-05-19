@@ -110,6 +110,21 @@ pub fn raw_index(s string, index int) string {
 	return r[index].str()
 }
 
+// reverse - returns a reversed string.
+// example: utf8.reverse('你好世界hello world') => 'dlrow olleh界世好你'.
+pub fn reverse(s string) string {
+	len_s := utf8.len(s)
+	if len_s == 0 || len_s == 1 {
+		return s.clone()
+	}
+	mut str_array := []string{}
+	for i in 0..len_s {
+		str_array << utf8.raw_index(s, i)
+	}
+	str_array = str_array.reverse()
+	return str_array.join('')
+}
+
 /*
 Conversion functions
 */
