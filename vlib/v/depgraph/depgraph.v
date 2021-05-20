@@ -148,6 +148,7 @@ mut:
 }
 
 pub fn (graph &DepGraph) display_cycles() string {
+	mut seen := false
 	mut out := []string{}
 	mut nn := NodeNames{}
 	for node in graph.nodes {
@@ -158,7 +159,8 @@ pub fn (graph &DepGraph) display_cycles() string {
 		if k in nn.is_cycle {
 			continue
 		}
-		if nn.is_part_of_cycle(k, mut cycle_names) {
+		seen, cycle_names = nn.is_part_of_cycle(k, cycle_names)
+		if seen {
 			out << ' * ' + cycle_names.join(' -> ')
 			nn.is_cycle = map[string]bool{}
 		}
@@ -166,29 +168,32 @@ pub fn (graph &DepGraph) display_cycles() string {
 	return out.join('\n')
 }
 
-fn (mut nn NodeNames) is_part_of_cycle(name string, mut already_seen []string) bool {
+fn (mut nn NodeNames) is_part_of_cycle(name string, already_seen []string) (bool, []string) {
+	mut seen := false
+	mut new_already_seen := already_seen.clone()
 	if name in nn.is_cycle {
-		return nn.is_cycle[name]
+		return nn.is_cycle[name], new_already_seen
 	}
 	if name in already_seen {
-		already_seen << name
+		new_already_seen << name
 		nn.is_cycle[name] = true
-		return true
+		return true, new_already_seen
 	}
-	already_seen << name
+	new_already_seen << name
 	deps := nn.names[name]
 	if deps.len == 0 {
 		nn.is_cycle[name] = false
-		return false
+		return false, new_already_seen
 	}
 	for d in deps {
-		mut d_already_seen := already_seen.clone()
-		if nn.is_part_of_cycle(d, mut d_already_seen) {
-			already_seen = d_already_seen.clone()
+		mut d_already_seen := new_already_seen.clone()
+		seen, d_already_seen = nn.is_part_of_cycle(d, d_already_seen)
+		if seen {
+			new_already_seen = d_already_seen.clone()
 			nn.is_cycle[name] = true
-			return true
+			return true, new_already_seen
 		}
 	}
 	nn.is_cycle[name] = false
-	return false
+	return false, new_already_seen
 }
