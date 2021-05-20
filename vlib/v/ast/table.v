@@ -1211,6 +1211,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				func.return_type = typ
 			}
 		}
+		func.params = func.params.clone()
 		for mut param in func.params {
 			if param.typ.has_flag(.generic) {
 				if typ := t.resolve_generic_to_concrete(param.typ, generic_names, concrete_types,

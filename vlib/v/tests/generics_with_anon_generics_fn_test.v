@@ -24,6 +24,14 @@ pub fn consume(data int) int {
 	return data
 }
 
+pub fn consume_str(data string) string {
+	return data
+}
+
+fn call<T>(f fn (T) T, v T) T {
+	return f(v)
+}
+
 fn test_generics_with_anon_generics_fn() {
 	mut s := MyStruct<int>{
 		arr: [1, 2, 3, 4, 5]
@@ -31,4 +39,9 @@ fn test_generics_with_anon_generics_fn() {
 	y := s.iterate<int>(consume)
 	println(y)
 	assert y == 15
+
+	assert call<int>(consume, 1) == 1
+	assert call<string>(consume_str, '1') == '1'
+	assert call(consume, 1) == 1
+	assert call(consume_str, '1') == '1'
 }
