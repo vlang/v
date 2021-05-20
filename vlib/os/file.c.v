@@ -17,15 +17,7 @@ fn C.fseeko(voidptr, u64, int) int
 
 fn C._fseeki64(voidptr, u64, int) int
 
-fn C.ftrylockfile(voidptr) int
-
-fn C.funlockfile(voidptr)
-
-fn C.getc_unlocked(voidptr) int
-
-fn C.feof_unlocked(voidptr) int
-
-fn C.ferror_unlocked(voidptr) int
+fn C.getc(voidptr) int
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
@@ -379,27 +371,19 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 	if buf.len == 0 {
 		panic(@FN + ': `buf.len` == 0')
 	}
-
-	if C.ftrylockfile(f.cfile) != 0 {
-		return error('Could not read file')
-	}
-	defer {
-		C.funlockfile(f.cfile)
-	}
-
 	newline := 10
 	mut c := 0
 	mut buf_ptr := 0
 	mut nbytes := 0
 
 	for (buf_ptr < buf.len) {
-		c = C.getc_unlocked(f.cfile)
+		c = C.getc(f.cfile)
 		match c {
 			C.EOF {
-				if C.feof_unlocked(f.cfile) != 0 {
+				if C.feof(f.cfile) != 0 {
 					return nbytes
 				}
-				if C.ferror_unlocked(f.cfile) != 0 {
+				if C.ferror(f.cfile) != 0 {
 					return error('file read error')
 				}
 			}
