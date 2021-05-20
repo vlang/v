@@ -523,7 +523,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.type_symbols[existing_idx] = TypeSymbol{
+				t.type_symbols[existing_idx] = {
 					...typ
 					methods: ex_type.methods
 				}

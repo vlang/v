@@ -546,6 +546,10 @@ pub fn temp_dir() string {
 			}
 		}
 	}
+	$if macos {
+		// avoid /var/folders/6j/cmsk8gd90pd.... on macs
+		return '/tmp'
+	}
 	$if android {
 		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
 		if path == '' {

@@ -6455,15 +6455,23 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
 pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
-	typ_idx := if node.enum_name == '' {
+	mut typ_idx := if node.enum_name == '' {
 		c.expected_type.idx()
 	} else { //
 		c.table.find_type_idx(node.enum_name)
 	}
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
-		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
-		return ast.void_type
+		// Handle `builtin` enums like `ChanState`, so that `x := ChanState.closed` works.
+		// In the checker the name for such enums was set to `main.ChanState` instead of
+		// just `ChanState`.
+		if node.enum_name.starts_with('main.') {
+			typ_idx = c.table.find_type_idx(node.enum_name['.main'.len..])
+			if typ_idx == 0 {
+				c.error('unknown enum `$node.enum_name` (type_idx=0)', node.pos)
+				return ast.void_type
+			}
+		}
 	}
 	mut typ := ast.new_type(typ_idx)
 	if c.pref.translated {
