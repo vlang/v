@@ -53,11 +53,8 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
-	if mod == "sapp" {
-		println("mod_path_to_full_name: ($mod, $path) -> $pref.lookup_path ${os.vmodules_paths()}")
-	}
-	vmod_folders := ['vlib', 'vdevmodules','.vmodules', 'modules']
-	// vmod_folders := pref.lookup_path
+	mut vmod_folders := pref.lookup_path.map(os.base(it))
+	vmod_folders << 'modules'
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
 		if path.contains(vmod_folder + os.path_separator) {
