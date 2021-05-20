@@ -398,7 +398,10 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
+					if data.d.d_f64 < 0 { bf.positive = false }	
+					f_union := strconv.Float64u{f:data.d.d_f64}
+					if f_union.u == strconv.double_minus_zero { bf.positive = false }
+					
 					mut f := strconv.format_fl(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
