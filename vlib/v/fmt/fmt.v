@@ -1584,14 +1584,6 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
-	old_short_arg_state := f.use_short_fn_args
-	f.use_short_fn_args = false
-	if node.args.len > 0 && node.args.last().expr is ast.StructInit {
-		struct_expr := node.args.last().expr as ast.StructInit
-		if struct_expr.typ == ast.void_type {
-			f.use_short_fn_args = true
-		}
-	}
 	for arg in node.args {
 		f.comments(arg.comments, {})
 	}
@@ -1639,7 +1631,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.write(')')
 	f.or_expr(node.or_block)
 	f.comments(node.comments, has_nl: false)
-	f.use_short_fn_args = old_short_arg_state
 }
 
 fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
@@ -1662,10 +1653,19 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	f.single_line_fields = true
+	old_short_arg_state := f.use_short_fn_args
+	f.use_short_fn_args = false
 	defer {
 		f.single_line_fields = false
+		f.use_short_fn_args = old_short_arg_state
 	}
 	for i, arg in args {
+		if i == args.len - 1 && arg.expr is ast.StructInit {
+			struct_expr := arg.expr as ast.StructInit
+			if struct_expr.typ == ast.void_type {
+				f.use_short_fn_args = true
+			}
+		}
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
