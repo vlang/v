@@ -111,7 +111,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
 				c.error('`$ast_import.mod` was already imported in line ${
-					ast_file.imports[j].pos.line_nr + 1}', ast_import.mod_pos)
+					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
 			}
 		}
 	}
