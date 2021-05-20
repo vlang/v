@@ -441,11 +441,11 @@ pub fn building_any_v_binaries_failed() bool {
 }
 
 pub fn eheader(msg string) {
-	eprintln(term.header(msg, '-'))
+	eprintln(term.header_left(msg, '-'))
 }
 
 pub fn header(msg string) {
-	println(term.header(msg, '-'))
+	println(term.header_left(msg, '-'))
 }
 
 pub fn setup_new_vtmp_folder() string {

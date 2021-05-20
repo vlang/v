@@ -22,9 +22,8 @@ fn main() {
 	oks := commands.filter(it.ecode == 0)
 	fails := commands.filter(it.ecode != 0)
 	println('')
-	println(term.header(term.colorize(term.yellow, term.colorize(term.bold, 'Summary of `v test-all`:')),
-		'-'))
-	println(term.colorize(term.yellow, 'Total runtime: $spent ms'))
+	println(term.header_left(term_highlight('Summary of `v test-all`:'), '-'))
+	println(term_highlight('Total runtime: $spent ms'))
 	for ocmd in oks {
 		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
 		println(term.colorize(term.green, '>          OK: $msg '))
@@ -124,11 +123,14 @@ fn (mut cmd Command) run() {
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
 	os.chdir(vroot)
 	if cmd.label != '' {
-		println(term.header(cmd.label, '*'))
+		println(term.header_left(cmd.label, '*'))
 	}
 	sw := time.new_stopwatch({})
 	cmd.ecode = os.system(cmd.line)
 	spent := sw.elapsed().milliseconds()
-	println(term.colorize(term.yellow, '> Running: "$cmd.line" took: $spent ms.'))
-	println('')
+	println(term_highlight('> Running: "$cmd.line" took: $spent ms.'))
+}
+
+fn term_highlight(s string) string {
+	return term.colorize(term.yellow, term.colorize(term.bold, s))
 }
