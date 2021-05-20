@@ -15,7 +15,7 @@ fn echo_server(mut c net.UdpConn) {
 fn echo() ? {
 	mut c := net.dial_udp('127.0.0.1:40003', '127.0.0.1:40001') ?
 	defer {
-		c.close() or { }
+		c.close() or {}
 	}
 	data := 'Hello from vlib/net!'
 
@@ -54,7 +54,7 @@ fn test_udp() {
 		assert false
 	}
 
-	l.close() or { }
+	l.close() or {}
 }
 
 fn main() {

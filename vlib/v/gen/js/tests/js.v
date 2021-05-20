@@ -115,7 +115,7 @@ fn (it Companies) method() int {
 		amazon: true
 		yahoo: 'hello'
 	}
-	a, b := hello(2, 'google', 'not google')
+	a, b := hl(2, 'google', 'not google')
 	glue := if a > 2 {
 		'more_glue'
 	} else if a > 5 {

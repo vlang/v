@@ -45,6 +45,7 @@ import time
 #flag -I @VMODROOT/.
 #include "rt_glsl_march.h" #Please use sokol-shdc to generate the necessary rt_glsl_march.h file from rt_glsl_march.glsl (see the instructions at the top of this file)
 #include "rt_glsl_puppy.h" #Please use sokol-shdc to generate the necessary rt_glsl_puppy.h file from rt_glsl_puppy.glsl (see the instructions at the top of this file)
+
 fn C.rt_march_shader_desc(gfx.Backend) &C.sg_shader_desc
 fn C.rt_puppy_shader_desc(gfx.Backend) &C.sg_shader_desc
 
@@ -64,10 +65,10 @@ mut:
 	mouse_y     int = -1
 	mouse_down  bool
 	// glsl
-	cube_pip_glsl   C.sg_pipeline
-	cube_bind       C.sg_bindings
-	pipe map[string]C.sg_pipeline
-	bind map[string]C.sg_bindings
+	cube_pip_glsl C.sg_pipeline
+	cube_bind     C.sg_bindings
+	pipe          map[string]C.sg_pipeline
+	bind          map[string]C.sg_bindings
 	// time
 	ticks i64
 }
@@ -75,7 +76,7 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) C.sg_image {
+fn create_texture(w int, h int, buf &byte) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -104,7 +105,7 @@ fn destroy_texture(sg_img C.sg_image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf byteptr) {
+fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	sz := w * h * 4
 	mut tmp_sbc := C.sg_image_data{}
 	tmp_sbc.subimage[0][0] = C.sg_range{
@@ -145,38 +146,40 @@ fn init_cube_glsl_m(mut app App) {
 	c := u32(0xFFFFFF_FF) // color RGBA8
 	vertices := [
 		// Face 0
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{ 1.0, -1.0, -1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
-		Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{1.0, -1.0, -1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, -1.0, c, d, d},
+		Vertex_t{-1.0, 1.0, -1.0, c, 0, d},
 		// Face 1
-		Vertex_t{-1.0, -1.0,  1.0, c,  0, 0},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, 1.0, c, 0, 0},
+		Vertex_t{1.0, -1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{-1.0, 1.0, 1.0, c, 0, d},
 		// Face 2
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
-		Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, 1.0, -1.0, c, d, 0},
+		Vertex_t{-1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{-1.0, -1.0, 1.0, c, 0, d},
 		// Face 3
-		Vertex_t{ 1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{1.0, 1.0, -1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{1.0, -1.0, 1.0, c, 0, d},
 		// Face 4
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, -1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, -1.0, 1.0, c, d, d},
+		Vertex_t{1.0, -1.0, -1.0, c, 0, d},
 		// Face 5
-		Vertex_t{-1.0,  1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, 1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, 1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{1.0, 1.0, -1.0, c, 0, d},
 	]
 
-	mut vert_buffer_desc := C.sg_buffer_desc{label: c'cube-vertices'}
+	mut vert_buffer_desc := C.sg_buffer_desc{
+		label: c'cube-vertices'
+	}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = C.sg_range{
@@ -186,19 +189,36 @@ fn init_cube_glsl_m(mut app App) {
 	vert_buffer_desc.@type = .vertexbuffer
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
-	/* create an index buffer for the cube */
+	// create an index buffer for the cube
 	indices := [
-				u16(0), 1, 2,  0, 2, 3,
-        6, 5, 4,       7, 6, 4,
-        8, 9, 10,      8, 10, 11,
-/*
-        u16(14), 13, 12,    15, 14, 12,
+		u16(0),
+		1,
+		2,
+		0,
+		2,
+		3,
+		6,
+		5,
+		4,
+		7,
+		6,
+		4,
+		8,
+		9,
+		10,
+		8,
+		10,
+		11
+		/*
+		u16(14), 13, 12,    15, 14, 12,
         16, 17, 18,    16, 18, 19,
         22, 21, 20,    23, 22, 20
-*/
+		*/,
 	]
 
-	mut index_buffer_desc := C.sg_buffer_desc{label: c'cube-indices'}
+	mut index_buffer_desc := C.sg_buffer_desc{
+		label: c'cube-indices'
+	}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 	index_buffer_desc.size = size_t(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = C.sg_range{
@@ -216,8 +236,8 @@ fn init_cube_glsl_m(mut app App) {
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_t))
 
 	// the constants [C.ATTR_vs_m_pos, C.ATTR_vs_m_color0, C.ATTR_vs_m_texcoord0] are generated by sokol-shdc
-	pipdesc.layout.attrs[C.ATTR_vs_m_pos      ].format = .float3 // x,y,z as f32
-	pipdesc.layout.attrs[C.ATTR_vs_m_color0   ].format = .ubyte4n // color as u32
+	pipdesc.layout.attrs[C.ATTR_vs_m_pos].format = .float3 // x,y,z as f32
+	pipdesc.layout.attrs[C.ATTR_vs_m_color0].format = .ubyte4n // color as u32
 	pipdesc.layout.attrs[C.ATTR_vs_m_texcoord0].format = .float2 // u,v as f32
 	// pipdesc.layout.attrs[C.ATTR_vs_m_texcoord0].format  = .short2n  // u,v as u16
 
@@ -251,38 +271,40 @@ fn init_cube_glsl_p(mut app App) {
 	c := u32(0xFFFFFF_FF) // color RGBA8
 	vertices := [
 		// Face 0
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{ 1.0, -1.0, -1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
-		Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{1.0, -1.0, -1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, -1.0, c, d, d},
+		Vertex_t{-1.0, 1.0, -1.0, c, 0, d},
 		// Face 1
-		Vertex_t{-1.0, -1.0,  1.0, c,  0, 0},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, 1.0, c, 0, 0},
+		Vertex_t{1.0, -1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{-1.0, 1.0, 1.0, c, 0, d},
 		// Face 2
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
-		Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, 1.0, -1.0, c, d, 0},
+		Vertex_t{-1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{-1.0, -1.0, 1.0, c, 0, d},
 		// Face 3
-		Vertex_t{ 1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{1.0, 1.0, -1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{1.0, -1.0, 1.0, c, 0, d},
 		// Face 4
-		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, -1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, -1.0, 1.0, c, d, d},
+		Vertex_t{1.0, -1.0, -1.0, c, 0, d},
 		// Face 5
-		Vertex_t{-1.0,  1.0, -1.0, c,  0, 0},
-		Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
-		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, 1.0, -1.0, c, 0, 0},
+		Vertex_t{-1.0, 1.0, 1.0, c, d, 0},
+		Vertex_t{1.0, 1.0, 1.0, c, d, d},
+		Vertex_t{1.0, 1.0, -1.0, c, 0, d},
 	]
 
-	mut vert_buffer_desc := C.sg_buffer_desc{label: c'cube-vertices'}
+	mut vert_buffer_desc := C.sg_buffer_desc{
+		label: c'cube-vertices'
+	}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = C.sg_range{
@@ -292,20 +314,36 @@ fn init_cube_glsl_p(mut app App) {
 	vert_buffer_desc.@type = .vertexbuffer
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
-	/* create an index buffer for the cube */
+	// create an index buffer for the cube
 	indices := [
-/*
-				u16(0), 1, 2,  0, 2, 3,
+		/*
+		u16(0), 1, 2,  0, 2, 3,
         6, 5, 4,       7, 6, 4,
         8, 9, 10,      8, 10, 11,
-*/
-				u16(14), 13, 12,    15, 14, 12,
-        16, 17, 18,    16, 18, 19,
-        22, 21, 20,    23, 22, 20
-
+		*/
+		u16(14),
+		13,
+		12,
+		15,
+		14,
+		12,
+		16,
+		17,
+		18,
+		16,
+		18,
+		19,
+		22,
+		21,
+		20,
+		23,
+		22,
+		20,
 	]
 
-	mut index_buffer_desc := C.sg_buffer_desc{label: c'cube-indices'}
+	mut index_buffer_desc := C.sg_buffer_desc{
+		label: c'cube-indices'
+	}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 	index_buffer_desc.size = size_t(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = C.sg_range{
@@ -323,9 +361,9 @@ fn init_cube_glsl_p(mut app App) {
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_t))
 
 	// the constants [C.ATTR_vs_p_pos, C.ATTR_vs_p_color0, C.ATTR_vs_p_texcoord0] are generated by sokol-shdc
-	pipdesc.layout.attrs[C.ATTR_vs_p_pos      ].format = .float3  // x,y,z as f32
-	pipdesc.layout.attrs[C.ATTR_vs_p_color0   ].format = .ubyte4n // color as u32
-	pipdesc.layout.attrs[C.ATTR_vs_p_texcoord0].format = .float2  // u,v as f32
+	pipdesc.layout.attrs[C.ATTR_vs_p_pos].format = .float3 // x,y,z as f32
+	pipdesc.layout.attrs[C.ATTR_vs_p_color0].format = .ubyte4n // color as u32
+	pipdesc.layout.attrs[C.ATTR_vs_p_texcoord0].format = .float2 // u,v as f32
 	// pipdesc.layout.attrs[C.ATTR_vs_p_texcoord0].format  = .short2n  // u,v as u16
 
 	pipdesc.shader = shader
@@ -353,21 +391,24 @@ fn init_cube_glsl_p(mut app App) {
 
 [inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
-	return m4.Vec4{e:[x, y, z, w]!}
+	return m4.Vec4{
+		e: [x, y, z, w]!
+	}
 }
 
 fn calc_tr_matrices(w f32, h f32, rx f32, ry f32, in_scale f32) m4.Mat4 {
-	proj := m4.perspective(60, w/h, 0.01, 10.0)
-	view := m4.look_at(vec4(f32(0.0) ,0 , 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1, 0, 0))
+	proj := m4.perspective(60, w / h, 0.01, 10.0)
+	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1,
+		0, 0))
 	view_proj := view * proj
 
 	rxm := m4.rotate(m4.rad(rx), vec4(f32(1), 0, 0, 0))
 	rym := m4.rotate(m4.rad(ry), vec4(f32(0), 1, 0, 0))
 
-	model :=  rym * rxm
+	model := rym * rxm
 	scale_m := m4.scale(vec4(in_scale, in_scale, in_scale, 1))
 
-	res :=  (scale_m * model) * view_proj
+	res := (scale_m * model) * view_proj
 	return res
 }
 
@@ -402,15 +443,15 @@ fn draw_cube_glsl_m(app App) {
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
 	mut tmp_fs_params := [
 		f32(ws.width),
-		ws.height * ratio, // x,y resolution to pass to FS
+		ws.height * ratio /* x,y resolution to pass to FS */,
 		0,
-		0, // dont send mouse position
-		/* app.mouse_x,               // mouse x */
-		/* ws.height - app.mouse_y*2, // mouse y scaled */
-		time_ticks,      // time as f32
-		app.frame_count, // frame count
+		0 /* dont send mouse position */,
+		// app.mouse_x,               // mouse x
+		// ws.height - app.mouse_y*2, // mouse y scaled
+		time_ticks, /* time as f32 */
+		app.frame_count /* frame count */,
 		0,
-		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
+		0 /* padding bytes , see "fs_params" struct paddings in rt_glsl.h */,
 	]!
 	fs_uniforms_range := C.sg_range{
 		ptr: unsafe { &tmp_fs_params }
@@ -454,15 +495,15 @@ fn draw_cube_glsl_p(app App) {
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
 	mut tmp_fs_params := [
 		f32(ws.width),
-		ws.height * ratio, // x,y resolution to pass to FS
+		ws.height * ratio /* x,y resolution to pass to FS */,
 		0,
-		0, // dont send mouse position
-		/* app.mouse_x,               // mouse x */
-		/* ws.height - app.mouse_y*2, // mouse y scaled */
-		time_ticks,      // time as f32
-		app.frame_count, // frame count
+		0 /* dont send mouse position */,
+		// app.mouse_x,               // mouse x
+		// ws.height - app.mouse_y*2, // mouse y scaled
+		time_ticks, /* time as f32 */
+		app.frame_count /* frame count */,
 		0,
-		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
+		0 /* padding bytes , see "fs_params" struct paddings in rt_glsl.h */,
 	]!
 	fs_uniforms_range := C.sg_range{
 		ptr: unsafe { &tmp_fs_params }
@@ -562,9 +603,9 @@ fn my_init(mut app App) {
 				tmp_txt[i + 3] = byte(0xFF)
 			} else {
 				col := if ((x + y) & 1) == 1 { 0xFF } else { 128 }
-				tmp_txt[i + 0] = byte(col)  // red
-				tmp_txt[i + 1] = byte(col)  // green
-				tmp_txt[i + 2] = byte(col)  // blue
+				tmp_txt[i + 0] = byte(col) // red
+				tmp_txt[i + 1] = byte(col) // green
+				tmp_txt[i + 2] = byte(col) // blue
 				tmp_txt[i + 3] = byte(0xFF) // alpha
 			}
 			i += 4
@@ -609,7 +650,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 /******************************************************************************
 * Main
 ******************************************************************************/
-[console] // is needed for easier diagnostics on windows
+// is needed for easier diagnostics on windows
+[console]
 fn main() {
 	// App init
 	mut app := &App{

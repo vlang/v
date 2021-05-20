@@ -9,7 +9,7 @@ const (
 
 fn C.SUN_LEN(ptr &C.sockaddr_un) int
 
-fn C.strncpy(charptr, charptr, int)
+fn C.strncpy(&char, &char, int)
 
 // Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {

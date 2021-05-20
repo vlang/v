@@ -32,8 +32,7 @@ fn test_format_uint() {
 	assert strconv.format_int(255, 8) == '377'
 	assert strconv.format_int(255, 10) == '255'
 	assert strconv.format_int(255, 16) == 'ff'
-	assert strconv.format_uint(18446744073709551615, 2) ==
-		'1111111111111111111111111111111111111111111111111111111111111111'
+	assert strconv.format_uint(18446744073709551615, 2) == '1111111111111111111111111111111111111111111111111111111111111111'
 	assert strconv.format_uint(18446744073709551615, 16) == 'ffffffffffffffff'
 	assert strconv.parse_int('baobab', 36, 64) == 683058467
 	assert strconv.format_uint(683058467, 36) == 'baobab'
