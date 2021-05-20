@@ -495,9 +495,8 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false)
 }
 
-// eq implements the `s == a` (equal) operator.
 [direct_array_access]
-fn (s string) eq(a string) bool {
+fn (s string) == (a string) bool {
 	if s.str == 0 {
 		// should never happen
 		panic('string.eq(): nil string')
@@ -516,17 +515,7 @@ fn (s string) eq(a string) bool {
 	}
 }
 
-fn (s string) == (a string) bool {
-	return s.eq(a)
-}
-
-// ne implements the `s != a` (not equal) operator.
-fn (s string) ne(a string) bool {
-	return !s.eq(a)
-}
-
-// lt implements the `s < a` (less than) operator.
-fn (s string) lt(a string) bool {
+fn (s string) < (a string) bool {
 	for i in 0 .. s.len {
 		if i >= a.len || s[i] > a[i] {
 			return false
@@ -540,27 +529,7 @@ fn (s string) lt(a string) bool {
 	return false
 }
 
-fn (s string) < (a string) bool {
-	return s.lt(a)
-}
-
-// le implements the `s <= a` (less than or equal to) operator.
-fn (s string) le(a string) bool {
-	return s.lt(a) || s.eq(a)
-}
-
-// gt implements the `s > a` (greater than) operator.
-fn (s string) gt(a string) bool {
-	return !s.le(a)
-}
-
-// ge implements the `s >= a` (greater than or equal to) operator.
-fn (s string) ge(a string) bool {
-	return !s.lt(a)
-}
-
-// add concatenates string with the string given in `s`.
-fn (s string) add(a string) string {
+fn (s string) + (a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
@@ -580,10 +549,6 @@ fn (s string) add(a string) string {
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
 	return res
-}
-
-fn (s string) + (a string) string {
-	return s.add(a)
 }
 
 // split splits the string to an array by `delim`.
@@ -1229,10 +1194,10 @@ pub fn (s string) trim_suffix(str string) string {
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
-	if a.lt(b) {
+	if a < b {
 		return -1
 	}
-	if a.gt(b) {
+	if a > b {
 		return 1
 	}
 	return 0
@@ -1240,10 +1205,10 @@ pub fn compare_strings(a &string, b &string) int {
 
 // compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
 fn compare_strings_reverse(a &string, b &string) int {
-	if a.lt(b) {
+	if a < b {
 		return 1
 	}
-	if a.gt(b) {
+	if a > b {
 		return -1
 	}
 	return 0
