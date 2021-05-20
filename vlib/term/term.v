@@ -1,6 +1,7 @@
 module term
 
 import os
+import strings.textscanner
 
 const (
 	default_columns_size = 80
@@ -63,28 +64,11 @@ pub fn colorize(cfn fn (string) string, s string) string {
 	return s
 }
 
-struct AnsiScanner {
-mut:
-	pos   int
-	input string
-}
-
-fn (mut ss AnsiScanner) next() int {
-	if ss.pos < ss.input.len {
-		opos := ss.pos
-		ss.pos++
-		return ss.input[opos]
-	}
-	return -1
-}
-
 // strip_ansi removes any ANSI sequences in the `text`
 pub fn strip_ansi(text string) string {
 	// This is a port of https://github.com/kilobyte/colorized-logs/blob/master/ansi2txt.c
 	// \e, [, 1, m, a, b, c, \e, [, 2, 2, m => abc
-	mut input := AnsiScanner{
-		input: text
-	}
+	mut input := textscanner.new(text)
 	mut output := []byte{cap: text.len}
 	mut ch := 0
 	for ch != -1 {
