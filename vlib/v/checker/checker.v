@@ -7093,7 +7093,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				receiver_sym := c.table.get_type_symbol(node.receiver.typ)
 				param_sym := c.table.get_type_symbol(node.params[1].typ)
-				if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
+				if param_sym.kind == .string && receiver_sym.kind == .string {
+					// bypass check for strings
+					// TODO there must be a better way to handle that
+				} else if param_sym.kind !in [.struct_, .alias]
+					|| receiver_sym.kind !in [.struct_, .alias] {
 					c.error('operator methods are only allowed for struct and type alias',
 						node.pos)
 				} else {
