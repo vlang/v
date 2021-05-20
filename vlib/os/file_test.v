@@ -90,6 +90,7 @@ fn test_read_bytes_into_newline_text() ? {
 // This test simulates the scenario when a byte stream is read and a newline byte
 // appears in that stream and an EOF occurs before the buffer is full.
 fn test_read_bytes_into_newline_binary() ? {
+	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
 	mut bw := []byte{len: 15}
 	bw[9] = 0xff
 	bw[12] = 10 // newline
@@ -114,9 +115,6 @@ fn test_read_bytes_into_newline_binary() ? {
 	assert buf[..n1] == n1_bytes
 
 	n2 := f.read_bytes_into_newline(mut buf) ?
-	// At this point the buffer should look like this: Why does MacOS fail?
-	// [`\0`, `\0`, `\n`, `\0`, `\0`, `\0`, `\0`, `\0`, `\0`, 0xff]
-	println(buf)
 	assert n2 == 2
 	assert buf[..n2] == n2_bytes
 	f.close()
