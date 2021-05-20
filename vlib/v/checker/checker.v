@@ -618,7 +618,7 @@ fn (mut c Checker) unwrap_generics_struct_init(struct_type ast.Type) ast.Type {
 			for i in 0 .. ts.info.generic_types.len {
 				gts := c.table.get_type_symbol(c.unwrap_generic(ts.info.generic_types[i]))
 				nrt += gts.name
-				c_nrt += gts.name
+				c_nrt += gts.cname
 				if i != ts.info.generic_types.len - 1 {
 					nrt += ','
 					c_nrt += '_'
@@ -1685,14 +1685,14 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 	if rts.info is ast.Struct {
 		if rts.info.is_generic {
 			mut nrt := '$rts.name<'
-			mut c_nrt := '${rts.name}_T_'
+			mut c_nrt := '${rts.cname}_T_'
 			for i in 0 .. rts.info.generic_types.len {
 				if ct := c.table.resolve_generic_to_concrete(rts.info.generic_types[i],
 					generic_names, concrete_types, false)
 				{
 					gts := c.table.get_type_symbol(ct)
 					nrt += gts.name
-					c_nrt += gts.name
+					c_nrt += gts.cname
 					if i != rts.info.generic_types.len - 1 {
 						nrt += ','
 						c_nrt += '_'
