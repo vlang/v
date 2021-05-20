@@ -1,10 +1,10 @@
 module builtin
 
-// NB: this file will be removed soon
+// NB: this file will be removed soon 
 
 // byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
-pub fn (data &byte) vbytes(len int) []byte {
+pub fn (data byteptr) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
 }
 
@@ -12,7 +12,7 @@ pub fn (data &byte) vbytes(len int) []byte {
 // strings returned from this function will be normal V strings beside that (i.e. they would be
 // freed by V's -autofree mechanism, when they are no longer used).
 [unsafe]
-pub fn (bp &byte) vstring() string {
+pub fn (bp byteptr) vstring() string {
 	return string{
 		str: bp
 		len: unsafe { C.strlen(&char(bp)) }
@@ -22,7 +22,7 @@ pub fn (bp &byte) vstring() string {
 // vstring_with_len converts a C style string to a V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (bp &byte) vstring_with_len(len int) string {
+pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
@@ -33,9 +33,9 @@ pub fn (bp &byte) vstring_with_len(len int) string {
 // vstring converts C char* to V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp &char) vstring() string {
+pub fn (cp charptr) vstring() string {
 	return string{
-		str: &byte(cp)
+		str: byteptr(cp)
 		len: unsafe { C.strlen(&char(cp)) }
 		is_lit: 0
 	}
@@ -44,9 +44,9 @@ pub fn (cp &char) vstring() string {
 // vstring_with_len converts C char* to V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp &char) vstring_with_len(len int) string {
+pub fn (cp charptr) vstring_with_len(len int) string {
 	return string{
-		str: &byte(cp)
+		str: byteptr(cp)
 		len: len
 		is_lit: 0
 	}
@@ -60,7 +60,7 @@ pub fn (cp &char) vstring_with_len(len int) string {
 // that can be read by the V program, but that should not be
 // managed by it, for example `os.args` is implemented using it.
 [unsafe]
-pub fn (bp &byte) vstring_literal() string {
+pub fn (bp byteptr) vstring_literal() string {
 	return string{
 		str: bp
 		len: unsafe { C.strlen(&char(bp)) }
@@ -71,7 +71,7 @@ pub fn (bp &byte) vstring_literal() string {
 // vstring_with_len converts a C style string to a V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (bp &byte) vstring_literal_with_len(len int) string {
+pub fn (bp byteptr) vstring_literal_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
@@ -83,9 +83,9 @@ pub fn (bp &byte) vstring_literal_with_len(len int) string {
 // See also vstring_literal defined on byteptr for more details.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp &char) vstring_literal() string {
+pub fn (cp charptr) vstring_literal() string {
 	return string{
-		str: &byte(cp)
+		str: byteptr(cp)
 		len: unsafe { C.strlen(&char(cp)) }
 		is_lit: 1
 	}
@@ -95,9 +95,9 @@ pub fn (cp &char) vstring_literal() string {
 // See also vstring_literal_with_len defined on byteptr.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp &char) vstring_literal_with_len(len int) string {
+pub fn (cp charptr) vstring_literal_with_len(len int) string {
 	return string{
-		str: &byte(cp)
+		str: byteptr(cp)
 		len: len
 		is_lit: 1
 	}

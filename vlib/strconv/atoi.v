@@ -69,15 +69,15 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		return u64(0), -1
 	}
 	if bit_size == 0 {
-		bit_size = strconv.int_size
+		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0), -2
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
-	cutoff := strconv.max_u64 / u64(base) + u64(1)
-	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+	cutoff := max_u64 / u64(base) + u64(1)
+	max_val := if bit_size == 64 { max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
 	mut n := u64(0)
 	for i in start_index .. s.len {
 		c := s[i]
@@ -144,7 +144,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 		return i64(0)
 	}
 	if bit_size == 0 {
-		bit_size = strconv.int_size
+		bit_size = int_size
 	}
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
@@ -156,7 +156,11 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 		// return error('parse_int: range error $s0')
 		return -i64(cutoff)
 	}
-	return if neg { -i64(un) } else { i64(un) }
+	return if neg {
+		-i64(un)
+	} else {
+		i64(un)
+	}
 }
 
 // parse_int interprets a string s in the given base (0, 2 to 36) and
@@ -180,8 +184,9 @@ pub fn atoi(s string) ?int {
 	if s == '' {
 		return error('strconv.atoi: parsing "$s": invalid syntax ')
 	}
-	if (strconv.int_size == 32 && (0 < s.len && s.len < 10))
-		|| (strconv.int_size == 64 && (0 < s.len && s.len < 19)) {
+	if (int_size == 32 && (0 < s.len &&
+		s.len < 10)) ||
+		(int_size == 64 && (0 < s.len && s.len < 19)) {
 		// Fast path for small integers that fit int type.
 		mut start_idx := 0
 		if s[0] == `-` || s[0] == `+` {
@@ -200,7 +205,11 @@ pub fn atoi(s string) ?int {
 			}
 			n = n * 10 + int(ch)
 		}
-		return if s[0] == `-` { -n } else { n }
+		return if s[0] == `-` {
+			-n
+		} else {
+			n
+		}
 	}
 	// Slow path for invalid, big, or underscored integers.
 	int64 := parse_int(s, 10, 0)
@@ -224,8 +233,8 @@ fn underscore_ok(s string) bool {
 	}
 	// Optional base prefix.
 	mut hex := false
-	if s.len - i >= 2 && s[i] == `0` && (byte_to_lower(s[i + 1]) == `b`
-		|| byte_to_lower(s[i + 1]) == `o` || byte_to_lower(s[i + 1]) == `x`) {
+	if s.len - i >= 2 && s[i] == `0` &&
+		(byte_to_lower(s[i + 1]) == `b` || byte_to_lower(s[i + 1]) == `o` || byte_to_lower(s[i + 1]) == `x`) {
 		saw = `0` // base prefix counts as a digit for "underscore as digit separator"
 		hex = byte_to_lower(s[i + 1]) == `x`
 		i += 2
@@ -233,8 +242,8 @@ fn underscore_ok(s string) bool {
 	// Number proper.
 	for ; i < s.len; i++ {
 		// Digits are always okay.
-		if (`0` <= s[i] && s[i] <= `9`) || (hex && `a` <= byte_to_lower(s[i])
-			&& byte_to_lower(s[i]) <= `f`) {
+		if (`0` <= s[i] && s[i] <= `9`) ||
+			(hex && `a` <= byte_to_lower(s[i]) && byte_to_lower(s[i]) <= `f`) {
 			saw = `0`
 			continue
 		}

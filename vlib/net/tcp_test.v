@@ -29,7 +29,7 @@ fn echo_server(mut l net.TcpListener) ? {
 fn echo() ? {
 	mut c := net.dial_tcp('127.0.0.1:$test_port') ?
 	defer {
-		c.close() or {}
+		c.close() or { }
 	}
 	data := 'Hello from vlib/net!'
 	c.write_string(data) ?
@@ -47,5 +47,5 @@ fn test_tcp() {
 	mut l := net.listen_tcp(test_port) or { panic(err) }
 	go echo_server(mut l)
 	echo() or { panic(err) }
-	l.close() or {}
+	l.close() or { }
 }

@@ -7,14 +7,14 @@ pub enum FonsFlags {
 
 pub enum FonsAlign {
 	// Horizontal align
-	left = 1 // Default
-	center = 2
-	right = 4
+	left 		= 1	// Default
+	center 		= 2
+	right 		= 4
 	// Vertical align
-	top = 8
-	middle = 16
-	bottom = 32
-	baseline = 64 // Default
+	top 		= 8
+	middle		= 16
+	bottom		= 32
+	baseline	= 64 // Default
 }
 
 pub enum FonsErrorCode {
@@ -29,23 +29,24 @@ pub enum FonsErrorCode {
 }
 
 pub struct C.FONSparams {
-	width   int
-	height  int
-	flags   char
+	width int
+	height int
+	flags char
 	userPtr voidptr
 	// int (*renderCreate)(void* uptr, int width, int height)
-	renderCreate fn (voidptr, int, int) int
+	renderCreate fn(uptr voidptr, width int, height int) int
 	// int (*renderResize)(void* uptr, int width, int height)
-	renderResize fn (voidptr, int, int) int
+	renderResize fn(uptr voidptr, width int, height int) int
 	// void (*renderUpdate)(void* uptr, int* rect, const unsigned char* data)
-	renderUpdate fn (voidptr, &int, &byte)
+	renderUpdate fn(uptr voidptr, rect &int, data byteptr)
 	// void (*renderDraw)(void* uptr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
-	renderDraw fn (voidptr, &f32, &f32, &u32, int)
+	renderDraw fn(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int)
 	// void (*renderDelete)(void* uptr)
-	renderDelete fn (voidptr)
+	renderDelete fn(uptr voidptr)
 }
 
-pub struct C.FONSquad {
+pub struct C.FONSquad
+{
 	x0 f32
 	y0 f32
 	s0 f32
@@ -57,21 +58,21 @@ pub struct C.FONSquad {
 }
 
 pub struct C.FONStextIter {
-	x              f32
-	y              f32
-	nextx          f32
-	nexty          f32
-	scale          f32
-	spacing        f32
-	codepoint      u32
-	isize          i16
-	iblur          i16
-	font           &C.FONSfont
+	x f32
+	y f32
+	nextx f32
+	nexty f32
+	scale f32
+	spacing f32
+	codepoint u32
+	isize i16
+	iblur i16
+	font &C.FONSfont
 	prevGlyphIndex int
-	str            &byte
-	next           &byte
-	end            &byte
-	utf8state      u32
+	str byteptr
+	next byteptr
+	end byteptr
+	utf8state u32
 }
 
 pub struct C.FONSfont {}

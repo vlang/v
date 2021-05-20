@@ -770,7 +770,7 @@ mut:
 	szSystemStatus [129]byte
 	iMaxSockets    u16
 	iMaxUdpDg      u16
-	lpVendorInfo   &byte
+	lpVendorInfo   byteptr
 }
 
 fn init() {

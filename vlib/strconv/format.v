@@ -1,6 +1,7 @@
 module strconv
 
 /*
+
 printf/sprintf V implementation
 
 Copyright (c) 2020 Dario Deledda. All rights reserved.
@@ -8,7 +9,9 @@ Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
 This file contains the printf/sprintf functions
+
 */
+
 import strings
 
 pub enum Align_text {
@@ -18,9 +21,11 @@ pub enum Align_text {
 }
 
 /*
+
 Float conversion utility
+
 */
-const (
+const(
 	// rounding value
 	dec_round = [
 		f64(0.44),
@@ -49,17 +54,19 @@ const (
 // max float 1.797693134862315708145274237317043567981e+308
 
 /*
-Single format functions
+
+ Single format functions
+
 */
 pub struct BF_param {
 pub mut:
-	pad_ch       byte = byte(` `) // padding char
-	len0         int  = -1 // default len for whole the number or string
-	len1         int  = 6 // number of decimal digits, if needed
-	positive     bool = true // mandatory: the sign of the number passed
-	sign_flag    bool       // flag for print sign as prefix in padding
-	allign       Align_text = .right // alignment of the string
-	rm_tail_zero bool       // remove the tail zeros from floats
+	pad_ch       byte       = byte(` `)     // padding char
+	len0         int        = -1      // default len for whole the number or string
+	len1         int        = 6       // number of decimal digits, if needed
+	positive     bool       = true    // mandatory: the sign of the number passed
+	sign_flag    bool                 // flag for print sign as prefix in padding
+	allign       Align_text = .right  // alignment of the string
+	rm_tail_zero bool                 // remove the tail zeros from floats
 }
 
 pub fn format_str(s string, p BF_param) string {
@@ -72,13 +79,13 @@ pub fn format_str(s string, p BF_param) string {
 	}
 	mut res := strings.new_builder(s.len + dif)
 	if p.allign == .right {
-		for i1 := 0; i1 < dif; i1++ {
+		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
 		}
 	}
 	res.write_string(s)
 	if p.allign == .left {
-		for i1 := 0; i1 < dif; i1++ {
+		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
 		}
 	}

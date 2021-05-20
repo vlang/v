@@ -15,9 +15,9 @@ mut:
 	line_count       int
 	lexeme_builder   strings.Builder = strings.Builder{}
 	code_tags        map[string]bool = map{
-		'script': true
-		'style':  true
-	}
+	'script': true
+	'style':  true
+}
 }
 
 // Parser is responsible for reading the HTML strings and converting them into a `DocumentObjectModel`.
