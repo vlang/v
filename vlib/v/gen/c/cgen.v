@@ -5747,22 +5747,26 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 					// .array_fixed {
 					styp := typ.cname
 					// array_fixed_char_300 => char x[300]
-					mut fixed := styp[12..]
-					len := styp.after('_')
-					fixed = fixed[..fixed.len - len.len - 1]
-					if fixed.starts_with('C__') {
-						fixed = fixed[3..]
+					// [16]&&&EventListener{} => Array_fixed_main__EventListener_16_ptr3
+					// => typedef main__EventListener*** Array_fixed_main__EventListener_16_ptr3 [16]
+					mut fixed_elem_name := g.typ(typ.info.elem_type.set_nr_muls(0))
+					if typ.info.elem_type.is_ptr() {
+						fixed_elem_name += '*'.repeat(typ.info.elem_type.nr_muls())
+					}
+					len := typ.info.size
+					if fixed_elem_name.starts_with('C__') {
+						fixed_elem_name = fixed_elem_name[3..]
 					}
 					if elem_sym.info is ast.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed = g.out.after(pos)
-						g.out.go_back(fixed.len)
-						mut def_str := 'typedef $fixed;'
+						fixed_elem_name = g.out.after(pos)
+						g.out.go_back(fixed_elem_name.len)
+						mut def_str := 'typedef $fixed_elem_name;'
 						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
 						g.type_definitions.writeln(def_str)
 					} else {
-						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+						g.type_definitions.writeln('typedef $fixed_elem_name $styp [$len];')
 					}
 				}
 			}
