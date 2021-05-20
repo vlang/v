@@ -290,11 +290,11 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				mut op1, mut op2 := '', ''
 				if infix_expr.left_type == ast.string_type {
 					if is_reverse {
-						op1 = 'string_gt(a_, b_)'
-						op2 = 'string_lt(a_, b_)'
+						op1 = 'string__lt(b_, a_)'
+						op2 = 'string__lt(a_, b_)'
 					} else {
-						op1 = 'string_lt(a_, b_)'
-						op2 = 'string_gt(a_, b_)'
+						op1 = 'string__lt(a_, b_)'
+						op2 = 'string__lt(b_, a_)'
 					}
 				} else {
 					deref_str := if infix_expr.left_type.is_ptr() { '*' } else { '' }

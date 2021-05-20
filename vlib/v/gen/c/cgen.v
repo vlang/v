@@ -2498,13 +2498,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			mut op_overloaded := false
 			if var_type == ast.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
-					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
+					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
 					g.expr(left)
-					g.write('string_add(')
+					g.write('string__plus(')
 				} else {
-					// str += str2 => `str = string_add(str, str2)`
+					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
-					g.write(' = /*f*/string_add(')
+					g.write(' = /*f*/string__plus(')
 				}
 				g.is_assign_lhs = false
 				str_add = true
@@ -3575,7 +3575,7 @@ fn (mut g Gen) infix_gen_equality(node ast.InfixExpr, left_type ast.Type, left_s
 			g.expr(node.right)
 			g.write(')')
 		}
-		.struct_ {
+		.string, .struct_ {
 			// Auto generate both `==` and `!=`
 			ptr_typ := g.gen_struct_equality_fn(left_type)
 			if node.op == .eq {
@@ -3671,6 +3671,7 @@ fn (mut g Gen) infix_in_or_not_in(node ast.InfixExpr, left_sym ast.TypeSymbol, r
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	// TODO lot of clean required here
 	if node.auto_locked != '' {
 		g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 	}
@@ -3682,21 +3683,26 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// println('>>$node')
 	left_sym := g.table.get_type_symbol(left_type)
 	left_final_sym := g.table.get_final_type_symbol(left_type)
+	// TODO cleanup: linked to left/right_final_sym, unaliasing done twice
 	unaliased_left := if left_sym.kind == .alias {
 		(left_sym.info as ast.Alias).parent_type
 	} else {
 		left_type
 	}
-	op_is_key_in_or_not_in := node.op in [.key_in, .not_in]
 	op_is_eq_or_ne := node.op in [.eq, .ne]
 	right_sym := g.table.get_type_symbol(node.right_type)
 	right_final_sym := g.table.get_final_type_symbol(node.right_type)
+	if node.op in [.key_in, .not_in] {
+		// TODO cleanup: handle the same as is / !is
+		g.infix_in_or_not_in(node, left_final_sym, right_final_sym)
+		return
+	}
 	unaliased_right := if right_sym.info is ast.Alias {
 		right_sym.info.parent_type
 	} else {
 		node.right_type
 	}
-	if unaliased_left == ast.ustring_type_idx && !op_is_key_in_or_not_in {
+	if unaliased_left == ast.ustring_type_idx {
 		fn_name := match node.op {
 			.plus {
 				'ustring_add('
@@ -3729,54 +3735,20 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
-	} else if unaliased_left == ast.string_type_idx && !op_is_key_in_or_not_in {
+	} else if unaliased_left == ast.string_type_idx && op_is_eq_or_ne
+		&& node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
 		// `str == ''` -> `str.len == 0` optimization
-		if node.op in [.eq, .ne] && node.right is ast.StringLiteral
-			&& (node.right as ast.StringLiteral).val == '' {
-			arrow := if left_type.is_ptr() { '->' } else { '.' }
-			g.write('(')
-			g.expr(node.left)
-			g.write(')')
-			g.write('${arrow}len $node.op 0')
-		} else {
-			fn_name := match node.op {
-				.plus {
-					'string_add('
-				}
-				.eq {
-					'string_eq('
-				}
-				.ne {
-					'string_ne('
-				}
-				.lt {
-					'string_lt('
-				}
-				.le {
-					'string_le('
-				}
-				.gt {
-					'string_gt('
-				}
-				.ge {
-					'string_ge('
-				}
-				else {
-					verror('op error for type `$left_sym.name`')
-					'/*node error*/'
-				}
-			}
-			g.write(fn_name)
-			g.expr(node.left)
-			g.write(', ')
-			g.expr(node.right)
-			g.write(')')
-		}
+		g.write('(')
+		g.expr(node.left)
+		g.write(')')
+		arrow := if left_type.is_ptr() { '->' } else { '.' }
+		g.write('${arrow}len $node.op 0')
 	} else if op_is_eq_or_ne && left_sym.kind == right_sym.kind
 		&& left_sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
 		g.infix_gen_equality(node, left_type, left_sym, right_sym)
-	} else if op_is_key_in_or_not_in {
-		g.infix_in_or_not_in(node, left_final_sym, right_final_sym)
+	} else if op_is_eq_or_ne && left_sym.kind == .alias && unaliased_right == ast.string_type {
+		// TODO cleanup: almost copy of above
+		g.infix_gen_equality(node, unaliased_left, left_final_sym, right_sym)
 	} else if node.op == .left_shift && left_final_sym.kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()
@@ -3869,35 +3841,45 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(')')
 	} else {
-		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.'))
+		// this likely covers more than V struct, but no idea what...
+		is_v_struct := ((left_sym.name[0].is_capital() || left_sym.name.contains('.'))
 			&& left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
-			&& left_sym.language != .c
-		b := left_sym.kind != .alias
-		c := left_sym.kind == .alias && (left_sym.info as ast.Alias).language == .c
+			&& left_sym.language != .c) || left_sym.kind == .string
+		is_alias := left_sym.kind == .alias
+		is_c_alias := is_alias && (left_sym.info as ast.Alias).language == .c
 		// Check if aliased type is a struct
-		d := !b
+		is_struct_alias := is_alias
 			&& g.typ((left_sym.info as ast.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
-		e := right_sym.kind !in [.voidptr, .int_literal, .int]
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && ((a && b && e) || c || d) {
+		not_exception := right_sym.kind !in [.voidptr, .int_literal, .int]
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq]
+			&& ((is_v_struct && !is_alias && not_exception) || is_c_alias
+			|| is_struct_alias) {
 			// Overloaded operators
-			the_left_type := if !d
+			the_left_type := if !is_struct_alias
 				|| g.table.get_type_symbol((left_sym.info as ast.Alias).parent_type).kind in [.array, .array_fixed, .map] {
 				left_type
 			} else {
 				(left_sym.info as ast.Alias).parent_type
 			}
-			g.write(g.typ(the_left_type))
+			nr_muls := '*'.repeat(the_left_type.nr_muls())
+			g.write(g.typ(the_left_type.set_nr_muls(0)))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
-			g.write('(')
+			g.write('($nr_muls')
 			g.expr(node.left)
-			g.write(', ')
+			g.write(', $nr_muls')
 			g.expr(node.right)
 			g.write(')')
-		} else if node.op in [.ne, .gt, .ge, .le] && ((a && b && e) || c || d) {
-			the_left_type := if !d { left_type } else { (left_sym.info as ast.Alias).parent_type }
-			typ := g.typ(the_left_type)
+		} else if node.op in [.ne, .gt, .ge, .le] && ((is_v_struct && !is_alias && not_exception)
+			|| is_c_alias || is_struct_alias) {
+			the_left_type := if !is_struct_alias {
+				left_type
+			} else {
+				(left_sym.info as ast.Alias).parent_type
+			}
+			nr_muls := '*'.repeat(the_left_type.nr_muls())
+			typ := g.typ(the_left_type.set_nr_muls(0))
 			if node.op == .gt {
 				g.write('$typ')
 			} else {
@@ -3910,15 +3892,15 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.write('_lt')
 			}
 			if node.op in [.le, .gt] {
-				g.write('(')
+				g.write('($nr_muls')
 				g.expr(node.right)
-				g.write(', ')
+				g.write(', $nr_muls')
 				g.expr(node.left)
 				g.write(')')
 			} else {
-				g.write('(')
+				g.write('($nr_muls')
 				g.expr(node.left)
-				g.write(', ')
+				g.write(', $nr_muls')
 				g.expr(node.right)
 				g.write(')')
 			}
@@ -4239,7 +4221,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					if expr is ast.StringLiteral && (expr as ast.StringLiteral).val == '' {
 						g.write('${cond_var}.len == 0')
 					} else {
-						g.write('string_eq(')
+						g.write('string__eq(')
 						g.write(cond_var)
 						g.write(', ')
 						g.expr(expr)
@@ -5962,7 +5944,7 @@ fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 	is_array := elem_sym.kind == .array
 	for i, array_expr in right.exprs {
 		if is_str {
-			g.write('string_eq(')
+			g.write('string__eq(')
 		} else if is_array {
 			ptr_typ := g.gen_array_equality_fn(right.elem_type)
 			g.write('${ptr_typ}_arr_eq(')
@@ -5980,19 +5962,6 @@ fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
 		}
-	}
-}
-
-fn op_to_fn_name(name string) string {
-	return match name {
-		'+' { '_op_plus' }
-		'-' { '_op_minus' }
-		'*' { '_op_mul' }
-		'/' { '_op_div' }
-		'%' { '_op_mod' }
-		'<' { '_op_lt' }
-		'>' { '_op_gt' }
-		else { 'bad op $name' }
 	}
 }
 

@@ -106,11 +106,11 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
 	if convertor == 'bool' {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string__plus(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string__plus(_SLIT("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
 	}
-	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, _SLIT(")"));')
+	g.auto_str_funcs.writeln('\tstring tmp2 = string__plus(tmp1, _SLIT(")"));')
 	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
 	g.auto_str_funcs.writeln('\treturn tmp2;')
 	g.auto_str_funcs.writeln('}')
@@ -234,13 +234,13 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
+	g.auto_str_funcs.writeln('\t\tindents = string__plus(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 
 	g.auto_str_funcs.writeln('\treturn str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, $c.si_s_code, {.d_s = indents }},
 		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
-		{_SLIT(")"), 0, {.d_c = 0 }} 
+		{_SLIT(")"), 0, {.d_c = 0 }}
 	}));\n')
 
 	// g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
@@ -317,9 +317,9 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 		g.auto_str_funcs.writeln('\tstring ret = _SLIT("$clean_name{");')
 		g.auto_str_funcs.writeln('\tint first = 1;')
 		for i, val in info.vals {
-			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string_add(ret, _SLIT(" | "));} ret = string_add(ret, _SLIT(".$val")); first = 0;}')
+			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string__plus(ret, _SLIT(" | "));} ret = string__plus(ret, _SLIT(".$val")); first = 0;}')
 		}
-		g.auto_str_funcs.writeln('\tret = string_add(ret, _SLIT("}"));')
+		g.auto_str_funcs.writeln('\tret = string__plus(ret, _SLIT("}"));')
 		g.auto_str_funcs.writeln('\treturn ret;')
 	} else {
 		g.auto_str_funcs.writeln('\tswitch(it) {')

@@ -84,7 +84,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	// generate ident / indent length = 4 spaces
 	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
+	g.auto_str_funcs.writeln('\t\tindents = string__plus(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	if info.fields.len == 0 {
 		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')
@@ -290,7 +290,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	// generate ident / indent length = 4 spaces
 	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
+	g.auto_str_funcs.writeln('\t\tindents = string__plus(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	if info.fields.len == 0 {
 		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')

@@ -156,7 +156,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 			if j > 0 {
 				g.write(' else ')
 			}
-			g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
+			g.write('if (string__eq($node.method_name, _SLIT("$method.name"))) ')
 		}
 		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
