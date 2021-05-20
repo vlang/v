@@ -174,12 +174,12 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	cycles := deps_resolved.display_cycles()
 	if b.pref.is_verbose {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
 	}
+	cycles := deps_resolved.display_cycles()
 	if cycles.len > 1 {
 		verror('error: import cycle detected between the following modules: \n' + cycles)
 	}
@@ -210,6 +210,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
+		// eprintln('p.path: $p.path')
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
@@ -227,6 +228,9 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << m.mod
 		}
 		graph.add(p.mod.name, deps)
+	}
+	$if trace_import_graph ? {
+		eprintln(graph.display())
 	}
 	return graph
 }

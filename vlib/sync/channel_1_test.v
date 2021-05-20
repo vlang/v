@@ -17,3 +17,9 @@ fn test_channel_buffered() {
 	}
 	assert sum == u64(num_iterations) * (num_iterations - 1) / 2
 }
+
+fn test_builtin_enum() {
+	x := ChanState.closed
+	assert x == .closed
+	println(x)
+}

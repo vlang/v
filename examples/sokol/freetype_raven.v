@@ -101,7 +101,7 @@ fn init(user_data voidptr) {
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
 		println('loaded font: $bytes.len')
-		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len,
+		state.font_normal = C.fonsAddFontMem(state.fons, c'sans', bytes.data, bytes.len,
 			false)
 	}
 }

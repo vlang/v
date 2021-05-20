@@ -254,7 +254,7 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	});')
 	
 	//g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
-
+	
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -304,13 +304,9 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 		} else if sym.kind == .function {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
 		} else {
-			if (str_method_expects_ptr && is_arg_ptr) || (!str_method_expects_ptr && !is_arg_ptr) {
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(a.arg$i));')
-			} else if str_method_expects_ptr && !is_arg_ptr {
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(&a.arg$i));')
-			} else if !str_method_expects_ptr && is_arg_ptr {
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(*a.arg$i));')
-			}
+			deref, deref_label := deref_kind(str_method_expects_ptr, is_arg_ptr, typ)
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
+			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}( $deref a.arg$i));')
 		}
 		if i != info.types.len - 1 {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT(", "));')
@@ -545,4 +541,15 @@ fn (mut g Gen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name str
 [inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
+}
+
+fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
+	if str_method_expects_ptr != is_elem_ptr {
+		if is_elem_ptr {
+			return '*'.repeat(typ.nr_muls()), '&'.repeat(typ.nr_muls())
+		} else {
+			return '&', ''
+		}
+	}
+	return '', ''
 }

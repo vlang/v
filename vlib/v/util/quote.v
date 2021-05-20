@@ -12,7 +12,7 @@ pub fn smart_quote(str string, raw bool) string {
 	if len == 0 {
 		return str
 	}
-	mut result := strings.new_builder(0)
+	mut result := strings.new_builder(len)
 	mut pos := -1
 	mut last := ''
 	// TODO: This should be a single char?

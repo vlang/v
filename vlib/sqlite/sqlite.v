@@ -92,6 +92,7 @@ pub fn (mut db DB) close() ?bool {
 
 // Only for V ORM
 fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
+	// println('init_stmt("$query")')
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	return stmt

@@ -523,7 +523,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.type_symbols[existing_idx] = TypeSymbol{
+				t.type_symbols[existing_idx] = {
 					...typ
 					methods: ex_type.methods
 				}
@@ -623,7 +623,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	mut res := ''
 	if elem_type.is_ptr() {
-		res = '_ptr'
+		res = '_ptr$elem_type.nr_muls()'
 	}
 	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
 }
@@ -797,12 +797,12 @@ pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims in
 
 pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr) int {
 	name := t.array_fixed_name(elem_type, size, size_expr)
-	cname := t.array_fixed_cname(elem_type, size)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
+	cname := t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
 		kind: .array_fixed

@@ -316,7 +316,7 @@ pub fn run<T>(global_app &T, port int) {
 	//}
 	for {
 		// Create a new app object for each connection, copy global data like db connections
-		mut request_app := T{}
+		mut request_app := &T{}
 		$if T is DbInterface {
 			request_app.db = global_app.db
 		} $else {
@@ -619,6 +619,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
+	println('vweb error: $s')
 	ctx.form_error = s
 }
 

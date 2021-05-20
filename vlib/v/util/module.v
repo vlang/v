@@ -3,6 +3,7 @@ module util
 import os
 import v.pref
 
+[if trace_mod_path_to_full_name]
 fn trace_mod_path_to_full_name(line string, mod string, file_path string, res string) {
 	eprintln('> $line ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: $res')
 }
@@ -15,17 +16,13 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 		try_path := os.join_path(search_path, mod_path)
 		if os.is_dir(try_path) {
 			if m1 := mod_path_to_full_name(mod, try_path) {
-				$if trace_mod_path_to_full_name ? {
-					trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
-				}
+				trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
 				return m1
 			}
 		}
 	}
 	if m1 := mod_path_to_full_name(mod, file_path) {
-		$if trace_mod_path_to_full_name ? {
-			trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
-		}
+		trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
 		return m1
 	}
 	return mod
@@ -42,9 +39,7 @@ pub fn qualify_module(mod string, file_path string) string {
 		return mod
 	}
 	if m1 := mod_path_to_full_name(mod, clean_file_path) {
-		$if trace_mod_path_to_full_name ? {
-			trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
-		}
+		trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
 		return m1
 	}
 	return mod

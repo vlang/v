@@ -1,6 +1,7 @@
 module term
 
 import os
+import strings.textscanner
 
 const (
 	default_columns_size = 80
@@ -63,6 +64,49 @@ pub fn colorize(cfn fn (string) string, s string) string {
 	return s
 }
 
+// strip_ansi removes any ANSI sequences in the `text`
+pub fn strip_ansi(text string) string {
+	// This is a port of https://github.com/kilobyte/colorized-logs/blob/master/ansi2txt.c
+	// \e, [, 1, m, a, b, c, \e, [, 2, 2, m => abc
+	mut input := textscanner.new(text)
+	mut output := []byte{cap: text.len}
+	mut ch := 0
+	for ch != -1 {
+		ch = input.next()
+		if ch == 27 {
+			ch = input.next()
+			if ch == `[` {
+				for {
+					ch = input.next()
+					if ch in [`;`, `?`] || (ch >= `0` && ch <= `9`) {
+						continue
+					}
+					break
+				}
+			} else if ch == `]` {
+				ch = input.next()
+				if ch >= `0` && ch <= `9` {
+					for {
+						ch = input.next()
+						if ch == -1 || ch == 7 {
+							break
+						}
+						if ch == 27 {
+							ch = input.next()
+							break
+						}
+					}
+				}
+			} else if ch == `%` {
+				ch = input.next()
+			}
+		} else if ch != -1 {
+			output << byte(ch)
+		}
+	}
+	return output.bytestr()
+}
+
 // h_divider returns a horizontal divider line with a dynamic width,
 // that depends on the current terminal settings.
 // If an empty string is passed in, print enough spaces to make a new line
@@ -75,6 +119,20 @@ pub fn h_divider(divider string) string {
 		result = ' '.repeat(1 + cols)
 	}
 	return result[0..cols]
+}
+
+// header_left returns a horizontal divider line with a title text on the left.
+// e.g: term.header_left('TITLE', '=')
+// ==== TITLE =========================
+pub fn header_left(text string, divider string) string {
+	plain_text := strip_ansi(text)
+	xcols, _ := get_terminal_size()
+	cols := imax(1, xcols)
+	relement := if divider.len > 0 { divider } else { ' ' }
+	hstart := relement.repeat(4)[0..4]
+	remaining_cols := (cols - (hstart.len + 1 + plain_text.len + 1))
+	hend := relement.repeat((remaining_cols + 1) / relement.len)[0..remaining_cols]
+	return '$hstart $text $hend'
 }
 
 // header returns a horizontal divider line with a centered text in the middle.
