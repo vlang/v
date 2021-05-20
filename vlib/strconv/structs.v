@@ -47,3 +47,9 @@ pub mut:
 	f f64
 	u u64
 }
+
+pub union Float32u {
+pub mut:
+	f f32
+	u u32
+}

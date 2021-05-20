@@ -84,6 +84,13 @@ Constants
 
 pub const (
 	//
+	// f32 constants
+	//
+	single_plus_zero      = u32(0x0000_0000)
+	single_minus_zero     = u32(0x8000_0000)
+	single_plus_infinity  = u32(0x7F80_0000)
+	single_minus_infinity = u32(0xFF80_0000)
+	//
 	// f64 constants
 	//
 	digits                = 18
