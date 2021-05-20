@@ -97,25 +97,30 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	mut i := 20
 	mut n := d
 	mut d_i := u64(0)
-	for n > 0 {
-		n1 := n / 100
-		// calculate the digit_pairs start index
-		d_i = (n - (n1 * 100)) << 1
-		n = n1
-		unsafe{ buf[i] = digit_pairs.str[d_i] }
-		i--
-		d_i++
-		unsafe{ buf[i] = digit_pairs.str[d_i] }
-		i--
-	}
-	i++
-	// remove head zero
-	if d_i < 20 {
+	if n > 0 {
+		for n > 0 {
+			n1 := n / 100
+			// calculate the digit_pairs start index
+			d_i = (n - (n1 * 100)) << 1
+			n = n1
+			unsafe{ buf[i] = digit_pairs.str[d_i] }
+			i--
+			d_i++
+			unsafe{ buf[i] = digit_pairs.str[d_i] }
+			i--
+		}
 		i++
+		// remove head zero
+		if d_i < 20 {
+			i++
+		}
+		unsafe{ res.write_ptr(&buf[i],n_char) }
+
+	} else {
+		// we have a zero no need of more code!
+		res.write_b(`0`)
 	}
 	//===========================================
-
-	unsafe{ res.write_ptr(&buf[i],n_char) }
 
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
