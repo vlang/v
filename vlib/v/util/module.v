@@ -15,20 +15,20 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 	for search_path in mod_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if os.is_dir(try_path) {
-			if m1 := mod_path_to_full_name(mod, try_path) {
+			if m1 := mod_path_to_full_name(pref, mod, try_path) {
 				trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
 				return m1
 			}
 		}
 	}
-	if m1 := mod_path_to_full_name(mod, file_path) {
+	if m1 := mod_path_to_full_name(pref, mod, file_path) {
 		trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
 		return m1
 	}
 	return mod
 }
 
-pub fn qualify_module(mod string, file_path string) string {
+pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) string {
 	if mod == 'main' {
 		return mod
 	}
@@ -38,7 +38,7 @@ pub fn qualify_module(mod string, file_path string) string {
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
 		return mod
 	}
-	if m1 := mod_path_to_full_name(mod, clean_file_path) {
+	if m1 := mod_path_to_full_name(pref, mod, clean_file_path) {
 		trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
 		return m1
 	}
@@ -50,10 +50,14 @@ pub fn qualify_module(mod string, file_path string) string {
 // * if possible split this function in two, one which gets the
 // parent module path and another which turns it into the full name
 // * create shared logic between these fns and builder.find_module_path
-pub fn mod_path_to_full_name(mod string, path string) ?string {
+pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
-	vmod_folders := ['vlib', '.vmodules', 'modules']
+	if mod == "sapp" {
+		println("mod_path_to_full_name: ($mod, $path) -> $pref.lookup_path ${os.vmodules_paths()}")
+	}
+	vmod_folders := ['vlib', 'vdevmodules','.vmodules', 'modules']
+	// vmod_folders := pref.lookup_path
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
 		if path.contains(vmod_folder + os.path_separator) {
