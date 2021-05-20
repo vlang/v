@@ -202,7 +202,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	for {
 		for file in ast_files {
 			if file.generic_fns.len > 0 {
-				c.change_current_file(file)
+				c.change_current_file(&file)
 				c.post_process_generic_fns()
 			}
 		}
@@ -251,7 +251,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
-fn (mut c Checker) file_has_main_fn(file ast.File) bool {
+fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
