@@ -59,15 +59,27 @@ fn get_all_commands() []Command {
 	}
 	res << Command{
 		line: '$vexe -o vtmp_werror -cstrict cmd/v'
-		okmsg: 'V can compile itself with -cstrict too.'
+		okmsg: 'V can compile itself with -cstrict.'
+	}
+	res << Command{
+		line: '$vexe -o vtmp_autofree -autofree cmd/v'
+		okmsg: 'V can compile itself with -autofree.'
+	}
+	res << Command{
+		line: '$vexe -o vtmp_prealloc -prealloc cmd/v'
+		okmsg: 'V can compile itself with -prealloc.'
+	}
+	res << Command{
+		line: '$vexe -o vtmp_unused -skip-unused cmd/v'
+		okmsg: 'V can compile itself with -skip-unused.'
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'
-		okmsg: 'All important .v files are invariant when processed with `v fmt`'
+		okmsg: 'All .v files are invariant when processed with `v fmt`'
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-fmt'
-		okmsg: 'All .v files can be processed with `v fmt`. NB: the result may not always be compilable, it just means that `v fmt` does not crash.'
+		okmsg: 'All .v files can be processed with `v fmt`. NB: the result may not always be compilable, but `v fmt` should not crash.'
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-self'
