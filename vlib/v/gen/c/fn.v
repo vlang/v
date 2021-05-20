@@ -829,8 +829,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if node.language == .c {
 		// Skip "C."
-		g.is_c_call = true
 		name = util.no_dots(name[2..])
+		g.is_c_call = true
 	} else {
 		name = c_name(name)
 	}

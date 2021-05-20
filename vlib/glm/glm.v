@@ -116,7 +116,7 @@ fn (a Vec3) print() {
 	x := a.x
 	y := a.y
 	z := a.z
-	C.printf('vec3{%f,%f,%f}\n', x, y, z)
+	C.printf(c'vec3{%f,%f,%f}\n', x, y, z)
 	// println('vec3{$x,$y,$z}')
 }
 

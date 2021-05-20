@@ -62,7 +62,7 @@ fn main() {
 	converter := C.wkhtmltopdf_create_converter(global_settings)
 	println('wkhtmltopdf_create_converter: ${voidptr(converter)}')
 	// convert
-	mut result := C.wkhtmltopdf_set_object_setting(object_settings, 'page', 'http://www.google.com.br')
+	mut result := C.wkhtmltopdf_set_object_setting(object_settings, c'page', c'http://www.google.com.br')
 	println('wkhtmltopdf_set_object_setting: $result [page = http://www.google.com.br]')
 	C.wkhtmltopdf_add_object(converter, object_settings, 0)
 	println('wkhtmltopdf_add_object')
