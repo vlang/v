@@ -1,4 +1,5 @@
 module c
+
 // Copyright (c) 2019-2021 Alexander Medvednikov. 2021 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -53,25 +54,22 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
 			}
 		} else if sym.kind in [.f32, .f64] {
-
 			if sym.kind == .f32 {
-				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g32("it")};')
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g32('it')};')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g64("it")};')
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g64('it')};')
 			}
-	
-		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
+
+			//	g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 		} else if sym.kind == .rune {
-		
 			// Rune are managed at this level as strings
-			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }}, {_SLIT("\`"), 0, {.d_c = 0 }}});')
-		
-		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {_SLIT("\`"), 0, {.d_c = 0 }}});')
+
+			//	g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
 		} else if sym.kind == .string {
-		
-			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = it }}, {_SLIT("\'"), 0, {.d_c = 0 }}});')
-		
-		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = it }}, {_SLIT("\'"), 0, {.d_c = 0 }}});')
+
+			//	g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
 			// There is a custom .str() method, so use it.
 			// NB: we need to take account of whether the user has defined
@@ -143,21 +141,19 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( $deref a[i]) );')
 			}
 		} else if sym.kind in [.f32, .f64] {
-
 			if sym.kind == .f32 {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32("a[i]")} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32('a[i]')} );')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64("a[i]")} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64('a[i]')} );')
 			}
-			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
-		
+			// g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("a[i]")});')
-			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq('a[i]')});')
+			// g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 		} else if sym.kind == .rune {
-			tmp_str := str_intp_rune("${elem_str_fn_name}(  $deref a[i])")
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
+			tmp_str := str_intp_rune('${elem_str_fn_name}(  $deref a[i])')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, $tmp_str);')
+			// g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( $deref a[i]));')
 		}

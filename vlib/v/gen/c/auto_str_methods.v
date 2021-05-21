@@ -5,11 +5,9 @@ module c
 import v.ast
 import v.util
 
-
 pub enum StrIntpType {
-	si_no_str = 0  // no parameter to print only fix string
+	si_no_str = 0 // no parameter to print only fix string
 	si_c
-	
 	si_u8
 	si_i8
 	si_u16
@@ -18,14 +16,12 @@ pub enum StrIntpType {
 	si_i32
 	si_u64
 	si_i64
-
 	si_e32
 	si_e64
 	si_f32
 	si_f64
 	si_g32
 	si_g64
-
 	si_s
 	si_p
 	si_vp
@@ -33,62 +29,56 @@ pub enum StrIntpType {
 
 pub fn type_to_str(x StrIntpType) string {
 	match x {
-		.si_no_str{ return "no_str" }
-		.si_c     { return "c" }
-		
-		.si_u8    { return "u8" }
-		.si_i8    { return "i8" }
-		.si_u16   { return "u16" }
-		.si_i16   { return "i16" }
-		.si_u32   { return "u32" }
-		.si_i32   { return "i32" }
-		.si_u64   { return "u64" }
-		.si_i64   { return "i64" }
-		
-		.si_f32   { return "f32" }
-		.si_f64   { return "f64" }
-		.si_g32   { return "f32" }  // g32 format use f32 data
-		.si_g64   { return "f64" }  // g64 format use f64 data
-		.si_e32   { return "f32" }  // e32 format use f32 data
-		.si_e64   { return "f64" }  // e64 format use f64 data
-
-		.si_s     { return "s" }
-		.si_p     { return "p" }
-		.si_vp    { return "vp" }
+		.si_no_str { return 'no_str' }
+		.si_c { return 'c' }
+		.si_u8 { return 'u8' }
+		.si_i8 { return 'i8' }
+		.si_u16 { return 'u16' }
+		.si_i16 { return 'i16' }
+		.si_u32 { return 'u32' }
+		.si_i32 { return 'i32' }
+		.si_u64 { return 'u64' }
+		.si_i64 { return 'i64' }
+		.si_f32 { return 'f32' }
+		.si_f64 { return 'f64' }
+		.si_g32 { return 'f32' } // g32 format use f32 data
+		.si_g64 { return 'f64' } // g64 format use f64 data
+		.si_e32 { return 'f32' } // e32 format use f32 data
+		.si_e64 { return 'f64' } // e64 format use f64 data
+		.si_s { return 's' }
+		.si_p { return 'p' }
+		.si_vp { return 'vp' }
 	}
 }
 
 pub fn data_str(x StrIntpType) string {
 	match x {
-		.si_no_str{ return "no_str" }
-		.si_c     { return "d_c" }
-		
-		.si_u8    { return "d_u8" }
-		.si_i8    { return "d_i8" }
-		.si_u16   { return "d_u16" }
-		.si_i16   { return "d_i16" }
-		.si_u32   { return "d_u32" }
-		.si_i32   { return "d_i32" }
-		.si_u64   { return "d_u64" }
-		.si_i64   { return "d_i64" }
-		
-		.si_f32   { return "d_f32" }
-		.si_f64   { return "d_f64" }
-		.si_g32   { return "d_f32" }  // g32 format use f32 data
-		.si_g64   { return "d_f64" }  // g64 format use f64 data
-		.si_e32   { return "d_f32" }  // e32 format use f32 data
-		.si_e64   { return "d_f64" }  // e64 format use f64 data
-
-		.si_s     { return "d_s" }
-		.si_p     { return "d_p" }
-		.si_vp    { return "d_vp" }
+		.si_no_str { return 'no_str' }
+		.si_c { return 'd_c' }
+		.si_u8 { return 'd_u8' }
+		.si_i8 { return 'd_i8' }
+		.si_u16 { return 'd_u16' }
+		.si_i16 { return 'd_i16' }
+		.si_u32 { return 'd_u32' }
+		.si_i32 { return 'd_i32' }
+		.si_u64 { return 'd_u64' }
+		.si_i64 { return 'd_i64' }
+		.si_f32 { return 'd_f32' }
+		.si_f64 { return 'd_f64' }
+		.si_g32 { return 'd_f32' } // g32 format use f32 data
+		.si_g64 { return 'd_f64' } // g64 format use f64 data
+		.si_e32 { return 'd_f32' } // e32 format use f32 data
+		.si_e64 { return 'd_f64' } // e64 format use f64 data
+		.si_s { return 'd_s' }
+		.si_p { return 'd_p' }
+		.si_vp { return 'd_vp' }
 	}
 }
 
 const (
 	// BUG: this const is not released from the memory! use a const for now
-	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = "0xfe10"
+	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+	si_s_code = '0xfe10'
 )
 
 fn should_use_indent_func(kind ast.Kind) bool {
@@ -209,24 +199,24 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	if sym.kind == .string {
-		tmp_res := "${parent_str_fn_name}(*($sym.cname*)it.data)"
+		tmp_res := '${parent_str_fn_name}(*($sym.cname*)it.data)'
 		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
-		//g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
+		// g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
 	} else {
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
-	
-	tmp_str := str_intp_sub("error: %%", "IError_str(it.err)")
-	g.auto_str_funcs.writeln('\t\tres = ${tmp_str};')
-	//g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
-	
+
+	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
+	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
+	// g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
+
 	g.auto_str_funcs.writeln('\t}')
-	
-	g.auto_str_funcs.writeln('\treturn ${str_intp_sub("Option(%%)", "res")};')
-	//g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
+
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	// g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -246,15 +236,15 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
-	
+
 	g.auto_str_funcs.writeln('\treturn str_intp(3, (StrIntpData[]){
-		{_SLIT0, ${si_s_code}, {.d_s = indents }},
-		{_SLIT("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = ${parent_str_fn_name}(it) }},
+		{_SLIT0, $c.si_s_code, {.d_s = indents }},
+		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
 		{_SLIT(")"), 0, {.d_c = 0 }} 
 	});')
-	
-	//g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
-	
+
+	// g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
+
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -287,20 +277,18 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(a.arg$i));')
 		} else if sym.kind in [.f32, .f64] {
-
 			if sym.kind == .f32 {
-				tmp_val := str_intp_g32("a.arg$i")
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_val});')
+				tmp_val := str_intp_g32('a.arg$i')
+				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
 			} else {
-				tmp_val := str_intp_g64("a.arg$i")
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_val});')
+				tmp_val := str_intp_g64('a.arg$i')
+				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
 			}
-			//g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
-			
+			// g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
-			tmp_str := str_intp_sq("a.arg$i")
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_str});')
-			//g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+			tmp_str := str_intp_sq('a.arg$i')
+			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_str);')
+			// g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 		} else if sym.kind == .function {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
 		} else {
@@ -389,35 +377,34 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 		//------------------------------------------
 		// str_intp
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
-	 	if typ == ast.string_type {
-	 		mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+		if typ == ast.string_type {
+			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
 			res := 'str_intp(2, (StrIntpData[]){
-				{_SLIT("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("${clean_interface_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			})'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return ${res};')
+			g.auto_str_funcs.write_string(' return $res;')
 		} else {
-	 		mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
 			res := 'str_intp(2, (StrIntpData[]){
-				{_SLIT("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("${clean_interface_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			})'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return ${res};')
+			g.auto_str_funcs.write_string(' return $res;')
 		}
 
 		//------------------------------------------
-/*
-
+		/*
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		value_fmt := if typ == ast.string_type { "'%.*s\\000'" } else { '%.*s\\000' }
 
@@ -428,7 +415,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 			g.auto_str_funcs.write_string(', indent_count')
 		}
 		g.auto_str_funcs.writeln('));')
-*/
+		*/
 		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\treturn _SLIT("unknown interface value");')
@@ -469,7 +456,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
-		
+
 		//------------------------------------------
 		// str_intp
 		if typ == ast.string_type {
@@ -479,10 +466,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 			}
 			val += ')'
 			res := 'str_intp(2, (StrIntpData[]){
-				{_SLIT("${clean_sum_type_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("${clean_sum_type_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			})'
-			g.auto_str_funcs.write_string('\t\tcase $typ: return ${res};')
+			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
 		} else {
 			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
 			if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -490,14 +477,14 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 			}
 			val += ')'
 			res := 'str_intp(2, (StrIntpData[]){
-				{_SLIT("${clean_sum_type_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("${clean_sum_type_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			})'
-			g.auto_str_funcs.write_string('\t\tcase $typ: return ${res};')
+			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
 		}
 
 		//------------------------------------------
-/*
+		/*
 		mut value_fmt := '%.*s\\000'
 		if typ == ast.string_type {
 			value_fmt = "'$value_fmt'"
@@ -507,7 +494,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 			g.auto_str_funcs.write_string(', indent_count')
 		}
 		g.auto_str_funcs.writeln('));')
-*/
+		*/
 		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
