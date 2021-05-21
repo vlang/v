@@ -110,7 +110,8 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
-				c.error('module name `$ast_import.mod` duplicate', ast_import.mod_pos)
+				c.error('`$ast_import.mod` was already imported on line ${
+					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
 			}
 		}
 	}
@@ -203,7 +204,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	for {
 		for file in ast_files {
 			if file.generic_fns.len > 0 {
-				c.change_current_file(file)
+				c.change_current_file(&file)
 				c.post_process_generic_fns()
 			}
 		}
@@ -252,7 +253,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
-fn (mut c Checker) file_has_main_fn(file ast.File) bool {
+fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
@@ -2054,7 +2055,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	// call struct field fn type
 	// TODO: can we use SelectorExpr for all? this dosent really belong here
 	if field := c.table.find_field(left_type_sym, method_name) {
-		field_type_sym := c.table.get_type_symbol(field.typ)
+		field_type_sym := c.table.get_type_symbol(c.unwrap_generic(field.typ))
 		if field_type_sym.kind == .function {
 			// call_expr.is_method = false
 			call_expr.is_field = true
