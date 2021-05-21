@@ -45,7 +45,7 @@ import sokol.gfx
 import sokol.sgl
 import time
 import os
-import  as obj
+import obj
 
 // GLSL Include and functions
 
@@ -90,7 +90,7 @@ fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	}
 }
 
-fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) .Mats {
+fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Mats {
 	proj := m4.perspective(60, w / h, 0.01, 100.0) // set far plane to 100 fro the zoom function
 	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1,
 		0, 0))
@@ -108,7 +108,7 @@ fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) .Mats 
 	nm := mv.inverse().transpose() // normal matrix
 	mvp := mv * view_proj // model view projection
 
-	return Mats{
+	return obj.Mats{
 		mv: mv
 		mvp: mvp
 		nm: nm
@@ -137,7 +137,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	mut zoom_scale := scale + f32(app.scroll_y) / (app.obj_part.radius * 4)
 	mats := calc_matrices(dw, dh, rot[0], rot[1], zoom_scale, model_pos)
 
-	mut tmp_vs_param := Tmp_vs_param{
+	mut tmp_vs_param := obj.Tmp_vs_param{
 		mv: mats.mv
 		mvp: mats.mvp
 		nm: mats.nm
@@ -149,10 +149,10 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	x_light := f32(math.cos(time_ticks) * radius_light)
 	z_light := f32(math.sin(time_ticks) * radius_light)
 
-	mut tmp_fs_params := Tmp_fs_param{}
+	mut tmp_fs_params := obj.Tmp_fs_param{}
 	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
 
-	sd := Shader_data{
+	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
 		vs_len: int(sizeof(tmp_vs_param))
 		fs_data: unsafe { &tmp_fs_params }
@@ -219,8 +219,8 @@ fn draw_end_glsl(app App) {
 * Init / Cleanup
 ******************************************************************************/
 fn my_init(mut app App) {
-	mut object := &ObjPart{}
-	obj_file_lines := read_lines_from_file(app.file_name)
+	mut object := &obj.ObjPart{}
+	obj_file_lines := obj.read_lines_from_file(app.file_name)
 	object.parse_obj_buffer(obj_file_lines, app.single_material_flag)
 	object.summary()
 	app.obj_part = object
@@ -241,7 +241,7 @@ fn my_init(mut app App) {
 		tmp_txt[1] = byte(0xFF)
 		tmp_txt[2] = byte(0xFF)
 		tmp_txt[3] = byte(0xFF)
-		app.texture = create_texture(1, 1, tmp_txt)
+		app.texture = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
