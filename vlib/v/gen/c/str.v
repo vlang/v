@@ -257,8 +257,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr && !is_var_mut {
-			g.write('str_intp(1, (StrIntpData[]){_SLIT("&"), ${si_s_code} ,{.d_s=')
-			//g.write('_STR("&%.*s\\000", 2, ')
+			g.write('str_intp(1, (StrIntpData[]){_SLIT("&"), $si_s_code ,{.d_s=')
+			// g.write('_STR("&%.*s\\000", 2, ')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
@@ -279,7 +279,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write(')')
 		if is_ptr && !is_var_mut {
 			g.write('}})')
-			//g.write(')')
+			// g.write(')')
 		}
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)

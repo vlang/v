@@ -47,8 +47,8 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l)
 	}
 }
 '
-	c_str_fn_defs = '' // NO _STR() test
-/*
+	c_str_fn_defs   = '' // NO _STR() test
+	/*
 	c_str_fn_defs = '
 void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
 	va_list args;
@@ -170,7 +170,7 @@ string _STR_TMP(const char *fmt, ...) {
 } // endof _STR_TMP
 
 '
-*/
+	*/
 	c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
