@@ -1,0 +1,5 @@
+import math.complex { Complex }
+
+fn main() {
+	assert *(&f64(&byte(&num) + __offsetof(Complex, re))) == 1.0
+}
