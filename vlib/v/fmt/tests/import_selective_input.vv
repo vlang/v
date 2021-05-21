@@ -59,4 +59,3 @@ fn main() {
 	println(file_ext('main.v'))
 	println(imaginary(1))
 }
-

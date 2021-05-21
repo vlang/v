@@ -909,7 +909,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					res = t.fn_signature(info.func, type_only: true)
+					res = t.fn_signature_using_aliases(info.func, import_aliases, type_only: true)
 				} else {
 					// FnFoo
 					res = t.shorten_user_defined_typenames(res, import_aliases)
@@ -1001,9 +1001,14 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		mut parts := res.split('.')
 		if parts.len > 1 {
 			ind := parts.len - 2
+			if t.is_fmt {
+				// Rejoin the module parts for correct usage of aliases
+				parts[ind] = parts[..ind + 1].join('.')
+			}
 			if parts[ind] in import_aliases {
 				parts[ind] = import_aliases[parts[ind]]
 			}
+
 			res = parts[ind..].join('.')
 		} else {
 			res = parts[0]
@@ -1018,6 +1023,10 @@ pub struct FnSignatureOpts {
 }
 
 pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
+	return t.fn_signature_using_aliases(func, map[string]string{}, opts)
+}
+
+pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string]string, opts FnSignatureOpts) string {
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
 		sb.write_string('fn ')
@@ -1041,7 +1050,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		if !opts.type_only {
 			sb.write_string('$param.name ')
 		}
-		styp := t.type_to_str(typ)
+		styp := t.type_to_str_using_aliases(typ, import_aliases)
 		if i == func.params.len - 1 && func.is_variadic {
 			sb.write_string('...$styp')
 		} else {
@@ -1050,7 +1059,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 	}
 	sb.write_string(')')
 	if func.return_type != ast.void_type {
-		sb.write_string(' ${t.type_to_str(func.return_type)}')
+		sb.write_string(' ${t.type_to_str_using_aliases(func.return_type, import_aliases)}')
 	}
 	return sb.str()
 }
