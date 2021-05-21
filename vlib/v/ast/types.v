@@ -1001,7 +1001,10 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		mut parts := res.split('.')
 		if parts.len > 1 {
 			ind := parts.len - 2
-			parts[ind] = parts[..ind + 1].join('.') // Rejoin the module parts
+			if t.is_fmt {
+				// Rejoin the module parts for correct usage of aliases
+				parts[ind] = parts[..ind + 1].join('.')
+			}
 			if parts[ind] in import_aliases {
 				parts[ind] = import_aliases[parts[ind]]
 			}
