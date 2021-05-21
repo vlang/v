@@ -3101,6 +3101,17 @@ You can also define special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
 * `testsuite_end` which will be run *after* all other test functions.
 
+If a test function has an error return type, any propagated errors will fail the test:
+
+```
+import strconv
+
+fn test_atoi() ? {
+	assert strconv.atoi('1') ? == 1
+	assert strconv.atoi('one') ? == 1 // test will fail
+}
+```
+
 #### Running tests
 
 To run test functions in an individual test file, use `v foo_test.v`.
