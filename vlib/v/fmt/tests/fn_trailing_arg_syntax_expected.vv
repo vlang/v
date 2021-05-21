@@ -22,6 +22,10 @@ fn main() {
 			y: 0
 		}
 	)
+	bar2_func({}, {})
+	bar2_func({ x: 's' },
+		x: 's'
+	)
 	baz_func('foo', 'bar',
 		x: 0
 		y: 0
@@ -38,6 +42,9 @@ fn main() {
 }
 
 fn bar_func(bar Bar) {
+}
+
+fn bar2_func(bar1 Bar, bar2 Bar) {
 }
 
 fn baz_func(a string, b string, baz Baz) {}
