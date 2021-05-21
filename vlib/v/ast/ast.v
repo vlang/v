@@ -628,13 +628,14 @@ pub:
 	pos      token.Position
 	mut_pos  token.Position
 pub mut:
-	scope  &Scope
-	obj    ScopeObject
-	mod    string
-	name   string
-	kind   IdentKind
-	info   IdentInfo
-	is_mut bool
+	comptime bool
+	scope    &Scope
+	obj      ScopeObject
+	mod      string
+	name     string
+	kind     IdentKind
+	info     IdentInfo
+	is_mut   bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {

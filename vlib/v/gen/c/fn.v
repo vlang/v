@@ -270,12 +270,14 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	g.writeln(') {')
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
-		g.defer_org_vars[defer_stmt.idx_in_fn] = []ast.Ident{len: defer_stmt.used_vars.len}
-		g.defer_tmp_vars[defer_stmt.idx_in_fn] = []ast.Ident{len: defer_stmt.used_vars.len}
-		g.defer_org_var_names[defer_stmt.idx_in_fn] = []string{len: defer_stmt.used_vars.len}
-		g.defer_tmp_var_names[defer_stmt.idx_in_fn] = []string{len: defer_stmt.used_vars.len}
+		g.defer_org_vars[defer_stmt.idx_in_fn] = []ast.Ident{}
+		g.defer_tmp_vars[defer_stmt.idx_in_fn] = []ast.Ident{}
+		g.defer_org_var_names[defer_stmt.idx_in_fn] = []string{}
+		g.defer_tmp_var_names[defer_stmt.idx_in_fn] = []string{}
 		g.defer_idx = defer_stmt.idx_in_fn
-		for i, ident in defer_stmt.used_vars {
+		mut ds := defer_stmt
+		ds.used_vars = ds.used_vars.filter(it.name != '')
+		for ident in ds.used_vars {
 			mut ident_ := ident
 			if ident.info is ast.IdentVar {
 				mut info := ident_.info
@@ -292,10 +294,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				ident_.kind = .variable
 				info.typ = info.typ.set_nr_muls(info.typ.nr_muls() + 1)
 				ident_.info = info
-				g.defer_org_vars[defer_stmt.idx_in_fn][i] = ident
-				g.defer_tmp_vars[defer_stmt.idx_in_fn][i] = ident_
-				g.defer_org_var_names[defer_stmt.idx_in_fn][i] = ident.name
-				g.defer_tmp_var_names[defer_stmt.idx_in_fn][i] = ident_.name
+				g.defer_org_vars[defer_stmt.idx_in_fn] << ident
+				g.defer_tmp_vars[defer_stmt.idx_in_fn] << ident_
+				g.defer_org_var_names[defer_stmt.idx_in_fn] << ident.name
+				g.defer_tmp_var_names[defer_stmt.idx_in_fn] << ident_.name
 				if write {
 					g.writeln('${g.typ(info.typ)} $tmp_var; // $ident.name')
 				}

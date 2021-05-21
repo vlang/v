@@ -76,6 +76,7 @@ mut:
 	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
+	comp_if_cond        bool
 	global_labels       []string
 	inside_defer        bool
 	defer_vars          []ast.Ident
@@ -1753,6 +1754,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		if name == '_' {
 			return ast.Ident{
 				tok_kind: p.tok.kind
+				comptime: p.comp_if_cond
 				name: '_'
 				kind: .blank_ident
 				pos: pos
@@ -1772,6 +1774,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		return ast.Ident{
 			tok_kind: p.tok.kind
 			kind: .unresolved
+			comptime: p.comp_if_cond
 			name: name
 			language: language
 			mod: p.mod

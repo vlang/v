@@ -3892,6 +3892,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, ident in node.used_vars {
 				mut id := ident
 				if id.info is ast.IdentVar {
+					if id.comptime && (id.name in checker.valid_comp_if_compilers
+						|| id.name in checker.valid_comp_if_os
+						|| id.name in checker.valid_comp_if_other
+						|| id.name in checker.valid_comp_if_platforms) {
+						node.used_vars[i] = ast.Ident{
+							scope: 0
+							name: ''
+						}
+						continue
+					}
 					mut info := id.info as ast.IdentVar
 					typ := c.ident(mut id)
 					if typ == ast.error_type_idx {
