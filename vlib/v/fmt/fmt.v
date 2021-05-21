@@ -2195,6 +2195,7 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
 	f.write('__offsetof(${f.table.type_to_str_using_aliases(node.struct_type, f.mod2alias)}, $node.field)')
+	f.mark_types_import_as_used(node.struct_type)
 }
 
 pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
