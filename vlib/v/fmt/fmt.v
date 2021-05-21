@@ -75,11 +75,10 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
-		mod := imp.mod.all_after_last('.')
-		f.mod2alias[mod] = imp.alias
+		f.mod2alias[imp.mod] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
-			f.mod2alias['${mod}.$sym.name'] = sym.name
+			f.mod2alias['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
@@ -211,7 +210,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if vals.len < 2 {
 		return name
 	}
-	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
+	idx := vals.len - 1
+	mname, tprefix := f.get_modname_prefix(vals[..idx].join('.'))
 	symname := vals[vals.len - 1]
 	aname := f.mod2alias[mname]
 	if aname == '' {
@@ -2194,7 +2194,7 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 }
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
-	f.write('__offsetof(${f.table.type_to_str(node.struct_type)}, $node.field)')
+	f.write('__offsetof(${f.table.type_to_str_using_aliases(node.struct_type, f.mod2alias)}, $node.field)')
 }
 
 pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
@@ -2427,7 +2427,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
-	f.write(f.table.type_to_str(node.typ))
+	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 }
 
 pub fn (mut f Fmt) type_of(node ast.TypeOf) {
