@@ -7,6 +7,7 @@ This file contains string interpolation V functions
 =============================================================================*/
 
 module builtin
+
 import strconv
 import strings
 
@@ -14,9 +15,8 @@ import strings
 // Enum format types max 0x1F => 32 types
 //=============================================================================
 pub enum StrIntpType {
-	si_no_str = 0  // no parameter to print only fix string
+	si_no_str = 0 // no parameter to print only fix string
 	si_c
-	
 	si_u8
 	si_i8
 	si_u16
@@ -25,14 +25,12 @@ pub enum StrIntpType {
 	si_i32
 	si_u64
 	si_i64
-
 	si_e32
 	si_e64
 	si_f32
 	si_f64
 	si_g32
 	si_g64
-
 	si_s
 	si_p
 	si_vp
@@ -40,28 +38,25 @@ pub enum StrIntpType {
 
 pub fn (x StrIntpType) str() string {
 	match x {
-		.si_no_str{ return "no_str" }
-		.si_c     { return "c" }
-		
-		.si_u8    { return "u8" }
-		.si_i8    { return "i8" }
-		.si_u16   { return "u16" }
-		.si_i16   { return "i16" }
-		.si_u32   { return "u32" }
-		.si_i32   { return "i32" }
-		.si_u64   { return "u64" }
-		.si_i64   { return "i64" }
-		
-		.si_f32   { return "f32" }
-		.si_f64   { return "f64" }
-		.si_g32   { return "f32" }  // g32 format use f32 data
-		.si_g64   { return "f64" }  // g64 format use f64 data
-		.si_e32   { return "f32" }  // e32 format use f32 data
-		.si_e64   { return "f64" }  // e64 format use f64 data
-
-		.si_s     { return "s" }
-		.si_p     { return "p" }
-		.si_vp    { return "vp" }
+		.si_no_str { return 'no_str' }
+		.si_c { return 'c' }
+		.si_u8 { return 'u8' }
+		.si_i8 { return 'i8' }
+		.si_u16 { return 'u16' }
+		.si_i16 { return 'i16' }
+		.si_u32 { return 'u32' }
+		.si_i32 { return 'i32' }
+		.si_u64 { return 'u64' }
+		.si_i64 { return 'i64' }
+		.si_f32 { return 'f32' }
+		.si_f64 { return 'f64' }
+		.si_g32 { return 'f32' } // g32 format use f32 data
+		.si_g64 { return 'f64' } // g64 format use f64 data
+		.si_e32 { return 'f32' } // e32 format use f32 data
+		.si_e64 { return 'f64' } // e64 format use f64 data
+		.si_s { return 's' }
+		.si_p { return 'p' }
+		.si_vp { return 'vp' }
 	}
 }
 
@@ -100,11 +95,11 @@ pub fn (x StrIntpType) data_str() string {
 pub union StrIntpMem {
 pub mut:
 	d_c   u32
-	d_u8  byte 
-	d_i8  i8 
-	d_u16 u16 
-	d_i16 i16 
-	d_u32 u32 
+	d_u8  byte
+	d_i8  i8
+	d_u16 u16
+	d_i16 i16
+	d_u32 u32
 	d_i32 int
 	d_u64 u64
 	d_i64 i64
@@ -116,22 +111,30 @@ pub mut:
 }
 
 fn abs(x int) int {
-	if x < 0 { return -x }
+	if x < 0 {
+		return -x
+	}
 	return x
 }
 
 fn fabs64(x f64) f64 {
-	if x < 0 { return -x }
+	if x < 0 {
+		return -x
+	}
 	return x
 }
 
 fn fabs32(x f32) f32 {
-	if x < 0 { return -x }
+	if x < 0 {
+		return -x
+	}
 	return x
 }
 
 fn abs64(x i64) u64 {
-	if x < 0 { return u64(-x) }
+	if x < 0 {
+		return u64(-x)
+	}
 	return u64(x)
 }
 
@@ -159,74 +162,83 @@ fn abs64(x i64) u64 {
 
 // convert from data format to compact u64
 pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
-	width      := if in_width != 0 { abs64(in_width) } else { u64(0) }
-	allign     := if in_width > 0 { u64(1 << 5) } else { u64(0) }  // two bit 0 .left 1 .rigth, for now we use only one
+	width := if in_width != 0 { abs64(in_width) } else { u64(0) }
+	allign := if in_width > 0 { u64(1 << 5) } else { u64(0) } // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
-	sign       := if in_sign { u64(1 << 8) } else { u64(0) }
-	precision  := if in_precision != 987698 { (u64(in_precision & 0x7F) << 9)  } else { u64(0x7F) << 9 }
-	tail_zeros := if in_tail_zeros {u32(1) << 16} else { u32(0) }
-	base       := u64((in_base & 0xf) << 27)
-	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31) )
+	sign := if in_sign { u64(1 << 8) } else { u64(0) }
+	precision := if in_precision != 987698 {
+		(u64(in_precision & 0x7F) << 9)
+	} else {
+		u64(0x7F) << 9
+	}
+	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
+	base := u64((in_base & 0xf) << 27)
+	res := u64((u64(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31))
 	return res
 }
 
 // convert from data format to compact u32
 pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
-	width      := if in_width != 0 { abs64(in_width) } else { u32(0) }
-	allign     := if in_width > 0 { u32(1 << 5) } else { u32(0) }  // two bit 0 .left 1 .rigth, for now we use only one
+	width := if in_width != 0 { abs64(in_width) } else { u32(0) }
+	allign := if in_width > 0 { u32(1 << 5) } else { u32(0) } // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }
-	sign       := if in_sign { u32(1 << 8) } else { u32(0) }
-	precision  := if in_precision != 987698 { (u32(in_precision & 0x7F) << 9)  } else { u32(0x7F) << 9 }
-	tail_zeros := if in_tail_zeros {u32(1) << 16} else { u32(0) }
-	base       := u32((in_base & 0xf) << 27)
-	res := u32( (u32(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31) )
+	sign := if in_sign { u32(1 << 8) } else { u32(0) }
+	precision := if in_precision != 987698 {
+		(u32(in_precision & 0x7F) << 9)
+	} else {
+		u32(0x7F) << 9
+	}
+	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
+	base := u32((in_base & 0xf) << 27)
+	res := u32((u32(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31))
 	return res
 }
 
 // convert from struct to formated string
 [manualfree]
-fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
-	x              := data.fmt
-	typ            := StrIntpType(x & 0x1F)
-	allign         := int((x >> 5) & 0x01)
-	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
-	sign           := int((x >> 8) & 0x01)
-	precision      := int((x >> 9) & 0x7F)
-	tail_zeros     := if ((x >> 16) & 0x01) > 0 { true } else { false }
-	width          := int(i16((x >> 17) & 0x3FF))
-	mut base       := int(x >> 27) & 0xF
-	fmt_pad_ch     := byte((x >> 31) & 0xFF)
-	
-	// no string interpolation is needed, return empty string
-	if typ == .si_no_str { return }
+fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
+	x := data.fmt
+	typ := StrIntpType(x & 0x1F)
+	allign := int((x >> 5) & 0x01)
+	upper_case := if ((x >> 7) & 0x01) > 0 { true } else { false }
+	sign := int((x >> 8) & 0x01)
+	precision := int((x >> 9) & 0x7F)
+	tail_zeros := if ((x >> 16) & 0x01) > 0 { true } else { false }
+	width := int(i16((x >> 17) & 0x3FF))
+	mut base := int(x >> 27) & 0xF
+	fmt_pad_ch := byte((x >> 31) & 0xFF)
 
-	//if width > 0 { println("${x.hex()} Type: ${x & 0x7F} Width: ${width} Precision: ${precision} allign:${allign}") }
+	// no string interpolation is needed, return empty string
+	if typ == .si_no_str {
+		return
+	}
+
+	// if width > 0 { println("${x.hex()} Type: ${x & 0x7F} Width: ${width} Precision: ${precision} allign:${allign}") }
 
 	// manage base if any
 	if base > 0 {
 		base += 2 // we start from 2, 0 == base 10
-	}	
-	
+	}
+
 	// mange pad char, for now only 0 allowed
 	mut pad_ch := byte(` `)
 	if fmt_pad_ch > 0 {
-		//pad_ch = fmt_pad_ch
+		// pad_ch = fmt_pad_ch
 		pad_ch = `0`
 	}
 
 	len0_set := if width > 0 { width } else { -1 }
-	len1_set := if precision == 0x7F { -1 } else {precision}
-	sign_set := if sign == 1 {true} else {false} 
+	len1_set := if precision == 0x7F { -1 } else { precision }
+	sign_set := if sign == 1 { true } else { false }
 
-
-	mut bf := strconv.BF_param {
-		pad_ch       : pad_ch     // padding char
-		len0         : len0_set   // default len for whole the number or string
-		len1         : len1_set   // number of decimal digits, if needed
-		positive     : true       // mandatory: the sign of the number passed
-		sign_flag    : sign_set   // flag for print sign as prefix in padding
-		allign       : .left      // alignment of the string
-		rm_tail_zero : tail_zeros // false // remove the tail zeros from floats
+	mut bf := strconv.BF_param{
+		pad_ch: pad_ch // padding char
+		len0: len0_set // default len for whole the number or string
+		len1: len1_set // number of decimal digits, if needed
+		positive: true // mandatory: the sign of the number passed
+		sign_flag: sign_set // flag for print sign as prefix in padding
+		allign: .left // alignment of the string
+		rm_tail_zero: tail_zeros // false // remove the tail zeros from floats
 	}
 
 	// allign
@@ -235,7 +247,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 			0 { bf.allign = .left }
 			1 { bf.allign = .right }
 			// 2 { bf.allign = .center }
-			else {bf.allign = .left }
+			else { bf.allign = .left }
 		}
 	} else {
 		bf.allign = .right
@@ -243,7 +255,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 
 	unsafe {
 		// strings
-		if typ == .si_s   { 
+		if typ == .si_s {
 			mut s := ''
 			if upper_case {
 				s = data.d.d_s.to_upper()
@@ -258,13 +270,17 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 			s.free()
 			return
 		}
-	
+
 		// signed int
 		if typ in [.si_i8, .si_i16, .si_i32, .si_i64] {
 			mut d := data.d.d_i64
-			if typ == .si_i8 { d = i64(data.d.d_i8) }
-			else if typ == .si_i16 { d = i64(data.d.d_i16) }
-			else if typ == .si_i32 { d = i64(data.d.d_i32) }
+			if typ == .si_i8 {
+				d = i64(data.d.d_i8)
+			} else if typ == .si_i16 {
+				d = i64(data.d.d_i16)
+			} else if typ == .si_i32 {
+				d = i64(data.d.d_i32)
+			}
 
 			if base == 0 {
 				if width == 0 {
@@ -273,7 +289,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					d_str.free()
 					return
 				}
-				if d < 0 { bf.positive = false }
+				if d < 0 {
+					bf.positive = false
+				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(data.d.d_u64, base)
@@ -305,7 +323,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(d, base)
-				if upper_case { 
+				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
 					tmp.free()
@@ -321,9 +339,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 		}
 
 		// pointers
-		if typ in [.si_p] {
+		if typ == .si_p {
 			mut d := data.d.d_u64
-			base = 16  // TODO: **** decide the behaviour of this flag! ****
+			base = 16 // TODO: **** decide the behaviour of this flag! ****
 			if base == 0 {
 				if width == 0 {
 					d_str := d.str()
@@ -334,7 +352,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(d, base)
-				if upper_case { 
+				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
 					tmp.free()
@@ -347,7 +365,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				hx.free()
 			}
 			return
-		} 
+		}
 
 		// default settings for floats
 		mut use_default_str := false
@@ -359,10 +377,10 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 			bf.len1 = 3
 		}
 
-		match typ {	
+		match typ {
 			// floating point
 			.si_f32 {
-				//println("HERE: f32")
+				// println("HERE: f32")
 				if use_default_str {
 					mut f := data.d.d_f32.str()
 					if upper_case {
@@ -373,9 +391,11 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					//println("HERE: f32 format")
-					//println(data.d.d_f32)
-					if data.d.d_f32 < 0 { bf.positive = false }
+					// println("HERE: f32 format")
+					// println(data.d.d_f32)
+					if data.d.d_f32 < 0 {
+						bf.positive = false
+					}
 					mut f := strconv.format_fl(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
@@ -386,8 +406,8 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					f.free()
 				}
 			}
-			.si_f64 { 
-				//println("HERE: f64")
+			.si_f64 {
+				// println("HERE: f64")
 				if use_default_str {
 					mut f := data.d.d_f64.str()
 					if upper_case {
@@ -398,10 +418,16 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }	
-					f_union := strconv.Float64u{f:data.d.d_f64}
-					if f_union.u == strconv.double_minus_zero { bf.positive = false }
-					
+					if data.d.d_f64 < 0 {
+						bf.positive = false
+					}
+					f_union := strconv.Float64u{
+						f: data.d.d_f64
+					}
+					if f_union.u == strconv.double_minus_zero {
+						bf.positive = false
+					}
+
 					mut f := strconv.format_fl(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
@@ -413,7 +439,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				}
 			}
 			.si_g32 {
-				//println("HERE: g32")
+				// println("HERE: g32")
 				if use_default_str {
 					mut f := data.d.d_f32.strg()
 					if upper_case {
@@ -424,7 +450,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f32 < 0 { bf.positive = false }
+					if data.d.d_f32 < 0 {
+						bf.positive = false
+					}
 					d := fabs32(data.d.d_f32)
 					if d < 999_999.0 && d >= 0.00001 {
 						mut f := strconv.format_fl(data.d.d_f32, bf)
@@ -448,7 +476,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				}
 			}
 			.si_g64 {
-				//println("HERE: g64")
+				// println("HERE: g64")
 				if use_default_str {
 					mut f := data.d.d_f64.strg()
 					if upper_case {
@@ -459,7 +487,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
+					if data.d.d_f64 < 0 {
+						bf.positive = false
+					}
 					d := fabs64(data.d.d_f64)
 					if d < 999_999.0 && d >= 0.00001 {
 						mut f := strconv.format_fl(data.d.d_f64, bf)
@@ -483,7 +513,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				}
 			}
 			.si_e32 {
-				//println("HERE: e32")
+				// println("HERE: e32")
 				bf.len1 = 6
 				if use_default_str {
 					mut f := data.d.d_f32.str()
@@ -495,7 +525,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f32 < 0 { bf.positive = false }
+					if data.d.d_f32 < 0 {
+						bf.positive = false
+					}
 					mut f := strconv.format_es(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
@@ -507,7 +539,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 				}
 			}
 			.si_e64 {
-				//println("HERE: e64")
+				// println("HERE: e64")
 				bf.len1 = 6
 				if use_default_str {
 					mut f := data.d.d_f64.str()
@@ -519,7 +551,9 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
+					if data.d.d_f64 < 0 {
+						bf.positive = false
+					}
 					mut f := strconv.format_es(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
@@ -530,21 +564,19 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 					f.free()
 				}
 			}
-
 			// runes
-			.si_c   { sb.write_string(utf32_to_str(data.d.d_c)) }
-
+			.si_c {
+				sb.write_string(utf32_to_str(data.d.d_c))
+			}
 			// v pointers
-			.si_vp  {
+			.si_vp {
 				sb.write_string(u64(data.d.d_vp).hex())
 			}
-
-			else { sb.write_string("***ERROR!***")}
-
+			else {
+				sb.write_string('***ERROR!***')
+			}
 		}
-		
 	}
-
 }
 
 //====================================================================================
@@ -552,29 +584,29 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 // storing struct used by cgen
 pub struct StrIntpCgenData {
 pub:
-	str     string
-	fmt     string
-	d       string
+	str string
+	fmt string
+	d   string
 }
 
-// NOTE: LOW LEVEL struct 
+// NOTE: LOW LEVEL struct
 // storing struct passed to V in the C code
 pub struct StrIntpData {
 pub:
-	str     string
-	//fmt     u64  // expanded version for future use, 64 bit
-	fmt     u32
-	d       StrIntpMem
+	str string
+	// fmt     u64  // expanded version for future use, 64 bit
+	fmt u32
+	d   StrIntpMem
 }
 
 // interpolation function
 [manualfree]
 pub fn str_intp(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
-	unsafe{	
+	unsafe {
 		mut i := 0
 		for i < data_len {
-			data := &StrIntpData( byteptr(in_data) + (int(sizeof(StrIntpData)) * i) )
+			data := &StrIntpData(&byte(in_data) + (int(sizeof(StrIntpData)) * i))
 			// avoid empty strings
 			if data.str.len != 0 {
 				res.write_string(data.str)
@@ -586,9 +618,8 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 			i++
 		}
 	}
-	
 	ret := res.str()
-	unsafe{ res.free() }
+	unsafe { res.free() }
 	return ret
 }
 
@@ -600,40 +631,44 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 
 pub const (
 	// BUG: this const is not released from the memory! use a const for now
-	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = "0xfe10"
-	si_g32_code = "0xfe0e"
-	si_g64_code = "0xfe0f"
+	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+	si_s_code   = '0xfe10'
+	si_g32_code = '0xfe0e'
+	si_g64_code = '0xfe0f'
 )
 
 // replace _STR("\'%.*s\\000\'", 2, in_str)
 [inline]
 pub fn str_intp_sq(in_str string) string {
-	return 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	return 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = $in_str}},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 }
 
 // replace _STR("\`%.*s\\000\`", 2, in_str)
 [inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+	return 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = $in_str}},{_SLIT("\`"), 0, {.d_c = 0 }}})'
 }
 
 [inline]
 pub fn str_intp_g32(in_str string) string {
-	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), ${si_g32_code}, {.d_f32 = ${in_str} }}})'
+	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), $si_g32_code, {.d_f32 = $in_str }}})'
 }
 
 [inline]
 pub fn str_intp_g64(in_str string) string {
-	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), ${si_g64_code}, {.d_f64 = ${in_str} }}})'
+	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), $si_g64_code, {.d_f64 = $in_str }}})'
 }
 
 // replace %% with the in_str
 pub fn str_intp_sub(base_str string, in_str string) string {
-	index := base_str.index("%%") or {eprintln("No strin interpolation %% parameteres") exit(1)}
-	//return base_str[..index] + in_str + base_str[index+2..]
-	if index + 2 < base_str.len {
-		return 'str_intp(2, (StrIntpData[]){{_SLIT("${base_str[..index]}"), ${si_s_code}, {.d_s = ${in_str} }},{_SLIT("${base_str[index+2..]}"), 0, {.d_c = 0}}})'
+	index := base_str.index('%%') or {
+		eprintln('No strin interpolation %% parameteres')
+		exit(1)
 	}
-	return 'str_intp(1, (StrIntpData[]){{_SLIT("${base_str[..index]}"), ${si_s_code}, {.d_s = ${in_str} }}})'
+	// return base_str[..index] + in_str + base_str[index+2..]
+	if index + 2 < base_str.len {
+		return 'str_intp(2, (StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }},{_SLIT("${base_str[
+			index + 2..]}"), 0, {.d_c = 0}}})'
+	}
+	return 'str_intp(1, (StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }}})'
 }
