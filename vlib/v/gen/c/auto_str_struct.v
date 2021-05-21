@@ -1,15 +1,15 @@
 module c
+
 // Copyright (c) 2019-2021 Alexander Medvednikov. 2021 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 import v.ast
 import v.util
 
 fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	if typ == ast.byte_type_idx {
 		return .si_u8
-	}	
+	}
 	if typ == ast.char_type_idx {
 		return .si_c
 	}
@@ -18,7 +18,7 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	}
 	if typ in ast.charptr_types {
 		return .si_s
-		//return '%C\\000' // a C string
+		// return '%C\\000' // a C string
 	}
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
@@ -28,7 +28,7 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
-		//return "'%.*s\\000'"
+		// return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		if sym.kind == .f32 {
 			return .si_g32
@@ -48,7 +48,7 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 }
 
 fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string) {
-	//g.gen_str_for_struct1(info, styp, str_fn_name)
+	// g.gen_str_for_struct1(info, styp, str_fn_name)
 
 	// TODO: short it if possible
 	// generates all definitions of substructs
@@ -89,29 +89,29 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	if info.fields.len == 0 {
 		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')
 	} else {
-		g.auto_str_funcs.write_string('\treturn str_intp( ${info.fields.len * 4 + 3 },(StrIntpData[]){\n')
+		g.auto_str_funcs.write_string('\treturn str_intp( ${info.fields.len * 4 + 3},(StrIntpData[]){\n')
 		g.auto_str_funcs.write_string('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {}},\n')
-		
+
 		for i, field in info.fields {
 			mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
 			base_fmt := g.type_to_fmt1(field.typ)
-			
+
 			// manage prefix and quote symbol for the filed
-			mut quote_str := ""
-			mut prefix := ""
+			mut quote_str := ''
+			mut prefix := ''
 			sym := g.table.get_type_symbol(field.typ)
 			if sym.kind == .string {
 				quote_str = "'"
 			} else if field.typ in ast.charptr_types {
 				quote_str = '\\"'
-				prefix    = 'C'
+				prefix = 'C'
 			}
 
 			// first fields doesn't need \n
 			if i == 0 {
-				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT0, $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			} else {
-				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			}
 
 			// custom methods management
@@ -125,10 +125,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 			// manage the fact hat with float we use always the g representation
 			if sym.kind !in [.f32, .f64] {
-				g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
+				g.auto_str_funcs.write_string('{_SLIT("$quote_str"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
 			} else {
-				g_fmt := "0x"+(u32(base_fmt) | u32(0x7F) << 9).hex()
-				g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${g_fmt}, {.${data_str(base_fmt)}=')
+				g_fmt := '0x' + (u32(base_fmt) | u32(0x7F) << 9).hex()
+				g.auto_str_funcs.write_string('{_SLIT("$quote_str"), $g_fmt, {.${data_str(base_fmt)}=')
 			}
 
 			mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
@@ -144,24 +144,23 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 					&& !field.typ.is_float_valptr() {
 					g.auto_str_funcs.write_string('*')
 				}
-			} 
+			}
 			// handle circular ref type of struct to the struct itself
 			if styp == field_styp {
 				g.auto_str_funcs.write_string('_SLIT("<circular>")')
 			} else {
 				// manage C charptr
 				if field.typ in ast.charptr_types {
-					g.auto_str_funcs.write_string("tos2((byteptr)$func)")
+					g.auto_str_funcs.write_string('tos2((byteptr)$func)')
 				} else {
 					g.auto_str_funcs.write_string(func)
 				}
 			}
-			
-			g.auto_str_funcs.write_string('}}, {_SLIT("${quote_str}"),0},\n')
+
+			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"),0},\n')
 		}
-		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("}"), 0, {}},\n')
+		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {}},\n')
 		g.auto_str_funcs.write_string('\t});\n')
-		
 	}
 	g.auto_str_funcs.writeln('}')
 }
@@ -196,20 +195,19 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 
 			if sym.kind == .f32 {
 				return 'str_intp(1, (StrIntpData[]){
-					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }}
+					{_SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
 				})'
 			} else if sym.kind == .f64 {
 				return 'str_intp(1, (StrIntpData[]){
-					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
+					{_SLIT0, $si_g64_code, {.d_f64 = *$method_str }}
 				})'
-			}
-			else if sym.kind == .u64 {
+			} else if sym.kind == .u64 {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}})'
+				return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}})'
 			}
 
 			fmt_type := StrIntpType.si_i32
-			return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}})'
+			return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}})'
 		}
 		return method_str
 	}
