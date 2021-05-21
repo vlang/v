@@ -983,6 +983,7 @@ pub:
 	pos   token.Position
 pub mut:
 	used_vars []Ident
+	skip_vars []Ident
 	ifdef     string
 	idx_in_fn int = -1 // index in FnDecl.defer_stmts
 }

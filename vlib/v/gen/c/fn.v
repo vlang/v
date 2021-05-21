@@ -101,8 +101,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// g.gen_attrs(it.attrs)
 	g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
+	g.defer_skip_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
 	g.defer_tmp_var_names = [][]string{len: node.defer_stmts.len}
+	g.defer_skip_var_names = [][]string{len: node.defer_stmts.len}
 	g.defer_used_vars = map[string]string{}
 	if node.language == .c {
 		// || node.no_body {
@@ -272,8 +274,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
 		g.defer_org_vars[defer_stmt.idx_in_fn] = []ast.Ident{}
 		g.defer_tmp_vars[defer_stmt.idx_in_fn] = []ast.Ident{}
+		g.defer_skip_vars[defer_stmt.idx_in_fn] = []ast.Ident{}
 		g.defer_org_var_names[defer_stmt.idx_in_fn] = []string{}
 		g.defer_tmp_var_names[defer_stmt.idx_in_fn] = []string{}
+		g.defer_skip_var_names[defer_stmt.idx_in_fn] = []string{}
 		g.defer_idx = defer_stmt.idx_in_fn
 		mut ds := defer_stmt
 		ds.used_vars = ds.used_vars.filter(it.name != '')
@@ -302,6 +306,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					g.writeln('${g.typ(info.typ)} $tmp_var; // $ident.name')
 				}
 			}
+		}
+		for ident in ds.skip_vars {
+			g.defer_skip_vars[defer_stmt.idx_in_fn] << ident
+			g.defer_skip_var_names[defer_stmt.idx_in_fn] << ident.name
 		}
 		mut stmts := defer_stmt.stmts
 		g.edit_defer_stmts(mut stmts)

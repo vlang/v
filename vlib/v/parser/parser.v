@@ -80,6 +80,7 @@ mut:
 	global_labels       []string
 	inside_defer        bool
 	defer_vars          []ast.Ident
+	defer_skip_vars     []ast.Ident
 }
 
 // for tests
@@ -800,6 +801,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.DeferStmt{
 				stmts: stmts
 				used_vars: p.defer_vars
+				skip_vars: p.defer_skip_vars
 				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
@@ -1694,7 +1696,15 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// collect things upto hard boundaries
 	tok := p.tok
 	mut pos := tok.position()
+	mut defer_vars := p.defer_vars
+	p.defer_vars = []ast.Ident{}
 	left, left_comments := p.expr_list()
+	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+		defer_vars << p.defer_vars
+	} else {
+		p.defer_skip_vars << p.defer_vars
+	}
+	p.defer_vars = defer_vars
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
@@ -1965,7 +1975,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					node = ident
 					if p.inside_defer {
 						if p.defer_vars.filter(it.name == ident.name
-							&& it.mod == ident.mod).len == 0 && ident.name != 'err' {
+							&& it.mod == ident.mod).len == 0 && ident.name != 'err'
+							&& p.defer_skip_vars.filter(it.name == ident.name
+							&& it.mod == ident.mod).len == 0 {
 							p.defer_vars << ident
 						}
 					}
@@ -1993,7 +2005,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		node = ident
 		if p.inside_defer {
 			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
-				&& ident.name != 'err' {
+				&& ident.name != 'err' && p.defer_skip_vars.filter(it.name == ident.name
+				&& it.mod == ident.mod).len == 0 {
 				p.defer_vars << ident
 			}
 		}
@@ -2112,7 +2125,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		node = ident
 		if p.inside_defer {
 			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
-				&& ident.name != 'err' {
+				&& ident.name != 'err' && p.defer_skip_vars.filter(it.name == ident.name
+				&& it.mod == ident.mod).len == 0 {
 				p.defer_vars << ident
 			}
 		}
