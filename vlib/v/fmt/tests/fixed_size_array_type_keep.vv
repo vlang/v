@@ -12,3 +12,17 @@ fn foo() [1]f32 {
 fn main() {
 	_ := [5]string{init: 'abc'}
 }
+
+// NB: secret_key_size is missing here on purpose
+// vfmt should leave it as is, assuming it is comming
+// from another .v file
+
+struct VerifyKey {
+	public_key [public_key_size]byte
+}
+
+struct SigningKey {
+	secret_key [secret_key_size]byte
+pub:
+	verify_key VerifyKey
+}
