@@ -14,5 +14,7 @@ pub fn test_anon_fn_void(func fn ()) int {
 
 fn C.HasAnonFnWithNamedParams(cb fn (c C.bar, d voidptr))
 
-fn keep_param_names_in_anon_fn(f fn (a []int) []int) {
-}
+// NB: the signature of both anonymus functions should only differs in the param name
+fn anon_fn_param_has_no_name(f fn (int) string) {}
+
+fn anon_fn_with_named_param(func fn (a int) string) {}
