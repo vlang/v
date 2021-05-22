@@ -184,9 +184,12 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut '
 		}
-		sig += arg.name
+		// NB: arg name is only added for fmt, else it would causes errors with generics
+		if t.is_fmt && arg.name.len > 0 {
+			sig += '$arg.name '
+		}
 		arg_type_sym := t.get_type_symbol(arg.typ)
-		sig += '$arg_type_sym.name'
+		sig += arg_type_sym.name
 		if i < f.params.len - 1 {
 			sig += ', '
 		}
