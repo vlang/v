@@ -1,5 +1,7 @@
 module unix
 
+#include <sys/un.h>
+
 // Select represents a select operation
 enum Select {
 	read
