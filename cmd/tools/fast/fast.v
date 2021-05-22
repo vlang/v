@@ -4,7 +4,8 @@
 import os
 import time
 
-const voptions = ' -skip-unused -usecache -show-timings -stats '
+// TODO -usecache
+const voptions = ' -skip-unused -show-timings -stats '
 
 fn main() {
 	exe := os.executable()
