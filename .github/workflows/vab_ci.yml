@@ -1,0 +1,61 @@
+name: VAB CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  vab-compiles-v-examples:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macOS-10.15, ubuntu-18.04, ubuntu-20.04]
+        java-version: [8, 15]
+        android-api: [27, 30]
+        v-example: ['flappylearning', 'sokol/particles', 'sokol/drawing.v', 'sokol/freetype_raven.v', '2048', 'fireworks', 'tetris']
+    timeout-minutes: 45
+    steps:
+    - uses: actions/setup-java@v2
+      with:
+        distribution: 'adopt'
+        java-version: ${{ matrix.java-version }}
+
+    - name: Checkout V
+      uses: actions/checkout@v2
+      with:
+        repository: vlang/v
+    - uses: actions/checkout@v2
+      with:
+        path: vab
+    - name: Build local v
+      run: make -j2
+
+    - name: Run tests
+      run: ./v test vab
+
+    - name: Build vab
+      run: ./v -g vab/vab.v
+
+    - name: Run vab --help
+      run: vab/vab --help
+
+    - name: Setup env
+      run: |
+        mkdir -p apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}
+        mkdir -p aabs/java-${{ matrix.java-version }}/${{ matrix.v-example }}
+
+    - name: Run vab doctor
+      run: |
+        export VEXE=./v
+        vab/vab doctor
+
+    # APK
+    - name: Build APK (Java ${{ matrix.java-version }}) ${{ matrix.v-example }}
+      run: |
+        export VEXE=./v
+        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed s%/|.%-%)
+        vab/vab -v 3 --api ${{ matrix.android-api }} examples/${{ matrix.v-example }} -o apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}/$OUTPUT.apk
