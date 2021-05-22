@@ -1,11 +1,18 @@
-struct Row {
-	id int
+import v.ast
+
+struct Data {
+	a fn (stmt ast.Stmt, vp voidptr) bool
 }
 
-pub fn (a []Row) reduce(iter fn (int, int) int, accum_start int) int {
+pub fn (a []Data) reduce(iter fn (int, int) int, accum_start int) int {
 	iter(accum_start)
 }
 
 pub fn test_anon_fn_void(func fn ()) int {
 	return 0
+}
+
+fn C.HasAnonFnWithNamedParams(cb fn (c C.bar, d voidptr))
+
+fn keep_param_names_in_anon_fn(f fn (a []int) []int) {
 }
