@@ -35,6 +35,7 @@ pub const (
 		'.txt':  'text/plain; charset=utf-8'
 		'.wasm': 'application/wasm'
 		'.xml':  'text/xml; charset=utf-8'
+		'.ico':  'img/x-icon'
 	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
@@ -558,7 +559,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
 				if ext in vweb.mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path, vweb.mime_types[ext])
+					ctx.serve_static(mount_path + '/' + file, full_path)
 				}
 			}
 		}
@@ -596,9 +597,11 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
-pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
+pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.static_files[url] = file_path
-	ctx.static_mime_types[url] = mime_type
+	// ctx.static_mime_types[url] = mime_type
+	ext := os.file_ext(file_path)
+	ctx.static_mime_types[url] = vweb.mime_types[ext]
 }
 
 // Returns the ip address from the current user

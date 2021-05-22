@@ -67,7 +67,7 @@ fn (g &Gen) get_backend() ?CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
 	mut g := &Gen{
 		table: table
 		sect_header_name_pos: 0

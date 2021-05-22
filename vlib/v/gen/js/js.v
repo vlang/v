@@ -42,7 +42,7 @@ mut:
 	namespaces          map[string]&Namespace
 	doc                 &JsDoc
 	enable_doc          bool
-	file                ast.File
+	file                &ast.File
 	tmp_count           int
 	inside_ternary      bool
 	inside_loop         bool
@@ -62,7 +62,7 @@ mut:
 	call_stack          []ast.CallExpr
 }
 
-pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
+pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table
@@ -72,6 +72,7 @@ pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
 		doc: 0
 		ns: 0
 		enable_doc: true
+		file: 0
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag

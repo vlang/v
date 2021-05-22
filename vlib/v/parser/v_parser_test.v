@@ -43,7 +43,7 @@ fn test_eval() {
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
 	}
-	file := ast.File{
+	file := &ast.File{
 		stmts: stmts
 		scope: scope
 	}
@@ -105,7 +105,7 @@ fn test_one() {
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
@@ -147,7 +147,7 @@ fn test_parse_expr() {
 		println('\n\nst="$s"')
 		e << parse_stmt(s, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope

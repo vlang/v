@@ -505,7 +505,8 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				if sym.kind == .struct_ {
 					info := sym.info as ast.Struct
 					receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in receiver_generic_names {
+					if gt_name in receiver_generic_names
+						&& info.generic_types.len == info.concrete_types.len {
 						idx := receiver_generic_names.index(gt_name)
 						typ = info.concrete_types[idx]
 					}

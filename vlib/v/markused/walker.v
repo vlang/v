@@ -14,7 +14,7 @@ pub mut:
 	n_maps      int
 	n_asserts   int
 mut:
-	files      []ast.File
+	files      []&ast.File
 	all_fns    map[string]ast.FnDecl
 	all_consts map[string]ast.ConstField
 }

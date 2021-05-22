@@ -26,7 +26,14 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 							size_expr.pos)
 					}
 				} else {
-					p.error_with_pos('non-constant array bound `$size_expr.name`', size_expr.pos)
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist, it may have
+						// been defined in another .v file:
+						fixed_size = 1
+					} else {
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
+							size_expr.pos)
+					}
 				}
 			}
 			else {
