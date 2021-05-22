@@ -376,14 +376,15 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 	mut buf_ptr := 0
 	mut nbytes := 0
 
+	stream := &C.FILE(f.cfile)
 	for (buf_ptr < buf.len) {
-		c = C.getc(f.cfile)
+		c = C.getc(stream)
 		match c {
 			C.EOF {
-				if C.feof(f.cfile) != 0 {
+				if C.feof(stream) != 0 {
 					return nbytes
 				}
-				if C.ferror(f.cfile) != 0 {
+				if C.ferror(stream) != 0 {
 					return error('file read error')
 				}
 			}
