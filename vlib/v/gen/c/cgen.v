@@ -64,7 +64,7 @@ mut:
 	json_forward_decls     strings.Builder // json type forward decls
 	enum_typedefs          strings.Builder // enum types
 	sql_buf                strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
-	file                   ast.File
+	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
 	tmp_count              int      // counter for unique tmp vars (_tmp1, tmp2 etc)
@@ -175,7 +175,7 @@ mut:
 	// main_fn_decl_node  ast.FnDecl
 }
 
-pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
+pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
 	mut module_built := ''
 	if pref.build_mode == .build_module {
@@ -192,6 +192,7 @@ pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
 		timers_should_print = true
 	}
 	mut g := Gen{
+		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)

@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.File) {
+pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -267,7 +267,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 	}
 }
 
-fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -275,7 +275,7 @@ fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
 	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
+		file := ast_files[i]
 		for node in file.stmts {
 			match node {
 				ast.FnDecl {

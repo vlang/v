@@ -34,6 +34,7 @@ const (
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
+[heap]
 pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
@@ -92,12 +93,12 @@ mut:
 	is_c_call                bool // remove once C.c_call("string") deprecation is removed
 }
 
-pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
+pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
-	return Checker{
+	return &Checker{
 		table: table
 		pref: pref
 		timers: util.new_timers(timers_should_print)
@@ -160,13 +161,13 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.mod = file.mod.name
 }
 
-pub fn (mut c Checker) check_files(ast_files []ast.File) {
+pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
+		file := unsafe { ast_files[i] }
 		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
@@ -204,7 +205,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	for {
 		for file in ast_files {
 			if file.generic_fns.len > 0 {
-				c.change_current_file(&file)
+				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
 		}
