@@ -57,5 +57,5 @@ jobs:
     - name: Build APK (Java ${{ matrix.java-version }}) ${{ matrix.v-example }}
       run: |
         export VEXE=./v
-        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed s%/|.%-%)
+        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed s%/%-%)
         vab/vab -v 3 --api ${{ matrix.android-api }} examples/${{ matrix.v-example }} -o apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}/$OUTPUT.apk
