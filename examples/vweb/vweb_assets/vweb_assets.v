@@ -18,7 +18,7 @@ fn main() {
 
 pub fn (mut app App) init_server() {
 	// Arbitary mime type.
-	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
+	app.serve_static('/favicon.ico', 'favicon.ico')
 	// Automatically make available known static mime types found in given directory.
 	// app.handle_static('assets')
 	// This would make available all known static mime types from current
