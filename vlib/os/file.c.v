@@ -13,11 +13,11 @@ struct FileInfo {
 	size int
 }
 
-fn C.fseeko(voidptr, u64, int) int
+fn C.fseeko(&C.FILE, u64, int) int
 
-fn C._fseeki64(voidptr, u64, int) int
+fn C._fseeki64(&C.FILE, u64, int) int
 
-fn C.getc(voidptr) int
+fn C.getc(&C.FILE) int
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
