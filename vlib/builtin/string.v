@@ -279,6 +279,9 @@ pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 || rep.len > s.len {
 		return s.clone()
 	}
+	if !s.contains(rep) {
+		return s.clone()
+	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{cap: s.len / rep.len}
