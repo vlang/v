@@ -287,7 +287,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
-				mut hx := strconv.format_uint(data.d.d_u64, base)
+				mut hx := strconv.format_int(d, base)
 				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
@@ -306,6 +306,13 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 		// unsigned int and pointers
 		if typ in [.si_u8, .si_u16, .si_u32, .si_u64] {
 			mut d := data.d.d_u64
+			if typ == .si_u8 {
+				d = u64(data.d.d_u8)
+			} else if typ == .si_u16 {
+				d = u64(data.d.d_u16)
+			} else if typ == .si_u32 {
+				d = u64(data.d.d_u32)
+			}
 			if base == 0 {
 				if width == 0 {
 					d_str := d.str()
