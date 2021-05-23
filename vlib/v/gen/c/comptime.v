@@ -418,7 +418,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				attrs := cgen_attrs(method.attrs)
 				g.writeln(
 					'\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-					attrs.join(', ') + '}));')
+					attrs.join(', ') + '}));\n')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
@@ -435,7 +435,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					}
 					g.comptime_var_type_map['${node.val_var}.args[$j].typ'] = typ
 				}
-				g.writeln('}));')
+				g.writeln('}));\n')
 			}
 			mut sig := 'anon_fn_'
 			// skip the first (receiver) arg
@@ -492,7 +492,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					attrs := cgen_attrs(field.attrs)
 					g.writeln(
 						'\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-						attrs.join(', ') + '}));')
+						attrs.join(', ') + '}));\n')
 				}
 				// field_sym := g.table.get_type_symbol(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')

@@ -4425,7 +4425,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		g.expr(channels[i])
 		g.write(')')
 	}
-	g.writeln('}));')
+	g.writeln('}));\n')
 	directions_array := g.new_tmp_var()
 	g.write('Array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
 	for i in 0 .. n_channels {
@@ -4438,7 +4438,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			g.write('sync__Direction_pop')
 		}
 	}
-	g.writeln('}));')
+	g.writeln('}));\n')
 	objs_array := g.new_tmp_var()
 	g.write('Array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
@@ -4453,7 +4453,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			g.write(tmp_objs[i])
 		}
 	}
-	g.writeln('}));')
+	g.writeln('}));\n')
 	select_result := g.new_tmp_var()
 	g.write('int $select_result = sync__channel_select(&/*arr*/$chan_array, $directions_array, &/*arr*/$objs_array, ')
 	if has_timeout {
@@ -6370,7 +6370,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 fn (g Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
-		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));'
+		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));\n'
 	}
 	mut name_ast := strings.new_builder(1024)
 	casts_len := g.as_cast_type_names.len + 1
@@ -6379,7 +6379,7 @@ fn (g Gen) as_cast_name_table() string {
 	for key, value in g.as_cast_type_names {
 		name_ast.writeln('\t\t, (VCastTypeIndexName){.tindex = $key, .tname = _SLIT("$value")}')
 	}
-	name_ast.writeln('\t}));')
+	name_ast.writeln('\t}));\n')
 	return name_ast.str()
 }
 

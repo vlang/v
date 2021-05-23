@@ -368,7 +368,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));\n')
 		}
 		g.writeln('}')
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
@@ -678,7 +678,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));\n')
 			g.writeln('\t $fields = mysql_fetch_row($res);')
 			g.writeln('}')
 		}
@@ -1037,7 +1037,7 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));\n')
 			g.writeln('}')
 		}
 		g.writeln('string_free(&$g.sql_stmt_name);')

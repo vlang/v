@@ -241,7 +241,7 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		{_SLIT0, $c.si_s_code, {.d_s = indents }},
 		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
 		{_SLIT(")"), 0, {.d_c = 0 }} 
-	}));')
+	}));\n')
 
 	// g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
 
@@ -400,7 +400,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return $res;')
+			g.auto_str_funcs.write_string(' return $res;\n')
 		}
 
 		//------------------------------------------
@@ -414,7 +414,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			g.auto_str_funcs.write_string(', indent_count')
 		}
-		g.auto_str_funcs.writeln('));')
+		g.auto_str_funcs.writeln('));\n')
 		*/
 		//------------------------------------------
 	}

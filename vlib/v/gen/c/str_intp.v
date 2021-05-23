@@ -205,19 +205,19 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		ft_u64, ft_str := g.str_format(node, i)
 		ft_data := g.str_val(node, i)
 
-		// TODO: This must be optimized
-		if ft_str == 'p' {
+		// for pointers we need a void* cast
+		if unsafe { ft_str.str[0] } == `p` {
 			data << StrIntpCgenData{
 				str: escaped_val
 				fmt: '0x' + ft_u64.hex()
 				d: '{.d_$ft_str = (void*)(${ft_data.trim(' ,')})}'
 			}
-		} else {
-			data << StrIntpCgenData{
-				str: escaped_val
-				fmt: '0x' + ft_u64.hex()
-				d: '{.d_$ft_str = ${ft_data.trim(' ,')}}'
-			}
+			continue
+		}
+		data << StrIntpCgenData{
+			str: escaped_val
+			fmt: '0x' + ft_u64.hex()
+			d: '{.d_$ft_str = ${ft_data.trim(' ,')}}'
 		}
 	}
 
