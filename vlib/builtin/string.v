@@ -1521,20 +1521,21 @@ pub fn (c byte) is_letter() bool {
 }
 
 // free allows for manually freeing the memory occupied by the string
-[unsafe]
+[manualfree; unsafe]
 pub fn (s &string) free() {
 	$if prealloc {
 		return
 	}
 	if s.is_lit == -98761234 {
+		dsfree_msg := c'double string.free() detected\n'
 		$if freestanding {
-			bare_eprint(c'double string.free() detected\n', u64(unsafe { C.strlen(c'double string.free() detected\n') }))
+			bare_eprint(dsfree_msg, u64(unsafe { C.strlen(dsfree_msg) }))
 		} $else {
-			C.printf(c'double string.free() detected\n')
+			C.printf(dsfree_msg)
 		}
 		return
 	}
-	if s.is_lit == 1 || s.len == 0 {
+	if s.is_lit == 1 || s.len == 0 || s.str == 0 {
 		return
 	}
 	unsafe {
