@@ -13,10 +13,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macOS-10.15, ubuntu-18.04, ubuntu-20.04]
-        java-version: [8, 15]
-        android-api: [27, 30]
-        v-example: ['flappylearning', 'sokol/particles', 'sokol/drawing.v', 'sokol/freetype_raven.v', '2048', 'fireworks', 'tetris']
+        os: ubuntu-20.04
+        java-version: 8
+        android-api: 27
+        v-example: ['flappylearning', '2048', 'fireworks', 'tetris', 'sokol/particles', 'sokol/drawing.v', 'sokol/freetype_raven.v', 'gg/polygons.v', 'gg/raven_text_rendering.v', 'gg/rectangles.v', 'gg/stars.v', 'gg/worker_thread.v' ]
     timeout-minutes: 45
     steps:
     - uses: actions/setup-java@v2
@@ -24,15 +24,14 @@ jobs:
         distribution: 'adopt'
         java-version: ${{ matrix.java-version }}
 
-    - name: Checkout V
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/v
     - uses: actions/checkout@v2
-      with:
-        path: vab
-    - name: Build local v
-      run: make -j2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+
+    - name: Clone vab
+      run: git clone --depth 1 https://github.com/vlang/vab
+    - name: Build vab
+      run: cd vab; ../v ./vab.v ; cd ..
 
     - name: Run tests
       run: ./v test vab
@@ -43,19 +42,19 @@ jobs:
     - name: Run vab --help
       run: vab/vab --help
 
-    - name: Setup env
-      run: |
-        mkdir -p apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}
-        mkdir -p aabs/java-${{ matrix.java-version }}/${{ matrix.v-example }}
-
     - name: Run vab doctor
       run: |
         export VEXE=./v
         vab/vab doctor
 
+    - name: Setup env
+      run: |
+        mkdir -p apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}
+        mkdir -p aabs/java-${{ matrix.java-version }}/${{ matrix.v-example }}
+
     # APK
     - name: Build APK (Java ${{ matrix.java-version }}) ${{ matrix.v-example }}
       run: |
         export VEXE=./v
-        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed s%/%-%)
+        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed 's%/%-%' | sed 's%\.%-%' )
         vab/vab -v 3 --api ${{ matrix.android-api }} examples/${{ matrix.v-example }} -o apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}/$OUTPUT.apk
