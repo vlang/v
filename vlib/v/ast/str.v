@@ -493,7 +493,8 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+	x := f.name.trim_prefix(f.mod + '.')
+	return '$x = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {
