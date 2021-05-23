@@ -206,7 +206,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		ft_data := g.str_val(node, i)
 
 		// TODO: This must be optimized
-		if ft_str == "p" {
+		if ft_str == 'p' {
 			data << StrIntpCgenData{
 				str: escaped_val
 				fmt: '0x' + ft_u64.hex()
