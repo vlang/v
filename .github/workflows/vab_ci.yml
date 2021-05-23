@@ -10,13 +10,7 @@ on:
 
 jobs:
   vab-compiles-v-examples:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04]
-        java-version: [8]
-        android-api: [27]
-        v-example: ['flappylearning', '2048', 'fireworks', 'tetris', 'sokol/particles', 'sokol/drawing.v', 'sokol/freetype_raven.v', 'gg/polygons.v', 'gg/raven_text_rendering.v', 'gg/rectangles.v', 'gg/stars.v', 'gg/worker_thread.v' ]
+    runs-on: ubuntu-20.04
     timeout-minutes: 45
     steps:
     - uses: actions/setup-java@v2
@@ -47,14 +41,12 @@ jobs:
         export VEXE=./v
         vab/vab doctor
 
-    - name: Setup env
+    - name: Build V examples as APK
       run: |
-        mkdir -p apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}
-        mkdir -p aabs/java-${{ matrix.java-version }}/${{ matrix.v-example }}
-
-    # APK
-    - name: Build APK (Java ${{ matrix.java-version }}) ${{ matrix.v-example }}
-      run: |
+        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
+        mkdir apks
         export VEXE=./v
-        export OUTPUT=$(echo "${{ matrix.v-example }}" | sed 's%/%-%' | sed 's%\.%-%' )
-        vab/vab -v 3 --api ${{ matrix.android-api }} examples/${{ matrix.v-example }} -o apks/java-${{ matrix.java-version }}/${{ matrix.v-example }}/$OUTPUT.apk
+        for example in "${v_examples[@]}"; do
+          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
+          vab/vab -v 3 examples/$example -o apks/$safe_name.apk
+        done
