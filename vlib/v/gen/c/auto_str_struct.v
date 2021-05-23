@@ -157,7 +157,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 				}
 			}
 
-			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"),0},\n')
+			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"), 0, {}},\n')
 		}
 		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {}},\n')
 		g.auto_str_funcs.write_string('\t});\n')
