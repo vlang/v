@@ -90,7 +90,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')
 	} else {
 		g.auto_str_funcs.write_string('\treturn str_intp( ${info.fields.len * 4 + 3},(StrIntpData[]){\n')
-		g.auto_str_funcs.write_string('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {}},\n')
+		g.auto_str_funcs.write_string('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},\n')
 
 		for i, field in info.fields {
 			mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
@@ -109,9 +109,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 			// first fields doesn't need \n
 			if i == 0 {
-				g.auto_str_funcs.write_string('\t\t{_SLIT0, $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT0, $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
 			} else {
-				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
 			}
 
 			// custom methods management
@@ -157,9 +157,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 				}
 			}
 
-			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"), 0, {}},\n')
+			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"), 0, {.d_c=0}},\n')
 		}
-		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {}},\n')
+		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {.d_c=0}},\n')
 		g.auto_str_funcs.write_string('\t});\n')
 	}
 	g.auto_str_funcs.writeln('}')
