@@ -1,4 +1,4 @@
-name: VAB CI
+name: vab CI
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
         export VEXE=./v
         vab/vab doctor
 
-    - name: Build V examples as APK
+    - name: Build graphical V examples as APK
       run: |
         declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
         mkdir apks
