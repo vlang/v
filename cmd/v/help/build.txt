@@ -154,6 +154,8 @@ NB: the build flags are shared with the run command too:
       and will become an error, after vlib modules are cleaned up.
 
 For C-specific build flags, use `v help build-c`.
+For JS-specific build flags, use `v help build-js`.
+For Native-specific build flags, use `v help build-native`.
 
 For Native-specific build flags, use `v help build-native`.
 

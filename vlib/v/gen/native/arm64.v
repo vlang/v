@@ -43,12 +43,9 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	if r == 0 && val == 1 {
 		g.write32(0xd2800020)
 		g.println('mov x0, 1')
-	} else if r == 0 {
-		g.write32(0xd2800000)
-		g.println('mov x0, 0')
-	} else if r == 16 {
-		g.write32(0xd2800030)
-		g.println('mov x16, 1')
+	} else if r >= 0 && r <= 16 {
+		g.write32(0xd2800000 + int(r) + (int(val) << 5))
+		g.println('mov x$r, $val')
 	} else {
 		verror('mov_arm unsupported values')
 	}
@@ -67,33 +64,73 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 }
 
 pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
+	g.gen_arm64_helloworld()
 	// TODO
 }
 
-fn (mut g Gen) gen_arm64_helloworld() {
-	// g.write32(0x77777777)
-	// assembly
-	g.mov_arm(.x0, 1)
-	g.adr()
-	g.bl()
+pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
+	name := node.name
+	// println('call fn $name')
+	addr := g.fn_addr[name]
+	if addr == 0 {
+		verror('fn addr of `$name` = 0')
+	}
+	// Copy values to registers (calling convention)
+	// g.mov_arm(.eax, 0)
+	for i in 0 .. node.args.len {
+		expr := node.args[i].expr
+		match expr {
+			ast.IntegerLiteral {
+				// `foo(2)` => `mov edi,0x2`
+				// g.mov_arm(native.fn_arg_registers[i], expr.val.int())
+			}
+			/*
+			ast.Ident {
+				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
+				var_offset := g.get_var_offset(expr.name)
+				if g.pref.is_verbose {
+					println('i=$i fn name= $name offset=$var_offset')
+					println(int(native.fn_arg_registers[i]))
+				}
+				g.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
+			}
+			*/
+			else {
+				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
+			}
+		}
+	}
+	if node.args.len > 6 {
+		verror('more than 6 args not allowed for now')
+	}
+	g.call(int(addr))
+	g.println('fn call `${name}()`')
+	// println('call $name $addr')
+}
 
+fn (mut g Gen) gen_arm64_helloworld() {
+	if g.pref.os == .linux {
+		g.mov_arm(.x0, 1)
+		g.adr(.x1, 0x10)
+		g.mov_arm(.x2, 13)
+		g.mov_arm(.x8, 64) // write (linux-arm64)
+		g.svc()
+	} else {
+		g.mov_arm(.x0, 0)
+		g.mov_arm(.x16, 1)
+		g.svc()
+	}
 	zero := ast.IntegerLiteral{}
 	g.gen_exit(zero)
-	/*
-	g.mov_arm(.x0, 0)
-	g.mov_arm(.x16, 1)
-	g.svc()
-	*/
-	//
 	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
 	g.write8(0)
 	g.write8(0)
 }
 
-fn (mut g Gen) adr() {
-	g.write32(0x100000a0)
-	g.println('adr x0, 0x14')
+fn (mut g Gen) adr(r Arm64Register, delta int) {
+	g.write32(0x10000000 | int(r) | (delta << 4))
+	g.println('adr $r, $delta')
 }
 
 fn (mut g Gen) bl() {
@@ -124,6 +161,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 		}
 		.linux {
 			c.g.mov_arm(.x16, return_code)
+			c.g.mov_arm(.x8, 93)
 			c.g.mov_arm(.x0, 0)
 		}
 		else {

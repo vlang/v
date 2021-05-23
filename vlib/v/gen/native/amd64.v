@@ -192,6 +192,10 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
 }
 
 fn (mut g Gen) call(addr int) {
+	if g.pref.arch == .arm64 {
+		g.bl()
+		return
+	}
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
 	// +5 is to get the posistion "e8 xx xx xx xx"
@@ -472,6 +476,10 @@ fn (mut g Gen) mov_rbp_rsp() {
 }
 
 pub fn (mut g Gen) call_fn(node ast.CallExpr) {
+	if g.pref.arch == .arm64 {
+		g.call_fn_arm64(node)
+		return
+	}
 	name := node.name
 	// println('call fn $name')
 	addr := g.fn_addr[name]
