@@ -5326,6 +5326,9 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			mut stmt := branch.stmts[branch.stmts.len - 1]
 			match mut stmt {
 				ast.ExprStmt {
+					if node.is_expr {
+						c.expected_type = node.expected_type
+					}
 					expr_type := c.expr(stmt.expr)
 					if ret_type == ast.void_type {
 						ret_type = expr_type

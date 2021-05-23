@@ -1018,6 +1018,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				g.skip_stmt_pos = true
 				g.write('$tmp_var = ')
 				g.stmt(stmt)
+				g.writeln(';')
 			}
 		} else {
 			g.stmt(stmt)
