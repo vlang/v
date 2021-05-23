@@ -180,6 +180,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
 	mut is_unsafe := p.attrs.contains('unsafe')
 	is_keep_alive := p.attrs.contains('keep_args_alive')
+	is_exported := p.attrs.contains('export')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -423,6 +424,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		params: params
 		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
+		is_exported: is_exported
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_variadic: is_variadic

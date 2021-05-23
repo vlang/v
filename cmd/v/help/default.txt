@@ -50,7 +50,7 @@ V supports the following commands:
                      Use `tracev yourfile.v` when the compiler panics.
                      NB: `tracev` is much slower and more verbose than ordinary `v`
 
-Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`
+Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`, `v help build-native`
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.

@@ -12,7 +12,7 @@ fn high_fn_no_ret(f fn (int)) {
 	f(111)
 }
 
-fn high_fn_array(f fn(a []int) []int) {
+fn high_fn_array(f fn (a []int) []int) {
 }
 
 fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
@@ -61,7 +61,7 @@ fn test_high_fn_ret_anons() {
 	assert top_lvl_sqr(param) == param * param
 }
 
-fn high_fn_applier(arg int, func fn(a int)string) string {
+fn high_fn_applier(arg int, func fn (a int) string) string {
 	return func(arg)
 }
 

@@ -563,7 +563,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				} else if arg_sym.kind == .struct_ && param.typ.has_flag(.generic) {
 					info := arg_sym.info as ast.Struct
 					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in generic_names {
+					if gt_name in generic_names && info.generic_types.len == info.concrete_types.len {
 						idx := generic_names.index(gt_name)
 						typ = info.concrete_types[idx]
 					}

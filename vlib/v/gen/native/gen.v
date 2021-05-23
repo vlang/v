@@ -75,7 +75,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		pref: pref
 	}
 	g.cgen = g.get_backend() or {
-		eprintln('No available backend for this configuration')
+		eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 		exit(1)
 	}
 	g.generate_header()

@@ -184,8 +184,12 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut '
 		}
+		// NB: arg name is only added for fmt, else it would causes errors with generics
+		if t.is_fmt && arg.name.len > 0 {
+			sig += '$arg.name '
+		}
 		arg_type_sym := t.get_type_symbol(arg.typ)
-		sig += '$arg_type_sym.name'
+		sig += arg_type_sym.name
 		if i < f.params.len - 1 {
 			sig += ', '
 		}
@@ -854,7 +858,6 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 		util.no_dots(f.name.clone())
 	}
 	anon := f.name.len == 0 || is_anon
-	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx

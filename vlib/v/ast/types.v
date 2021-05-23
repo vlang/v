@@ -411,6 +411,9 @@ pub const (
 	error_type         = new_type(error_type_idx)
 	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
 	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
+	cptr_or_bptr_types = [charptr_type, byteptr_type, new_type(char_type_idx).set_nr_muls(1),
+		new_type(byte_type_idx).set_nr_muls(1),
+	]
 )
 
 pub const (
@@ -909,7 +912,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					res = t.fn_signature_using_aliases(info.func, import_aliases, type_only: true)
+					has_names := info.func.params.any(it.name.len > 0)
+					res = t.fn_signature_using_aliases(info.func, import_aliases,
+						type_only: !has_names
+					)
 				} else {
 					// FnFoo
 					res = t.shorten_user_defined_typenames(res, import_aliases)

@@ -105,6 +105,18 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'os.init_os_args',
 		'os.init_os_args_wide',
 	]
+
+	if pref.is_bare {
+		all_fn_root_names << [
+			'strlen',
+			'memcmp',
+			'memcpy',
+			'realloc',
+			'vsnprintf',
+			'vsprintf',
+		]
+	}
+
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
 			'__new_array_noscan',
@@ -234,6 +246,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		all_consts: all_consts
 	}
 	// println( all_fns.keys() )
+	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {

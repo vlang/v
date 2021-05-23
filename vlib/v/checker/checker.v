@@ -67,6 +67,7 @@ pub mut:
 	inside_anon_fn bool
 	inside_ref_lit bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
+	inside_c_call  bool // true inside C.printf( param ) calls, but NOT in nested calls, unless they are also C.
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
@@ -90,7 +91,6 @@ mut:
 	inside_println_arg       bool
 	inside_decl_rhs          bool
 	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
-	is_c_call                bool // remove once C.c_call("string") deprecation is removed
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -611,19 +611,23 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	}
 }
 
-fn (mut c Checker) unwrap_generics_struct_init(struct_type ast.Type) ast.Type {
+fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
 	ts := c.table.get_type_symbol(struct_type)
 	if ts.info is ast.Struct {
 		if ts.info.is_generic {
 			mut nrt := '$ts.name<'
-			mut c_nrt := '${ts.name}_T_'
+			mut c_nrt := '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
-				gts := c.table.get_type_symbol(c.unwrap_generic(ts.info.generic_types[i]))
-				nrt += gts.name
-				c_nrt += gts.cname
-				if i != ts.info.generic_types.len - 1 {
-					nrt += ','
-					c_nrt += '_'
+				if ct := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
+					generic_names, concrete_types, false)
+				{
+					gts := c.table.get_type_symbol(ct)
+					nrt += gts.name
+					c_nrt += gts.cname
+					if i != ts.info.generic_types.len - 1 {
+						nrt += ','
+						c_nrt += '_'
+					}
 				}
 			}
 			nrt += '>'
@@ -631,30 +635,37 @@ fn (mut c Checker) unwrap_generics_struct_init(struct_type ast.Type) ast.Type {
 			if idx != 0 && c.table.type_symbols[idx].kind != .placeholder {
 				return ast.new_type(idx).derive(struct_type).clear_flag(.generic)
 			} else {
+				// fields type translate to concrete type
 				mut fields := ts.info.fields.clone()
-				if ts.info.generic_types.len == c.cur_concrete_types.len {
-					generic_names := ts.info.generic_types.map(c.table.get_type_symbol(it).name)
-					for i in 0 .. fields.len {
-						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, c.cur_concrete_types, true)
-						{
-							fields[i].typ = t_typ
-						}
+				for i in 0 .. fields.len {
+					if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ, generic_names,
+						concrete_types, true)
+					{
+						fields[i].typ = t_typ
 					}
-					mut info := ts.info
-					info.is_generic = false
-					info.concrete_types = c.cur_concrete_types.clone()
-					info.parent_type = struct_type
-					info.fields = fields
-					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
-						kind: .struct_
-						name: nrt
-						cname: util.no_dots(c_nrt)
-						mod: c.mod
-						info: info
-					})
-					return ast.new_type(stru_idx).derive(struct_type).clear_flag(.generic)
 				}
+				// update concrete types
+				mut info_concrete_types := []ast.Type{}
+				for i in 0 .. ts.info.generic_types.len {
+					if t_typ := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
+						generic_names, concrete_types, true)
+					{
+						info_concrete_types << t_typ
+					}
+				}
+				mut info := ts.info
+				info.is_generic = false
+				info.concrete_types = info_concrete_types
+				info.parent_type = struct_type
+				info.fields = fields
+				stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
+					kind: .struct_
+					name: nrt
+					cname: util.no_dots(c_nrt)
+					mod: c.mod
+					info: info
+				})
+				return ast.new_type(stru_idx).derive(struct_type).clear_flag(.generic)
 			}
 		}
 	}
@@ -679,7 +690,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			struct_init.typ = c.expected_type
 		}
 	}
-	utyp := c.unwrap_generics_struct_init(struct_init.typ)
+	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.cur_concrete_types)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
@@ -1682,60 +1693,12 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
-fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_names []string, concrete_types []ast.Type) {
-	rts := c.table.get_type_symbol(return_type)
-	if rts.info is ast.Struct {
-		if rts.info.is_generic {
-			mut nrt := '$rts.name<'
-			mut c_nrt := '${rts.cname}_T_'
-			for i in 0 .. rts.info.generic_types.len {
-				if ct := c.table.resolve_generic_to_concrete(rts.info.generic_types[i],
-					generic_names, concrete_types, false)
-				{
-					gts := c.table.get_type_symbol(ct)
-					nrt += gts.name
-					c_nrt += gts.cname
-					if i != rts.info.generic_types.len - 1 {
-						nrt += ','
-						c_nrt += '_'
-					}
-				}
-			}
-			nrt += '>'
-			idx := c.table.type_idxs[nrt]
-			if idx != 0 {
-				c.ensure_type_exists(idx, call_expr.pos) or {}
-				call_expr.return_type = ast.new_type(idx).derive(return_type).clear_flag(.generic)
-			} else {
-				mut fields := rts.info.fields.clone()
-				if generic_names.len == concrete_types.len {
-					for i in 0 .. fields.len {
-						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types, true)
-						{
-							fields[i].typ = t_typ
-						}
-					}
-					mut info := rts.info
-					info.is_generic = false
-					info.concrete_types = concrete_types.clone()
-					info.parent_type = return_type
-					info.fields = fields
-					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
-						kind: .struct_
-						name: nrt
-						cname: util.no_dots(c_nrt)
-						mod: c.mod
-						info: info
-					})
-					call_expr.return_type = ast.new_type(stru_idx).derive(return_type).clear_flag(.generic)
-				}
-			}
-		}
-	}
-}
-
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
+	was_inside_c_call := c.inside_c_call
+	c.inside_c_call = call_expr.language == .c
+	defer {
+		c.inside_c_call = was_inside_c_call
+	}
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -2013,7 +1976,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, method.generic_names,
+			call_expr.return_type = c.unwrap_generic_struct(method.return_type, method.generic_names,
 				concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
@@ -2218,10 +2181,10 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 }
 
 pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
-	was_c_call := c.is_c_call
-	c.is_c_call = call_expr.language == .c
+	was_inside_c_call := c.inside_c_call
+	c.inside_c_call = call_expr.language == .c
 	defer {
-		c.is_c_call = was_c_call
+		c.inside_c_call = was_inside_c_call
 	}
 	fn_name := call_expr.name
 	if fn_name == 'main' {
@@ -2548,6 +2511,10 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
 				call_arg.pos)
 		}
+		if func.language == .c && typ == ast.string_type && param.typ in ast.cptr_or_bptr_types {
+			c.warn("automatic string to C-string conversion is deprecated and will be removed on 2021-06-19, use `c'<string_value>'` and set the C function parameter type to `&u8`",
+				call_arg.pos)
+		}
 	}
 	if func.generic_names.len != call_expr.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
@@ -2578,7 +2545,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, func.generic_names,
+		call_expr.return_type = c.unwrap_generic_struct(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
@@ -4801,10 +4768,6 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.byte_type.set_nr_muls(1)
-			}
-			if node.language != .c && c.is_c_call {
-				c.warn("automatic string to C-string conversion is deprecated and will be removed on 2021-06-19, use `c'<string_value>'` and set the C function parameter type to `&u8`",
-					node.pos)
 			}
 			return ast.string_type
 		}
