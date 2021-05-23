@@ -909,7 +909,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					res = t.fn_signature_using_aliases(info.func, import_aliases, type_only: true)
+					has_names := info.func.params.any(it.name.len > 0)
+					res = t.fn_signature_using_aliases(info.func, import_aliases,
+						type_only: !has_names
+					)
 				} else {
 					// FnFoo
 					res = t.shorten_user_defined_typenames(res, import_aliases)
