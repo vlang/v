@@ -31,29 +31,32 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	}
 
 	if fspec in [`s`, `S`] {
+		/*
 		if node.fwidths[i] == 0 {
 			fmt_type = .si_s
 		} else {
 			fmt_type = .si_s
 		}
+		*/
+		fmt_type = .si_s
 	} else if typ.is_float() {
 		if fspec in [`g`, `G`] {
 			match typ {
 				ast.f32_type { fmt_type = .si_g32 }
-				ast.f64_type { fmt_type = .si_g64 }
+				// ast.f64_type { fmt_type = .si_g64 }
 				else { fmt_type = .si_g64 }
 			}
 			remove_tail_zeros = true
 		} else if fspec in [`e`, `E`] {
 			match typ {
 				ast.f32_type { fmt_type = .si_e32 }
-				ast.f64_type { fmt_type = .si_e64 }
+				// ast.f64_type { fmt_type = .si_e64 }
 				else { fmt_type = .si_e64 }
 			}
 		} else if fspec in [`f`, `F`] {
 			match typ {
 				ast.f32_type { fmt_type = .si_f32 }
-				ast.f64_type { fmt_type = .si_f64 }
+				// ast.f64_type { fmt_type = .si_f64 }
 				else { fmt_type = .si_f64 }
 			}
 		}
