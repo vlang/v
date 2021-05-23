@@ -1527,11 +1527,10 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
-		dsfree_msg := c'double string.free() detected\n'
 		$if freestanding {
-			bare_eprint(dsfree_msg, u64(unsafe { C.strlen(dsfree_msg) }))
+			bare_eprint(c'double string.free() detected\n', 30)
 		} $else {
-			C.printf(dsfree_msg)
+			C.printf(c'double string.free() detected\n')
 		}
 		return
 	}
