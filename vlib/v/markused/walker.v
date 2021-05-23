@@ -46,6 +46,14 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	}
 }
 
+pub fn (mut w Walker) mark_exported_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_exported {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
 		ast.EmptyStmt {}
