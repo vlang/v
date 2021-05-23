@@ -640,23 +640,23 @@ pub const (
 // replace _STR("\'%.*s\\000\'", 2, in_str)
 [inline]
 pub fn str_intp_sq(in_str string) string {
-	return 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = $in_str}},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = $in_str}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
 }
 
 // replace _STR("\`%.*s\\000\`", 2, in_str)
 [inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = $in_str}},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = $in_str}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
 }
 
 [inline]
 pub fn str_intp_g32(in_str string) string {
-	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), $si_g32_code, {.d_f32 = $in_str }}})'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT(""), $si_g32_code, {.d_f32 = $in_str }}}))'
 }
 
 [inline]
 pub fn str_intp_g64(in_str string) string {
-	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), $si_g64_code, {.d_f64 = $in_str }}})'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT(""), $si_g64_code, {.d_f64 = $in_str }}}))'
 }
 
 // replace %% with the in_str
@@ -667,8 +667,8 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 	}
 	// return base_str[..index] + in_str + base_str[index+2..]
 	if index + 2 < base_str.len {
-		return 'str_intp(2, (StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }},{_SLIT("${base_str[
-			index + 2..]}"), 0, {.d_c = 0}}})'
+		return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }},{_SLIT("${base_str[
+			index + 2..]}"), 0, {.d_c = 0}}}))'
 	}
-	return 'str_intp(1, (StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }}})'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("${base_str[..index]}"), $si_s_code, {.d_s = $in_str }}}))'
 }

@@ -89,7 +89,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	if info.fields.len == 0 {
 		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')
 	} else {
-		g.auto_str_funcs.write_string('\treturn str_intp( ${info.fields.len * 4 + 3},(StrIntpData[]){\n')
+		g.auto_str_funcs.write_string('\treturn str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){\n')
 		g.auto_str_funcs.write_string('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},\n')
 
 		for i, field in info.fields {
@@ -160,7 +160,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			g.auto_str_funcs.write_string('}}, {_SLIT("$quote_str"), 0, {.d_c=0}},\n')
 		}
 		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {.d_c=0}},\n')
-		g.auto_str_funcs.write_string('\t});\n')
+		g.auto_str_funcs.write_string('\t}));\n')
 	}
 	g.auto_str_funcs.writeln('}')
 }
@@ -194,20 +194,20 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 			// ptr int can be "nil", so this needs to be castet to a string
 
 			if sym.kind == .f32 {
-				return 'str_intp(1, (StrIntpData[]){
+				return 'str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
-				})'
+				}))'
 			} else if sym.kind == .f64 {
-				return 'str_intp(1, (StrIntpData[]){
+				return 'str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, $si_g64_code, {.d_f64 = *$method_str }}
-				})'
+				}))'
 			} else if sym.kind == .u64 {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}})'
+				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}}))'
 			}
 
 			fmt_type := StrIntpType.si_i32
-			return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}})'
+			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))'
 		}
 		return method_str
 	}
