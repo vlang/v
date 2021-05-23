@@ -287,7 +287,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
-				mut hx := strconv.format_uint(data.d.d_u64, base)
+				mut hx := strconv.format_int(d, base)
 				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
