@@ -237,11 +237,11 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 
-	g.auto_str_funcs.writeln('\treturn str_intp(3, (StrIntpData[]){
+	g.auto_str_funcs.writeln('\treturn str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, $c.si_s_code, {.d_s = indents }},
 		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
 		{_SLIT(")"), 0, {.d_c = 0 }} 
-	});')
+	}));')
 
 	// g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
 
@@ -383,10 +383,10 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				val += ', indent_count'
 			}
 			val += ')'
-			res := 'str_intp(2, (StrIntpData[]){
+			res := 'str_intp(2, _MOV((StrIntpData[]){
 				{_SLIT("${clean_interface_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
-			})'
+			}))'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			g.auto_str_funcs.write_string(' return $res;')
 		} else {
@@ -395,10 +395,10 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				val += ', indent_count'
 			}
 			val += ')'
-			res := 'str_intp(2, (StrIntpData[]){
+			res := 'str_intp(2, _MOV((StrIntpData[]){
 				{_SLIT("${clean_interface_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
-			})'
+			}))'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			g.auto_str_funcs.write_string(' return $res;')
 		}
@@ -465,10 +465,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				val += ', indent_count'
 			}
 			val += ')'
-			res := 'str_intp(2, (StrIntpData[]){
+			res := 'str_intp(2, _MOV((StrIntpData[]){
 				{_SLIT("${clean_sum_type_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
-			})'
+			}))'
 			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
 		} else {
 			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
@@ -476,10 +476,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				val += ', indent_count'
 			}
 			val += ')'
-			res := 'str_intp(2, (StrIntpData[]){
+			res := 'str_intp(2, _MOV((StrIntpData[]){
 				{_SLIT("${clean_sum_type_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
-			})'
+			}))'
 			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
 		}
 

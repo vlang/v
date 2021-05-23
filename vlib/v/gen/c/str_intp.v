@@ -223,7 +223,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 
 	// write struct
 	g.write(' str_intp($data.len, ')
-	g.write('(StrIntpData[]){')
+	g.write('_MOV((StrIntpData[]){')
 	for i, item in data {
 		if item.str.len > 0 {
 			g.write('{_SLIT("$item.str"), $item.fmt, $item.d}')
@@ -235,5 +235,5 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write(', ')
 		}
 	}
-	g.write('}) ')
+	g.write('})) ')
 }
