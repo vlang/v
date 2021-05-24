@@ -571,7 +571,6 @@ fn get_module_meta_info(name string) ?Mod {
 	return error(errors.join_lines())
 }
 
-
 fn vpm_show(module_names []string) {
 	installed_modules := get_installed_modules()
 	for module_name in module_names {
@@ -579,16 +578,16 @@ fn vpm_show(module_names []string) {
 			continue
 		}
 		path := os.join_path(os.vmodules_dir(), module_name)
-		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }	
+		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
 		console_output := [
-			'Name: ${mod.name}',
-			'Version: ${mod.version}',
-			'Description: ${mod.description}',
-			'Homepage: ${mod.repo_url}',
-			'Author: ${mod.author}',
-			'License: ${mod.license}',
-			'Location: ${path}',
-			'Requires: ${mod.dependencies.join(", ")}'
+			'Name: $mod.name',
+			'Version: $mod.version',
+			'Description: $mod.description',
+			'Homepage: $mod.repo_url',
+			'Author: $mod.author',
+			'License: $mod.license',
+			'Location: $path',
+			'Requires: ${mod.dependencies.join(', ')}',
 		]
 		println(console_output.join('\n'))
 	}

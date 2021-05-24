@@ -22,7 +22,7 @@ fn cerror(e string) {
 
 fn check_name(name string) string {
 	if name.trim(' ').len == 0 {
-		cerror("project name cannot be empty")
+		cerror('project name cannot be empty')
 		exit(1)
 	}
 	if name.is_title() {
@@ -164,7 +164,6 @@ fn init_project() {
 
 	println("Change your module's description in `v.mod`")
 }
-
 
 fn main() {
 	cmd := os.args[1]
