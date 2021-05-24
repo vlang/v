@@ -91,6 +91,9 @@ fn main() {
 		'remove' {
 			vpm_remove(module_names)
 		}
+		'show' {
+			vpm_show(module_names)
+		}
 		else {
 			println('Error: you tried to run "v $vpm_command"')
 			println('... but the v package management tool vpm only knows about these commands:')
@@ -566,4 +569,27 @@ fn get_module_meta_info(name string) ?Mod {
 		return mod
 	}
 	return error(errors.join_lines())
+}
+
+
+fn vpm_show(module_names []string) {
+	installed_modules := get_installed_modules()
+	for module_name in module_names {
+		if module_name !in installed_modules {
+			continue
+		}
+		path := os.join_path(os.vmodules_dir(), module_name)
+		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }	
+		console_output := [
+			'Name: ${mod.name}',
+			'Version: ${mod.version}',
+			'Description: ${mod.description}',
+			'Homepage: ${mod.repo_url}',
+			'Author: ${mod.author}',
+			'License: ${mod.license}',
+			'Location: ${path}',
+			'Requires: ${mod.dependencies.join(", ")}'
+		]
+		println(console_output.join('\n'))
+	}
 }
