@@ -318,6 +318,9 @@ pub fn run<T>(global_app &T, port int) {
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
+		unsafe {
+			request_app = global_app
+		}
 		$if T is DbInterface {
 			request_app.db = global_app.db
 		} $else {
