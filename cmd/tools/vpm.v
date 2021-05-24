@@ -13,7 +13,7 @@ import v.vmod
 const (
 	default_vpm_server_urls   = ['https://vpm.vlang.io']
 	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove']
+		'list', 'remove', 'show']
 	excluded_dirs             = ['cache', 'vlib']
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
