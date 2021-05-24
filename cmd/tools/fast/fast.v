@@ -42,7 +42,10 @@ fn main() {
 	println('  Building vprod...')
 	exec('v -o $vdir/vprod -prod -prealloc $vdir/cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
-	exec('v -o v2 -prod -usecache $vdir/cmd/v') // cache vlib modules
+	// cache vlib modules
+	exec('v wipe-cache')
+	exec('v -o v2 -prod -usecache $vdir/cmd/v')
+	// measure
 	diff1 := measure('$vdir/vprod $voptions -o v.c $vdir/cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
