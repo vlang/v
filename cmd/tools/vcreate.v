@@ -161,8 +161,10 @@ fn init_project() {
 	c.write_vmod(false)
 	c.write_main(false)
 	c.create_git_repo('')
+
 	println("Change your module's description in `v.mod`")
 }
+
 
 fn main() {
 	cmd := os.args[1]
