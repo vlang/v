@@ -3702,41 +3702,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else {
 		node.right_type
 	}
-	if unaliased_left == ast.ustring_type_idx {
-		fn_name := match node.op {
-			.plus {
-				'ustring_add('
-			}
-			.eq {
-				'ustring_eq('
-			}
-			.ne {
-				'ustring_ne('
-			}
-			.lt {
-				'ustring_lt('
-			}
-			.le {
-				'ustring_le('
-			}
-			.gt {
-				'ustring_gt('
-			}
-			.ge {
-				'ustring_ge('
-			}
-			else {
-				verror('op error for type `$left_sym.name`')
-				'/*node error*/'
-			}
-		}
-		g.write(fn_name)
-		g.expr(node.left)
-		g.write(', ')
-		g.expr(node.right)
-		g.write(')')
-	} else if unaliased_left == ast.string_type_idx && op_is_eq_or_ne
-		&& node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
+	if unaliased_left == ast.string_type_idx && op_is_eq_or_ne && node.right is ast.StringLiteral
+		&& (node.right as ast.StringLiteral).val == '' {
 		// `str == ''` -> `str.len == 0` optimization
 		g.write('(')
 		g.expr(node.left)
@@ -3845,6 +3812,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		is_v_struct := ((left_sym.name[0].is_capital() || left_sym.name.contains('.'))
 			&& left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
 			&& left_sym.language != .c) || left_sym.kind == .string
+			|| unaliased_left == ast.ustring_type
 		is_alias := left_sym.kind == .alias
 		is_c_alias := is_alias && (left_sym.info as ast.Alias).language == .c
 		// Check if aliased type is a struct
