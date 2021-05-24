@@ -54,7 +54,7 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := pref.lookup_path.map(os.base(it))
-	vmod_folders << 'modules'
+	vmod_folders << ['.vmodules','modules']
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
 		if path.contains(vmod_folder + os.path_separator) {
