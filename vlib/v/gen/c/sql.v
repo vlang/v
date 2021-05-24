@@ -368,7 +368,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));\n')
 		}
 		g.writeln('}')
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
@@ -678,7 +678,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));\n')
 			g.writeln('\t $fields = mysql_fetch_row($res);')
 			g.writeln('}')
 		}
@@ -699,7 +699,9 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
 }
 
 fn (mut g Gen) mysql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
@@ -710,7 +712,9 @@ fn (mut g Gen) mysql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.E
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
 }
 
 fn (mut g Gen) mysql_bind(val string, typ ast.Type) {
@@ -857,7 +861,10 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 
 				res := g.new_tmp_var()
 				g.writeln('Option_pg__Row $res = pg__DB_exec_one($db_name, _SLIT("SELECT LASTVAL();"));')
-				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
+
+				tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT0, $si_s_code ,{.d_s=IError_str(err)}}))'
+				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln($tmp_str); }')
+
 				g.sql_buf = strings.new_builder(100)
 				g.sql_bind('string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)))',
 					'', ast.int_type, typ)
@@ -897,7 +904,10 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	if arr_stmt.len > 0 {
 		res := g.new_tmp_var()
 		g.writeln('Option_pg__Row $res = pg__DB_exec_one($db_name, _SLIT("SELECT LASTVAL();"));')
-		g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
+
+		tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT0, $si_s_code ,{.d_s=IError_str(err)}}))'
+		g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln($tmp_str); }')
+
 		id_name := g.new_tmp_var()
 		g.writeln('int $id_name = string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)));')
 		g.sql_arr_stmt(arr_stmt, arr_fkeys, arr_field_name, id_name, db_expr)
@@ -928,7 +938,9 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 
 	res := g.new_tmp_var()
 	g.writeln('Option_Array_pg__Row $res = pg__DB_exec($db_name, $g.sql_stmt_name);')
-	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}))'
+	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln($tmp_str); }')
 
 	rows := g.new_tmp_var()
 
@@ -1025,7 +1037,7 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));\n')
 			g.writeln('}')
 		}
 		g.writeln('string_free(&$g.sql_stmt_name);')
@@ -1044,7 +1056,9 @@ fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
 	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
 }
 
 fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
@@ -1056,7 +1070,9 @@ fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Ex
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
 	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
 }
 
 fn (mut g Gen) psql_get_table_type(typ ast.Type) string {

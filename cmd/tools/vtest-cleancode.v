@@ -24,6 +24,7 @@ const (
 		'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
 		'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 		'examples/sokol/05_instancing_glsl/rt_glsl.v',
+		'examples/sokol/06_obj_viewer/show_obj.v',
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',

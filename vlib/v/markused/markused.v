@@ -16,6 +16,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',
+		'str_intp',
+		'format_sb',
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'v_realloc' /* needed for _STR */,
