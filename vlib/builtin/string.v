@@ -516,6 +516,10 @@ fn (s string) eq(a string) bool {
 	}
 }
 
+fn (s string) == (a string) bool {
+	return s.eq(a)
+}
+
 // ne implements the `s != a` (not equal) operator.
 fn (s string) ne(a string) bool {
 	return !s.eq(a)
@@ -536,6 +540,10 @@ fn (s string) lt(a string) bool {
 	return false
 }
 
+fn (s string) < (a string) bool {
+	return s.lt(a)
+}
+
 // le implements the `s <= a` (less than or equal to) operator.
 fn (s string) le(a string) bool {
 	return s.lt(a) || s.eq(a)
@@ -551,9 +559,8 @@ fn (s string) ge(a string) bool {
 	return !s.lt(a)
 }
 
-// TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
 // add concatenates string with the string given in `s`.
-pub fn (s string) add(a string) string {
+fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
@@ -573,6 +580,10 @@ pub fn (s string) add(a string) string {
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
 	return res
+}
+
+fn (s string) + (a string) string {
+	return s.add(a)
 }
 
 // split splits the string to an array by `delim`.

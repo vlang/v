@@ -737,7 +737,7 @@ fn (mut g Gen) mysql_bind(val string, typ ast.Type) {
 			g.sql_buf.write_string(')')
 		}
 	} else {
-		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
+		g.sql_buf.write_string('string__plus(_SLIT("\'"), string__plus(((string) $val), _SLIT("\'")))')
 	}
 	g.sql_buf.writeln(');')
 }
@@ -1031,7 +1031,7 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 			} else if field.typ == ast.i8_type {
 				g.writeln('${tmp}.$field.name = (i8) string_${name}($fld);')
 			} else if field.typ == ast.bool_type {
-				g.writeln('${tmp}.$field.name = string_eq($fld, _SLIT("0")) ? false : true;')
+				g.writeln('${tmp}.$field.name = string__eq($fld, _SLIT("0")) ? false : true;')
 			} else {
 				g.writeln('${tmp}.$field.name = string_${name}($fld);')
 			}
@@ -1126,7 +1126,7 @@ fn (mut g Gen) psql_bind(val string, typ ast.Type) {
 			g.sql_buf.write_string(')')
 		}
 	} else {
-		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
+		g.sql_buf.write_string('string__plus(_SLIT("\'"), string__plus(((string) $val), _SLIT("\'")))')
 	}
 	g.sql_buf.writeln(');')
 }
