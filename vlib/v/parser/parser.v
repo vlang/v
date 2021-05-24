@@ -575,10 +575,12 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			else {
 				p.inside_fn = true
 				if p.pref.is_script && !p.pref.is_test {
+					p.open_scope()
 					mut stmts := []ast.Stmt{}
 					for p.tok.kind != .eof {
 						stmts << p.stmt(false)
 					}
+					p.close_scope()
 					return ast.FnDecl{
 						name: 'main.main'
 						mod: 'main'
