@@ -21,6 +21,10 @@ fn cerror(e string) {
 }
 
 fn check_name(name string) string {
+	if name.trim(' ').len == 0 {
+		cerror("project name cannot be empty")
+		exit(1)
+	}
 	if name.is_title() {
 		mut cname := name.to_lower()
 		if cname.contains(' ') {
