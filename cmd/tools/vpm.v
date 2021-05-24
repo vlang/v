@@ -588,7 +588,7 @@ fn vpm_show(module_names []string) {
 			'License: $mod.license',
 			'Location: $path',
 			'Requires: ${mod.dependencies.join(', ')}',
-		]
-		println(console_output.join('\n'))
+		].join('\n')
+		println('${console_output}\n--------\n')
 	}
 }
