@@ -94,12 +94,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 		for i, field in info.fields {
 			mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
-			base_fmt := g.type_to_fmt1(field.typ)
+			base_fmt := g.type_to_fmt1(g.unwrap_generic(field.typ))
 
 			// manage prefix and quote symbol for the filed
 			mut quote_str := ''
 			mut prefix := ''
-			sym := g.table.get_type_symbol(field.typ)
+			sym := g.table.get_type_symbol(g.unwrap_generic(field.typ))
 			if sym.kind == .string {
 				quote_str = "'"
 			} else if field.typ in ast.charptr_types {
