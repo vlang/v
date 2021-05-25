@@ -180,7 +180,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
 						continue
-					} else if sub_expr.left is CastExpr {
+					} else if sub_expr.left is CastExpr || sub_expr.left is IndexExpr {
 						needs_braces = true
 					}
 					break
