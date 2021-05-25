@@ -408,8 +408,6 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		// g.definitions.writeln('string _STR(const char*, int, ...);')
-		// g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}
 	if g.pref.os == .ios {
 		g.cheaders.writeln('#define __TARGET_IOS__ 1')
@@ -2196,7 +2194,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// here, not in call_expr().
 	// `pos := s.index('x') or { return }`
 	// ==========>
-	// Option_int _t190 = string_index(s, _STR("x"));
+	// Option_int _t190 = string_index(s, _STR("x")); // _STR() no more used!!
 	// if (_t190.state != 2) {
 	// Error err = _t190.err;
 	// return;

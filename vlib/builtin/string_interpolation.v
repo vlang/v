@@ -637,13 +637,11 @@ pub const (
 	si_g64_code = '0xfe0f'
 )
 
-// replace _STR("\'%.*s\\000\'", 2, in_str)
 [inline]
 pub fn str_intp_sq(in_str string) string {
 	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = $in_str}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
 }
 
-// replace _STR("\`%.*s\\000\`", 2, in_str)
 [inline]
 pub fn str_intp_rune(in_str string) string {
 	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = $in_str}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
