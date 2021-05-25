@@ -2544,7 +2544,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		module_pos = attrs_pos.extend(name_pos)
 	}
-	full_name := util.qualify_module(name, p.file_name)
+	full_name := util.qualify_module(p.pref, name, p.file_name)
 	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
 	mod_node = ast.Module{
