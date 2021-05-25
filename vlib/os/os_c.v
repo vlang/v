@@ -730,13 +730,7 @@ pub fn is_link(path string) bool {
 	$if windows {
 		path_ := path.replace('/', '\\')
 		attr := C.GetFileAttributesW(path_.to_wide())
-		if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
-			return false
-		}
-		if (attr & 0x400) != 0 { // FILE_ATTRIBUTE_REPARSE_POINT
-			return true
-		}
-		return false
+		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 	} $else {
 		statbuf := C.stat{}
 		if C.lstat(&char(path.str), &statbuf) != 0 {
@@ -744,7 +738,6 @@ pub fn is_link(path string) bool {
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
 	}
-	return false
 }
 
 // chdir changes the current working directory to the new directory in `path`.
