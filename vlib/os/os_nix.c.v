@@ -6,6 +6,7 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <sys/ptrace.h>
 
 pub const (
 	path_separator = '/'
@@ -279,7 +280,7 @@ pub fn (c &Command) close() ? {
 	}
 }
 
-pub fn symlink(origin string, target string) ?bool {
+pub fn symlink(target string, origin string) ?bool {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return true
@@ -317,8 +318,11 @@ pub fn (mut f File) close() {
 	C.fclose(f.cfile)
 }
 
+[inline]
 pub fn debugger_present() bool {
-	return false
+	// check if the parent could trace its process,
+	// if not a debugger must be present
+	return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
 }
 
 fn C.mkstemp(stemplate &byte) int
