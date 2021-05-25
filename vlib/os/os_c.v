@@ -738,7 +738,6 @@ pub fn is_link(path string) bool {
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
 	}
-	return false
 }
 
 // chdir changes the current working directory to the new directory in `path`.
