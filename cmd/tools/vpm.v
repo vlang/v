@@ -582,22 +582,11 @@ Homepage: $module_meta_info.url
 Downloads: $module_meta_info.nr_downloads
 Installed: False
 --------
-				')
+')
 			continue
 		}
 		path := os.join_path(os.vmodules_dir(), module_name)
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
-		// console_output := [
-		// 	'Name: $mod.name',
-		// 	'Version: $mod.version',
-		// 	'Description: $mod.description',
-		// 	'Homepage: $mod.repo_url',
-		// 	'Author: $mod.author',
-		// 	'License: $mod.license',
-		// 	'Location: $path',
-		// 	'Requires: ${mod.dependencies.join(', ')}',
-		// ].join('\n')
-		// println('${console_output}\n--------\n')
 		print('Name: $mod.name
 Version: $mod.version
 Description: $mod.description
