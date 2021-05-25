@@ -318,7 +318,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.symlink(symlink, folder) or { panic(err) }
+	os.symlink(folder, symlink) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rmdir(folder) or { panic(err) }
@@ -351,7 +351,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 // }
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink2', 'symlink') or { panic(err) }
+	os.symlink('symlink', 'symlink2') or { panic(err) }
 	assert os.exists('symlink2')
 	// cleanup
 	os.rmdir('symlink') or { panic(err) }

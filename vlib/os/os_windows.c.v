@@ -313,7 +313,7 @@ pub fn execute(cmd string) Result {
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
-pub fn symlink(symlink_path string, target_path string) ?bool {
+pub fn symlink(target_path string, symlink_path string) ?bool {
 	mut flags := 0
 	if is_dir(symlink_path) {
 		flags |= 1
