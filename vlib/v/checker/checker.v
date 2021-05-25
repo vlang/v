@@ -690,6 +690,14 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			struct_init.typ = c.expected_type
 		}
 	}
+	struct_sym := c.table.get_type_symbol(struct_init.typ)
+	if struct_sym.info is ast.Struct {
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
+			&& c.cur_concrete_types.len == 0 {
+			c.error('generic struct init must specify type parameter, e.g. Foo<int>',
+				struct_init.pos)
+		}
+	}
 	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.cur_concrete_types)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)

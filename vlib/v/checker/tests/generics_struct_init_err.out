@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generics_struct_init_err.vv:58:8: error: generic struct init must specify type parameter, e.g. Foo<int>
+   56 |     ret = holder_call_12(neg, 3)
+   57 |     assert ret == -3
+   58 |     ret = FnHolder1{neg}.call(4)
+      |           ~~~~~~~~~~~~~~
+   59 |     assert ret == -4
+   60 |
+vlib/v/checker/tests/generics_struct_init_err.vv:67:8: error: generic struct init must specify type parameter, e.g. Foo<int>
+   65 |     ret = holder_call_22(neg, 5)
+   66 |     assert ret == -5
+   67 |     ret = FnHolder2{neg}.call(6)
+      |           ~~~~~~~~~~~~~~
+   68 |     assert ret == -6
+   69 | }
