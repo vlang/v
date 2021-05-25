@@ -1300,41 +1300,15 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-// eq implements the `u == a` (equal) operator.
-fn (u ustring) eq(a ustring) bool {
-	if u.len != a.len || u.s != a.s {
-		return false
-	}
-	return true
+fn (u ustring) == (a ustring) bool {
+	return u.s == a.s
 }
 
-// ne implements the `u != a` (not equal) operator.
-fn (u ustring) ne(a ustring) bool {
-	return !u.eq(a)
-}
-
-// lt implements the `u < a` (less than) operator.
-fn (u ustring) lt(a ustring) bool {
+fn (u ustring) < (a ustring) bool {
 	return u.s < a.s
 }
 
-// le implements the `u <= a` (less than or equal to) operator.
-fn (u ustring) le(a ustring) bool {
-	return u.lt(a) || u.eq(a)
-}
-
-// gt implements the `u > a` (greater than) operator.
-fn (u ustring) gt(a ustring) bool {
-	return !u.le(a)
-}
-
-// ge implements the `u >= a` (greater than or equal to) operator.
-fn (u ustring) ge(a ustring) bool {
-	return !u.lt(a)
-}
-
-// add concatenates ustring with the string given in `s`.
-pub fn (u ustring) add(a ustring) ustring {
+fn (u ustring) + (a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
 		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
