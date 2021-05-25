@@ -318,7 +318,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	_ := os.symlink(symlink, folder) or { panic(err) }
+	os.symlink(symlink, folder) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rmdir(folder) or { panic(err) }

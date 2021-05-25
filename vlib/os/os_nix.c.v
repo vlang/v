@@ -6,6 +6,7 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <sys/types.h>
 #include <sys/ptrace.h>
 
 pub const (
@@ -57,7 +58,7 @@ fn C.gethostname(&char, int) int
 // NB: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
 
-fn C.ptrace(u32, u32, voidptr, voidptr) u64
+fn C.ptrace(u32, u32, voidptr, int) u64
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -308,7 +309,12 @@ pub fn (mut f File) close() {
 pub fn debugger_present() bool {
 	// check if the parent could trace its process,
 	// if not a debugger must be present
-	return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
+	$if linux {
+		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
+	} $else $if macos {
+		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
+	}
+	return false
 }
 
 fn C.mkstemp(stemplate &byte) int
