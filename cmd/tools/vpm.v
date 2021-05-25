@@ -72,7 +72,7 @@ fn main() {
 			if module_names.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
 				manifest := vmod.from_file('./v.mod') or { panic(err) }
-				module_names = manifest.dependencies
+				module_names = manifest.dependencies.clone()
 			}
 			vpm_install(module_names)
 		}

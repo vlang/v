@@ -192,7 +192,7 @@ fn test_num_literals() {
 	mut rhs_types := []string{}
 	for input in inputs {
 		stmt := parse_stmt(input, table, scope)
-		r := (stmt as ast.AssignStmt).right
+		r := (stmt as ast.AssignStmt).right.clone()
 		match r[0] {
 			ast.IntegerLiteral { rhs_types << 'int literal' }
 			ast.FloatLiteral { rhs_types << 'float literal' }

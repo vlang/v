@@ -1,0 +1,7 @@
+vlib/v/checker/tests/copy_array_struct_err.vv:12:4: error: use `array2 := array1.clone()` instead of `array2 := array1` (or use `unsafe`)
+   10 | fn main() {
+   11 |     mut a := Mut{[1, 2, 3]}
+   12 |     b := a.v
+      |       ~~
+   13 |     _ := b
+   14 |

@@ -345,10 +345,10 @@ pub fn (mut v Builder) cc_msvc() {
 	// sflags := v.get_os_cflags().msvc_string_flags()
 	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
-	inc_paths := sflags.inc_paths
-	lib_paths := sflags.lib_paths
-	defines := sflags.defines
-	other_flags := sflags.other_flags
+	inc_paths := sflags.inc_paths.clone()
+	lib_paths := sflags.lib_paths.clone()
+	defines := sflags.defines.clone()
+	other_flags := sflags.other_flags.clone()
 	// Include the base paths
 	a << '-I "$r.ucrt_include_path"'
 	a << '-I "$r.vs_include_path"'

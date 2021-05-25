@@ -1,0 +1,26 @@
+struct Mut {
+mut:
+	v []int
+}
+
+struct NotMut {
+	v []int
+}
+
+fn main() {
+	mut a := Mut{[1, 2, 3]}
+	b := a.v
+	_ := b
+
+	c := Mut{[1, 2, 3]}
+	d := c.v
+	_ := d
+
+	mut e := NotMut{[1, 2, 3]}
+	f := e.v
+	_ := f
+
+	g := NotMut{[1, 2, 3]}
+	h := g.v
+	_ := h
+}

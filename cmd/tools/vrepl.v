@@ -87,7 +87,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 		if !not_add_print {
 			lines = r.vstartup_lines.filter(!it.starts_with('print'))
 		} else {
-			lines = r.vstartup_lines
+			lines = r.vstartup_lines.clone()
 		}
 		all_lines << lines
 	}

@@ -5888,7 +5888,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		defer {
 			g.inside_or_block = false
 		}
-		stmts := or_block.stmts
+		stmts := or_block.stmts.clone()
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt
 			&& (stmts[stmts.len - 1] as ast.ExprStmt).typ != ast.void_type {
 			g.indent++

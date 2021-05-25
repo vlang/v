@@ -64,7 +64,7 @@ struct Efg {
 
 fn test_shared_auto_init_array() {
 	e := Efg{}
-	shared a := e.a
+	shared a := e.a.clone()
 	lock a {
 		a << 23.0625
 		a << -133.25
@@ -81,11 +81,13 @@ fn test_shared_array_in_struct() {
 		a: [1.25, 2.75, 7, 13.0625]
 		i: 12
 	}
-	shared t := x.a
-	lock t {
-		t[2] = -1.125
+	unsafe {
+		shared t := x.a
+		lock t {
+			t[2] = -1.125
+		}
 	}
-	shared tt := x.a
+	shared tt := x.a.clone()
 	v := rlock tt {
 		tt[3]
 	}

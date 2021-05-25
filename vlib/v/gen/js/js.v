@@ -858,7 +858,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.push_pub_var(name)
 		}
 	}
-	mut args := it.params
+	mut args := it.params.clone()
 	if it.is_method {
 		args = args[1..]
 	}

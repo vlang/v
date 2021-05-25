@@ -2556,7 +2556,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut attrs_pos := p.tok.position()
 	if p.tok.kind == .lsbr {
 		p.attributes()
-		module_attrs = p.attrs
+		module_attrs = p.attrs.clone()
 	}
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module

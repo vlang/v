@@ -421,11 +421,11 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 		mut v_sym := t.get_type_symbol(variant)
 		fields := match mut v_sym.info {
 			Struct {
-				v_sym.info.fields
+				v_sym.info.fields.clone()
 			}
 			SumType {
 				t.resolve_common_sumtype_fields(v_sym)
-				v_sym.info.fields
+				v_sym.info.fields.clone()
 			}
 			else {
 				[]StructField{}
@@ -1085,9 +1085,9 @@ fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 		}
 	}
 	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as Interface).methods
+		(inter_sym.info as Interface).methods.clone()
 	} else {
-		inter_sym.methods
+		inter_sym.methods.clone()
 	}
 	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
@@ -1296,9 +1296,9 @@ pub fn (mut table Table) type_implements_interface(utyp Type, interface_type Typ
 		// pos)
 	}
 	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as Interface).methods
+		(inter_sym.info as Interface).methods.clone()
 	} else {
-		inter_sym.methods
+		inter_sym.methods.clone()
 	}
 	// Verify methods
 	for imethod in imethods {

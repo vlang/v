@@ -654,10 +654,10 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	keep_fn_name := p.cur_fn_name
 	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {
-		tmp := p.label_names
+		tmp := p.label_names.clone()
 		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
-		label_names = p.label_names
+		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
 	p.cur_fn_name = keep_fn_name

@@ -186,7 +186,7 @@ fn (mut p Parser) parse() ?Manifest {
 		return error('$err_label no content.')
 	}
 	p.scanner.scan_all()
-	tokens := p.scanner.tokens
+	tokens := p.scanner.tokens.clone()
 	mut mn := Manifest{}
 	if tokens[0].typ != .module_keyword {
 		panic('not a valid v.mod')

@@ -336,7 +336,7 @@ fn (a array) clone_static() array {
 }
 
 // clone returns an independent copy of a given array.
-pub fn (a &array) clone() array {
+pub fn (a array) clone() array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
