@@ -1015,7 +1015,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
-	if !c.pref.use_cache && infix_expr.op != .key_is {
+	if infix_expr.op != .key_is {
 		match mut infix_expr.left {
 			ast.Ident, ast.SelectorExpr {
 				if infix_expr.left.is_mut {
@@ -1685,7 +1685,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 						return
 					}
 				}
-				if !is_map && arg_expr.info.typ != ast.bool_type {
+				// NOTE: bug accessing typ field on sumtype variant (not cast properly).
+				// leaving this here as the resulting issue is notoriously hard to debug.
+				// if !is_map && arg_expr.info.typ != ast.bool_type {
+				if !is_map && arg_expr.var_info().typ != ast.bool_type {
 					c.error('type mismatch, should be bool', arg_expr.pos)
 				}
 			}
@@ -5122,7 +5125,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		if !c.pref.use_cache && ident.tok_kind == .assign && ident.is_mut {
+		if ident.tok_kind == .assign && ident.is_mut {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
 		if obj := ident.scope.find(ident.name) {
