@@ -311,11 +311,6 @@ fn test_is_writable_folder() {
 }
 
 fn test_make_symlink_check_is_link_and_remove_symlink() {
-	$if windows {
-		// TODO
-		assert true
-		return
-	}
 	folder := 'tfolder'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
@@ -323,10 +318,10 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.system('ln -s $folder $symlink')
+	_ := os.symlink(symlink, folder) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
-	os.rm(folder) or { panic(err) }
+	os.rmdir(folder) or { panic(err) }
 	folder_exists := os.is_dir(folder)
 	assert folder_exists == false
 	symlink_exists := os.is_link(symlink)
@@ -355,14 +350,11 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 // }
 // }
 fn test_symlink() {
-	$if windows {
-		return
-	}
 	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink', 'symlink2') or { panic(err) }
+	os.symlink('symlink2', 'symlink') or { panic(err) }
 	assert os.exists('symlink2')
 	// cleanup
-	os.rm('symlink') or { panic(err) }
+	os.rmdir('symlink') or { panic(err) }
 	os.rm('symlink2') or { panic(err) }
 }
 
