@@ -91,17 +91,18 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 }
 
 pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
-	got_, exp_ := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
-	if got_.idx() == exp_.idx() {
+	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
+	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
 		// and the other is not, is this correct behaviour?
 		return true
 	}
-	if (exp_.is_pointer() || exp_.is_number()) && (got_.is_pointer() || got_.is_number()) {
+	if (unalias_expected.is_pointer() || unalias_expected.is_number())
+		&& (unalias_got.is_pointer() || unalias_got.is_number()) {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
-	if expected.is_ptr() && got_ == ast.int_literal_type {
+	if expected.is_ptr() && unalias_got == ast.int_literal_type {
 		return true
 	}
 	// TODO: use sym so it can be absorbed into below [.voidptr, .any] logic
@@ -115,7 +116,8 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if !got_.is_ptr() && got_sym.kind == .array_fixed && (exp_.is_pointer() || exp_.is_ptr()) {
+	if !unalias_got.is_ptr() && got_sym.kind == .array_fixed
+		&& (unalias_expected.is_pointer() || unalias_expected.is_ptr()) {
 		// fixed array needs to be a struct, not a pointer
 		return false
 	}
