@@ -42,7 +42,7 @@ V supports the following commands:
    upgrade           Upgrade all the outdated modules.
    list              List all installed modules.
    outdated          List installed modules that need updates.
-   show              Display informations about a module on vpm
+   show              Display information about a module on vpm
 
 * Others:
    doctor            Display some useful info about your system to help reporting bugs.
