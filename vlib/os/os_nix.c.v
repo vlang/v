@@ -281,7 +281,7 @@ pub fn (c &Command) close() ? {
 	}
 }
 
-pub fn symlink(target string, origin string) ?bool {
+pub fn symlink(origin string, target string) ?bool {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return true

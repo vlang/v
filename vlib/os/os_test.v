@@ -390,7 +390,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 // }
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink2', 'symlink') or { panic(err) }
+	os.symlink('symlink', 'symlink2') or { panic(err) }
 	assert os.exists('symlink2')
 	// cleanup
 	os.rmdir('symlink') or { panic(err) }
