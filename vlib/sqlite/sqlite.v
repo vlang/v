@@ -19,7 +19,7 @@ struct C.sqlite3_stmt {
 }
 
 struct SQLError {
-	msg string
+	msg  string
 	code int
 }
 
