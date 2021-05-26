@@ -4507,8 +4507,9 @@ fn (mut g Gen) ident(nd ast.Ident) {
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
-		if g.inside_defer && node_info.typ != ast.error_type
-			&& node.name !in g.defer_skip_var_names[g.defer_idx] {
+		if g.inside_defer && node_info.typ != ast.error_type && (g.defer_skip_var_names.len == 0
+			|| g.defer_skip_var_names[g.defer_idx].len == 0
+			|| node.name !in g.defer_skip_var_names[g.defer_idx]) {
 			g.write('/*defer*/(*$name)')
 			return
 		}
