@@ -796,12 +796,13 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			spos := p.tok.position()
 			p.inside_defer = true
 			p.defer_vars = []ast.Ident{}
+			p.defer_skip_vars = []ast.Ident{}
 			stmts := p.parse_block()
 			p.inside_defer = false
 			return ast.DeferStmt{
 				stmts: stmts
-				used_vars: p.defer_vars
-				skip_vars: p.defer_skip_vars
+				used_vars: p.defer_vars.clone()
+				skip_vars: p.defer_skip_vars.clone()
 				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
