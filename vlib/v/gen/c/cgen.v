@@ -94,6 +94,7 @@ mut:
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
+	anon_fn                bool
 	ternary_names          map[string]string
 	ternary_level_names    map[string][]string
 	stmt_path_pos          []int // positions of each statement start, for inserting C statements before the current statement
@@ -2953,7 +2954,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	if !node.has_gen {
 		pos := g.out.len
+		g.anon_fn = true
 		g.stmt(node.decl)
+		g.anon_fn = false
 		fn_body := g.out.after(pos)
 		g.out.go_back(fn_body.len)
 		g.anon_fn_definitions << fn_body

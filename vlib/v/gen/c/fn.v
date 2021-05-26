@@ -100,6 +100,24 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
 	if node.defer_stmts.len > 0 {
+		if g.anon_fn {
+			dov := g.defer_org_vars
+			dtv := g.defer_tmp_vars
+			dsv := g.defer_skip_vars
+			dovn := g.defer_org_var_names
+			dtvn := g.defer_tmp_var_names
+			dsvn := g.defer_skip_var_names
+			duv := g.defer_used_vars.clone()
+			defer {
+				g.defer_org_vars = dov
+				g.defer_tmp_vars = dtv
+				g.defer_skip_vars = dsv
+				g.defer_org_var_names = dovn
+				g.defer_tmp_var_names = dtvn
+				g.defer_skip_var_names = dsvn
+				g.defer_used_vars = duv.clone()
+			}
+		}
 		g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
 		g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
 		g.defer_skip_vars = [][]ast.Ident{len: node.defer_stmts.len}
@@ -741,7 +759,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
 		if !node.left_type.has_flag(.shared_f) {
-			g.write('/*rec*/${'*'.repeat(node.left_type.nr_muls())}')
+			mut la := node.left_type.nr_muls() // left amount
+			if node.left is ast.Ident && g.defer_tmp_var_names.len > 0
+				&& (node.left as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] {
+				la -= 1
+			}
+			g.write('/*rec*/${'*'.repeat(la)}')
 		}
 	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
 		mut la := node.left_type.nr_muls() // left amount
