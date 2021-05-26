@@ -515,7 +515,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
 				res.build_options << '$arg "$path"'
-				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
+				res.lookup_path = path.split('|')
 				i++
 			}
 			'-bare-builtin-dir' {
