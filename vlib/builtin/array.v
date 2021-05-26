@@ -95,13 +95,11 @@ fn (mut a array) ensure_cap(required int) {
 		cap *= 2
 	}
 	new_size := cap * a.element_size
-	mut new_data := &byte(0)
-	if a.data != voidptr(0) {
-		new_data = unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
+	a.data = if a.data != voidptr(0) {
+		unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
 	} else {
-		new_data = vcalloc(new_size)
+		vcalloc(new_size)
 	}
-	a.data = new_data
 	a.cap = cap
 }
 

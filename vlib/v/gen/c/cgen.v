@@ -5978,7 +5978,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				elem_type_str = elem_type_str[3..]
 			}
 			noscan := g.check_noscan(elem_typ)
-			init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
+			init_str := '__new_array${noscan}(0, 0, sizeof($elem_type_str))'
 			if typ.has_flag(.shared_f) {
 				atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
 				return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
