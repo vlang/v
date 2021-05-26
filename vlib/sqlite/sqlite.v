@@ -76,12 +76,11 @@ pub fn connect(path string) ?DB {
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		unsafe {
-			msg := cstring_to_vstring(C.sqlite3_errstr(code))	
+			return IError(&SQLError{
+				msg: cstring_to_vstring(C.sqlite3_errstr(code))
+				code: code
+			})
 		}
-		return IError(&SQLError{
-			msg: msg
-			code: code
-		})
 	}
 	return DB{
 		conn: db
@@ -98,12 +97,11 @@ pub fn (mut db DB) close() ?bool {
 		db.is_open = false
 	} else {
 		unsafe {
-			msg := cstring_to_vstring(C.sqlite3_errstr(code))	
+			return IError(&SQLError{
+				msg: cstring_to_vstring(C.sqlite3_errstr(code))
+				code: code
+			})
 		}
-		return IError(&SQLError{
-			msg: msg
-			code: code
-		})
 	}
 	return true // successfully closed
 }
@@ -184,12 +182,11 @@ pub fn (db DB) exec_one(query string) ?Row {
 		})
 	} else if code != 101 {
 		unsafe {
-			msg := cstring_to_vstring(C.sqlite3_errstr(code))	
+			return IError(&SQLError{
+				msg: cstring_to_vstring(C.sqlite3_errstr(code))
+				code: code
+			})
 		}
-		return IError(&SQLError{
-			msg: msg
-			code: code
-		})
 	}
 	return rows[0]
 }
