@@ -99,25 +99,17 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
+
+	dov := g.defer_org_vars
+	dtv := g.defer_tmp_vars
+	dsv := g.defer_skip_vars
+	dovn := g.defer_org_var_names
+	dtvn := g.defer_tmp_var_names
+	dsvn := g.defer_skip_var_names
+	duv := g.defer_used_vars.clone()
+	// TODO remove above 7 lines when this pr is merged and make them defered
+
 	if node.defer_stmts.len > 0 {
-		if g.anon_fn {
-			dov := g.defer_org_vars
-			dtv := g.defer_tmp_vars
-			dsv := g.defer_skip_vars
-			dovn := g.defer_org_var_names
-			dtvn := g.defer_tmp_var_names
-			dsvn := g.defer_skip_var_names
-			duv := g.defer_used_vars.clone()
-			defer {
-				g.defer_org_vars = dov
-				g.defer_tmp_vars = dtv
-				g.defer_skip_vars = dsv
-				g.defer_org_var_names = dovn
-				g.defer_tmp_var_names = dtvn
-				g.defer_skip_var_names = dsvn
-				g.defer_used_vars = duv.clone()
-			}
-		}
 		g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
 		g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
 		g.defer_skip_vars = [][]ast.Ident{len: node.defer_stmts.len}
@@ -407,6 +399,15 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.writeln(');')
 			g.writeln('}')
 		}
+	}
+	if g.anon_fn {
+		g.defer_org_vars = dov
+		g.defer_tmp_vars = dtv
+		g.defer_skip_vars = dsv
+		g.defer_org_var_names = dovn
+		g.defer_tmp_var_names = dtvn
+		g.defer_skip_var_names = dsvn
+		g.defer_used_vars = duv.clone()
 	}
 }
 
