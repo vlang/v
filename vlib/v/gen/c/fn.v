@@ -99,13 +99,15 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
-	g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
-	g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
-	g.defer_skip_vars = [][]ast.Ident{len: node.defer_stmts.len}
-	g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
-	g.defer_tmp_var_names = [][]string{len: node.defer_stmts.len}
-	g.defer_skip_var_names = [][]string{len: node.defer_stmts.len}
-	g.defer_used_vars = map[string]string{}
+	if node.defer_stmts.len > 0 {
+		g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
+		g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
+		g.defer_skip_vars = [][]ast.Ident{len: node.defer_stmts.len}
+		g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
+		g.defer_tmp_var_names = [][]string{len: node.defer_stmts.len}
+		g.defer_skip_var_names = [][]string{len: node.defer_stmts.len}
+		g.defer_used_vars = map[string]string{}
+	}
 	if node.language == .c {
 		// || node.no_body {
 		return
