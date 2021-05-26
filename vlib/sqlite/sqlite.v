@@ -116,6 +116,7 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
 		C.puts(C.sqlite3_errstr(x))
 	}
+
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
@@ -126,6 +127,7 @@ pub fn (db DB) q_int(query string) int {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
+
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
@@ -134,11 +136,14 @@ pub fn (db DB) q_int(query string) int {
 // Returns a single cell with value string.
 pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
-	res := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, 0))) }
-	C.sqlite3_finalize(stmt)
-	return res
+
+	val := unsafe { &byte(C.sqlite3_column_text(stmt, 0)) }
+	return if val != &byte(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
 // Execute the query on db, return an array of all the results, alongside any result code.
