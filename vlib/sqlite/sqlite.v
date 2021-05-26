@@ -158,8 +158,12 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			val := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, i))) }
-			row.vals << val
+			val := unsafe { &byte(C.sqlite3_column_text(stmt, i)) }
+			if val == &byte(0) {
+				row.vals << ''
+			} else {
+				row.vals << unsafe { tos_clone(val) }
+			}
 		}
 		rows << row
 	}
