@@ -2389,7 +2389,6 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 }
 
 pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
-	// TODO: this code is very similar to ast.Expr.str()
 	mut quote := "'"
 	for val in node.vals {
 		if val.contains('\\"') {
@@ -2407,6 +2406,9 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 			quote = '"'
 		}
 	}
+	// TODO: this code is very similar to ast.Expr.str()
+	// serkonda7: it can not fully be replaced tho as ´f.expr()´ and `ast.Expr.str()`
+	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
 		f.write(val)
