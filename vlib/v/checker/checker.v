@@ -2456,7 +2456,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
-		arg_typ_sym := c.table.get_type_symbol(param.typ)
+		param_typ_sym := c.table.get_type_symbol(param.typ)
 		if func.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
@@ -2490,12 +2490,12 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
-		mut final_arg_sym := arg_typ_sym
-		if func.is_variadic && arg_typ_sym.info is ast.Array {
-			final_arg_sym = c.table.get_type_symbol(arg_typ_sym.array_info().elem_type)
+		mut final_param_sym := param_typ_sym
+		if func.is_variadic && param_typ_sym.info is ast.Array {
+			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
 		}
 		// Handle expected interface
-		if final_arg_sym.kind == .interface_ {
+		if final_param_sym.kind == .interface_ {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
@@ -2506,11 +2506,20 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }
-			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
+			if typ_sym.kind == .void && param_typ_sym.kind == .string {
 				continue
 			}
 			if func.generic_names.len > 0 {
 				continue
+			}
+			if c.pref.translated {
+				// Allow enums to be used as ints and vice versa in translated code
+				if param.typ == ast.int_type && typ_sym.kind == .enum_ {
+					continue
+				}
+				if typ == ast.int_type && param_typ_sym.kind == .enum_ {
+					continue
+				}
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
