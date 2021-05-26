@@ -18,6 +18,11 @@ struct C.sqlite3 {
 struct C.sqlite3_stmt {
 }
 
+struct SQLError {
+	msg string
+	code int
+}
+
 //
 pub struct DB {
 pub mut:
@@ -68,8 +73,11 @@ fn C.sqlite3_free(voidptr)
 // connect Opens the connection with a database.
 pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
-	if C.sqlite3_open(&char(path.str), &db) != 0 {
-		return error('sqlite db error')
+	code := C.sqlite3_open(&char(path.str), &db)
+	if code != 0 {
+		return IError(&SQLError{
+			code: code
+		})
 	}
 	return DB{
 		conn: db
@@ -85,7 +93,9 @@ pub fn (mut db DB) close() ?bool {
 	if code == 0 {
 		db.is_open = false
 	} else {
-		return error('sqlite db error: failed to close with code: $code')
+		return IError(&SQLError{
+			code: code
+		})
 	}
 	return true // successfully closed
 }
@@ -160,7 +170,10 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 pub fn (db DB) exec_one(query string) ?Row {
 	rows, code := db.exec(query)
 	if rows.len == 0 || code != 101 {
-		return error('SQL Error: Rows #$rows.len Return code $code')
+		return IError(&SQLError{
+			msg: 'Rows: #$rows.len'
+			code: code
+		})
 	}
 	return rows[0]
 }
