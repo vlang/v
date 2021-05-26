@@ -742,7 +742,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('/*rec*/${'*'.repeat(node.left_type.nr_muls())}')
 		}
 	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
-		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
+		mut la := node.left_type.nr_muls() // left amount
+		if node.left is ast.Ident && g.defer_tmp_var_names.len > 0
+			&& (node.left as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] {
+			la -= 1
+		}
+		diff := la - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
 			// g.write('&')
@@ -762,7 +767,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if g.inside_defer {
+		if g.inside_defer && node.left is ast.Ident && g.defer_tmp_var_names.len > 0
+			&& (node.left as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] && node.left_type.nr_muls() - 1 == 0 {
 			g.write('&')
 		}
 		g.expr(node.left)
