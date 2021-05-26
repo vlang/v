@@ -95,6 +95,7 @@ pub fn (mut db DB) close() ?bool {
 	} else {
 		return IError(&SQLError{
 			code: code
+			msg: cstring_to_vstring(C.sqlite3_errstr(code))
 		})
 	}
 	return true // successfully closed
