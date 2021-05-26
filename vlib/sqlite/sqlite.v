@@ -76,6 +76,7 @@ pub fn connect(path string) ?DB {
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		return IError(&SQLError{
+			msg: cstring_to_vstring(C.sqlite3_errstr(code))
 			code: code
 		})
 	}
@@ -94,8 +95,8 @@ pub fn (mut db DB) close() ?bool {
 		db.is_open = false
 	} else {
 		return IError(&SQLError{
-			code: code
 			msg: cstring_to_vstring(C.sqlite3_errstr(code))
+			code: code
 		})
 	}
 	return true // successfully closed
@@ -170,9 +171,14 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 // Return the first row from the resulting table
 pub fn (db DB) exec_one(query string) ?Row {
 	rows, code := db.exec(query)
-	if rows.len == 0 || code != 101 {
+	if rows.len == 0 {
 		return IError(&SQLError{
-			msg: 'Rows: #$rows.len'
+			msg: 'No rows'
+			code: code
+		})
+	} else if code != 101 {
+		return IError(&SQLError{
+			msg: cstring_to_vstring(C.sqlite3_errstr(code))
 			code: code
 		})
 	}
