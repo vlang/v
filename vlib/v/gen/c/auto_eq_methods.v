@@ -23,7 +23,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left ast.Type) string {
 		fn_builder.writeln('\tif (a._typ == $typ) {')
 		name := '_$sym.cname'
 		if sym.kind == .string {
-			fn_builder.writeln('\t\tif (string_ne(*a.$name, *b.$name)) {')
+			fn_builder.writeln('\t\tif (!string__eq(*a.$name, *b.$name)) {')
 		} else if sym.kind == .sum_type && !typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*a.$name, *b.$name)) {')
@@ -73,7 +73,7 @@ fn (mut g Gen) gen_struct_equality_fn(left ast.Type) string {
 	}
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
 
-	// orverloaded
+	// overloaded
 	if left_sym.has_method('==') {
 		fn_builder.writeln('\treturn ${ptr_typ}__eq(a, b);')
 		fn_builder.writeln('}')
@@ -83,7 +83,7 @@ fn (mut g Gen) gen_struct_equality_fn(left ast.Type) string {
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if sym.kind == .string {
-			fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+			fn_builder.writeln('\tif (!string__eq(a.$field.name, b.$field.name)) {')
 		} else if sym.kind == .sum_type && !field.typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(field.typ)
 			fn_builder.writeln('\tif (!${eq_fn}_sumtype_eq(a.$field.name, b.$field.name)) {')
@@ -128,7 +128,7 @@ fn (mut g Gen) gen_alias_equality_fn(left ast.Type) string {
 	fn_builder.writeln('static bool ${ptr_typ}_alias_eq($ptr_typ a, $ptr_typ b) {')
 	sym := g.table.get_type_symbol(info.parent_type)
 	if sym.kind == .string {
-		fn_builder.writeln('\tif (string_ne(a, b)) {')
+		fn_builder.writeln('\tif (!string__eq(a, b)) {')
 	} else if sym.kind == .sum_type && !left.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(info.parent_type)
 		fn_builder.writeln('\tif (!${eq_fn}_sumtype_eq(a, b)) {')
@@ -176,7 +176,7 @@ fn (mut g Gen) gen_array_equality_fn(left ast.Type) string {
 	fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem_sym.kind == .string {
-		fn_builder.writeln('\t\tif (string_ne(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
+		fn_builder.writeln('\t\tif (!string__eq(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
 	} else if elem_sym.kind == .sum_type && !elem_typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
@@ -226,7 +226,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left ast.Type) string {
 	fn_builder.writeln('\tfor (int i = 0; i < $size; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem_sym.kind == .string {
-		fn_builder.writeln('\t\tif (string_ne(a[i], b[i])) {')
+		fn_builder.writeln('\t\tif (!string__eq(a[i], b[i])) {')
 	} else if elem_sym.kind == .sum_type && !elem_typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a[i], b[i])) {')

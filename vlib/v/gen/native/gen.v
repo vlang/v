@@ -67,7 +67,7 @@ fn (g &Gen) get_backend() ?CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
 	mut g := &Gen{
 		table: table
 		sect_header_name_pos: 0
@@ -75,7 +75,7 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 		pref: pref
 	}
 	g.cgen = g.get_backend() or {
-		eprintln('No available backend for this configuration')
+		eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 		exit(1)
 	}
 	g.generate_header()

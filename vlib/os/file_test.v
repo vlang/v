@@ -59,6 +59,67 @@ fn testsuite_end() ? {
 	assert !os.is_dir(tfolder)
 }
 
+// test_read_bytes_into_newline_text tests reading text from a file with newlines.
+// This test simulates reading a larger text file step by step into a buffer and
+// returning on each newline, even before the buffer is full, and reaching EOF before
+// the buffer is completely filled.
+fn test_read_bytes_into_newline_text() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	f.write_string('Hello World!\nGood\r morning.') ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut buf := []byte{len: 8}
+
+	n0 := f.read_bytes_into_newline(mut buf) ?
+	assert n0 == 8
+
+	n1 := f.read_bytes_into_newline(mut buf) ?
+	assert n1 == 5
+
+	n2 := f.read_bytes_into_newline(mut buf) ?
+	assert n2 == 8
+
+	n3 := f.read_bytes_into_newline(mut buf) ?
+	assert n3 == 6
+
+	f.close()
+}
+
+// test_read_bytes_into_newline_binary tests reading a binary file with NUL bytes.
+// This test simulates the scenario when a byte stream is read and a newline byte
+// appears in that stream and an EOF occurs before the buffer is full.
+fn test_read_bytes_into_newline_binary() ? {
+	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	mut bw := []byte{len: 15}
+	bw[9] = 0xff
+	bw[12] = 10 // newline
+
+	n0_bytes := bw[0..10]
+	n1_bytes := bw[10..13]
+	n2_bytes := bw[13..]
+
+	mut f := os.open_file(tfile, 'w') ?
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut buf := []byte{len: 10}
+
+	n0 := f.read_bytes_into_newline(mut buf) ?
+	assert n0 == 10
+	assert buf[..n0] == n0_bytes
+
+	n1 := f.read_bytes_into_newline(mut buf) ?
+	assert n1 == 3
+	assert buf[..n1] == n1_bytes
+
+	n2 := f.read_bytes_into_newline(mut buf) ?
+	assert n2 == 2
+	assert buf[..n2] == n2_bytes
+	f.close()
+}
+
 // test_read_eof_last_read_partial_buffer_fill tests that when reading a file
 // the end-of-file is detected and results in a none error being returned. This
 // test simulates file reading where the end-of-file is reached inside an fread

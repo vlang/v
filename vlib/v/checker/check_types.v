@@ -91,17 +91,18 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 }
 
 pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
-	got_, exp_ := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
-	if got_.idx() == exp_.idx() {
+	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
+	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
 		// and the other is not, is this correct behaviour?
 		return true
 	}
-	if (exp_.is_pointer() || exp_.is_number()) && (got_.is_pointer() || got_.is_number()) {
+	if (unalias_expected.is_pointer() || unalias_expected.is_number())
+		&& (unalias_got.is_pointer() || unalias_got.is_number()) {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
-	if expected.is_ptr() && got_ == ast.int_literal_type {
+	if expected.is_ptr() && unalias_got == ast.int_literal_type {
 		return true
 	}
 	// TODO: use sym so it can be absorbed into below [.voidptr, .any] logic
@@ -115,7 +116,8 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if !got_.is_ptr() && got_sym.kind == .array_fixed && (exp_.is_pointer() || exp_.is_ptr()) {
+	if !unalias_got.is_ptr() && got_sym.kind == .array_fixed
+		&& (unalias_expected.is_pointer() || unalias_expected.is_ptr()) {
 		// fixed array needs to be a struct, not a pointer
 		return false
 	}
@@ -443,7 +445,9 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
-		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,
+			`_`,
+		] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -469,7 +473,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 				|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`])
 				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
 				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
-				|| (typ.is_string() && fmt != `s`)
+				|| (typ.is_string() && fmt !in [`s`, `S`])
 				|| (typ.idx() in [ast.i64_type_idx, ast.f64_type_idx] && fmt == `c`) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
@@ -503,7 +507,8 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				if sym.kind == .struct_ {
 					info := sym.info as ast.Struct
 					receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in receiver_generic_names {
+					if gt_name in receiver_generic_names
+						&& info.generic_types.len == info.concrete_types.len {
 						idx := receiver_generic_names.index(gt_name)
 						typ = info.concrete_types[idx]
 					}
@@ -560,7 +565,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				} else if arg_sym.kind == .struct_ && param.typ.has_flag(.generic) {
 					info := arg_sym.info as ast.Struct
 					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in generic_names {
+					if gt_name in generic_names && info.generic_types.len == info.concrete_types.len {
 						idx := generic_names.index(gt_name)
 						typ = info.concrete_types[idx]
 					}

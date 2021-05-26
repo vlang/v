@@ -174,12 +174,27 @@ mut:
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
-	is_manualfree := p.is_manualfree || p.attrs.contains('manualfree')
-	is_deprecated := p.attrs.contains('deprecated')
-	is_direct_arr := p.attrs.contains('direct_array_access')
+
+	mut is_manualfree := p.is_manualfree
+	mut is_deprecated := false
+	mut is_direct_arr := false
+	mut is_keep_alive := false
+	mut is_exported := false
+	mut is_unsafe := false
+	mut is_trusted := false
+	for fna in p.attrs {
+		match fna.name {
+			'manualfree' { is_manualfree = true }
+			'deprecated' { is_deprecated = true }
+			'direct_array_access' { is_direct_arr = true }
+			'keep_args_alive' { is_keep_alive = true }
+			'export' { is_exported = true }
+			'unsafe' { is_unsafe = true }
+			'trusted' { is_trusted = true }
+			else {}
+		}
+	}
 	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
-	mut is_unsafe := p.attrs.contains('unsafe')
-	is_keep_alive := p.attrs.contains('keep_args_alive')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -189,7 +204,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// C. || JS.
 	mut language := ast.Language.v
 	if p.tok.kind == .name && p.tok.lit == 'C' {
-		is_unsafe = !p.attrs.contains('trusted')
+		is_unsafe = !is_trusted
 		language = ast.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = ast.Language.js
@@ -423,6 +438,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		params: params
 		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
+		is_exported: is_exported
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_variadic: is_variadic

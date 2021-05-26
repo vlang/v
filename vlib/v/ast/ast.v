@@ -367,6 +367,7 @@ pub:
 	is_main         bool           // true for `fn main()`
 	is_test         bool           // true for `fn test_abcde`
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
+	is_exported     bool           // true for `[export: 'exact_C_name']`
 	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
@@ -552,16 +553,17 @@ pub:
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
 // That array is then passed to V's checker.
+[heap]
 pub struct File {
 pub:
-	path         string // absolute path of the source file - '/projects/v/file.v'
-	path_base    string // file name - 'file.v' (useful for tracing)
 	nr_lines     int    // number of source code lines in the file (including newlines and comments)
 	nr_bytes     int    // number of processed source code bytes
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 	is_test      bool // true for _test.v files
 pub mut:
+	path             string // absolute path of the source file - '/projects/v/file.v'
+	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports

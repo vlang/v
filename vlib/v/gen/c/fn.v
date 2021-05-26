@@ -510,7 +510,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				g.write('\n $cur_line $tmp_opt /*U*/')
 			} else {
 				if !g.inside_const {
-					g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+					g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
 				} else {
 					g.write('\n $cur_line $tmp_opt')
 				}
@@ -880,8 +880,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if node.language == .c {
 		// Skip "C."
-		g.is_c_call = true
 		name = util.no_dots(name[2..])
+		g.is_c_call = true
 	} else {
 		name = c_name(name)
 	}
@@ -1191,7 +1191,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 				g.write('}))')
 			} else {
-				g.write('__new_array_with_default(0, 0, sizeof($elem_type), 0)')
+				g.write('__new_array(0, 0, sizeof($elem_type))')
 			}
 		}
 	}

@@ -37,7 +37,7 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.buf << native.elfclass64 // file class
 	g.buf << native.elfdata2lsb // data encoding
 	g.buf << native.ev_current // file version
-	g.buf << 1 // elf_osabi
+	g.buf << native.elf_osabi
 	g.write64(0) // et_rel) // et_rel for .o
 	g.write16(2) // e_type
 	if g.pref.arch == .arm64 {
@@ -97,11 +97,17 @@ pub fn (mut g Gen) generate_elf_footer() {
 	file_size := g.buf.len
 	g.write64_at(file_size, g.file_size_pos) // set file size 64 bit value
 	g.write64_at(file_size, g.file_size_pos + 8)
-	// call main function, it's not guaranteed to be the first
-	// we generated call(0) ("e8 0")
-	// now need to replace "0" with a relative address of the main function
-	// +1 is for "e8"
-	// -5 is for "e8 00 00 00 00"
-	g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
+	if g.pref.arch == .arm64 {
+		bl_next := u32(0x94000001)
+		g.write32_at(g.code_start_pos, int(bl_next))
+	} else {
+		// amd64
+		// call main function, it's not guaranteed to be the first
+		// we generated call(0) ("e8 0")
+		// now need to replace "0" with a relative address of the main function
+		// +1 is for "e8"
+		// -5 is for "e8 00 00 00 00"
+		g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
+	}
 	g.create_executable()
 }

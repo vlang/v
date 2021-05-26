@@ -164,7 +164,7 @@ fn f32_to_decimal_exact_int(i_mant u32, exp u32) (Dec32,bool) {
 	return d, true
 }
 
-pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
+fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	mut e2 := 0
 	mut m2 := u32(0)
 	if exp == 0 {

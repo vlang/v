@@ -21,6 +21,10 @@ fn cerror(e string) {
 }
 
 fn check_name(name string) string {
+	if name.trim_space().len == 0 {
+		cerror('project name cannot be empty')
+		exit(1)
+	}
 	if name.is_title() {
 		mut cname := name.to_lower()
 		if cname.contains(' ') {
@@ -157,6 +161,7 @@ fn init_project() {
 	c.write_vmod(false)
 	c.write_main(false)
 	c.create_git_repo('')
+
 	println("Change your module's description in `v.mod`")
 }
 

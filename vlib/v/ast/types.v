@@ -411,6 +411,9 @@ pub const (
 	error_type         = new_type(error_type_idx)
 	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
 	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
+	cptr_or_bptr_types = [charptr_type, byteptr_type, new_type(char_type_idx).set_nr_muls(1),
+		new_type(byte_type_idx).set_nr_muls(1),
+	]
 )
 
 pub const (
@@ -848,12 +851,6 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
-	/*
-	if t.pref.is_verbose {
-	print_backtrace()
-	exit(0)
-	}
-	*/
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
 	match sym.kind {
@@ -915,7 +912,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					res = t.fn_signature(info.func, type_only: true)
+					has_names := info.func.params.any(it.name.len > 0)
+					res = t.fn_signature_using_aliases(info.func, import_aliases,
+						type_only: !has_names
+					)
 				} else {
 					// FnFoo
 					res = t.shorten_user_defined_typenames(res, import_aliases)
@@ -957,6 +957,19 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
+		.generic_struct_inst {
+			info := sym.info as GenericStructInst
+			res = sym.name.all_before('<')
+			res += '<'
+			for i, ctyp in info.concrete_types {
+				res += t.get_type_symbol(ctyp).name
+				if i != info.concrete_types.len - 1 {
+					res += ', '
+				}
+			}
+			res += '>'
+			res = t.shorten_user_defined_typenames(res, import_aliases)
+		}
 		.void {
 			if typ.has_flag(.optional) {
 				return '?'
@@ -994,9 +1007,14 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		mut parts := res.split('.')
 		if parts.len > 1 {
 			ind := parts.len - 2
+			if t.is_fmt {
+				// Rejoin the module parts for correct usage of aliases
+				parts[ind] = parts[..ind + 1].join('.')
+			}
 			if parts[ind] in import_aliases {
 				parts[ind] = import_aliases[parts[ind]]
 			}
+
 			res = parts[ind..].join('.')
 		} else {
 			res = parts[0]
@@ -1011,6 +1029,10 @@ pub struct FnSignatureOpts {
 }
 
 pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
+	return t.fn_signature_using_aliases(func, map[string]string{}, opts)
+}
+
+pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string]string, opts FnSignatureOpts) string {
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
 		sb.write_string('fn ')
@@ -1034,7 +1056,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		if !opts.type_only {
 			sb.write_string('$param.name ')
 		}
-		styp := t.type_to_str(typ)
+		styp := t.type_to_str_using_aliases(typ, import_aliases)
 		if i == func.params.len - 1 && func.is_variadic {
 			sb.write_string('...$styp')
 		} else {
@@ -1043,7 +1065,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 	}
 	sb.write_string(')')
 	if func.return_type != ast.void_type {
-		sb.write_string(' ${t.type_to_str(func.return_type)}')
+		sb.write_string(' ${t.type_to_str_using_aliases(func.return_type, import_aliases)}')
 	}
 	return sb.str()
 }

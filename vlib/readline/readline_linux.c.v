@@ -401,10 +401,11 @@ fn (mut r Readline) eof() bool {
 // insert_character inserts the character `c` at current cursor position.
 fn (mut r Readline) insert_character(c int) {
 	if !r.overwrite || r.cursor == r.current.len {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor).ustring())
+		r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() +
+			r.current.right(r.cursor).ustring()
 	} else {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(
-			r.cursor + 1).ustring())
+		r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() +
+			r.current.right(r.cursor + 1).ustring()
 	}
 	r.cursor++
 	// Refresh the line to add the new character
@@ -419,7 +420,7 @@ fn (mut r Readline) delete_character() {
 		return
 	}
 	r.cursor--
-	r.current = r.current.left(r.cursor).ustring().add(r.current.right(r.cursor + 1).ustring())
+	r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
 	r.refresh_line()
 }
 
@@ -428,7 +429,7 @@ fn (mut r Readline) suppr_character() {
 	if r.cursor > r.current.len {
 		return
 	}
-	r.current = r.current.left(r.cursor).ustring().add(r.current.right(r.cursor + 1).ustring())
+	r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
 	r.refresh_line()
 }
 
@@ -436,7 +437,7 @@ fn (mut r Readline) suppr_character() {
 fn (mut r Readline) commit_line() bool {
 	r.previous_lines.insert(1, r.current)
 	a := '\n'.ustring()
-	r.current = r.current.add(a)
+	r.current += a
 	r.cursor = r.current.len
 	if r.is_tty {
 		r.refresh_line()

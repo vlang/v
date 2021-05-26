@@ -26,7 +26,14 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 							size_expr.pos)
 					}
 				} else {
-					p.error_with_pos('non-constant array bound `$size_expr.name`', size_expr.pos)
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist, it may have
+						// been defined in another .v file:
+						fixed_size = 1
+					} else {
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
+							size_expr.pos)
+					}
 				}
 			}
 			else {
@@ -536,7 +543,8 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 	p.check(.gt)
 	p.in_generic_params = false
 	bs_name += '>'
-	if is_instance && concrete_types.len > 0 {
+	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
+	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)

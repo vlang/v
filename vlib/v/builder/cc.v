@@ -199,17 +199,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-unused',
 		'-Wno-type-limits',
 		'-Wno-tautological-compare',
-		'-Wno-tautological-bitwise-compare',
 		// these cause various issues:
-		'-Wno-enum-conversion' /* used in vlib/sokol, where C enums in C structs are typed as V structs instead */,
-		'-Wno-sometimes-uninitialized' /* produced after exhaustive matches */,
 		'-Wno-shadow' /* the V compiler already catches this for user code, and enabling this causes issues with e.g. the `it` variable */,
-		'-Wno-int-to-void-pointer-cast',
 		'-Wno-int-to-pointer-cast' /* gcc version of the above */,
 		'-Wno-trigraphs' /* see stackoverflow.com/a/8435413 */,
 		'-Wno-missing-braces' /* see stackoverflow.com/q/13746033 */,
-		'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
-		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
 		// enable additional warnings:
 		'-Wdate-time',
 		'-Wduplicated-branches',
@@ -265,6 +259,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if have_flto {
 			optimization_options << '-flto'
 		}
+		ccoptions.wargs << [
+			'-Wno-tautological-bitwise-compare',
+			'-Wno-enum-conversion' /* used in vlib/sokol, where C enums in C structs are typed as V structs instead */,
+			'-Wno-sometimes-uninitialized' /* produced after exhaustive matches */,
+			'-Wno-int-to-void-pointer-cast',
+			'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
+			'-Wno-unknown-warning-option' /* clang equivalent of the above */,
+		]
 	}
 	if ccoptions.is_cc_gcc {
 		if ccoptions.debug_mode {
@@ -316,6 +318,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
 	}
+
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}

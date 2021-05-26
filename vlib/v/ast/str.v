@@ -180,7 +180,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
 						continue
-					} else if sub_expr.left is CastExpr {
+					} else if sub_expr.left is CastExpr || sub_expr.left is IndexExpr {
 						needs_braces = true
 					}
 					break
@@ -493,7 +493,8 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+	x := f.name.trim_prefix(f.mod + '.')
+	return '$x = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {

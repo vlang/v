@@ -105,7 +105,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
+pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, pref)
 		table: table
@@ -118,7 +118,7 @@ pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, sco
 	return p.parse()
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
@@ -177,7 +177,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -203,7 +203,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (ast.File, []vet.Error) {
+pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&ast.File, []vet.Error) {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
@@ -239,7 +239,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 	return file, p.vet_errors
 }
 
-pub fn (mut p Parser) parse() ast.File {
+pub fn (mut p Parser) parse() &ast.File {
 	util.timing_start('PARSE')
 	defer {
 		util.timing_measure_cumulative('PARSE')
@@ -287,7 +287,7 @@ pub fn (mut p Parser) parse() ast.File {
 	// println(stmts[0])
 	p.scope.end_pos = p.tok.pos
 	//
-	return ast.File{
+	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
 		is_test: p.inside_test_file
@@ -314,7 +314,7 @@ mut:
 	mu2              &sync.Mutex
 	paths            []string
 	table            &ast.Table
-	parsed_ast_files []ast.File
+	parsed_ast_files []&ast.File
 	pref             &pref.Preferences
 	global_scope     &ast.Scope
 }
@@ -339,7 +339,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
+pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, global_scope &ast.Scope) []&ast.File {
 	mut timers := util.new_timers(false)
 	$if time_parsing ? {
 		timers.should_print = true
@@ -369,7 +369,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, glo
 		*/
 	}
 	// ///////////////
-	mut files := []ast.File{}
+	mut files := []&ast.File{}
 	for path in paths {
 		// println('parse_files $path')
 		timers.start('parse_file $path')
@@ -579,10 +579,12 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			else {
 				p.inside_fn = true
 				if p.pref.is_script && !p.pref.is_test {
+					p.open_scope()
 					mut stmts := []ast.Stmt{}
 					for p.tok.kind != .eof {
 						stmts << p.stmt(false)
 					}
+					p.close_scope()
 					return ast.FnDecl{
 						name: 'main.main'
 						mod: 'main'
@@ -2587,7 +2589,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		module_pos = attrs_pos.extend(name_pos)
 	}
-	full_name := util.qualify_module(name, p.file_name)
+	full_name := util.qualify_module(p.pref, name, p.file_name)
 	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
 	mod_node = ast.Module{

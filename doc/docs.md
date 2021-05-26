@@ -3101,6 +3101,17 @@ You can also define special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
 * `testsuite_end` which will be run *after* all other test functions.
 
+If a test function has an error return type, any propagated errors will fail the test:
+
+```
+import strconv
+
+fn test_atoi() ? {
+	assert strconv.atoi('1') ? == 1
+	assert strconv.atoi('one') ? == 1 // test will fail
+}
+```
+
 #### Running tests
 
 To run test functions in an individual test file, use `v foo_test.v`.
@@ -3506,7 +3517,7 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 fn main() {
 	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
-	C.sqlite3_open('users.db', &db)
+	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
 	stmt := &C.sqlite3_stmt(0)

@@ -55,10 +55,9 @@ pub fn panic(s string) {
 	exit(1)
 }
 
-struct Option<T> {
+struct Option {
 	state byte
 	err   Error
-	data  T
 }
 
 pub struct Error {

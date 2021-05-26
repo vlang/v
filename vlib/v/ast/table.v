@@ -184,8 +184,12 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut '
 		}
+		// NB: arg name is only added for fmt, else it would causes errors with generics
+		if t.is_fmt && arg.name.len > 0 {
+			sig += '$arg.name '
+		}
 		arg_type_sym := t.get_type_symbol(arg.typ)
-		sig += '$arg_type_sym.name'
+		sig += arg_type_sym.name
 		if i < f.params.len - 1 {
 			sig += ', '
 		}
@@ -523,7 +527,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.type_symbols[existing_idx] = TypeSymbol{
+				t.type_symbols[existing_idx] = {
 					...typ
 					methods: ex_type.methods
 				}
@@ -623,7 +627,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	mut res := ''
 	if elem_type.is_ptr() {
-		res = '_ptr'
+		res = '_ptr$elem_type.nr_muls()'
 	}
 	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
 }
@@ -797,12 +801,12 @@ pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims in
 
 pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr) int {
 	name := t.array_fixed_name(elem_type, size, size_expr)
-	cname := t.array_fixed_cname(elem_type, size)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
+	cname := t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
 		kind: .array_fixed
@@ -854,7 +858,6 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 		util.no_dots(f.name.clone())
 	}
 	anon := f.name.len == 0 || is_anon
-	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx
@@ -1211,6 +1214,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				func.return_type = typ
 			}
 		}
+		func.params = func.params.clone()
 		for mut param in func.params {
 			if param.typ.has_flag(.generic) {
 				if typ := t.resolve_generic_to_concrete(param.typ, generic_names, concrete_types,

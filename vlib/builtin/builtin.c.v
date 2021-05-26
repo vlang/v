@@ -34,24 +34,22 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln('=========================================')
 		$if exit_after_panic_message ? {
 			C.exit(1)
+		} $else $if no_backtrace ? {
+			C.exit(1)
 		} $else {
-			$if no_backtrace ? {
-				C.exit(1)
-			} $else {
-				$if tinyc {
-					$if panics_break_into_debugger ? {
-						break_if_debugger_attached()
-					} $else {
-						C.tcc_backtrace(c'Backtrace')
-					}
-					C.exit(1)
-				}
-				print_backtrace_skipping_top_frames(1)
+			$if tinyc {
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
+				} $else {
+					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
+			print_backtrace_skipping_top_frames(1)
+			$if panics_break_into_debugger ? {
+				break_if_debugger_attached()
+			}
+			C.exit(1)
 		}
 	}
 }
@@ -71,24 +69,22 @@ pub fn panic(s string) {
 		eprintln('v hash: $vcommithash()')
 		$if exit_after_panic_message ? {
 			C.exit(1)
+		} $else $if no_backtrace ? {
+			C.exit(1)
 		} $else {
-			$if no_backtrace ? {
-				C.exit(1)
-			} $else {
-				$if tinyc {
-					$if panics_break_into_debugger ? {
-						break_if_debugger_attached()
-					} $else {
-						C.tcc_backtrace(c'Backtrace')
-					}
-					C.exit(1)
-				}
-				print_backtrace_skipping_top_frames(1)
+			$if tinyc {
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
+				} $else {
+					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
+			print_backtrace_skipping_top_frames(1)
+			$if panics_break_into_debugger ? {
+				break_if_debugger_attached()
+			}
+			C.exit(1)
 		}
 	}
 }
@@ -170,8 +166,7 @@ pub fn eprint(s string) {
 pub fn print(s string) {
 	$if android {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
-	}
-	$if ios {
+	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
@@ -181,13 +176,6 @@ pub fn print(s string) {
 	}
 }
 
-/*
-#include "@VEXEROOT/vlib/darwin/darwin.m"
-fn C.nsstring2(s string) voidptr
-fn C.NSLog(x voidptr)
-#include <asl.h>
-fn C.asl_log(voidptr, voidptr, int, charptr)
-*/
 // println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
 	if s.str == 0 {
@@ -196,7 +184,6 @@ pub fn println(s string) {
 		} $else $if ios {
 			C.WrappedNSLog(c'println(NIL)')
 		} $else $if freestanding {
-			bare_print(s.str, u64(s.len))
 			bare_print(c'println(NIL)\n', 13)
 		} $else {
 			_ = C.write(1, c'println(NIL)\n', 13)
@@ -205,8 +192,7 @@ pub fn println(s string) {
 	}
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
-	}
-	$if ios {
+	} $else $if ios {
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
@@ -238,7 +224,7 @@ pub fn malloc(n int) &byte {
 	}
 	mut res := &byte(0)
 	$if prealloc {
-		res = unsafe { prealloc_malloc(n) }
+		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_MALLOC(n)
@@ -265,10 +251,6 @@ pub fn malloc(n int) &byte {
 	return res
 }
 
-/*
-#include <malloc/malloc.h>
-fn malloc_size(b byteptr) int
-*/
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
@@ -281,15 +263,14 @@ pub fn v_realloc(b &byte, n int) &byte {
 			new_ptr = malloc(n)
 			C.memcpy(new_ptr, b, n)
 		}
+		return new_ptr
+	} $else $if gcboehm ? {
+		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
-		$if gcboehm ? {
-			new_ptr = unsafe { C.GC_REALLOC(b, n) }
-		} $else {
-			new_ptr = unsafe { C.realloc(b, n) }
-		}
-		if new_ptr == 0 {
-			panic('realloc($n) failed')
-		}
+		new_ptr = unsafe { C.realloc(b, n) }
+	}
+	if new_ptr == 0 {
+		panic('realloc($n) failed')
 	}
 	return new_ptr
 }
@@ -348,8 +329,7 @@ pub fn vcalloc(n int) &byte {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
-	}
-	$if gcboehm ? {
+	} $else $if gcboehm ? {
 		return unsafe { &byte(C.GC_MALLOC(n)) }
 	} $else {
 		return unsafe { C.calloc(1, n) }
@@ -361,8 +341,7 @@ pub fn vcalloc(n int) &byte {
 pub fn vcalloc_noscan(n int) &byte {
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
-	}
-	$if gcboehm ? {
+	} $else $if gcboehm ? {
 		$if vplayground ? {
 			if n > 10000 {
 				panic('allocating more than 10 KB is not allowed in the playground')
@@ -382,8 +361,7 @@ pub fn vcalloc_noscan(n int) &byte {
 pub fn free(ptr voidptr) {
 	$if prealloc {
 		return
-	}
-	$if gcboehm ? {
+	} $else $if gcboehm ? {
 		// It is generally better to leave it to Boehm's gc to free things.
 		// Calling C.GC_FREE(ptr) was tried initially, but does not work
 		// well with programs that do manual management themselves.
@@ -392,9 +370,9 @@ pub fn free(ptr voidptr) {
 		$if gcboehm_leak ? {
 			unsafe { C.GC_FREE(ptr) }
 		}
-		return
+	} $else {
+		C.free(ptr)
 	}
-	C.free(ptr)
 }
 
 // memdup dynamically allocates a `sz` bytes block of memory on the heap

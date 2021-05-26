@@ -12,9 +12,34 @@ import strconv
 // str return a `f64` as `string` in suitable notation.
 [inline]
 pub fn (x f64) str() string {
+	unsafe {
+		f := strconv.Float64u{
+			f: x
+		}
+		if f.u == strconv.double_minus_zero {
+			return '-0'
+		}
+		if f.u == strconv.double_plus_zero {
+			return '0'
+		}
+	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return strconv.f64_to_str_l(x)
+	} else {
+		return strconv.ftoa_64(x)
+	}
+}
+
+// strg return a `f64` as `string` in "g" printf format
+[inline]
+pub fn (x f64) strg() string {
+	if x == 0 {
+		return '0'
+	}
+	abs_x := f64_abs(x)
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
+		return strconv.f64_to_str_l_no_dot(x)
 	} else {
 		return strconv.ftoa_64(x)
 	}
@@ -53,9 +78,34 @@ pub fn (x f64) strlong() string {
 // str returns a `f32` as `string` in suitable notation.
 [inline]
 pub fn (x f32) str() string {
+	unsafe {
+		f := strconv.Float32u{
+			f: x
+		}
+		if f.u == strconv.single_minus_zero {
+			return '-0'
+		}
+		if f.u == strconv.single_plus_zero {
+			return '0'
+		}
+	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return strconv.f32_to_str_l(x)
+	} else {
+		return strconv.ftoa_32(x)
+	}
+}
+
+// strg return a `f32` as `string` in "g" printf format
+[inline]
+pub fn (x f32) strg() string {
+	if x == 0 {
+		return '0'
+	}
+	abs_x := f32_abs(x)
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
+		return strconv.f32_to_str_l_no_dot(x)
 	} else {
 		return strconv.ftoa_32(x)
 	}

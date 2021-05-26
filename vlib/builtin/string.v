@@ -279,6 +279,9 @@ pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 || rep.len > s.len {
 		return s.clone()
 	}
+	if !s.contains(rep) {
+		return s.clone()
+	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{cap: s.len / rep.len}
@@ -492,8 +495,8 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false)
 }
 
-// eq implements the `s == a` (equal) operator.
-fn (s string) eq(a string) bool {
+[direct_array_access]
+fn (s string) == (a string) bool {
 	if s.str == 0 {
 		// should never happen
 		panic('string.eq(): nil string')
@@ -501,18 +504,18 @@ fn (s string) eq(a string) bool {
 	if s.len != a.len {
 		return false
 	}
+	if s.len > 0 {
+		last_idx := s.len - 1
+		if s[last_idx] != a[last_idx] {
+			return false
+		}
+	}
 	unsafe {
 		return C.memcmp(s.str, a.str, a.len) == 0
 	}
 }
 
-// ne implements the `s != a` (not equal) operator.
-fn (s string) ne(a string) bool {
-	return !s.eq(a)
-}
-
-// lt implements the `s < a` (less than) operator.
-fn (s string) lt(a string) bool {
+fn (s string) < (a string) bool {
 	for i in 0 .. s.len {
 		if i >= a.len || s[i] > a[i] {
 			return false
@@ -526,24 +529,7 @@ fn (s string) lt(a string) bool {
 	return false
 }
 
-// le implements the `s <= a` (less than or equal to) operator.
-fn (s string) le(a string) bool {
-	return s.lt(a) || s.eq(a)
-}
-
-// gt implements the `s > a` (greater than) operator.
-fn (s string) gt(a string) bool {
-	return !s.le(a)
-}
-
-// ge implements the `s >= a` (greater than or equal to) operator.
-fn (s string) ge(a string) bool {
-	return !s.lt(a)
-}
-
-// TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
-// add concatenates string with the string given in `s`.
-pub fn (s string) add(a string) string {
+fn (s string) + (a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
@@ -1208,10 +1194,10 @@ pub fn (s string) trim_suffix(str string) string {
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
-	if a.lt(b) {
+	if a < b {
 		return -1
 	}
-	if a.gt(b) {
+	if a > b {
 		return 1
 	}
 	return 0
@@ -1219,10 +1205,10 @@ pub fn compare_strings(a &string, b &string) int {
 
 // compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
 fn compare_strings_reverse(a &string, b &string) int {
-	if a.lt(b) {
+	if a < b {
 		return 1
 	}
-	if a.gt(b) {
+	if a > b {
 		return -1
 	}
 	return 0
@@ -1314,41 +1300,15 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-// eq implements the `u == a` (equal) operator.
-fn (u ustring) eq(a ustring) bool {
-	if u.len != a.len || u.s != a.s {
-		return false
-	}
-	return true
+fn (u ustring) == (a ustring) bool {
+	return u.s == a.s
 }
 
-// ne implements the `u != a` (not equal) operator.
-fn (u ustring) ne(a ustring) bool {
-	return !u.eq(a)
-}
-
-// lt implements the `u < a` (less than) operator.
-fn (u ustring) lt(a ustring) bool {
+fn (u ustring) < (a ustring) bool {
 	return u.s < a.s
 }
 
-// le implements the `u <= a` (less than or equal to) operator.
-fn (u ustring) le(a ustring) bool {
-	return u.lt(a) || u.eq(a)
-}
-
-// gt implements the `u > a` (greater than) operator.
-fn (u ustring) gt(a ustring) bool {
-	return !u.le(a)
-}
-
-// ge implements the `u >= a` (greater than or equal to) operator.
-fn (u ustring) ge(a ustring) bool {
-	return !u.lt(a)
-}
-
-// add concatenates ustring with the string given in `s`.
-pub fn (u ustring) add(a ustring) ustring {
+fn (u ustring) + (a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
 		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
@@ -1518,20 +1478,20 @@ pub fn (c byte) is_letter() bool {
 }
 
 // free allows for manually freeing the memory occupied by the string
-[unsafe]
+[manualfree; unsafe]
 pub fn (s &string) free() {
 	$if prealloc {
 		return
 	}
 	if s.is_lit == -98761234 {
 		$if freestanding {
-			bare_eprint(c'double string.free() detected\n', u64(unsafe { C.strlen(c'double string.free() detected\n') }))
+			bare_eprint(c'double string.free() detected\n', 30)
 		} $else {
 			C.printf(c'double string.free() detected\n')
 		}
 		return
 	}
-	if s.is_lit == 1 || s.len == 0 {
+	if s.is_lit == 1 || s.len == 0 || s.str == 0 {
 		return
 	}
 	unsafe {

@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.File) {
+pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -16,6 +16,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',
+		'str_intp',
+		'format_sb',
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'v_realloc' /* needed for _STR */,
@@ -103,6 +105,18 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'os.init_os_args',
 		'os.init_os_args_wide',
 	]
+
+	if pref.is_bare {
+		all_fn_root_names << [
+			'strlen',
+			'memcmp',
+			'memcpy',
+			'realloc',
+			'vsnprintf',
+			'vsprintf',
+		]
+	}
+
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
 			'__new_array_noscan',
@@ -232,6 +246,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		all_consts: all_consts
 	}
 	// println( all_fns.keys() )
+	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {
@@ -267,7 +282,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 	}
 }
 
-fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -275,7 +290,7 @@ fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
 	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
+		file := ast_files[i]
 		for node in file.stmts {
 			match node {
 				ast.FnDecl {

@@ -24,6 +24,7 @@ const (
 		'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
 		'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 		'examples/sokol/05_instancing_glsl/rt_glsl.v',
+		'examples/sokol/06_obj_viewer/show_obj.v',
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
@@ -31,10 +32,7 @@ const (
 		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
-		'vlib/v/tests/fn_high_test.v', /* param name removed */
-		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
-		'vlib/v/tests/generics_test.v', /* multi_generic_args<Foo<int>, Foo<int> >(...) becomes .... Foo<int>>(...) which does not parse */
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 		'examples/c_interop_wkhtmltopdf.v' /* &charptr --> &&char */,

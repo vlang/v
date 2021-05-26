@@ -100,3 +100,16 @@ fn test_set_terminal_title() {
 	title_change := term.set_terminal_title('v is awesome!')
 	assert title_change == true
 }
+
+fn test_strip_ansi() {
+	strings := [
+		'abc',
+		term.bold('abc'),
+		term.yellow('abc'),
+		term.bold(term.red('abc')),
+		term.strikethrough(term.inverse(term.dim(term.bold(term.bright_bg_blue('abc'))))),
+	]
+	for s in strings {
+		assert term.strip_ansi(s) == 'abc'
+	}
+}
