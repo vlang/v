@@ -1140,7 +1140,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 				g.write('}))')
 			} else {
-				g.write('__new_array_with_default(0, 0, sizeof($elem_type), 0)')
+				g.write('__new_array(0, 0, sizeof($elem_type))')
 			}
 		}
 	}
