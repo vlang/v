@@ -87,7 +87,7 @@ pub:
 	fullscreen   bool
 	scale        f32 = 1.0
 	sample_count int
-	// vid needs this
+	// ved needs this
 	// init_text bool
 	font_path             string
 	custom_bold_font_path string
