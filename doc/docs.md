@@ -2888,11 +2888,11 @@ of statements - similar to the [match](#match) command:
 ```v wip
 import time
 fn main () {
-  c := chan f64{}
   ch := chan f64{}
   ch2 := chan f64{}
   ch3 := chan f64{}
   mut b := 0.0
+  c := 1.0
   // ...
   select {
     a := <-ch {
