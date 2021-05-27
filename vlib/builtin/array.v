@@ -10,10 +10,10 @@ pub struct array {
 pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
-	data voidptr
+	data   voidptr
 	offset int // in bytes (should be `size_t`)
-	len  int // length of the array.
-	cap  int // capacity of the array.
+	len    int // length of the array.
+	cap    int // capacity of the array.
 }
 
 // array.data uses a void pointer, which allows implementing arrays without generics and without generating
