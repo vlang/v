@@ -441,6 +441,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
+	if g.table.gostmts > 0 {
+		g.comptime_defines.writeln('#define __VTHREADS__ (1)')
+	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
 		.boehm_leak,
 	] {

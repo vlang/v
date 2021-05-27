@@ -29,6 +29,8 @@ pub mut:
 	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics    int
 	cur_fn           &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
+	gostmts          int     // how many `go` statements there were in the parsed files.
+	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 
 [unsafe]

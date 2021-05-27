@@ -28,7 +28,7 @@ const (
 		'big_endian',
 	]
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding']
+		'no_bounds_checking', 'freestanding', 'threads']
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
@@ -6157,6 +6157,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
+					'threads' { return c.table.gostmts == 0 }
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
 					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
