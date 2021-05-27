@@ -311,8 +311,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 }
 
 pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
-	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-	if c.file.mod.name !in ['time', 'builtin'] {
+	// TODO Remove when `u8` isn't an alias in builtin anymore
+	if c.file.mod.name != 'builtin' {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
