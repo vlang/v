@@ -22,8 +22,6 @@ pub type FNKeyDown = fn (c KeyCode, m Modifier, x voidptr)
 
 pub type FNMove = fn (x f32, y f32, z voidptr)
 
-pub type FNClick = fn (button MouseButton, x voidptr)
-
 pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Event {
@@ -34,7 +32,7 @@ pub mut:
 	char_code          u32
 	key_repeat         bool
 	modifiers          u32
-	mouse_button       MouseButton
+	mouse_button       sapp.MouseButton
 	mouse_x            f32
 	mouse_y            f32
 	mouse_dx           f32
@@ -83,7 +81,7 @@ pub:
 	// special case of event_fn
 	move_fn FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn FNClick = voidptr(0)
+	click_fn FNMove = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen   bool
@@ -297,7 +295,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.mouse_down {
 			if g.config.click_fn != voidptr(0) {
 				cfn := g.config.click_fn
-				cfn(e.mouse_button, g.config.user_data)
+				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
 			}
 		}
 		else {}
@@ -359,11 +357,6 @@ pub fn new_context(cfg Config) &Context {
 
 pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
-}
-
-// quit closes the context window and exits the event loop for it
-pub fn (ctx &Context) quit() {
-	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
 }
 
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
