@@ -72,3 +72,10 @@ fn test_push_to_orig() {
 	assert slice == [2, 3] || slice == [2, 7]
 	assert slice2 == [2, 7]
 }
+
+fn test_self_slice_push() {
+	mut a := [1, 2, 3]
+	a = a[1..]
+	a << 4
+	assert a == [2, 3, 4]
+}
