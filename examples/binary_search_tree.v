@@ -1,7 +1,6 @@
 // Binary Search Tree example by @SleepyRoy
 
 // TODO: make Node.value generic once it's robust enough
-
 struct Empty {}
 
 struct Node {
@@ -65,8 +64,16 @@ fn search(tree Tree, x f64) bool {
 // find the minimal value of a BST
 fn min(tree Tree) f64 {
 	return match tree {
-		Empty { 1e100 }
-		Node { if tree.value < min(tree.left) { tree.value } else { min(tree.left) } }
+		Empty {
+			1e100
+		}
+		Node {
+			if tree.value < min(tree.left) {
+				tree.value
+			} else {
+				min(tree.left)
+			}
+		}
 	}
 }
 
