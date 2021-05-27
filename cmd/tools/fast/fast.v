@@ -53,7 +53,8 @@ fn main() {
 	}
 	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
-	diff4 := measure('$vdir/vprod $voptions -cc clang $vdir/examples/hello_world.v', 'hello.v')
+	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang $vdir/examples/hello_world.v',
+		'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen
 	scan, parse, check, cgen, vlines := measure_steps(vdir)

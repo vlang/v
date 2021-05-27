@@ -201,7 +201,6 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	if sym.kind == .string {
 		tmp_res := '${parent_str_fn_name}(*($sym.cname*)it.data)'
 		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
-		// g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
 	} else {
@@ -211,12 +210,9 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 
 	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
 	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
-	// g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
-
 	g.auto_str_funcs.writeln('\t}')
 
 	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
-	// g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -242,8 +238,6 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
 		{_SLIT(")"), 0, {.d_c = 0 }}
 	}));\n')
-
-	// g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
 
 	g.auto_str_funcs.writeln('}')
 }
@@ -284,11 +278,9 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 				tmp_val := str_intp_g64('a.arg$i')
 				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
 			}
-			// g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
 			tmp_str := str_intp_sq('a.arg$i')
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_str);')
-			// g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 		} else if sym.kind == .function {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
 		} else {
@@ -402,21 +394,6 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			g.auto_str_funcs.write_string(' return $res;\n')
 		}
-
-		//------------------------------------------
-		/*
-		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
-		value_fmt := if typ == ast.string_type { "'%.*s\\000'" } else { '%.*s\\000' }
-
-		g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-		g.auto_str_funcs.write_string(' return _STR("${clean_interface_v_type_name}($value_fmt)", 2, ')
-		g.auto_str_funcs.write_string('${func_name}(${deref}($subtype.cname*)x._$subtype.cname')
-		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
-			g.auto_str_funcs.write_string(', indent_count')
-		}
-		g.auto_str_funcs.writeln('));\n')
-		*/
-		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\treturn _SLIT("unknown interface value");')
 	g.auto_str_funcs.writeln('}')
@@ -482,20 +459,6 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 			}))'
 			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
 		}
-
-		//------------------------------------------
-		/*
-		mut value_fmt := '%.*s\\000'
-		if typ == ast.string_type {
-			value_fmt = "'$value_fmt'"
-		}
-		g.auto_str_funcs.write_string('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(${deref}($typ_str*)x._$sym.cname')
-		if should_use_indent_func(sym.kind) && !sym_has_str_method {
-			g.auto_str_funcs.write_string(', indent_count')
-		}
-		g.auto_str_funcs.writeln('));')
-		*/
-		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
 	g.auto_str_funcs.writeln('\t}')

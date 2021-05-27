@@ -18,6 +18,11 @@ struct C.sqlite3 {
 struct C.sqlite3_stmt {
 }
 
+struct SQLError {
+	msg  string
+	code int
+}
+
 //
 pub struct DB {
 pub mut:
@@ -68,8 +73,12 @@ fn C.sqlite3_free(voidptr)
 // connect Opens the connection with a database.
 pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
-	if C.sqlite3_open(&char(path.str), &db) != 0 {
-		return error('sqlite db error')
+	code := C.sqlite3_open(&char(path.str), &db)
+	if code != 0 {
+		return IError(&SQLError{
+			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			code: code
+		})
 	}
 	return DB{
 		conn: db
@@ -85,7 +94,10 @@ pub fn (mut db DB) close() ?bool {
 	if code == 0 {
 		db.is_open = false
 	} else {
-		return error('sqlite db error: failed to close with code: $code')
+		return IError(&SQLError{
+			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			code: code
+		})
 	}
 	return true // successfully closed
 }
@@ -104,6 +116,7 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
 		C.puts(C.sqlite3_errstr(x))
 	}
+
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
@@ -114,6 +127,7 @@ pub fn (db DB) q_int(query string) int {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
+
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
@@ -122,11 +136,14 @@ pub fn (db DB) q_int(query string) int {
 // Returns a single cell with value string.
 pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
-	res := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, 0))) }
-	C.sqlite3_finalize(stmt)
-	return res
+
+	val := unsafe { &byte(C.sqlite3_column_text(stmt, 0)) }
+	return if val != &byte(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
 // Execute the query on db, return an array of all the results, alongside any result code.
@@ -146,8 +163,12 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			val := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, i))) }
-			row.vals << val
+			val := unsafe { &byte(C.sqlite3_column_text(stmt, i)) }
+			if val == &byte(0) {
+				row.vals << ''
+			} else {
+				row.vals << unsafe { tos_clone(val) }
+			}
 		}
 		rows << row
 	}
@@ -159,8 +180,16 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 // Return the first row from the resulting table
 pub fn (db DB) exec_one(query string) ?Row {
 	rows, code := db.exec(query)
-	if rows.len == 0 || code != 101 {
-		return error('SQL Error: Rows #$rows.len Return code $code')
+	if rows.len == 0 {
+		return IError(&SQLError{
+			msg: 'No rows'
+			code: code
+		})
+	} else if code != 101 {
+		return IError(&SQLError{
+			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			code: code
+		})
 	}
 	return rows[0]
 }

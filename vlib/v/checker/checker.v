@@ -2456,7 +2456,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
-		arg_typ_sym := c.table.get_type_symbol(param.typ)
+		param_typ_sym := c.table.get_type_symbol(param.typ)
 		if func.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
@@ -2490,12 +2490,12 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
-		mut final_arg_sym := arg_typ_sym
-		if func.is_variadic && arg_typ_sym.info is ast.Array {
-			final_arg_sym = c.table.get_type_symbol(arg_typ_sym.array_info().elem_type)
+		mut final_param_sym := param_typ_sym
+		if func.is_variadic && param_typ_sym.info is ast.Array {
+			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
 		}
 		// Handle expected interface
-		if final_arg_sym.kind == .interface_ {
+		if final_param_sym.kind == .interface_ {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
@@ -2506,11 +2506,20 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }
-			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
+			if typ_sym.kind == .void && param_typ_sym.kind == .string {
 				continue
 			}
 			if func.generic_names.len > 0 {
 				continue
+			}
+			if c.pref.translated {
+				// Allow enums to be used as ints and vice versa in translated code
+				if param.typ == ast.int_type && typ_sym.kind == .enum_ {
+					continue
+				}
+				if typ == ast.int_type && param_typ_sym.kind == .enum_ {
+					continue
+				}
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
@@ -3241,7 +3250,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		return
 	}
-	//
+
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
 		if left is ast.CallExpr {
@@ -3283,6 +3292,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
+			// check generic struct init and return unwrap generic struct type
+			if right is ast.StructInit {
+				if right.typ.has_flag(.generic) {
+					c.expr(right)
+					right_type = right.typ
+				}
+			}
 			if right.is_auto_deref_var() {
 				left_type = c.table.mktyp(right_type.deref())
 			} else {
@@ -5342,13 +5358,20 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					expr_type := c.expr(stmt.expr)
 					if ret_type == ast.void_type {
-						ret_type = expr_type
-						stmt.typ = ret_type
+						if node.is_expr
+							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
+							ret_type = node.expected_type
+						} else {
+							ret_type = expr_type
+						}
+						stmt.typ = expr_type
 					} else if node.is_expr && ret_type != expr_type {
 						if !c.check_types(ret_type, expr_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)
-							c.error('return type mismatch, it should be `$ret_sym.name`',
-								stmt.expr.position())
+							if !(node.is_expr && ret_sym.kind == .sum_type) {
+								c.error('return type mismatch, it should be `$ret_sym.name`',
+									stmt.expr.position())
+							}
 						}
 					}
 				}
@@ -5978,6 +6001,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								continue
 							}
 						}
+					}
+					if node.is_expr
+						&& c.table.get_type_symbol(former_expected_type).kind == .sum_type {
+						continue
 					}
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)

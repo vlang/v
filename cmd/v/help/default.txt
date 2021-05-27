@@ -8,8 +8,8 @@ Examples:
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
    v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
-   
-   v watch hello.v           Re-does the same compilation, when a source code change is detected. 
+
+   v watch hello.v           Re-does the same compilation, when a source code change is detected.
                              The program is only compiled, not run.
    v watch run hello.v       Re-runs the same `hello.v` file, when a source code change is detected.
 
@@ -41,7 +41,8 @@ V supports the following commands:
    update            Update an installed module from VPM.
    upgrade           Upgrade all the outdated modules.
    list              List all installed modules.
-   outdated          Show installed modules that need updates.
+   outdated          List installed modules that need updates.
+   show              Display information about a module on vpm
 
 * Others:
    doctor            Display some useful info about your system to help reporting bugs.
