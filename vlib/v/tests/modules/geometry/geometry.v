@@ -35,3 +35,5 @@ pub fn (a Point) str() string {
 pub fn point_str(a Point) string {
 	return a.str()
 }
+
+pub type PointCond = fn (p Point) bool
