@@ -173,6 +173,7 @@ mut:
 	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table          map[string]string
 	// main_fn_decl_node  ast.FnDecl
+	expected_cast_type ast.Type // for match expr of sumtypes
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -1223,7 +1224,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			old_is_void_expr_stmt := g.is_void_expr_stmt
 			g.is_void_expr_stmt = !node.is_expr
-			g.expr(node.expr)
+			if node.typ != ast.void_type && g.expected_cast_type != 0 {
+				g.expr_with_cast(node.expr, node.typ, g.expected_cast_type)
+			} else {
+				g.expr(node.expr)
+			}
 			g.is_void_expr_stmt = old_is_void_expr_stmt
 			// if af {
 			// g.autofree_call_postgen()
@@ -4131,7 +4136,12 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.writeln(') {')
 				}
 			}
+			if is_expr && tmp_var.len > 0
+				&& g.table.get_type_symbol(node.return_type).kind == .sum_type {
+				g.expected_cast_type = node.return_type
+			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.write('}')
 			}
