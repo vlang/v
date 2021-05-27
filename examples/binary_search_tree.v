@@ -1,7 +1,6 @@
 // Binary Search Tree example by @SleepyRoy
 
 // TODO: make Node.value generic once it's robust enough
-// TODO: `return match` instead of returns everywhere inside match
 
 struct Empty {}
 
