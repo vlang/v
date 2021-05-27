@@ -4605,7 +4605,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		}
 		ast.Assoc {
 			v := node.scope.find_var(node.var_name) or { panic(err) }
-			for i, _ in node.fields {
+			for i in 0 .. node.fields.len {
 				c.expr(node.exprs[i])
 			}
 			node.typ = v.typ
@@ -5426,7 +5426,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
-	for branch_i, _ in node.branches {
+	for branch_i in 0 .. node.branches.len {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
 		for expr in branch.exprs {

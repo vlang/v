@@ -215,7 +215,7 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
-		for i, _ in sc.children {
+		for i in 0 .. sc.children.len {
 			out += sc.children[i].show(depth + 1, max_depth)
 		}
 	}

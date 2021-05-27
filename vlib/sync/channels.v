@@ -608,7 +608,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	outer: for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		mut num_closed := 0
-		for j, _ in channels {
+		for j in 0 .. channels.len {
 			mut i := j + int(rnd)
 			if i >= channels.len {
 				i -= channels.len

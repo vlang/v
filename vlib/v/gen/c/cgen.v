@@ -4910,7 +4910,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					tmp = ('/*opt*/(*($expr_styp*)${tmp}.data)')
 				}
 				expr_types := expr_sym.mr_info().types
-				for j, _ in expr_types {
+				for j in 0 .. expr_types.len {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
 					if j < expr_types.len || i < node.exprs.len - 1 {
 						g.write(',')

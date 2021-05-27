@@ -185,7 +185,7 @@ fn (am AssetManager) get_assets(asset_type string) []Asset {
 // todo: implement proper minification
 pub fn minify_css(css string) string {
 	mut lines := css.split('\n')
-	for i, _ in lines {
+	for i in 0 .. lines.len {
 		lines[i] = lines[i].trim_space()
 	}
 	return lines.join(' ')
@@ -194,7 +194,7 @@ pub fn minify_css(css string) string {
 // todo: implement proper minification
 pub fn minify_js(js string) string {
 	mut lines := js.split('\n')
-	for i, _ in lines {
+	for i in 0 .. lines.len {
 		lines[i] = lines[i].trim_space()
 	}
 	return lines.join(' ')

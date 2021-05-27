@@ -50,7 +50,7 @@ pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
 		panic('delete: no such key: $name')
 	}
-	for i, _ in o.keys {
+	for i in 0 .. o.keys.len {
 		if o.keys[i] == name {
 			o.keys.delete(i)
 			break
