@@ -1715,7 +1715,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		t_var := g.new_tmp_var()
 		receiver_typ := next_fn.params[0].typ
 		receiver_styp := g.typ(receiver_typ)
-		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
+		fn_name := receiver_styp.replace_each('*', '', '.', '__') + '_next'
 		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')

@@ -188,7 +188,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
 	mut data := []StrIntpCgenData{}
 	for i, val in node.vals {
-		// mut escaped_val := val.replace_each(['%', '%%'])
+		// mut escaped_val := val.replace_each('%', '%%')
 		// escaped_val = util.smart_quote(escaped_val, false)
 		escaped_val := util.smart_quote(val, false)
 

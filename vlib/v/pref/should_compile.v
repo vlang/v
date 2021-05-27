@@ -89,32 +89,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 }
 
 fn fname_without_platform_postfix(file string) string {
-	res := file.replace_each([
-		'default.c.v',
-		'_',
-		'nix.c.v',
-		'_',
-		'windows.c.v',
-		'_',
-		'linux.c.v',
-		'_',
-		'darwin.c.v',
-		'_',
-		'macos.c.v',
-		'_',
-		'android.c.v',
-		'_',
-		'freebsd.c.v',
-		'_',
-		'netbsd.c.v',
-		'_',
-		'dragonfly.c.v',
-		'_',
-		'solaris.c.v',
-		'_',
-		'native.v',
-		'_',
-	])
+	res := file.replace_each('default.c.v', '_', 'nix.c.v', '_', 'windows.c.v', '_', 'linux.c.v',
+		'_', 'darwin.c.v', '_', 'macos.c.v', '_', 'android.c.v', '_', 'freebsd.c.v', '_',
+		'netbsd.c.v', '_', 'dragonfly.c.v', '_', 'solaris.c.v', '_', 'native.v', '_')
 	return res
 }
 

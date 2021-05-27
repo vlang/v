@@ -118,7 +118,7 @@ fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 		if lnumber > 0 {
 			collect_tags := fn (line string) []string {
 				mut cleaned := line.all_before('/')
-				cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+				cleaned = cleaned.replace_each('[', '', ']', '', ' ', '')
 				return cleaned.split(',')
 			}
 			ident_fn_name := fn (line string) string {

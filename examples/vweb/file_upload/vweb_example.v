@@ -25,7 +25,7 @@ pub fn (mut app App) upload() vweb.Result {
 	mut files := []vweb.RawHtml{}
 
 	for d in fdata {
-		files << d.data.replace_each(['\n', '<br>', '\n\r', '<br>', '\t', '	', ' ', '&nbsp;'])
+		files << d.data.replace_each('\n', '<br>', '\n\r', '<br>', '\t', '	', ' ', '&nbsp;')
 	}
 
 	return $vweb.html()

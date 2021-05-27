@@ -152,20 +152,12 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(cmd)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./$cmd \' '.replace_each([
-			'@COMPILER@',
-			source_location_b,
-			'@DEBUG@',
-			debug_option_b,
-		])
+		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./$cmd \' '.replace_each('@COMPILER@',
+			source_location_b, '@DEBUG@', debug_option_b)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./$cmd \' '.replace_each([
-			'@COMPILER@',
-			source_location_a,
-			'@DEBUG@',
-			debug_option_a,
-		])
+		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./$cmd \' '.replace_each('@COMPILER@',
+			source_location_a, '@DEBUG@', debug_option_a)
 	}
 	// /////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file := os.real_path([c.vgo.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))

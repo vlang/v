@@ -2373,13 +2373,13 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each(["$fmt.bs'", "'",
-			'$fmt.bs"', '"'])
+		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each("$fmt.bs'",
+			"'", '$fmt.bs"', '"')
 		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
+			s := unescaped_val.replace_each('\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"')
 			f.write('"$s"')
 		} else {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'"])
+			s := unescaped_val.replace_each('\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'")
 			f.write("'$s'")
 		}
 	}

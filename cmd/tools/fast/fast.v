@@ -63,7 +63,7 @@ fn main() {
 	date := time.unix(commit_date.int())
 	mut out := os.create('table.html') ?
 	// Place the new row on top
-	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
+	html_message := message.replace_each('<', '&lt;', '>', '&gt;')
 	table =
 		'<tr>
 		<td>$date.format()</td>

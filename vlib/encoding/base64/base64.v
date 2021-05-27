@@ -69,7 +69,7 @@ fn alloc_and_encode(src &byte, len int) string {
 // url_decode returns a decoded URL `string` version of
 // the a base64 url encoded `string` passed in `data`.
 pub fn url_decode(data string) []byte {
-	mut result := data.replace_each(['-', '+', '_', '/'])
+	mut result := data.replace_each('-', '+', '_', '/')
 	match result.len % 4 {
 		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
@@ -81,7 +81,7 @@ pub fn url_decode(data string) []byte {
 
 // url_decode_str is the string variant of url_decode
 pub fn url_decode_str(data string) string {
-	mut result := data.replace_each(['-', '+', '_', '/'])
+	mut result := data.replace_each('-', '+', '_', '/')
 	match result.len % 4 {
 		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
@@ -94,12 +94,12 @@ pub fn url_decode_str(data string) string {
 // url_encode returns a base64 URL encoded `string` version
 // of the value passed in `data`.
 pub fn url_encode(data []byte) string {
-	return encode(data).replace_each(['+', '-', '/', '_', '=', ''])
+	return encode(data).replace_each('+', '-', '/', '_', '=', '')
 }
 
 // url_encode_str is the string variant of url_encode
 pub fn url_encode_str(data string) string {
-	return encode_str(data).replace_each(['+', '-', '/', '_', '=', ''])
+	return encode_str(data).replace_each('+', '-', '/', '_', '=', '')
 }
 
 // decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.

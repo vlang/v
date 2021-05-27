@@ -75,7 +75,7 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 
 fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
-	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
+	fname_escaped := fname.replace_each('.', '_', '-', '_')
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
 	fbytes := os.read_bytes(file) or { return error('Error: $err.msg') }
 	return byte_name, fbytes

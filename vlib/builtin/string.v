@@ -358,9 +358,9 @@ fn (mut a []RepIndex) sort2() {
 }
 
 // replace_each replaces all occurences of the string pairs given in `vals`.
-// Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
+// Example: assert 'ABCD'.replace_each('B','C/','C','D','D','C') == 'AC/DC'
 [direct_array_access]
-pub fn (s string) replace_each(vals []string) string {
+pub fn (s string) replace_each(vals ...string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
 	}

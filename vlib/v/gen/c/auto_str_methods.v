@@ -491,7 +491,7 @@ fn (mut g Gen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name str
 
 [inline]
 fn styp_to_str_fn_name(styp string) string {
-	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
+	return styp.replace_each('*', '', '.', '__', ' ', '__') + '_str'
 }
 
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {

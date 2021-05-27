@@ -107,7 +107,7 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 
 fn collect_tags(line string) []string {
 	mut cleaned := line.all_before('/')
-	cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+	cleaned = cleaned.replace_each('[', '', ']', '', ' ', '')
 	return cleaned.split(',')
 }
 

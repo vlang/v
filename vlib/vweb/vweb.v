@@ -632,14 +632,7 @@ pub fn not_found() Result {
 }
 
 fn filter(s string) string {
-	return s.replace_each([
-		'<',
-		'&lt;',
-		'"',
-		'&quot;',
-		'&',
-		'&amp;',
-	])
+	return s.replace_each('<', '&lt;', '"', '&quot;', '&', '&amp;')
 }
 
 // A type which don't get filtered inside templates

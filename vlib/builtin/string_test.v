@@ -298,39 +298,18 @@ fn test_replace() {
 
 fn test_replace_each() {
 	s := 'hello man man :)'
-	q := s.replace_each([
-		'man',
-		'dude',
-		'hello',
-		'hey',
-	])
+	q := s.replace_each('man', 'dude', 'hello', 'hey')
 	assert q == 'hey dude dude :)'
 	bb := '[b]bold[/b] [code]code[/code]'
-	assert bb.replace_each([
-		'[b]',
-		'<b>',
-		'[/b]',
-		'</b>',
-		'[code]',
-		'<code>',
-		'[/code]',
-		'</code>',
-	]) == '<b>bold</b> <code>code</code>'
+	assert bb.replace_each('[b]', '<b>', '[/b]', '</b>', '[code]', '<code>', '[/code]',
+		'</code>') == '<b>bold</b> <code>code</code>'
 	bb2 := '[b]cool[/b]'
-	assert bb2.replace_each([
-		'[b]',
-		'<b>',
-		'[/b]',
-		'</b>',
-	]) == '<b>cool</b>'
+	assert bb2.replace_each('[b]', '<b>', '[/b]', '</b>') == '<b>cool</b>'
 	t := 'aaaaaaaa'
-	y := t.replace_each([
-		'aa',
-		'b',
-	])
+	y := t.replace_each('aa', 'b')
 	assert y == 'bbbb'
 	s2 := 'hello_world hello'
-	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
+	assert s2.replace_each('hello_world', 'aaa', 'hello', 'bbb') == 'aaa bbb'
 }
 
 fn test_itoa() {

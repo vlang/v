@@ -123,7 +123,7 @@ pub mut:
 }
 
 fn (b Buffer) flat() string {
-	return b.raw().replace_each(['\n', r'\n', '\t', r'\t'])
+	return b.raw().replace_each('\n', r'\n', '\t', r'\t')
 }
 
 fn (b Buffer) raw() string {

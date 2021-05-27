@@ -15,7 +15,7 @@ fn slug(title string) string {
 }
 
 fn escape(str string) string {
-	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '\t', '\\t'])
+	return str.replace_each('"', '\\"', '\r\n', '\\n', '\n', '\\n', '\t', '\\t')
 }
 
 fn get_sym_name(dn doc.DocNode) string {
@@ -44,7 +44,7 @@ fn is_module_readme(dn doc.DocNode) bool {
 }
 
 fn trim_doc_node_description(description string) string {
-	mut dn_description := description.replace_each(['\r\n', '\n', '"', '\\"'])
+	mut dn_description := description.replace_each('\r\n', '\n', '"', '\\"')
 	// 80 is enough to fill one line
 	if dn_description.len > 80 {
 		dn_description = dn_description[..80]
@@ -152,10 +152,10 @@ fn color_highlight(code string, tb &ast.Table) string {
 					'"',
 				])
 				if use_double_quote {
-					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
+					s := unescaped_val.replace_each('\x01', '\\\\', '"', '\\"')
 					lit = term.yellow('"$s"')
 				} else {
-					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
+					s := unescaped_val.replace_each('\x01', '\\\\', "'", "\\'")
 					lit = term.yellow("'$s'")
 				}
 			}

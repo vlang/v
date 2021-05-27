@@ -481,7 +481,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn html_tag_escape(str string) string {
-	return str.replace_each(['<', '&lt;', '>', '&gt;'])
+	return str.replace_each('<', '&lt;', '>', '&gt;')
 }
 
 /*
