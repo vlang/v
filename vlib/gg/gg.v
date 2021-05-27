@@ -363,7 +363,7 @@ pub fn (gg &Context) run() {
 
 // quit closes the context window and exits the event loop for it
 pub fn (ctx &Context) quit() {
-	sapp.request_quit()  // does not require ctx right now, but sokol multi-window might in the future
+	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
 }
 
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
