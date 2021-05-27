@@ -1,6 +1,6 @@
 module main
 
-import geometry { Line, Point, Shape, module_name, point_str, PointCond }
+import geometry { Line, Point, PointCond, Shape, module_name, point_str }
 
 fn point_is(p Point, cond PointCond) bool {
 	return cond(p)
@@ -22,7 +22,9 @@ fn test_imported_symbols_types() {
 	}
 	assert l0.ps[0].y == 20
 
-	cond := fn (p Point) bool { return p.x == 10 }
+	cond := fn (p Point) bool {
+		return p.x == 10
+	}
 	assert point_is(p0, cond)
 }
 
