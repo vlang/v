@@ -5358,13 +5358,20 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					expr_type := c.expr(stmt.expr)
 					if ret_type == ast.void_type {
-						ret_type = expr_type
-						stmt.typ = ret_type
+						if node.is_expr
+							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
+							ret_type = node.expected_type
+						} else {
+							ret_type = expr_type
+						}
+						stmt.typ = expr_type
 					} else if node.is_expr && ret_type != expr_type {
 						if !c.check_types(ret_type, expr_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)
-							c.error('return type mismatch, it should be `$ret_sym.name`',
-								stmt.expr.position())
+							if !(node.is_expr && ret_sym.kind == .sum_type) {
+								c.error('return type mismatch, it should be `$ret_sym.name`',
+									stmt.expr.position())
+							}
 						}
 					}
 				}
@@ -5994,6 +6001,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								continue
 							}
 						}
+					}
+					if node.is_expr
+						&& c.table.get_type_symbol(former_expected_type).kind == .sum_type {
+						continue
 					}
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)
