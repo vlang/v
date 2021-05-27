@@ -1,4 +1,4 @@
-(function() {
+(function () {
     if (document.body.scrollIntoView) {
         var docnav = document.querySelector('.doc-nav');
         var active = docnav.querySelector('li.active');
@@ -16,13 +16,13 @@
 function setupScrollSpy() {
     var sectionPositions = [];
     var sections = document.querySelectorAll('section');
-    sections.forEach(function(section) {
+    sections.forEach(function (section) {
         sectionPositions.push(section.offsetTop);
     });
     var scrollPos = 0;
-    window.addEventListener('scroll', function(e) {
+    window.addEventListener('scroll', function (e) {
         // Reset classes
-        document.querySelectorAll('.doc-toc a[class="active"]').forEach(function(link) {
+        document.querySelectorAll('.doc-toc a[class="active"]').forEach(function (link) {
             link.classList.remove('active');
         });
         // Set current menu link as active
@@ -52,7 +52,7 @@ function setupScrollSpy() {
 
 function setupMobileToggle() {
     var toggle = document.getElementById('toggle-menu');
-    toggle.addEventListener('click', function(ev) {
+    toggle.addEventListener('click', function (ev) {
         var docNav = document.querySelector('.doc-nav');
         var isHidden = docNav.classList.contains('hidden');
         docNav.classList.toggle('hidden');
@@ -73,7 +73,7 @@ function setupMobileToggle() {
 function setupDarkMode() {
     var html = document.getElementsByTagName('html')[0];
     var darkModeToggle = document.getElementById('dark-mode-toggle');
-    darkModeToggle.addEventListener('click', function() {
+    darkModeToggle.addEventListener('click', function () {
         html.classList.toggle('dark');
         var isDarkModeEnabled = html.classList.contains('dark');
         localStorage.setItem('dark-mode', isDarkModeEnabled);
@@ -87,7 +87,7 @@ function setupDarkMode() {
 
 function setupSearch() {
     var searchInput = document.getElementById('search');
-    var onInputChange = debounce(function(e) {
+    var onInputChange = debounce(function (e) {
         var searchValue = e.target.value.toLowerCase();
         var menu = document.querySelector('.doc-nav > .content');
         var search = document.querySelector('.doc-nav > .search');
@@ -98,8 +98,8 @@ function setupSearch() {
                 search.classList.add('hidden');
                 search.classList.remove('has-results');
             }
-        } else if (searchValue.length > 2) {
-            // search for less than 3 characters can display too much results
+        } else if (searchValue.length >= 2) {
+            // search for less than 2 characters can display too much results
             search.innerHTML = '';
             menu.style.display = 'none';
             if (search.classList.contains('hidden')) {
@@ -156,7 +156,7 @@ function setupSearch() {
                     title: prefix + ' ' + title,
                 });
             }
-            results.sort(function(a, b) {
+            results.sort(function (a, b) {
                 if (a.title < b.title) {
                     return -1;
                 }
@@ -208,7 +208,7 @@ function setupCollapse() {
     var dropdownArrows = document.querySelectorAll('.dropdown-arrow');
     for (var i = 0; i < dropdownArrows.length; i++) {
         var dropdownArrow = dropdownArrows[i];
-        dropdownArrow.addEventListener('click', function(e) {
+        dropdownArrow.addEventListener('click', function (e) {
             var parent = e.target.parentElement.parentElement.parentElement;
             parent.classList.toggle('open');
         });
