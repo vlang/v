@@ -6521,6 +6521,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	}
 	c.stmts(node.or_expr.stmts)
+	c.check_expr_opt_call(node, typ)
 	return typ
 }
 
