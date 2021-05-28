@@ -36,6 +36,7 @@ const (
 		'vet',
 		'wipe-cache',
 		'watch',
+		'ast'
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
