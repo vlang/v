@@ -470,7 +470,7 @@ pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 }
 
 // Gets the first value of the header starting with key, or none if the key does not exist.
-pub fn (h Header) starts_with(key string) ?string {
+pub fn (h Header) starting_with(key string) ?string {
 	for k, _ in h.data {
 		if k.starts_with(key) {
 			return k
