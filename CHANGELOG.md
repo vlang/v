@@ -1,7 +1,10 @@
 -## V 0.2.4
--*Not yet released*
+-*Not yet released, changelog is not full*
+- String interpolation and struct stringers are now implemented in pure V
+with a much cleaner and faster implementation. Previously libc's `sprintf`
+was used.
 - Improved `unused variable` warning. Assigning to a variable no longer marks it as used.
-- Bare metal support.
+- Bare metal support. Vinix OS kernel is now being developed in V.
 
 ## V 0.2.2 - 0.2.3
 *22 Jan 2021*

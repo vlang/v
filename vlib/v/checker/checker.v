@@ -880,7 +880,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() {
+								if !sym.is_heap() && !c.pref.translated {
 									suggestion := if sym.kind == .struct_ {
 										'declaring `$sym.name` as `[heap]`'
 									} else {
@@ -1300,11 +1300,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 			return ast.void_type
 		}
 		.and, .logical_or {
-			if infix_expr.left_type != ast.bool_type_idx {
-				c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
-			}
-			if infix_expr.right_type != ast.bool_type_idx {
-				c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
+			if !c.pref.translated {
+				if infix_expr.left_type != ast.bool_type_idx {
+					c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
+				}
+				if infix_expr.right_type != ast.bool_type_idx {
+					c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
+				}
 			}
 			if mut infix_expr.left is ast.InfixExpr {
 				if infix_expr.left.op != infix_expr.op && infix_expr.left.op in [.logical_or, .and] {
@@ -1334,7 +1336,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					infix_expr.pos)
 			}
-		} else {
+		} else if !c.pref.translated {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				infix_expr.pos)
@@ -3075,7 +3077,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() {
+						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
 							} else {
@@ -3331,7 +3333,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() {
+						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
 							} else {
@@ -6274,14 +6276,16 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
 				type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-				if obj.is_stack_obj && !type_sym.is_heap() {
+				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated {
 					suggestion := if type_sym.kind == .struct_ {
 						'declaring `$type_sym.name` as `[heap]`'
 					} else {
 						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
-					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-						node.pos)
+					if !c.pref.translated {
+						c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
+							node.pos)
+					}
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
