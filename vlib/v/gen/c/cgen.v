@@ -3137,6 +3137,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
+			// g.enum_expr(node)
 			styp := g.typ(node.typ)
 			g.write('${styp}_$node.val')
 		}
@@ -3482,8 +3483,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
 	match node {
-		ast.EnumVal { g.write(node.val) }
-		else { g.expr(node) }
+		ast.EnumVal {
+			g.write(node.val)
+		}
+		else {
+			g.expr(node)
+		}
 	}
 }
 
