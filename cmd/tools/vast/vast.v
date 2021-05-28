@@ -11,9 +11,9 @@ import time
 const usage = '
 usage:
   1.v ast demo.v 	 	 generate demo.json file.
-  2.v ast -w demo.v 	 generate demo.json file, and watch.
-  3.v ast -c domo.v 	 generate deom.json and demo.c file, and watch.
-  4.v ast -p demo.v 	 print the json string to termial.'
+  2.v ast -w demo.v 	 generate demo.json file, and watch for changes.
+  3.v ast -c demo.v 	 generate demo.json and demo.c file, and watch for changes.
+  4.v ast -p demo.v 	 print the generated json string to stdout, instead of saving it to a file.'
 
 fn main() {
 	args := os.args.clone()[1..]
