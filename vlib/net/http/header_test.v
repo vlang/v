@@ -115,12 +115,12 @@ fn test_get_custom() ? {
 	}
 }
 
-fn test_starts_with() ? {
+fn test_starting_with() ? {
 	mut h := http.new_header()
 	h.add_custom('Hello-1', 'world') ?
 	h.add_custom('Hello-21', 'world') ?
-	assert h.starts_with('Hello-') ? == 'Hello-1'
-	assert h.starts_with('Hello-2') ? == 'Hello-21'
+	assert h.starting_with('Hello-') ? == 'Hello-1'
+	assert h.starting_with('Hello-2') ? == 'Hello-21'
 }
 
 fn test_custom_values() ? {
