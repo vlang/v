@@ -1,3 +1,6 @@
+// usage test: v ast path_to_v/cmd/tools/vast/test/demo.v
+// will generate demo.json
+
 // comment for module
 module main
 
