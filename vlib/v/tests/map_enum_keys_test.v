@@ -1,4 +1,6 @@
-import gg { MouseButton }
+// This tests that V can import and use enums from other modules,
+// and that vfmt can handle all edge cases.
+import geometry { Shape }
 
 enum Token {
 	aa = 2
@@ -18,19 +20,19 @@ fn test_map_with_enum_keys() {
 }
 
 fn test_map_with_imported_enum_keys() {
-	mut km := map[gg.KeyCode]string{}
-	km[.minus] = '-'
-	km[gg.KeyCode.comma] = ','
-	assert km[.invalid] == ''
-	assert gg.KeyCode.comma in km
-	assert km[.minus] == '-'
+	mut fm := map[geometry.Form3D]string{}
+	fm[.cube] = 'a cube'
+	fm[geometry.Form3D.sphere] = 'a sphere'
+	assert fm[.invalid] == ''
+	assert geometry.Form3D.cube in fm
+	assert fm[.sphere] == 'a sphere'
 }
 
 fn test_map_with_selective_imported_enum_keys() {
-	mut bm := map[MouseButton]string{}
-	bm[.left] = 'lb'
-	bm[MouseButton.middle] = 'mb'
-	assert bm[.left] == 'lb'
-	bm.delete(MouseButton.left)
-	assert MouseButton.left !in bm
+	mut shapes := map[Shape]string{}
+	shapes[.circle] = 'a circle'
+	shapes[Shape.rectangle] = 'a rectangle'
+	assert shapes[.circle] == 'a circle'
+	shapes.delete(Shape.circle)
+	assert Shape.circle !in shapes
 }
