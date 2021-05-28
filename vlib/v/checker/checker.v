@@ -6453,19 +6453,32 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
+	mut typ_sym := c.table.get_final_type_symbol(typ)
 	node.left_type = typ
-	typ_sym := c.table.get_final_type_symbol(typ)
-	match typ_sym.kind {
-		.map {
-			node.is_map = true
+	for {
+		match typ_sym.kind {
+			.map {
+				node.is_map = true
+				break
+			}
+			.array {
+				node.is_array = true
+				break
+			}
+			.array_fixed {
+				node.is_farray = true
+				break
+			}
+			.any {
+				typ = c.unwrap_generic(typ)
+				node.left_type = typ
+				typ_sym = c.table.get_final_type_symbol(typ)
+				continue
+			}
+			else {
+				break
+			}
 		}
-		.array {
-			node.is_array = true
-		}
-		.array_fixed {
-			node.is_farray = true
-		}
-		else {}
 	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
