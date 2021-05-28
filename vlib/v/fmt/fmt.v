@@ -2078,7 +2078,9 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	if node.keys.len == 0 {
 		if node.typ > ast.void_type {
-			f.mark_types_import_as_used(node.typ)
+			sym := f.table.get_type_symbol(node.typ)
+			info := sym.info as ast.Map
+			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		} else {
 			// m = map{}
