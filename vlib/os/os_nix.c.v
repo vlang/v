@@ -66,6 +66,8 @@ fn C.getgid() int
 
 fn C.getegid() int
 
+fn C.ptrace(u32, u32, voidptr, int) u64
+
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
