@@ -815,10 +815,9 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 
 #### Array Slices
 
-Slices are arrays that are created an alternative view to a part of a parent array.
-They represent the elements between two indices
-separated by a `..` operator. The right-side index must be greater than or equal
-to the left side index.
+A slices is a part of a parent array. Initially it refers to the elements
+between two indices separated by a `..` operator. The right-side index must
+be greater than or equal to the left side index.
 
 If a right-side index is absent, it is assumed to be the array length. If a
 left-side index is absent, it is assumed to be 0.
@@ -845,7 +844,8 @@ A slices is always created with the smallest possible capacity `cap == len` (see
 [`cap` above](#array-initialization)) no matter what the capacity or length
 of the parent array is. As a result it is immediately reallocated and copied to another
 memory location when the size increases thus becoming independent from the
-parent array (*copy on grow*). So pushing elements to a slice does not alter the parent:
+parent array (*copy on grow*). In particular pushing elements to a slice
+does not alter the parent:
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 mut b := a[2..4]
