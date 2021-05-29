@@ -28,7 +28,7 @@ const (
 		'big_endian',
 	]
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding']
+		'no_bounds_checking', 'freestanding', 'threads']
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
@@ -311,8 +311,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 }
 
 pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
-	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-	if c.file.mod.name !in ['time', 'builtin'] {
+	// TODO Remove when `u8` isn't an alias in builtin anymore
+	if c.file.mod.name != 'builtin' {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
@@ -880,7 +880,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() {
+								if !sym.is_heap() && !c.pref.translated {
 									suggestion := if sym.kind == .struct_ {
 										'declaring `$sym.name` as `[heap]`'
 									} else {
@@ -1300,11 +1300,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 			return ast.void_type
 		}
 		.and, .logical_or {
-			if infix_expr.left_type != ast.bool_type_idx {
-				c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
-			}
-			if infix_expr.right_type != ast.bool_type_idx {
-				c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
+			if !c.pref.translated {
+				if infix_expr.left_type != ast.bool_type_idx {
+					c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
+				}
+				if infix_expr.right_type != ast.bool_type_idx {
+					c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
+				}
 			}
 			if mut infix_expr.left is ast.InfixExpr {
 				if infix_expr.left.op != infix_expr.op && infix_expr.left.op in [.logical_or, .and] {
@@ -1334,7 +1336,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					infix_expr.pos)
 			}
-		} else {
+		} else if !c.pref.translated {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				infix_expr.pos)
@@ -3075,7 +3077,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() {
+						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
 							} else {
@@ -3331,7 +3333,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() {
+						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
 							} else {
@@ -5814,6 +5816,17 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
+	mut node_is_expr := false
+	if node.branches.len > 0 && node.has_else {
+		stmts := node.branches[0].stmts
+		if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt
+			&& (stmts[stmts.len - 1] as ast.ExprStmt).typ != ast.void_type {
+			node_is_expr = true
+		}
+	}
+	if c.expected_type == ast.void_type && node_is_expr {
+		c.expected_type = c.expected_or_type
+	}
 	expr_required := c.expected_type != ast.void_type
 	former_expected_type := c.expected_type
 	node.typ = ast.void_type
@@ -6157,6 +6170,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
+					'threads' { return c.table.gostmts == 0 }
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
 					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
@@ -6273,14 +6287,16 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
 				type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-				if obj.is_stack_obj && !type_sym.is_heap() {
+				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated {
 					suggestion := if type_sym.kind == .struct_ {
 						'declaring `$type_sym.name` as `[heap]`'
 					} else {
 						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
-					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-						node.pos)
+					if !c.pref.translated {
+						c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
+							node.pos)
+					}
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
@@ -6448,19 +6464,32 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
+	mut typ_sym := c.table.get_final_type_symbol(typ)
 	node.left_type = typ
-	typ_sym := c.table.get_final_type_symbol(typ)
-	match typ_sym.kind {
-		.map {
-			node.is_map = true
+	for {
+		match typ_sym.kind {
+			.map {
+				node.is_map = true
+				break
+			}
+			.array {
+				node.is_array = true
+				break
+			}
+			.array_fixed {
+				node.is_farray = true
+				break
+			}
+			.any {
+				typ = c.unwrap_generic(typ)
+				node.left_type = typ
+				typ_sym = c.table.get_final_type_symbol(typ)
+				continue
+			}
+			else {
+				break
+			}
 		}
-		.array {
-			node.is_array = true
-		}
-		.array_fixed {
-			node.is_farray = true
-		}
-		else {}
 	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
@@ -6521,6 +6550,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	}
 	c.stmts(node.or_expr.stmts)
+	c.check_expr_opt_call(node, typ)
 	return typ
 }
 

@@ -1,8 +1,6 @@
 // Binary Search Tree example by @SleepyRoy
 
 // TODO: make Node.value generic once it's robust enough
-// TODO: `return match` instead of returns everywhere inside match
-
 struct Empty {}
 
 struct Node {
@@ -16,20 +14,19 @@ type Tree = Empty | Node
 // return size(number of nodes) of BST
 fn size(tree Tree) int {
 	return match tree {
-		// TODO: remove int() once match gets smarter
-		Empty { int(0) }
+		Empty { 0 }
 		Node { 1 + size(tree.left) + size(tree.right) }
 	}
 }
 
 // insert a value to BST
 fn insert(tree Tree, x f64) Tree {
-	match tree {
+	return match tree {
 		Empty {
-			return Node{x, tree, tree}
+			Node{x, tree, tree}
 		}
 		Node {
-			return if x == tree.value {
+			if x == tree.value {
 				tree
 			} else if x < tree.value {
 				Node{
@@ -48,12 +45,12 @@ fn insert(tree Tree, x f64) Tree {
 
 // whether able to find a value in BST
 fn search(tree Tree, x f64) bool {
-	match tree {
+	return match tree {
 		Empty {
-			return false
+			false
 		}
 		Node {
-			return if x == tree.value {
+			if x == tree.value {
 				true
 			} else if x < tree.value {
 				search(tree.left, x)
@@ -66,21 +63,29 @@ fn search(tree Tree, x f64) bool {
 
 // find the minimal value of a BST
 fn min(tree Tree) f64 {
-	match tree {
-		Empty { return 1e100 }
-		Node { return if tree.value < min(tree.left) { tree.value } else { min(tree.left) } }
+	return match tree {
+		Empty {
+			1e100
+		}
+		Node {
+			if tree.value < min(tree.left) {
+				tree.value
+			} else {
+				min(tree.left)
+			}
+		}
 	}
 }
 
 // delete a value in BST (if nonexistant do nothing)
 fn delete(tree Tree, x f64) Tree {
-	match tree {
+	return match tree {
 		Empty {
-			return tree
+			tree
 		}
 		Node {
 			if tree.left is Node && tree.right is Node {
-				return if x < tree.value {
+				if x < tree.value {
 					Node{
 						...tree
 						left: delete(tree.left, x)
@@ -98,7 +103,7 @@ fn delete(tree Tree, x f64) Tree {
 					}
 				}
 			} else if tree.left is Node {
-				return if x == tree.value {
+				if x == tree.value {
 					tree.left
 				} else {
 					Node{
@@ -108,9 +113,9 @@ fn delete(tree Tree, x f64) Tree {
 				}
 			} else {
 				if x == tree.value {
-					return tree.right
+					tree.right
 				} else {
-					return Node{
+					Node{
 						...tree
 						right: delete(tree.right, x)
 					}

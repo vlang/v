@@ -19,7 +19,7 @@ fn test_match_integers() {
 			println('three')
 			b = 3
 		}
-		4 {
+		int(4) {
 			println('four')
 		}
 		else {
