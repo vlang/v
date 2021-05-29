@@ -613,14 +613,14 @@ will have the type of `f64`.
 #### Basic Array Concepts
 Arrays are collections of data elements of the same type. They can be represented by
 a list of elements surrounded by brackets. The elements can be accessed by appending
-an *index* (starting with `0`) in brackets:
+an *index* (starting with `0`) in brackets to the array variable:
 ```v
 mut nums := [1, 2, 3]
-println(nums) // "[1, 2, 3]"
-println(nums[0]) // "1"
-println(nums[1]) // "2"
+println(nums) // `[1, 2, 3]`
+println(nums[0]) // `1`
+println(nums[1]) // `2`
 nums[1] = 5
-println(nums) // "[1, 5, 3]"
+println(nums) // `[1, 5, 3]`
 ```
 
 #### Array Properties
@@ -637,11 +637,6 @@ println(nums.len) // "3"
 println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
-```
-
-```v
-// Declare an empty array:
-users := []int{}
 ```
 
 Note that the properties are read-only fields and can't be modified by the user.
@@ -670,10 +665,14 @@ specified explicitly):
 ```v
 arr := []int{len: 5, init: -1}
 // `arr == [-1, -1, -1, -1, -1]`, arr.cap == 5
+
+// Declare an empty array:
+users := []int{}
 ```
 
-Setting the capacity improves performance of insertions,
-as it reduces the number of reallocations needed:
+
+Setting the capacity improves performance of pushing elements to the array
+as reallocations can be avoided:
 
 ```v
 mut numbers := []int{cap: 1000}
@@ -683,8 +682,8 @@ for i in 0 .. 1000 {
 	numbers << i
 }
 ```
-Note: The above code uses a [range `for`](#range-for) statement and an
-[push operator](#array-operations).
+Note: The above code uses a [range `for`](#range-for) statement and a
+[push operator (`<<`)](#array-operations).
 
 
 #### Multidimensional Arrays
@@ -831,7 +830,7 @@ println(nums[..4]) // [0, 10, 20, 30]
 println(nums[1..]) // [10, 20, 30, 40]
 ```
 
-In V slices are arrays themselves (they are nto distinct types). As a result
+In V slices are arrays themselves (they are no distinct types). As a result
 all array operations may be performed on them. E.g. they can be pushed onto an
 array of the same type:
 
@@ -842,9 +841,9 @@ array_2 << array_1[..3]
 println(array_2) // `[0, 1, 3, 5, 4]`
 ```
 
-Slices are always created with the smallest possible capacity `cap == len` (see
+A slices is always created with the smallest possible capacity `cap == len` (see
 [`cap` above](#array-initialization)) no matter what the capacity or length
-of the parent array are. As a result they are immediately reallocated and copied to another
+of the parent array is. As a result it is immediately reallocated and copied to another
 memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). So pushing elements to a slice does not alter the parent:
 ```v
