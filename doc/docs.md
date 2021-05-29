@@ -610,20 +610,44 @@ If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 ### Arrays
-
+#### Basic Array Concepts
+Arrays are collections of data elements of the same type that can be represented by
+a list of elements surrounded by brackets. The elements can be accessed by appending
+an *index* (starting with `0`) in brackets:
 ```v
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
+println(nums[0]) // "1"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
+```
+
+#### Array Properties
+There are two properties that control the "size" of an array:
+* `len`: *length* - the number of elements the array
+* `cap`: *capacity* - the number of elements for which memory space has been reserved. The array can
+grow up to this size without being reallocated. Usually, V takes care of
+this property automatically but there are cases where the user may want to do manual
+optimizations (see [below](#array-initialization)).
+
+```v
+mut nums := [1, 2, 3]
 println(nums.len) // "3"
+println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
+```
+
+```v
 // Declare an empty array:
 users := []int{}
 ```
 
+Note that the properties are read-only fields, and it can't be modified by the user.
+
+#### Array Initialization
+The basic initialization syntax is already described [above](#basic-array-concepts).
 The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
@@ -632,40 +656,20 @@ The user can explicitly specify the type for the first element: `[byte(16), 32, 
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
-The `.len` field returns the length of the array. Note that it's a read-only field,
-and it can't be modified by the user. Exported fields are read-only by default in V.
-See [Access modifiers](#access-modifiers).
-
-#### Array operations
-
+The above syntax is fine for a small number of known elements but for very large or empty
+arrays there is a second initialization syntax:
 ```v
-mut nums := [1, 2, 3]
-nums << 4
-println(nums) // "[1, 2, 3, 4]"
-// append array
-nums << [5, 6, 7]
-println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
-mut names := ['John']
-names << 'Peter'
-names << 'Sam'
-// names << 10  <-- This will not compile. `names` is an array of strings.
-println(names.len) // "3"
-println('Alex' in names) // "false"
+mut a := []int{len: 10000, cap: 30000, init: 3}
 ```
-
-`<<` is an operator that appends a value to the end of the array.
-It can also append an entire array.
-
-`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
-
-#### Initializing array properties
-
-During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
-and the default element (`init`):
+This creates an array of 10000 `int` elements that are all initialized with `3`. Memory
+space is reserved for 30000 elements. The parameters `len`, `cap` and `init` are optional
+and default to `0` (or the default initialization of the element type in case of `init`).
+The run time system makes sure `cap` is not smaller than `len`, so there is usually no need
+to specify it:
 
 ```v
 arr := []int{len: 5, init: -1}
-// `[-1, -1, -1, -1, -1]`
+// `arr == [-1, -1, -1, -1, -1]`, arr.cap == 5
 ```
 
 Setting the capacity improves performance of insertions,
@@ -680,6 +684,52 @@ for i in 0 .. 1000 {
 }
 ```
 Note: The above code uses a [range `for`](#range-for) statement.
+
+
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension.
+
+2d array example:
+```v
+mut a := [][]int{len: 2, init: []int{len: 3}}
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
+3d array example:
+```v
+mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
+a[0][1][1] = 2
+println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
+#### Array operations
+
+Elements can be appended to the end of an array using the push operator `<<`.
+It can also append an entire array.
+
+```v
+mut nums := [1, 2, 3]
+nums << 4
+println(nums) // "[1, 2, 3, 4]"
+// append array
+nums << [5, 6, 7]
+println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
+mut names := ['John']
+names << 'Peter'
+names << 'Sam'
+// names << 10  <-- This will not compile. `names` is an array of strings.
+```
+
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
+
+```v
+names := ['John', 'Peter', 'Sam']
+println(names.len) // "3"
+println('Alex' in names) // "false"
+```
+
 
 #### Array methods
 
@@ -726,25 +776,22 @@ println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
 
-#### Multidimensional Arrays
+There are further built in methods for arrays:
+* `b := a.repeat(n)` concatenate `n` times the elements of `a`
+* `a.insert(i, val)` inserts new element `val` at index `i` and moves all following elements up
+* `a.insert(i, [3, 4, 5])` inserts several elements
+* `a.prepend(val)` inserts value at beginning, equivalent to `a.insert(0, val)`
+* `a.prepend(arr)` inserts elements off array `arr` at beginning
+* `a.trim(new_len)` truncates the length (if `new_length < a.len`)
+* `a.clear()` empties the array (without moving or changing `cap`, equivalent to `a.trim(0)`)
+* `v := a.first()` equivalent to `v := a[0]`
+* `v := a.last()` equivalent to `v := a[a.len - 1]`
+* `v := a.pop()` gets last element and removes it from array
+* `a.delete_last()` removes last element from array
+* `b := a.reverse()` make `b` contain the elements of `a` in reversed order
+* `a.reverse_in_place()` reverse the order of elements in `a`
 
-Arrays can have more than one dimension.
-
-2d array example:
-```v
-mut a := [][]int{len: 2, init: []int{len: 3}}
-a[0][1] = 2
-println(a) // [[0, 2, 0], [0, 0, 0]]
-```
-
-3d array example:
-```v
-mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
-a[0][1][1] = 2
-println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
-```
-
-#### Sorting arrays
+#### Sorting Arrays
 
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
@@ -768,7 +815,8 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 
 #### Array Slices
 
-Slices are partial arrays. They represent every element between two indices
+Slices are arrays that are created an alternative view to a part of a parent array.
+They represent every element between two indices
 separated by a .. operator. The right-side index must be greater than or equal
 to the left side index.
 
@@ -782,14 +830,43 @@ println(nums[..4]) // [0, 10, 20, 30]
 println(nums[1..]) // [10, 20, 30, 40]
 ```
 
-All array operations may be performed on slices.
-Slices can be pushed onto an array of the same type.
+In V slices are arrays themselves (they are no distinct type). As a result
+all array operations may be performed on them. E.g. they can be pushed onto an
+array of the same type:
 
 ```v
 array_1 := [3, 5, 4, 7, 6]
 mut array_2 := [0, 1]
 array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
+```
+
+Slices are always created with minimal capacity `cap == len` (see
+[`cap` above](#array-initialization) no matter what the capacity of the parent
+array is. As a result they are immediately reallocated and copied to another
+memory location when the size increases thus becoming independent from the
+parent array. So pushing elements to a slice does not alter the parent:
+```v
+mut a := [0, 1, 2, 3, 4, 5]
+mut b := a[2..4]
+b[0] = 7 // `b` is referring to a part of `a`
+println(a) // `[0, 1, 7, 3, 4, 5]`
+b << 9 // b is reallocated and becomes independent from `a`
+println(a) // `[0, 1, 7, 3, 4, 5]` - no change
+println(b) // `[7, 3, 9]`
+```
+
+Appending to the parent array may or may not make the two independent. The
+behaviour depends on the parent's capacity and is predictable:
+```v
+mut a := []int{len: 5, cap: 6, init: 2}
+mut b := a[1..4]
+a << 3 // no reallocation - fits in `cap`
+b[2] = 13 // a[3] is modified
+a << 4 // a is reallocated and becomes independent from `b` (`cap` exceeded)
+b[1] = 3 // no change in `a`
+println(a) // `[2, 2, 2, 13, 2, 3, 4]`
+println(b) // `[2, 3, 13]`
 ```
 
 ### Fixed size arrays
