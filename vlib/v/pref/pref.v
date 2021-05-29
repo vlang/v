@@ -396,12 +396,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-translated' {
 				res.translated = true
 			}
-			'-color' {
-				res.use_color = .always
-			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
 				res.cflags += ' $arg'
+			}
+			'-color' {
+				res.use_color = .always
 			}
 			'-nocolor' {
 				res.use_color = .never
@@ -478,7 +478,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg "$res.cflags.trim_space()"'
 				i++
 			}
-			'-define', '-d' {
+			'-d', '-define' {
 				if current_args.len > 1 {
 					define := current_args[1]
 					parse_define(mut res, define)
@@ -495,8 +495,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					arg, '10').int()
 				i++
 			}
-			'-o' {
-				res.out_name = cmdline.option(current_args, '-o', '')
+			'-o', '-output' {
+				res.out_name = cmdline.option(current_args, arg, '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js
 				}
@@ -505,8 +505,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				i++
 			}
-			'-b' {
-				sbackend := cmdline.option(current_args, '-b', 'c')
+			'-b', '-backend' {
+				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
 				b := backend_from_string(sbackend) or { continue }
 				res.backend = b

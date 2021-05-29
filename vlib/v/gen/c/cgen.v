@@ -183,6 +183,7 @@ mut:
 	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table          map[string]string
 	// main_fn_decl_node  ast.FnDecl
+	expected_cast_type ast.Type // for match expr of sumtypes
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -449,6 +450,9 @@ pub fn (mut g Gen) init() {
 			g.comptime_defines.writeln('#define CUSTOM_DEFINE_$cdefine')
 		}
 		g.comptime_defines.writeln('')
+	}
+	if g.table.gostmts > 0 {
+		g.comptime_defines.writeln('#define __VTHREADS__ (1)')
 	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
 		.boehm_leak,
@@ -1241,7 +1245,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			old_is_void_expr_stmt := g.is_void_expr_stmt
 			g.is_void_expr_stmt = !node.is_expr
-			g.expr(node.expr)
+			if node.typ != ast.void_type && g.expected_cast_type != 0 {
+				g.expr_with_cast(node.expr, node.typ, g.expected_cast_type)
+			} else {
+				g.expr(node.expr)
+			}
 			g.is_void_expr_stmt = old_is_void_expr_stmt
 			// if af {
 			// g.autofree_call_postgen()
@@ -3152,6 +3160,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
+			// g.enum_expr(node)
 			styp := g.typ(node.typ)
 			g.write('${styp}_$node.val')
 		}
@@ -3502,8 +3511,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
 	match node {
-		ast.EnumVal { g.write(node.val) }
-		else { g.expr(node) }
+		ast.EnumVal {
+			g.write(node.val)
+		}
+		else {
+			g.expr(node)
+		}
 	}
 }
 
@@ -4159,7 +4172,12 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.writeln(') {')
 				}
 			}
+			if is_expr && tmp_var.len > 0
+				&& g.table.get_type_symbol(node.return_type).kind == .sum_type {
+				g.expected_cast_type = node.return_type
+			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.write('}')
 			}
@@ -5909,7 +5927,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
 					g.inside_opt_data = old_inside_opt_data
-					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
+					if g.inside_ternary == 0 {
 						g.writeln(';')
 					}
 					g.stmt_path_pos.delete_last()

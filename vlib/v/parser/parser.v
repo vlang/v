@@ -3042,6 +3042,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
+		p.table.get_type_symbol(fn_type).is_public = is_pub
 		type_pos = type_pos.extend(p.tok.position())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{

@@ -354,7 +354,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 		ast.Expr { f.expr(node) }
 		else { panic('´f.node_str()´ is not implemented for ${node}.') }
 	}
-	str := f.out.after(pos).trim_space()
+	str := f.out.after(pos)
 	f.out.go_back_to(pos)
 	f.empty_line = was_empty_line
 	f.line_len = prev_line_len
@@ -1616,9 +1616,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		} else {
 			mut name := f.short_module(node.name)
 			f.mark_import_as_used(name)
-			if node.name in f.mod2alias {
-				name = f.mod2alias[node.name]
-			}
 			f.write('$name')
 		}
 	}
@@ -2081,7 +2078,9 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	if node.keys.len == 0 {
 		if node.typ > ast.void_type {
-			f.mark_types_import_as_used(node.typ)
+			sym := f.table.get_type_symbol(node.typ)
+			info := sym.info as ast.Map
+			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		} else {
 			// m = map{}
@@ -2116,7 +2115,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		// normal branch
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
-			estr := f.node_str(expr)
+			estr := f.node_str(expr).trim_space()
 			if f.line_len + estr.len + 2 > fmt.max_len[5] {
 				f.remove_new_line({})
 				f.writeln('')
@@ -2389,7 +2388,6 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 }
 
 pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
-	// TODO: this code is very similar to ast.Expr.str()
 	mut quote := "'"
 	for val in node.vals {
 		if val.contains('\\"') {
@@ -2407,6 +2405,9 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 			quote = '"'
 		}
 	}
+	// TODO: this code is very similar to ast.Expr.str()
+	// serkonda7: it can not fully be replaced tho as ´f.expr()´ and `ast.Expr.str()`
+	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
 		f.write(val)

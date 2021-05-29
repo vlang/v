@@ -649,12 +649,12 @@ pub fn str_intp_rune(in_str string) string {
 
 [inline]
 pub fn str_intp_g32(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT(""), $si_g32_code, {.d_f32 = $in_str }}}))'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_g32_code, {.d_f32 = $in_str }}}))'
 }
 
 [inline]
 pub fn str_intp_g64(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT(""), $si_g64_code, {.d_f64 = $in_str }}}))'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_g64_code, {.d_f64 = $in_str }}}))'
 }
 
 // replace %% with the in_str

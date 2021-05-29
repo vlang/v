@@ -110,14 +110,14 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		nelements := int(C.fread(str, fsize, 1, fp))
+		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
 			free(str)
 			return error('fread failed')
 		}
-		str[fsize] = 0
+		str[nelements] = 0
 		if nelements == 0 {
 			// It is highly likely that the file was a virtual file from
 			// /sys or /proc, with information generated on the fly, so
@@ -129,7 +129,7 @@ pub fn read_file(path string) ?string {
 			// get a V string with .len = 4096 and .str = "PCH\n\\000".
 			return str.vstring()
 		}
-		return str.vstring_with_len(fsize)
+		return str.vstring_with_len(nelements)
 	}
 }
 
@@ -586,13 +586,13 @@ pub fn read_file_array<T>(path string) []T {
 	// read the actual data from the file
 	len := fsize / tsize
 	buf := unsafe { malloc(fsize) }
-	C.fread(buf, fsize, 1, fp)
+	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
 		array{
 			element_size: tsize
 			data: buf
-			len: len
+			len: int(nread)
 			cap: len
 		}
 	}

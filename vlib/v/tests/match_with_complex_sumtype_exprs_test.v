@@ -1,6 +1,3 @@
-// Binary Search Tree example by @SleepyRoy
-
-// TODO: make Node.value generic once it's robust enough
 struct Empty {}
 
 struct Node {
@@ -125,47 +122,32 @@ fn delete(tree Tree, x f64) Tree {
 	}
 }
 
-fn main() {
-	$if !freestanding {
-		mut tree := Tree(Empty{})
-		input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
-		for i in input {
-			tree = insert(tree, i)
-		}
-		println('[1] after insertion tree size is ${size(tree)}') // 11
-		del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
-		for i in del {
-			tree = delete(tree, i)
-		}
-		print('[2] after deletion tree size is ${size(tree)}, ') // 7
-		print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
-		for i in input {
-			if !search(tree, i) {
-				print('$i ')
-			}
-		}
-		println('')
-	} $else {
-		mut tree := Tree(Empty{})
-		input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
-		for i in input {
-			tree = insert(tree, i)
-		}
-		print('[1] after insertion tree size is ') // 11
-		println(size(tree))
-		del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
-		for i in del {
-			tree = delete(tree, i)
-		}
-		print('[2] after deletion tree size is ') // 7
-		print(size(tree))
-		print(', and these elements were deleted: ') // 0.0 0.3 0.6 1.0
-		for i in input {
-			if !search(tree, i) {
-				print(i)
-				print(' ')
-			}
-		}
-		println('')
+fn test_match_with_complex_sumtype_exprs() {
+	mut tree := Tree(Empty{})
+	input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
+	for i in input {
+		tree = insert(tree, i)
 	}
+	print('[1] after insertion tree size is ') // 11
+	println(size(tree))
+	assert size(tree) == 11
+	del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
+	for i in del {
+		tree = delete(tree, i)
+	}
+	print('[2] after deletion tree size is ') // 7
+	print(size(tree))
+	assert size(tree) == 7
+	print(', and these elements were deleted: ') // 0.0 0.3 0.6 1.0
+	mut deleted := []f64{}
+	for i in input {
+		if !search(tree, i) {
+			print(i)
+			print(' ')
+			deleted << i
+		}
+	}
+	deleted.sort()
+	assert deleted == [0.0, 0.3, 0.6, 1.0]
+	println('')
 }

@@ -1621,13 +1621,16 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc(s.len) }
+		str: unsafe { malloc(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
 		unsafe {
 			res.str[s.len - i - 1] = s[i]
 		}
+	}
+	unsafe {
+		res.str[res.len] = 0
 	}
 	return res
 }
@@ -1681,11 +1684,11 @@ pub fn (s string) repeat(count int) string {
 			}
 		}
 	}
+	new_len := s.len * count
 	unsafe {
-		new_len := s.len * count
 		ret[new_len] = 0
-		return ret.vstring_with_len(new_len)
 	}
+	return unsafe { ret.vstring_with_len(new_len) }
 }
 
 // fields returns a string array of the string split by `\t` and ` `

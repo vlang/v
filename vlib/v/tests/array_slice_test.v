@@ -60,3 +60,22 @@ fn test_pointer_array_slice() {
 	mut arr := [1, 2, 3]
 	pointer_array_slice(mut arr)
 }
+
+fn test_push_to_orig() {
+	mut orig := [1, 2, 3, 4]
+	slice := orig[1..3]
+	for _ in 0 .. 1000 {
+		orig << 9
+	}
+	orig[2] = 7
+	slice2 := orig[1..3]
+	assert slice == [2, 3] || slice == [2, 7]
+	assert slice2 == [2, 7]
+}
+
+fn test_self_slice_push() {
+	mut a := [1, 2, 3]
+	a = a[1..]
+	a << 4
+	assert a == [2, 3, 4]
+}
