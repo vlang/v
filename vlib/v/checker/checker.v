@@ -5816,6 +5816,17 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
+	mut node_is_expr := false
+	if node.branches.len > 0 && node.has_else {
+		stmts := node.branches[0].stmts
+		if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt
+			&& (stmts[stmts.len - 1] as ast.ExprStmt).typ != ast.void_type {
+			node_is_expr = true
+		}
+	}
+	if c.expected_type == ast.void_type && node_is_expr {
+		c.expected_type = c.expected_or_type
+	}
 	expr_required := c.expected_type != ast.void_type
 	former_expected_type := c.expected_type
 	node.typ = ast.void_type
