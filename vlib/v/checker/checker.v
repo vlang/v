@@ -5332,6 +5332,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	cond_type_sym := c.table.get_type_symbol(cond_type)
 	if cond_type_sym.kind !in [.interface_, .sum_type] {
 		node.is_sum_type = false
+	} else {
+		node.is_sum_type = true
 	}
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
