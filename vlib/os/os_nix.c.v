@@ -51,10 +51,18 @@ fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
 
+fn C.link(&char, &char) int
+
 fn C.gethostname(&char, int) int
 
 // NB: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
+
+fn C.getppid() int
+
+fn C.getgid() int
+
+fn C.getegid() int
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -279,6 +287,14 @@ pub fn symlink(origin string, target string) ?bool {
 	return error(posix_get_error_msg(C.errno))
 }
 
+pub fn link(origin string, target string) ?bool {
+	res := C.link(&char(origin.str), &char(target.str))
+	if res == 0 {
+		return true
+	}
+	return error(posix_get_error_msg(C.errno))
+}
+
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
 	return posix_get_error_msg(code)
@@ -333,6 +349,11 @@ pub fn getpid() int {
 }
 
 [inline]
+pub fn getppid() int {
+	return C.getppid()
+}
+
+[inline]
 pub fn getuid() int {
 	return C.getuid()
 }
@@ -340,6 +361,16 @@ pub fn getuid() int {
 [inline]
 pub fn geteuid() int {
 	return C.geteuid()
+}
+
+[inline]
+pub fn getgid() int {
+	return C.getgid()
+}
+
+[inline]
+pub fn getegid() int {
+	return C.getegid()
 }
 
 // Turns the given bit on or off, depending on the `enable` parameter

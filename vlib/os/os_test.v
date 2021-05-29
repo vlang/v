@@ -311,24 +311,58 @@ fn test_is_writable_folder() {
 }
 
 fn test_make_symlink_check_is_link_and_remove_symlink() {
-	$if windows {
-		// TODO
-		assert true
-		return
-	}
 	folder := 'tfolder'
 	symlink := 'tsymlink'
-	os.rm(symlink) or {}
-	os.rm(folder) or {}
+	// windows creates a directory symlink, so delete it with rmdir()
+	$if windows {
+		os.rmdir(symlink) or {}
+	} $else {
+		os.rm(symlink) or {}
+	}
+	os.rmdir(folder) or {}
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.system('ln -s $folder $symlink')
+	os.symlink(folder, symlink) or { panic(err) }
 	assert os.is_link(symlink)
-	os.rm(symlink) or { panic(err) }
-	os.rm(folder) or { panic(err) }
+	$if windows {
+		os.rmdir(symlink) or { panic(err) }
+	} $else {
+		os.rm(symlink) or { panic(err) }
+	}
+	os.rmdir(folder) or { panic(err) }
 	folder_exists := os.is_dir(folder)
 	assert folder_exists == false
+	symlink_exists := os.is_link(symlink)
+	assert symlink_exists == false
+}
+
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
+	file := 'tfile'
+	symlink := 'tsymlink'
+	os.rm(symlink) or {}
+	os.rm(file) or {}
+	mut f := os.create(file) or { panic(err) }
+	f.close()
+	os.symlink(file, symlink) or { panic(err) }
+	assert os.is_link(symlink)
+	os.rm(symlink) or { panic(err) }
+	os.rm(file) or { panic(err) }
+	symlink_exists := os.is_link(symlink)
+	assert symlink_exists == false
+}
+
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
+	file := 'tfile'
+	symlink := 'tsymlink'
+	os.rm(symlink) or {}
+	os.rm(file) or {}
+	mut f := os.create(file) or { panic(err) }
+	f.close()
+	os.link(file, symlink) or { panic(err) }
+	assert os.exists(symlink)
+	os.rm(symlink) or { panic(err) }
+	os.rm(file) or { panic(err) }
 	symlink_exists := os.is_link(symlink)
 	assert symlink_exists == false
 }
@@ -355,15 +389,16 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 // }
 // }
 fn test_symlink() {
-	$if windows {
-		return
-	}
 	os.mkdir('symlink') or { panic(err) }
 	os.symlink('symlink', 'symlink2') or { panic(err) }
 	assert os.exists('symlink2')
 	// cleanup
-	os.rm('symlink') or { panic(err) }
-	os.rm('symlink2') or { panic(err) }
+	os.rmdir('symlink') or { panic(err) }
+	$if windows {
+		os.rmdir('symlink2') or { panic(err) }
+	} $else {
+		os.rm('symlink2') or { panic(err) }
+	}
 }
 
 fn test_is_executable_writable_readable() {
