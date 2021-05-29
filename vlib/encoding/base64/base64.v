@@ -35,7 +35,8 @@ pub fn decode_str(data string) string {
 		return ''
 	}
 	unsafe {
-		buffer := malloc(size)
+		buffer := malloc(size + 1)
+		buffer[size] = 0
 		return tos(buffer, decode_in_buffer(data, buffer))
 	}
 }
@@ -61,7 +62,8 @@ fn alloc_and_encode(src &byte, len int) string {
 		return ''
 	}
 	unsafe {
-		buffer := malloc(size)
+		buffer := malloc(size + 1)
+		buffer[size] = 0
 		return tos(buffer, encode_from_buffer(buffer, src, len))
 	}
 }
