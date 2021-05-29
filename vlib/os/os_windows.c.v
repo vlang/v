@@ -5,6 +5,13 @@ import strings
 #flag windows -l advapi32
 #include <process.h>
 
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
+// TCC gets builder error
+// fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -138,7 +145,7 @@ pub fn mkdir(path string) ?bool {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned ' +
+		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
 	return true
@@ -310,21 +317,46 @@ pub fn execute(cmd string) Result {
 	}
 }
 
-// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
-fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+pub fn symlink(origin string, target string) ?bool {
+	// this is a temporary fix for TCC32 due to runtime error
+	// TODO: patch TCC32
+	$if x64 || x32 {
+		mut flags := 0
+		if is_dir(origin) {
+			flags ^= 1
+		}
 
-pub fn symlink(symlink_path string, target_path string) ?bool {
-	mut flags := 0
-	if is_dir(symlink_path) {
-		flags |= 1
+		flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+		res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
+
+		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
+		if res != 1 {
+			return error(get_error_msg(int(C.GetLastError())))
+		}
+		if !exists(target) {
+			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+		}
+		return true
 	}
-	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-	res := C.CreateSymbolicLinkW(symlink_path.to_wide(), target_path.to_wide(), flags)
-	if res == 0 {
+	return false
+}
+
+pub fn link(origin string, target string) ?bool {
+	/*
+	// TODO: TCC gets builder error
+	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
+	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
+	if res != 1 {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	if !exists(symlink_path) {
-		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+	if !exists(target) {
+		return error('C.CreateHardLinkW reported success, but link still does not exist')
+	}
+	return true
+	*/
+	res := execute('fsutil hardlink create $target $origin')
+	if res.exit_code != 0 {
+		return error(res.output)
 	}
 	return true
 }
