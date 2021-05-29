@@ -90,3 +90,20 @@ fn test_slice_push_child() {
 	assert a == [1.0, 2.0625, 3.5, -7.75, -13.5, 8.4375, 0.5]
 	assert b == [3.5, -7.75, 7.125, 8.4375, -2.25]
 }
+
+fn test_predictable_reallocation_parent() {
+	mut a := []i64{cap:6, len: 4, init: -25}
+	mut b := a[1..3]
+	b[1] = -5238543910438573201
+	assert a == [i64(-25), -25, -5238543910438573201, -25]
+	a << 5
+	b[1] = 13
+	assert a == [i64(-25), -25, 13, -25, 5]
+	a << -7
+	b[0] = 8
+	assert a == [i64(-25), 8, 13, -25, 5, -7]
+	a << 9 // here `a` will be reallocated as `cap` is exceeded
+	b[1] = -19 // `a` will not change any more
+	assert a == [i64(-25), 8, 13, -25, 5, -7, 9]
+	assert b == [i64(8), -19]
+}
