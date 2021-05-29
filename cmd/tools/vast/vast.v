@@ -10,13 +10,14 @@ import time
 
 const usage = '
 usage:
-  1.v ast demo.v 	 	 generate demo.json file.
+  1.v ast demo.v 	 generate demo.json file.
   2.v ast -w demo.v 	 generate demo.json file, and watch for changes.
   3.v ast -c demo.v 	 generate demo.json and demo.c file, and watch for changes.
-  4.v ast -p demo.v 	 print the generated json string to stdout, instead of saving it to a file.'
+  4.v ast -p demo.v 	 print the json string to stdout, instead of saving it to a file.
+  '
 
 fn main() {
-	args := os.args.clone()[1..]
+	args := os.args[1..]
 	match args.len {
 		2 {
 			file := get_abs_path(args[1])
@@ -80,14 +81,6 @@ fn check_file(file string) {
 	}
 }
 
-struct Tree {
-	table        &ast.Table
-	pref         &pref.Preferences
-	global_scope &ast.Scope
-mut:
-	root Node // the root of tree
-}
-
 // generate json file with the same file name
 fn json_file(file string) string {
 	ast_json := json(file)
@@ -125,24 +118,37 @@ fn json(file string) string {
 	return s
 }
 
+// the ast tree
+struct Tree {
+	table        &ast.Table
+	pref         &pref.Preferences
+	global_scope &ast.Scope
+mut:
+	root Node // the root of tree
+}
+
 // tree node
 pub type Node = C.cJSON
 
+// add item to object node
 [inline]
 fn (node &Node) add(key string, child &Node) {
 	add_item_to_object(node, key, child)
 }
 
+// add item to array node
 [inline]
 fn (node &Node) add_item(child &Node) {
 	add_item_to_array(node, child)
 }
 
+// create an object node
 [inline]
 fn new_object() &Node {
 	return C.cJSON_CreateObject()
 }
 
+// create an array node
 [inline]
 fn new_array() &Node {
 	return C.cJSON_CreateArray()
@@ -356,7 +362,7 @@ fn (t Tree) notices(notices []errors.Notice) &Node {
 	return notice_array
 }
 
-// stmt node
+// stmt array node
 fn (t Tree) stmts(stmts []ast.Stmt) &Node {
 	stmt_array := new_array()
 	for s in stmts {
@@ -395,7 +401,6 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.NodeError { return t.node_error(node) }
 		ast.EmptyStmt { return t.empty_stmt(node) }
 	}
-	// fixed ForCStmt without init stmt
 	return t.null_node()
 }
 
@@ -905,7 +910,6 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add('env_value', t.string_node(node.env_value))
 	obj.add('pos', t.position(node.pos))
 	obj.add('args', t.array_node_call_arg(node.args))
-
 	return obj
 }
 
@@ -1769,8 +1773,8 @@ fn (t Tree) asm_register(node ast.AsmRegister) &Node {
 	obj := new_object()
 	obj.add('ast_type', t.string_node('AsmRegister'))
 	obj.add('name', t.string_node(node.name))
-	// obj.add('typ', t.type_node(node.typ))
-	// obj.add('size', t.number_node(node.size))
+	obj.add('typ', t.type_node(node.typ))
+	obj.add('size', t.number_node(node.size))
 	return obj
 }
 
@@ -1913,7 +1917,7 @@ fn (t Tree) asm_io(node ast.AsmIO) &Node {
 // 	return arr
 // }
 
-// temporary
+// list all the different type of array node,temporarily
 fn (t Tree) array_node_string(nodes []string) &Node {
 	mut arr := new_array()
 	for node in nodes {

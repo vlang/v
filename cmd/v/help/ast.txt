@@ -5,8 +5,8 @@ Usage:
 
 Options:
   -w
-    generate ast json file, and watch.
+    generate ast json file, and watch for changes.
   -c
-    generate ast json file and c file, and watch.
+    generate ast json file and c file, and watch for changes.
   -p
-    print the json string to termial.
+    print the json string to stdout.
