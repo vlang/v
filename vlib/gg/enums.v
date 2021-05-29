@@ -125,3 +125,10 @@ pub enum KeyCode {
 	right_super = 347
 	menu = 348
 }
+
+pub enum MouseButton {
+	left = 0
+	right = 1
+	middle = 2
+	invalid = 256
+}

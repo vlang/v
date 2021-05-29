@@ -18,7 +18,7 @@ struct C.tm {
 	tm_isdst int
 }
 
-fn C.timegm(&C.tm) time_t
+fn C.timegm(&C.tm) C.time_t
 
 // fn C.gmtime_r(&tm, &gbuf)
 fn C.localtime_r(t &time_t, tm &C.tm)

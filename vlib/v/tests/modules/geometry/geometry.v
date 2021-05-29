@@ -10,6 +10,15 @@ pub enum Shape {
 	triangle
 }
 
+// used by vlib/v/tests/map_enum_keys_test.v
+pub enum Form3D {
+	sphere
+	cylinder
+	cone
+	cube
+	invalid
+}
+
 pub struct Point {
 pub mut:
 	x int
