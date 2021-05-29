@@ -2430,7 +2430,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
-	if fn_name == 'error' {
+	if fn_name == 'error' && call_expr.args.len == 1 {
 		arg := call_expr.args[0]
 		call_expr.args[0].typ = c.expr(arg.expr)
 		if call_expr.args[0].typ == ast.error_type {
