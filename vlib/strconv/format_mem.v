@@ -445,7 +445,7 @@ pub fn remove_tail_zeros(s string) string {
 		mut i_s := 0
 		
 		// skip spaces
-		for i_s < s.len && s[i_s] !in [`-`,`+`] && s[i_s] >= `9` && s[i_s] <= `0`{
+		for i_s < s.len && s[i_s] !in [`-`,`+`] && (s[i_s] > `9` || s[i_s] < `0`) {
 			buf[i_d] = s[i_s]
 			i_s++
 			i_d++
@@ -482,16 +482,19 @@ pub fn remove_tail_zeros(s string) string {
 			i_s = i_s1
 		}
 
-		if s[i_s] != `.` {
+		if i_s < s.len && s[i_s] != `.` {
 			// check exponent
-			for i_s < s.len {
+			for {
 				buf[i_d] = s[i_s]
 				i_s++
 				i_d++
+				if i_s >= s.len {
+					break
+				}
 			}
 		}
 
 		buf[i_d] = 0
-		return tos(buf, i_d+1)
+		return tos(buf, i_d)
 	}
 }
