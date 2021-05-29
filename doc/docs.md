@@ -815,7 +815,7 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 
 #### Array Slices
 
-A slices is a part of a parent array. Initially it refers to the elements
+A slice is a part of a parent array. Initially it refers to the elements
 between two indices separated by a `..` operator. The right-side index must
 be greater than or equal to the left side index.
 
@@ -840,7 +840,7 @@ array_2 << array_1[..3]
 println(array_2) // `[0, 1, 3, 5, 4]`
 ```
 
-A slices is always created with the smallest possible capacity `cap == len` (see
+A slice is always created with the smallest possible capacity `cap == len` (see
 [`cap` above](#array-initialization)) no matter what the capacity or length
 of the parent array is. As a result it is immediately reallocated and copied to another
 memory location when the size increases thus becoming independent from the
