@@ -26,6 +26,21 @@ const (
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
+		// too slow:
+		'vlib/os/process_test.v',
+		'vlib/v/compiler_errors_test.v',
+		'vlib/v/doc/doc_test.v',
+		'vlib/v/fmt/fmt_test.v',
+		'vlib/v/fmt/fmt_keep_test.v',
+		'vlib/v/fmt/fmt_vlib_test.v',
+		'vlib/v/live/live_test.v',
+		'vlib/v/parser/v_parser_test.v',
+		'vlib/v/scanner/scanner_test.v',
+		'vlib/v/tests/inout/compiler_test.v',
+		'vlib/v/tests/prod_test.v',
+		'vlib/v/tests/profile/profile_test.v',
+		'vlib/v/tests/repl/repl_test.v',
+		'vlib/v/tests/valgrind/valgrind_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/x/websocket/websocket_test.v',
