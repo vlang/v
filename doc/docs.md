@@ -856,8 +856,8 @@ println(a) // `[0, 1, 7, 3, 4, 5]` - no change
 println(b) // `[7, 3, 9]`
 ```
 
-Appending to the parent array may or may not make the two independent. The
-behaviour depends on the parent's capacity and is predictable:
+Appending to the parent array may or may not make it independent from its child slices.
+The behaviour depends on the parent's capacity and is predictable:
 ```v
 mut a := []int{len: 5, cap: 6, init: 2}
 mut b := a[1..4]
