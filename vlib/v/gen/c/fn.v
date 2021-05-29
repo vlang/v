@@ -151,7 +151,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// TODO remove unsafe
 		g.table.cur_fn = node
 	}
-	fn_start_pos := g.out.len
+	fn_start_pos := g.out.len()
 	g.write_v_source_line_info(node.pos)
 	msvc_attrs := g.write_fn_attrs(node.attrs)
 	// Live
@@ -251,7 +251,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.write_string(fn_header)
 		g.write(fn_header)
 	}
-	arg_start_pos := g.out.len
+	arg_start_pos := g.out.len()
 	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin

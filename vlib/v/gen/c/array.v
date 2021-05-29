@@ -183,7 +183,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.stmt_path_pos << g.out.len()
 			}
 			g.write('\t$ret_elem_type ti = ')
 			g.expr(node.args[0].expr)
@@ -197,7 +197,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('\tarray_push((array*)&$tmp, &ti);')
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.stmt_path_pos << g.out.len()
 	}
 	g.write('\n')
 	g.write(s)
@@ -376,7 +376,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.stmt_path_pos << g.out.len()
 			}
 			g.write('\tif (')
 			g.expr(node.args[0].expr)
@@ -390,7 +390,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln('\t\tarray_push((array*)&$tmp, &it); \n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.stmt_path_pos << g.out.len()
 	}
 	g.write('\n')
 	g.write(s)
@@ -641,7 +641,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.stmt_path_pos << g.out.len()
 			}
 			g.write('\tif (')
 			g.expr(node.args[0].expr)
@@ -655,7 +655,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.writeln('\t\t$tmp = true;\n\t\t\tbreak;\n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.stmt_path_pos << g.out.len()
 	}
 	g.write('\n')
 	g.write(s)
@@ -705,7 +705,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.stmt_path_pos << g.out.len()
 			}
 			g.write('\tif (!(')
 			g.expr(node.args[0].expr)
@@ -719,7 +719,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.writeln('\t\t$tmp = false;\n\t\t\tbreak;\n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.stmt_path_pos << g.out.len()
 	}
 	g.write('\n')
 	g.write(s)

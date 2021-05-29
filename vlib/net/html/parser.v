@@ -15,9 +15,9 @@ mut:
 	line_count       int
 	lexeme_builder   strings.Builder = strings.Builder{}
 	code_tags        map[string]bool = map{
-	'script': true
-	'style':  true
-}
+		'script': true
+		'style':  true
+	}
 }
 
 // Parser is responsible for reading the HTML strings and converting them into a `DocumentObjectModel`.
@@ -162,7 +162,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.lexeme_builder.write_b(chr)
 			}
 		} else if parser.lexical_attributes.open_tag {
-			if parser.lexical_attributes.lexeme_builder.len == 0 && is_quote {
+			if parser.lexical_attributes.lexeme_builder.len() == 0 && is_quote {
 				parser.lexical_attributes.open_string = string_code
 				parser.lexical_attributes.lexeme_builder.write_b(chr)
 			} else if chr == `>` { // close tag >
@@ -209,7 +209,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			}
 		} else if chr == `<` { // open tag '<'
 			temp_string := parser.builder_str()
-			if parser.lexical_attributes.lexeme_builder.len >= 1 {
+			if parser.lexical_attributes.lexeme_builder.len() >= 1 {
 				if parser.lexical_attributes.current_tag.name.len > 1
 					&& parser.lexical_attributes.current_tag.name[0] == 47
 					&& !blank_string(temp_string) {

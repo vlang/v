@@ -9,19 +9,19 @@ module strings
 // constantly string concatenation.
 pub struct Builder {
 pub mut:
-	buf          []byte
-	len          int
-	initial_size int = 1
+	buf []byte
 }
 
 // new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
 	return Builder{
-		// buf: make(0, initial_size)
 		buf: []byte{cap: initial_size}
-		len: 0
-		initial_size: initial_size
 	}
+}
+
+[inline]
+pub fn (b &Builder) len() int {
+	return b.buf.len
 }
 
 // write_bytes appends `bytes` to the accumulated buffer
@@ -36,19 +36,16 @@ pub fn (mut b Builder) write_bytes(bytes &byte, len int) {
 [unsafe]
 pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
 	unsafe { b.buf.push_many(ptr, len) }
-	b.len += len
 }
 
 // write_b appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_b(data byte) {
 	b.buf << data
-	b.len++
 }
 
 // write implements the Writer interface
 pub fn (mut b Builder) write(data []byte) ?int {
 	b.buf << data
-	b.len += data.len
 	return data.len
 }
 
@@ -63,20 +60,18 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << c
 	// }
 	// b.buf << []byte(s)  // TODO
-	b.len += s.len
 }
 
 // go_back discards the last `n` bytes from the buffer
 pub fn (mut b Builder) go_back(n int) {
 	b.buf.trim(b.buf.len - n)
-	b.len -= n
 }
 
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
-	res := b.buf[b.len - n..].bytestr()
-	b.buf.trim(b.buf.len - n)
-	b.len -= n
+	cut_pos := b.buf.len - n
+	res := b.buf[cut_pos..].bytestr()
+	b.buf.trim(cut_pos)
 	return res
 }
 
@@ -84,7 +79,7 @@ pub fn (mut b Builder) cut_last(n int) string {
 // if `pos` is superior to builder length, returns an empty string
 // and cancel further operations
 pub fn (mut b Builder) cut_to(pos int) string {
-	if pos > b.len {
+	if pos > b.buf.len {
 		return ''
 	}
 	return b.cut_last(b.buf.len - pos)
@@ -94,7 +89,6 @@ pub fn (mut b Builder) cut_to(pos int) string {
 // NB: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.buf.trim(pos)
-	b.len = pos
 }
 
 // writeln appends the string `s`, and then a newline character.
@@ -106,22 +100,21 @@ pub fn (mut b Builder) writeln(s string) {
 	unsafe { b.buf.push_many(s.str, s.len) }
 	// b.buf << []byte(s)  // TODO
 	b.buf << byte(`\n`)
-	b.len += s.len + 1
 }
 
 // buf == 'hello world'
 // last_n(5) returns 'world'
 pub fn (b &Builder) last_n(n int) string {
-	if n > b.len {
+	if n > b.buf.len {
 		return ''
 	}
-	return b.buf[b.len - n..].bytestr()
+	return b.buf[b.buf.len - n..].bytestr()
 }
 
 // buf == 'hello world'
 // after(6) returns 'world'
 pub fn (b &Builder) after(n int) string {
-	if n >= b.len {
+	if n >= b.buf.len {
 		return ''
 	}
 	return b.buf[n..].bytestr()
@@ -137,8 +130,7 @@ pub fn (b &Builder) after(n int) string {
 pub fn (mut b Builder) str() string {
 	b.buf << byte(0)
 	bcopy := unsafe { &byte(memdup(b.buf.data, b.buf.len)) }
-	s := unsafe { bcopy.vstring_with_len(b.len) }
-	b.len = 0
+	s := unsafe { bcopy.vstring_with_len(b.buf.len - 1) }
 	b.buf.trim(0)
 	return s
 }
@@ -147,5 +139,4 @@ pub fn (mut b Builder) str() string {
 [unsafe]
 pub fn (mut b Builder) free() {
 	unsafe { free(b.buf.data) }
-	b.len = 0
 }

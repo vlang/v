@@ -341,7 +341,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if elem_typ.kind == .function {
 			g.write(', &(voidptr[]) { ')
 		} else {
-			g.arraymap_set_pos = g.out.len
+			g.arraymap_set_pos = g.out.len()
 			g.write(', &($elem_type_str[]) { ')
 		}
 		if g.assign_op != .assign && info.value_type != ast.string_type {

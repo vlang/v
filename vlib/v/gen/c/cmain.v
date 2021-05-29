@@ -11,7 +11,7 @@ pub fn (mut g Gen) gen_c_main() {
 		return
 	}
 	g.out.writeln('')
-	main_fn_start_pos := g.out.len
+	main_fn_start_pos := g.out.len()
 
 	is_sokol := 'sokol' in g.table.imports
 
@@ -163,7 +163,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 }
 
 pub fn (mut g Gen) gen_c_main_for_tests() {
-	main_fn_start_pos := g.out.len
+	main_fn_start_pos := g.out.len()
 	g.writeln('')
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,

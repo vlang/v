@@ -303,7 +303,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.write(' ')
 			}
 		}
-		fields_start := f.out.len
+		fields_start := f.out.len()
 		fields_loop: for {
 			if !single_line_fields {
 				if use_short_args && f.out.buf[f.out.buf.len - 1] == ` ` {

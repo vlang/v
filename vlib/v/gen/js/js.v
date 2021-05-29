@@ -355,7 +355,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
-	g.stmt_start_pos = g.ns.out.len
+	g.stmt_start_pos = g.ns.out.len()
 	match node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
