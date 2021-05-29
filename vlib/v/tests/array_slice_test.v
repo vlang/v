@@ -92,7 +92,7 @@ fn test_slice_push_child() {
 }
 
 fn test_predictable_reallocation_parent() {
-	mut a := []i64{cap:6, len: 4, init: -25}
+	mut a := []i64{len: 4, cap: 6, init: -25}
 	mut b := a[1..3]
 	b[1] = -5238543910438573201
 	assert a == [i64(-25), -25, -5238543910438573201, -25]
