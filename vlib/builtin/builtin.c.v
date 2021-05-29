@@ -164,9 +164,10 @@ pub fn eprint(s string) {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
-	$if android {
+	$if android { // android print for logcat
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
-	} $else $if ios {
+	}
+	$if ios { // no else if because we also need console output on android
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
@@ -190,9 +191,10 @@ pub fn println(s string) {
 		}
 		return
 	}
-	$if android {
+	$if android { // android print for logcat
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
-	} $else $if ios {
+	}
+	$if ios { // no else if because we also need console output on android
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
