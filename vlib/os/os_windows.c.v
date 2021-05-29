@@ -12,6 +12,8 @@ fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 // TCC gets builder error
 // fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
+fn C._getpid() int
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -458,11 +460,34 @@ pub fn is_writable_folder(folder string) ?bool {
 	return true
 }
 
-fn C._getpid() int
-
 [inline]
 pub fn getpid() int {
 	return C._getpid()
+}
+
+[inline]
+pub fn getppid() int {
+	return 0
+}
+
+[inline]
+pub fn getuid() int {
+	return 0
+}
+
+[inline]
+pub fn geteuid() int {
+	return 0
+}
+
+[inline]
+pub fn getgid() int {
+	return 0
+}
+
+[inline]
+pub fn getegid() int {
+	return 0
 }
 
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
