@@ -863,7 +863,7 @@ behaviour depends on the parent's capacity and is predictable:
 mut a := []int{len: 5, cap: 6, init: 2}
 mut b := a[1..4]
 a << 3 // no reallocation - fits in `cap`
-b[2] = 13 // `a[3]` is modified as `b[2]` is still referring to it
+b[2] = 13 // `a[3]` is modified
 a << 4 // a is reallocated and becomes independent from `b` (`cap` exceeded)
 b[1] = 3 // no change in `a`
 println(a) // `[2, 2, 2, 13, 2, 3, 4]`
