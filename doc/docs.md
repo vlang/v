@@ -2367,7 +2367,7 @@ type Tree = Empty | Node
 // sum up all node values
 fn sum(tree Tree) f64 {
 	return match tree {
-		Empty { f64(0) } // TODO: as match gets smarter just remove f64()
+		Empty { 0 }
 		Node { tree.value + sum(tree.left) + sum(tree.right) }
 	}
 }
