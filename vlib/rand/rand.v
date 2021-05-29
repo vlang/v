@@ -197,11 +197,14 @@ pub fn string_from_set(charset string, len int) string {
 	if len == 0 {
 		return ''
 	}
-	mut buf := unsafe { malloc(len) }
+	mut buf := unsafe { malloc(len + 1) }
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = charset[intn(charset.len)]
 		}
+	}
+	unsafe {
+		buf[len] = 0
 	}
 	return unsafe { buf.vstring_with_len(len) }
 }
