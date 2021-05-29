@@ -314,25 +314,25 @@ pub const (
 	keywords = build_keys()
 )
 
-pub fn key_to_token(key string) Kind {
-	return Kind(token.keywords[key])
-}
-
+[inline]
 pub fn is_key(key string) bool {
-	return int(key_to_token(key)) > 0
+	return int(token.keywords[key]) > 0
 }
 
+[inline]
 pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub,
 		.eof,
 	]
 }
 
+[inline]
 pub fn (t Kind) is_assign() bool {
 	return t in token.assign_tokens
 }
 
 // note: used for some code generation, so no quoting
+[inline]
 pub fn (t Kind) str() string {
 	return token.token_str[int(t)]
 }
@@ -434,34 +434,41 @@ const (
 )
 
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
+[inline]
 pub fn (tok Token) precedence() int {
 	return int(token.precedences[tok.kind])
 }
 
 // is_scalar returns true if the token is a scalar
+[inline]
 pub fn (tok Token) is_scalar() bool {
 	return tok.kind in [.number, .string]
 }
 
 // is_unary returns true if the token can be in a unary expression
+[inline]
 pub fn (tok Token) is_unary() bool {
 	// `+` | `-` | `!` | `~` | `*` | `&` | `<-`
 	return tok.kind in [.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
+[inline]
 pub fn (tok Kind) is_relational() bool {
 	// `<` | `<=` | `>` | `>=` | `==` | `!=`
 	return tok in [.lt, .le, .gt, .ge, .eq, .ne]
 }
 
+[inline]
 pub fn (k Kind) is_start_of_type() bool {
 	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared]
 }
 
+[inline]
 pub fn (kind Kind) is_prefix() bool {
 	return kind in [.minus, .amp, .mul, .not, .bit_not]
 }
 
+[inline]
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
