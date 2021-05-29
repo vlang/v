@@ -657,10 +657,10 @@ arrays there is a second initialization syntax:
 mut a := []int{len: 10000, cap: 30000, init: 3}
 ```
 This creates an array of 10000 `int` elements that are all initialized with `3`. Memory
-space is reserved for 30000 elements. The parameters `len`, `cap` and `init` are optional
-and default to `0` (or the default initialization of the element type where applicable).
-The run time system makes sure `cap` is not smaller than `len` (even if a smaller value is
-specified explicitly):
+space is reserved for 30000 elements. The parameters `len`, `cap` and `init` are optional;
+`len` defaults to `0` and `init` to the default initialization of the element type (`0`
+for numerical type, `''` for `string`, etc). The run time system makes sure that the
+capacity is not smaller than `len` (even if a smaller value is specified explicitly):
 
 ```v
 arr := []int{len: 5, init: -1}
