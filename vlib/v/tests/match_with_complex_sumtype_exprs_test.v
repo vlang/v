@@ -11,8 +11,7 @@ type Tree = Empty | Node
 // return size(number of nodes) of BST
 fn size(tree Tree) int {
 	return match tree {
-		// TODO: remove int() once match gets smarter
-		Empty { int(0) }
+		Empty { 0 }
 		Node { 1 + size(tree.left) + size(tree.right) }
 	}
 }
@@ -131,20 +130,24 @@ fn test_match_with_complex_sumtype_exprs() {
 	}
 	print('[1] after insertion tree size is ') // 11
 	println(size(tree))
+	assert size(tree) == 11
 	del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
 	for i in del {
 		tree = delete(tree, i)
 	}
 	print('[2] after deletion tree size is ') // 7
 	print(size(tree))
-	print(', and these elements were deleted: ') // 0.0 0.3 0.6 1.0
 	assert size(tree) == 7
+	print(', and these elements were deleted: ') // 0.0 0.3 0.6 1.0
+	mut deleted := []f64{}
 	for i in input {
 		if !search(tree, i) {
 			print(i)
 			print(' ')
+			deleted << i
 		}
 	}
+	deleted.sort()
+	assert deleted == [0.0, 0.3, 0.6, 1.0]
 	println('')
-	assert true
 }

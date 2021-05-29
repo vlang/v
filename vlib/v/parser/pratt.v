@@ -520,6 +520,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	}
 	pos := spos.extend(p.prev_tok.position())
 	p.register_auto_import('sync.threads')
+	p.table.gostmts++
 	return ast.GoExpr{
 		call_expr: call_expr
 		pos: pos
