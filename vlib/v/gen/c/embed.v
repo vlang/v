@@ -61,7 +61,7 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${emfile.rpath}"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("$emfile.rpath"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_$i},')
 	}
 	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')
