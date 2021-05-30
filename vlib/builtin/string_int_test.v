@@ -1,3 +1,5 @@
+import strconv
+
 fn test_common_atoi() {
 	// test common cases
 	assert '70zzz'.int() == 70
@@ -185,11 +187,19 @@ fn test_signed_cast() {
 
 	// test g format
 	{
-		mut a := 0.0
-		assert '${a:g}' == '0'
-		assert '${a:G}' == '0'
-		a = -0.0
-		assert '${a:g}' == '0'
-		assert '${a:G}' == '0'
+		mut u := strconv.Float64u{
+			u: strconv.double_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.double_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
 	}
 }
