@@ -3948,6 +3948,29 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
 				c.error('defers are not allowed in lock statements', node.pos)
 			}
+			for i, ident in node.defer_vars {
+				mut id := ident
+				if id.info is ast.IdentVar {
+					if id.comptime && (id.name in checker.valid_comp_if_compilers
+						|| id.name in checker.valid_comp_if_os
+						|| id.name in checker.valid_comp_if_other
+						|| id.name in checker.valid_comp_if_platforms) {
+						node.defer_vars[i] = ast.Ident{
+							scope: 0
+							name: ''
+						}
+						continue
+					}
+					mut info := id.info as ast.IdentVar
+					typ := c.ident(mut id)
+					if typ == ast.error_type_idx {
+						continue
+					}
+					info.typ = typ
+					id.info = info
+					node.defer_vars[i] = id
+				}
+			}
 			c.stmts(node.stmts)
 		}
 		ast.EnumDecl {

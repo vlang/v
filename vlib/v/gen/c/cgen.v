@@ -174,6 +174,8 @@ mut:
 	obf_table          map[string]string
 	// main_fn_decl_node  ast.FnDecl
 	expected_cast_type ast.Type // for match expr of sumtypes
+	defer_vars []string
+	anon_fn bool
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -2398,7 +2400,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := g.typ(var_type)
+		styp := if ident.name in g.defer_vars { '' } else { '${g.typ(var_type)} /* $ident.name (${g.defer_vars.join('-')})*/' }
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -2941,7 +2943,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	if !node.has_gen {
 		pos := g.out.len
+		g.anon_fn = true
 		g.stmt(node.decl)
+		g.anon_fn = false
 		fn_body := g.out.after(pos)
 		g.out.go_back(fn_body.len)
 		g.anon_fn_definitions << fn_body

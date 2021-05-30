@@ -103,6 +103,18 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// || node.no_body {
 		return
 	}
+
+	tmp_defer_vars := g.defer_vars // must be here because of workflow
+	if !g.anon_fn {
+		g.defer_vars = []string{}
+	} else {
+		if node.defer_stmts.len > 0 {
+			g.defer_vars = []string{}
+			defer {
+				g.defer_vars = tmp_defer_vars
+			}
+		}
+	}
 	// Skip [if xxx] if xxx is not defined
 	/*
 	for attr in node.attrs {
@@ -265,6 +277,18 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	g.writeln(') {')
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
+		for var in defer_stmt.defer_vars {
+			if var.name in fargs || var.kind == .constant {
+				continue
+			}
+			if var.info is ast.IdentVar {
+				info := var.info
+				if var.name !in g.defer_vars {
+					g.defer_vars << var.name
+				}
+				g.writeln('${g.typ(info.typ)} $var.name;')
+			} 
+		}
 	}
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
