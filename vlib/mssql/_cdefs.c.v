@@ -60,3 +60,14 @@ fn C.SQLBindCol(StatementHandle C.SQLHSTMT,
 fn C.SQLFetch(StatementHandle C.SQLHSTMT) C.SQLRETURN
 
 fn C.SQLFreeHandle(HandleType C.SQLSMALLINT, Handle C.SQLHANDLE) C.SQLRETURN
+
+fn C.SQLNumResultCols(StatementHandle C.SQLHSTMT ,
+                      ColumnCount  &C.SQLSMALLINT) C.SQLRETURN
+
+fn C.SQLColAttribute(StatementHandle C.SQLHSTMT ,
+					ColumnNumber C.SQLUSMALLINT, FieldIdentifier C.SQLUSMALLINT,
+					CharacterAttribute C.SQLPOINTER, BufferLength C.SQLSMALLINT,
+					StringLength C.SQLSMALLINT, NumericAttribute &C.SQLLEN) C.SQLRETURN
+
+fn C.SQLRowCount(StatementHandle C.SQLHSTMT,
+                RowCount &C.SQLLEN) C.SQLRETURN

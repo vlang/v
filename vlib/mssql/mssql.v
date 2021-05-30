@@ -1,6 +1,5 @@
 module mssql
 
-#include "stdio.h"
 
 pub struct Connection {
 mut:
@@ -68,48 +67,25 @@ pub fn (mut conn Connection) close() {
 }
 
 
-pub fn (mut conn Connection) query(q string) ?string {
-	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)
+pub fn (mut conn Connection) query(q string) ?Result {
+	mut hstmt := new_hstmt(conn.hdbc)?
+	defer { hstmt.close() }
 
-	mut hstmt := C.SQLHSTMT(C.SQL_NULL_HSTMT)  // Statement handle
-	// Allocate statement handle
-	retcode = C.SQLAllocHandle(C.SQLSMALLINT(C.SQL_HANDLE_STMT), C.SQLHANDLE(conn.hdbc), unsafe{&C.SQLHANDLE(&hstmt)})
-	check_error(retcode, "SQLAllocHandle(SQL_HANDLE_STMT)",
-		C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))?
+	hstmt.exec(q)?
+	hstmt.retrieve_column_count()?
+	hstmt.prepare_read()?
+	raw_rows := hstmt.read_rows()?
 
-	retcode = C.SQLExecDirect(hstmt,
-	 	q.str, C.SQLINTEGER(C.SQL_NTS))
-	check_error(retcode, "SQLExecDirect()", C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))?
-
-	buff := [256]char{}
-	buffer_len := sizeof(buff)
-	// Bind columns
-	retcode = C.SQLBindCol(hstmt, C.SQLUSMALLINT(1), C.SQLSMALLINT(C.SQL_C_CHAR), C.SQLPOINTER(&buff[0]), C.SQLLEN(buffer_len), 0)
-	check_error(retcode, "SQLBindCol()", C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))?
-
-	mut cumulate := ''
-	// Fetch and print each row of data until SQL_NO_DATA returned.
-	for i := 0; ; i++ {
-		retcode = C.SQLFetch(hstmt)
-		if retcode == C.SQLRETURN(C.SQL_SUCCESS) || retcode == C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO) {
-			cumulate += unsafe{ (&buff[0]).vstring() }
-		}
-		else {
-			if retcode != C.SQLRETURN(C.SQL_NO_DATA) {
-				check_error(retcode, "SQLFetch()", C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))?
-			}
-			else {
-				break
-			}
-		}
+	mut res := Result{
+		rows: []Row{}
+		num_rows_affected : 0 // TODO
 	}
 
-	// Deallocate handle
-	if hstmt != C.SQLHSTMT(C.SQL_NULL_HSTMT){
-		// check error code?
-		C.SQLFreeHandle(C.SQLSMALLINT(C.SQL_HANDLE_STMT), C.SQLHANDLE(hstmt))
+	for rr in raw_rows{
+		res.rows << Row{vals: rr}
 	}
-	return cumulate
+
+	return res
 }
 
 fn check_error(e C.SQLRETURN, s string, h C.SQLHANDLE, t C.SQLSMALLINT) ? {
@@ -125,19 +101,17 @@ fn extract_error(fnName string, handle C.SQLHANDLE, tp C.SQLSMALLINT) string
 	mut i := 0
 	mut native_error := C.SQLINTEGER(0)
 	mut sql_state := [7]char{}
-	// mut message_text := [256]C.SQLCHAR{}
 	mut message_text := [256]char{}
 	mut text_length := C.SQLSMALLINT(0)
-	mut ret := C.SQL_SUCCESS
+	mut ret := C.SQLRETURN(C.SQL_SUCCESS)
 
-	// println("\nThe driver reported the following error ${fnName}")
-	for ret == C.SQL_SUCCESS {
+	for ret == C.SQLRETURN(C.SQL_SUCCESS) {
 		i++
 		ret = C.SQLGetDiagRec(tp, handle, C.SQLSMALLINT(i), &C.SQLCHAR(&sql_state[0]), &native_error,
 			&C.SQLCHAR(&message_text[0]), C.SQLSMALLINT(sizeof(message_text)), &text_length)
 
-		// if C.SQL_SUCCEEDED(ret) {
-		if (ret)&(~1) == 0 {
+		// add driver error string
+		if ret == C.SQLRETURN(C.SQL_SUCCESS) || ret == C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO){
 			unsafe{
 				err_str += ":odbc=${(&sql_state[0]).vstring()}:${i}:${int(native_error)}:${(&message_text[0]).vstring()}\n"
 			}
