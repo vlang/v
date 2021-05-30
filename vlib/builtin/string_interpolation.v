@@ -450,6 +450,37 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
+					// Manage +/-0
+					if data.d.d_f32 == strconv.single_plus_zero {
+						tmp_str := '0'
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+						return
+					}
+					if data.d.d_f32 == strconv.single_minus_zero {
+						tmp_str := '-0'
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+						return
+					}
+					// Manage +/-INF
+					if data.d.d_f32 == strconv.single_plus_infinity {
+						mut tmp_str := '+inf'
+						if upper_case {
+							tmp_str = '+INF'
+						}
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+					}
+					if data.d.d_f32 == strconv.single_minus_infinity {
+						mut tmp_str := '-inf'
+						if upper_case {
+							tmp_str = '-INF'
+						}
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+					}
+
 					if data.d.d_f32 < 0 {
 						bf.positive = false
 					}
@@ -487,6 +518,37 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 					sb.write_string(f)
 					f.free()
 				} else {
+					// Manage +/-0
+					if data.d.d_f64 == strconv.double_plus_zero {
+						tmp_str := '0'
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+						return
+					}
+					if data.d.d_f64 == strconv.double_minus_zero {
+						tmp_str := '-0'
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+						return
+					}
+					// Manage +/-INF
+					if data.d.d_f64 == strconv.double_plus_infinity {
+						mut tmp_str := '+inf'
+						if upper_case {
+							tmp_str = '+INF'
+						}
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+					}
+					if data.d.d_f64 == strconv.double_minus_infinity {
+						mut tmp_str := '-inf'
+						if upper_case {
+							tmp_str = '-INF'
+						}
+						strconv.format_str_sb(tmp_str, bf, mut sb)
+						tmp_str.free()
+					}
+
 					if data.d.d_f64 < 0 {
 						bf.positive = false
 					}
