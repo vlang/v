@@ -1,3 +1,5 @@
+import strconv
+
 fn test_common_atoi() {
 	// test common cases
 	assert '70zzz'.int() == 70
@@ -181,5 +183,39 @@ fn test_signed_cast() {
 	for n in -100 .. 100 {
 		s := n.str() + 'z'
 		assert s.i16() == n
+	}
+
+	// test g format
+	{
+		mut u := strconv.Float64u{
+			u: strconv.double_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.double_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
+	}
+	{
+		mut u := strconv.Float32u{
+			u: strconv.single_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.single_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
 	}
 }
