@@ -20,7 +20,7 @@ pub fn new_builder(initial_size int) Builder {
 }
 
 [inline]
-pub fn (b &Builder) len() int {
+pub fn (b Builder) len() int {
 	return b.buf.len
 }
 
