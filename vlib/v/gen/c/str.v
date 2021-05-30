@@ -125,9 +125,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if is_ptr && !is_var_mut {
 			if g.inside_defer && expr is ast.Ident
 				&& (expr as ast.Ident).name in g.defer_tmp_var_names[g.defer_idx] && ((expr as ast.Ident).info as ast.IdentVar).typ.nr_muls() - 1 == 0 {
-          g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_s_code ,{.d_s=')
+				g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_s_code ,{.d_s=')
 			} else {
-          g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
+				g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
 			}
 		}
 		g.write('${str_fn_name}(')
