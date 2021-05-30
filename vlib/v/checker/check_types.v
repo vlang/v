@@ -506,11 +506,19 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				sym := c.table.get_type_symbol(call_expr.receiver_type)
 				if sym.kind == .struct_ {
 					info := sym.info as ast.Struct
-					receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in receiver_generic_names
-						&& info.generic_types.len == info.concrete_types.len {
-						idx := receiver_generic_names.index(gt_name)
-						typ = info.concrete_types[idx]
+					if c.table.cur_fn.generic_names.len > 0 { // in generic fn
+						if gt_name in c.table.cur_fn.generic_names
+							&& c.table.cur_fn.generic_names.len == c.cur_concrete_types.len {
+							idx := c.table.cur_fn.generic_names.index(gt_name)
+							typ = c.cur_concrete_types[idx]
+						}
+					} else { // in non-generic fn
+						receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
+						if gt_name in receiver_generic_names
+							&& info.generic_types.len == info.concrete_types.len {
+							idx := receiver_generic_names.index(gt_name)
+							typ = info.concrete_types[idx]
+						}
 					}
 				}
 			}
