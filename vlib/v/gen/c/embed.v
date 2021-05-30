@@ -61,9 +61,9 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, ${ctoslit(emfile.rpath)}, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, { "${emfile.rpath}", ${emfile.rpath.len}, 1 }, _v_embed_blob_$i},')
 	}
-	g.embedded_data.writeln('\t{-1, _SLIT(""), NULL}')
+	g.embedded_data.writeln('\t{-1, { "", 0, 1 }, NULL}')
 	g.embedded_data.writeln('};')
 	// see vlib/v/embed_file/embed_file.v, find_index_entry_by_id/2 and find_index_entry_by_path/2
 }
