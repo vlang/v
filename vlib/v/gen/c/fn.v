@@ -129,7 +129,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
+	if node.generic_names.len > 0 && g.table.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
@@ -137,10 +137,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				the_type := syms.map(node.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
-			g.cur_concrete_types = concrete_types
+			g.table.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
-		g.cur_concrete_types = []
+		g.table.cur_concrete_types = []
 		return
 	}
 	cur_fn_save := g.table.cur_fn
@@ -178,11 +178,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = c_name(name)
 	}
 	mut type_name := g.typ(node.return_type)
-	if g.cur_concrete_types.len > 0 {
+	if g.table.cur_concrete_types.len > 0 {
 		// foo<T>() => foo_T_int(), foo_T_string() etc
 		// Using _T_ to differentiate between get<string> and get_string
 		name += '_T'
-		for concrete_type in g.cur_concrete_types {
+		for concrete_type in g.table.cur_concrete_types {
 			gen_name := g.typ(concrete_type)
 			name += '_' + gen_name
 		}
@@ -480,7 +480,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.cur_concrete_types, false)
+			g.table.cur_concrete_types, false)
 		{
 			return t_typ
 		}

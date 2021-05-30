@@ -10,26 +10,27 @@ import v.util
 [heap]
 pub struct Table {
 pub mut:
-	type_symbols     []TypeSymbol
-	type_idxs        map[string]int
-	fns              map[string]Fn
-	dumps            map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports          []string       // List of all imports
-	modules          []string       // Topologically sorted list of all modules registered by the application
-	cflags           []cflag.CFlag
-	redefined_fns    []string
-	fn_generic_types map[string][][]Type // for generic functions
-	interfaces       map[int]InterfaceDecl
-	cmod_prefix      string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
-	is_fmt           bool
-	used_fns         map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_vweb_types  []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
-	panic_handler    FnPanicHandler = default_table_panic_handler
-	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
-	panic_npanics    int
-	cur_fn           &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
-	gostmts          int     // how many `go` statements there were in the parsed files.
+	type_symbols       []TypeSymbol
+	type_idxs          map[string]int
+	fns                map[string]Fn
+	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports            []string       // List of all imports
+	modules            []string       // Topologically sorted list of all modules registered by the application
+	cflags             []cflag.CFlag
+	redefined_fns      []string
+	fn_generic_types   map[string][][]Type // for generic functions
+	interfaces         map[int]InterfaceDecl
+	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt             bool
+	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
+	panic_handler      FnPanicHandler = default_table_panic_handler
+	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
+	panic_npanics      int
+	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
+	gostmts            int     // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 

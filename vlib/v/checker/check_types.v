@@ -508,9 +508,9 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					info := sym.info as ast.Struct
 					if c.table.cur_fn.generic_names.len > 0 { // in generic fn
 						if gt_name in c.table.cur_fn.generic_names
-							&& c.table.cur_fn.generic_names.len == c.cur_concrete_types.len {
+							&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 							idx := c.table.cur_fn.generic_names.index(gt_name)
-							typ = c.cur_concrete_types[idx]
+							typ = c.table.cur_concrete_types[idx]
 						}
 					} else { // in non-generic fn
 						receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)

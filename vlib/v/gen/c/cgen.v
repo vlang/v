@@ -124,22 +124,20 @@ mut:
 	is_builtin_mod         bool
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
-	// cur_fn                 ast.FnDecl
-	cur_concrete_types []ast.Type // current concrete types, e.g. <int, string>
-	sql_i              int
-	sql_stmt_name      string
-	sql_bind_name      string
-	sql_idents         []string
-	sql_idents_types   []ast.Type
-	sql_left_type      ast.Type
-	sql_table_name     string
-	sql_fkey           string
-	sql_parent_id      string
-	sql_side           SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl   bool
-	inside_return      bool
-	inside_or_block    bool
-	strs_to_free0      []string // strings.Builder
+	sql_i                  int
+	sql_stmt_name          string
+	sql_bind_name          string
+	sql_idents             []string
+	sql_idents_types       []ast.Type
+	sql_left_type          ast.Type
+	sql_table_name         string
+	sql_fkey               string
+	sql_parent_id          string
+	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl       bool
+	inside_return          bool
+	inside_or_block        bool
+	strs_to_free0          []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
