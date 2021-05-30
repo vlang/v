@@ -182,4 +182,14 @@ fn test_signed_cast() {
 		s := n.str() + 'z'
 		assert s.i16() == n
 	}
+
+	// test g format
+	{
+		mut a := 0.0
+		assert '${a:g}' == '0'
+		assert '${a:G}' == '0'
+		a = -0.0
+		assert '${a:g}' == '0'
+		assert '${a:G}' == '0'
+	}
 }
