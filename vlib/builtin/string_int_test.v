@@ -202,4 +202,20 @@ fn test_signed_cast() {
 		assert '${u.f:g}' == '-inf'
 		assert '${u.f:G}' == '-INF'
 	}
+	{
+		mut u := strconv.Float32u{
+			u: strconv.single_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.single_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
+	}
 }
