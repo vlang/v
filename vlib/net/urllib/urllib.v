@@ -753,7 +753,7 @@ pub fn (u URL) str() string {
 		if path != '' && path[0] != `/` && u.host != '' {
 			buf.write_string('/')
 		}
-		if buf.len() == 0 {
+		if buf.len == 0 {
 			// RFC 3986 §4.2
 			// A path segment that contains a colon character (e.g., 'this:that')
 			// cannot be used as the first segment of a relative-path reference, as
@@ -864,7 +864,7 @@ pub fn (v Values) encode() string {
 		vs := v.data[k]
 		key_kscaped := query_escape(k)
 		for _, val in vs.data {
-			if buf.len() > 0 {
+			if buf.len > 0 {
 				buf.write_string('&')
 			}
 			buf.write_string(key_kscaped)

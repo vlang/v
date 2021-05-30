@@ -126,7 +126,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
-	if f.out.buf[f.out.buf.len - 1] == ` ` {
+	if f.out[f.out.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -148,12 +148,12 @@ pub struct RemoveNewLineConfig {
 pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	mut buffer := if cfg.imports_buffer { unsafe { &f.out_imports } } else { unsafe { &f.out } }
 	mut i := 0
-	for i = buffer.len() - 1; i >= 0; i-- {
-		if !buffer.buf[i].is_space() { // != `\n` {
+	for i = buffer.len - 1; i >= 0; i-- {
+		if !buffer.byte_at(i).is_space() { // != `\n` {
 			break
 		}
 	}
-	buffer.go_back(buffer.len() - i - 1)
+	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
 }
 
@@ -348,7 +348,7 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 pub fn (mut f Fmt) node_str(node ast.Node) string {
 	was_empty_line := f.empty_line
 	prev_line_len := f.line_len
-	pos := f.out.len()
+	pos := f.out.len
 	match node {
 		ast.Stmt { f.stmt(node) }
 		ast.Expr { f.expr(node) }
@@ -440,7 +440,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.Import {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// Just remember the position of the imports for now
-			f.import_pos = f.out.len()
+			f.import_pos = f.out.len
 		}
 		ast.InterfaceDecl {
 			f.interface_decl(node)
@@ -1219,7 +1219,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	f.attrs(mod.attrs)
 	f.writeln('module $mod.short_name\n')
 	if f.import_pos == 0 {
-		f.import_pos = f.out.len()
+		f.import_pos = f.out.len
 	}
 }
 
@@ -1816,7 +1816,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
 	f.single_line_if = is_ternary
-	start_pos := f.out.len()
+	start_pos := f.out.len
 	start_len := f.line_len
 	for {
 		for i, branch in node.branches {
@@ -1835,9 +1835,9 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 			}
 			if i < node.branches.len - 1 || !node.has_else {
 				f.write('${dollar}if ')
-				cur_pos := f.out.len()
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				cond_len := f.out.len() - cur_pos
+				cond_len := f.out.len - cur_pos
 				is_cond_wrapped := cond_len > 0
 					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
 					&& f.out.last_n(cond_len).contains('\n')
@@ -1912,7 +1912,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if node.op == .left_shift {
 		f.is_assign = true // To write ternary if on a single line
 	}
-	start_pos := f.out.len()
+	start_pos := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
@@ -1942,7 +1942,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 }
 
 pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
-	cut_span := f.out.len() - start_pos
+	cut_span := f.out.len - start_pos
 	infix_str := f.out.cut_last(cut_span)
 	if !infix_str.contains_any_substr(['&&', '||', '+']) {
 		f.write(infix_str)

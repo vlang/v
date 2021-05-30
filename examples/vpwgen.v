@@ -16,7 +16,7 @@ fn main() {
 					sb.write_b(c)
 				}
 			}
-			if sb.len() > size {
+			if sb.len > size {
 				println(sb.str()[0..size])
 				break
 			}

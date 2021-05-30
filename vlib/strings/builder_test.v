@@ -3,19 +3,19 @@ import strings
 type MyInt = int
 
 fn test_sb() {
-	mut sb := strings.Builder{}
+	mut sb := strings.new_builder(100)
 	sb.write_string('hi')
 	sb.write_string('!')
 	sb.write_string('hello')
-	assert sb.len() == 8
+	assert sb.len == 8
 	sb_end := sb.str()
 	assert sb_end == 'hi!hello'
-	assert sb.len() == 0
+	assert sb.len == 0
 	///
 	sb = strings.new_builder(10)
 	sb.write_string('a')
 	sb.write_string('b')
-	assert sb.len() == 2
+	assert sb.len == 2
 	assert sb.str() == 'ab'
 	// Test interpolation optimization
 	sb = strings.new_builder(10)
@@ -58,8 +58,8 @@ fn test_big_sb() {
 	assert lines[1] == '1'
 	assert lines[777] == '777'
 	assert lines[98765] == '98765'
-	println(sb2.len())
-	assert sb2.len() == maxn
+	println(sb2.len)
+	assert sb2.len == maxn
 }
 
 fn test_byte_write() {
@@ -69,7 +69,7 @@ fn test_byte_write() {
 	for word in temp_str {
 		sb.write_b(word)
 		count++
-		assert count == sb.len()
+		assert count == sb.len
 	}
 	sb_final := sb.str()
 	assert sb_final == temp_str
@@ -87,10 +87,10 @@ fn test_cut_to() {
 	mut sb := strings.new_builder(16)
 	sb.write_string('hello')
 	assert sb.cut_to(3) == 'lo'
-	assert sb.len() == 3
+	assert sb.len == 3
 	assert sb.cut_to(3) == ''
-	assert sb.len() == 3
+	assert sb.len == 3
 	assert sb.cut_to(0) == 'hel'
 	assert sb.cut_to(32) == ''
-	assert sb.len() == 0
+	assert sb.len == 0
 }

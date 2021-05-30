@@ -2,13 +2,6 @@ import net.http
 import net.html
 
 fn main() {
-	/*
-	user_agent = 'v.http'
-    resp := http.get('https://tuicool.com') or {
-        println('failed to fetch data from the server')
-        return
-    }
-	*/
 	// http.fetch() sends an HTTP request to the URL with the given method and configurations.
 	config := http.FetchConfig{
 		user_agent: 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'

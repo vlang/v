@@ -760,10 +760,11 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					c.error('unknown struct: $type_sym.name', struct_init.pos)
 					return ast.void_type
 				}
-				if sym.kind != .struct_ {
+				if sym.kind == .struct_ {
+					info = sym.info as ast.Struct
+				} else {
 					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
 				}
-				info = sym.info as ast.Struct
 			} else {
 				info = type_sym.info as ast.Struct
 			}

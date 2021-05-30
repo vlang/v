@@ -309,7 +309,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
 	b.write_string(g.cheaders.str())
-	if g.pcs_declarations.len() > 0 {
+	if g.pcs_declarations.len > 0 {
 		b.writeln('\n// V profile counters:')
 		b.write_string(g.pcs_declarations.str())
 	}
@@ -332,36 +332,36 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		b.writeln('\n// V interface table:')
 		b.write_string(interface_table)
 	}
-	if g.gowrappers.len() > 0 {
+	if g.gowrappers.len > 0 {
 		b.writeln('\n// V gowrappers:')
 		b.write_string(g.gowrappers.str())
 	}
-	if g.hotcode_definitions.len() > 0 {
+	if g.hotcode_definitions.len > 0 {
 		b.writeln('\n// V hotcode definitions:')
 		b.write_string(g.hotcode_definitions.str())
 	}
-	if g.embedded_data.len() > 0 {
+	if g.embedded_data.len > 0 {
 		b.writeln('\n// V embedded data:')
 		b.write_string(g.embedded_data.str())
 	}
-	if g.options_typedefs.len() > 0 {
+	if g.options_typedefs.len > 0 {
 		b.writeln('\n// V option typedefs:')
 		b.write_string(g.options_typedefs.str())
 	}
-	if g.shared_functions.len() > 0 {
+	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:')
 		b.write_string(g.shared_functions.str())
 		b.write_string(c_concurrency_helpers)
 	}
-	if g.channel_definitions.len() > 0 {
+	if g.channel_definitions.len > 0 {
 		b.writeln('\n// V channel code:')
 		b.write_string(g.channel_definitions.str())
 	}
-	if g.stringliterals.len() > 0 {
+	if g.stringliterals.len > 0 {
 		b.writeln('\n// V stringliterals:')
 		b.write_string(g.stringliterals.str())
 	}
-	if g.auto_str_funcs.len() > 0 {
+	if g.auto_str_funcs.len > 0 {
 		// if g.pref.build_mode != .build_module {
 		b.writeln('\n// V auto str functions:')
 		b.write_string(g.auto_str_funcs.str())
@@ -585,7 +585,7 @@ fn (mut g Gen) base_type(t ast.Type) string {
 }
 
 fn (mut g Gen) expr_string(expr ast.Expr) string {
-	pos := g.out.len()
+	pos := g.out.len
 	g.expr(expr)
 	expr_str := g.out.after(pos)
 	g.out.go_back(expr_str.len)
@@ -595,7 +595,7 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
 // (and create a statement)
 fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string) string {
-	pos := g.out.len()
+	pos := g.out.len
 	g.stmt_path_pos << pos
 	g.write(prepend)
 	g.expr(expr)
@@ -808,7 +808,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						fixed = fixed[3..]
 					}
 					if elem_sym.info is ast.FnType {
-						pos := g.out.len()
+						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
 						fixed = g.out.after(pos)
 						g.out.go_back(fixed.len)
@@ -993,7 +993,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			if g.inside_if_optional {
-				g.stmt_path_pos << g.out.len()
+				g.stmt_path_pos << g.out.len
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
 					if stmt.typ == ast.error_type_idx || stmt.expr is ast.None {
@@ -1016,7 +1016,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					}
 				}
 			} else {
-				g.stmt_path_pos << g.out.len()
+				g.stmt_path_pos << g.out.len
 				g.skip_stmt_pos = true
 				g.write('$tmp_var = ')
 				g.stmt(stmt)
@@ -1083,7 +1083,7 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos {
-		g.stmt_path_pos << g.out.len()
+		g.stmt_path_pos << g.out.len
 	}
 	defer {
 	}
@@ -1494,7 +1494,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.writeln('for (;;) {')
 	if !node.is_inf {
 		g.indent++
-		g.stmt_path_pos << g.out.len()
+		g.stmt_path_pos << g.out.len
 		g.write('if (!(')
 		g.expr(node.cond)
 		g.writeln(')) break;')
@@ -2419,9 +2419,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if (is_decl || blank_assign) && left is ast.Ident {
 					ret_styp := g.typ(val.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
-					def_pos := g.definitions.len()
+					def_pos := g.definitions.len
 					g.fn_args(val.decl.params, val.decl.is_variadic)
-					g.definitions.go_back(g.definitions.len() - def_pos)
+					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
 					g.is_assign_lhs = true
@@ -2473,7 +2473,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.write('$arr_typ $v_var = ')
 			g.expr(right)
 			g.writeln(';')
-			pos := g.out.len()
+			pos := g.out.len
 			g.expr(left)
 
 			if g.is_arraymap_set && g.arraymap_set_pos > 0 {
@@ -2538,9 +2538,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				func := right_sym.info as ast.FnType
 				ret_styp := g.typ(func.func.return_type)
 				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
-				def_pos := g.definitions.len()
+				def_pos := g.definitions.len
 				g.fn_args(func.func.params, func.func.is_variadic)
-				g.definitions.go_back(g.definitions.len() - def_pos)
+				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')')
 			} else {
 				if is_decl {
@@ -2940,7 +2940,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	if !node.has_gen {
-		pos := g.out.len()
+		pos := g.out.len
 		g.stmt(node.decl)
 		fn_body := g.out.after(pos)
 		g.out.go_back(fn_body.len)
@@ -4059,7 +4059,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('${g.typ(node.cond_type)} $cond_var = ')
 		g.expr(node.cond)
 		g.writeln(';')
-		g.stmt_path_pos << g.out.len()
+		g.stmt_path_pos << g.out.len
 		g.write(line)
 	}
 	if need_tmp_var {
@@ -5493,7 +5493,7 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.is_liveshared {
 		return
 	}
-	fn_vinit_start_pos := g.out.len()
+	fn_vinit_start_pos := g.out.len
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 	if g.is_autofree {
@@ -5531,7 +5531,7 @@ fn (mut g Gen) write_init_function() {
 		println(g.out.after(fn_vinit_start_pos))
 	}
 	//
-	fn_vcleanup_start_pos := g.out.len()
+	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup() {')
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
@@ -5621,7 +5621,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 					g.typedefs.writeln('typedef struct $name $name;')
 				}
 				// TODO avoid buffer manip
-				start_pos := g.type_definitions.len()
+				start_pos := g.type_definitions.len
 				if typ.info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
@@ -5726,7 +5726,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						fixed_elem_name = fixed_elem_name[3..]
 					}
 					if elem_sym.info is ast.FnType {
-						pos := g.out.len()
+						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
 						fixed_elem_name = g.out.after(pos)
 						g.out.go_back(fixed_elem_name.len)
@@ -5832,9 +5832,9 @@ fn (mut g Gen) insert_before_stmt(s string) {
 }
 
 fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
-	pos := g.out.buf.len
+	pos := g.out.len
 	g.expr(expr)
-	return g.out.cut_last(g.out.buf.len - pos)
+	return g.out.cut_last(g.out.len - pos)
 }
 
 // fn (mut g Gen) start_tmp() {
@@ -5871,7 +5871,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
 					expr_stmt := stmt as ast.ExprStmt
-					g.stmt_path_pos << g.out.len()
+					g.stmt_path_pos << g.out.len
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
@@ -6486,7 +6486,7 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} $method_call${iwpostfix}(')
 					//
-					params_start_pos := g.out.len()
+					params_start_pos := g.out.len
 					mut params := method.params.clone()
 					// hack to mutate typ
 					params[0] = {
@@ -6494,7 +6494,7 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 						typ: params[0].typ.set_nr_muls(1)
 					}
 					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway
-					methods_wrapper.write_string(g.out.cut_last(g.out.len() - params_start_pos))
+					methods_wrapper.write_string(g.out.cut_last(g.out.len - params_start_pos))
 					methods_wrapper.writeln(') {')
 					methods_wrapper.write_string('\t')
 					if method.return_type != ast.void_type {

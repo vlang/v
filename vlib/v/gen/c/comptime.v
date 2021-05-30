@@ -222,7 +222,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 	// will lead to compilation errors)
 
 	for i, branch in node.branches {
-		start_pos := g.out.len()
+		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('#else')
 			comp_if_stmts_skip = false
@@ -235,7 +235,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			comp_if_stmts_skip = !g.comp_if_cond(branch.cond)
 			g.writeln('')
 		}
-		expr_str := g.out.last_n(g.out.len() - start_pos).trim_space()
+		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
 		g.defer_ifdef = expr_str
 		if node.is_expr {
 			len := branch.stmts.len
