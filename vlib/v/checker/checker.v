@@ -3216,6 +3216,13 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			}
 		}
 	}
+	mut last_s := seen[0] or { 0 }
+	for i, s in seen {
+		if s < last_s {
+			c.error('enum value cannot be smaller than the previous one', decl.fields[i].expr.position())
+		}
+		last_s = s
+	}
 }
 
 pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
