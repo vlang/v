@@ -97,6 +97,17 @@ fn add(x int, y int) int {
 	return x + y
 }
 
+// function with defer stmt
+fn defer_fn() {
+	mut x := 1
+	println('start fn')
+	defer {
+		println('in defer block')
+		println(x)
+	}
+	println('end fn')
+}
+
 // generic function
 fn g_fn<T>(p T) T {
 	return p
