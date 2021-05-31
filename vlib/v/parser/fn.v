@@ -82,7 +82,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// `foo()?`
 		p.next()
 		if p.inside_defer {
-			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.position())
+			p.error_with_pos('error propagation not allowed inside `defer` blocks',
+				p.prev_tok.position())
 		}
 		or_kind = .propagate
 	}
@@ -598,6 +599,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			p.tok.position())
 		return ast.AnonFn{}
 	}
+	old_inside_defer := p.inside_defer
+	p.inside_defer = false
 	p.open_scope()
 	if p.pref.backend != .js {
 		p.scope.detached_from_parent = true
@@ -663,6 +666,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := ast.new_type(idx)
+	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
