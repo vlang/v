@@ -17,27 +17,31 @@
 ```v ignore
 import mssql
 
-fn test_example() ?{
+fn test_example() ? {
 	// connect to server
 	config := mssql.Config{
-		driver: "ODBC Driver 17 for SQL Server",
-		server: "tcp:localhost",
-		uid: 	"<your username>",
-		pwd: 	"<your password>",
+		driver: 'ODBC Driver 17 for SQL Server'
+		server: 'tcp:localhost'
+		uid: '<your username>'
+		pwd: '<your password>'
 	}
 
 	mut conn := mssql.Connection{}
 
-	conn.connect(config.get_conn_str())?
+	conn.connect(config.get_conn_str()) ?
 
-	defer { conn.close() }
+	defer {
+		conn.close()
+	}
 
-	// run any sql query
-	query := "SELECT DB_NAME()"
-	res := conn.query(query)?
+	// get current db name
+	mut query := 'SELECT DB_NAME()'
+	mut res := conn.query(query) ?
 	assert res == mssql.Result{
-		rows: [mssql.Row{vals: ["master"]}]
-        num_rows_affected: -1
+		rows: [mssql.Row{
+			vals: ['master']
+		}]
+		num_rows_affected: -1
 	}
 }
 ```
