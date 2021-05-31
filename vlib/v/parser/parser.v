@@ -77,6 +77,7 @@ mut:
 	inside_asm_template bool
 	inside_asm          bool
 	global_labels       []string
+	inside_defer        bool
 }
 
 // for tests
@@ -739,7 +740,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.comment_stmt()
 		}
 		.key_return {
-			return p.return_stmt()
+			if p.inside_defer {
+				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.position())
+			} else {
+				return p.return_stmt()
+			}
 		}
 		.dollar {
 			match p.peek_tok.kind {
@@ -790,12 +795,18 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.hash()
 		}
 		.key_defer {
-			p.next()
-			spos := p.tok.position()
-			stmts := p.parse_block()
-			return ast.DeferStmt{
-				stmts: stmts
-				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
+			if p.inside_defer {
+				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.position())
+			} else {
+				p.inside_defer = true
+				p.next()
+				spos := p.tok.position()
+				stmts := p.parse_block()
+				p.inside_defer = false
+				return ast.DeferStmt{
+					stmts: stmts
+					pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
+				}
 			}
 		}
 		.key_go {
