@@ -4020,7 +4020,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
 					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
-						|| stmt.expr is ast.MatchExpr {
+						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
 						return true
 					}
 				}
