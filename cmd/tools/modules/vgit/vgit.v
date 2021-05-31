@@ -102,6 +102,7 @@ pub mut:
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
+	make_fresh_tcc bool   // whether to do 'make fresh_tcc' before compiling an old V.
 }
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
@@ -141,6 +142,9 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	}
 	// Recompilation is needed. Just to be sure, clean up everything first.
 	scripting.run('git clean -xf')
+	if vgit_context.make_fresh_tcc {
+		scripting.run('make fresh_tcc')
+	}
 	scripting.run(command_for_building_v_from_c_source)
 	build_cmd := command_for_selfbuilding.replace('{SOURCE}', vgit_context.vvlocation)
 	scripting.run(build_cmd)

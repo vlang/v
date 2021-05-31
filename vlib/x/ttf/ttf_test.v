@@ -156,7 +156,7 @@ fn save_raw_data_as_array(buf_bin []byte, file_name string) {
 	for x in buf_bin {
 		buf.write_string('0x${x:02x},')
 	}
-	os.write_file_array(file_name, buf.buf) or { panic(err) }
+	os.write_file_array(file_name, buf) or { panic(err) }
 }
 
 fn test_main() {

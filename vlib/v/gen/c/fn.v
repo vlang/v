@@ -39,7 +39,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	g.gen_attrs(node.attrs)
 	// g.tmp_count = 0 TODO
 	mut skip := false
-	pos := g.out.buf.len
+	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
 		// if node.name.contains('parse_text') {

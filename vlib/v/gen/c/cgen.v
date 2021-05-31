@@ -5837,9 +5837,9 @@ fn (mut g Gen) insert_before_stmt(s string) {
 }
 
 fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
-	pos := g.out.buf.len
+	pos := g.out.len
 	g.expr(expr)
-	return g.out.cut_last(g.out.buf.len - pos)
+	return g.out.cut_last(g.out.len - pos)
 }
 
 // fn (mut g Gen) start_tmp() {
