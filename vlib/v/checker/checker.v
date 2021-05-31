@@ -5364,7 +5364,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					expr_type := c.expr(stmt.expr)
 					if ret_type == ast.void_type {
-						if node.is_expr
+						if node.is_expr && !node.expected_type.has_flag(.optional)
 							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
 							ret_type = node.expected_type
 						} else {
