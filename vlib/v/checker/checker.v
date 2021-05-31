@@ -49,14 +49,13 @@ pub mut:
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    ast.Type
 	expected_or_type ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	// cur_fn           &ast.FnDecl // current function
-	const_decl    string
-	const_deps    []string
-	const_names   []string
-	global_names  []string
-	locked_names  []string // vars that are currently locked
-	rlocked_names []string // vars that are currently read-locked
-	in_for_count  int      // if checker is currently in a for loop
+	const_decl       string
+	const_deps       []string
+	const_names      []string
+	global_names     []string
+	locked_names     []string // vars that are currently locked
+	rlocked_names    []string // vars that are currently read-locked
+	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
 	returns        bool
 	scope_returns  bool
@@ -82,7 +81,6 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
-	cur_concrete_types               []ast.Type // current concrete types, e.g. <int, string>
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
@@ -689,7 +687,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	struct_sym := c.table.get_type_symbol(struct_init.typ)
 	if struct_sym.info is ast.Struct {
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& c.cur_concrete_types.len == 0 {
+			&& c.table.cur_concrete_types.len == 0 {
 			c.error('generic struct init must specify type parameter, e.g. Foo<int>',
 				struct_init.pos)
 		}
@@ -704,7 +702,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			return ast.void_type
 		}
 	}
-	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.cur_concrete_types)
+	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
@@ -713,7 +711,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
-		&& c.cur_concrete_types.len == 0 {
+		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
@@ -2220,7 +2218,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
-	if !isnil(c.table.cur_fn) && c.cur_concrete_types.len == 0 && has_generic {
+	if !isnil(c.table.cur_fn) && c.table.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			call_expr.pos)
 	}
@@ -2981,7 +2979,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type.has_flag(.generic) && c.table.get_type_symbol(expected_type).kind == .struct_ {
 		if t_typ := c.table.resolve_generic_to_concrete(expected_type, c.table.cur_fn.generic_names,
-			c.cur_concrete_types, true)
+			c.table.cur_concrete_types, true)
 		{
 			expected_type = t_typ
 		}
@@ -3004,7 +3002,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
-		if c.cur_concrete_types.len > 0 {
+		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
@@ -4561,7 +4559,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
-			c.cur_concrete_types, false)
+			c.table.cur_concrete_types, false)
 		{
 			return t_typ
 		}
@@ -7063,7 +7061,7 @@ fn (mut c Checker) post_process_generic_fns() {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
 		for concrete_types in c.table.fn_generic_types[node.name] {
-			c.cur_concrete_types = concrete_types
+			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name == 'vweb.run' {
 				for ct in concrete_types {
@@ -7073,13 +7071,13 @@ fn (mut c Checker) post_process_generic_fns() {
 				}
 			}
 		}
-		c.cur_concrete_types = []
+		c.table.cur_concrete_types = []
 	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_names.len > 0 && c.cur_concrete_types.len == 0 {
+	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
