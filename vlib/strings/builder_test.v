@@ -3,7 +3,7 @@ import strings
 type MyInt = int
 
 fn test_sb() {
-	mut sb := strings.Builder{}
+	mut sb := strings.new_builder(100)
 	sb.write_string('hi')
 	sb.write_string('!')
 	sb.write_string('hello')

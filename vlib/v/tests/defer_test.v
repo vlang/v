@@ -117,3 +117,28 @@ fn test_defer_order() {
 		assert i == 1
 	}
 }
+
+fn test_defer_access() {
+	if true {
+		mut i := 0
+		defer {
+			i++
+			assert i == 1
+		}
+	}
+}
+
+fn test_defer_arrays() {
+	mut ia := []int{}
+	defer {
+		ia << 1
+	}
+}
+
+fn test_defer_str_interpol() {
+	mut t := []string{}
+	defer {
+		t << 'test'
+		t << '${t[0]}'
+	}
+}

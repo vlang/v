@@ -78,6 +78,8 @@ mut:
 	inside_asm          bool
 	global_labels       []string
 	inside_defer        bool
+	comp_if_cond        bool
+	defer_vars          []ast.Ident
 }
 
 // for tests
@@ -798,13 +800,15 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			if p.inside_defer {
 				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.position())
 			} else {
-				p.inside_defer = true
 				p.next()
 				spos := p.tok.position()
+				p.inside_defer = true
+				p.defer_vars = []ast.Ident{}
 				stmts := p.parse_block()
 				p.inside_defer = false
 				return ast.DeferStmt{
 					stmts: stmts
+					defer_vars: p.defer_vars.clone()
 					pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 				}
 			}
@@ -1700,7 +1704,18 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// collect things upto hard boundaries
 	tok := p.tok
 	mut pos := tok.position()
+
+	mut defer_vars := p.defer_vars
+	p.defer_vars = []ast.Ident{}
+
 	left, left_comments := p.expr_list()
+
+	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+		defer_vars << p.defer_vars
+	}
+
+	p.defer_vars = defer_vars
+
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
@@ -1761,6 +1776,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			return ast.Ident{
 				tok_kind: p.tok.kind
 				name: '_'
+				comptime: p.comp_if_cond
 				kind: .blank_ident
 				pos: pos
 				info: ast.IdentVar{
@@ -1780,6 +1796,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			tok_kind: p.tok.kind
 			kind: .unresolved
 			name: name
+			comptime: p.comp_if_cond
 			language: language
 			mod: p.mod
 			pos: pos
@@ -1965,7 +1982,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
 					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
-					node = p.parse_ident(language)
+					ident := p.parse_ident(language)
+					node = ident
+					if p.inside_defer {
+						if p.defer_vars.filter(it.name == ident.name
+							&& it.mod == ident.mod).len == 0 && ident.name != 'err' {
+							p.defer_vars << ident
+						}
+					}
 					return node
 				}
 			}
@@ -1986,7 +2010,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
-		node = p.parse_ident(language)
+		ident := p.parse_ident(language)
+		node = ident
+		if p.inside_defer {
+			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+				&& ident.name != 'err' {
+				p.defer_vars << ident
+			}
+		}
 	} else if p.peek_tok.kind == .lpar
 		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
@@ -2098,7 +2129,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
-		node = p.parse_ident(language)
+		ident := p.parse_ident(language)
+		node = ident
+		if p.inside_defer {
+			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+				&& ident.name != 'err' {
+				p.defer_vars << ident
+			}
+		}
 	}
 	p.expr_mod = ''
 	return node

@@ -6,7 +6,15 @@ module parser
 import v.ast
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
+	mut defer_vars := p.defer_vars
+	p.defer_vars = []ast.Ident{}
+
 	exprs, comments := p.expr_list()
+
+	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+		defer_vars << p.defer_vars
+	}
+	p.defer_vars = defer_vars
 	return p.partial_assign_stmt(exprs, comments)
 }
 

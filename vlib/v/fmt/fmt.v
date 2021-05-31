@@ -126,7 +126,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
-	if f.out.buf[f.out.buf.len - 1] == ` ` {
+	if f.out[f.out.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -149,7 +149,7 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	mut buffer := if cfg.imports_buffer { unsafe { &f.out_imports } } else { unsafe { &f.out } }
 	mut i := 0
 	for i = buffer.len - 1; i >= 0; i-- {
-		if !buffer.buf[i].is_space() { // != `\n` {
+		if !buffer.byte_at(i).is_space() { // != `\n` {
 			break
 		}
 	}
