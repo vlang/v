@@ -742,7 +742,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.comment_stmt()
 		}
 		.key_return {
-			return p.return_stmt()
+			if p.inside_defer {
+				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.position())
+			} else {
+				return p.return_stmt()
+			}
 		}
 		.dollar {
 			match p.peek_tok.kind {
@@ -793,16 +797,20 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.hash()
 		}
 		.key_defer {
-			p.next()
-			spos := p.tok.position()
-			p.inside_defer = true
-			p.defer_vars = []ast.Ident{}
-			stmts := p.parse_block()
-			p.inside_defer = false
-			return ast.DeferStmt{
-				stmts: stmts
-				defer_vars: p.defer_vars.clone()
-				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
+			if p.inside_defer {
+				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.position())
+			} else {
+				p.next()
+				spos := p.tok.position()
+				p.inside_defer = true
+				p.defer_vars = []ast.Ident{}
+				stmts := p.parse_block()
+				p.inside_defer = false
+				return ast.DeferStmt{
+					stmts: stmts
+					defer_vars: p.defer_vars.clone()
+					pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
+				}
 			}
 		}
 		.key_go {
