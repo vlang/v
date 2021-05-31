@@ -19,6 +19,8 @@ import mod {
 
 	FnArg,
 	FnRet,
+
+	RightOfIs,
 }
 
 struct Struct {
@@ -37,6 +39,8 @@ interface Interface {
 }
 
 fn f(v FnArg) FnRet {
+	if v is RightOfIs {}
+
 	return {}
 }
 
