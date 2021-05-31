@@ -44,7 +44,7 @@ fn test_add() {
 	y := 3
 	sum := x + y
 	product := x * y
-	diff := y - x
+	// diff := y - x
 	print_number(x)
 	print_number(y)
 	print_number(sum)
