@@ -256,6 +256,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
 	file := os.real_path(relative_file)
+	normalised_relative_file := relative_file.replace('\\', '/')
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
@@ -281,7 +282,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
+			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file))
 		}
 		return pool.no_result
 	}
@@ -306,7 +307,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
+			ts.append_message(.fail, tls_bench.step_message_fail(normalised_relative_file))
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
@@ -314,12 +315,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output.trim_space()$ending_newline'))
+			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if !testing.hide_oks {
-				ts.append_message(.ok, tls_bench.step_message_ok(relative_file))
+				ts.append_message(.ok, tls_bench.step_message_ok(normalised_relative_file))
 			}
 		}
 	}
