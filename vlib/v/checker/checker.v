@@ -673,10 +673,6 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 }
 
 pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
-	// typ := c.table.find_type(struct_init.typ.typ.name) or {
-	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
-	// panic('')
-	// }
 	if struct_init.typ == ast.void_type {
 		// Short syntax `({foo: bar})`
 		if c.expected_type == ast.void_type {
@@ -696,6 +692,16 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			&& c.cur_concrete_types.len == 0 {
 			c.error('generic struct init must specify type parameter, e.g. Foo<int>',
 				struct_init.pos)
+		}
+	} else if struct_sym.info is ast.Alias {
+		parent_sym := c.table.get_type_symbol(struct_sym.info.parent_type)
+		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´
+		if parent_sym.kind == .map {
+			alias_str := c.table.type_to_str(struct_init.typ)
+			map_str := c.table.type_to_str(struct_sym.info.parent_type)
+			c.error('direct map alias init is not possible, use `${alias_str}($map_str{})` instead',
+				struct_init.pos)
+			return ast.void_type
 		}
 	}
 	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.cur_concrete_types)
