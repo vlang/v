@@ -81,6 +81,9 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	if p.tok.kind == .question {
 		// `foo()?`
 		p.next()
+		if p.inside_defer {
+			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.position())
+		}
 		or_kind = .propagate
 	}
 	if fn_name in p.imported_symbols {
