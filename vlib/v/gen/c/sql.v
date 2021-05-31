@@ -69,7 +69,7 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr ast.Expr) {
 		.psql {
 			g.psql_create_table(node, typ, expr)
 		}
-		.mssql{
+		.mssql {
 			g.mssql_create_table(node, typ, expr)
 		}
 		else {
@@ -90,7 +90,7 @@ fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
 		.psql {
 			g.psql_drop_table(node, typ, expr)
 		}
-		.mssql{
+		.mssql {
 			g.mssql_drop_table(node, typ, expr)
 		}
 		else {
@@ -144,7 +144,7 @@ fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
 		.psql {
 			return g.psql_get_table_type(v_typ)
 		}
-		.mssql{
+		.mssql {
 			return g.mssql_get_table_type(v_typ)
 		}
 		else {
@@ -1158,7 +1158,8 @@ fn (mut g Gen) mssql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast
 fn (mut g Gen) mssql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// mssql table drop')
-	drop_string := 'DROP TABLE \\"$table_name\\";'
+	lit := '\\"'
+	drop_string := 'DROP TABLE $lit$table_name$lit;'
 	tmp := g.new_tmp_var()
 	g.write('Option_mssql__Result $tmp = mssql__Connection_query(&')
 	g.expr(db_expr)
@@ -1410,7 +1411,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 	}
 
 	mut create_string := 'CREATE TABLE IF NOT EXISTS $lit$table_name$lit ('
-	if typ == .mssql{ 
+	if typ == .mssql {
 		// mssql detecting create if not exist is awkward
 		create_string = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=\'$table_name\' and xtype=\'U\') CREATE TABLE $lit$table_name$lit ('
 	}
