@@ -2245,7 +2245,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
 				mut is_auto_heap := false
+				mut ident := ast.Ident{
+					scope: 0
+				}
 				if lx is ast.Ident {
+					ident = lx
 					if lx.kind == .blank_ident {
 						continue
 					}
@@ -2253,7 +2257,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						is_auto_heap = lx.obj.is_auto_heap
 					}
 				}
-				styp := g.typ(assign_stmt.left_types[i])
+				styp := if ident.name in g.defer_vars { '' } else { g.typ(assign_stmt.left_types[i]) }
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 					if is_auto_heap {
@@ -2400,7 +2404,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := if ident.name in g.defer_vars { '' } else { '${g.typ(var_type)} /* $ident.name (${g.defer_vars.join('-')})*/' }
+		styp := if ident.name in g.defer_vars { '' } else { g.typ(var_type) }
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {

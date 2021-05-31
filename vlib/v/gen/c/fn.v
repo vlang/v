@@ -285,8 +285,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				info := var.info
 				if var.name !in g.defer_vars {
 					g.defer_vars << var.name
+					g.writeln('${g.typ(info.typ)} $var.name;')
 				}
-				g.writeln('${g.typ(info.typ)} $var.name;')
 			} 
 		}
 	}
