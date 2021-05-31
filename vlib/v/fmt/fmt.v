@@ -2429,6 +2429,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
+	f.mark_types_import_as_used(node.typ)
 	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 }
 

@@ -11,6 +11,7 @@ import mod {
 	InterfaceField,
 	InterfaceMethodArg,
 	InterfaceMethodRet,
+	RightOfIs,
 	StructEmbed,
 	StructField,
 	StructMethodArg,
@@ -34,6 +35,9 @@ interface Interface {
 }
 
 fn f(v FnArg) FnRet {
+	if v is RightOfIs {
+	}
+
 	return {}
 }
 
