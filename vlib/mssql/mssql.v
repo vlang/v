@@ -47,12 +47,12 @@ pub fn (mut conn Connection) connect(conn_str string) ?bool {
 								C.SQLUSMALLINT(C.SQL_DRIVER_NOPROMPT))
 	check_error(retcode, "SQLDriverConnect()",
 		C.SQLHANDLE(conn.hdbc), C.SQLSMALLINT(C.SQL_HANDLE_DBC))?
+	conn.conn_str = conn_str
 	return true
 }
 
 // close - closes the connection.
 pub fn (mut conn Connection) close() {
-	// TODO: check error?
 	// Connection
 	if conn.hdbc != C.SQLHDBC(C.SQL_NULL_HDBC) {
 		C.SQLDisconnect(conn.hdbc)
@@ -66,19 +66,21 @@ pub fn (mut conn Connection) close() {
 	}
 }
 
-
+// query executes a sql query
 pub fn (mut conn Connection) query(q string) ?Result {
 	mut hstmt := new_hstmt(conn.hdbc)?
 	defer { hstmt.close() }
 
 	hstmt.exec(q)?
-	hstmt.retrieve_column_count()?
+
+	affected := hstmt.retrieve_affected_rows()?
+
 	hstmt.prepare_read()?
 	raw_rows := hstmt.read_rows()?
 
 	mut res := Result{
 		rows: []Row{}
-		num_rows_affected : 0 // TODO
+		num_rows_affected : affected
 	}
 
 	for rr in raw_rows{
@@ -88,6 +90,7 @@ pub fn (mut conn Connection) query(q string) ?Result {
 	return res
 }
 
+// check_error checks odbc return code and extract error string if available
 fn check_error(e C.SQLRETURN, s string, h C.SQLHANDLE, t C.SQLSMALLINT) ? {
 	if e != C.SQLRETURN(C.SQL_SUCCESS) && e != C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO) {
 		err_str := extract_error(s, h, t)
@@ -95,6 +98,7 @@ fn check_error(e C.SQLRETURN, s string, h C.SQLHANDLE, t C.SQLSMALLINT) ? {
 	}
 }
 
+// extract_error extracts error string from odbc
 fn extract_error(fnName string, handle C.SQLHANDLE, tp C.SQLSMALLINT) string
 {
 	mut err_str := fnName

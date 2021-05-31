@@ -1,29 +1,5 @@
 module mssql
 
-// [typedef]
-// struct C.SQLHENV { // Environment
-// }
-
-// [typedef]
-// struct C.SQLHDBC { // Connection handle
-// }
-
-// [typedef]
-// struct C.SQLHSTMT { // Statement handle
-// }
-
-// [typedef]
-// struct C.SQLRETURN {
-// }
-
-// [typedef]
-// struct C.SQLCHAR {
-// }
-
-// [typedef]
-// struct C.SQLSMALLINT {
-// }
-
 fn C.SQLAllocHandle(HandleType C.SQLSMALLINT, InputHandle C.SQLHANDLE, OutputHandle &C.SQLHANDLE) C.SQLRETURN
 
 fn C.SQLSetEnvAttr(EnvironmentHandle C.SQLHENV, Attribute C.SQLINTEGER, Value C.SQLPOINTER, StringLength C.SQLINTEGER) C.SQLRETURN
