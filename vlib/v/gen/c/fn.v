@@ -287,7 +287,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					g.defer_vars << var.name
 					g.writeln('${g.typ(info.typ)} $var.name;')
 				}
-			} 
+			}
 		}
 	}
 	if is_live_wrap {

@@ -77,9 +77,9 @@ mut:
 	inside_asm_template bool
 	inside_asm          bool
 	global_labels       []string
-	inside_defer bool
-	comp_if_cond bool
-	defer_vars []ast.Ident
+	inside_defer        bool
+	comp_if_cond        bool
+	defer_vars          []ast.Ident
 }
 
 // for tests
@@ -1703,7 +1703,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left, left_comments := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
-			defer_vars << p.defer_vars
+		defer_vars << p.defer_vars
 	}
 
 	p.defer_vars = defer_vars

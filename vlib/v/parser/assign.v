@@ -6,7 +6,6 @@ module parser
 import v.ast
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
-
 	mut defer_vars := p.defer_vars
 	p.defer_vars = []ast.Ident{}
 

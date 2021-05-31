@@ -174,8 +174,8 @@ mut:
 	obf_table          map[string]string
 	// main_fn_decl_node  ast.FnDecl
 	expected_cast_type ast.Type // for match expr of sumtypes
-	defer_vars []string
-	anon_fn bool
+	defer_vars         []string
+	anon_fn            bool
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -2257,7 +2257,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						is_auto_heap = lx.obj.is_auto_heap
 					}
 				}
-				styp := if ident.name in g.defer_vars { '' } else { g.typ(assign_stmt.left_types[i]) }
+				styp := if ident.name in g.defer_vars {
+					''
+				} else {
+					g.typ(assign_stmt.left_types[i])
+				}
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 					if is_auto_heap {

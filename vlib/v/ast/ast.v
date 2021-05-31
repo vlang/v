@@ -985,8 +985,8 @@ pub:
 	pos   token.Position
 pub mut:
 	defer_vars []Ident
-	ifdef     string
-	idx_in_fn int = -1 // index in FnDecl.defer_stmts
+	ifdef      string
+	idx_in_fn  int = -1 // index in FnDecl.defer_stmts
 }
 
 // `(3+4)`
