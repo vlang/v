@@ -21,6 +21,7 @@ enum SqlType {
 	sqlite3
 	mysql
 	psql
+	mssql
 	unknown
 }
 
@@ -68,6 +69,9 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr ast.Expr) {
 		.psql {
 			g.psql_create_table(node, typ, expr)
 		}
+		.mssql{
+			g.mssql_create_table(node, typ, expr)
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
@@ -85,6 +89,9 @@ fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
 		}
 		.psql {
 			g.psql_drop_table(node, typ, expr)
+		}
+		.mssql{
+			g.mssql_drop_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -136,6 +143,9 @@ fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
 		}
 		.psql {
 			return g.psql_get_table_type(v_typ)
+		}
+		.mssql{
+			return g.mssql_get_table_type(v_typ)
 		}
 		else {
 			// add error
@@ -1131,6 +1141,65 @@ fn (mut g Gen) psql_bind(val string, typ ast.Type) {
 	g.sql_buf.writeln(');')
 }
 
+// mssql
+
+fn (mut g Gen) mssql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
+	g.writeln('// mssql table creator')
+	create_string := g.table_gen(node, typ, db_expr)
+	tmp := g.new_tmp_var()
+	g.write('Option_mssql__Result $tmp = mssql__Connection_query(&')
+	g.expr(db_expr)
+	g.writeln(', _SLIT("$create_string"));')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
+}
+
+fn (mut g Gen) mssql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
+	table_name := g.get_table_name(node.table_expr)
+	g.writeln('// mssql table drop')
+	drop_string := 'DROP TABLE \\"$table_name\\";'
+	tmp := g.new_tmp_var()
+	g.write('Option_mssql__Result $tmp = mssql__Connection_query(&')
+	g.expr(db_expr)
+	g.writeln(', _SLIT("$drop_string"));')
+
+	tmp_str := 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("Something went wrong: "), $si_s_code ,{.d_s=IError_str(err)}}}))'
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln($tmp_str); }')
+}
+
+fn (mut g Gen) mssql_get_table_type(typ ast.Type) string {
+	mut table_typ := ''
+	match typ {
+		ast.i8_type, ast.byte_type, ast.bool_type {
+			table_typ = 'TINYINT'
+		}
+		ast.i16_type, ast.u16_type {
+			table_typ = 'SMALLINT'
+		}
+		ast.int_type, ast.u32_type {
+			table_typ = 'INT'
+		}
+		ast.i64_type, ast.u64_type {
+			table_typ = 'BIGINT'
+		}
+		ast.f32_type {
+			table_typ = 'FLOAT(24)'
+		}
+		ast.f64_type {
+			table_typ = 'FLOAT(53)'
+		}
+		ast.string_type {
+			table_typ = 'TEXT'
+		}
+		-1 {
+			table_typ = 'INT IDENTITY'
+		}
+		else {}
+	}
+	return table_typ
+}
+
 // utils
 
 fn (mut g Gen) sql_select_arr(field ast.StructField, node ast.SqlExpr, primary string, tmp string) {
@@ -1336,10 +1405,15 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 	struct_data := typ_sym.struct_info()
 	table_name := g.get_table_name(node.table_expr)
 	mut lit := '`'
-	if typ == .psql {
+	if typ == .psql || typ == .mssql {
 		lit = '\\"'
 	}
+
 	mut create_string := 'CREATE TABLE IF NOT EXISTS $lit$table_name$lit ('
+	if typ == .mssql{ 
+		// mssql detecting create if not exist is awkward
+		create_string = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=\'$table_name\' and xtype=\'U\') CREATE TABLE $lit$table_name$lit ('
+	}
 
 	mut fields := []string{}
 	mut unique_fields := []string{}
@@ -1640,6 +1714,9 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 		}
 		'pg.DB' {
 			return .psql
+		}
+		'mssql.Connection' {
+			return .mssql
 		}
 		else {
 			return .unknown
