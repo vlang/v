@@ -1,16 +1,16 @@
 struct Fst {
 mut:
-	f fn() int
+	f fn () int
 }
 
 fn setfn(mut f Fst) {
 	mut i := 0
-	f.f = fn() int {
+	f.f = fn () int {
 		return 5
 	}
 	defer {
 		if i > 0 {
-			f.f = fn() int {
+			f.f = fn () int {
 				a := 0
 				defer {
 					assert a == 0
