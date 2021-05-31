@@ -10,6 +10,8 @@ pub enum Shape {
 	triangle
 }
 
+pub type ShapeMap = map[Shape]string
+
 // used by vlib/v/tests/map_enum_keys_test.v
 pub enum Form3D {
 	sphere

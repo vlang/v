@@ -770,27 +770,6 @@ pub fn (mut g Gen) write_typedef_types() {
 			continue
 		}
 		match typ.kind {
-			.alias {
-				parent := unsafe { &g.table.type_symbols[typ.parent_idx] }
-				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-				mut is_typedef := false
-				if parent.info is ast.Struct {
-					is_typedef = parent.info.is_typedef
-				}
-				mut parent_styp := parent.cname
-				if is_c_parent {
-					if !is_typedef {
-						parent_styp = 'struct ' + parent.cname[3..]
-					} else {
-						parent_styp = parent.cname[3..]
-					}
-				} else {
-					if typ.info is ast.Alias {
-						parent_styp = g.typ(typ.info.parent_type)
-					}
-				}
-				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
-			}
 			.array {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
@@ -851,7 +830,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			}
 		}
 	}
-
+	for typ in g.table.type_symbols {
+		if typ.kind == .alias && typ.name !in c.builtins {
+			g.write_alias_typesymbol_declaration(typ)
+		}
+	}
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
 	for typ in g.table.type_symbols {
@@ -859,6 +842,28 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			g.write_interface_typesymbol_declaration(typ)
 		}
 	}
+}
+
+pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
+	parent := unsafe { &g.table.type_symbols[sym.parent_idx] }
+	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
+	mut is_typedef := false
+	if parent.info is ast.Struct {
+		is_typedef = parent.info.is_typedef
+	}
+	mut parent_styp := parent.cname
+	if is_c_parent {
+		if !is_typedef {
+			parent_styp = 'struct ' + parent.cname[3..]
+		} else {
+			parent_styp = parent.cname[3..]
+		}
+	} else {
+		if sym.info is ast.Alias {
+			parent_styp = g.typ(sym.info.parent_type)
+		}
+	}
+	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
 
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
