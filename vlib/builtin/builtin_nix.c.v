@@ -85,7 +85,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if no_backtrace ? {
 		return false
 	} $else {
-		$if !freestanding {
+		$if linux && !freestanding {
 			$if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 				return false

@@ -1,17 +1,19 @@
 module sqlite
 
-#flag darwin  -lsqlite3
-#flag linux   -lsqlite3
-#flag solaris -lsqlite3
-#flag freebsd -I/usr/local/include
-#flag freebsd -Wl -L/usr/local/lib -lsqlite3
-#flag windows -I@VEXEROOT/thirdparty/sqlite
-#flag windows -L@VEXEROOT/thirdparty/sqlite
-#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-// #flag linux -I @VEXEROOT/thirdparty/sqlite
-// #flag @VEXEROOT/thirdparty/sqlite/sqlite.c
+$if freebsd || openbsd {
+	#flag -I/usr/local/include
+	#flag -L/usr/local/lib
+}
+$if windows {
+	#flag windows -I@VEXEROOT/thirdparty/sqlite
+	#flag windows -L@VEXEROOT/thirdparty/sqlite
+	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+} $else {
+	#flag -lsqlite3
+}
+
 #include "sqlite3.h"
-//
+
 struct C.sqlite3 {
 }
 
