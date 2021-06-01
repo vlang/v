@@ -168,6 +168,9 @@ fn (mut g Gen) gen_str_for_type(typ ast.Type) string {
 			ast.Interface {
 				g.gen_str_for_interface(sym.info, styp, str_fn_name)
 			}
+			ast.Chan {
+				g.gen_str_for_chan(sym.info, styp, str_fn_name)
+			}
 			else {
 				verror("could not generate string method $str_fn_name for type '$styp'")
 			}
@@ -487,6 +490,12 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 fn (mut g Gen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name string) {
 	g.type_definitions.writeln('static string ${str_fn_name}(); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}() { return _SLIT("${g.fn_decl_str(info)}");}')
+}
+
+fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) {
+	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
+	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return sync__Channel_auto_str(x, _SLIT("$elem_type_name")); }')
 }
 
 [inline]

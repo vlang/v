@@ -85,6 +85,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'21.clone_static',
 		'21.first',
 		'21.last',
+		'21.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
 		'21.reverse',
 		'21.repeat',
 		'21.slice',
@@ -141,7 +142,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if k.ends_with('.str') {
+		// auto generated string interpolation functions, may
+		// call .str or .auto_str methods for user types:
+		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			all_fn_root_names << k
 			continue
 		}
@@ -153,11 +156,25 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
+		// sync:
+		if k == 'sync.new_channel_st' {
+			all_fn_root_names << k
+			continue
+		}
+		if k == 'sync.channel_select' {
+			all_fn_root_names << k
+			continue
+		}
+		if method_receiver_typename == '&sync.Channel' {
+			all_fn_root_names << k
+			continue
+		}
 		if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
 			|| k.ends_with('.runlock') {
 			all_fn_root_names << k
 			continue
 		}
+		// testing framework:
 		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
@@ -169,6 +186,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				continue
 			}
 		}
+		// public/exported functions can not be skipped,
+		// especially when producing a shared library:
 		if mfn.is_pub && pref.is_shared {
 			all_fn_root_names << k
 			continue
