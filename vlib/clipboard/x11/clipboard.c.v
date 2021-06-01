@@ -6,9 +6,15 @@ import time
 import sync
 import math
 
+$if freebsd {
+	#flag -I/usr/local/include
+	#flag -L/usr/local/lib
+} $else $if openbsd {
+	#flag -I/usr/X11R6/include
+	#flag -L/usr/X11R6/lib
+}
 #flag -lX11
-#flag freebsd -I/usr/local/include
-#flag freebsd -L/usr/local/lib -lX11
+
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
 [typedef]
