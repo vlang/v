@@ -30,7 +30,6 @@ fn foobar()
 
 fn slopediv(num u32, den u32) int
 
-
 type F1 = fn ()
 
 type F2 = fn (voidptr)
