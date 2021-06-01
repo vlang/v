@@ -45,9 +45,8 @@ pub fn (mut ss TextScanner) next() int {
 	return -1
 }
 
-// skip skips one character ahead.
-// In contrast to `.next()`, `.skip()` ignores the result
-// which makes it slightly faster than `.next()`.
+// skip skips one character ahead; `skip()` is slightly faster than `.next()`.
+// `skip()` does not return a result.
 [inline]
 pub fn (mut ss TextScanner) skip() {
 	if ss.pos + 1 < ss.ilen {
@@ -55,9 +54,7 @@ pub fn (mut ss TextScanner) skip() {
 	}
 }
 
-// skip_n skips ahead `n` characters.
-// If the position go out of bounds from the length of `Scanner.text`,
-// the scanner position is be set to the end of the input.
+// skip_n skips ahead `n` characters, stopping at the end of the input.
 [inline]
 pub fn (mut ss TextScanner) skip_n(n int) {
 	ss.pos += n
@@ -106,8 +103,7 @@ pub fn (mut ss TextScanner) back_n(n int) {
 	}
 }
 
-// reset resets the internal state of the scanner, rewinding
-// the position to zero.
+// reset resets the internal state of the scanner.
 pub fn (mut ss TextScanner) reset() {
 	ss.pos = 0
 }
