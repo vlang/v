@@ -5,7 +5,7 @@ import orm
 // sql expr
 
 pub fn (db DB) @select(table string, config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]string {
-	query := orm.orm_select_gen(config, "'", true, '?', where)
+	query := orm.orm_select_gen(config, "`", true, '?', where)
 	sqlite_stmt_worker(db, query, data, where) ?
 	return none
 }
@@ -13,22 +13,37 @@ pub fn (db DB) @select(table string, config orm.OrmSelectConfig, data orm.OrmQue
 // sql stmt
 
 pub fn (db DB) insert(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, "'", .insert, true, '?', data, where)
+	query := orm.orm_stmt_gen(table, "`", .insert, true, '?', data, where)
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
 pub fn (db DB) update(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, "'", .update, true, '?', data, where)
+	query := orm.orm_stmt_gen(table, "`", .update, true, '?', data, where)
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
 pub fn (db DB) delete(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, "'", .delete, true, '?', data, where)
+	query := orm.orm_stmt_gen(table, "`", .delete, true, '?', data, where)
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
 // table
-pub fn (db DB) create(talbe string, fields []orm.OrmTableField) ? {
+pub fn (db DB) create(table string, fields []orm.OrmTableField) ? {
+	query := orm.orm_table_gen(table, "`", true, 0, fields, sqlite_type_from_v) or {
+		return err
+	}
+	err := db.exec_none(query)
+	if err != sqlite_ok && err != sqlite_done {
+		return db.error_message(err)
+	}
+}
+
+pub fn (db DB) drop(table string) ? {
+	query := 'DROP TABLE `$table`;'
+	err := db.exec_none(query)
+	if err != sqlite_ok && err != sqlite_done {
+		return db.error_message(err)
+	}
 }
 
 // helper
