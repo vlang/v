@@ -30,6 +30,7 @@ fn foobar()
 
 fn slopediv(num u32, den u32) int
 
+
 type F1 = fn ()
 
 type F2 = fn (voidptr)
@@ -43,6 +44,9 @@ type F5 = fn (int, int) int
 type F6 = fn (int, int)
 
 type F7 = fn (time.Time, int)
+
+type MyTime = time.Time
+type F8 = fn (MyTime)
 
 fn C.atoi(&byte) int
 fn C.freec(ptr voidptr)
