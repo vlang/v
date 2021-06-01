@@ -134,7 +134,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
 				return ast.IfExpr{}
 			}
-			if p.peek_tok.kind == .key_else {
+			if p.tok.kind != .rcbr && p.peek_tok.kind == .key_else {
 				p.check(.dollar)
 			}
 		}
