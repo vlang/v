@@ -114,7 +114,10 @@ fn extract_error(fnName string, handle C.SQLHANDLE, tp C.SQLSMALLINT) string {
 		// add driver error string
 		if ret == C.SQLRETURN(C.SQL_SUCCESS) || ret == C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO) {
 			unsafe {
-				err_str += ':odbc=$(&sql_state[0]).vstring():$i:${int(native_error)}:$(&message_text[0]).vstring()\n'
+				state_str := (&sql_state[0]).vstring()
+				native_error_code := int(native_error)
+				txt_str := (&message_text[0]).vstring()
+				err_str += '\n\todbc=$state_str:$i:$native_error_code:$txt_str'
 			}
 		}
 	}
