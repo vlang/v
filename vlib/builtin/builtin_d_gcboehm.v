@@ -18,13 +18,13 @@ $if static_boehm ? {
 } $else {
 	$if macos {
 		#pkgconfig bdw-gc
-	} $else $if windows {
-		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -L@VEXEROOT/thirdparty/libgc
-	} $else $if openbsd {
+	} $else $if openbsd || freebsd {
 		#flag -I/usr/local/include
 		#flag -L/usr/local/lib
-		#flag -lgc
+	}
+	$if windows {
+		#flag -I@VEXEROOT/thirdparty/libgc/include
+		#flag -L@VEXEROOT/thirdparty/libgc
 	} $else {
 		#flag -lgc
 	}
