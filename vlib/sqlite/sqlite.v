@@ -12,6 +12,13 @@ module sqlite
 // #flag @VEXEROOT/thirdparty/sqlite/sqlite.c
 #include "sqlite3.h"
 //
+
+const (
+	sqlite_ok    = 0
+	sqlite_error = 1
+	sqlite_done  = 101
+)
+
 struct C.sqlite3 {
 }
 
@@ -20,6 +27,7 @@ struct C.sqlite3_stmt {
 
 struct Stmt {
 	stmt &C.sqlite3_stmt
+	db   &DB
 }
 
 struct SQLError {
@@ -71,6 +79,8 @@ fn C.sqlite3_column_count(&C.sqlite3_stmt) int
 
 //
 fn C.sqlite3_errstr(int) &char
+
+fn C.sqlite3_errmsg(&C.sqlite3) &char
 
 fn C.sqlite3_free(voidptr)
 
@@ -190,6 +200,13 @@ pub fn (db DB) exec_one(query string) ?Row {
 	return rows[0]
 }
 
+pub fn (db DB) error_message(code int) IError {
+	return IError(&SQLError{
+		msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
+		code: code
+	})
+}
+
 // In case you don't expect any result, but still want an error code
 // e.g. INSERT INTO ... VALUES (...)
 pub fn (db DB) exec_none(query string) int {
@@ -202,8 +219,6 @@ TODO
 pub fn (db DB) exec_param(query string, param string) []Row {
 }
 */
-pub fn (db DB) insert<T>(x T) {
-}
 
 pub fn (db DB) create_table(table_name string, columns []string) {
 	db.exec('create table if not exists $table_name (' + columns.join(',\n') + ')')
