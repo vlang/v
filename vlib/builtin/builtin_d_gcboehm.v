@@ -8,18 +8,26 @@ $if static_boehm ? {
 		#flag   $first_existing("/opt/homebrew/lib/libgc.a", "/usr/local/lib/libgc.a")
 	} $else $if linux {
 		#flag -l:libgc.a
+	} $else $if openbsd {
+		#flag -I/usr/local/include
+		#flag /usr/local/lib/libgc.a
+		#flag -lpthread
 	} $else {
 		#flag -lgc
 	}
 } $else {
 	$if macos {
 		#pkgconfig bdw-gc
-	}
-	$if windows {
+	} $else $if windows {
 		#flag -I@VEXEROOT/thirdparty/libgc/include
 		#flag -L@VEXEROOT/thirdparty/libgc
+	} $else $if openbsd {
+		#flag -I/usr/local/include
+		#flag -L/usr/local/lib
+		#flag -lgc
+	} $else {
+		#flag -lgc
 	}
-	#flag -lgc
 }
 
 $if gcboehm_leak ? {
