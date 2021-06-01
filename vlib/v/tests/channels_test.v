@@ -21,7 +21,7 @@ fn test_printing_of_channels() {
 	res := (go fn1(ch)).wait()
 	println(res)
 	println(ch)
-	assert res.str().contains('another: ')
+	assert res.str().contains('another: chan f64{cap: 100, closed: 0}')
 	assert ch.str() == 'chan St1{cap: 10, closed: 0}'
 	assert fch.str() == 'chan f64{cap: 100, closed: 0}'
 	fch.close()
