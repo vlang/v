@@ -822,9 +822,6 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			.map {
 				g.type_definitions.writeln('typedef map $typ.cname;')
 			}
-			.function {
-				g.write_fn_typesymbol_declaration(typ)
-			}
 			else {
 				continue
 			}
@@ -833,6 +830,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	for typ in g.table.type_symbols {
 		if typ.kind == .alias && typ.name !in c.builtins {
 			g.write_alias_typesymbol_declaration(typ)
+		}
+	}
+	for typ in g.table.type_symbols {
+		if typ.kind == .function && typ.name !in c.builtins {
+			g.write_fn_typesymbol_declaration(typ)
 		}
 	}
 	// Generating interfaces after all the common types have been defined
