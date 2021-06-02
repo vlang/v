@@ -4064,7 +4064,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
-	if assert_type != ast.bool_type_idx && assert_type != ast.void_type_idx {
+	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.get_type_symbol(assert_type).name
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
