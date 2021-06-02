@@ -129,7 +129,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
-    * [Debugging generated C code](#debugging-generated-c-code)
+    * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
     * [Compile-time reflection](#compile-time-reflection)
@@ -3806,9 +3806,11 @@ re-creating the original structure exactly.
 Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
 
-## Debugging generated C code
+## Debugging
 
-To debug issues in the generated C code, you can pass these flags:
+### C code / Native Backend 
+
+To debug issues in the generated code, you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
     V will enforce line numbers from the .v files in the stacktraces, that the
@@ -3840,6 +3842,17 @@ for example `main`, you can use: `-printfn main -o file.c`.
 
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
+
+**Visual debugging Setup:**
+* [Visual Studio Code](vscode.md)
+
+### Javascript Backend
+
+There is currently no support for sourcemaps.
+
+### WASM Backend
+
+Not tested. Might work by using `lldb` and a WASM runtime like `wasmtime`.
 
 ## Conditional compilation
 
