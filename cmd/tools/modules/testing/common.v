@@ -358,12 +358,19 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	mut mains := []string{}
 	mut skipped := oskipped.clone()
 	next_file: for f in files {
-		if f.contains('modules') || f.contains('preludes') {
+		fnormalised := f.replace('\\', '/')
+		// NB: a `testdata` folder, is the preferred name of a folder, containing V code,
+		// that you *do not want* the test framework to find incidentally for various reasons,
+		// for example module import tests, or subtests, that are compiled/run by other parent tests
+		// in specific configurations, etc.
+		if fnormalised.contains('testdata/') || fnormalised.contains('modules/')
+			|| f.contains('preludes/') {
 			continue
 		}
 		$if windows {
 			// skip pico and process/command examples on windows
-			if f.ends_with('examples\\pico\\pico.v') || f.ends_with('examples\\process\\command.v') {
+			if fnormalised.ends_with('examples/pico/pico.v')
+				|| fnormalised.ends_with('examples/process/command.v') {
 				continue
 			}
 		}
