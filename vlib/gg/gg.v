@@ -104,8 +104,8 @@ pub:
 
 [heap]
 pub struct Context {
-	render_text bool
 mut:
+	render_text bool = true
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache   []Image
@@ -159,7 +159,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// if g.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(g.config.font_path) } $else { true }
-	if g.config.font_path != '' && exists {
+	if g.config.font_path != '' && !exists {
+		g.render_text = false
+	} else if g.config.font_path != '' && exists {
 		// t := time.ticks()
 		g.ft = new_ft(
 			font_path: g.config.font_path
@@ -169,26 +171,27 @@ fn gg_init_sokol_window(user_data voidptr) {
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	} else {
-		if !exists {
-			if g.config.font_bytes_normal.len > 0 {
-				g.ft = new_ft(
-					bytes_normal: g.config.font_bytes_normal
-					bytes_bold: g.config.font_bytes_bold
-					bytes_mono: g.config.font_bytes_mono
-					bytes_italic: g.config.font_bytes_italic
-					scale: sapp.dpi_scale()
-				) or { panic(err) }
-				g.font_inited = true
-			} else {
-				sfont := system_font_path()
-				eprintln('font file "$g.config.font_path" does not exist, the system font was used instead.')
-				g.ft = new_ft(
-					font_path: sfont
-					custom_bold_font_path: g.config.custom_bold_font_path
-					scale: sapp.dpi_scale()
-				) or { panic(err) }
-				g.font_inited = true
+		if g.config.font_bytes_normal.len > 0 {
+			g.ft = new_ft(
+				bytes_normal: g.config.font_bytes_normal
+				bytes_bold: g.config.font_bytes_bold
+				bytes_mono: g.config.font_bytes_mono
+				bytes_italic: g.config.font_bytes_italic
+				scale: sapp.dpi_scale()
+			) or { panic(err) }
+			g.font_inited = true
+		} else {
+			sfont := system_font_path()
+			if g.config.font_path != '' {
+				eprintln('font file "$g.config.font_path" does not exist, the system font ($sfont) was used instead.')
 			}
+
+			g.ft = new_ft(
+				font_path: sfont
+				custom_bold_font_path: g.config.custom_bold_font_path
+				scale: sapp.dpi_scale()
+			) or { panic(err) }
+			g.font_inited = true
 		}
 	}
 	//
@@ -327,7 +330,6 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		render_text: cfg.font_path != '' || cfg.font_bytes_normal.len > 0
 		ft: 0
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
