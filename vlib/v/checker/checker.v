@@ -3130,13 +3130,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	exp_is_optional := expected_type.has_flag(.optional)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
-<<<<<<< HEAD
-		expected_types = expected_type_sym.info.types
-		if c.table.cur_concrete_types.len > 0 {
-=======
 		expected_types = expected_type_sym.info.types.clone()
-		if c.cur_concrete_types.len > 0 {
->>>>>>> e4fadd218 (checker: have stricter checks for `.clone()` requirement, disallow empty maps)
+		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
