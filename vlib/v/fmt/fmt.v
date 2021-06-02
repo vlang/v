@@ -1561,6 +1561,7 @@ fn should_decrease_arr_penalty(e ast.Expr) bool {
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
+	f.mark_types_import_as_used(node.typ)
 	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
 	f.write(' as $type_str')
