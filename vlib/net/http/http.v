@@ -4,7 +4,6 @@
 module http
 
 import net.urllib
-import net.http.chunked
 import net
 import io
 
@@ -39,15 +38,6 @@ pub mut:
 	cookies    map[string]string
 	user_agent string = 'v.http'
 	verbose    bool
-}
-
-// Response represents the result of the request
-pub struct Response {
-pub:
-	text        string
-	header      Header
-	cookies     map[string]string
-	status_code int
 }
 
 pub fn new_request(method Method, url_ string, data string) ?Request {
@@ -88,7 +78,7 @@ pub fn post_json(url string, data string) ?Response {
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		header: new_header({key: .content_type, value: 'application/x-www-form-urlencoded'})
 		data: url_encode_form_data(data)
 	)
@@ -186,10 +176,6 @@ fn (mut req Request) free() {
 	unsafe { req.header.free() }
 }
 
-fn (mut resp Response) free() {
-	unsafe { resp.header.data.free() }
-}
-
 // add_header adds the key and value of an HTTP request header
 // To add a custom header, use add_custom_header
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
@@ -214,7 +200,7 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
-		if resp.status_code !in [301, 302, 303, 307, 308] {
+		if resp.status_code !in [.moved_permanently, .found, .see_other, .temporary_redirect, .permanent_redirect] {
 			break
 		}
 		// follow any redirects
@@ -259,54 +245,6 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
-}
-
-pub fn parse_response(resp string) Response {
-	mut header := new_header()
-	// TODO: Cookie data type
-	mut cookies := map[string]string{}
-	first_header := resp.all_before('\n')
-	mut status_code := 0
-	if first_header.contains('HTTP/') {
-		val := first_header.find_between(' ', ' ')
-		status_code = val.int()
-	}
-	mut text := ''
-	// Build resp header map and separate the body
-	mut nl_pos := 3
-	mut i := 1
-	for {
-		old_pos := nl_pos
-		nl_pos = resp.index_after('\n', nl_pos + 1)
-		if nl_pos == -1 {
-			break
-		}
-		h := resp[old_pos + 1..nl_pos]
-		// End of headers
-		if h.len <= 1 {
-			text = resp[nl_pos + 1..]
-			break
-		}
-		i++
-		pos := h.index(':') or { continue }
-		mut key := h[..pos]
-		val := h[pos + 2..].trim_space()
-		header.add_custom(key, val) or { eprintln('error parsing header: $err') }
-	}
-	// set cookies
-	for cookie in header.values(.set_cookie) {
-		parts := cookie.split_nth('=', 2)
-		cookies[parts[0]] = parts[1]
-	}
-	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or { '' } == '' {
-		text = chunked.decode(text)
-	}
-	return Response{
-		status_code: status_code
-		header: header
-		cookies: cookies
-		text: text
-	}
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, path string) string {

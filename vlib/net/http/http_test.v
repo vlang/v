@@ -18,7 +18,7 @@ fn test_http_get_from_vlang_utc_now() {
 		res := http.get(url) or {
 			panic(err)
 		}
-		assert 200 == res.status_code
+		assert .ok == res.status_code
 		assert res.text.len > 0
 		assert res.text.int() > 1566403696
 		println('Current time is: $res.text.int()')
@@ -42,7 +42,7 @@ fn test_public_servers() {
 		res := http.get(url) or {
 			panic(err)
 		}
-		assert 200 == res.status_code
+		assert .ok == res.status_code
 		assert res.text.len > 0
 	}
 }
@@ -56,7 +56,7 @@ fn test_relative_redirects() {
 	res := http.get('https://httpbin.org/relative-redirect/3?abc=xyz') or {
 		panic(err)
 	}
-	assert 200 == res.status_code
+	assert .ok == res.status_code
 	assert res.text.len > 0
 	assert res.text.contains('"abc": "xyz"')
 }
