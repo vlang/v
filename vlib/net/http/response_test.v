@@ -17,9 +17,7 @@ fn test_parse_response_line() ? {
 	assert status == .ok
 
 	// TODO: should this not parse?
-	version, status = parse_response_line('abc 123') or {
-		panic('should not error')
-	}
+	version, status = parse_response_line('abc 123') or { panic('should not error') }
 	assert version == .unknown
 	assert status == .unassigned
 }
@@ -28,9 +26,11 @@ fn test_response_render() ? {
 	resp := Response{
 		text: 'hello'
 		header: new_header(key: .content_type, value: 'text/plain')
-		cookies: {'cookie': 'jar'}
+		cookies: map{
+			'cookie': 'jar'
+		}
 		status_code: .ok
 		http_version: .v1_1
 	}
-	assert resp.render() == 'HTTP/1.1 200 OK\n\rContent-Type: text/plain\n\rSet-Cookie: cookie=jar\n\r\n\rhello'
+	assert resp.render() == 'HTTP/1.1 200 OK\n\rContent-Type: text/plain\n\rContent-Length: 5\n\rSet-Cookie: cookie=jar\n\r\n\rhello'
 }

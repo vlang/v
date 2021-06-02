@@ -6,8 +6,8 @@ import strconv
 // Response represents the result of the request
 pub struct Response {
 pub:
-	text         string
-	header       Header
+	text   string
+	header Header
 	// TODO: use Cookie struct
 	cookies      map[string]string
 	status_code  Status
@@ -24,13 +24,18 @@ pub fn (resp Response) render() string {
 	status_msg := resp.status_code.str()
 	// add cookie to the header if not already there
 	mut header := resp.header.clone()
+	if resp.text.len > 0 && !header.contains(.content_length) {
+		header.add(.content_length, resp.text.len.str())
+	}
 	for cookie, value in resp.cookies {
 		s := '$cookie=$value'
 		if !header.values(.set_cookie).contains(s) {
 			header.add(.set_cookie, s)
 		}
 	}
-	return '$resp.http_version $status_code $status_msg\n\r${header.render(version: resp.http_version)}\n\r$resp.text'
+	return '$resp.http_version $status_code $status_msg\n\r${header.render(
+		version: resp.http_version
+	)}\n\r$resp.text'
 }
 
 // TODO: return result?
@@ -38,7 +43,9 @@ pub fn parse_response(resp string) Response {
 	mut header := new_header()
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
-	version, status := parse_response_line(resp.all_before('\n\r')) or { Version.unknown, Status.unknown }
+	version, status := parse_response_line(resp.all_before('\n\r')) or {
+		Version.unknown, Status.unknown
+	}
 	mut text := ''
 	// Build resp header map and separate the body
 	mut nl_pos := 3
@@ -66,7 +73,9 @@ pub fn parse_response(resp string) Response {
 		parts := cookie.split_nth('=', 2)
 		cookies[parts[0]] = parts[1]
 	}
-	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or { '' } == '' {
+	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or {
+		''
+	} == '' {
 		text = chunked.decode(text)
 	}
 	return Response{
@@ -88,4 +97,3 @@ fn parse_response_line(s string) ?(Version, Status) {
 
 	return version, status_from_int(status_code)
 }
-

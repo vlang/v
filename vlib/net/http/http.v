@@ -64,7 +64,7 @@ pub fn get(url string) ?Response {
 pub fn post(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -72,14 +72,14 @@ pub fn post(url string, data string) ?Response {
 pub fn post_json(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		header: new_header({key: .content_type, value: 'application/json'})
+		header: new_header(key: .content_type, value: 'application/json')
 	)
 }
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
 	return fetch_with_method(.post, url,
-		header: new_header({key: .content_type, value: 'application/x-www-form-urlencoded'})
+		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
 		data: url_encode_form_data(data)
 	)
 }
@@ -88,7 +88,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 pub fn put(url string, data string) ?Response {
 	return fetch_with_method(.put, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -96,7 +96,7 @@ pub fn put(url string, data string) ?Response {
 pub fn patch(url string, data string) ?Response {
 	return fetch_with_method(.patch, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -200,7 +200,9 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
-		if resp.status_code !in [.moved_permanently, .found, .see_other, .temporary_redirect, .permanent_redirect] {
+		if resp.status_code !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+			.permanent_redirect,
+		] {
 			break
 		}
 		// follow any redirects

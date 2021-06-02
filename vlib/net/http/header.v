@@ -590,7 +590,7 @@ pub fn (h Header) str() string {
 }
 
 pub fn (h Header) clone() Header {
-	return Header {
+	return Header{
 		data: h.data.clone()
 		keys: h.keys.clone()
 	}
