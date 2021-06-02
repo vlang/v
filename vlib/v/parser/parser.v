@@ -685,7 +685,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			pos.update_last_line(p.prev_tok.line_nr)
 			return ast.AssertStmt{
 				expr: expr
-				pos: pos
+				pos: pos.extend(p.tok.position())
 				is_used: p.inside_test_file || !p.pref.is_prod
 			}
 		}
