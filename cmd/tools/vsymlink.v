@@ -24,7 +24,7 @@ fn cleanup_vtmp_folder() {
 
 fn setup_symlink_unix(vexe string) {
 	mut link_path := '/data/data/com.termux/files/usr/bin/v'
-	if !os.exists('/data/data/com.termux/files/usr/bin/bash') {
+	if !os.is_dir('/data/data/com.termux/files') {
 		link_dir := '/usr/local/bin'
 		if !os.exists(link_dir) {
 			os.mkdir_all(link_dir) or { panic(err) }
