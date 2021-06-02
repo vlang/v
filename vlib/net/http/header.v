@@ -566,11 +566,24 @@ fn (mut h Header) add_key(key string) {
 	}
 }
 
+// Custom error struct for invalid header tokens
+struct HeaderKeyError {
+	msg string
+	code int
+	header string
+	invalid_char byte
+}
+
 // Checks if the header token is valid
 fn is_valid(header string) ? {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
-			return error('Invalid header key')
+			return IError(HeaderKeyError{
+				msg: "Invalid header key: '$header'"
+				code: 1
+				header: header
+				invalid_char: c
+			})
 		}
 	}
 }
