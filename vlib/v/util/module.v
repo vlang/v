@@ -32,7 +32,7 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 	if mod == 'main' {
 		return mod
 	}
-	clean_file_path := file_path.all_before_last('/')
+	clean_file_path := file_path.all_before_last(os.path_separator)
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
@@ -109,6 +109,13 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 				}
 			}
 		}
+	}
+	// Path to project directory (pref.path)
+	if os.is_abs_path(pref.path) && os.is_abs_path(path) && path.contains(mod) {
+		rel_module_path := path.replace(pref.path.all_before_last(os.path_separator) + os.path_separator, '')
+		full_mod_name := rel_module_path.replace(os.path_separator, '.')
+		//println("~~~ $full_mod_name ~~~")
+		return full_mod_name
 	}
 	return error('module not found')
 }
