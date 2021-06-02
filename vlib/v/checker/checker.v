@@ -2974,7 +2974,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 }
 
 // TODO: non deferred
-pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
+pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type.has_flag(.generic) && c.table.get_type_symbol(expected_type).kind == .struct_ {
@@ -2985,17 +2985,17 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		}
 	}
 	expected_type_sym := c.table.get_type_symbol(expected_type)
-	if return_stmt.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
-		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
+	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
+		c.error('unexpected argument, current function does not return anything', node.exprs[0].position())
 		return
-	} else if return_stmt.exprs.len == 0 && !(c.expected_type == ast.void_type
+	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
 		stype := c.table.type_to_str(expected_type)
 		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
-		c.error('expected `$stype` $arg', return_stmt.pos)
+		c.error('expected `$stype` $arg', node.pos)
 		return
 	}
-	if return_stmt.exprs.len == 0 {
+	if node.exprs.len == 0 {
 		return
 	}
 	exp_is_optional := expected_type.has_flag(.optional)
@@ -3007,7 +3007,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		}
 	}
 	mut got_types := []ast.Type{}
-	for expr in return_stmt.exprs {
+	for expr in node.exprs {
 		typ := c.expr(expr)
 		// Unpack multi return types
 		sym := c.table.get_type_symbol(typ)
@@ -3019,7 +3019,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			got_types << typ
 		}
 	}
-	return_stmt.types = got_types
+	node.types = got_types
 	// allow `none` & `error` return types for function that returns optional
 	option_type_idx := c.table.type_idxs['Option']
 	got_types_0_idx := got_types[0].idx()
@@ -3029,26 +3029,26 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
-		c.error('expected $expected_types.len $arg, but got $got_types.len', return_stmt.pos)
+		c.error('expected $expected_types.len $arg, but got $got_types.len', node.pos)
 		return
 	}
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
 		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional)
 			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
-			pos := return_stmt.exprs[i].position()
+			pos := node.exprs[i].position()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
 		if !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
-			pos := return_stmt.exprs[i].position()
-			if return_stmt.exprs[i].is_auto_deref_var() {
+			pos := node.exprs[i].position()
+			if node.exprs[i].is_auto_deref_var() {
 				continue
 			}
 			if exp_typ_sym.kind == .interface_ {
-				c.type_implements(got_typ, exp_type, return_stmt.pos)
+				c.type_implements(got_typ, exp_type, node.pos)
 				continue
 			}
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
@@ -3056,8 +3056,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
-			pos := return_stmt.exprs[i].position()
-			if return_stmt.exprs[i].is_auto_deref_var() {
+			pos := node.exprs[i].position()
+			if node.exprs[i].is_auto_deref_var() {
 				continue
 			}
 			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
@@ -3065,15 +3065,15 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
-			pos := return_stmt.exprs[i].position()
-			if return_stmt.exprs[i].is_auto_deref_var() {
+			pos := node.exprs[i].position()
+			if node.exprs[i].is_auto_deref_var() {
 				continue
 			}
 			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &return_stmt.exprs[i]
+			mut r_expr := &node.exprs[i]
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
@@ -3096,8 +3096,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			}
 		}
 	}
-	if exp_is_optional && return_stmt.exprs.len > 0 {
-		expr0 := return_stmt.exprs[0]
+	if exp_is_optional && node.exprs.len > 0 {
+		expr0 := node.exprs[0]
 		if expr0 is ast.CallExpr {
 			if expr0.or_block.kind == .propagate {
 				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
