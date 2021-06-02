@@ -588,3 +588,10 @@ fn is_token(b byte) bool {
 pub fn (h Header) str() string {
 	return h.render(version: .v1_1)
 }
+
+pub fn (h Header) clone() Header {
+	return Header {
+		data: h.data.clone()
+		keys: h.keys.clone()
+	}
+}

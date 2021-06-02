@@ -8,6 +8,7 @@ pub struct Response {
 pub:
 	text         string
 	header       Header
+	// TODO: use Cookie struct
 	cookies      map[string]string
 	status_code  Status
 	http_version Version
@@ -15,6 +16,21 @@ pub:
 
 fn (mut resp Response) free() {
 	unsafe { resp.header.data.free() }
+}
+
+// Format response as an HTTP response message
+pub fn (resp Response) render() string {
+	status_code := int(resp.status_code)
+	status_msg := resp.status_code.str()
+	// add cookie to the header if not already there
+	mut header := resp.header.clone()
+	for cookie, value in resp.cookies {
+		s := '$cookie=$value'
+		if !header.values(.set_cookie).contains(s) {
+			header.add(.set_cookie, s)
+		}
+	}
+	return '$resp.http_version $status_code $status_msg\n\r${header.render(version: resp.http_version)}\n\r$resp.text'
 }
 
 // TODO: return result?

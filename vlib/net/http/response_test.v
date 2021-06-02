@@ -23,3 +23,14 @@ fn test_parse_response_line() ? {
 	assert version == .unknown
 	assert status == .unassigned
 }
+
+fn test_response_render() ? {
+	resp := Response{
+		text: 'hello'
+		header: new_header(key: .content_type, value: 'text/plain')
+		cookies: {'cookie': 'jar'}
+		status_code: .ok
+		http_version: .v1_1
+	}
+	assert resp.render() == 'HTTP/1.1 200 OK\n\rContent-Type: text/plain\n\rSet-Cookie: cookie=jar\n\r\n\rhello'
+}
