@@ -149,7 +149,7 @@ fn test_orm_table_gen() {
 	assert query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT DEFAULT , 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'));"
 }
 
-fn sql_type_from_v(typ int) string {
+fn sql_type_from_v(typ int) ?string {
 	return if typ in orm.nums {
 		'INT'
 	} else if typ in orm.num64 {
@@ -161,6 +161,6 @@ fn sql_type_from_v(typ int) string {
 	} else if typ == -1 {
 		'SERIAL'
 	} else {
-		''
+		error('Unknown type $typ')
 	}
 }

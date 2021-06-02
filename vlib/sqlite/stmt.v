@@ -33,6 +33,26 @@ fn (stmt Stmt) bind_text(idx int, s string) int {
 	return C.sqlite3_bind_text(stmt.stmt, idx, s.str, s.len, 0)
 }
 
+fn (stmt Stmt) get_int(idx int) int {
+	return C.sqlite3_column_int(stmt.stmt, idx)
+}
+
+fn (stmt Stmt) get_i64(idx int) i64 {
+	return C.sqlite3_column_int64(stmt.stmt, idx)
+}
+
+fn (stmt Stmt) get_f64(idx int) f64 {
+	return C.sqlite3_column_double(stmt.stmt, idx)
+}
+
+fn (stmt Stmt) get_text(idx int) string {
+	return unsafe { &byte(C.sqlite3_column_text(stmt.stmt, idx)).vstring() }
+}
+
+fn (stmt Stmt) get_count() int {
+	return C.sqlite3_column_count(stmt.stmt)
+}
+
 fn (stmt Stmt) step() int {
 	return C.sqlite3_step(stmt.stmt)
 }

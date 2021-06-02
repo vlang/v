@@ -16,6 +16,7 @@ module sqlite
 const (
 	sqlite_ok    = 0
 	sqlite_error = 1
+	sqlite_row   = 100
 	sqlite_done  = 101
 )
 

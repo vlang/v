@@ -96,6 +96,7 @@ pub:
 	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
 	has_offset bool
 	fields     []string
+	types      []int
 }
 
 pub interface OrmConnection {
@@ -124,7 +125,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 			str += ') VALUES ('
 			for i, _ in data.fields {
 				str += qm
-				if nums {
+				if orm.nums {
 					str += '$c'
 					c++
 				}
@@ -138,7 +139,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 			str += 'UPDATE $para$table$para SET '
 			for i, field in data.fields {
 				str += '$para$field$para = $qm'
-				if nums {
+				if orm.nums {
 					str += '$c'
 					c++
 				}
@@ -155,7 +156,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 	if kind == .update || kind == .delete {
 		for i, field in where.fields {
 			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
-			if nums {
+			if orm.nums {
 				str += '$c'
 				c++
 			}
@@ -190,7 +191,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 		str += ' WHERE '
 		for i, field in where.fields {
 			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
-			if nums {
+			if orm.nums {
 				str += '$c'
 				c++
 			}
@@ -209,7 +210,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 
 	if orm.has_limit {
 		str += ' LIMIT ?'
-		if nums {
+		if orm.nums {
 			str += '$c'
 			c++
 		}
@@ -217,7 +218,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 
 	if orm.has_offset {
 		str += ' OFFSET ?'
-		if nums {
+		if orm.nums {
 			str += '$c'
 			c++
 		}
@@ -227,7 +228,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 	return str
 }
 
-pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []OrmTableField, sql_from_v fn (int) string) ?string {
+pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []OrmTableField, sql_from_v fn (int) ?string) ?string {
 	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
 
 	mut fs := []string{}
@@ -280,7 +281,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			continue
 		}
 		mut stmt := ''
-		mut ctyp := sql_from_v(sql_field_type(field))
+		mut ctyp := sql_from_v(sql_field_type(field)) ?
 		if ctyp == '' {
 			if field.kind == .struct_ {
 				// TODO add multistructs
