@@ -699,13 +699,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
+	mut array_clone_shared := node.left_type.has_flag(.shared_f) && name == 'array_clone'
+	if array_clone_shared {
+		g.write('HEAP(array, ')
+	}
+
 	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
 		g.write('${name}(')
 	}
 	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
-		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
+		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str'))
+		&& name != 'array_clone' {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -774,6 +780,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// ///////
 	g.call_args(node)
 	g.write(')')
+	if array_clone_shared {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
