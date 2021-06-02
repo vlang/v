@@ -610,20 +610,39 @@ If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 ### Arrays
+#### Basic Array Concepts
+Arrays are collections of data elements of the same type. They can be represented by
+a list of elements surrounded by brackets. The elements can be accessed by appending
+an *index* (starting with `0`) in brackets to the array variable:
+```v
+mut nums := [1, 2, 3]
+println(nums) // `[1, 2, 3]`
+println(nums[0]) // `1`
+println(nums[1]) // `2`
+nums[1] = 5
+println(nums) // `[1, 5, 3]`
+```
+
+#### Array Properties
+There are two properties that control the "size" of an array:
+* `len`: *length* - the number of defined elements of the array
+* `cap`: *capacity* - the number of elements for which memory space has been reserved. The array can
+grow up to this size without being reallocated. Usually, V takes care of
+this property automatically but there are cases where the user may want to do manual
+optimizations (see [below](#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
-println(nums) // "[1, 2, 3]"
-println(nums[1]) // "2"
-nums[1] = 5
-println(nums) // "[1, 5, 3]"
 println(nums.len) // "3"
+println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
-// Declare an empty array:
-users := []int{}
 ```
 
+Note that the properties are read-only fields and can't be modified by the user.
+
+#### Array Initialization
+The basic initialization syntax is as described [above](#basic-array-concepts).
 The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
@@ -632,11 +651,63 @@ The user can explicitly specify the type for the first element: `[byte(16), 32, 
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
-The `.len` field returns the length of the array. Note that it's a read-only field,
-and it can't be modified by the user. Exported fields are read-only by default in V.
-See [Access modifiers](#access-modifiers).
+The above syntax is fine for a small number of known elements but for very large or empty
+arrays there is a second initialization syntax:
+```v
+mut a := []int{len: 10000, cap: 30000, init: 3}
+```
+This creates an array of 10000 `int` elements that are all initialized with `3`. Memory
+space is reserved for 30000 elements. The parameters `len`, `cap` and `init` are optional;
+`len` defaults to `0` and `init` to the default initialization of the element type (`0`
+for numerical type, `''` for `string`, etc). The run time system makes sure that the
+capacity is not smaller than `len` (even if a smaller value is specified explicitly):
 
-#### Array operations
+```v
+arr := []int{len: 5, init: -1}
+// `arr == [-1, -1, -1, -1, -1]`, arr.cap == 5
+
+// Declare an empty array:
+users := []int{}
+```
+
+
+Setting the capacity improves performance of pushing elements to the array
+as reallocations can be avoided:
+
+```v
+mut numbers := []int{cap: 1000}
+println(numbers.len) // 0
+// Now appending elements won't reallocate
+for i in 0 .. 1000 {
+	numbers << i
+}
+```
+Note: The above code uses a [range `for`](#range-for) statement and a
+[push operator (`<<`)](#array-operations).
+
+
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension.
+
+2d array example:
+```v
+mut a := [][]int{len: 2, init: []int{len: 3}}
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
+3d array example:
+```v
+mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
+a[0][1][1] = 2
+println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
+#### Array Operations
+
+Elements can be appended to the end of an array using the push operator `<<`.
+It can also append an entire array.
 
 ```v
 mut nums := [1, 2, 3]
@@ -649,37 +720,16 @@ mut names := ['John']
 names << 'Peter'
 names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
+```
+
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
+
+```v
+names := ['John', 'Peter', 'Sam']
 println(names.len) // "3"
 println('Alex' in names) // "false"
 ```
 
-`<<` is an operator that appends a value to the end of the array.
-It can also append an entire array.
-
-`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
-
-#### Initializing array properties
-
-During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
-and the default element (`init`):
-
-```v
-arr := []int{len: 5, init: -1}
-// `[-1, -1, -1, -1, -1]`
-```
-
-Setting the capacity improves performance of insertions,
-as it reduces the number of reallocations needed:
-
-```v
-mut numbers := []int{cap: 1000}
-println(numbers.len) // 0
-// Now appending elements won't reallocate
-for i in 0 .. 1000 {
-	numbers << i
-}
-```
-Note: The above code uses a [range `for`](#range-for) statement.
 
 #### Array methods
 
@@ -726,25 +776,22 @@ println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
 
-#### Multidimensional Arrays
+There are further built in methods for arrays:
+* `b := a.repeat(n)` concatenate `n` times the elements of `a`
+* `a.insert(i, val)` insert new element `val` at index `i` and move all following elements upwards
+* `a.insert(i, [3, 4, 5])` insert several elements
+* `a.prepend(val)` insert value at beginning, equivalent to `a.insert(0, val)`
+* `a.prepend(arr)` insert elements of array `arr` at beginning
+* `a.trim(new_len)` truncate the length (if `new_length < a.len`, otherwise do nothing)
+* `a.clear()` empty the array (without changing `cap`, equivalent to `a.trim(0)`)
+* `v := a.first()` equivalent to `v := a[0]`
+* `v := a.last()` equivalent to `v := a[a.len - 1]`
+* `v := a.pop()` get last element and remove it from array
+* `a.delete_last()` remove last element from array
+* `b := a.reverse()` make `b` contain the elements of `a` in reversed order
+* `a.reverse_in_place()` reverse the order of elements in `a`
 
-Arrays can have more than one dimension.
-
-2d array example:
-```v
-mut a := [][]int{len: 2, init: []int{len: 3}}
-a[0][1] = 2
-println(a) // [[0, 2, 0], [0, 0, 0]]
-```
-
-3d array example:
-```v
-mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
-a[0][1][1] = 2
-println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
-```
-
-#### Sorting arrays
+#### Sorting Arrays
 
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
@@ -768,9 +815,9 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 
 #### Array Slices
 
-Slices are partial arrays. They represent every element between two indices
-separated by a .. operator. The right-side index must be greater than or equal
-to the left side index.
+A slice is a part of a parent array. Initially it refers to the elements
+between two indices separated by a `..` operator. The right-side index must
+be greater than or equal to the left side index.
 
 If a right-side index is absent, it is assumed to be the array length. If a
 left-side index is absent, it is assumed to be 0.
@@ -782,14 +829,47 @@ println(nums[..4]) // [0, 10, 20, 30]
 println(nums[1..]) // [10, 20, 30, 40]
 ```
 
-All array operations may be performed on slices.
-Slices can be pushed onto an array of the same type.
+In V slices are arrays themselves (they are no distinct types). As a result
+all array operations may be performed on them. E.g. they can be pushed onto an
+array of the same type:
 
 ```v
 array_1 := [3, 5, 4, 7, 6]
 mut array_2 := [0, 1]
 array_2 << array_1[..3]
-println(array_2) // [0, 1, 3, 5, 4]
+println(array_2) // `[0, 1, 3, 5, 4]`
+```
+
+A slice is always created with the smallest possible capacity `cap == len` (see
+[`cap` above](#array-initialization)) no matter what the capacity or length
+of the parent array is. As a result it is immediately reallocated and copied to another
+memory location when the size increases thus becoming independent from the
+parent array (*copy on grow*). In particular pushing elements to a slice
+does not alter the parent:
+```v
+mut a := [0, 1, 2, 3, 4, 5]
+mut b := a[2..4]
+b[0] = 7 // `b[0]` is referring to `a[2]`
+println(a) // `[0, 1, 7, 3, 4, 5]`
+b << 9
+// `b` has been reallocated and is now independent from `a`
+println(a) // `[0, 1, 7, 3, 4, 5]` - no change
+println(b) // `[7, 3, 9]`
+```
+
+Appending to the parent array may or may not make it independent from its child slices.
+The behaviour depends on the parent's capacity and is predictable:
+```v
+mut a := []int{len: 5, cap: 6, init: 2}
+mut b := a[1..4]
+a << 3
+// no reallocation - fits in `cap`
+b[2] = 13 // `a[3]` is modified
+a << 4
+// a has been reallocated and is now independent from `b` (`cap` was exceeded)
+b[1] = 3 // no change in `a`
+println(a) // `[2, 2, 2, 13, 2, 3, 4]`
+println(b) // `[2, 3, 13]`
 ```
 
 ### Fixed size arrays
@@ -812,6 +892,8 @@ fnums[1] = 10
 fnums[2] = 100
 println(fnums) // => [1, 10, 100]
 println(typeof(fnums).name) // => [3]int
+
+fnums2 := [1, 10, 100]! // short init syntax that does the same (the syntax will probably change)
 
 anums := fnums[0..fnums.len]
 println(anums) // => [1, 10, 100]
@@ -836,8 +918,8 @@ Maps can have keys of type string, rune, integer, float or voidptr.
 The whole map can be initialized using this short syntax:
 ```v
 numbers := map{
-	1: 'one'
-	2: 'two'
+	'one': 1
+	'two': 2
 }
 println(numbers)
 ```
@@ -1067,9 +1149,9 @@ match x.bar {
 ```
 
 Mutable variables can change, and doing a cast would be unsafe.
-However, sometimes it's needed to have a type cast despite of mutability.
-In this case the developer has to mark the expression with a `mut` keyword
-to tell the compiler that you're aware of what you're doing.
+However, sometimes it's useful to type cast despite mutability.
+In such cases the developer must mark the expression with the `mut` keyword
+to tell the compiler that they know what they're doing.
 
 It works like this:
 ```v oksyntax
@@ -1383,6 +1465,48 @@ fn read_log() {
 }
 ```
 
+If the function returns a value the `defer` block is executed *after* the return
+expression is evaluated:
+
+```v
+import os
+
+enum State {
+	normal
+	write_log
+	return_error
+}
+
+// write log file and return number of bytes written
+fn write_log(s State) ?int {
+	mut f := os.create('log.txt') ?
+	defer {
+		f.close()
+	}
+	if s == .write_log {
+		// `f.close()` will be called after `f.write()` has been
+		// executed, but before `write_log()` finally returns the
+		// number of bytes written to `main()`
+		return f.writeln('This is a log file')
+	} else if s == .return_error {
+		// the file will be closed after the `error()` function
+		// has returned - so the error message will still report
+		// it as open
+		return error('nothing written; file open: $f.is_opened')
+	}
+	// the file will be closed here, too
+	return 0
+}
+
+fn main() {
+	n := write_log(.return_error) or {
+		println('Error: $err')
+		0
+	}
+	println('$n bytes written')
+}
+```
+
 ## Structs
 
 ```v
@@ -1671,7 +1795,7 @@ immutable by default, even when [references](#references) are passed.
 
 V is not a purely functional language however.
 
-There is a compiler flag to enable global variables (`--enable-globals`), but this is
+There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
@@ -1904,7 +2028,7 @@ const (
 		b: 0
 	}
 	// evaluate function call at compile-time*
-	blue    = rgb(0, 0, 255)
+	blue = rgb(0, 0, 255)
 )
 
 println(numbers)
@@ -2323,7 +2447,7 @@ type Tree = Empty | Node
 // sum up all node values
 fn sum(tree Tree) f64 {
 	return match tree {
-		Empty { f64(0) } // TODO: as match gets smarter just remove f64()
+		Empty { 0 }
 		Node { tree.value + sum(tree.left) + sum(tree.right) }
 	}
 }
@@ -2841,29 +2965,48 @@ y := <-ch2 ?
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load.  It consists of a list of possible transfers and associated branches
 of statements - similar to the [match](#match) command:
-```v wip
+```v
 import time
-fn main () {
-  c := chan f64{}
-  ch := chan f64{}
-  ch2 := chan f64{}
-  ch3 := chan f64{}
-  mut b := 0.0
-  // ...
-  select {
-    a := <-ch {
-        // do something with `a`
-    }
-    b = <-ch2 {
-        // do something with predeclared variable `b`
-    }
-    ch3 <- c {
-        // do something if `c` was sent
-    }
-    > 500 * time.millisecond {
-        // do something if no channel has become ready within 0.5s
-    }
-  }
+
+fn main() {
+	ch := chan f64{}
+	ch2 := chan f64{}
+	ch3 := chan f64{}
+	mut b := 0.0
+	c := 1.0
+	// ... setup go threads that will send on ch/ch2
+	go fn (the_channel chan f64) {
+		time.sleep(5 * time.millisecond)
+		the_channel <- 1.0
+	}(ch)
+	go fn (the_channel chan f64) {
+		time.sleep(1 * time.millisecond)
+		the_channel <- 1.0
+	}(ch2)
+	go fn (the_channel chan f64) {
+		_ := <-the_channel
+	}(ch3)
+	//
+	select {
+		a := <-ch {
+			// do something with `a`
+			eprintln('> a: $a')
+		}
+		b = <-ch2 {
+			// do something with predeclared variable `b`
+			eprintln('> b: $b')
+		}
+		ch3 <- c {
+			// do something if `c` was sent
+			time.sleep(5 * time.millisecond)
+			eprintln('> c: $c was send on channel ch3')
+		}
+		> 500 * time.millisecond {
+			// do something if no channel has become ready within 0.5s
+			eprintln('> more than 0.5s passed without a channel being ready')
+		}
+	}
+	eprintln('> done')
 }
 ```
 
@@ -3057,6 +3200,17 @@ You can also define special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
 * `testsuite_end` which will be run *after* all other test functions.
 
+If a test function has an error return type, any propagated errors will fail the test:
+
+```
+import strconv
+
+fn test_atoi() ? {
+	assert strconv.atoi('1') ? == 1
+	assert strconv.atoi('one') ? == 1 // test will fail
+}
+```
+
 #### Running tests
 
 To run test functions in an individual test file, use `v foo_test.v`.
@@ -3080,7 +3234,7 @@ each object.
 
 ### Control
 
-You can take advantage of V's autofree engine and define a `free()` method on custom 
+You can take advantage of V's autofree engine and define a `free()` method on custom
 data types:
 
 ```v
@@ -3092,7 +3246,7 @@ fn (data &MyType) free() {
 }
 ```
 
-Just as the compiler frees C data types with C's `free()`, it will statically insert 
+Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
 For developers willing to have more low level control, autofree can be disabled with
@@ -3316,7 +3470,7 @@ You will get:
 [factorial.v:5] n * factorial(n - 1): 120
 120
 ```
-Note that `dump(expr)` will trace both the source location, 
+Note that `dump(expr)` will trace both the source location,
 the expression itself, and the expression value.
 
 ## Memory-unsafe code
@@ -3462,7 +3616,7 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 fn main() {
 	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
-	C.sqlite3_open('users.db', &db)
+	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
 	stmt := &C.sqlite3_stmt(0)
@@ -3606,9 +3760,9 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 ### C Declarations
 
-C identifiers are accessed with the `C` prefix similarly to how module-specific 
-identifiers are accessed. Functions must be redeclared in V before they can be used. 
-Any C types may be used behind the `C` prefix, but types must be redeclared in V in 
+C identifiers are accessed with the `C` prefix similarly to how module-specific
+identifiers are accessed. Functions must be redeclared in V before they can be used.
+Any C types may be used behind the `C` prefix, but types must be redeclared in V in
 order to access type members.
 
 To redeclare complex types, such as in the following C code:
@@ -3646,10 +3800,10 @@ struct C.SomeCStruct {
 }
 ```
 
-The existence of the data members is made known to V, and they may be used without 
+The existence of the data members is made known to V, and they may be used without
 re-creating the original structure exactly.
 
-Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain 
+Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
 
 ## Debugging generated C code
@@ -3739,11 +3893,11 @@ If you're using a custom ifdef, then you do need `$if option ? {}` and compile w
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
-| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `aarch64`    | `debug`, `prod`, `test`   |
+| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
 | `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
-| `solaris`, `linux_or_macos`   | | | |
+| `solaris` | | | |
 
 #### $embed_file
 
@@ -3839,7 +3993,7 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 
 - `.js.v` => will be used only by the JS backend. These files can contain JS. code.
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
-- `.x64.v` => will be used only by V's x64 backend.
+- `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
 - `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
@@ -3888,7 +4042,7 @@ If you do need a custom flag file, that has platform dependent code, use the
 postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
-- `_notd_customflag.v` => similar to _d_customflag.v, but will be used 
+- `_notd_customflag.v` => similar to _d_customflag.v, but will be used
 *only* if you do NOT pass `-d customflag` to V.
 
 ## Compile time pseudo variables
@@ -4043,7 +4197,7 @@ To improve safety and maintainability, operator overloading is limited:
 are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
-<!-- ignore because it doesn't pass fmt test (why?) --> 
+<!-- ignore because it doesn't pass fmt test (why?) -->
 ```v ignore
 a := 100
 b := 20
@@ -4052,12 +4206,12 @@ asm amd64 {
     mov eax, a
     add eax, b
     mov c, eax
-    ; =r (c) as c // output 
-    ; r (a) as a // input 
+    ; =r (c) as c // output
+    ; r (a) as a // input
       r (b) as b
 }
-println('a: $a') // 100 
-println('b: $b') // 20 
+println('a: $a') // 100
+println('b: $b') // 20
 println('c: $c') // 120
 ```
 

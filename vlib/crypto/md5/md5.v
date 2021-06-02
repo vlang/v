@@ -35,11 +35,11 @@ mut:
 
 fn (mut d Digest) reset() {
 	d.s = []u32{len: (4)}
-	d.x = []byte{len: (block_size)}
-	d.s[0] = u32(init0)
-	d.s[1] = u32(init1)
-	d.s[2] = u32(init2)
-	d.s[3] = u32(init3)
+	d.x = []byte{len: md5.block_size}
+	d.s[0] = u32(md5.init0)
+	d.s[1] = u32(md5.init1)
+	d.s[2] = u32(md5.init2)
+	d.s[3] = u32(md5.init3)
 	d.nx = 0
 	d.len = 0
 }
@@ -60,7 +60,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 		if d.nx > 0 {
 			n := copy(d.x[d.nx..], p)
 			d.nx += n
-			if d.nx == block_size {
+			if d.nx == md5.block_size {
 				block(mut d, d.x)
 				d.nx = 0
 			}
@@ -70,8 +70,8 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 				p = p[n..]
 			}
 		}
-		if p.len >= block_size {
-			n := p.len & ~(block_size - 1)
+		if p.len >= md5.block_size {
+			n := p.len & ~(md5.block_size - 1)
 			block(mut d, p[..n])
 			if n >= p.len {
 				p = []
@@ -116,7 +116,7 @@ pub fn (mut d Digest) checksum() []byte {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := []byte{len: (size)}
+	mut digest := []byte{len: md5.size}
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest[4..], d.s[1])
 	binary.little_endian_put_u32(mut digest[8..], d.s[2])
@@ -139,12 +139,12 @@ fn block(mut dig Digest, p []byte) {
 
 // size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
-	return size
+	return md5.size
 }
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
-	return block_size
+	return md5.block_size
 }
 
 // hexhash returns a hexadecimal MD5 hash sum `string` of `s`.

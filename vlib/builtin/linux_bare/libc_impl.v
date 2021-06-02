@@ -9,7 +9,7 @@ pub fn memcpy(dest &C.void, src &C.void, n size_t) &C.void {
 			dest_[i] = src_[i]
 		}
 	}
-	return dest
+	return unsafe { dest }
 }
 
 [export: 'malloc']
@@ -37,7 +37,7 @@ fn realloc(old_area &C.void, new_size size_t) &C.void {
 	}
 	old_size := unsafe { *(&u64(old_area - sizeof(u64))) }
 	if u64(new_size) <= old_size {
-		return old_area
+		return unsafe { old_area }
 	} else {
 		new_area := unsafe { malloc(int(new_size)) }
 		unsafe { memmove(new_area, old_area, size_t(old_size)) }
@@ -54,7 +54,7 @@ fn memset(s &C.void, c int, n size_t) &C.void {
 			s_[i] = char(c)
 		}
 	}
-	return s
+	return unsafe { s }
 }
 
 [unsafe]
@@ -74,7 +74,7 @@ fn memmove(dest &C.void, src &C.void, n size_t) &C.void {
 		}
 	}
 	unsafe { free(temp_buf) }
-	return dest
+	return unsafe { dest }
 }
 
 [export: 'calloc']

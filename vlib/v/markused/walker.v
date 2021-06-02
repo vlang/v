@@ -14,7 +14,7 @@ pub mut:
 	n_maps      int
 	n_asserts   int
 mut:
-	files      []ast.File
+	files      []&ast.File
 	all_fns    map[string]ast.FnDecl
 	all_consts map[string]ast.ConstField
 }
@@ -42,6 +42,14 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 				println('>>>> $fn_name uses: ')
 			}
 			w.fn_decl(mut w.all_fns[fn_name])
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_exported_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_exported {
+			w.fn_decl(mut func)
 		}
 	}
 }
@@ -97,8 +105,10 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		}
 		ast.SqlStmt {
 			w.expr(node.db_expr)
-			w.expr(node.where_expr)
-			w.exprs(node.update_exprs)
+			for line in node.lines {
+				w.expr(line.where_expr)
+				w.exprs(line.update_exprs)
+			}
 		}
 		ast.StructDecl {
 			w.struct_fields(node.fields)

@@ -4,7 +4,7 @@ import sokol.c
 import sokol.f
 
 pub const (
-  used_import = c.used_import + f.used_import
+	used_import = c.used_import + f.used_import
 )
 
 /*
@@ -17,4 +17,3 @@ pub enum Key {
 	space = C.SAPP_KEYCODE_SPACE
 }
 */
-

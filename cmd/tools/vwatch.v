@@ -2,6 +2,8 @@ module main
 
 import os
 import time
+import term
+import flag
 
 const scan_timeout_s = 5 * 60
 
@@ -36,7 +38,7 @@ const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 //   workers, thus it does not leak much.
 //
 //   b) A worker process, doing the actual monitoring/polling.
-//    NB: *workers are started with the -vwatchworker option*
+//    NB: *workers are started with the --vwatchworker option*
 //
 //    Worker processes will run for a limited number of iterations, then
 // they will do exit(255), and then the parent will start a new worker.
@@ -71,14 +73,20 @@ mut:
 	opts            []string
 	rerun_channel   chan RerunCommand
 	child_process   &os.Process
-	is_exiting      bool // set by SIGINT/Ctrl-C
-	v_cycles        int  // how many times the worker has restarted the V compiler
-	scan_cycles     int  // how many times the worker has scanned for source file changes
+	is_exiting      bool     // set by SIGINT/Ctrl-C
+	v_cycles        int      // how many times the worker has restarted the V compiler
+	scan_cycles     int      // how many times the worker has scanned for source file changes
+	clear_terminal  bool     // whether to clear the terminal before each re-run
+	silent          bool     // when true, watch will not print a timestamp line before each re-run
+	add_files       []string // path to additional files that have to be watched for changes
+	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
+	cmd_before_run  string   // a command to run before each re-run
+	cmd_after_run   string   // a command to run after each re-run
 }
 
 [if debug_vwatch]
 fn (mut context Context) elog(msg string) {
-	eprintln('> vredo $context.pid, $msg')
+	eprintln('> vwatch $context.pid, $msg')
 }
 
 fn (context &Context) str() string {
@@ -93,13 +101,17 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files $copts'
 		// context.elog('> cmd: $cmd')
-		mut vfiles := os.execute(cmd)
+		mut paths := []string{}
+		if context.add_files.len > 0 && context.add_files[0] != '' {
+			paths << context.add_files
+		}
+		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			mut paths := paths_trimmed.split('\n')
-			for vf in paths {
-				apaths[os.real_path(os.dir(vf))] = true
-			}
+			paths << paths_trimmed.split('\n')
+		}
+		for vf in paths {
+			apaths[os.real_path(os.dir(vf))] = true
 		}
 		context.affected_paths = apaths.keys()
 		// context.elog('vfiles paths to be scanned: $context.affected_paths')
@@ -111,6 +123,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
 			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
+				continue
+			}
+			if pf_ext in context.ignore_exts {
 				continue
 			}
 			if pf.starts_with('.#') {
@@ -159,7 +174,7 @@ fn (mut context Context) get_changed_vfiles() int {
 }
 
 fn change_detection_loop(ocontext &Context) {
-	mut context := ocontext
+	mut context := unsafe { ocontext }
 	for {
 		if context.v_cycles >= max_v_cycles || context.scan_cycles >= max_scan_cycles {
 			context.is_exiting = true
@@ -189,18 +204,39 @@ fn (mut context Context) kill_pgroup() {
 	context.child_process.wait()
 }
 
+fn (mut context Context) run_before_cmd() {
+	if context.cmd_before_run != '' {
+		context.elog('> run_before_cmd: "$context.cmd_before_run"')
+		os.system(context.cmd_before_run)
+	}
+}
+
+fn (mut context Context) run_after_cmd() {
+	if context.cmd_after_run != '' {
+		context.elog('> run_after_cmd: "$context.cmd_after_run"')
+		os.system(context.cmd_after_run)
+	}
+}
+
 fn (mut context Context) compilation_runner_loop() {
 	cmd := '"$context.vexe" ${context.opts.join(' ')}'
 	_ := <-context.rerun_channel
 	for {
 		context.elog('>> loop: v_cycles: $context.v_cycles')
+		if context.clear_terminal {
+			term.clear()
+		}
+		context.run_before_cmd()
 		timestamp := time.now().format_ss_milli()
 		context.child_process = os.new_process(context.vexe)
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
-		eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+		if !context.silent {
+			eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+		}
 		for {
+			mut notalive_count := 0
 			mut cmds := []RerunCommand{}
 			for {
 				if context.is_exiting {
@@ -208,6 +244,11 @@ fn (mut context Context) compilation_runner_loop() {
 				}
 				if !context.child_process.is_alive() {
 					context.child_process.wait()
+					notalive_count++
+					if notalive_count == 1 {
+						// a short lived process finished, do cleanup:
+						context.run_after_cmd()
+					}
 				}
 				select {
 					action := <-context.rerun_channel {
@@ -230,6 +271,11 @@ fn (mut context Context) compilation_runner_loop() {
 			}
 			if !context.child_process.is_alive() {
 				context.child_process.wait()
+				context.child_process.close()
+				if notalive_count == 0 {
+					// a long running process was killed, do cleanup:
+					context.run_after_cmd()
+				}
 				break
 			}
 		}
@@ -245,12 +291,41 @@ fn main() {
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
-	context.is_worker = os.args.contains('-vwatchworker')
-	context.opts = os.args[1..].filter(it != '-vwatchworker')
+
+	mut fp := flag.new_flag_parser(os.args[1..])
+	fp.application('v watch')
+	if os.args[1] == 'watch' {
+		fp.skip_executable()
+	}
+	fp.version('0.0.2')
+	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
+	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
+	fp.allow_unknown_args()
+	fp.limit_free_args_to_at_least(1)
+	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
+	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
+	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
+	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split(',')
+	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')
+	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
+	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
+	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
+	if show_help {
+		println(fp.usage())
+		exit(0)
+	}
+	remaining_options := fp.finalize() or {
+		eprintln('Error: $err')
+		exit(1)
+	}
+	context.opts = remaining_options
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')
 	context.elog('>>> context.opts: $context.opts')
 	context.elog('>>> context.is_worker: $context.is_worker')
+	context.elog('>>> context.clear_terminal: $context.clear_terminal')
+	context.elog('>>> context.add_files: $context.add_files')
+	context.elog('>>> context.ignore_exts: $context.ignore_exts')
 	if context.is_worker {
 		context.worker_main()
 	} else {
@@ -260,8 +335,8 @@ fn main() {
 
 fn (mut context Context) manager_main() {
 	myexecutable := os.executable()
-	mut worker_opts := ['-vwatchworker']
-	worker_opts << context.opts
+	mut worker_opts := ['--vwatchworker']
+	worker_opts << os.args[2..]
 	for {
 		mut worker_process := os.new_process(myexecutable)
 		worker_process.set_args(worker_opts)
@@ -274,18 +349,20 @@ fn (mut context Context) manager_main() {
 			time.sleep(200 * time.millisecond)
 		}
 		if !(worker_process.code == 255 && worker_process.status == .exited) {
+			worker_process.close()
 			break
 		}
+		worker_process.close()
 	}
 }
 
 fn (mut context Context) worker_main() {
 	context.rerun_channel = chan RerunCommand{cap: 10}
-	os.signal(C.SIGINT, fn () {
+	os.signal_opt(.int, fn (_ os.Signal) {
 		mut context := unsafe { &Context(voidptr(&ccontext)) }
 		context.is_exiting = true
 		context.kill_pgroup()
-	})
+	}) or { panic(err) }
 	go context.compilation_runner_loop()
 	change_detection_loop(context)
 }

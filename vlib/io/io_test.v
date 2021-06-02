@@ -33,11 +33,9 @@ fn test_copy() {
 	src := Buf{
 		bytes: 'abcdefghij'.repeat(10).bytes()
 	}
-	dst := Writ{
+	mut dst := Writ{
 		bytes: []byte{}
 	}
-	io.cp(dst, src) or {
-		assert false
-	}
+	io.cp(src, mut dst) or { assert false }
 	assert dst.bytes == src.bytes
 }

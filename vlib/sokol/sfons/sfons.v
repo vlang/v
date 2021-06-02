@@ -26,4 +26,3 @@ pub fn rgba(r byte, g byte, b byte, a byte) u32 {
 pub fn flush(ctx &C.FONScontext) {
 	C.sfons_flush(ctx)
 }
-

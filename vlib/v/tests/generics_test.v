@@ -33,6 +33,49 @@ fn test_infix_expr() {
 	assert plus<string>('a', 'b') == 'ab'
 }
 
+fn plus_one<T>(a T) T {
+	mut b := a
+	b++
+	return b
+}
+
+fn minus_one<T>(a T) T {
+	mut b := a
+	b--
+	return b
+}
+
+fn test_postfix_expr() {
+	assert plus_one(-1) == 0
+	assert plus_one(byte(0)) == 1
+	assert plus_one(u16(1)) == 2
+	assert plus_one(u32(2)) == 3
+	assert plus_one(u64(3)) == 4
+	assert plus_one(i8(-10)) == -9
+	assert plus_one(i16(-9)) == -8
+	assert plus_one(int(-8)) == -7
+	assert plus_one(i64(-7)) == -6
+	assert minus_one(0) == -1
+	assert minus_one(byte(1)) == 0
+	assert minus_one(u16(2)) == 1
+	assert minus_one(u32(3)) == 2
+	assert minus_one(u64(4)) == 3
+	assert minus_one(i8(-8)) == -9
+	assert minus_one(i16(-7)) == -8
+	assert minus_one(int(-6)) == -7
+	assert minus_one(i64(-5)) == -6
+	// the point is to see if it compiles, more than if the result
+	// is correct, so 1e-6 isn't necessarily the right value to do this
+	// but it's not important
+	delta := 1e-6
+	assert plus_one(1.1) - 2.1 < delta
+	assert plus_one(f32(2.2)) - 3.2 < delta
+	assert plus_one(f64(3.3)) - 4.3 < delta
+	assert minus_one(1.1) - 0.1 < delta
+	assert minus_one(f32(2.2)) - 1.2 < delta
+	assert minus_one(f64(3.3)) - 2.3 < delta
+}
+
 fn sum<T>(l []T) T {
 	mut r := T(0)
 	for e in l {
@@ -299,16 +342,19 @@ fn test_generic_struct_print_array_as_field() {
 	foo := Foo<[]string>{
 		data: []string{}
 	}
-	assert foo.str() == 'Foo<array, string>{\n    data: []\n}'
+	assert foo.str() == 'Foo<[]string>{\n    data: []\n}'
 }
 
-/*
-struct Abc{ x int y int z int }
+struct Abc {
+	x int
+	y int
+	z int
+}
 
 fn p<T>(args ...T) {
-	size:=sizeof(T)
-	print('p called with size: ${size:3d} | ')
-	for _,x in args {
+	size := sizeof(T)
+	print('p called with size: ${size:3} | ')
+	for _, x in args {
 		print(x)
 		print(' ')
 	}
@@ -316,10 +362,10 @@ fn p<T>(args ...T) {
 	assert true
 }
 
-fn test_generic_fn_with_variadics(){
-	s:='abc'
-	i:=1
-	abc:=Abc{1,2,3}
+fn test_generic_fn_with_variadics() {
+	s := 'abc'
+	i := 1
+	abc := Abc{1, 2, 3}
 	// these calls should all compile, and print the arguments,
 	// even though the arguments are all a different type and arity:
 	p(s)
@@ -327,7 +373,6 @@ fn test_generic_fn_with_variadics(){
 	p(abc)
 	p('Good', 'morning', 'world')
 }
-*/
 
 struct Context {}
 
@@ -348,24 +393,6 @@ fn test_pass_generic_to_nested_function() {
 	mut app := App{}
 	test(mut app)
 }
-
-/*
-struct NestedGeneric {}
-
-fn (ng NestedGeneric) nested_test<T>(mut app T) {
-	app.context = Context {}
-}
-
-fn method_test<T>(mut app T) {
-	ng := NestedGeneric{}
-	ng.nested_test<T>(app)
-}
-
-fn test_pass_generic_to_nested_method() {
-	mut app := App{}
-	method_test(mut app)
-}
-*/
 
 fn generic_return_map<M>() map[string]M {
 	return map{

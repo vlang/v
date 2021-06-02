@@ -22,6 +22,8 @@ pub type FNKeyDown = fn (c KeyCode, m Modifier, x voidptr)
 
 pub type FNMove = fn (x f32, y f32, z voidptr)
 
+pub type FNClick = fn (x f32, y f32, button MouseButton, z voidptr)
+
 pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Event {
@@ -32,7 +34,7 @@ pub mut:
 	char_code          u32
 	key_repeat         bool
 	modifiers          u32
-	mouse_button       sapp.MouseButton
+	mouse_button       MouseButton
 	mouse_x            f32
 	mouse_y            f32
 	mouse_dx           f32
@@ -81,13 +83,13 @@ pub:
 	// special case of event_fn
 	move_fn FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn FNMove = voidptr(0)
+	click_fn FNClick = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen   bool
 	scale        f32 = 1.0
 	sample_count int
-	// vid needs this
+	// ved needs this
 	// init_text bool
 	font_path             string
 	custom_bold_font_path string
@@ -100,6 +102,7 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
+[heap]
 pub struct Context {
 	render_text bool
 mut:
@@ -189,7 +192,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := C.sg_pipeline_desc{
+		label: c'alpha_image'
+	}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
 	color_state := C.sg_color_state{
@@ -292,7 +297,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.mouse_down {
 			if g.config.click_fn != voidptr(0) {
 				cfn := g.config.click_fn
-				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
+				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, e.mouse_button, g.config.user_data)
 			}
 		}
 		else {}
@@ -356,6 +361,11 @@ pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
 
+// quit closes the context window and exits the event loop for it
+pub fn (ctx &Context) quit() {
+	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
+}
+
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
 		f32(c.a) / 255.0)
@@ -409,19 +419,11 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
-	if ctx.scale == 1 {
-		sgl.v2f(x, y)
-		sgl.v2f(x + w, y)
-		sgl.v2f(x + w, y + h)
-		sgl.v2f(x, y + h)
-		sgl.v2f(x, y)
-	} else {
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-		sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
-	}
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.end()
 }
 
@@ -455,12 +457,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 }
 
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
-	if ctx.scale == 1 {
-		ctx.draw_circle_with_segments(x, y, r, 10, c)
-	} else {
-		ctx.draw_circle_with_segments(x * f32(ctx.scale), y * f32(ctx.scale), r * ctx.scale,
-			10, c)
-	}
+	ctx.draw_circle_with_segments(x, y, r, 10, c)
 }
 
 pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
@@ -468,16 +465,19 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := r * ctx.scale
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
 		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
-		xx = r * math.cosf(theta)
-		yy = r * math.sinf(theta)
-		sgl.v2f(xx + x, yy + y)
-		sgl.v2f(x, y)
+		xx = nr * math.cosf(theta)
+		yy = nr * math.sinf(theta)
+		sgl.v2f(xx + nx, yy + ny)
+		sgl.v2f(nx, ny)
 	}
 	sgl.end()
 }
@@ -490,11 +490,13 @@ pub fn (ctx &Context) draw_arc_line(x f32, y f32, r int, start_angle f32, arc_an
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
 	mut xx := f32(r * math.cosf(start_angle))
 	mut yy := f32(r * math.sinf(start_angle))
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + x, yy + y)
+		sgl.v2f(xx + nx, yy + ny)
 		tx := -yy
 		ty := xx
 		xx += tx * tan_factor
@@ -510,6 +512,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
@@ -517,8 +521,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 	mut yy := f32(r * math.sinf(start_angle))
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + x, yy + y)
-		sgl.v2f(x, y)
+		sgl.v2f(xx + nx, yy + ny)
+		sgl.v2f(nx, ny)
 		tx := -yy
 		ty := xx
 		xx += tx * tan_factor
@@ -587,11 +591,11 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	r := radius * f32(ctx.scale)
-	nx := x * f32(ctx.scale)
-	ny := y * f32(ctx.scale)
-	width := w * f32(ctx.scale)
-	height := h * f32(ctx.scale)
+	r := radius * ctx.scale
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
 	segments := 2 * math.pi * r
 	segdiv := segments / 4
 	rb := 0
@@ -609,7 +613,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 		sgl.v2f(lx, ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -620,7 +624,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -630,7 +634,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -653,11 +657,11 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	r := radius * f32(ctx.scale)
-	nx := x * f32(ctx.scale)
-	ny := y * f32(ctx.scale)
-	width := w * f32(ctx.scale)
-	height := h * f32(ctx.scale)
+	r := radius * ctx.scale
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
 	segments := 2 * math.pi * r
 	segdiv := segments / 4
 	rb := 0
@@ -676,7 +680,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 		sgl.v2f(xx + lx, yy + ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -686,7 +690,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -695,7 +699,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)

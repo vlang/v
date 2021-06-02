@@ -106,7 +106,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			prev_guard = true
 		} else {
 			prev_guard = false
+			p.comp_if_cond = true
 			cond = p.expr(0)
+			p.comp_if_cond = false
 		}
 		comments << p.eat_comments({})
 		end_pos := p.prev_tok.position()
@@ -132,7 +134,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
 				return ast.IfExpr{}
 			}
-			if p.peek_tok.kind == .key_else {
+			if p.tok.kind != .rcbr && p.peek_tok.kind == .key_else {
 				p.check(.dollar)
 			}
 		}
@@ -178,8 +180,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (p.tok.lit in ast.builtin_type_names || p.tok.lit[0].is_capital()
-			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
+			&& (((p.tok.lit in ast.builtin_type_names || p.tok.lit[0].is_capital())
+			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital()))) || p.tok.kind == .lsbr {
 			mut types := []ast.Type{}
 			for {

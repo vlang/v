@@ -10,6 +10,7 @@ import sokol
 import sokol.sgl
 import stbi
 
+[heap]
 pub struct Image {
 pub mut:
 	id          int

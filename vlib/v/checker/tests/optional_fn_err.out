@@ -151,10 +151,18 @@ vlib/v/checker/tests/optional_fn_err.vv:69:18: error: bar() returns an option, s
    69 |     println(arr.any(bar(true)))
       |                     ~~~~~~~~~
    70 |     println(arr.all(bar(true)))
-   71 | }
+   71 |
 vlib/v/checker/tests/optional_fn_err.vv:70:18: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    68 |     println(arr.filter(bar(true)))
    69 |     println(arr.any(bar(true)))
    70 |     println(arr.all(bar(true)))
       |                     ~~~~~~~~~
-   71 | }
+   71 | 
+   72 |     match bar(0) {
+vlib/v/checker/tests/optional_fn_err.vv:72:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   70 |     println(arr.all(bar(true)))
+   71 | 
+   72 |     match bar(0) {
+      |           ~~~~~~
+   73 |         0 { }
+   74 |         else { }

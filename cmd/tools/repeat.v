@@ -184,9 +184,9 @@ fn (mut context Context) parse_options() {
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
-	context.results = []CmdResult{len: context.commands.len, cap: 10, init: CmdResult{
-		outputs: []string{cap: 200}
-		timings: []int{cap: 200}
+	context.results = []CmdResult{len: context.commands.len, cap: 20, init: CmdResult{
+		outputs: []string{cap: 500}
+		timings: []int{cap: 500}
 	}}
 	if context.use_newline {
 		context.cline = '\n'
@@ -287,7 +287,8 @@ fn (mut context Context) run() {
 			context.clear_line()
 			print(context.cgoback)
 			mut m := map[string][]int{}
-			for o in context.results[icmd].outputs {
+			ioutputs := context.results[icmd].outputs
+			for o in ioutputs {
 				x := o.split(':')
 				if x.len > 1 {
 					k := x[0]

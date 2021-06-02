@@ -1,0 +1,10 @@
+import math.complex { Complex }
+import gg { MouseButton }
+
+fn keep_imported_enum_map_key() {
+	bm := map[MouseButton]string{}
+}
+
+fn main() {
+	assert *(&f64(&byte(&num) + __offsetof(Complex, re))) == 1.0
+}

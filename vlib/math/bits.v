@@ -4,25 +4,26 @@
 module math
 
 const (
-	uvnan = u64(0x7FF8000000000001)
-	uvinf = u64(0x7FF0000000000000)
-	uvneginf = u64(0xFFF0000000000000)
-	uvone = u64(0x3FF0000000000000)
-	mask = 0x7FF
-	shift = 64 - 11 - 1
-	bias = 1023
-	sign_mask = (u64(1)<<63)
-	frac_mask = ((u64(1)<<u64(shift)) - u64(1))
+	uvnan     = u64(0x7FF8000000000001)
+	uvinf     = u64(0x7FF0000000000000)
+	uvneginf  = u64(0xFFF0000000000000)
+	uvone     = u64(0x3FF0000000000000)
+	mask      = 0x7FF
+	shift     = 64 - 11 - 1
+	bias      = 1023
+	sign_mask = (u64(1) << 63)
+	frac_mask = ((u64(1) << u64(shift)) - u64(1))
 )
+
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.
 pub fn inf(sign int) f64 {
-	v := if sign >= 0 { uvinf } else { uvneginf }
+	v := if sign >= 0 { math.uvinf } else { math.uvneginf }
 	return f64_from_bits(v)
 }
 
 // nan returns an IEEE 754 ``not-a-number'' value.
 pub fn nan() f64 {
-	return f64_from_bits(uvnan)
+	return f64_from_bits(math.uvnan)
 }
 
 // is_nan reports whether f is an IEEE 754 ``not-a-number'' value.

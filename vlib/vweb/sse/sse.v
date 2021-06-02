@@ -37,7 +37,7 @@ pub struct SSEMessage {
 
 pub fn new_connection(conn &net.TcpConn) &SSEConnection {
 	return &SSEConnection{
-		conn: conn
+		conn: unsafe { conn }
 	}
 }
 
@@ -53,7 +53,7 @@ pub fn (mut sse SSEConnection) start() ? {
 		start_sb.write_string('\r\n$k: $v')
 	}
 	start_sb.write_string('\r\n')
-	sse.conn.write(start_sb.buf) or { return error('could not start sse response') }
+	sse.conn.write(start_sb) or { return error('could not start sse response') }
 }
 
 // send_message sends a single message to the http client that listens for SSE.
@@ -73,5 +73,5 @@ pub fn (mut sse SSEConnection) send_message(message SSEMessage) ? {
 		sb.write_string('retry: $message.retry\n')
 	}
 	sb.write_string('\n')
-	sse.conn.write(sb.buf) ?
+	sse.conn.write(sb) ?
 }

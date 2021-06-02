@@ -6,12 +6,13 @@ const (
 	invalid_escapes = ['(', '{', '$', '`', '.']
 )
 
+[direct_array_access]
 pub fn smart_quote(str string, raw bool) string {
 	len := str.len
 	if len == 0 {
 		return str
 	}
-	mut result := strings.new_builder(0)
+	mut result := strings.new_builder(len)
 	mut pos := -1
 	mut last := ''
 	// TODO: This should be a single char?
@@ -27,16 +28,12 @@ pub fn smart_quote(str string, raw bool) string {
 			break
 		}
 		if pos + 1 < len {
-			unsafe {
-				next = str.str[pos + 1].ascii_str()
-			}
+			next = str[pos + 1].ascii_str()
 		}
 		mut current := str
 		mut toadd := str
 		if len > 1 {
-			unsafe {
-				current = str.str[pos].ascii_str()
-			}
+			current = str[pos].ascii_str()
 			toadd = current
 		}
 		// double quote

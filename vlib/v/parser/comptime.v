@@ -140,8 +140,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		path = os.join_path(dir, tmpl_path)
 	}
 	if !os.exists(path) {
-		// can be in `templates/`
 		if is_html {
+			// can be in `templates/`
 			path = os.join_path(dir, 'templates', fn_path_joined)
 			path += '.html'
 		}
@@ -151,6 +151,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 					scope: 0
 					is_vweb: true
 					method_name: n
+					args_var: literal_string_param
 					pos: start_pos.extend(p.prev_tok.position())
 				}
 			}
@@ -186,10 +187,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		println('')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
-	file = ast.File{
-		...file
-		path: tmpl_path
-	}
+	file.path = tmpl_path
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {

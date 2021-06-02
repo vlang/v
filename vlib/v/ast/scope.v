@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
+[heap]
 pub struct Scope {
 pub mut:
 	// mut:
@@ -192,7 +193,7 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 }
 
 [inline]
-fn (s &Scope) contains(pos int) bool {
+pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 

@@ -103,7 +103,7 @@ fn (mut zftp FTP) read() ?(int, string) {
 
 pub fn (mut zftp FTP) connect(ip string) ?bool {
 	zftp.conn = net.dial_tcp('$ip:21') ?
-	zftp.reader = io.new_buffered_reader(reader: io.make_reader(zftp.conn))
+	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
 	code, _ := zftp.read() ?
 	if code == ftp.connected {
 		return true
@@ -184,7 +184,7 @@ fn new_dtp(msg string) ?&DTP {
 	}
 	conn := net.dial_tcp('$ip:$port') or { return error('Cannot connect to the data channel') }
 	dtp.conn = conn
-	dtp.reader = io.new_buffered_reader(reader: io.make_reader(dtp.conn))
+	dtp.reader = io.new_buffered_reader(reader: dtp.conn)
 	return dtp
 }
 

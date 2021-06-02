@@ -45,10 +45,6 @@ NB: the build flags are shared with the run command too:
       If value is not provided, it is assumed to be set to `true`.
       `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
 
-   -e <experiment>, -experiments <experiment>
-      Enable the specified experiment.
-      Currently, the only experiment available is: `prealloc`
-
    -g
       Compile the executable in debug mode, allowing code to be debugged more easily.
 
@@ -154,6 +150,10 @@ NB: the build flags are shared with the run command too:
       and will become an error, after vlib modules are cleaned up.
 
 For C-specific build flags, use `v help build-c`.
+For JS-specific build flags, use `v help build-js`.
+For Native-specific build flags, use `v help build-native`.
+
+For Native-specific build flags, use `v help build-native`.
 
 See also:
    `v help run` for documentation regarding `v run`.

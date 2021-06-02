@@ -44,11 +44,6 @@ pub fn (b []byte) clone() []byte {
 
 // TODO remove this once runes are implemented
 pub fn (b []byte) bytestr() string {
-	return bytes2string(b)
-}
-
-// TODO copy pasted from builder.v
-fn bytes2string(b []byte) string {
 	unsafe {
 		buf := malloc(b.len + 1)
 		C.memcpy(buf, b.data, b.len)

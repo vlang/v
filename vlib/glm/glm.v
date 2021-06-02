@@ -43,7 +43,7 @@ pub fn vec3(x f32, y f32, z f32) Vec3 {
 
 fn mat4(f &f32) Mat4 {
 	res := Mat4{
-		data: f
+		data: unsafe { f }
 	}
 	return res
 }
@@ -116,7 +116,7 @@ fn (a Vec3) print() {
 	x := a.x
 	y := a.y
 	z := a.z
-	C.printf('vec3{%f,%f,%f}\n', x, y, z)
+	C.printf(c'vec3{%f,%f,%f}\n', x, y, z)
 	// println('vec3{$x,$y,$z}')
 }
 

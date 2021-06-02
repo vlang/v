@@ -56,3 +56,11 @@ fn test_nested_opt() {
 	a := f(f(f(-3) or { -7 }) or { 4 }) or { 17 }
 	assert a == 4
 }
+
+fn foo() ?string {
+	return 'hi'
+}
+
+fn test_opt_subexp_field() ? {
+	assert foo() ?.len == 2
+}

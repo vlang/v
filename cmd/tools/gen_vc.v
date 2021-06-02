@@ -91,7 +91,7 @@ mut:
 struct WebhookServer {
 	vweb.Context
 mut:
-	gen_vc &GenVC = 0 // initialized in init_once
+	gen_vc &GenVC = 0 // initialized in init_server
 }
 
 // storage for flag options
@@ -125,7 +125,7 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(flag_options.port)
+		vweb.run<WebhookServer>(&WebhookServer{}, flag_options.port)
 	} else {
 		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
@@ -155,12 +155,6 @@ pub fn (mut ws WebhookServer) init_server() {
 	ws.gen_vc.init()
 	// ws.gen_vc = new_gen_vc(flag_options)
 }
-
-/*
-pub fn (mut ws WebhookServer) init() {
-	// ws.init_once()
-}
-*/
 
 pub fn (mut ws WebhookServer) index() {
 	eprintln('WebhookServer.index() called')
@@ -198,7 +192,6 @@ fn parse_flags(mut fp flag.FlagParser) FlagOptions {
 	}
 }
 
-// init
 fn (mut gen_vc GenVC) init() {
 	// purge repos if flag is passed
 	if gen_vc.options.purge {

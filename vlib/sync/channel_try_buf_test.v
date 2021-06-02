@@ -1,6 +1,6 @@
 fn test_channel_try_buffered() {
 	ch := chan int{cap: 5}
-	for z in 2..13 {
+	for z in 2 .. 13 {
 		if ch.try_push(z) == .not_ready {
 			assert z == 7
 			break

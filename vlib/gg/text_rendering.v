@@ -68,13 +68,13 @@ fn new_ft(c FTConfig) ?&FT {
 
 			return &FT{
 				fons: fons
-				font_normal: C.fonsAddFontMem(fons, 'sans', bytes_normal.data, bytes_normal.len,
+				font_normal: C.fonsAddFontMem(fons, c'sans', bytes_normal.data, bytes_normal.len,
 					false)
-				font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len,
+				font_bold: C.fonsAddFontMem(fons, c'sans', bytes_bold.data, bytes_bold.len,
 					false)
-				font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len,
+				font_mono: C.fonsAddFontMem(fons, c'sans', bytes_mono.data, bytes_mono.len,
 					false)
-				font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len,
+				font_italic: C.fonsAddFontMem(fons, c'sans', bytes_italic.data, bytes_italic.len,
 					false)
 				scale: c.scale
 			}
@@ -129,10 +129,10 @@ fn new_ft(c FTConfig) ?&FT {
 	fons := sfons.create(512, 512, 1)
 	return &FT{
 		fons: fons
-		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
-		font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len, false)
-		font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len, false)
-		font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len,
+		font_normal: C.fonsAddFontMem(fons, c'sans', bytes.data, bytes.len, false)
+		font_bold: C.fonsAddFontMem(fons, c'sans', bytes_bold.data, bytes_bold.len, false)
+		font_mono: C.fonsAddFontMem(fons, c'sans', bytes_mono.data, bytes_mono.len, false)
+		font_italic: C.fonsAddFontMem(fons, c'sans', bytes_italic.data, bytes_italic.len,
 			false)
 		scale: c.scale
 	}

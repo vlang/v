@@ -54,3 +54,21 @@ fn test_interface_fields() {
 	assert c.breed == 'what??'
 	assert d.breed == 'what??'
 }
+
+struct Nofun {
+	foo fn (int) int
+}
+
+interface NofunInterface {
+	foo fn (int) int
+}
+
+fn my_fn(a int) int {
+	assert a == 123
+	return a * 2
+}
+
+fn test_interface_fn_pointer_fields() {
+	nf := NofunInterface(Nofun{my_fn})
+	assert nf.foo(123) == 246
+}

@@ -17,6 +17,8 @@ const (
 	double_quote = `"`
 	// char used as number separator
 	num_sep      = `_`
+	b_lf         = 10
+	b_cr         = 13
 )
 
 pub struct Scanner {
@@ -213,11 +215,15 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
-	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(util.is_name_char(c) || c.is_digit()) {
+			break
+		}
 		s.pos++
 	}
 	name := s.text[start..s.pos]
@@ -284,6 +290,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -367,6 +374,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -492,18 +500,22 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
-	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_space() {
-		if util.is_nl(s.text[s.pos]) && s.is_vh {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
 			return
 		}
-		if s.pos + 1 < s.text.len && s.text[s.pos] == `\r` && s.text[s.pos + 1] == `\n` {
+		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
+		if c_is_nl && s.is_vh {
+			return
+		}
+		if s.pos + 1 < s.text.len && c == scanner.b_cr && s.text[s.pos + 1] == scanner.b_lf {
 			s.is_crlf = true
 		}
 		// Count \r\n as one line
-		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
+		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == scanner.b_cr && c == scanner.b_lf) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -562,6 +574,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	return s.buffer_scan()
 }
 
+[direct_array_access]
 pub fn (mut s Scanner) buffer_scan() token.Token {
 	for {
 		cidx := s.tidx
@@ -579,7 +592,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 	return s.new_eof_token()
 }
 
-[inline]
+[direct_array_access; inline]
 pub fn (s &Scanner) peek_token(n int) token.Token {
 	idx := s.tidx + n
 	if idx >= s.all_tokens.len {
@@ -589,7 +602,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 	return t
 }
 
-[inline]
+[direct_array_access; inline]
 fn (s &Scanner) look_ahead(n int) byte {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
@@ -598,6 +611,7 @@ fn (s &Scanner) look_ahead(n int) byte {
 	}
 }
 
+[direct_array_access]
 fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
@@ -859,7 +873,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
 				// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
-				if '@' + name in token.valid_at_tokens {
+				if '@' + name in token.valid_at_tokens || name.starts_with('cc') { // `=@cccond` in inline assembly
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
@@ -975,7 +989,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
-					if s.text[s.pos - 1] == `\r` {
+					if s.text[s.pos - 1] == scanner.b_cr {
 						comment_line_end--
 					} else {
 						// fix line_nr, \n was read; the comment is marked on the next line
@@ -987,7 +1001,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
-						for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
+						for j := start - 2; j >= 0 && s.text[j] != scanner.b_lf; j-- {
 							if s.text[j] !in [`\t`, ` `] {
 								is_separate_line_comment = false
 							}
@@ -1015,7 +1029,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							s.line_nr--
 							s.error('comment not terminated')
 						}
-						if s.text[s.pos] == `\n` {
+						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
 							continue
 						}
@@ -1076,6 +1090,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	return count
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
@@ -1098,7 +1113,7 @@ fn (mut s Scanner) ident_string() string {
 	if start_char == s.quote
 		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
-	} else if start_char == `\n` {
+	} else if start_char == scanner.b_lf {
 		s.inc_line_number()
 	}
 	s.is_inside_string = false
@@ -1120,10 +1135,10 @@ fn (mut s Scanner) ident_string() string {
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
 			break
 		}
-		if c == `\r` {
+		if c == scanner.b_cr {
 			n_cr_chars++
 		}
-		if c == `\n` {
+		if c == scanner.b_lf {
 			s.inc_line_number()
 		}
 		// Don't allow \0
@@ -1268,7 +1283,7 @@ fn (mut s Scanner) ident_char() string {
 	return c
 }
 
-[inline]
+[direct_array_access; inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
@@ -1288,9 +1303,9 @@ fn (mut s Scanner) ignore_line() {
 	s.inc_line_number()
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
-	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
 		s.pos++
 	}
 }

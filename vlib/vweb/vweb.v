@@ -35,9 +35,10 @@ pub const (
 		'.txt':  'text/plain; charset=utf-8'
 		'.wasm': 'application/wasm'
 		'.xml':  'text/xml; charset=utf-8'
+		'.ico':  'img/x-icon'
 	}
-	max_http_post_size      = 1024 * 1024
-	default_port            = 8080
+	max_http_post_size = 1024 * 1024
+	default_port       = 8080
 )
 
 pub struct Context {
@@ -284,27 +285,50 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
+/*
 pub fn run<T>(port int) {
-	mut app := T{}
-	run_app<T>(mut app, port)
+	mut x := &T{}
+	run_app(mut x, port)
+}
+*/
+
+interface DbInterface {
+	db voidptr
 }
 
-pub fn run_app<T>(mut app T, port int) {
+// run_app
+pub fn run<T>(global_app &T, port int) {
+	// x := global_app.clone()
+	// mut global_app := &T{}
+	// mut app := &T{}
+	// run_app<T>(mut app, port)
+
 	mut l := net.listen_tcp(port) or { panic('failed to listen') }
 	println('[Vweb] Running app on http://localhost:$port')
-	app.Context = Context{
-		conn: 0
-	}
-	app.init_server()
-	$for method in T.methods {
-		$if method.return_type is Result {
-			// check routes for validity
-		}
-	}
+	// app.Context = Context{
+	// conn: 0
+	//}
+	// app.init_server()
+	// global_app.init_server()
+	//$for method in T.methods {
+	//$if method.return_type is Result {
+	// check routes for validity
+	//}
+	//}
 	for {
+		// Create a new app object for each connection, copy global data like db connections
+		mut request_app := &T{}
+		$if T is DbInterface {
+			request_app.db = global_app.db
+		} $else {
+			// println('vweb no db')
+		}
+		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
+		// request_app.Context = Context{
+		// conn: 0
+		//}
 		mut conn := l.accept() or { panic('accept() failed') }
-		// TODO: running handle_conn concurrently results in a race-condition
-		handle_conn<T>(mut conn, mut app)
+		handle_conn<T>(mut conn, mut request_app)
 	}
 }
 
@@ -315,7 +339,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	defer {
 		conn.close() or {}
 	}
-	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
+	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
 		reader.free()
 	}
@@ -359,11 +383,11 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// Serve a static file if it is one
 	// TODO: get the real path
-	url := urllib.parse(app.req.url.to_lower()) or {
+	url := urllib.parse(app.req.url) or {
 		eprintln('error parsing path: $err')
 		return
 	}
-	if serve_static<T>(mut app, url) {
+	if serve_if_static<T>(mut app, url) {
 		// successfully served a static file
 		return
 	}
@@ -443,7 +467,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	}
 
 	// The last route can end with ... indicating an array
-	if !route_words[route_words.len - 1].ends_with('...') {
+	if route_words.len == 0 || !route_words[route_words.len - 1].ends_with('...') {
 		return none
 	}
 
@@ -506,7 +530,8 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
-fn serve_static<T>(mut app T, url urllib.URL) bool {
+[manualfree]
+fn serve_if_static<T>(mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path]
 	mime_type := app.static_mime_types[url.path]
@@ -534,7 +559,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
 				if ext in vweb.mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path, vweb.mime_types[ext])
+					ctx.serve_static(mount_path + '/' + file, full_path)
 				}
 			}
 		}
@@ -572,9 +597,11 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
-pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
+pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.static_files[url] = file_path
-	ctx.static_mime_types[url] = mime_type
+	// ctx.static_mime_types[url] = mime_type
+	ext := os.file_ext(file_path)
+	ctx.static_mime_types[url] = vweb.mime_types[ext]
 }
 
 // Returns the ip address from the current user
@@ -595,6 +622,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
+	println('vweb error: $s')
 	ctx.form_error = s
 }
 

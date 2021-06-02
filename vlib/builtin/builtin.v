@@ -3,12 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global (
-	g_m2_buf &byte
-	g_m2_ptr &byte
-)
-
 // isnil returns true if an object is nil (only for C objects).
+[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
 }
@@ -27,15 +23,21 @@ fn on_panic(f fn(int)int) {
 
 // print_backtrace shows a backtrace of the current call stack on stdout
 pub fn print_backtrace() {
-	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// 1 frame for print_backtrace_skipping_top_frames
-	// 1 frame for print_backtrace itself
-	// ... print the rest of the backtrace frames ...
+	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// * print_backtrace_skipping_top_frames
+	// * print_backtrace itself
+	// * the rest of the backtrace frames
 	// => top 2 frames should be skipped, since they will not be informative to the developer
-	$if freestanding {
-		println(bare_backtrace())
-	} $else {
-		print_backtrace_skipping_top_frames(2)
+	$if !no_backtrace ? {
+		$if freestanding {
+			println(bare_backtrace())
+		} $else {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+			} $else {
+				print_backtrace_skipping_top_frames(2)
+			}
+		}
 	}
 }
 
@@ -44,12 +46,8 @@ struct VCastTypeIndexName {
 	tname  string
 }
 
-__global (
-	total_m              = i64(0)
-	nr_mallocs           = int(0)
-	// will be filled in cgen
-	as_cast_type_indexes []VCastTypeIndexName
-)
+// will be filled in cgen
+__global as_cast_type_indexes []VCastTypeIndexName
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
@@ -122,7 +120,7 @@ pub:
 	typ    int
 }
 
-pub enum AttributeKind {
+enum AttributeKind {
 	plain // [name]
 	string // ['name']
 	number // [123]

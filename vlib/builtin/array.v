@@ -10,9 +10,10 @@ pub struct array {
 pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
-	data voidptr
-	len  int // length of the array.
-	cap  int // capacity of the array.
+	data   voidptr
+	offset int // in bytes (should be `size_t`)
+	len    int // length of the array.
+	cap    int // capacity of the array.
 }
 
 // array.data uses a void pointer, which allows implementing arrays without generics and without generating
@@ -95,13 +96,13 @@ fn (mut a array) ensure_cap(required int) {
 		cap *= 2
 	}
 	new_size := cap * a.element_size
-	mut new_data := &byte(0)
+	new_data := vcalloc(new_size)
 	if a.data != voidptr(0) {
-		new_data = unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
-	} else {
-		new_data = vcalloc(new_size)
+		unsafe { C.memcpy(new_data, a.data, a.len * a.element_size) }
+		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
 	a.data = new_data
+	a.offset = 0
 	a.cap = cap
 }
 
@@ -309,14 +310,13 @@ fn (a array) slice(start int, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
-	mut data := &byte(0)
-	unsafe {
-		data = &byte(a.data) + start * a.element_size
-	}
+	offset := start * a.element_size
+	data := unsafe { &byte(a.data) + offset }
 	l := end - start
 	res := array{
 		element_size: a.element_size
 		data: data
+		offset: a.offset + offset
 		len: l
 		cap: l
 	}
@@ -386,13 +386,15 @@ fn (a &array) slice_clone(start int, _end int) array {
 		}
 	}
 	mut data := &byte(0)
+	offset := start * a.element_size
 	unsafe {
-		data = &byte(a.data) + start * a.element_size
+		data = &byte(a.data) + offset
 	}
 	l := end - start
 	res := array{
 		element_size: a.element_size
 		data: data
+		offset: offset
 		len: l
 		cap: l
 	}
@@ -486,7 +488,7 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
-	unsafe { free(a.data) }
+	unsafe { free(&byte(a.data) - a.offset) }
 }
 
 [unsafe]
@@ -529,11 +531,13 @@ pub fn (b []byte) hex() string {
 	for i in b {
 		n0 := i >> 4
 		unsafe {
-			hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
+			hex[dst_i] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
+			dst_i++
 		}
 		n1 := i & 0xF
 		unsafe {
-			hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
+			hex[dst_i] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
+			dst_i++
 		}
 	}
 	unsafe {

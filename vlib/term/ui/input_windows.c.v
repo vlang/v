@@ -21,13 +21,13 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if ctx_ptr != 0 {
-		if ctx_ptr.cfg.use_alternate_buffer {
+	if ui.ctx_ptr != 0 {
+		if ui.ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
 			print('\x1b[?1049l')
 		}
-		C.SetConsoleMode(ctx_ptr.stdin_handle, stdin_at_startup)
+		C.SetConsoleMode(ui.ctx_ptr.stdin_handle, ui.stdin_at_startup)
 	}
 	load_title()
 	os.flush()
@@ -44,7 +44,7 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if C.GetConsoleMode(stdin_handle, &stdin_at_startup) == 0 {
+	if C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) == 0 {
 		panic('could not get stdin console mode')
 	}
 
@@ -77,19 +77,18 @@ pub fn init(cfg Config) &Context {
 	}
 
 	unsafe {
-		x := &ctx_ptr
+		x := &ui.ctx_ptr
 		*x = ctx
 	}
-
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
-		os.signal(code, fn() {
-			mut c := ctx_ptr
+		os.signal_opt(code, fn (_ os.Signal) {
+			mut c := ui.ctx_ptr
 			if c != 0 {
 				c.cleanup()
 			}
 			exit(0)
-		})
+		}) or {}
 	}
 
 	ctx.stdin_handle = stdin_handle
@@ -129,10 +128,12 @@ fn (mut ctx Context) parse_events() {
 	if !C.GetNumberOfConsoleInputEvents(ctx.stdin_handle, &nr_events) {
 		panic('could not get number of events in stdin')
 	}
-	if nr_events < 1 { return }
+	if nr_events < 1 {
+		return
+	}
 
 	// print('$nr_events | ')
-	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
+	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], ui.buf_size, &nr_events) {
 		panic('could not read from stdin')
 	}
 	for i in 0 .. nr_events {
@@ -142,13 +143,16 @@ fn (mut ctx Context) parse_events() {
 				e := unsafe { ctx.read_buf[i].Event.KeyEvent }
 				ch := e.wVirtualKeyCode
 				ascii := unsafe { e.uChar.AsciiChar }
-				if e.bKeyDown == 0 { continue } // we don't handle key_up events because they don't exist on linux...
+				if e.bKeyDown == 0 {
+					continue
+				}
+				// we don't handle key_up events because they don't exist on linux...
 				// see: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 				code := match int(ch) {
 					C.VK_BACK { KeyCode.backspace }
 					C.VK_RETURN { KeyCode.enter }
 					C.VK_PRIOR { KeyCode.page_up }
-					14 ... 20 { KeyCode.null }
+					14...20 { KeyCode.null }
 					C.VK_NEXT { KeyCode.page_down }
 					C.VK_END { KeyCode.end }
 					C.VK_HOME { KeyCode.home }
@@ -158,17 +162,23 @@ fn (mut ctx Context) parse_events() {
 					C.VK_DOWN { KeyCode.down }
 					C.VK_INSERT { KeyCode.insert }
 					C.VK_DELETE { KeyCode.delete }
-					65 ... 90 { KeyCode(ch + 32) } // letters
-					91 ... 93 { KeyCode.null } // special keys
-					96 ... 105 { KeyCode(ch - 48) } // numpad numbers
-					112 ... 135 { KeyCode(ch + 178) } // f1 - f24
+					65...90 { KeyCode(ch + 32) } // letters
+					91...93 { KeyCode.null } // special keys
+					96...105 { KeyCode(ch - 48) } // numpad numbers
+					112...135 { KeyCode(ch + 178) } // f1 - f24
 					else { KeyCode(ascii) }
 				}
 
 				mut modifiers := Modifiers{}
-				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers.set(.alt) }
-				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers.set(.ctrl) }
-				if e.dwControlKeyState & 0x10        != 0 { modifiers.set(.shift) }
+				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
+					modifiers.set(.alt)
+				}
+				if e.dwControlKeyState & (0x4 | 0x8) != 0 {
+					modifiers.set(.ctrl)
+				}
+				if e.dwControlKeyState & 0x10 != 0 {
+					modifiers.set(.shift)
+				}
 
 				mut event := &Event{
 					typ: .key_down
@@ -190,9 +200,15 @@ fn (mut ctx Context) parse_events() {
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
 				mut modifiers := Modifiers{}
-				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers.set(.alt) }
-				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers.set(.ctrl) }
-				if e.dwControlKeyState & 0x10        != 0 { modifiers.set(.shift) }
+				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
+					modifiers.set(.alt)
+				}
+				if e.dwControlKeyState & (0x4 | 0x8) != 0 {
+					modifiers.set(.ctrl)
+				}
+				if e.dwControlKeyState & 0x10 != 0 {
+					modifiers.set(.shift)
+				}
 				// TODO: handle capslock/numlock/etc?? events exist for those keys
 				match int(e.dwEventFlags) {
 					C.MOUSE_MOVED {
@@ -220,23 +236,34 @@ fn (mut ctx Context) parse_events() {
 							button: button
 							modifiers: modifiers
 						})
-					} C.MOUSE_WHEELED {
+					}
+					C.MOUSE_WHEELED {
 						ctx.event(&Event{
 							typ: .mouse_scroll
-							direction: if i16(e.dwButtonState >> 16) < 0 { Direction.up } else { Direction.down }
+							direction: if i16(e.dwButtonState >> 16) < 0 {
+								Direction.up
+							} else {
+								Direction.down
+							}
 							x: x
 							y: y
 							modifiers: modifiers
 						})
-					} 0x0008 /* C.MOUSE_HWHEELED */ {
+					}
+					0x0008 /* C.MOUSE_HWHEELED */ {
 						ctx.event(&Event{
 							typ: .mouse_scroll
-							direction: if i16(e.dwButtonState >> 16) < 0 { Direction.right } else { Direction.left }
+							direction: if i16(e.dwButtonState >> 16) < 0 {
+								Direction.right
+							} else {
+								Direction.left
+							}
 							x: x
 							y: y
 							modifiers: modifiers
 						})
-					} 0 /* CLICK */, C.DOUBLE_CLICK {
+					}
+					0 /* CLICK */, C.DOUBLE_CLICK {
 						button := match int(e.dwButtonState) {
 							0 { ctx.mouse_down }
 							1 { MouseButton.left }
@@ -251,7 +278,8 @@ fn (mut ctx Context) parse_events() {
 							button: button
 							modifiers: modifiers
 						})
-					} else {}
+					}
+					else {}
 				}
 			}
 			C.WINDOW_BUFFER_SIZE_EVENT {
@@ -287,12 +315,12 @@ fn (mut ctx Context) parse_events() {
 
 [inline]
 fn save_title() {
-    // restore the previously saved terminal title
-    print('\x1b[22;0t')
+	// restore the previously saved terminal title
+	print('\x1b[22;0t')
 }
 
 [inline]
 fn load_title() {
-    // restore the previously saved terminal title
-    print('\x1b[23;0t')
+	// restore the previously saved terminal title
+	print('\x1b[23;0t')
 }

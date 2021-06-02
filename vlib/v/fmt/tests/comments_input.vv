@@ -1,3 +1,9 @@
+import time // foo
+/*
+block
+comment
+*/
+
 fn fun() int {
 	return /* comment zero */ 0 // another comment
 }

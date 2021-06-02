@@ -180,7 +180,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
 						continue
-					} else if sub_expr.left is CastExpr {
+					} else if sub_expr.left is CastExpr || sub_expr.left is IndexExpr {
 						needs_braces = true
 					}
 					break
@@ -362,26 +362,26 @@ pub fn (x Expr) str() string {
 			return '__offsetof($x.struct_type, $x.field)'
 		}
 		StringInterLiteral {
-			mut res := []string{}
-			res << "'"
+			mut res := strings.new_builder(50)
+			res.write_string("'")
 			for i, val in x.vals {
-				res << val
+				res.write_string(val)
 				if i >= x.exprs.len {
 					break
 				}
-				res << '$'
+				res.write_string('$')
 				fspec_str, needs_braces := x.get_fspec_braces(i)
 				if needs_braces {
-					res << '{'
-					res << x.exprs[i].str()
-					res << fspec_str
-					res << '}'
+					res.write_string('{')
+					res.write_string(x.exprs[i].str())
+					res.write_string(fspec_str)
+					res.write_string('}')
 				} else {
-					res << x.exprs[i].str()
+					res.write_string(x.exprs[i].str())
 				}
 			}
-			res << "'"
-			return res.join('')
+			res.write_string("'")
+			return res.str()
 		}
 		StringLiteral {
 			return "'$x.val'"
@@ -493,7 +493,8 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+	x := f.name.trim_prefix(f.mod + '.')
+	return '$x = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {

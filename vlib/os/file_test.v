@@ -59,6 +59,131 @@ fn testsuite_end() ? {
 	assert !os.is_dir(tfolder)
 }
 
+// test_read_bytes_into_newline_text tests reading text from a file with newlines.
+// This test simulates reading a larger text file step by step into a buffer and
+// returning on each newline, even before the buffer is full, and reaching EOF before
+// the buffer is completely filled.
+fn test_read_bytes_into_newline_text() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	f.write_string('Hello World!\nGood\r morning.') ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut buf := []byte{len: 8}
+
+	n0 := f.read_bytes_into_newline(mut buf) ?
+	assert n0 == 8
+
+	n1 := f.read_bytes_into_newline(mut buf) ?
+	assert n1 == 5
+
+	n2 := f.read_bytes_into_newline(mut buf) ?
+	assert n2 == 8
+
+	n3 := f.read_bytes_into_newline(mut buf) ?
+	assert n3 == 6
+
+	f.close()
+}
+
+// test_read_bytes_into_newline_binary tests reading a binary file with NUL bytes.
+// This test simulates the scenario when a byte stream is read and a newline byte
+// appears in that stream and an EOF occurs before the buffer is full.
+fn test_read_bytes_into_newline_binary() ? {
+	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	mut bw := []byte{len: 15}
+	bw[9] = 0xff
+	bw[12] = 10 // newline
+
+	n0_bytes := bw[0..10]
+	n1_bytes := bw[10..13]
+	n2_bytes := bw[13..]
+
+	mut f := os.open_file(tfile, 'w') ?
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut buf := []byte{len: 10}
+
+	n0 := f.read_bytes_into_newline(mut buf) ?
+	assert n0 == 10
+	assert buf[..n0] == n0_bytes
+
+	n1 := f.read_bytes_into_newline(mut buf) ?
+	assert n1 == 3
+	assert buf[..n1] == n1_bytes
+
+	n2 := f.read_bytes_into_newline(mut buf) ?
+	assert n2 == 2
+	assert buf[..n2] == n2_bytes
+	f.close()
+}
+
+// test_read_eof_last_read_partial_buffer_fill tests that when reading a file
+// the end-of-file is detected and results in a none error being returned. This
+// test simulates file reading where the end-of-file is reached inside an fread
+// containing data.
+fn test_read_eof_last_read_partial_buffer_fill() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	bw := []byte{len: 199, init: 5}
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut br := []byte{len: 100}
+	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
+	n0 := f.read(mut br) ?
+	assert n0 == 100
+	// Read remaining 99 bytes of 199 byte file, should fill buffer with no
+	// error, even though end-of-file was reached.
+	n1 := f.read(mut br) ?
+	assert n1 == 99
+	// Read again, end-of-file was previously reached so should return none
+	// error.
+	if _ := f.read(mut br) {
+		// This is not intended behavior because the read function should
+		// not return a number of bytes read when end-of-file is reached.
+		assert false
+	} else {
+		// Expect none to have been returned when end-of-file.
+		assert err is none
+	}
+	f.close()
+}
+
+// test_read_eof_last_read_full_buffer_fill tests that when reading a file the
+// end-of-file is detected and results in a none error being returned. This test
+// simulates file reading where the end-of-file is reached at the beinning of an
+// fread that returns no data.
+fn test_read_eof_last_read_full_buffer_fill() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	bw := []byte{len: 200, init: 5}
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut br := []byte{len: 100}
+	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
+	n0 := f.read(mut br) ?
+	assert n0 == 100
+	// Read remaining 100 bytes of 200 byte file, should fill buffer with no
+	// error. The end-of-file isn't reached yet, but there is no more data.
+	n1 := f.read(mut br) ?
+	assert n1 == 100
+	// Read again, end-of-file was previously reached so should return none
+	// error.
+	if _ := f.read(mut br) {
+		// This is not intended behavior because the read function should
+		// not return a number of bytes read when end-of-file is reached.
+		assert false
+	} else {
+		// Expect none to have been returned when end-of-file.
+		assert err is none
+	}
+	f.close()
+}
+
 fn test_write_struct() ? {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))

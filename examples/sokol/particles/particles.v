@@ -117,8 +117,7 @@ fn frame(user_data voidptr) {
 	app.last = t
 }
 
-fn event(ev &C.sapp_event, user_data voidptr) {
-	mut app := &App(user_data)
+fn event(ev &C.sapp_event, mut app App) {
 	if ev.@type == .mouse_move {
 		app.ps.explode(ev.mouse_x, ev.mouse_y)
 	}

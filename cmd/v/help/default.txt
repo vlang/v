@@ -8,9 +8,10 @@ Examples:
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
    v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
-   
-   v -watch hello.v          Re-compiles over and over the same compilation, when a source change is detected.
-   v -watch run file.v       Re-runs over and over the same file.v, when a source change is detected.
+
+   v watch hello.v           Re-does the same compilation, when a source code change is detected.
+                             The program is only compiled, not run.
+   v watch run hello.v       Re-runs the same `hello.v` file, when a source code change is detected.
 
 V supports the following commands:
 * New project scaffolding:
@@ -25,6 +26,7 @@ V supports the following commands:
    doc               Generate the documentation for a V module.
    vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
+   watch             Re-compile/re-run a source file, each time it is changed.
 
 * Installation/self updating:
    symlink           Create a symbolic link for V.
@@ -39,7 +41,8 @@ V supports the following commands:
    update            Update an installed module from VPM.
    upgrade           Upgrade all the outdated modules.
    list              List all installed modules.
-   outdated          Show installed modules that need updates.
+   outdated          List installed modules that need updates.
+   show              Display information about a module on vpm
 
 * Others:
    doctor            Display some useful info about your system to help reporting bugs.
@@ -48,8 +51,8 @@ V supports the following commands:
                      Use `tracev yourfile.v` when the compiler panics.
                      NB: `tracev` is much slower and more verbose than ordinary `v`
 
-Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`
+Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`, `v help build-native`
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, watch, search, install, remove, update, bin2v, check-md are properly documented currently.

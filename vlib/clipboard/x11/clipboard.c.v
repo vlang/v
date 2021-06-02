@@ -6,9 +6,15 @@ import time
 import sync
 import math
 
+$if freebsd {
+	#flag -I/usr/local/include
+	#flag -L/usr/local/lib
+} $else $if openbsd {
+	#flag -I/usr/X11R6/include
+	#flag -L/usr/X11R6/lib
+}
 #flag -lX11
-#flag freebsd -I/usr/local/include
-#flag freebsd -L/usr/local/lib -lX11
+
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
 [typedef]
@@ -36,17 +42,17 @@ fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, fo
 
 fn C.XSendEvent(d &C.Display, requestor Window, propogate int, mask i64, event &C.XEvent)
 
-fn C.XInternAtom(d &C.Display, typ byteptr, only_if_exists int) Atom
+fn C.XInternAtom(d &C.Display, typ &byte, only_if_exists int) Atom
 
 fn C.XCreateSimpleWindow(d &C.Display, root Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) Window
 
-fn C.XOpenDisplay(name byteptr) &C.Display
+fn C.XOpenDisplay(name &byte) &C.Display
 
 fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time int) int
 
 fn C.XSync(d &C.Display, discard int) int
 
-fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
+fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&byte) int
 
 fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
 
@@ -149,7 +155,7 @@ struct Property {
 	actual_type   Atom
 	actual_format int
 	nitems        u64
-	data          byteptr
+	data          &byte
 }
 
 // new_clipboard returns a new `Clipboard` instance allocated on the heap.
@@ -359,7 +365,7 @@ fn (mut cb Clipboard) start_listener() {
 						if cb.is_supported_target(prop.actual_type) {
 							cb.got_text = true
 							unsafe {
-								cb.text = byteptr(prop.data).vstring() // TODO: return byteptr to support other mimetypes
+								cb.text = prop.data.vstring() // TODO: return byteptr to support other mimetypes
 							}
 						}
 						cb.mutex.unlock()
@@ -393,14 +399,14 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 	actual_format := 0
 	nitems := u64(0)
 	bytes_after := u64(0)
-	ret := byteptr(0)
+	ret := &byte(0)
 	mut read_bytes := 1024
 	for {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type,
-			&actual_format, &nitems, &bytes_after, &ret)
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format,
+			&nitems, &bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
 			break
@@ -421,7 +427,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 		// next instead as the lowest common denominator
 		return cb.get_atom(.xa_string)
 	} else {
-		atom_list := &Atom(prop.data)
+		atom_list := &Atom(voidptr(prop.data))
 
 		mut to_be_requested := Atom(0)
 

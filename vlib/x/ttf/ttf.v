@@ -540,7 +540,7 @@ fn (mut tf TTF_File) get_fixed() f32 {
 fn (mut tf TTF_File) get_string(length int) string {
 	tmp_pos := u64(tf.pos)
 	tf.pos += u32(length)
-	return unsafe { tos(byteptr(u64(tf.buf.data) + tmp_pos), length) }
+	return unsafe { tos(&byte(u64(tf.buf.data) + tmp_pos), length) }
 }
 
 fn (mut tf TTF_File) get_unicode_string(length int) string {

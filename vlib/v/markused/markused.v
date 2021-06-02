@@ -7,19 +7,21 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.File) {
+pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
-
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
-
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',
+		'str_intp',
+		'format_sb',
 		'__new_array_with_default',
 		'__new_array_with_array_default',
+		'v_realloc' /* needed for _STR */,
+		'v_malloc' /* needed for _STR */,
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
@@ -65,6 +67,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'18.gt',
 		'18.le',
 		'18.ge',
+		'fast_string_eq',
 		// ustring. ==, !=, etc...
 		'19.eq',
 		'19.ne',
@@ -78,9 +81,11 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'21.set',
 		'21.get_unsafe',
 		'21.set_unsafe',
+		'21.get_with_check' /* used for `x := a[i] or {}` */,
 		'21.clone_static',
 		'21.first',
 		'21.last',
+		'21.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
 		'21.reverse',
 		'21.repeat',
 		'21.slice',
@@ -96,10 +101,23 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'65557.set',
 		'65557.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
+		'json__decode_string',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
 	]
+
+	if pref.is_bare {
+		all_fn_root_names << [
+			'strlen',
+			'memcmp',
+			'memcpy',
+			'realloc',
+			'vsnprintf',
+			'vsprintf',
+		]
+	}
+
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
 			'__new_array_noscan',
@@ -124,7 +142,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			all_fn_root_names << k
 			continue
 		}
-		if k.ends_with('.str') {
+		// auto generated string interpolation functions, may
+		// call .str or .auto_str methods for user types:
+		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			all_fn_root_names << k
 			continue
 		}
@@ -136,11 +156,25 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			all_fn_root_names << k
 			continue
 		}
+		// sync:
+		if k == 'sync.new_channel_st' {
+			all_fn_root_names << k
+			continue
+		}
+		if k == 'sync.channel_select' {
+			all_fn_root_names << k
+			continue
+		}
+		if method_receiver_typename == '&sync.Channel' {
+			all_fn_root_names << k
+			continue
+		}
 		if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
 			|| k.ends_with('.runlock') {
 			all_fn_root_names << k
 			continue
 		}
+		// testing framework:
 		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
@@ -152,11 +186,24 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 				continue
 			}
 		}
+		// public/exported functions can not be skipped,
+		// especially when producing a shared library:
 		if mfn.is_pub && pref.is_shared {
 			all_fn_root_names << k
 			continue
 		}
+		if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
+			// TODO: mark the used operators in the checker
+			all_fn_root_names << k
+			continue
+		}
+		if pref.prealloc && k.starts_with('prealloc_') {
+			all_fn_root_names << k
+			continue
+		}
 	}
+
+	// handle assertions and testing framework callbacks:
 	if pref.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
@@ -173,6 +220,44 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		}
 	}
 
+	// handle interface implementation methods:
+	for isym in table.type_symbols {
+		if isym.kind != .interface_ {
+			continue
+		}
+		interface_info := isym.info as ast.Interface
+		if interface_info.methods.len == 0 {
+			continue
+		}
+		for itype in interface_info.types {
+			pitype := itype.set_nr_muls(1)
+			for method in interface_info.methods {
+				interface_implementation_method_name := '${pitype}.$method.name'
+				$if trace_skip_unused_interface_methods ? {
+					eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+				}
+				all_fn_root_names << interface_implementation_method_name
+			}
+		}
+	}
+
+	// handle vweb magic router methods:
+	typ_vweb_result := table.find_type_idx('vweb.Result')
+	if typ_vweb_result != 0 {
+		for vgt in table.used_vweb_types {
+			sym_app := table.get_type_symbol(vgt)
+			for m in sym_app.methods {
+				if m.return_type == typ_vweb_result {
+					pvgt := vgt.set_nr_muls(1)
+					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+					all_fn_root_names << '${pvgt}.$m.name'
+				}
+			}
+		}
+	}
+
+	//
+
 	mut walker := Walker{
 		table: table
 		files: ast_files
@@ -180,6 +265,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		all_consts: all_consts
 	}
 	// println( all_fns.keys() )
+	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {
@@ -215,7 +301,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 	}
 }
 
-fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -223,7 +309,7 @@ fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
 	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
+		file := ast_files[i]
 		for node in file.stmts {
 			match node {
 				ast.FnDecl {

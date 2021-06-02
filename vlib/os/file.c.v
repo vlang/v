@@ -13,9 +13,11 @@ struct FileInfo {
 	size int
 }
 
-fn C.fseeko(voidptr, u64, int) int
+fn C.fseeko(&C.FILE, u64, int) int
 
-fn C._fseeki64(voidptr, u64, int) int
+fn C._fseeki64(&C.FILE, u64, int) int
+
+fn C.getc(&C.FILE) int
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
@@ -131,11 +133,35 @@ pub fn create(path string) ?File {
 	}
 }
 
-// open_stdin - return an os.File for stdin, so that you can use .get_line on it too.
+[deprecated: 'use os.stdin() instead']
+[deprecated_after: '2021-05-17']
 pub fn open_stdin() File {
+	return stdin()
+}
+
+// stdin - return an os.File for stdin, so that you can use .get_line on it too.
+pub fn stdin() File {
 	return File{
 		fd: 0
 		cfile: C.stdin
+		is_opened: true
+	}
+}
+
+// stdout - return an os.File for stdout
+pub fn stdout() File {
+	return File{
+		fd: 1
+		cfile: C.stdout
+		is_opened: true
+	}
+}
+
+// stderr - return an os.File for stderr
+pub fn stderr() File {
+	return File{
+		fd: 2
+		cfile: C.stderr
 		is_opened: true
 	}
 }
@@ -155,7 +181,7 @@ pub fn (mut f File) write(buf []byte) ?int {
 		}
 	}
 	*/
-	written := int(C.fwrite(buf.data, buf.len, 1, f.cfile))
+	written := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 	if written == 0 && buf.len != 0 {
 		return error('0 bytes written')
 	}
@@ -178,7 +204,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	}
 	*/
 	// TODO perf
-	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
+	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
@@ -196,7 +222,7 @@ pub fn (mut f File) write_string(s string) ?int {
 		return error('file is not opened')
 	}
 	// TODO perf
-	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
+	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
@@ -297,6 +323,31 @@ pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
 }
 
 // **************************** Read ops  ***************************
+
+// fread wraps C.fread and handles error and end-of-file detection.
+fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) ?int {
+	nbytes := int(C.fread(ptr, item_size, items, stream))
+	// If no bytes were read, check for errors and end-of-file.
+	if nbytes <= 0 {
+		// If fread encountered end-of-file return the none error. Note that fread
+		// may read data and encounter the end-of-file, but we shouldn't return none
+		// in that case which is why we only check for end-of-file if no data was
+		// read. The caller will get none on their next call because there will be
+		// no data available and the end-of-file will be encountered again.
+		if C.feof(stream) != 0 {
+			return none
+		}
+		// If fread encountered an error, return it. Note that fread and ferror do
+		// not tell us what the error was, so we can't return anything more specific
+		// than there was an error. This is because fread and ferror do not set
+		// errno.
+		if C.ferror(stream) != 0 {
+			return error('file read error')
+		}
+	}
+	return nbytes
+}
+
 // read_bytes reads bytes from the beginning of the file.
 // Utility method, same as .read_bytes_at(size, 0).
 pub fn (f &File) read_bytes(size int) []byte {
@@ -313,6 +364,45 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 	return arr[0..nreadbytes]
 }
 
+// read_bytes_into_newline reads from the beginning of the file into the provided buffer.
+// Each consecutive call on the same file continues reading where it previously ended.
+// A read call is either stopped, if the buffer is full, a newline was read or EOF.
+pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
+	if buf.len == 0 {
+		panic(@FN + ': `buf.len` == 0')
+	}
+	newline := 10
+	mut c := 0
+	mut buf_ptr := 0
+	mut nbytes := 0
+
+	stream := &C.FILE(f.cfile)
+	for (buf_ptr < buf.len) {
+		c = C.getc(stream)
+		match c {
+			C.EOF {
+				if C.feof(stream) != 0 {
+					return nbytes
+				}
+				if C.ferror(stream) != 0 {
+					return error('file read error')
+				}
+			}
+			newline {
+				buf[buf_ptr] = byte(c)
+				nbytes++
+				return nbytes
+			}
+			else {
+				buf[buf_ptr] = byte(c)
+				buf_ptr++
+				nbytes++
+			}
+		}
+	}
+	return nbytes
+}
+
 // read_bytes_into fills `buf` with bytes at the given position in the file.
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
@@ -324,23 +414,14 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 		$if windows {
 			// Note: fseek errors if pos == os.file_size, which we accept
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
-			// errno is only set if fread fails, so clear it first to tell
-			C.errno = 0
-			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
+			nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 			$if debug {
 				C._fseeki64(f.cfile, 0, C.SEEK_SET)
 			}
 			return nbytes
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			C.errno = 0
-			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
+			nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 			$if debug {
 				C.fseeko(f.cfile, 0, C.SEEK_SET)
 			}
@@ -349,11 +430,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		C.errno = 0
-		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-		if C.errno != 0 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 		$if debug {
 			C.fseek(f.cfile, 0, C.SEEK_SET)
 		}
@@ -367,11 +444,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-	C.errno = 0
-	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+	nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 	return nbytes
 }
 
@@ -393,20 +466,12 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
 		}
 
-		C.errno = 0
-		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-		if C.errno != 0 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 		return nbytes
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		C.errno = 0
-		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-		if C.errno != 0 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
 		return nbytes
 	}
 	return error('Could not read file')
@@ -437,11 +502,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 	if tsize == 0 {
 		return none
 	}
-	C.errno = 0
-	nbytes := int(C.fread(t, 1, tsize, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+	nbytes := fread(t, 1, tsize, f.cfile) ?
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -456,26 +517,22 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 	if tsize == 0 {
 		return none
 	}
-	C.errno = 0
 	mut nbytes := 0
 	$if x64 {
 		$if windows {
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
-			nbytes = int(C.fread(t, 1, tsize, f.cfile))
+			nbytes = fread(t, 1, tsize, f.cfile) ?
 			C._fseeki64(f.cfile, 0, C.SEEK_END)
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			nbytes = int(C.fread(t, 1, tsize, f.cfile))
+			nbytes = fread(t, 1, tsize, f.cfile) ?
 			C.fseeko(f.cfile, 0, C.SEEK_END)
 		}
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		nbytes = int(C.fread(t, 1, tsize, f.cfile))
+		nbytes = fread(t, 1, tsize, f.cfile) ?
 		C.fseek(f.cfile, 0, C.SEEK_END)
-	}
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
 	}
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
@@ -491,12 +548,8 @@ pub fn (mut f File) read_raw<T>() ?T {
 	if tsize == 0 {
 		return none
 	}
-	C.errno = 0
 	mut t := T{}
-	nbytes := int(C.fread(&t, 1, tsize, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+	nbytes := fread(&t, 1, tsize, f.cfile) ?
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -512,7 +565,6 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 	if tsize == 0 {
 		return none
 	}
-	C.errno = 0
 	mut nbytes := 0
 	mut t := T{}
 	$if x64 {
@@ -520,10 +572,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 			if C._fseeki64(f.cfile, pos, C.SEEK_SET) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
-			nbytes = int(C.fread(&t, 1, tsize, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
+			nbytes = fread(&t, 1, tsize, f.cfile) ?
 			if C._fseeki64(f.cfile, 0, C.SEEK_END) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
@@ -531,10 +580,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 			if C.fseeko(f.cfile, pos, C.SEEK_SET) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
-			nbytes = int(C.fread(&t, 1, tsize, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
+			nbytes = fread(&t, 1, tsize, f.cfile) ?
 			if C.fseeko(f.cfile, 0, C.SEEK_END) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
@@ -544,10 +590,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 		if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
 			return error(posix_get_error_msg(C.errno))
 		}
-		nbytes = int(C.fread(&t, 1, tsize, f.cfile))
-		if C.errno != 0 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		nbytes = fread(&t, 1, tsize, f.cfile) ?
 		if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
 			return error(posix_get_error_msg(C.errno))
 		}

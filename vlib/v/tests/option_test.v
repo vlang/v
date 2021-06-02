@@ -231,7 +231,7 @@ fn opt_ptr(a &int) ?&int {
 	if isnil(a) {
 		return none
 	}
-	return a
+	return unsafe { a }
 }
 
 fn test_opt_ptr() {

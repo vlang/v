@@ -5,6 +5,7 @@ module parser
 
 import v.ast
 import v.util
+import v.token
 
 pub fn (mut p Parser) parse_array_type() ast.Type {
 	p.check(.lsbr)
@@ -25,7 +26,14 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 							size_expr.pos)
 					}
 				} else {
-					p.error_with_pos('non-constant array bound `$size_expr.name`', size_expr.pos)
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist, it may have
+						// been defined in another .v file:
+						fixed_size = 1
+					} else {
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
+							size_expr.pos)
+					}
 				}
 			}
 			else {
@@ -42,7 +50,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
 		}
 		// sym := p.table.get_type_symbol(elem_type)
-		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -83,14 +91,14 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if is_alias && !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
-		p.error('cannot use the alias type as the parent type is unsupported')
-		return 0
-	}
-	if !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
-		|| is_alias) && !key_type.is_ptr())) {
+	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
+		|| key_sym.kind == .enum_ || key_sym.kind == .placeholder
+		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
+	if !key_type_supported {
+		if is_alias {
+			p.error('cannot use the alias type as the parent type is unsupported')
+			return 0
+		}
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
 			p.tok.position())
@@ -193,22 +201,39 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
+	mut has_generic := false
 	line_nr := p.tok.line_nr
 	args, _, is_variadic := p.fn_args()
+	for arg in args {
+		if arg.typ.has_flag(.generic) {
+			has_generic = true
+			break
+		}
+	}
 	mut return_type := ast.void_type
+	mut return_type_pos := token.Position{}
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
+		return_type_pos = p.tok.position()
 		return_type = p.parse_type()
+		if return_type.has_flag(.generic) {
+			has_generic = true
+		}
+		return_type_pos = return_type_pos.extend(p.prev_tok.position())
 	}
 	func := ast.Fn{
 		name: name
 		params: args
 		is_variadic: is_variadic
 		return_type: return_type
+		return_type_pos: return_type_pos
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
+	if has_generic {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
@@ -317,17 +342,32 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
-		if !p.known_import(name) {
-			p.error('unknown module `$p.tok.lit`')
-			return 0
-		}
-		if p.tok.lit in p.imports {
-			p.register_used_import(p.tok.lit)
-		}
+		mut mod := name
+		mut mod_pos := p.tok.position()
 		p.next()
 		p.check(.dot)
+		mut mod_last_part := mod
+		for p.peek_tok.kind == .dot {
+			mod_pos = mod_pos.extend(p.tok.position())
+			mod_last_part = p.tok.lit
+			mod += '.$mod_last_part'
+			p.next()
+			p.check(.dot)
+		}
+		if !p.known_import(mod) && !p.pref.is_fmt {
+			mut msg := 'unknown module `$mod`'
+			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
+				msg += '; did you mean `$mod_last_part`?'
+			}
+			p.error_with_pos(msg, mod_pos)
+			return 0
+		}
+		if mod in p.imports {
+			p.register_used_import(mod)
+			mod = p.imports[mod]
+		}
 		// prefix with full module
-		name = '${p.imports[name]}.$p.tok.lit'
+		name = '${mod}.$p.tok.lit'
 		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
@@ -359,7 +399,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_multi_return_type()
 		}
 		else {
-			// no defer
+			// no p.next()
 			if name == 'map' {
 				return p.parse_map_type()
 			}
@@ -369,79 +409,80 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			if name == 'thread' {
 				return p.parse_thread_type()
 			}
-			defer {
-				p.next()
-			}
+			mut ret := ast.Type(0)
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
 				p.error('expecting type declaration')
-				return 0
-			}
-			match name {
-				'voidptr' {
-					return ast.voidptr_type
-				}
-				'byteptr' {
-					return ast.byteptr_type
-				}
-				'charptr' {
-					return ast.charptr_type
-				}
-				'i8' {
-					return ast.i8_type
-				}
-				'i16' {
-					return ast.i16_type
-				}
-				'int' {
-					return ast.int_type
-				}
-				'i64' {
-					return ast.i64_type
-				}
-				'byte' {
-					return ast.byte_type
-				}
-				'u16' {
-					return ast.u16_type
-				}
-				'u32' {
-					return ast.u32_type
-				}
-				'u64' {
-					return ast.u64_type
-				}
-				'f32' {
-					return ast.f32_type
-				}
-				'f64' {
-					return ast.f64_type
-				}
-				'string' {
-					return ast.string_type
-				}
-				'char' {
-					return ast.char_type
-				}
-				'bool' {
-					return ast.bool_type
-				}
-				'float_literal' {
-					return ast.float_literal_type
-				}
-				'int_literal' {
-					return ast.int_literal_type
-				}
-				else {
-					if name.len == 1 && name[0].is_capital() {
-						return p.parse_generic_template_type(name)
+			} else {
+				match name {
+					'voidptr' {
+						ret = ast.voidptr_type
 					}
-					if p.peek_tok.kind == .lt {
-						return p.parse_generic_struct_inst_type(name)
+					'byteptr' {
+						ret = ast.byteptr_type
 					}
-					return p.parse_enum_or_struct_type(name, language)
+					'charptr' {
+						ret = ast.charptr_type
+					}
+					'i8' {
+						ret = ast.i8_type
+					}
+					'i16' {
+						ret = ast.i16_type
+					}
+					'int' {
+						ret = ast.int_type
+					}
+					'i64' {
+						ret = ast.i64_type
+					}
+					'byte' {
+						ret = ast.byte_type
+					}
+					'u16' {
+						ret = ast.u16_type
+					}
+					'u32' {
+						ret = ast.u32_type
+					}
+					'u64' {
+						ret = ast.u64_type
+					}
+					'f32' {
+						ret = ast.f32_type
+					}
+					'f64' {
+						ret = ast.f64_type
+					}
+					'string' {
+						ret = ast.string_type
+					}
+					'char' {
+						ret = ast.char_type
+					}
+					'bool' {
+						ret = ast.bool_type
+					}
+					'float_literal' {
+						ret = ast.float_literal_type
+					}
+					'int_literal' {
+						ret = ast.int_literal_type
+					}
+					else {
+						p.next()
+						if name.len == 1 && name[0].is_capital() {
+							return p.parse_generic_template_type(name)
+						}
+						if p.tok.kind == .lt {
+							return p.parse_generic_struct_inst_type(name)
+						}
+						return p.parse_enum_or_struct_type(name, language)
+					}
 				}
 			}
+			p.next()
+			return ret
 		}
 	}
 }
@@ -502,7 +543,8 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 	p.check(.gt)
 	p.in_generic_params = false
 	bs_name += '>'
-	if is_instance && concrete_types.len > 0 {
+	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
+	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)

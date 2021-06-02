@@ -1,10 +1,10 @@
 /*
- * ATTENTION! Do not use this file as an example!
+* ATTENTION! Do not use this file as an example!
  * For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
  *
  * This test case uses the implementation in `sync/channels.v` directly
  * in order to test it independently from the support in the core language
- */
+*/
 
 module sync
 
@@ -77,8 +77,6 @@ fn test_select() {
 	}
 	// Use Gauß' formula for the first 2 contributions
 	// the 3rd contribution is `byte` and must be seen modulo 256
-	expected_sum :=  2 * (300 * (300 - 1) / 2) +
-		256 * (256 - 1) / 2 +
-		44 * (44 - 1) / 2
+	expected_sum := 2 * (300 * (300 - 1) / 2) + 256 * (256 - 1) / 2 + 44 * (44 - 1) / 2
 	assert sum == expected_sum
 }

@@ -113,7 +113,12 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	for i, expr in node.exprs {
 		g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 		if i != len - 1 {
-			g.write(', ')
+			if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
+				g.writeln(',')
+				g.write('\t\t')
+			} else {
+				g.write(', ')
+			}
 		}
 	}
 	g.write('}))')
@@ -285,11 +290,11 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				mut op1, mut op2 := '', ''
 				if infix_expr.left_type == ast.string_type {
 					if is_reverse {
-						op1 = 'string_gt(a_, b_)'
-						op2 = 'string_lt(a_, b_)'
+						op1 = 'string__lt(b_, a_)'
+						op2 = 'string__lt(a_, b_)'
 					} else {
-						op1 = 'string_lt(a_, b_)'
-						op2 = 'string_gt(a_, b_)'
+						op1 = 'string__lt(a_, b_)'
+						op2 = 'string__lt(b_, a_)'
 					}
 				} else {
 					deref_str := if infix_expr.left_type.is_ptr() { '*' } else { '' }
@@ -453,9 +458,10 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
-	mut left_sym := g.table.get_type_symbol(left_type)
-	left_final_sym := g.table.get_final_type_symbol(left_type)
-	mut left_type_str := g.typ(left_type).replace('*', '')
+	unwrap_left_type := g.unwrap_generic(left_type)
+	mut left_sym := g.table.get_type_symbol(unwrap_left_type)
+	left_final_sym := g.table.get_final_type_symbol(unwrap_left_type)
+	mut left_type_str := g.typ(unwrap_left_type).replace('*', '')
 	fn_name := '${left_type_str}_contains'
 	if !left_sym.has_method('contains') {
 		left_info := left_final_sym.info as ast.Array
@@ -470,20 +476,20 @@ fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 		fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .function {
-			fn_builder.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
 		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else {
-			fn_builder.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
 		}
 		fn_builder.writeln('\t\t\treturn true;')
 		fn_builder.writeln('\t\t}')
@@ -494,7 +500,7 @@ fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 		left_sym.register_method(&ast.Fn{
 			name: 'contains'
 			params: [ast.Param{
-				typ: left_type
+				typ: unwrap_left_type
 			}, ast.Param{
 				typ: left_info.elem_type
 			}]
@@ -517,8 +523,9 @@ fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
-	mut left_sym := g.table.get_type_symbol(left_type)
-	mut left_type_str := g.typ(left_type).trim('*')
+	unwrap_left_type := g.unwrap_generic(left_type)
+	mut left_sym := g.table.get_type_symbol(unwrap_left_type)
+	mut left_type_str := g.typ(unwrap_left_type).trim('*')
 	fn_name := '${left_type_str}_index'
 	if !left_sym.has_method('index') {
 		info := left_sym.info as ast.Array
@@ -533,20 +540,20 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 		fn_builder.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v) {')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_array_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_map_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_struct_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else {
-			fn_builder.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
 		}
 		fn_builder.writeln('\t\t\treturn i;')
 		fn_builder.writeln('\t\t}')
@@ -557,7 +564,7 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 		left_sym.register_method(&ast.Fn{
 			name: 'index'
 			params: [ast.Param{
-				typ: left_type
+				typ: unwrap_left_type
 			}, ast.Param{
 				typ: info.elem_type
 			}]

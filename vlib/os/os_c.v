@@ -110,14 +110,14 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		nelements := int(C.fread(str, fsize, 1, fp))
+		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
 			free(str)
 			return error('fread failed')
 		}
-		str[fsize] = 0
+		str[nelements] = 0
 		if nelements == 0 {
 			// It is highly likely that the file was a virtual file from
 			// /sys or /proc, with information generated on the fly, so
@@ -129,7 +129,7 @@ pub fn read_file(path string) ?string {
 			// get a V string with .len = 4096 and .str = "PCH\n\\000".
 			return str.vstring()
 		}
-		return str.vstring_with_len(fsize)
+		return str.vstring_with_len(nelements)
 	}
 }
 
@@ -586,13 +586,13 @@ pub fn read_file_array<T>(path string) []T {
 	// read the actual data from the file
 	len := fsize / tsize
 	buf := unsafe { malloc(fsize) }
-	C.fread(buf, fsize, 1, fp)
+	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
 		array{
 			element_size: tsize
 			data: buf
-			len: len
+			len: int(nread)
 			cap: len
 		}
 	}
@@ -728,7 +728,9 @@ pub fn is_dir(path string) bool {
 // is_link returns a boolean indicating whether `path` is a link.
 pub fn is_link(path string) bool {
 	$if windows {
-		return false // TODO
+		path_ := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(path_.to_wide())
+		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 	} $else {
 		statbuf := C.stat{}
 		if C.lstat(&char(path.str), &statbuf) != 0 {
@@ -784,26 +786,45 @@ pub fn real_path(fpath string) string {
 	defer {
 		unsafe { free(fullpath) }
 	}
-
+	mut res := ''
 	$if windows {
+		/*
+		// GetFullPathName doesn't work with symbolic links
+		// TODO: TCC32 gets runtime error
+		max := 512
+		size := max * 2 // max_path_len * sizeof(wchar_t)
+		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+		// use get_file_handle instead of C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
+		// try to open the file to get symbolic link path
+		file := get_file_handle(fpath)
+		if file != voidptr(-1) {
+			fullpath = unsafe { &u16(vcalloc(size)) }
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
+			if final_len < size {
+				ret := unsafe { string_from_wide2(fullpath, final_len) }
+				res = ret[4..]
+			} else {
+				eprintln('os.real_path() saw that the file path was too long')
+			}
+		} else {
+		*/
+		// if it is not a file get full path
 		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
 		// TODO: check errors if path len is not enough
 		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			return fpath
 		}
+		res = unsafe { string_from_wide(fullpath) }
+		//}
+		// C.CloseHandle(file)		
 	} $else {
 		fullpath = vcalloc(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			return fpath
 		}
-	}
-
-	mut res := ''
-	$if windows {
-		res = unsafe { string_from_wide(fullpath) }
-	} $else {
 		res = unsafe { fullpath.vstring() }
 	}
 	nres := normalize_drive_letter(res)
@@ -826,12 +847,6 @@ fn normalize_drive_letter(path string) string {
 		}
 	}
 	return path
-}
-
-// signal will assign `handler` callback to be called when `signum` signal is received.
-pub fn signal(signum int, handler voidptr) voidptr {
-	res := unsafe { C.signal(signum, handler) }
-	return res
 }
 
 // fork will fork the current system process and return the pid of the fork.

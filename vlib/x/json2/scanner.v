@@ -60,7 +60,7 @@ const (
 		34:  `"`
 		47:  `/`
 	}
-	exp_signs                 = [byte(`-`), `+`]
+	exp_signs = [byte(`-`), `+`]
 )
 
 // move_pos proceeds to the next position.

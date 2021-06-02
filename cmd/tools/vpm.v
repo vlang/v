@@ -11,17 +11,17 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls      = ['https://vpm.vlang.io']
-	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove']
-	excluded_dirs                = ['cache', 'vlib']
-	supported_vcs_systems        = ['git', 'hg']
-	supported_vcs_folders        = ['.git', '.hg']
-	supported_vcs_update_cmds    = map{
+	default_vpm_server_urls   = ['https://vpm.vlang.io']
+	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
+		'list', 'remove', 'show']
+	excluded_dirs             = ['cache', 'vlib']
+	supported_vcs_systems     = ['git', 'hg']
+	supported_vcs_folders     = ['.git', '.hg']
+	supported_vcs_update_cmds = map{
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds   = map{
+	supported_vcs_install_cmds = map{
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
@@ -90,6 +90,9 @@ fn main() {
 		}
 		'remove' {
 			vpm_remove(module_names)
+		}
+		'show' {
+			vpm_show(module_names)
 		}
 		else {
 			println('Error: you tried to run "v $vpm_command"')
@@ -566,4 +569,33 @@ fn get_module_meta_info(name string) ?Mod {
 		return mod
 	}
 	return error(errors.join_lines())
+}
+
+fn vpm_show(module_names []string) {
+	installed_modules := get_installed_modules()
+	for module_name in module_names {
+		if module_name !in installed_modules {
+			module_meta_info := get_module_meta_info(module_name) or { continue }
+			print('
+Name: $module_meta_info.name
+Homepage: $module_meta_info.url
+Downloads: $module_meta_info.nr_downloads
+Installed: False
+--------
+')
+			continue
+		}
+		path := os.join_path(os.vmodules_dir(), module_name)
+		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
+		print('Name: $mod.name
+Version: $mod.version
+Description: $mod.description
+Homepage: $mod.repo_url
+Author: $mod.author
+License: $mod.license
+Location: $path
+Requires: ${mod.dependencies.join(', ')}
+--------
+')
+	}
 }

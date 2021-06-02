@@ -21,12 +21,6 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		// `C.printf("hi")` => `printf("hi");`
 		g.write('"$escaped_val"')
 	} else {
-		// TODO calculate the literal's length in V, it's a bit tricky with all the
-		// escape characters.
-		// Clang and GCC optimize `strlen("lorem ipsum")` to `11`
-		// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
-		// g.write('tos4("$escaped_val", $it.val.len)')
-		// g.write('_SLIT("$escaped_val")')
 		g.write('_SLIT("$escaped_val")')
 	}
 }
@@ -80,138 +74,6 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	return
 }
 
-fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	g.write('_STR("')
-	// Build the string with %
-	mut end_string := false
-	for i, val in node.vals {
-		mut escaped_val := val.replace_each(['%', '%%'])
-		escaped_val = util.smart_quote(escaped_val, false)
-		if i >= node.exprs.len {
-			if escaped_val.len > 0 {
-				end_string = true
-				g.write('\\000')
-				g.write(escaped_val)
-			}
-			break
-		}
-		g.write(escaped_val)
-		mut typ := g.unwrap_generic(node.expr_types[i])
-		sym := g.table.get_type_symbol(typ)
-		if sym.kind == .alias {
-			typ = (sym.info as ast.Alias).parent_type
-		}
-		// write correct format specifier to intermediate string
-		g.write('%')
-		fspec := node.fmts[i]
-		mut fmt := if node.pluss[i] { '+' } else { '' }
-		if node.fills[i] && node.fwidths[i] >= 0 {
-			fmt = '${fmt}0'
-		}
-		if node.fwidths[i] != 0 {
-			fmt = '$fmt${node.fwidths[i]}'
-		}
-		if node.precisions[i] != 987698 {
-			fmt = '${fmt}.${node.precisions[i]}'
-		}
-		if fspec == `s` {
-			if node.fwidths[i] == 0 {
-				g.write('.*s')
-			} else {
-				g.write('*.*s')
-			}
-		} else if typ.is_float() {
-			g.write('$fmt${fspec:c}')
-		} else if typ.is_pointer() {
-			if fspec == `p` {
-				g.write('${fmt}p')
-			} else {
-				g.write('$fmt"PRI${fspec:c}PTR"')
-			}
-		} else if typ.is_int() {
-			if fspec == `c` {
-				g.write('${fmt}c')
-			} else {
-				g.write('$fmt"PRI${fspec:c}')
-				if typ in [ast.i8_type, ast.byte_type] {
-					g.write('8')
-				} else if typ in [ast.i16_type, ast.u16_type] {
-					g.write('16')
-				} else if typ in [ast.i64_type, ast.u64_type] {
-					g.write('64')
-				} else {
-					g.write('32')
-				}
-				g.write('"')
-			}
-		} else {
-			// TODO: better check this case
-			g.write('$fmt"PRId32"')
-		}
-		if i < node.exprs.len - 1 {
-			g.write('\\000')
-		}
-	}
-	num_string_parts := if end_string { node.exprs.len + 1 } else { node.exprs.len }
-	g.write('", $num_string_parts, ')
-	// Build args
-	for i, expr in node.exprs {
-		typ := g.unwrap_generic(node.expr_types[i])
-		if typ == ast.string_type {
-			if g.inside_vweb_tmpl {
-				g.write('vweb__filter(')
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(expr)
-				g.write(')')
-			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(expr)
-			}
-		} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
-			g.gen_expr_to_string(expr, typ)
-		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
-			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
-				// convert to unsigned first befors C's integer propagation strikes
-				if typ == ast.i8_type {
-					g.write('(byte)(')
-				} else if typ == ast.i16_type {
-					g.write('(u16)(')
-				} else if typ == ast.int_type {
-					g.write('(u32)(')
-				} else {
-					g.write('(u64)(')
-				}
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(expr)
-				g.write(')')
-			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(expr)
-			}
-		} else {
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
-			g.expr(expr)
-		}
-		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
-			g.write(', ${node.fwidths[i]}')
-		}
-		if i < node.exprs.len - 1 {
-			g.write(', ')
-		}
-	}
-	g.write(')')
-}
-
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
@@ -261,7 +123,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr && !is_var_mut {
-			g.write('_STR("&%.*s\\000", 2, ')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
@@ -281,7 +143,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write(')')
 		if is_ptr && !is_var_mut {
-			g.write(')')
+			g.write('}}}))')
+			// g.write(')')
 		}
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)

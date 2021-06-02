@@ -3,7 +3,7 @@ import strings
 type MyInt = int
 
 fn test_sb() {
-	mut sb := strings.Builder{}
+	mut sb := strings.new_builder(100)
 	sb.write_string('hi')
 	sb.write_string('!')
 	sb.write_string('hello')
@@ -81,4 +81,16 @@ fn test_strings_builder_reuse() {
 	assert sb.str() == 'world'
 	sb.write_string('hello')
 	assert sb.str() == 'hello'
+}
+
+fn test_cut_to() {
+	mut sb := strings.new_builder(16)
+	sb.write_string('hello')
+	assert sb.cut_to(3) == 'lo'
+	assert sb.len == 3
+	assert sb.cut_to(3) == ''
+	assert sb.len == 3
+	assert sb.cut_to(0) == 'hel'
+	assert sb.cut_to(32) == ''
+	assert sb.len == 0
 }

@@ -29,7 +29,7 @@ pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 // TODO: replace Param
 pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField | SumTypeVariant
+	StructInitField
 
 pub struct TypeNode {
 pub:
@@ -249,29 +249,36 @@ pub mut:
 
 pub struct Embed {
 pub:
-	typ Type
-	pos token.Position
+	typ      Type
+	pos      token.Position
+	comments []Comment
 }
 
-pub struct StructEmbedding {
+pub struct InterfaceEmbedding {
 pub:
-	name string
-	typ  Type
-	pos  token.Position
+	name     string
+	typ      Type
+	pos      token.Position
+	comments []Comment
 }
 
 pub struct InterfaceDecl {
 pub:
 	name         string
+	typ          Type
 	name_pos     token.Position
 	language     Language
 	field_names  []string
 	is_pub       bool
-	methods      []FnDecl
 	mut_pos      int // mut:
-	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
+pub mut:
+	methods []FnDecl
+	fields  []StructField
+	//
+	ifaces              []InterfaceEmbedding
+	are_ifaces_expanded bool
 }
 
 pub struct StructInitField {
@@ -352,7 +359,6 @@ pub struct FnDecl {
 pub:
 	name            string
 	mod             string
-	params          []Param
 	is_deprecated   bool
 	is_pub          bool
 	is_variadic     bool
@@ -361,6 +367,7 @@ pub:
 	is_main         bool           // true for `fn main()`
 	is_test         bool           // true for `fn test_abcde`
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
+	is_exported     bool           // true for `[export: 'exact_C_name']`
 	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
@@ -379,18 +386,18 @@ pub:
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
-	stmts             []Stmt
-	defer_stmts       []DeferStmt
-	return_type       Type
-	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
-	has_return        bool
-	comments          []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments     []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file       &File = 0
-	scope             &Scope
-	label_names       []string
-	pos               token.Position // function declaration position
-	cur_generic_types []Type
+	params          []Param
+	stmts           []Stmt
+	defer_stmts     []DeferStmt
+	return_type     Type
+	return_type_pos token.Position // `string` in `fn (u User) name() string` position
+	has_return      bool
+	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
+	source_file     &File = 0
+	scope           &Scope
+	label_names     []string
+	pos             token.Position // function declaration position
 }
 
 // break, continue
@@ -497,7 +504,6 @@ pub mut:
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
 	is_auto_heap bool // value whoes address goes out of scope
-	is_heap_ref  bool // *known* to be pointer to heap memory (ptr to [heap] struct)
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 
@@ -547,16 +553,17 @@ pub:
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
 // That array is then passed to V's checker.
+[heap]
 pub struct File {
 pub:
-	path         string // absolute path of the source file - '/projects/v/file.v'
-	path_base    string // file name - 'file.v' (useful for tracing)
-	lines        int    // number of source code lines in the file (including newlines and comments)
-	bytes        int    // number of processed source code bytes
+	nr_lines     int    // number of source code lines in the file (including newlines and comments)
+	nr_bytes     int    // number of processed source code bytes
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 	is_test      bool // true for _test.v files
 pub mut:
+	path             string // absolute path of the source file - '/projects/v/file.v'
+	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
@@ -622,6 +629,7 @@ pub:
 	tok_kind token.Kind
 	pos      token.Position
 	mut_pos  token.Position
+	comptime bool
 pub mut:
 	scope  &Scope
 	obj    ScopeObject
@@ -709,6 +717,7 @@ pub mut:
 	is_expr  bool
 	typ      Type
 	has_else bool
+	// implements bool // comptime $if implements interface
 }
 
 pub struct IfBranch {
@@ -734,9 +743,11 @@ pub:
 	is_rlock []bool
 	pos      token.Position
 pub mut:
-	lockeds []Ident // `x`, `y` in `lock x, y {`
-	is_expr bool
-	typ     Type
+	lockeds  []Expr // `x`, `y.z` in `lock x, y.z {`
+	comments []Comment
+	is_expr  bool
+	typ      Type
+	scope    &Scope
 }
 
 pub struct MatchExpr {
@@ -952,13 +963,7 @@ pub:
 	comments []Comment
 	typ      Type
 pub mut:
-	variants []SumTypeVariant
-}
-
-pub struct SumTypeVariant {
-pub:
-	typ Type
-	pos token.Position
+	variants []TypeNode
 }
 
 pub struct FnTypeDecl {
@@ -979,8 +984,9 @@ pub:
 	stmts []Stmt
 	pos   token.Position
 pub mut:
-	ifdef     string
-	idx_in_fn int = -1 // index in FnDecl.defer_stmts
+	defer_vars []Ident
+	ifdef      string
+	idx_in_fn  int = -1 // index in FnDecl.defer_stmts
 }
 
 // `(3+4)`
@@ -1179,7 +1185,7 @@ pub mut:
 pub struct AsmIO {
 pub:
 	alias      string    // [alias_a]
-	constraint string    // '=r'
+	constraint string    // '=r' TODO: allow all backends to easily use this with a struct
 	expr       Expr      // (a)
 	comments   []Comment // // this is a comment
 	typ        Type
@@ -1189,7 +1195,7 @@ pub:
 pub const (
 	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
 	// map register size -> register name
-	x86_no_number_register_list   = map{
+	x86_no_number_register_list = map{
 		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
 		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
 			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
@@ -1440,8 +1446,15 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
+	pos     token.Position
+	db_expr Expr // `db` in `sql db {`
+pub mut:
+	lines []SqlStmtLine
+}
+
+pub struct SqlStmtLine {
+pub:
 	kind            SqlStmtKind
-	db_expr         Expr   // `db` in `sql db {`
 	object_var_name string // `user`
 	pos             token.Position
 	where_expr      Expr
@@ -1450,7 +1463,7 @@ pub:
 pub mut:
 	table_expr  TypeNode
 	fields      []StructField
-	sub_structs map[int]SqlStmt
+	sub_structs map[int]SqlStmtLine
 }
 
 pub struct SqlExpr {
@@ -1588,6 +1601,21 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 	return false
 }
 
+// returns if an expression can be used in `lock x, y.z {`
+pub fn (e &Expr) is_lockable() bool {
+	match e {
+		Ident {
+			return true
+		}
+		SelectorExpr {
+			return e.expr.is_lockable()
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // check if stmt can be an expression in C
 pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {
@@ -1654,8 +1682,7 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg,
-		SumTypeVariant {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
 			return node.pos
 		}
 		Param {
@@ -1803,7 +1830,7 @@ pub fn (node Node) children() []Node {
 			}
 			TypeDecl {
 				if node is SumTypeDecl {
-					children << node.variants.map(Node(it))
+					children << node.variants.map(Node(Expr(it)))
 				}
 			}
 			else {}
@@ -1875,17 +1902,17 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 				}
 			}
 		}
-		.aarch32 {
-			aarch32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+		.arm32 {
+			arm32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				32)
-			for k, v in aarch32 {
+			for k, v in arm32 {
 				res[k] = v
 			}
 		}
-		.aarch64 {
-			aarch64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+		.arm64 {
+			arm64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				64)
-			for k, v in aarch64 {
+			for k, v in arm64 {
 				res[k] = v
 			}
 		}

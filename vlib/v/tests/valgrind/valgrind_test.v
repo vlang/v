@@ -78,6 +78,7 @@ fn test_all() {
 			bench.fail()
 			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
 			eprintln(res.output)
+			eprintln('You can reproduce the failure with:\n$compile_cmd')
 			continue
 		}
 		if test in skip_valgrind_files {
@@ -94,6 +95,7 @@ fn test_all() {
 			bench.fail()
 			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(test)}'))
 			eprintln(valgrind_res.output)
+			eprintln('You can reproduce the failure with:\n$compile_cmd && $valgrind_cmd')
 			continue
 		}
 		bench.ok()

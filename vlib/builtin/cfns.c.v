@@ -75,6 +75,10 @@ fn C.pclose(stream &C.FILE) int
 [trusted]
 fn C.getpid() int
 
+fn C.getuid() int
+
+fn C.geteuid() int
+
 fn C.system(cmd &char) int
 
 fn C.posix_spawn(child_pid &int, path &char, file_actions voidptr, attrp voidptr, argv &&char, envp &&char) int
@@ -127,8 +131,6 @@ fn C.memset(str voidptr, c int, n size_t) int
 fn C.sigemptyset() int
 
 fn C.getcwd(buf &char, size size_t) &char
-
-fn C.signal(signal int, handlercb voidptr) voidptr
 
 [trusted]
 fn C.mktime() int

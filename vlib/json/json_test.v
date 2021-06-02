@@ -56,7 +56,7 @@ struct User {
 	last_name     string [json: lastName]
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
-	pets          string [raw; json: 'pet_animals']
+	pets          string [json: 'pet_animals'; raw]
 }
 
 fn test_parse_user() {
@@ -271,7 +271,7 @@ fn test_nested_type() {
 	}
 }
 
-struct Foo <T> {
+struct Foo<T> {
 pub:
 	name string
 	data T

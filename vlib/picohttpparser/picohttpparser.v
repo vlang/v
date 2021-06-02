@@ -31,5 +31,5 @@ fn C.phr_parse_request_path(buf_start &char, len size_t, method PPchar, method_l
 fn C.phr_parse_request_path_pipeline(buf_start &char, len size_t, method PPchar, method_len &size_t, path PPchar, path_len &size_t) int
 fn C.get_date() &byte
 
-// char * u64toa(uint64_t value, char *buffer)
-fn C.u64toa(buffer &char, value u64) &char
+// static inline int u64toa(char* buf, uint64_t value) {
+fn C.u64toa(buffer &char, value u64) int

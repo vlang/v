@@ -35,7 +35,8 @@ pub fn decode_str(data string) string {
 		return ''
 	}
 	unsafe {
-		buffer := malloc(size)
+		buffer := malloc(size + 1)
+		buffer[size] = 0
 		return tos(buffer, decode_in_buffer(data, buffer))
 	}
 }
@@ -55,13 +56,14 @@ pub fn encode_str(data string) string {
 
 // alloc_and_encode is a private function that allocates and encodes data into a string
 // Used by encode and encode_str
-fn alloc_and_encode(src byteptr, len int) string {
+fn alloc_and_encode(src &byte, len int) string {
 	size := 4 * ((len + 2) / 3)
 	if size <= 0 {
 		return ''
 	}
 	unsafe {
-		buffer := malloc(size)
+		buffer := malloc(size + 1)
+		buffer[size] = 0
 		return tos(buffer, encode_from_buffer(buffer, src, len))
 	}
 }
@@ -107,7 +109,7 @@ pub fn url_encode_str(data string) string {
 // Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
-pub fn decode_in_buffer(data &string, buffer byteptr) int {
+pub fn decode_in_buffer(data &string, buffer &byte) int {
 	mut padding := 0
 	if data.ends_with('=') {
 		if data.ends_with('==') {
@@ -125,8 +127,8 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	mut b := &byte(0)
 	mut d := &byte(0)
 	unsafe {
-		d = byteptr(data.str)
-		b = byteptr(buffer)
+		d = &byte(data.str)
+		b = &byte(buffer)
 	}
 	for i < input_length {
 		mut char_a := 0
@@ -165,7 +167,7 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 // encode_in_buffer returns the size of the encoded data in the buffer.
 // Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
 // Please note: The function does NOT allocate new memory, and is suitable for handling very large strings.
-pub fn encode_in_buffer(data []byte, buffer byteptr) int {
+pub fn encode_in_buffer(data []byte, buffer &byte) int {
 	return encode_from_buffer(buffer, data.data, data.len)
 }
 
@@ -173,16 +175,16 @@ pub fn encode_in_buffer(data []byte, buffer byteptr) int {
 // and write the bytes into `dest`.
 // Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
 // Please note: This function is for internal base64 encoding
-fn encode_from_buffer(dest byteptr, src byteptr, src_len int) int {
+fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
 	input_length := src_len
 	output_length := 4 * ((input_length + 2) / 3)
 
 	mut i := 0
 	mut j := 0
 
-	mut d := src
-	mut b := dest
-	mut etable := byteptr(base64.enc_table.str)
+	mut d := unsafe { src }
+	mut b := unsafe { dest }
+	mut etable := base64.enc_table.str
 	for i < input_length {
 		mut octet_a := 0
 		mut octet_b := 0

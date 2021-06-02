@@ -2,6 +2,10 @@ import json
 import picoev
 import picohttpparser
 
+const (
+	port = 8088
+)
+
 struct Message {
 	message string
 }
@@ -43,6 +47,6 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 }
 
 fn main() {
-	println('Starting webserver on http://127.0.0.1:8088/ ...')
-	picoev.new(8088, &callback).serve()
+	println('Starting webserver on http://127.0.0.1:$port/ ...')
+	picoev.new(port: port, cb: &callback).serve()
 }

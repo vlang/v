@@ -1,4 +1,4 @@
-//import os2
+// import os2
 
 fn test_open() {
 	/*
@@ -8,4 +8,4 @@ fn test_open() {
 		f.close()
 	}
 	*/
-}	
+}

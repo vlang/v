@@ -60,7 +60,7 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'solaris' { return .solaris }
 		'android' { return .android }
 		'haiku' { return .haiku }
-		'linux_or_macos', 'nix' { return .linux }
+		'nix' { return .linux }
 		'' { return .auto }
 		else { return error('vdoc: invalid platform `$platform_str`') }
 	}
@@ -94,7 +94,6 @@ pub mut:
 	table     &ast.Table      = &ast.Table{}
 	checker   checker.Checker = checker.Checker{
 		table: 0
-		cur_fn: 0
 		pref: 0
 	}
 	fmt                 fmt.Fmt

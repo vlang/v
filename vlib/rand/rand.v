@@ -43,7 +43,9 @@ pub interface PRNG {
 	f64_in_range(min f64, max f64) f64
 }
 
-__global ( default_rng &PRNG )
+__global (
+	default_rng &PRNG
+)
 
 // init initializes the default RNG.
 fn init() {
@@ -63,12 +65,12 @@ pub fn get_current_rng() &PRNG {
 }
 
 // set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one
-// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the 
+// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the
 // `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
 // should be restored if work with the custom RNG is complete. It is not necessary to restore if the
 // program terminates soon afterwards.
 pub fn set_rng(rng &PRNG) {
-	default_rng = rng
+	default_rng = unsafe { rng }
 }
 
 // seed sets the given array of `u32` values as the seed for the `default_rng`. The default_rng is
@@ -195,11 +197,14 @@ pub fn string_from_set(charset string, len int) string {
 	if len == 0 {
 		return ''
 	}
-	mut buf := unsafe { malloc(len) }
+	mut buf := unsafe { malloc(len + 1) }
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = charset[intn(charset.len)]
 		}
+	}
+	unsafe {
+		buf[len] = 0
 	}
 	return unsafe { buf.vstring_with_len(len) }
 }

@@ -1,6 +1,7 @@
 import dl
 import net.urllib
 import os
+import readline
 
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
@@ -153,7 +154,11 @@ fn main() {
 		confirm_or_exit('An error occured retrieving the information, do you want to continue?')
 	}
 
-	expected_result := os.input_opt('What did you expect to see? ') or { '' }
+	expected_result := readline.read_line('What did you expect to see? ') or {
+		// Ctrl-C was pressed
+		eprintln('\nCanceled')
+		exit(1)
+	}
 	// open prefilled issue creation page, or print link as a fallback
 
 	if !is_yes && vdoctor_output.contains('behind V master') {

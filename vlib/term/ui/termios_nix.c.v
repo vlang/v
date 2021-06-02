@@ -46,6 +46,10 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state_signal(_ os.Signal) {
+	restore_terminal_state()
+}
+
 fn restore_terminal_state() {
 	termios_reset()
 	mut c := ctx_ptr
@@ -60,7 +64,8 @@ fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
-	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0 && os.is_atty(C.STDOUT_FILENO) != 0) {
+	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0
+		&& os.is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
 	}
 
@@ -122,8 +127,8 @@ fn (mut ctx Context) termios_setup() ? {
 
 	// Reset console on exit
 	C.atexit(restore_terminal_state)
-	os.signal(C.SIGTSTP, restore_terminal_state)
-	os.signal(C.SIGCONT, fn () {
+	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
+	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr
 		if c != 0 {
 			c.termios_setup() or { panic(err) }
@@ -136,18 +141,18 @@ fn (mut ctx Context) termios_setup() ? {
 			c.paused = false
 			c.event(event)
 		}
-	})
+	}) or {}
 	for code in ctx.cfg.reset {
-		os.signal(code, fn () {
+		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ctx_ptr
 			if c != 0 {
 				c.cleanup()
 			}
 			exit(0)
-		})
+		}) or {}
 	}
 
-	os.signal(C.SIGWINCH, fn () {
+	os.signal_opt(.winch, fn (_ os.Signal) {
 		mut c := ctx_ptr
 		if c != 0 {
 			c.window_height, c.window_width = get_terminal_size()
@@ -159,7 +164,7 @@ fn (mut ctx Context) termios_setup() ? {
 			}
 			c.event(event)
 		}
-	})
+	}) or {}
 
 	os.flush()
 }
@@ -230,7 +235,7 @@ fn (mut ctx Context) termios_loop() {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
 				unsafe {
-					len := C.read(C.STDIN_FILENO, byteptr(ctx.read_buf.data) + ctx.read_buf.len,
+					len := C.read(C.STDIN_FILENO, &byte(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
 					ctx.resize_arr(ctx.read_buf.len + len)
 				}

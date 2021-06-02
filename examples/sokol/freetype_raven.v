@@ -7,7 +7,7 @@ import os
 import time
 
 const (
-	text  = '
+	text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -101,7 +101,7 @@ fn init(user_data voidptr) {
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
 		println('loaded font: $bytes.len')
-		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len,
+		state.font_normal = C.fonsAddFontMem(state.fons, c'sans', bytes.data, bytes.len,
 			false)
 	}
 }

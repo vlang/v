@@ -9,6 +9,7 @@ import v.vmod
 import v.checker
 import v.parser
 import v.depgraph
+import v.markused
 
 pub struct Builder {
 pub:
@@ -16,7 +17,7 @@ pub:
 	module_path  string
 mut:
 	pref          &pref.Preferences
-	checker       checker.Checker
+	checker       &checker.Checker
 	global_scope  &ast.Scope
 	out_name_c    string
 	out_name_js   string
@@ -25,7 +26,7 @@ mut:
 	stats_bytes   int // size of backend generated source code in bytes
 pub mut:
 	module_search_paths []string
-	parsed_files        []ast.File
+	parsed_files        []&ast.File
 	cached_msvc         MsvcResult
 	table               &ast.Table
 	ccoptions           CcompilerOptions
@@ -63,6 +64,36 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
+}
+
+pub fn (mut b Builder) front_stages(v_files []string) ? {
+	util.timing_start('PARSE')
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.parse_imports()
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
+	if b.pref.only_check_syntax {
+		return error('stop_after_parser')
+	}
+}
+
+pub fn (mut b Builder) middle_stages() ? {
+	util.timing_start('CHECK')
+	b.table.generic_struct_insts_to_concrete()
+	b.checker.check_files(b.parsed_files)
+	util.timing_measure('CHECK')
+	b.print_warnings_and_errors()
+	//
+	b.table.complete_interface_check()
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+}
+
+pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
+	b.front_stages(v_files) ?
+	b.middle_stages() ?
 }
 
 // parse all deps from already parsed files
@@ -143,12 +174,12 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	cycles := deps_resolved.display_cycles()
 	if b.pref.is_verbose {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
 	}
+	cycles := deps_resolved.display_cycles()
 	if cycles.len > 1 {
 		verror('error: import cycle detected between the following modules: \n' + cycles)
 	}
@@ -161,7 +192,7 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []ast.File{}
+	mut reordered_parsed_files := []&ast.File{}
 	for m in mods {
 		for pf in b.parsed_files {
 			if m == pf.mod.name {
@@ -179,6 +210,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
+		// eprintln('p.path: $p.path')
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
@@ -196,6 +228,9 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << m.mod
 		}
 		graph.add(p.mod.name, deps)
+	}
+	$if trace_import_graph ? {
+		eprintln(graph.display())
 	}
 	return graph
 }

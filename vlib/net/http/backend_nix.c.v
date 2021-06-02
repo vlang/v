@@ -16,7 +16,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	C.SSL_CTX_set_verify_depth(ctx, 4)
 	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
 	C.SSL_CTX_set_options(ctx, flags)
-	mut res := C.SSL_CTX_load_verify_locations(ctx, 'random-org-chain.pem', 0)
+	mut res := C.SSL_CTX_load_verify_locations(ctx, c'random-org-chain.pem', 0)
 	web := C.BIO_new_ssl_connect(ctx)
 	addr := host_name + ':' + port.str()
 	res = C.BIO_set_conn_hostname(web, addr.str)

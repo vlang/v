@@ -54,7 +54,7 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 }
 
 const (
-	posix_hotcode_definitions_1   = '
+	posix_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
 	@LOAD_FNS@
 }

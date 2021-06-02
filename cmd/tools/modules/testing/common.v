@@ -12,6 +12,10 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
+const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
+
+const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -108,47 +112,51 @@ pub fn (mut ts TestSession) print_messages() {
 	}
 }
 
-pub fn new_test_session(_vargs string) TestSession {
+pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
-	$if solaris {
-		skip_files << 'examples/gg/gg2.v'
-		skip_files << 'examples/pico/pico.v'
-		skip_files << 'examples/sokol/fonts.v'
-		skip_files << 'examples/sokol/drawing.v'
-	}
-	$if macos {
-		skip_files << 'examples/database/mysql.v'
-		skip_files << 'examples/database/orm.v'
-		skip_files << 'examples/database/pg/customer.v'
-	}
-	$if windows {
-		skip_files << 'examples/database/mysql.v'
-		skip_files << 'examples/database/orm.v'
-		skip_files << 'examples/websocket/ping.v' // requires OpenSSL
-		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
-		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
-		$if tinyc {
-			skip_files << 'examples/database/orm.v' // try fix it
+	if will_compile {
+		$if solaris {
+			skip_files << 'examples/gg/gg2.v'
+			skip_files << 'examples/pico/pico.v'
+			skip_files << 'examples/sokol/fonts.v'
+			skip_files << 'examples/sokol/drawing.v'
 		}
-	}
-	if testing.github_job != 'sokol-shaders-can-be-compiled' {
-		// These examples need .h files that are produced from the supplied .glsl files,
-		// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-		skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
-		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
-		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
-		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
-		// Skip obj_viewer code in the CI
-		skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/obj.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/rend.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/struct.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/util.v'
-	}
-	if testing.github_job != 'ubuntu-tcc' {
-		skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
-		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
-		skip_files << 'vlib/x/ttf/ttf_test.v'
+		$if macos {
+			skip_files << 'examples/database/mysql.v'
+			skip_files << 'examples/database/orm.v'
+			skip_files << 'examples/database/pg/customer.v'
+		}
+		$if windows {
+			skip_files << 'examples/database/mysql.v'
+			skip_files << 'examples/database/orm.v'
+			skip_files << 'examples/websocket/ping.v' // requires OpenSSL
+			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
+			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
+			$if tinyc {
+				skip_files << 'examples/database/orm.v' // try fix it
+			}
+		}
+		if testing.github_job != 'sokol-shaders-can-be-compiled' {
+			// These examples need .h files that are produced from the supplied .glsl files,
+			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
+			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
+			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
+			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+			// Skip obj_viewer code in the CI
+			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
+		}
+		if testing.github_job != 'ubuntu-tcc' {
+			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+			// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
+			skip_files << 'vlib/x/ttf/ttf_test.v'
+			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
+		}
+		if testing.github_job != 'audio-examples' {
+			skip_files << 'examples/sokol/sounds/melody.v'
+			skip_files << 'examples/sokol/sounds/wav_player.v'
+			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
+		}
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
@@ -248,6 +256,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
 	file := os.real_path(relative_file)
+	normalised_relative_file := relative_file.replace('\\', '/')
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
@@ -272,7 +281,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if relative_file.replace('\\', '/') in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
-		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
+		if !testing.hide_skips {
+			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file))
+		}
 		return pool.no_result
 	}
 	if show_stats {
@@ -296,7 +307,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
+			ts.append_message(.fail, tls_bench.step_message_fail(normalised_relative_file))
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
@@ -304,11 +315,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output.trim_space()$ending_newline'))
+			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
-			ts.append_message(.ok, tls_bench.step_message_ok(relative_file))
+			if !testing.hide_oks {
+				ts.append_message(.ok, tls_bench.step_message_ok(normalised_relative_file))
+			}
 		}
 	}
 	if os.exists(generated_binary_fpath) {
@@ -340,7 +353,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	if vargs.len > 0 {
 		eprintln('v compiler args: "$vargs"')
 	}
-	mut session := new_test_session(vargs)
+	mut session := new_test_session(vargs, true)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
 	mut skipped := oskipped.clone()
@@ -418,7 +431,9 @@ pub fn building_any_v_binaries_failed() bool {
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message_ok('command: $cmd'))
+		if !testing.hide_oks {
+			eprintln(bmark.step_message_ok('command: $cmd'))
+		}
 	}
 	bmark.stop()
 	eprintln(term.h_divider('-'))
@@ -427,11 +442,11 @@ pub fn building_any_v_binaries_failed() bool {
 }
 
 pub fn eheader(msg string) {
-	eprintln(term.header(msg, '-'))
+	eprintln(term.header_left(msg, '-'))
 }
 
 pub fn header(msg string) {
-	println(term.header(msg, '-'))
+	println(term.header_left(msg, '-'))
 }
 
 pub fn setup_new_vtmp_folder() string {
