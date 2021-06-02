@@ -2822,21 +2822,21 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 	}
 }
 
-pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Type {
+pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
 
 	using_new_err_struct_save := c.using_new_err_struct
 	// TODO remove; this avoids a breaking change in syntax
-	if '$selector_expr.expr' == 'err' {
+	if '$node.expr' == 'err' {
 		c.using_new_err_struct = true
 	}
 
 	// T.name, typeof(expr).name
 	mut name_type := 0
-	match mut selector_expr.expr {
+	match mut node.expr {
 		ast.Ident {
-			name := selector_expr.expr.name
+			name := node.expr.name
 			valid_generic := util.is_generic_type_name(name) && name in c.table.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
@@ -2845,22 +2845,21 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 		// Note: in future typeof() should be a type known at compile-time
 		// sum types should not be handled dynamically
 		ast.TypeOf {
-			name_type = c.expr(selector_expr.expr.expr)
+			name_type = c.expr(node.expr.expr)
 		}
 		else {}
 	}
 	if name_type > 0 {
-		if selector_expr.field_name != 'name' {
-			c.error('invalid field `.$selector_expr.field_name` for type `$selector_expr.expr`',
-				selector_expr.pos)
+		if node.field_name != 'name' {
+			c.error('invalid field `.$node.field_name` for type `$node.expr`', node.pos)
 		}
-		selector_expr.name_type = name_type
+		node.name_type = name_type
 		return ast.string_type
 	}
 	//
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
-	typ := c.expr(selector_expr.expr)
+	typ := c.expr(node.expr)
 	c.inside_selector_expr = old_selector_expr
 	//
 	c.using_new_err_struct = using_new_err_struct_save
@@ -2868,28 +2867,28 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 		// This means that the variable's value was assigned to an
 		// unknown function or method, so the error was already handled
 		// earlier
-		// c.error('unknown selector expression', selector_expr.pos)
+		// c.error('unknown selector expression', node.pos)
 		return ast.void_type
 	}
-	selector_expr.expr_type = typ
-	if selector_expr.expr_type.has_flag(.optional) && !((selector_expr.expr is ast.Ident
-		&& (selector_expr.expr as ast.Ident).kind == .constant)) {
+	node.expr_type = typ
+	if node.expr_type.has_flag(.optional) && !((node.expr is ast.Ident
+		&& (node.expr as ast.Ident).kind == .constant)) {
 		c.error('cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`',
-			selector_expr.pos)
+			node.pos)
 	}
-	field_name := selector_expr.field_name
+	field_name := node.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
 	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
-		selector_expr.typ = ast.int_type
+		node.typ = ast.int_type
 		return ast.int_type
 	}
 	if sym.kind == .chan {
 		if field_name == 'closed' {
-			selector_expr.typ = ast.bool_type
+			node.typ = ast.bool_type
 			return ast.bool_type
 		} else if field_name in ['len', 'cap'] {
-			selector_expr.typ = ast.u32_type
+			node.typ = ast.u32_type
 			return ast.u32_type
 		}
 	}
@@ -2903,7 +2902,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 		for embed in sym_info.embeds {
 			embed_sym := c.table.get_type_symbol(embed)
 			if embed_sym.embed_name() == field_name {
-				selector_expr.typ = embed
+				node.typ = embed
 				return embed
 			}
 		}
@@ -2926,9 +2925,9 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 				if found_fields.len == 1 {
 					field = found_fields[0]
 					has_field = true
-					selector_expr.from_embed_type = embed_of_found_fields[0]
+					node.from_embed_type = embed_of_found_fields[0]
 				} else if found_fields.len > 1 {
-					c.error('ambiguous field `$field_name`', selector_expr.pos)
+					c.error('ambiguous field `$field_name`', node.pos)
 				}
 			}
 			if sym.kind in [.aggregate, .sum_type] {
@@ -2937,38 +2936,38 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 		}
 		if !c.inside_unsafe {
 			if sym.info is ast.Struct {
-				if sym.info.is_union && selector_expr.next_token !in token.assign_tokens {
+				if sym.info.is_union && node.next_token !in token.assign_tokens {
 					c.warn('reading a union field (or its address) requires `unsafe`',
-						selector_expr.pos)
+						node.pos)
 				}
 			}
 		}
 	}
 	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
-			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
+			c.error('field `${sym.name}.$field_name` is not public', node.pos)
 		}
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := selector_expr.scope.find_struct_field(utyp, field_name) {
+				if scope_field := node.scope.find_struct_field(utyp, field_name) {
 					return scope_field.smartcasts.last()
 				}
 			}
 		}
-		selector_expr.typ = field.typ
+		node.typ = field.typ
 		return field.typ
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
-			c.error('`$sym.name` has no property `$selector_expr.field_name`', selector_expr.pos)
+			c.error('`$sym.name` has no property `$node.field_name`', node.pos)
 		}
 	} else {
 		if sym.info is ast.Struct {
 			suggestion := util.new_suggestion(field_name, sym.info.fields.map(it.name))
-			c.error(suggestion.say(unknown_field_msg), selector_expr.pos)
+			c.error(suggestion.say(unknown_field_msg), node.pos)
 		}
-		c.error(unknown_field_msg, selector_expr.pos)
+		c.error(unknown_field_msg, node.pos)
 	}
 	return ast.void_type
 }
