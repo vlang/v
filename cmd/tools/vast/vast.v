@@ -73,7 +73,7 @@ fn get_abs_path(path string) string {
 
 // check file is v file and exists
 fn check_file(file string) {
-	if os.file_ext(file) !in ['.v', '.vsh'] {
+	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
 		panic('the file `$file` must be a v file or vsh file')
 	}
 	if !os.exists(file) {
