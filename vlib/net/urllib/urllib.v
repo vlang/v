@@ -374,7 +374,7 @@ pub:
 }
 
 fn (u &Userinfo) empty() bool {
-	return u.username == '' && u.password == ''
+	return isnil(u) || (u.username == '' && u.password == '')
 }
 
 // string returns the encoded userinfo information in the standard form
@@ -737,11 +737,11 @@ pub fn (u URL) str() string {
 	if u.opaque != '' {
 		buf.write_string(u.opaque)
 	} else {
-		if u.scheme != '' || u.host != '' || (u.user != 0 && !u.user.empty()) {
+		if u.scheme != '' || u.host != '' || !u.user.empty() {
 			if u.host != '' || u.path != '' || !u.user.empty() {
 				buf.write_string('//')
 			}
-			if u.user != 0 && !u.user.empty() {
+			if !u.user.empty() {
 				buf.write_string(u.user.str())
 				buf.write_string('@')
 			}
