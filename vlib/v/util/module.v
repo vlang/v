@@ -110,8 +110,9 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 			}
 		}
 	}
-	if os.is_abs_path(pref.path) && os.is_abs_path(path) && os.is_dir(path)/* && path.contains(mod)*/ {
-		rel_mod_path := path.replace(pref.path.all_before_last(os.path_separator) + os.path_separator, '')
+	if os.is_abs_path(pref.path) && os.is_abs_path(path) && os.is_dir(path) //&& path.contains(mod) {
+		rel_mod_path := path.replace(pref.path.all_before_last(os.path_separator) +
+			os.path_separator, '')
 		if rel_mod_path != path {
 			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
 			return full_mod_name
