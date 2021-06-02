@@ -67,7 +67,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		} else {
 			res << file
 			no_postfix_key := fname_without_platform_postfix(file)
-			mut candidates := fnames_no_postfixes[no_postfix_key]
+			mut candidates := fnames_no_postfixes[no_postfix_key].clone()
 			candidates << file
 			fnames_no_postfixes[no_postfix_key] = candidates
 		}

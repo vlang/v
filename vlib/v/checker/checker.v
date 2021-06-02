@@ -1986,7 +1986,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				call_expr.pos)
 		} else if !method.is_variadic && call_expr.args.len > nr_args {
-			unexpected_arguments := call_expr.args[min_required_args..]
+			unexpected_arguments := call_expr.args[min_required_args..].clone()
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
@@ -2531,7 +2531,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				call_expr.pos)
 		} else if !func.is_variadic && call_expr.args.len > func.params.len {
-			unexpected_arguments := call_expr.args[min_required_args..]
+			unexpected_arguments := call_expr.args[min_required_args..].clone()
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
 			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				unexpected_arguments_pos)
@@ -3594,10 +3594,18 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		// Do not allow `a = b`, only `a = b.clone()`
 		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
-			&& right !is ast.ArrayInit && right !is ast.CallExpr && right !is ast.IndexExpr
-			&& (!c.is_immutable(left, i) || !c.is_immutable(right, i)) && !right.is_literal() {
-			c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
-				assign_stmt.pos)
+			&& right !is ast.ArrayInit && right !is ast.CallExpr && !right.is_literal() {
+			if right is ast.IndexExpr {
+				if !c.is_immutable(left, i) || !c.is_immutable(right.left, i) {
+					c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
+						assign_stmt.pos)
+				}
+			} else {
+				if !c.is_immutable(left, i) || !c.is_immutable(right, i) {
+					c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
+						assign_stmt.pos)
+				}
+			}
 		}
 		if left_sym.kind == .map && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && ((right is ast.Ident && right.is_auto_deref_var())

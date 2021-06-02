@@ -180,7 +180,7 @@ fn (mut nn NodeNames) is_part_of_cycle(name string, already_seen []string) (bool
 		return true, new_already_seen
 	}
 	new_already_seen << name
-	deps := nn.names[name]
+	deps := nn.names[name].clone()
 	if deps.len == 0 {
 		nn.is_cycle[name] = false
 		return false, new_already_seen
