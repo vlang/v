@@ -1460,6 +1460,28 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 	return exprs, comments
 }
 
+fn (mut p Parser) is_attributes() bool {
+	if p.tok.kind != .lsbr {
+		return false
+	}
+	mut i := 0
+	for {
+		tok := p.peek_token(i)
+		if tok.kind == .eof || tok.line_nr != p.tok.line_nr {
+			return false
+		}
+		if tok.kind == .rsbr {
+			break
+		}
+		i++
+	}
+	peek_rsbr_tok := p.peek_token(i + 1)
+	if peek_rsbr_tok.line_nr == p.tok.line_nr && peek_rsbr_tok.kind != .rcbr {
+		return false
+	}
+	return true
+}
+
 // when is_top_stmt is true attrs are added to p.attrs
 fn (mut p Parser) attributes() {
 	p.check(.lsbr)
