@@ -741,7 +741,7 @@ pub fn (u URL) str() string {
 			if u.host != '' || u.path != '' || !u.user.empty() {
 				buf.write_string('//')
 			}
-			if !u.user.empty() {
+			if u.user != 0 && !u.user.empty() {
 				buf.write_string(u.user.str())
 				buf.write_string('@')
 			}
