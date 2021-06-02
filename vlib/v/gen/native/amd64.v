@@ -664,13 +664,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{}
 		g.gen_exit(zero)
-		// return
+		return
 	}
-	if !is_main {
-		// g.leave()
-		g.add8(.rsp, 0x10)
-		g.pop(.rbp)
-	}
+	// g.leave()
+	g.add8(.rsp, 0x10)
+	g.pop(.rbp)
 	g.ret()
 }
 
