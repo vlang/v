@@ -1,29 +1,28 @@
 module http
+
 import net.http.chunked
+import strconv
 
 // Response represents the result of the request
 pub struct Response {
 pub:
-	text        string
-	header      Header
-	cookies     map[string]string
-	status_code Status
+	text         string
+	header       Header
+	cookies      map[string]string
+	status_code  Status
+	http_version Version
 }
 
 fn (mut resp Response) free() {
 	unsafe { resp.header.data.free() }
 }
 
+// TODO: return result?
 pub fn parse_response(resp string) Response {
 	mut header := new_header()
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
-	first_header := resp.all_before('\n')
-	mut status_code := 0
-	if first_header.contains('HTTP/') {
-		val := first_header.find_between(' ', ' ')
-		status_code = val.int()
-	}
+	version, status := parse_response_line(resp.all_before('\n\r')) or { Version.unknown, Status.unknown }
 	mut text := ''
 	// Build resp header map and separate the body
 	mut nl_pos := 3
@@ -55,10 +54,22 @@ pub fn parse_response(resp string) Response {
 		text = chunked.decode(text)
 	}
 	return Response{
-		status_code: status_from_int(status_code)
+		status_code: status
 		header: header
 		cookies: cookies
 		text: text
+		http_version: version
 	}
+}
+
+fn parse_response_line(s string) ?(Version, Status) {
+	words := s.split(' ')
+	if words.len < 2 {
+		return error('malformed response line')
+	}
+	version := version_from_str(words[0])
+	status_code := strconv.atoi(words[1]) ?
+
+	return version, status_from_int(status_code)
 }
 
