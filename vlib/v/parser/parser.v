@@ -1705,7 +1705,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	tok := p.tok
 	mut pos := tok.position()
 
-	mut defer_vars := p.defer_vars
+	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
 	left, left_comments := p.expr_list()

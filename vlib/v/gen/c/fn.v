@@ -104,7 +104,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		return
 	}
 
-	tmp_defer_vars := g.defer_vars // must be here because of workflow
+	tmp_defer_vars := g.defer_vars.clone() // must be here because of workflow
 	if !g.anon_fn {
 		g.defer_vars = []string{}
 	} else {
