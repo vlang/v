@@ -5912,6 +5912,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.indent--
 		} else {
 			g.stmts(stmts)
+			if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
@@ -5942,7 +5945,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 	}
-	g.write('}')
+	g.writeln('}')
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
