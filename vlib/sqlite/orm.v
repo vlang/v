@@ -1,20 +1,21 @@
 module sqlite
 
 import orm
+import time
 
 // sql expr
 
-pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]string {
+pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	stmt := db.new_init_stmt(query)
 	sqlite_stmt_binder(stmt, data, query) ?
 	sqlite_stmt_binder(stmt, where, query) ?
 
-	mut ret := [][]string{}
+	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
 		stmt.orm_step(query) ?
-		ret << [stmt.get_count().str()]
+		ret << [orm.Primitive(stmt.get_count())]
 		return ret
 	}
 
@@ -26,11 +27,11 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 		if step != sqlite_ok && step != sqlite_row {
 			break
 		}
-		mut row := []string{}
+		mut row := []orm.Primitive{}
 		for i, typ in config.types {
 			row << stmt.sqlite_select_column(i, typ) ?
 		}
-
+		
 		ret << row
 	}
 
@@ -83,17 +84,24 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 
 fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 	mut c := 1
-	for i, data in d.data {
+	for data in d.data {
 		mut err := 0
-		typ := d.types[i]
-		if typ in orm.nums {
-			err = stmt.bind_int(c, int(data))
-		} else if typ in orm.num64 {
-			err = stmt.bind_i64(c, i64(data))
-		} else if typ in orm.float {
-			err = stmt.bind_f64(c, *(&f64(data)))
-		} else if typ == orm.string {
-			err = stmt.bind_text(c, unsafe { (&char(data)).vstring() })
+		match data {
+			i8, i16, int, byte, u16, u32, bool {
+				err = stmt.bind_int(c, int(data))
+			}
+			i64, u64 {
+				err = stmt.bind_i64(c, i64(data))
+			}
+			f32, f64 {
+				err = stmt.bind_f64(c, *(&f64(data)))
+			}
+			string {
+				err = stmt.bind_text(c, data)
+			}
+			time.Time {
+				err = stmt.bind_int(c, int(data.unix))
+			}
 		}
 		if err != 0 {
 			return stmt.db.error_message(err, query)
@@ -102,22 +110,28 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 	}
 }
 
-fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?string {
-	return if typ in orm.nums || typ == -1 {
-		stmt.get_int(idx).str()
+fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
+	mut primitive := orm.Primitive(0)
+	
+	if typ in orm.nums || typ == -1 {
+		primitive = stmt.get_int(idx)
 	} else if typ in orm.num64 {
-		stmt.get_i64(idx).str()
+		primitive = stmt.get_i64(idx)
 	} else if typ in orm.float {
-		stmt.get_f64(idx).str()
+		primitive = stmt.get_f64(idx)
 	} else if typ == orm.string {
-		stmt.get_text(idx)
+		primitive = stmt.get_text(idx)
+	} else if typ == orm.time {
+		primitive = time.unix(stmt.get_int(idx))
 	} else {
-		error('Unknown type $typ')
+		return error('Unknown type $typ')
 	}
+
+	return primitive
 }
 
 fn sqlite_type_from_v(typ int) ?string {
-	return if typ in orm.nums || typ == -1 || typ in orm.num64 {
+	return if typ in orm.nums || typ < 0 || typ in orm.num64 {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'

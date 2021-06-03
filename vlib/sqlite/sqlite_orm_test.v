@@ -37,7 +37,7 @@ fn test_sqlite_orm() {
 	db.insert('Test', orm.OrmQueryData{
 		fields: ['name', 'age']
 		types: [18, 8]
-		data: [voidptr('Louis'.str), voidptr(&i64(100))]
+		data: [orm.Primitive('Louis'), i64(100)]
 	}) or { panic(err) }
 
 	res := db.@select(orm.OrmSelectConfig{
@@ -47,12 +47,28 @@ fn test_sqlite_orm() {
 		types: [7, 18, 8]
 	}, orm.OrmQueryData{}, orm.OrmQueryData{
 		fields: ['name', 'age']
-		data: [voidptr('Louis'.str), voidptr(i64(100))]
+		data: [orm.Primitive('Louis'), i64(100)]
 		types: [18, 8]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }
 
-	assert res[0][0] == '1'
-	assert res[0][1] == 'Louis'
-	assert res[0][2] == '100'
+	id := res[0][0]
+	name := res[0][1]
+	age := res[0][2]
+
+
+	assert id is int
+	if id is int {
+		assert id == 1
+	}
+
+	assert name is string
+	if name is string {
+		assert name == 'Louis'
+	}
+
+	assert age is i64
+	if age is i64 {
+		assert age == 100
+	}
 }

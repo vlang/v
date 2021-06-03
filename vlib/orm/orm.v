@@ -1,10 +1,13 @@
 module orm
 
+import time
+
 pub const (
 	num64    = [8, 12]
 	nums     = [5, 6, 7, 9, 10, 11, 16]
 	float    = [13, 14]
 	string   = 18
+	time     = -2
 	type_idx = map{
 		'i8':     5
 		'i16':    6
@@ -20,6 +23,9 @@ pub const (
 		'string': 18
 	}
 )
+
+pub type Primitive = bool | byte | f32 | f64 | i16 | i64 | i8 | int | string | time.Time |
+	u16 | u32 | u64
 
 pub enum OperationKind {
 	neq // !=
@@ -69,7 +75,7 @@ fn (kind OrmOrderType) to_str() string {
 pub struct OrmQueryData {
 pub:
 	fields []string
-	data   []voidptr
+	data   []Primitive
 	types  []int
 	kinds  []OperationKind
 }
@@ -78,6 +84,7 @@ pub struct OrmTableField {
 pub:
 	name        string
 	typ         int
+	is_time     bool
 	kind        OrmTypeKind
 	arr_kind    OrmTypeKind
 	arr_dim     int
@@ -100,7 +107,7 @@ pub:
 }
 
 pub interface OrmConnection {
-	@select(config OrmSelectConfig, data OrmQueryData, where OrmQueryData) ?[][]string
+	@select(config OrmSelectConfig, data OrmQueryData, where OrmQueryData) ?[][]Primitive
 	insert(table string, data OrmQueryData) ?
 	update(table string, data OrmQueryData, where OrmQueryData) ?
 	delete(table string, data OrmQueryData, where OrmQueryData) ?
@@ -324,6 +331,9 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 
 fn sql_field_type(field OrmTableField) int {
 	mut typ := field.typ
+	if field.is_time {
+		return -2
+	}
 	for attr in field.attrs {
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
