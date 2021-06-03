@@ -8,8 +8,11 @@
         * `msodbcsql17` and `unixodbc-dev` packages needed
     * Windows Install: https://docs.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server
 
+# Windows Notes
+* Only `msvc` compiler works. `tcc` errors out in some windows system headers.
+* Make sure `cl.exe` of `msvc` is accessible from command line. You can run `v` commands in `Visual Studio 2019 Developer Command Prompt` to be safe.
+
 ## TODO
-* Support Windows
 * Support Mac 
 * ORM
 
