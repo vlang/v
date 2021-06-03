@@ -46,12 +46,6 @@ pub enum OrmOrderType {
 	desc
 }
 
-pub enum OrmTypeKind {
-	primitive
-	struct_
-	array
-}
-
 fn (kind OperationKind) to_str() string {
 	str := match kind {
 		.neq { '!=' }
@@ -85,9 +79,6 @@ pub:
 	name        string
 	typ         int
 	is_time     bool
-	kind        OrmTypeKind
-	arr_kind    OrmTypeKind
-	arr_dim     int
 	default_val string
 	attrs       []StructAttribute
 }
@@ -288,11 +279,15 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			continue
 		}
 		mut stmt := ''
-		mut ctyp := sql_from_v(sql_field_type(field)) ?
+		mut field_name := field.name
+		mut ctyp := sql_from_v(sql_field_type(field)) or {
+			field_name = '${field.name}_id'
+			sql_from_v(8) ?
+		}
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}
-		stmt = '$para$field.name$para $ctyp'
+		stmt = '$para$field_name$para $ctyp'
 		if defaults && field.default_val != '' {
 			stmt += ' DEFAULT $field.default_val'
 		}

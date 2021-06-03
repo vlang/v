@@ -7,6 +7,7 @@ struct Module {
 	id           int
 	name         string
 	nr_downloads int
+	user User
 }
 
 [table: 'userlist']
@@ -23,6 +24,28 @@ struct Foo {
 }
 
 fn test_orm_sqlite() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	mut u := User{name: 'test'}
+
+	sql db {
+		create table Module
+	}
+
+	eprintln('hi')
+
+	sql db {
+		insert u into User
+	}
+	eprintln('hi')
+
+	sql db {
+		drop table Module
+	}
+	eprintln('hi')
+}
+
+/*fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
 	sql db {
@@ -261,7 +284,7 @@ fn test_orm_sqlite() {
 	}
 	assert null_user.name == ''
 }
-
+*/
 fn test_orm_pg() {
 	/*
 	dbname := os.getenv('VDB_NAME')

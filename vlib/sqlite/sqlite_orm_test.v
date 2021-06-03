@@ -8,7 +8,6 @@ fn test_sqlite_orm() {
 		orm.OrmTableField{
 			name: 'id'
 			typ: 7
-			kind: .primitive
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -24,13 +23,11 @@ fn test_sqlite_orm() {
 		orm.OrmTableField{
 			name: 'name'
 			typ: 18
-			kind: .primitive
 			attrs: []
 		},
 		orm.OrmTableField{
 			name: 'age'
 			typ: 8
-			kind: .primitive
 		},
 	]) or { panic(err) }
 

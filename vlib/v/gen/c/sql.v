@@ -25,73 +25,113 @@ enum SqlType {
 }
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
+	conn := g.new_tmp_var()
+	g.write('orm__OrmConnection $conn = I_')
+	mut fn_prefix := ''
+	typ := g.parse_db_type(node.db_expr)
+	match typ {
+		.sqlite3 {
+			fn_prefix = 'sqlite__DB'
+		}
+		else {
+			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
+		}
+	}
+	g.write('${fn_prefix}_to_Interface_orm__OrmConnection(&')
+	g.expr(node.db_expr)
+	g.writeln(');')
 	for line in node.lines {
-		g.sql_stmt_line(line, node.db_expr)
+		g.sql_stmt_line(line, conn)
 	}
 }
 
-fn (mut g Gen) sql_stmt_line(node ast.SqlStmtLine, expr ast.Expr) {
+fn (mut g Gen) sql_stmt_line(node ast.SqlStmtLine, expr string) {
+	table_name := g.get_table_name(node.table_expr)
+	res := g.new_tmp_var()
+	g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
 	if node.kind == .create {
-		g.sql_create_table(node, expr)
-		return
+		g.sql_create_table(node, expr, table_name)
 	} else if node.kind == .drop {
-		g.sql_drop_table(node, expr)
-		return
+		g.writeln('drop(${expr}._object, _SLIT("$table_name"));')
+	} else {
+		match node.kind {
+			.insert {
+				g.sql_insert(node, expr, table_name)
+			}
+			else {}
+		}
 	}
-	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
-	typ := g.parse_db_type(expr)
-	match typ {
-		.sqlite3 {
-			g.sqlite3_stmt(node, typ, expr)
-		}
-		.mysql {
-			g.mysql_stmt(node, typ, expr)
-		}
-		.psql {
-			g.psql_stmt(node, typ, expr)
-		}
-		else {
-			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
-		}
+	g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { v_panic(IError_str(${res}.err)); }')
+	for _, sub in node.sub_structs {
+		g.sql_stmt_line(sub, expr)
 	}
 }
 
-fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr ast.Expr) {
-	typ := g.parse_db_type(expr)
-	match typ {
-		.sqlite3 {
-			g.sqlite3_create_table(node, typ, expr)
+fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name string) {
+	g.write('create(${expr}._object, _SLIT("$table_name"), new_array_from_c_array($node.fields.len, $node.fields.len, sizeof(orm__OrmTableField), _MOV((orm__OrmTableField[$node.fields.len]){')
+	for field in node.fields {
+		g.write('(orm__OrmTableField){')
+		g.write('.name = _SLIT("$field.name"),')
+		g.write('.typ = ${int(field.typ)},')
+		g.write('.is_time = ${int(g.table.get_type_name(field.typ) == 'time__Time')},')
+		g.write('.default_val = (string){.str = (byteptr) "$field.default_val", .is_lit = 1},')
+		g.write('.attrs = new_array_from_c_array($field.attrs.len, $field.attrs.len, sizeof(StructAttribute), _MOV((StructAttribute[$field.attrs.len]){')
+		for attr in field.attrs {
+			eprintln('$field.name $attr')
+			g.write('(StructAttribute){')
+			g.write('.name = _SLIT("$attr.name"),')
+			g.write('.has_arg = ${int(attr.has_arg)},')
+			g.write('.arg = (string){.str = (byteptr) "$attr.arg", .is_lit = 1},')
+			g.write('.kind = ${int(attr.kind)},')
+			g.write('},')
 		}
-		.mysql {
-			g.mysql_create_table(node, typ, expr)
-		}
-		.psql {
-			g.psql_create_table(node, typ, expr)
-		}
-		else {
-			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
-		}
+		g.write('}))')
+		g.write('},')
 	}
+	g.writeln('})));')
 }
 
-fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
-	typ := g.parse_db_type(expr)
-	match typ {
-		.sqlite3 {
-			g.sqlite3_drop_table(node, typ, expr)
+fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string) {
+	g.write('insert(${expr}._object, _SLIT("$table_name"), (orm__OrmQueryData){')
+
+	mut fields := []ast.StructField{}
+	for f in node.fields {
+		mut primary := false
+		mut skip := false
+		for attr in f.attrs {
+			if attr.name == 'primary' {
+				primary = true
+			}
+			if attr.name == 'skip' {
+				skip = true
+			}
 		}
-		.mysql {
-			g.mysql_drop_table(node, typ, expr)
-		}
-		.psql {
-			g.psql_drop_table(node, typ, expr)
-		}
-		else {
-			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
+		if !primary && !skip {
+			fields << f
 		}
 	}
+
+	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string), _MOV((string[$fields.len]){')
+	for f in fields {
+		g.write('_SLIT("$f.name"),')
+	}
+	g.write('})),')
+	
+
+	g.write('.data = new_array_from_c_array($fields.len, $fields.len, sizeof(orm__Primitive), _MOV((orm__Primitive[$fields.len]){')
+	for f in fields {
+		typ := g.table.get_type_symbol(f.typ).cname
+		g.write('${typ}_to_sumtype_orm__Primitive(ADDR($typ, (($typ)')
+		g.write('${node.object_var_name}.$f.name')
+		g.write('))),')
+	}
+	g.write('})),')
+	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), _MOV((int[0]){})),')
+	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), _MOV((orm__OperationKind[0]){})),')
+	g.writeln('});')
 }
 
+/*
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
 	typ := g.parse_db_type(node.db_expr)
@@ -1611,7 +1651,7 @@ fn (mut g Gen) inc_sql_i(typ SqlType) {
 	if typ != .mysql {
 		g.write('$g.sql_i')
 	}
-}
+}*/
 
 fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
 	match expr {
@@ -1647,6 +1687,7 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 	}
 }
 
+/*
 fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 	mut typ := field.typ
 	for attr in field.attrs {
@@ -1661,6 +1702,8 @@ fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 	return typ
 }
 
+*/
+
 fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 	info := g.table.get_type_symbol(table_expr.typ).struct_info()
 	mut tablename := util.strip_mod_name(g.table.get_type_symbol(table_expr.typ).name)
@@ -1672,6 +1715,8 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 	}
 	return tablename
 }
+
+/*
 
 fn (mut g Gen) get_struct_field(name string) ast.StructField {
 	info := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
@@ -1694,3 +1739,4 @@ fn (mut g Gen) get_field_name(field ast.StructField) string {
 	}
 	return name
 }
+*/

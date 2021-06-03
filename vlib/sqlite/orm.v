@@ -20,6 +20,7 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 	}
 
 	for {
+		eprintln(ret)
 		step := stmt.step()
 		if step == sqlite_done {
 			break
@@ -29,11 +30,15 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 		}
 		mut row := []orm.Primitive{}
 		for i, typ in config.types {
-			row << stmt.sqlite_select_column(i, typ) ?
+			primitive := stmt.sqlite_select_column(i, typ) ?
+			row << primitive
 		}
 		
 		ret << row
+		eprintln(ret)
 	}
+
+	eprintln(ret)
 
 	return ret
 }
@@ -94,7 +99,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 				err = stmt.bind_i64(c, i64(data))
 			}
 			f32, f64 {
-				err = stmt.bind_f64(c, *(&f64(data)))
+				err = stmt.bind_f64(c, unsafe { *(&f64(&data)) })
 			}
 			string {
 				err = stmt.bind_text(c, data)
@@ -120,7 +125,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	} else if typ in orm.float {
 		primitive = stmt.get_f64(idx)
 	} else if typ == orm.string {
-		primitive = stmt.get_text(idx)
+		primitive = stmt.get_text(idx).clone()
 	} else if typ == orm.time {
 		primitive = time.unix(stmt.get_int(idx))
 	} else {
