@@ -57,10 +57,10 @@ fn (stmt Stmt) step() int {
 	return C.sqlite3_step(stmt.stmt)
 }
 
-fn (stmt Stmt) orm_step() ? {
+fn (stmt Stmt) orm_step(query string) ? {
 	res := stmt.step()
 	if res != sqlite_ok && res != sqlite_done {
-		return stmt.db.error_message(res)
+		return stmt.db.error_message(res, query)
 	}
 }
 

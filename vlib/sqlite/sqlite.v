@@ -201,9 +201,10 @@ pub fn (db DB) exec_one(query string) ?Row {
 	return rows[0]
 }
 
-pub fn (db DB) error_message(code int) IError {
+pub fn (db DB) error_message(code int, query string) IError {
+	msg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
 	return IError(&SQLError{
-		msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
+		msg: '$msg ($query)'
 		code: code
 	})
 }

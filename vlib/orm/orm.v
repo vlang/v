@@ -100,7 +100,7 @@ pub:
 }
 
 pub interface OrmConnection {
-	@select(table string, data OrmQueryData, where OrmQueryData) ?[][]string
+	@select(config OrmSelectConfig, data OrmQueryData, where OrmQueryData) ?[][]string
 	insert(table string, data OrmQueryData) ?
 	update(table string, data OrmQueryData, where OrmQueryData) ?
 	delete(table string, data OrmQueryData, where OrmQueryData) ?
@@ -108,10 +108,10 @@ pub interface OrmConnection {
 	drop(talbe string) ?
 }
 
-pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, data OrmQueryData, where OrmQueryData) string {
+pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, start_pos int, data OrmQueryData, where OrmQueryData) string {
 	mut str := ''
 
-	mut c := 0
+	mut c := start_pos
 
 	match kind {
 		.insert {
@@ -169,7 +169,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 	return str
 }
 
-pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, where OrmQueryData) string {
+pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, start_pos int, where OrmQueryData) string {
 	mut str := 'SELECT '
 
 	if orm.is_count {
@@ -185,7 +185,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, whe
 
 	str += ' FROM $para$orm.table$para'
 
-	mut c := 0
+	mut c := start_pos
 
 	if orm.has_where {
 		str += ' WHERE '
@@ -241,7 +241,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
-		mut fkey := ''
+		//mut fkey := ''
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -266,14 +266,14 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 				'skip' {
 					is_skip = true
 				}
-				'fkey' {
+				/*'fkey' {
 					if attr.arg != '' {
 						if attr.kind == .string {
 							fkey = attr.arg
 							continue
 						}
 					}
-				}
+				}*/
 				else {}
 			}
 		}
@@ -283,28 +283,10 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut stmt := ''
 		mut ctyp := sql_from_v(sql_field_type(field)) ?
 		if ctyp == '' {
-			if field.kind == .struct_ {
-				// TODO add multistructs
-			} else if field.kind == .array {
-				if field.arr_dim > 1 {
-					return error('Arrays with just one dim are supported in orm')
-				}
-				if field.arr_kind == .struct_ {
-					if fkey == '' {
-						return error('Array field ($field.name) needs a fkey')
-					}
-					// TODO add multistructs
-				} else if field.arr_kind == .primitive {
-					return error('Array with non-struct types is not supported yet')
-				} else {
-					return error('Unknown type ($field.typ) for field $field.name in struct $table')
-				}
-			} else {
-				return error('Unknown type ($field.typ) for field $field.name in struct $table')
-			}
+			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}
 		stmt = '$para$field.name$para $ctyp'
-		if defaults {
+		if defaults && field.default_val != '' {
 			stmt += ' DEFAULT $field.default_val'
 		}
 		if no_null {
