@@ -108,7 +108,7 @@ pub interface OrmConnection {
 	drop(talbe string) ?
 }
 
-pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm string, data OrmQueryData, where OrmQueryData) string {
+pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, data OrmQueryData, where OrmQueryData) string {
 	mut str := ''
 
 	mut c := 0
@@ -125,7 +125,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 			str += ') VALUES ('
 			for i, _ in data.fields {
 				str += qm
-				if orm.nums {
+				if num {
 					str += '$c'
 					c++
 				}
@@ -139,7 +139,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 			str += 'UPDATE $para$table$para SET '
 			for i, field in data.fields {
 				str += '$para$field$para = $qm'
-				if orm.nums {
+				if num {
 					str += '$c'
 					c++
 				}
@@ -156,7 +156,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 	if kind == .update || kind == .delete {
 		for i, field in where.fields {
 			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
-			if orm.nums {
+			if num {
 				str += '$c'
 				c++
 			}
@@ -169,7 +169,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, nums bool, qm stri
 	return str
 }
 
-pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, where OrmQueryData) string {
+pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, where OrmQueryData) string {
 	mut str := 'SELECT '
 
 	if orm.is_count {
@@ -191,7 +191,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 		str += ' WHERE '
 		for i, field in where.fields {
 			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
-			if orm.nums {
+			if num {
 				str += '$c'
 				c++
 			}
@@ -210,7 +210,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 
 	if orm.has_limit {
 		str += ' LIMIT ?'
-		if orm.nums {
+		if num {
 			str += '$c'
 			c++
 		}
@@ -218,7 +218,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, nums bool, qm string, wh
 
 	if orm.has_offset {
 		str += ' OFFSET ?'
-		if orm.nums {
+		if num {
 			str += '$c'
 			c++
 		}
