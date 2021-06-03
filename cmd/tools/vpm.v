@@ -411,8 +411,8 @@ fn get_installed_modules() []string {
 fn get_all_modules() []string {
 	url := get_working_server_url()
 	r := http.get(url) or { panic(err) }
-	if r.status_code != 200 {
-		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
+	if r.status_code != .ok {
+		println('Failed to search vpm.vlang.io. Status code: ${int(r.status_code)}')
 		exit(1)
 	}
 	s := r.text
@@ -544,12 +544,12 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 || r.text.trim_space() == '404' {
+		if r.status_code == .not_found || r.text.trim_space() == '404' {
 			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
-		if r.status_code != 200 {
-			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+		if r.status_code != .ok {
+			errors << 'Skipping module "$name", since $server_url responded with ${int(r.status_code)} http status code. Please try again later.'
 			continue
 		}
 		s := r.text
