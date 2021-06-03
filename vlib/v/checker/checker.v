@@ -670,43 +670,44 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 	return struct_type
 }
 
-pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
-	if struct_init.typ == ast.void_type {
+pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
+	if node.typ == ast.void_type {
 		// Short syntax `({foo: bar})`
 		if c.expected_type == ast.void_type {
-			c.error('unexpected short struct syntax', struct_init.pos)
+			c.error('unexpected short struct syntax', node.pos)
 			return ast.void_type
 		}
 		sym := c.table.get_type_symbol(c.expected_type)
 		if sym.kind == .array {
-			struct_init.typ = c.table.value_type(c.expected_type)
+			node.typ = c.table.value_type(c.expected_type)
 		} else {
-			struct_init.typ = c.expected_type
+			node.typ = c.expected_type
 		}
 	}
-	struct_sym := c.table.get_type_symbol(struct_init.typ)
+	struct_sym := c.table.get_type_symbol(node.typ)
 	if struct_sym.info is ast.Struct {
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
 			&& c.table.cur_concrete_types.len == 0 {
 			c.error('generic struct init must specify type parameter, e.g. Foo<int>',
-				struct_init.pos)
+				node.pos)
 		}
 	} else if struct_sym.info is ast.Alias {
 		parent_sym := c.table.get_type_symbol(struct_sym.info.parent_type)
 		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´
 		if parent_sym.kind == .map {
-			alias_str := c.table.type_to_str(struct_init.typ)
+			alias_str := c.table.type_to_str(node.typ)
 			map_str := c.table.type_to_str(struct_sym.info.parent_type)
 			c.error('direct map alias init is not possible, use `${alias_str}($map_str{})` instead',
-				struct_init.pos)
+				node.pos)
 			return ast.void_type
 		}
 	}
-	utyp := c.unwrap_generic_struct(struct_init.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-	c.ensure_type_exists(utyp, struct_init.pos) or {}
-	type_sym := c.table.get_type_symbol(utyp)
+	unwrapped_struct_type := c.unwrap_generic_struct(node.typ, c.table.cur_fn.generic_names,
+		c.table.cur_concrete_types)
+	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
+	type_sym := c.table.get_type_symbol(unwrapped_struct_type)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
-		c.note('direct sum type init (`x := SumType{}`) will be removed soon', struct_init.pos)
+		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
 	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
@@ -715,43 +716,42 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
-			c.error('cannot initialize builtin type `$type_sym.name`', struct_init.pos)
+			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
-	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
-		sexpr := struct_init.fields[0].expr.str()
+	if type_sym.kind == .sum_type && node.fields.len == 1 {
+		sexpr := node.fields[0].expr.str()
 		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
-			struct_init.pos)
+			node.pos)
 	}
 	if type_sym.kind == .interface_ {
-		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
+		c.error('cannot instantiate interface `$type_sym.name`', node.pos)
 	}
 	if type_sym.info is ast.Alias {
 		if type_sym.info.parent_type.is_number() {
-			c.error('cannot instantiate number type alias `$type_sym.name`', struct_init.pos)
+			c.error('cannot instantiate number type alias `$type_sym.name`', node.pos)
 			return ast.void_type
 		}
 	}
 	// allow init structs from generic if they're private except the type is from builtin module
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.language != .c
-		&& (type_sym.mod != c.mod && !(struct_init.typ.has_flag(.generic)
-		&& type_sym.mod != 'builtin')) {
-		c.error('type `$type_sym.name` is private', struct_init.pos)
+		&& (type_sym.mod != c.mod && !(node.typ.has_flag(.generic) && type_sym.mod != 'builtin')) {
+		c.error('type `$type_sym.name` is private', node.pos)
 	}
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
 		if info.attrs.len > 0 && info.attrs[0].name == 'noinit' && type_sym.mod != c.mod {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
-				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
+				'it cannot be initialized with `$type_sym.name{}`', node.pos)
 		}
 	}
 	if type_sym.name.len == 1 && c.table.cur_fn.generic_names.len == 0 {
-		c.error('unknown struct `$type_sym.name`', struct_init.pos)
+		c.error('unknown struct `$type_sym.name`', node.pos)
 		return 0
 	}
 	match type_sym.kind {
 		.placeholder {
-			c.error('unknown struct: $type_sym.name', struct_init.pos)
+			c.error('unknown struct: $type_sym.name', node.pos)
 			return ast.void_type
 		}
 		// string & array are also structs but .kind of string/array
@@ -761,33 +761,33 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				info_t := type_sym.info as ast.Alias
 				sym := c.table.get_type_symbol(info_t.parent_type)
 				if sym.kind == .placeholder { // pending import symbol did not resolve
-					c.error('unknown struct: $type_sym.name', struct_init.pos)
+					c.error('unknown struct: $type_sym.name', node.pos)
 					return ast.void_type
 				}
 				if sym.kind == .struct_ {
 					info = sym.info as ast.Struct
 				} else {
-					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
+					c.error('alias type name: $sym.name is not struct type', node.pos)
 				}
 			} else {
 				info = type_sym.info as ast.Struct
 			}
-			if struct_init.is_short {
+			if node.is_short {
 				exp_len := info.fields.len
-				got_len := struct_init.fields.len
+				got_len := node.fields.len
 				if exp_len != got_len {
 					amount := if exp_len < got_len { 'many' } else { 'few' }
 					c.error('too $amount fields in `$type_sym.name` literal (expecting $exp_len, got $got_len)',
-						struct_init.pos)
+						node.pos)
 				}
 			}
 			mut inited_fields := []string{}
-			for i, field in struct_init.fields {
+			for i, field in node.fields {
 				mut info_field := ast.StructField{}
 				mut embed_type := ast.Type(0)
 				mut is_embed := false
 				mut field_name := ''
-				if struct_init.is_short {
+				if node.is_short {
 					if i >= info.fields.len {
 						// It doesn't make sense to check for fields that don't exist.
 						// We should just stop here.
@@ -795,7 +795,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					}
 					info_field = info.fields[i]
 					field_name = info_field.name
-					struct_init.fields[i].name = field_name
+					node.fields[i].name = field_name
 				} else {
 					field_name = field.name
 					mut exists := false
@@ -841,8 +841,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 								field.pos)
 						}
 					}
-					struct_init.fields[i].typ = expr_type
-					struct_init.fields[i].expected_type = embed_type
+					node.fields[i].typ = expr_type
+					node.fields[i].expected_type = embed_type
 				} else {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
@@ -873,8 +873,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 								field.pos)
 						}
 					}
-					struct_init.fields[i].typ = expr_type
-					struct_init.fields[i].expected_type = info_field.typ
+					node.fields[i].typ = expr_type
+					node.fields[i].expected_type = info_field.typ
 				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
@@ -904,23 +904,23 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
-					&& !struct_init.has_update_expr && !c.pref.translated {
+				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
+					&& !c.pref.translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
-						struct_init.pos)
+						node.pos)
 				}
 				// Do not allow empty uninitialized sum types
 				/*
 				sym := c.table.get_type_symbol(field.typ)
 				if sym.kind == .sum_type {
 					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
-						struct_init.pos)
+						node.pos)
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !struct_init.is_short {
+				if field.attrs.contains('required') && !node.is_short {
 					mut found := false
-					for init_field in struct_init.fields {
+					for init_field in node.fields {
 						if field.name == init_field.name {
 							found = true
 							break
@@ -928,37 +928,37 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					}
 					if !found {
 						c.error('field `${type_sym.name}.$field.name` must be initialized',
-							struct_init.pos)
+							node.pos)
 					}
 				}
 			}
 		}
 		else {}
 	}
-	if struct_init.has_update_expr {
-		update_type := c.expr(struct_init.update_expr)
-		struct_init.update_expr_type = update_type
+	if node.has_update_expr {
+		update_type := c.expr(node.update_expr)
+		node.update_expr_type = update_type
 		if c.table.type_kind(update_type) != .struct_ {
 			s := c.table.type_to_str(update_type)
-			c.error('expected struct, found `$s`', struct_init.update_expr.position())
-		} else if update_type != struct_init.typ {
+			c.error('expected struct, found `$s`', node.update_expr.position())
+		} else if update_type != node.typ {
 			from_sym := c.table.get_type_symbol(update_type)
-			to_sym := c.table.get_type_symbol(struct_init.typ)
+			to_sym := c.table.get_type_symbol(node.typ)
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO this check is too strict
 			if !c.check_struct_signature(from_info, to_info) {
 				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
-					struct_init.update_expr.position())
+					node.update_expr.position())
 			}
 		}
-		if !struct_init.update_expr.is_lvalue() {
+		if !node.update_expr.is_lvalue() {
 			// cgen will repeat `update_expr` for each field
 			// so enforce an lvalue for efficiency
-			c.error('expression is not an lvalue', struct_init.update_expr.position())
+			c.error('expression is not an lvalue', node.update_expr.position())
 		}
 	}
-	return utyp
+	return unwrapped_struct_type
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
