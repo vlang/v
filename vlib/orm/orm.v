@@ -241,7 +241,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
-		//mut fkey := ''
+		// mut fkey := ''
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {

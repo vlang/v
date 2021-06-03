@@ -22,7 +22,7 @@ fn (stmt Stmt) bind_int(idx int, v int) int {
 }
 
 fn (stmt Stmt) bind_i64(idx int, v i64) int {
-    return C.sqlite3_bind_int64(stmt.stmt, idx, v)
+	return C.sqlite3_bind_int64(stmt.stmt, idx, v)
 }
 
 fn (stmt Stmt) bind_f64(idx int, v f64) int {
