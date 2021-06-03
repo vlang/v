@@ -291,7 +291,7 @@ pub fn parse_response(resp string) Response {
 		pos := h.index(':') or { continue }
 		mut key := h[..pos]
 		val := h[pos + 2..].trim_space()
-		header.add_custom(key, val) or { eprintln('error parsing header: $err') }
+		header.add_custom(key, val) or { eprintln('$err; skipping header') }
 	}
 	// set cookies
 	for cookie in header.values(.set_cookie) {
