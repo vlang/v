@@ -92,7 +92,7 @@ fn sqlite_stmt_binder(stmt Stmt, data orm.OrmQueryData) ? {
 		} else if typ in orm.float {
 			err = stmt.bind_f64(c, f64(data.data[i]))
 		} else if typ == orm.string {
-			err = stmt.bind_text(c, unsafe { &byte(data.data[i]).vstring() })
+			err = stmt.bind_text(c, unsafe { (&char(data.data[i])).vstring() })
 		}
 		if err != 0 {
 			return stmt.db.error_message(err)

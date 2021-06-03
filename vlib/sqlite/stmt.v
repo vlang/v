@@ -46,7 +46,7 @@ fn (stmt Stmt) get_f64(idx int) f64 {
 }
 
 fn (stmt Stmt) get_text(idx int) string {
-	return unsafe { &byte(C.sqlite3_column_text(stmt.stmt, idx)).vstring() }
+	return unsafe { C.sqlite3_column_text(stmt.stmt, idx).vstring() }
 }
 
 fn (stmt Stmt) get_count() int {
