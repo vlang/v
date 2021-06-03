@@ -86,11 +86,11 @@ fn sqlite_stmt_binder(stmt Stmt, data orm.OrmQueryData) ? {
 	for i, typ in data.types {
 		mut err := 0
 		if typ in orm.nums {
-			err = stmt.bind_int(c, int(data.data[i]))
+			err = stmt.bind_int(c, &int(data.data[i]))
 		} else if typ in orm.num64 {
-			err = stmt.bind_i64(c, i64(data.data[i]))
+			err = stmt.bind_i64(c, &i64(data.data[i]))
 		} else if typ in orm.float {
-			err = stmt.bind_f64(c, f64(data.data[i]))
+			err = stmt.bind_f64(c, &f64(data.data[i]))
 		} else if typ == orm.string {
 			err = stmt.bind_text(c, unsafe { (&char(data.data[i])).vstring() })
 		}
