@@ -41,6 +41,12 @@ fn test_sqlite_orm() {
 		}
 	) or { panic(err) }
 
+	name_col := sdb.q_string('select name from Test where id = 1;')
+	println('# name: $name_col')
+
+	age_col := sdb.q_string('select age from Test where id = 1;')
+	println('# age: $age_col')
+
 	res := db.@select(orm.OrmSelectConfig{
 		table: 'Test'
 		has_where: true
