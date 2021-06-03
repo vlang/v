@@ -90,6 +90,8 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 	mut c := 1
 	for data in d.data {
+		eprintln(c)
+		eprintln(data)
 		mut err := 0
 		match data {
 			i8, i16, int, byte, u16, u32, bool {
@@ -108,6 +110,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 				err = stmt.bind_int(c, int(data.unix))
 			}
 		}
+		eprintln('error: $err')
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}

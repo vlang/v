@@ -26,6 +26,8 @@ enum SqlType {
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
+	g.writeln('')
+	g.writeln('// orm')
 	g.write('orm__OrmConnection $conn = I_')
 	mut fn_prefix := ''
 	typ := g.parse_db_type(node.db_expr)
@@ -77,11 +79,10 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name st
 		g.write('.default_val = (string){.str = (byteptr) "$field.default_val", .is_lit = 1},')
 		g.write('.attrs = new_array_from_c_array($field.attrs.len, $field.attrs.len, sizeof(StructAttribute), _MOV((StructAttribute[$field.attrs.len]){')
 		for attr in field.attrs {
-			eprintln('$field.name $attr')
 			g.write('(StructAttribute){')
 			g.write('.name = _SLIT("$attr.name"),')
 			g.write('.has_arg = ${int(attr.has_arg)},')
-			g.write('.arg = (string){.str = (byteptr) "$attr.arg", .is_lit = 1},')
+			g.write('.arg = _SLIT("$attr.arg"),')
 			g.write('.kind = ${int(attr.kind)},')
 			g.write('},')
 		}
@@ -116,14 +117,15 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string) 
 		g.write('_SLIT("$f.name"),')
 	}
 	g.write('})),')
-	
 
 	g.write('.data = new_array_from_c_array($fields.len, $fields.len, sizeof(orm__Primitive), _MOV((orm__Primitive[$fields.len]){')
 	for f in fields {
 		typ := g.table.get_type_symbol(f.typ).cname
-		g.write('${typ}_to_sumtype_orm__Primitive(ADDR($typ, (($typ)')
-		g.write('${node.object_var_name}.$f.name')
-		g.write('))),')
+		g.write('(orm__Primitive){')
+		str := if int(f.typ) == 18 { '.str' } else { '' }
+		g.write('._$typ = memdup(&${node.object_var_name}.$f.name$str, sizeof($typ)),')
+		g.write('._typ = ${int(f.typ)}')
+		g.write('},')
 	}
 	g.write('})),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), _MOV((int[0]){})),')
@@ -1701,7 +1703,6 @@ fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 	}
 	return typ
 }
-
 */
 
 fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
@@ -1717,7 +1718,6 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 }
 
 /*
-
 fn (mut g Gen) get_struct_field(name string) ast.StructField {
 	info := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
 	mut f := ast.StructField{}

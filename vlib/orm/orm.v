@@ -308,6 +308,9 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		}
 		fs << stmt
 	}
+	if primary == '' {
+		return error('A primary key is required')
+	}
 	if unique.len > 0 {
 		for k, v in unique {
 			mut tmp := []string{}
