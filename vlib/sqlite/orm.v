@@ -82,24 +82,24 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 }
 
 fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
-	mut c := 1
-	for i, data in d.data {
-		mut err := 0
-		typ := d.types[i]
-		if typ in orm.nums {
-			err = stmt.bind_int(c, &int(data))
-		} else if typ in orm.num64 {
-			err = stmt.bind_i64(c, &i64(data))
-		} else if typ in orm.float {
-			err = stmt.bind_f64(c, &f64(data))
-		} else if typ == orm.string {
-			err = stmt.bind_text(c, unsafe { (&char(data)).vstring() })
-		}
-		if err != 0 {
-			return stmt.db.error_message(err, query)
-		}
-		c++
-	}
+    mut c := 1
+    for i, data in d.data {
+        mut err := 0
+        typ := d.types[i]
+        if typ in orm.nums {
+            err = stmt.bind_int(c, int(data))
+        } else if typ in orm.num64 {
+            err = stmt.bind_i64(c, i64(data))
+        } else if typ in orm.float {
+            err = stmt.bind_f64(c, f64(data))
+        } else if typ == orm.string {
+            err = stmt.bind_text(c, unsafe { (char(data)).vstring() })
+        }
+        if err != 0 {
+            return stmt.db.error_message(err, query)
+        }
+        c++
+    }
 }
 
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?string {
@@ -110,7 +110,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?string {
 	} else if typ in orm.float {
 		stmt.get_f64(idx).str()
 	} else if typ == orm.string {
-		stmt.get_f64(idx)
+		stmt.get_text(idx)
 	} else {
 		error('Unknown type $typ')
 	}

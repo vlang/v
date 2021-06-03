@@ -33,13 +33,11 @@ fn test_sqlite_orm() {
 			kind: .primitive
 		}
 	]) or { panic(err) }
-	
-	name := voidptr('Louis'.str)
 
 	db.insert('Test', orm.OrmQueryData{
 			fields: ['name', 'age']
 			types: [18, 8]
-			data: [name, voidptr(&i64(100))]
+			data: [voidptr('Louis'.str), voidptr(&i64(100))]
 		}
 	) or { panic(err) }
 
@@ -50,10 +48,14 @@ fn test_sqlite_orm() {
 		types: [7, 18, 8]
 	}, orm.OrmQueryData{}, orm.OrmQueryData{
 		fields: ['name', 'age']
-		data: [name, voidptr(i64(100))]
+		data: [voidptr('Louis'.str), voidptr(i64(100))]
 		types: [18, 8]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }
 
-	assert res[0] == ['1', 'Louis', '100']
+	eprintln(res[0])
+
+	assert res[0][0] == '1'
+	assert res[0][1] == 'Louis'
+	assert res[0][2] == '100'
 }
