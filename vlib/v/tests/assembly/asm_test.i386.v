@@ -151,4 +151,17 @@ fn test_flag_output() {
 		; r (zero)
 	}
 	assert out
+
+	mut maybe_four := 4
+	mut four := 4
+	asm amd64 {
+		subl four, maybe_four
+		testl four, maybe_four
+		movl maybe_four, 9
+		; +m (maybe_four)
+		  +r (four)
+		  =@ccz (out)
+	}
+	assert out
+	assert maybe_four == 9
 }
