@@ -47,6 +47,8 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 
 pub fn (db DB) insert(table string, data orm.OrmQueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data, orm.OrmQueryData{})
+	eprintln(table)
+	eprintln(data)
 	sqlite_stmt_worker(db, query, data, orm.OrmQueryData{}) ?
 }
 

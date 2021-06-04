@@ -99,6 +99,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string) 
 	for f in node.fields {
 		mut primary := false
 		mut skip := false
+		eprintln(f)
 		for attr in f.attrs {
 			if attr.name == 'primary' {
 				primary = true
@@ -112,16 +113,21 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string) 
 		}
 	}
 
+	eprintln(fields)
+
 	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string), _MOV((string[$fields.len]){')
 	for f in fields {
-		g.write('_SLIT("$f.name"),')
+		g.write('_SLIT("${g.get_field_name(f)}"),')
 	}
 	g.write('})),')
 
 	g.write('.data = new_array_from_c_array($fields.len, $fields.len, sizeof(orm__Primitive), _MOV((orm__Primitive[$fields.len]){')
 	for f in fields {
-		typ := g.table.get_type_symbol(f.typ).cname
-		g.write('${typ}_to_sumtype_orm__Primitive(&${node.object_var_name}.$f.name),')
+		mut typ := g.table.get_type_symbol(f.typ).cname
+		if typ == 'time__Time' {
+			typ = 'time'
+		}
+		g.write('orm__${typ}_to_primitive(${node.object_var_name}.$f.name),')
 	}
 	g.write('})),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), _MOV((int[0]){})),')
@@ -1723,7 +1729,7 @@ fn (mut g Gen) get_struct_field(name string) ast.StructField {
 		}
 	}
 	return f
-}
+}*/
 
 fn (mut g Gen) get_field_name(field ast.StructField) string {
 	mut name := field.name
@@ -1735,4 +1741,3 @@ fn (mut g Gen) get_field_name(field ast.StructField) string {
 	}
 	return name
 }
-*/

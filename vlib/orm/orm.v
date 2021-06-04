@@ -346,54 +346,54 @@ fn sql_field_type(field OrmTableField) int {
 
 // needed for backend functions
 
-fn bool_to_primitive(b bool) Primitive {
+pub fn bool_to_primitive(b bool) Primitive {
 	return Primitive(b)
 }
 
-fn f32_to_primitive(b f32) Primitive {
+pub fn f32_to_primitive(b f32) Primitive {
 	return Primitive(b)
 }
 
-fn f64_to_primitive(b f64) Primitive {
+pub fn f64_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 
-fn i8_to_primitive(b i8) Primitive {
+pub fn i8_to_primitive(b i8) Primitive {
 	return Primitive(b)
 }
 
-fn i16_to_primitive(b i16) Primitive {
+pub fn i16_to_primitive(b i16) Primitive {
 	return Primitive(b)
 }
 
-fn int_to_primitive(b int) Primitive {
+pub fn int_to_primitive(b int) Primitive {
 	return Primitive(b)
 }
 
-fn i64_to_primitive(b i64) Primitive {
+pub fn i64_to_primitive(b i64) Primitive {
 	return Primitive(b)
 }
 
-fn byte_to_primitive(b byte) Primitive {
+pub fn byte_to_primitive(b byte) Primitive {
 	return Primitive(b)
 }
 
-fn u16_to_primitive(b u16) Primitive {
+pub fn u16_to_primitive(b u16) Primitive {
 	return Primitive(b)
 }
 
-fn u32_to_primitive(b u32) Primitive {
+pub fn u32_to_primitive(b u32) Primitive {
 	return Primitive(b)
 }
 
-fn u64_to_primitive(b u64) Primitive {
+pub fn u64_to_primitive(b u64) Primitive {
 	return Primitive(b)
 }
 
-fn string_to_primitive(b string) Primitive {
+pub fn string_to_primitive(b string) Primitive {
 	return Primitive(b)
 }
 
-fn time_to_primitive(b time.Time) Primitive {
+pub fn time_to_primitive(b time.Time) Primitive {
 	return Primitive(b)
 }
