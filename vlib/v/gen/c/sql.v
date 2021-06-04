@@ -121,11 +121,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string) 
 	g.write('.data = new_array_from_c_array($fields.len, $fields.len, sizeof(orm__Primitive), _MOV((orm__Primitive[$fields.len]){')
 	for f in fields {
 		typ := g.table.get_type_symbol(f.typ).cname
-		g.write('(orm__Primitive){')
-		str := if int(f.typ) == 18 { '.str' } else { '' }
-		g.write('._$typ = memdup(&${node.object_var_name}.$f.name$str, sizeof($typ)),')
-		g.write('._typ = ${int(f.typ)}')
-		g.write('},')
+		g.write('${typ}_to_sumtype_orm__Primitive(&${node.object_var_name}.$f.name),')
 	}
 	g.write('})),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), _MOV((int[0]){})),')

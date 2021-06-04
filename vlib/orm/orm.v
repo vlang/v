@@ -343,3 +343,57 @@ fn sql_field_type(field OrmTableField) int {
 	}
 	return typ
 }
+
+// needed for backend functions
+
+fn bool_to_primitive(b bool) Primitive {
+	return Primitive(b)
+}
+
+fn f32_to_primitive(b f32) Primitive {
+	return Primitive(b)
+}
+
+fn f64_to_primitive(b f64) Primitive {
+	return Primitive(b)
+}
+
+fn i8_to_primitive(b i8) Primitive {
+	return Primitive(b)
+}
+
+fn i16_to_primitive(b i16) Primitive {
+	return Primitive(b)
+}
+
+fn int_to_primitive(b int) Primitive {
+	return Primitive(b)
+}
+
+fn i64_to_primitive(b i64) Primitive {
+	return Primitive(b)
+}
+
+fn byte_to_primitive(b byte) Primitive {
+	return Primitive(b)
+}
+
+fn u16_to_primitive(b u16) Primitive {
+	return Primitive(b)
+}
+
+fn u32_to_primitive(b u32) Primitive {
+	return Primitive(b)
+}
+
+fn u64_to_primitive(b u64) Primitive {
+	return Primitive(b)
+}
+
+fn string_to_primitive(b string) Primitive {
+	return Primitive(b)
+}
+
+fn time_to_primitive(b time.Time) Primitive {
+	return Primitive(b)
+}
