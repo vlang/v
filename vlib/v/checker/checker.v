@@ -5615,7 +5615,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 						}
 
 						if !in_range {
-							c.warn('$node_val dose not represents a value of enum $enum_typ_name',
+							c.warn('$node_val does not represents a value of enum $enum_typ_name',
 								node.pos)
 						}
 					}
