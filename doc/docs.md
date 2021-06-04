@@ -3874,11 +3874,13 @@ Troubleshooting (debugging) executables [created with V in GDB](https://github.c
 
 ### Native Backend binaries
 
-Currently there is no debugging support for binaries created by the native backend (flag: `-b native`).
+Currently there is no debugging support for binaries, created by the
+native backend (flag: `-b native`).
 
 ### Javascript Backend
 
-There is currently no support for source maps for Javascript output create by the JS Backend (flag: `-b js`).
+There is currently no support for source maps for Javascript output,
+created by the JS Backend (flag: `-b js`).
 
 
 
