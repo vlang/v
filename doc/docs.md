@@ -3843,6 +3843,11 @@ for example `main`, you can use: `-printfn main -o file.c`.
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
 
+**Commandline Debugging**
+
+1. compile your binary with debugging info `v -g hello.v`
+2. debug with [lldb](https://lldb.llvm.org) or [gdb](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+
 **Visual debugging Setup:**
 * [Visual Studio Code](vscode.md)
 
