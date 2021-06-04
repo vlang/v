@@ -3808,9 +3808,9 @@ a parallel code structure.
 
 ## Debugging
 
-### C code / Native Backend 
+### C Backend binaries (Default) 
 
-To debug issues in the generated code, you can pass these flags:
+To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
     V will enforce line numbers from the .v files in the stacktraces, that the
@@ -3846,13 +3846,15 @@ use `v help`, `v help build` and `v help build-c`.
 **Visual debugging Setup:**
 * [Visual Studio Code](vscode.md)
 
+### Native Backend binaries
+
+Currently there is no debugging support for binaries created by the native backend (flag: `-b native`).
+
 ### Javascript Backend
 
-There is currently no support for sourcemaps.
+There is currently no support for source maps for Javascript output create by the JS Backend (flag: `-b js`).
 
-### WASM Backend
 
-Not tested. Might work by using `lldb` and a WASM runtime like `wasmtime`.
 
 ## Conditional compilation
 

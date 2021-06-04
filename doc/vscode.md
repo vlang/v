@@ -77,11 +77,10 @@ This will add a block to your `.workspace` file or creates the file `.vscode/lau
 To allow your compiled application to be debugged. The application needs to include additional debugging information ([DWARF](https://en.wikipedia.org/wiki/DWARF)).
 
 **1. Compile with debugging information:**
-`$ vi -g hello.v -o hello`
+`v -b c -g hello.v -o hello` or short `v -g hello.v`
 
-The `-g` option will add the needed debugging informations.  More Options are explained in the [docs](docs.md#debugging-generated-c-code).
+The `-g` option will add the needed debugging informations.  More Options are explained in the [docs](docs.md#debugging).
 
-_Never compile for production with this option!_
 
 **2. Start Debugging**
 
