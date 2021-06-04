@@ -1,0 +1,6 @@
+examples/enums.v:6:10: warning: 12 dose not represents a value of enum Color
+    4 |     println(Color(0))
+    5 |     println(Color(10))
+    6 |     println(Color(12))
+      |             ~~~~~~~~~
+    7 | }
