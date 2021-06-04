@@ -5586,6 +5586,46 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.has_arg {
 		c.expr(node.arg)
 	}
+
+	// checks on int literal to enum cast if the value represents a value on the enum
+	if to_type_sym.kind == .enum_ {
+		if node.expr is ast.IntegerLiteral {
+			enum_decls := c.file.stmts.filter(it is ast.EnumDecl)
+			enum_typ_name := c.table.get_type_name(node.typ)
+			node_val := node.expr.val.int()
+
+			for enum_decl in enum_decls {
+				if enum_decl is ast.EnumDecl {
+					mut enum_val := 0
+					if enum_decl.name == to_type_sym.name {
+						mut in_range := false
+
+						for enum_field in enum_decl.fields {
+							// check if the field of the enum value is an integer literal
+							if enum_field.expr is ast.IntegerLiteral {
+								enum_val = enum_field.expr.val.int()
+							}
+
+							if node_val == enum_val {
+								in_range = true
+								break
+							}
+
+							enum_val += 1
+						}
+
+						if !in_range {
+							c.warn('$node_val dose not represents a value of enum $enum_typ_name',
+								node.pos)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	node.typname = c.table.get_type_symbol(node.typ).name
+
 	return node.typ
 }
 
