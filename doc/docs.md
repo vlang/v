@@ -3846,7 +3846,9 @@ use `v help`, `v help build` and `v help build-c`.
 **Commandline Debugging**
 
 1. compile your binary with debugging info `v -g hello.v`
-2. debug with [lldb](https://lldb.llvm.org) or [gdb](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+
+Troubleshooting (debugging) executables [created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
 
 **Visual debugging Setup:**
 * [Visual Studio Code](vscode.md)
