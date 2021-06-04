@@ -1,15 +1,12 @@
 module mssql
 
-// For windows tcc compiler does not work, only msvc works.
-// Some error happens in winnt.h, when using tcc. It might be caused by some tcc include headers.
+// mssql module does not support tcc on windows
 
-// odbc32 lib comes with windows sdk and does not need to be installed separately
+// odbc32 lib comes with windows sdk and does not need to be installed separately.
+// v builder for msvc can resolve the sdk includes search path, so no need to repeat here.
 #flag windows -lodbc32
 
-// #include <windows.h>
-// #include <sql.h>
-// #include <sqlext.h>
-
-// in third party folder
+// Special handling of sql headers on windows.
+// Source is in v third party folder.
 #flag windows -I@VEXEROOT/thirdparty/mssql/include
 #include <mssql.h>

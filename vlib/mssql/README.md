@@ -5,16 +5,19 @@
 ## Dependencies
 * ODBC C/C++ library
     * Linux Install: https://docs.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server
-        * `msodbcsql17` and `unixodbc-dev` packages needed
-    * Windows Install: https://docs.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server
+        * `msodbcsql17` and `unixodbc-dev` packages are needed
+    * Windows Install:
+		* `odbc` lib is included in windows sdk for most of distributions, so there is no need to install it separately
+		* Details: https://docs.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server
 
 # Windows Notes
-* Only `msvc` compiler works. `tcc` errors out in some windows system headers.
+* Only `msvc` compiler is supported on windows.
+	* It is possible to support `tcc`, but it is of low priority.
 * Make sure `cl.exe` of `msvc` is accessible from command line. You can run `v` commands in `Visual Studio 2019 Developer Command Prompt` to be safe.
 
 ## TODO
 * Support Mac 
-* ORM
+* Support ORM
 
 ## Usage
 ```v ignore
