@@ -21,7 +21,6 @@ pub mut:
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
-	ws_func    voidptr
 }
 
 fn (mut req Request) free() {
@@ -47,8 +46,8 @@ pub fn (req &Request) do() ?Response {
 	mut resp := Response{}
 	mut no_redirects := 0
 	for {
-		if no_redirects == http.max_redirects {
-			return error('http.request.do: maximum number of redirects reached ($http.max_redirects)')
+		if no_redirects == max_redirects {
+			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
@@ -255,7 +254,6 @@ struct MultiplePathAttributesError {
 	msg  string = 'Expected at most one path attribute'
 	code int
 }
-
 
 fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	sections := body.split(boundary)

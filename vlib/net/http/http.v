@@ -47,7 +47,7 @@ pub fn get(url string) ?Response {
 pub fn post(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -55,14 +55,14 @@ pub fn post(url string, data string) ?Response {
 pub fn post_json(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		header: new_header({key: .content_type, value: 'application/json'})
+		header: new_header(key: .content_type, value: 'application/json')
 	)
 }
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
 	return fetch_with_method(.post, url,
-		header: new_header({key: .content_type, value: 'application/x-www-form-urlencoded'})
+		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
 		data: url_encode_form_data(data)
 	)
 }
@@ -71,7 +71,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 pub fn put(url string, data string) ?Response {
 	return fetch_with_method(.put, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -79,7 +79,7 @@ pub fn put(url string, data string) ?Response {
 pub fn patch(url string, data string) ?Response {
 	return fetch_with_method(.patch, url,
 		data: data
-		header: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
 
@@ -107,7 +107,6 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		header: config.header
 		cookies: config.cookies
 		user_agent: config.user_agent
-		ws_func: 0
 		user_ptr: 0
 		verbose: config.verbose
 	}
