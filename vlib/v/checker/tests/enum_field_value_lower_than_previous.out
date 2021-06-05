@@ -1,7 +1,0 @@
-vlib/v/checker/tests/enum_field_value_lower_than_previous.vv:3:2: error: enum value cannot be smaller than the previous one
-    1 | enum Color {
-    2 |     red // 0
-    3 |     green = -1
-      |             ~~
-    4 |     blue //  ( -1 + 1 = 0 )
-    5 | }
