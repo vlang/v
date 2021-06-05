@@ -405,9 +405,12 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
-			g.cheaders.writeln(bare_c_headers)
+			g.cheaders.writeln(c_bare_headers)
 		} else {
 			g.cheaders.writeln(c_headers)
+		}
+		if !g.pref.skip_unused || g.table.used_maps > 0 {
+			g.cheaders.writeln(c_wyhash_headers)
 		}
 	}
 	if g.pref.os == .ios {
@@ -417,10 +420,6 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
-	if g.pref.build_mode != .build_module {
-		// _STR functions should not be defined in builtin.o
-		g.write_str_fn_definitions()
-	}
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
