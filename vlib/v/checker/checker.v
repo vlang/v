@@ -2416,6 +2416,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.inside_println_arg = true
 		c.expected_type = ast.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		_ := c.check_expr_opt_call(call_expr.args[0].expr, call_expr.args[0].typ)
 		if call_expr.args[0].typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
 		}
