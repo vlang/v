@@ -3859,6 +3859,10 @@ This will make V produce the `file.c` then stop.
 If you want to see the generated C source code for *just* a single C function,
 for example `main`, you can use: `-printfn main -o file.c`.
 
+To debug the V lang itself you need to compile from src with `./v -g -o v cmd/v`.
+
+Debugging tests e.g. `prog_tests.v` compile `v -g -keepc pprog_tests.v`. It is required to add `-keepc` to create the binaries for debugging.
+
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
 
