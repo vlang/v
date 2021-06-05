@@ -7,12 +7,12 @@ import chunked
 
 // Response represents the result of the request
 pub struct Response {
-	version Version
-pub:
+pub mut:
 	text        string
 	header      Header
 	cookies     map[string]string
 	status_code int
+	version     Version
 }
 
 fn (mut resp Response) free() {

@@ -63,7 +63,10 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 		}
 		return
 	}
-	resp := s.handler(req)
+	mut resp := s.handler(req)
+	if resp.version == .unknown {
+		resp.version = req.version
+	}
 	conn.write(resp.bytes()) or {
 		eprintln('error sending response: $err')
 	}
