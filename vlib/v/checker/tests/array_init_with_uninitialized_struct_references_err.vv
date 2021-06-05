@@ -1,0 +1,7 @@
+struct Person {
+	name string
+}
+
+fn main() {
+	println([]&Person{len: 4})
+}

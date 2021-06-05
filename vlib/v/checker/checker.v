@@ -3711,6 +3711,9 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 		if array_init.has_len {
 			c.ensure_sumtype_array_has_default_value(array_init)
+			if array_init.elem_type.is_ptr() {
+				c.error('array type cannot be uninitialized reference type', array_init.pos)
+			}
 		}
 		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 		return array_init.typ
