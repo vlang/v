@@ -3208,6 +3208,8 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 				last := seen[seen.len - 1]
 				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
+				} else if !decl.is_multi_allowed && last + 1 in seen {
+					c.error('enum value `${last + 1}` already exists', field.pos)
 				}
 				seen << last + 1
 			} else {
