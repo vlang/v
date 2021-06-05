@@ -704,6 +704,34 @@ a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 ```
 
+#### Mixed Types Structs Arrays
+
+Arrays with mixed types use [structs](#structs).
+
+```v
+struct User {
+	name string
+	likes int
+}
+mut user_list := []User{}
+user_list << User {
+	name: 'Max'
+	likes: 101
+}
+println(user_list)
+/* Output:
+[User{
+    name: 'Max'
+    likes: 101
+}]
+*/
+```
+
+Short [structs forms](#short-struct-initialization-syntax):
+```
+list := [User{'Max',101},User{'Sunny',202}]
+```
+
 #### Array Operations
 
 Elements can be appended to the end of an array using the push operator `<<`.
@@ -1570,6 +1598,10 @@ Without embedding we'd have to name the `Widget` field and do:
 ```v oksyntax
 button.widget.x = 3
 ```
+
+### Array Structs
+
+Arrays can use structs to [handle mixed content](#mixed-types-structs-arrays).
 
 ### Default field values
 
