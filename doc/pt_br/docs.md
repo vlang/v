@@ -2,7 +2,8 @@
 
 ## Introdução
 
-V é uma linguagem de programação compilada estaticamente tipada projetada para a construção de software sustentável.
+V é uma linguagem de programação compilada estaticamente tipada projetada
+para a construção de software sustentável.
 
 
 É semelhante a Go e seu design também foi influenciado por Oberon, Rust, Swift,
@@ -44,7 +45,8 @@ Recomenda-se adicionar esta pasta ao PATH de suas variáveis ​​de ambiente.
 Isso pode ser feito com o comando `v.exe symlink`.
 
 ### Android
-A execução de aplicativos gráficos V no Android também é possível via [vab] (https://github.com/vlang/vab).
+A execução de aplicativos gráficos V no Android
+também é possível via [vab](https://github.com/vlang/vab).
 
 Dependências do V no Android: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
 
@@ -55,7 +57,8 @@ Dependências do V no Android: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
   git clone https://github.com/vlang/vab && cd vab && v vab.v
   ./vab --device auto run /path/to/v/examples/sokol/particles
   ```
-Para mais detalhes e solução de problemas, visite o [repositório vab GitHub] (https://github.com/vlang/vab).
+Para mais detalhes e solução de problemas,
+visite o [repositório vab GitHub](https://github.com/vlang/vab).
 
 ## Índice
 
@@ -151,7 +154,8 @@ Para mais detalhes e solução de problemas, visite o [repositório vab GitHub] 
 </table>
 
 <!--
-Obs: existem várias palavras-chave especiais, que você pode colocar após as cercas de código para v:
+Obs: existem várias palavras-chave especiais,
+que você pode colocar após as cercas de código para v:
 compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
 Para mais detalhes, faça: `v check-md`
 -->
@@ -180,7 +184,8 @@ No exemplo acima, você pode ver que as funções são declaradas com a palavra-
 O tipo de retorno é especificado após o nome da função.
 Neste caso, `main` não retorna nada, então não há tipo de retorno.
 
-Como em muitas outras linguagens (como C, Go e Rust), `main` é o ponto de entrada do seu programa.
+Como em muitas outras linguagens (como C, Go e Rust), `main`
+é o ponto de entrada do seu programa.
 
 `println` é uma das poucas funções embutidas.
 Ele imprime o valor passado para a saída padrão.
@@ -200,7 +205,8 @@ println('hello world')
 Suponha que você tenha uma pasta com vários arquivos .v, onde um deles
 contém sua função `main ()`, e os outros arquivos têm outras
 funções auxiliares. Eles podem ser organizados por tópicos, mas ainda * não * estruturados
-o suficiente para serem seus próprios módulos reutilizáveis ​​separados, e você deseja compilar
+o suficiente para serem seus próprios módulos reutilizáveis ​​separados,
+e você deseja compilar
 todos eles em um programa.
 
 Em outras palavras, você teria que usar includes ou um sistema de compilação
@@ -385,10 +391,12 @@ fn main() {
 }
 ```
 
-Ao contrário da maioria das linguagens, o sombreamento variável não é permitido. Declarando uma variável com um nome
+Ao contrário da maioria das linguagens, o sombreamento variável não é permitido.
+Declarando uma variável com um nome
 que já é usado em um escopo pai causará um erro de compilação.
 
-No entanto, você pode criar sombra nos módulos importados, pois isso é muito útil em algumas situações:
+No entanto, você pode criar sombra nos módulos importados,
+pois isso é muito útil em algumas situações:
 ```v ignore
 import ui
 import gg
@@ -469,7 +477,8 @@ windows_newline := '\r\n' // escape special characters like in C
 assert windows_newline.len == 2
 ```
 
-Em V, uma string é uma matriz de bytes somente leitura. Os dados da string são codificados usando UTF-8.
+Em V, uma string é uma matriz de bytes somente leitura.
+Os dados da string são codificados usando UTF-8.
 Os valores da string são imutáveis. Você não pode modificar elementos:
 
 ```v failcompile
@@ -478,8 +487,8 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Observe que indexar uma string produzirá um `byte`, não um` rune`. Índices correspondem
-para bytes na string, não pontos de código Unicode.
+Observe que indexar uma string produzirá um `byte`, não um` rune`.
+Índices correspondem para bytes na string, não pontos de código Unicode.
 
 Literais de caracteres são do tipo `rune`. Para denotá-los, use `
 
@@ -488,8 +497,9 @@ rocket := `🚀`
 assert 'aloha!'[0] == `a`
 ```
 
-As aspas simples e duplas podem ser usadas para denotar strings. Para consistência,
-`vfmt` converte aspas duplas em aspas simples, a menos que a string contenha um caractere de aspas simples.
+As aspas simples e duplas podem ser usadas para denotar strings.
+Para consistência, `vfmt` converte aspas duplas em aspas simples,
+a menos que a string contenha um caractere de aspas simples.
 
 Para strings brutas, acrescente `r`. Strings brutos não são escapados:
 
@@ -507,7 +517,8 @@ n := s.int() // 42
 
 ### Interpolação de String
 
-A sintaxe de interpolação básica é muito simples - use `$` antes do nome de uma variável.
+A sintaxe de interpolação básica é muito simples - use `$`
+antes do nome de uma variável.
 A variável será convertida em uma string e incorporada ao literal:
 ```v
 name := 'Bob'
@@ -629,12 +640,15 @@ O tipo de uma matriz é determinado pelo primeiro elemento:
 * `[1, 2, 3]` é uma matriz de ints (`[] int`).
 * `['a', 'b']` é um array de strings (`[] string`).
 
-O usuário pode especificar explicitamente o tipo para o primeiro elemento: `[byte (16), 32, 64, 128]`.
+O usuário pode especificar explicitamente o tipo para o primeiro elemento:
+`[byte (16), 32, 64, 128]`.
 As matrizes V são homogêneas (todos os elementos devem ter o mesmo tipo).
 Isso significa que código como `[1, 'a']` não será compilado.
 
-O campo `.len` retorna o comprimento da matriz. Observe que é um campo somente leitura,
-e não pode ser modificado pelo usuário. Os campos exportados são somente leitura por padrão em V.
+O campo `.len` retorna o comprimento da matriz.
+Observe que é um campo somente leitura,
+e não pode ser modificado pelo usuário.
+Os campos exportados são somente leitura por padrão em V.
 Veja [modificadores de acesso] (#modificadores-de-acesso).
 
 #### Array operations
@@ -657,11 +671,13 @@ println('Alex' in names) // "false"
 `<<`  é um operador que anexa um valor ao final da matriz.
 Ele também pode anexar uma matriz inteira.
 
-`val in array` retorna verdadeiro se o array contém` val`. Veja [operador `in`](#operador-in).
+`val in array` retorna verdadeiro se o array contém` val`.
+Veja [operador `in`](#operador-in).
 
 #### Inicializando propriedades de array
 
-Durante a inicialização, você pode especificar a capacidade da matriz (`cap`), seu comprimento inicial (` len`),
+Durante a inicialização, você pode especificar a capacidade da matriz (`cap`),
+seu comprimento inicial (` len`),
 e o elemento padrão (`init`):
 
 ```v
@@ -684,7 +700,8 @@ Nota: O código acima usa uma instrução [range `for`](#range-for).
 
 #### Métodos do Array
 
-Todos os arrays podem ser facilmente impressos com `println (arr)` e convertidos em uma string
+Todos os arrays podem ser facilmente impressos com `println (arr)`
+e convertidos em uma string
 com `s: = arr.str ()`.
 
 Copiar os dados do array é feito com `.clone ()`:
@@ -716,7 +733,8 @@ upper_fn := words.map(fn (w string) string {
 println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
-`it` é uma variável embutida que se refere ao elemento atualmente sendo processado nos métodos de filtro / mapa.
+`it` é uma variável embutida que se refere ao elemento
+atualmente sendo processado nos métodos de filtro/mapa.
 
 Além disso, `.any ()` e `.all ()` podem ser usados ​​para testar convenientemente
 para elementos que satisfaçam uma condição.
@@ -747,7 +765,8 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 
 #### Sorting arrays
 
-Sorting arrays de todos os tipos são muito simples e intuitivos. Variáveis ​​especiais `a` e` b`
+Sorting arrays de todos os tipos são muito simples e intuitivos.
+Variáveis ​​especiais `a` e` b`
 são usados ​​ao fornecer uma condição de classificação personalizada.
 
 ```v
@@ -773,8 +792,8 @@ Slices são arrays parciais. Eles representam cada elemento entre dois índices
 separados por um operador ... O índice do lado direito deve ser maior ou igual
 para o índice do lado esquerdo.
 
-Se um índice do lado direito estiver ausente, será considerado o comprimento da matriz. Se um
-o índice do lado esquerdo está ausente, é assumido como 0.
+Se um índice do lado direito estiver ausente, será considerado o comprimento da matriz.
+Se um índice do lado esquerdo está ausente, é assumido como 0.
 
 ```v
 nums := [0, 10, 20, 30, 40]
@@ -795,8 +814,8 @@ println(array_2) // [0, 1, 3, 5, 4]
 
 ### Arrays de tamanho fixo
 
-V também oferece suporte a arrays com tamanho fixo. Ao contrário de arrays comuns, seus
-o comprimento é constante. Você não pode anexar elementos a eles, nem reduzi-los.
+V também oferece suporte a arrays com tamanho fixo. Ao contrário de arrays comuns,
+seus o comprimento é constante. Você não pode anexar elementos a eles, nem reduzi-los.
 Você só pode modificar seus elementos no local.
 
 No entanto, o acesso aos elementos de arrays de tamanho fixo é mais eficiente,
@@ -1078,15 +1097,15 @@ Funciona assim:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x é "casteado" para MyStruct mesmo que seja mutável
-	// Sem a palavra-chave "mut", não funcionaria
+	// x is casted to MyStruct even if it's mutable
+	// without the mut keyword that wouldn't work
 	println(x)
 }
 // same with match
 match mut x {
 	MyStruct {
-		// x é "casteado" para MyStruct mesmo que seja mutável
-	    // Sem a palavra-chave "mut", não funcionaria
+		// x is casted to MyStruct even it's mutable
+		// without the mut keyword that wouldn't work
 		println(x)
 	}
 }
@@ -1133,7 +1152,8 @@ if parser.token in [.plus, .minus, .div, .mult] {
 ```
 
 V otimiza tais expressões,
-então ambas as instruções `if` acima produzem o mesmo código de máquina e nenhum array é criado.
+então ambas as instruções `if` acima
+produzem o mesmo código de máquina e nenhum array é criado.
 
 ### For loop
 
@@ -1271,7 +1291,8 @@ Aqui, `i` não precisa ser declarado com `mut`, pois sempre será mutável por d
 #### Labelled break & continue
 
 `break` e` continue` controlam o loop `for` mais interno por padrão.
-Você também pode usar `break` e` continue` seguido por um nome de rótulo para se referir a um `for` externo
+Você também pode usar `break` e` continue`
+seguido por um nome de rótulo para se referir a um `for` externo
 ciclo:
 
 ```v
@@ -1307,8 +1328,10 @@ match os {
 }
 ```
 
-Uma declaração de correspondência é uma maneira mais curta de escrever uma sequência de declarações `if - else`.
-Quando uma ramificação correspondente for encontrada, o seguinte bloco de instrução será executado.
+Uma declaração de correspondência é uma maneira mais curta
+de escrever uma sequência de declarações `if - else`.
+Quando uma ramificação correspondente for encontrada,
+o seguinte bloco de instrução será executado.
 O outro branch será executado quando nenhum outro branch corresponder.
 
 ```v
@@ -1320,7 +1343,8 @@ s := match number {
 }
 ```
 
-Uma expressão de correspondência retorna o valor da expressão final da ramificação correspondente.
+Uma expressão de correspondência retorna o valor
+da expressão final da ramificação correspondente.
 
 ```v
 enum Color {
@@ -1337,8 +1361,10 @@ fn is_red_or_blue(c Color) bool {
 }
 ```
 
-Uma declaração de correspondência também pode ser usada para ramificar nas variantes de um `enum`
-usando a sintaxe abreviada `.variant_here`. Um branch `else` não é permitido
+Uma declaração de correspondência também pode ser usada
+para ramificar nas variantes de um `enum`
+usando a sintaxe abreviada `.variant_here`.
+Um branch `else` não é permitido
 quando todos os ramos são exaustivos.
 
 ```v
@@ -1590,7 +1616,8 @@ Isso só funciona para funções que usam uma estrutura para o último argumento
 
 ### Access modifiers
 
-Os campos Struct são privados e imutáveis ​​por padrão (tornando os structs imutáveis ​​também).
+Os campos Struct são privados
+e imutáveis ​​por padrão (tornando os structs imutáveis ​​também).
 Seus modificadores de acesso podem ser alterados com
 `pub` e` mut`. No total, existem 05 opções possíveis:
 
@@ -1621,7 +1648,8 @@ pub:
 ```
 
 É fácil ver a partir desta definição que `string` é um tipo imutável.
-O ponteiro de byte com os dados da string não pode ser acessado fora de `builtin` de forma alguma.
+O ponteiro de byte com os dados da string não pode ser acessado
+fora de `builtin` de forma alguma.
 O campo `len` é público, mas imutável:
 ```v failcompile
 fn main() {
@@ -1657,10 +1685,12 @@ println(user2.can_register()) // "true"
 
 V não tem classes, mas você pode definir métodos em tipos.
 Um método é uma função com um argumento receptor especial.
-O receptor aparece em sua própria lista de argumentos entre a palavra-chave `fn` e o nome do método.
+O receptor aparece em sua própria lista de argumentos entre
+a palavra-chave `fn` e o nome do método.
 Os métodos devem estar no mesmo módulo que o tipo de receptor.
 
-Neste exemplo, o método `can_register` possui um receptor do tipo `User` chamado `u`.
+Neste exemplo, o método `can_register` possui um
+receptor do tipo `User` chamado `u`.
 A convenção não é usar nomes de receptores como `self` ou` this`,
 mas um nome curto, de preferência uma letra.
 
@@ -1701,13 +1731,15 @@ Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
 
 O acesso de membro do union deve ser realizado em um bloco "unsafe".
 
-Observe que os argumentos de estrutura incorporados não são necessariamente armazenados na ordem listada.
+Observe que os argumentos de estrutura incorporados não são
+necessariamente armazenados na ordem listada.
 
 ## Funções 2
 
 ### Funções puras por padrão
 
-As funções V são puras por padrão, o que significa que seus valores de retorno são uma função de seus
+As funções V são puras por padrão, o que significa que seus
+valores de retorno são uma função de seus
 argumentos apenas, e sua avaliação não tem efeitos colaterais (além de I/O).
 
 Isso é conseguido pela falta de variáveis ​​globais e todos os argumentos de função sendo
@@ -1715,8 +1747,8 @@ imutável por padrão, mesmo quando [referências](#referências) são passadas.
 
 V não é uma linguagem puramente funcional.
 
-Há um sinalizador do compilador para habilitar variáveis ​​globais (`-enable-globals`), mas este é
-destinado a aplicativos de baixo nível como kernels e drivers.
+Há um sinalizador do compilador para habilitar variáveis ​​globais (`-enable-globals`),
+mas este é destinado a aplicativos de baixo nível como kernels e drivers.
 
 ### Argumentos Mutáveis
 
@@ -1739,8 +1771,10 @@ user.register()
 println(user.is_registered) // "true"
 ```
 
-Neste exemplo, o receptor (que é simplesmente o primeiro argumento) é marcado como mutável,
-então `register()` pode mudar o objeto do usuário. O mesmo funciona com argumentos de não receptores:
+Neste exemplo, o receptor (que é simplesmente o primeiro argumento)
+é marcado como mutável,
+então `register()` pode mudar o objeto do usuário.
+O mesmo funciona com argumentos de não receptores:
 
 ```v
 fn multiply_by_2(mut arr []int) {
@@ -1759,10 +1793,12 @@ Observe que você deve adicionar `mut` antes de` nums` ao chamar esta função. 
 ficar claro que a função que está sendo chamada modificará o valor.
 
 É preferível retornar valores em vez de modificar argumentos.
-A modificação de argumentos só deve ser feita em partes críticas de desempenho de seu aplicativo
+A modificação de argumentos só deve ser feita em partes
+críticas de desempenho de seu aplicativo
 para reduzir as alocações e cópias.
 
-Por esta razão, V não permite a modificação de argumentos com tipos primitivos (por exemplo, inteiros).
+Por esta razão, V não permite a modificação de argumentos
+com tipos primitivos (por exemplo, inteiros).
 Apenas tipos mais complexos, como arrays e maps, podem ser modificados.
 
 Use `user.register()` ou `user = register(user)`
@@ -1923,7 +1959,8 @@ constante separadamente:
 const e = 2.71828
 ```
 
-As constantes V são mais flexíveis do que na maioria das linguagens. Você pode atribuir valores mais complexos:
+As constantes V são mais flexíveis do que na maioria das linguagens.
+Você pode atribuir valores mais complexos:
 
 ```v
 struct Color {
@@ -1962,8 +1999,8 @@ Variáveis ​​globais normalmente não são permitidas, então isso pode ser 
 ### Prefixo de módulo necessário
 
 Ao nomear constantes, `snake_case` deve ser usado. A fim de distinguir constantes
-a partir de variáveis ​​locais, o caminho completo para consts deve ser especificado. Por exemplo,
-para acessar o PI const, o nome completo `math.pi` deve ser usado fora de` math`
+a partir de variáveis ​​locais, o caminho completo para consts deve ser especificado.
+Por exemplo, para acessar o PI const, o nome completo `math.pi` deve ser usado fora de` math`
 módulo e dentro dele. Essa restrição é relaxada apenas para o módulo `main`
 (aquele que contém seu `fn main()`), onde você pode usar o nome não qualificado de
 constantes definidas lá, ou seja, `numbers`, em vez de` main.numbers`.
@@ -2083,7 +2120,8 @@ fn main() {
 
 ### Funções `init`
 
-Se você quiser que um módulo chame automaticamente algum código de configuração/inicialização quando for importado,
+Se você quiser que um módulo chame automaticamente
+algum código de configuração/inicialização quando for importado,
 você pode usar uma função do módulo `init`:
 
 ```v
@@ -2092,8 +2130,8 @@ fn init() {
 }
 ```
 
-A função `init` não pode ser pública - ela será chamada automaticamente. Este recurso é
-particularmente útil para inicializar uma biblioteca C.
+A função `init` não pode ser pública - ela será chamada automaticamente.
+Este recurso é particularmente útil para inicializar uma biblioteca C.
 
 ### Módulo Gerenciador de pacote
 
@@ -2294,9 +2332,11 @@ match color {
 ```
 
 A correspondência de enum deve ser exaustiva ou ter um branch `else`.
-Isso garante que, se um novo campo enum for adicionado, ele será tratado em todos os lugares do código.
+Isso garante que, se um novo campo enum for adicionado,
+ele será tratado em todos os lugares do código.
 
-Os campos Enum não podem reutilizar palavras-chave reservadas. No entanto, palavras-chave reservadas podem ter escape
+Os campos Enum não podem reutilizar palavras-chave reservadas.
+No entanto, palavras-chave reservadas podem ter escape
 com um @.
 
 ```v
@@ -2328,12 +2368,13 @@ println('Grocery IDs: $g1, $g2, $g3')
 
 Output: `Grocery IDs: 0, 5, 6`.
 
-Operações não são permitidas em variáveis ​​enum; eles devem ser explicitamente convertidos em `int`.
+Operações não são permitidas em variáveis ​​enum;
+eles devem ser explicitamente convertidos em `int`.
 
 ### Sum types
 
-Uma instância do tipo sum pode conter um valor de vários tipos diferentes. Use a palavra-chave `type`
-para declarar um tipo de sum:
+Uma instância do tipo sum pode conter um valor de vários tipos diferentes.
+Use a palavra-chave `type` para declarar um tipo de sum:
 
 ```v
 struct Moon {}
@@ -2351,7 +2392,8 @@ println(sum)
 O método embutido `type_name` retorna o nome do atualmente mantido
 modelo.
 
-Com os tipos de sum, você pode construir estruturas recursivas e escrever um código conciso, mas poderoso, nelas.
+Com os tipos de sum, você pode construir estruturas recursivas
+e escrever um código conciso, mas poderoso, nelas.
 ```v
 // V's binary tree
 struct Empty {}
@@ -2425,7 +2467,8 @@ if w is Mars {
 ```
 `w` tem o tipo` Mars` dentro do corpo da instrução `if`. Isso é
 conhecido como * digitação sensível ao fluxo *.
-Se `w` for um identificador mutável, não seria seguro se o compilador o convertesse de maneira inteligente sem um aviso.
+Se `w` for um identificador mutável,
+não seria seguro se o compilador o convertesse de maneira inteligente sem um aviso.
 É por isso que você deve declarar um `mut` antes da expressão` is`:
 
 ```v ignore
@@ -2535,19 +2578,26 @@ fn main() {
 }
 ```
 
-V combina `Option` e` Result` em um tipo, então você não precisa decidir qual usar.
+V combina `Option` e` Result` em um tipo,
+então você não precisa decidir qual usar.
 
-A quantidade de trabalho necessária para "atualizar" uma função para uma função opcional é mínima;
-você tem que adicionar um `?` ao ​​tipo de retorno e retornar um erro quando algo der errado.
+A quantidade de trabalho necessária para "atualizar"
+uma função para uma função opcional é mínima;
+você tem que adicionar um `?` ao ​​tipo de retorno
+e retornar um erro quando algo der errado.
 
-Se você não precisa retornar uma mensagem de erro, você pode simplesmente `return none`
+Se você não precisa retornar uma mensagem de erro,
+você pode simplesmente `return none`
 (este é um equivalente mais eficiente de `return error (" ")`).
 
-Este é o mecanismo principal para tratamento de erros em V. Eles ainda são valores, como em Go,
-mas a vantagem é que os erros não podem ser resolvidos, e tratá-los é muito menos prolixo.
+Este é o mecanismo principal para tratamento de erros em V.
+Eles ainda são valores, como em Go,
+mas a vantagem é que os erros não podem ser resolvidos,
+e tratá-los é muito menos prolixo.
 Ao contrário de outras linguagens, V não lida com exceções com blocos `throw/try/catch`.
 
-`err` é definido dentro de um bloco `or` e é definido para a string que a mensagem foi passada
+`err` é definido dentro de um bloco `or` e
+é definido para a string que a mensagem foi passada
 para a função `error()`. `err` estará vazio se `none` for retornado.
 
 ```v oksyntax
@@ -2559,8 +2609,8 @@ user := repo.find_user_by_id(7) or {
 
 ### Handling optionals
 
-Existem quatro maneiras de lidar com um opcional. O primeiro método é
-propagar o erro:
+Existem quatro maneiras de lidar com um opcional.
+O primeiro método é propagar o erro:
 
 ```v
 import net.http
@@ -2705,7 +2755,8 @@ println(compare(1.1, 1.2)) //         -1
 
 ## Concorrência
 ### Spawning Concurrent Tasks
-O modelo de simultaneidade de V é muito semelhante ao de Go. Para executar `foo()`, simultaneamente em
+O modelo de simultaneidade de V é muito semelhante ao de Go.
+Para executar `foo()`, simultaneamente em
 um thread diferente, basta chamá-lo com `go foo()`:
 
 ```v
@@ -2742,8 +2793,10 @@ fn main() {
 }
 ```
 
-Essa abordagem também pode ser usada para obter um valor de retorno de uma função que é executada em uma
-thread paralela. Não há necessidade de modificar a própria função para poder chamá-la
+Essa abordagem também pode ser usada para obter um
+valor de retorno de uma função que é executada em uma
+thread paralela. Não há necessidade de modificar
+a própria função para poder chamá-la
 simultaneamente.
 
 ```v
@@ -2815,12 +2868,16 @@ fn main() {
 ```
 
 ### Channels
-Os canais são a forma preferida de comunicação entre as corrotinas. Os canais de V funcionam basicamente como
-aqueles em Go. Você pode empurrar objetos para um canal em uma extremidade e estourar objetos na outra extremidade.
-Os canais podem ser armazenados em buffer ou sem buffer e é possível `selecionar` a partir de vários canais.
+Os canais são a forma preferida de comunicação entre as corrotinas.
+Os canais de V funcionam basicamente como
+aqueles em Go. Você pode empurrar objetos para um canal
+em uma extremidade e estourar objetos na outra extremidade.
+Os canais podem ser armazenados em buffer ou sem buffer
+e é possível `selecionar` a partir de vários canais.
 
 #### Syntax and Usage
-Channels têm o tipo `chan objtype`. Um comprimento de buffer opcional pode ser especificado como a propriedade `cap`
+Channels têm o tipo `chan objtype`. Um comprimento de buffer
+opcional pode ser especificado como a propriedade `cap`
 na declaração:
 
 ```v
@@ -2828,8 +2885,10 @@ ch := chan int{} // unbuffered - "synchronous"
 ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
-Os channles não precisam ser declarados como `mut`. O comprimento do buffer não faz parte do tipo, mas
-uma propriedade do objeto de canal individual. Os canais podem ser passados ​​para corrotinas como
+Os channles não precisam ser declarados como `mut`.
+O comprimento do buffer não faz parte do tipo, mas
+uma propriedade do objeto de canal individual.
+Os canais podem ser passados ​​para corrotinas como
 variáveis:
 
 ```v
@@ -2844,11 +2903,13 @@ fn main() {
 }
 ```
 
-Os objetos podem ser enviados para os canais usando o operador '<-'. O mesmo operador pode ser usado para
+Os objetos podem ser enviados para os canais
+usando o operador '<-'. O mesmo operador pode ser usado para
 objetos pop do outro lado:
 
 ```v
-// crie canais em buffer para que o push não bloqueie (se houver espaço no buffer)
+// crie canais em buffer para que o push não
+// bloqueie (se houver espaco no buffer)
 ch := chan int{cap: 1}
 ch2 := chan f64{cap: 1}
 n := 5
@@ -2860,10 +2921,14 @@ m := <-ch // pop criando nova variável
 y = <-ch2 // pop dentro de uma variável existente
 ```
 
-Um canal pode ser fechado para indicar que nenhum outro objeto pode ser empurrado. Qualquer tentativa de
-fazer isso, resultará em um 'panic' de tempo de execução (com exceção de `select` e
-`try_push()` - veja abaixo). As tentativas de estourar retornarão imediatamente se o
-o canal associado foi fechado e o buffer está vazio. Esta situação pode ser
+Um canal pode ser fechado para indicar que nenhum
+outro objeto pode ser empurrado. Qualquer tentativa de
+fazer isso, resultará em um 'panic' de tempo de execução
+(com exceção de `select` e
+`try_push()` - veja abaixo). As tentativas de estourar
+retornarão imediatamente se o
+o canal associado foi fechado e o buffer está vazio.
+Esta situação pode ser
 manipulado usando um branch ou (consulte [Handling optionals](#handling-optionals)).
 
 ```v wip
@@ -2883,7 +2948,8 @@ y := <-ch2 ?
 #### Channel Select
 
 O comando `select` permite monitorar vários canais ao mesmo tempo
-sem carga de CPU perceptível. Consiste em uma lista de possíveis transferências e filiais associadas
+sem carga de CPU perceptível. Consiste em uma lista
+de possíveis transferências e filiais associadas
 de declarações - semelhante ao comando [match](#match):
 ```v wip
 import time
@@ -2911,9 +2977,12 @@ fn main () {
 }
 ```
 
-O branch de tempo limite é opcional. Se estiver ausente, `select` espera por um período ilimitado de tempo.
-Também é possível proceder imediatamente se nenhum canal estiver pronto no momento em que `select` é chamado
-adicionando um branch `else {...}`. `else` e `> timeout` são mutuamente exclusivos.
+O branch de tempo limite é opcional. Se estiver ausente,
+`select` espera por um período ilimitado de tempo.
+Também é possível proceder imediatamente se nenhum canal
+estiver pronto no momento em que `select` é chamado
+adicionando um branch `else {...}`. `else` e `> timeout`
+são mutuamente exclusivos.
 
 O comando `select` pode ser usado como uma * expressão * do tipo` bool`
 que se torna `falso` se todos os canais forem fechados:
@@ -2955,17 +3024,23 @@ Os métodos `try_push/pop()` retornarão imediatamente com um dos resultados
 `.success`,` .not_ready` ou `.closed` - depende se o objeto foi transferido ou
 a razão pela qual não.
 O uso desses métodos e propriedades na produção não é recomendado -
-algoritmos baseados neles estão frequentemente sujeitos a condições de corrida. Especialmente `.len` e
+algoritmos baseados neles estão frequentemente sujeitos
+a condições de corrida. Especialmente `.len` e
 `.closed` não deve ser usado para tomar decisões.
-Use ramos `or`, propagação de erro ou `select` em vez disso (veja [Syntax and Usage](#syntax-and-usage)
+Use ramos `or`, propagação de erro ou `select`
+em vez disso (veja [Syntax and Usage](#syntax-and-usage)
 e [Channel Select](#channel-select) acima).
 
 ### Objetos Compartilhados
 
-Os dados podem ser trocados entre uma co-rotina e o thread de chamada por meio de uma variável compartilhada.
-Essas variáveis ​​devem ser criadas como `shared` e passadas para a co-rotina como tal.
-A `struct` subjacente contém um * mutex * oculto que permite o bloqueio de acesso simultâneo
-usando `rlock` para somente leitura e `lock` para acesso de leitura/gravação.
+Os dados podem ser trocados entre uma co-rotina e
+o thread de chamada por meio de uma variável compartilhada.
+Essas variáveis ​​devem ser criadas como `shared` e
+passadas para a co-rotina como tal.
+A `struct` subjacente contém um * mutex * oculto
+que permite o bloqueio de acesso simultâneo
+usando `rlock` para somente leitura e `lock`
+para acesso de leitura/gravação.
 
 ```v
 struct St {
@@ -3025,14 +3100,16 @@ println(foos[0].x)
 println(foos[1].x)
 ```
 
-Devido à natureza onipresente do JSON, o suporte para ele é integrado diretamente no V.
+Devido à natureza onipresente do JSON, o suporte
+para ele é integrado diretamente no V.
 
 A função `json.decode` leva dois argumentos:
 o primeiro é o tipo em que o valor JSON deve ser decodificado e
 a segunda é uma string contendo os dados JSON.
 
 V gera código para codificação e decodificação JSON.
-Nenhuma 'runtime reflection' é usada. Isso resulta em um desempenho muito melhor.
+Nenhuma 'runtime reflection' é usada. Isso resulta
+em um desempenho muito melhor.
 
 ## Testing
 
@@ -3047,11 +3124,16 @@ mut v := [20]
 foo(mut v)
 assert v[0] < 4
 ```
-Uma instrução `assert` verifica se sua expressão é avaliada como `true`. Se uma afirmação falhar,
-o programa será abortado. Asserts devem ser usados ​​apenas para detectar erros de programação. Quando um
-declaração falha, é relatado para * stderr *, e os valores em cada lado de um operador de comparação
-(como `<`, `==`) será impresso quando possível. Isso é útil para encontrar facilmente um
-valor inesperado. As declarações assert podem ser usadas em qualquer função.
+Uma instrução `assert` verifica se sua expressão é
+avaliada como `true`. Se uma afirmação falhar,
+o programa será abortado. Asserts devem ser usados
+​​apenas para detectar erros de programação. Quando um
+declaração falha, é relatado para * stderr *, e os
+valores em cada lado de um operador de comparação
+(como `<`, `==`) será impresso quando possível.
+Isso é útil para encontrar facilmente um
+valor inesperado. As declarações assert podem
+ser usadas em qualquer função.
 
 ### Test files
 
@@ -3076,32 +3158,51 @@ fn test_hello() {
 	assert hello() == 'Hello world'
 }
 ```
-Para executar o teste acima, use `v hello_test.v`. Isso irá verificar se a função `hello` está
-produzindo a saída correta. V executa todas as funções de teste no arquivo.
+Para executar o teste acima, use `v hello_test.v`.
+Isso irá verificar se a função `hello` está
+produzindo a saída correta.
+V executa todas as funções de teste no arquivo.
 
-* Todas as funções de teste devem estar dentro de um arquivo de teste cujo nome termina em `_test.v`.
-* Os nomes das funções de teste devem começar com `test_` para marcá-los para execução.
-* As funções normais também podem ser definidas em arquivos de teste e devem ser chamadas manualmente. Outros
-  símbolos também podem ser definidos em arquivos de teste, por exemplo tipos.
+* Todas as funções de teste devem estar dentro
+de um arquivo de teste cujo nome termina em `_test.v`.
+* Os nomes das funções de teste devem começar com
+`test_` para marcá-los para execução.
+* As funções normais também podem ser definidas em
+arquivos de teste e devem ser chamadas manualmente. Outros
+  símbolos também podem ser definidos em arquivos
+  de teste, por exemplo tipos.
 * Existem dois tipos de testes: externos e internos.
-* Os testes internos devem * declarar * seu módulo, assim como todos os outros .v
-arquivos do mesmo módulo. Os testes internos podem até chamar funções privadas em
+* Os testes internos devem * declarar * seu módulo,
+assim como todos os outros .v
+arquivos do mesmo módulo. Os testes internos podem
+até chamar funções privadas em
 o mesmo módulo.
-* Os testes externos devem * importar * os módulos que eles testam. Eles não
-têm acesso às funções/tipos privados dos módulos. Eles podem testar apenas
+* Os testes externos devem * importar * os módulos
+que eles testam. Eles não
+têm acesso às funções/tipos privados dos módulos.
+Eles podem testar apenas
 a API externa/pública que um módulo fornece.
 
-No exemplo acima, `test_hello` é um teste interno, que pode chamar
-a função privada `hello()` porque `hello_test.v` tem `module main`,
-assim como `hello.v`, ou seja, ambos fazem parte do mesmo módulo. Observe também que
-uma vez que `module main` é um módulo regular como os outros, os testes internos podem
-também ser usado para testar funções privadas nos arquivos .v do seu programa principal.
+No exemplo acima, `test_hello` é um teste interno,
+que pode chamar
+a função privada `hello()` porque `hello_test.v`
+tem `module main`,
+assim como `hello.v`, ou seja, ambos fazem parte
+do mesmo módulo. Observe também que
+uma vez que `module main` é um módulo regular
+como os outros, os testes internos podem
+também ser usado para testar funções privadas
+nos arquivos .v do seu programa principal.
 
-Você também pode definir funções de teste especiais em um arquivo de teste:
-* `testsuite_begin` que será executado * antes * de todas as outras funções de teste.
-* `testsuite_end` que será executado * após * todas as outras funções de teste.
+Você também pode definir funções de teste
+especiais em um arquivo de teste:
+* `testsuite_begin` que será executado * antes *
+de todas as outras funções de teste.
+* `testsuite_end` que será executado * após *
+todas as outras funções de teste.
 
-Se uma função de teste tiver um tipo de retorno de erro, qualquer erro propagado falhará no teste:
+Se uma função de teste tiver um tipo de retorno
+de erro, qualquer erro propagado falhará no teste:
 
 ```
 import strconv
@@ -3114,28 +3215,38 @@ fn test_atoi() ? {
 
 #### Rodando os testes
 
-Para executar funções de teste em um arquivo de teste individual, use `v foo_test.v`.
+Para executar funções de teste em um arquivo
+de teste individual, use `v foo_test.v`.
 
-Para testar um módulo inteiro, use `v test mymodule`. Você também pode usar `v test .` para testar
-tudo dentro de sua pasta atual (e subpastas). Você pode passar a opção `-stats`
+Para testar um módulo inteiro, use `v test mymodule`.
+Você também pode usar `v test .` para testar
+tudo dentro de sua pasta atual (e subpastas).
+Você pode passar a opção `-stats`
 para ver mais detalhes sobre os testes individuais executados.
 
 ## Gerenciamento de Memória
 
-V evita fazer alocações desnecessárias em primeiro lugar, usando tipos de valor,
-buffers de string, promovendo um estilo de código simples e livre de abstração.
+V evita fazer alocações desnecessárias em
+primeiro lugar, usando tipos de valor,
+buffers de string, promovendo um estilo
+de código simples e livre de abstração.
 
-A maioria dos objetos (~ 90-100%) são liberados pelo motor autofree de V: o compilador insere
-chamadas gratuitas necessárias automaticamente durante a compilação. Pequena porcentagem restante
+A maioria dos objetos (~ 90-100%) são
+liberados pelo motor autofree de V: o compilador insere
+chamadas gratuitas necessárias automaticamente
+durante a compilação. Pequena porcentagem restante
 de objetos é liberado por meio da contagem de referência.
 
-O desenvolvedor não precisa alterar nada em seu código. "Simplesmente funciona", como em
-Python, Go ou Java, exceto que não há GC pesado rastreando tudo ou RC caro para
+O desenvolvedor não precisa alterar nada
+em seu código. "Simplesmente funciona", como em
+Python, Go ou Java, exceto que não há GC
+pesado rastreando tudo ou RC caro para
 cada objeto.
 
 ### Controle
 
-Você pode tirar vantagem do motor autofree do V e definir um método `free()` nos
+Você pode tirar vantagem do motor autofree
+do V e definir um método `free()` nos
 tipos de dados customizados:
 
 ```v
@@ -3147,15 +3258,21 @@ fn (data &MyType) free() {
 }
 ```
 
-Assim como o compilador libera tipos de dados C com `free()` do C, ele irá inserir estaticamente
-`free()` chamadas para seu tipo de dado no final do tempo de vida de cada variável.
+Assim como o compilador libera tipos de dados C
+com `free()` do C, ele irá inserir estaticamente
+`free()` chamadas para seu tipo de dado no final
+do tempo de vida de cada variável.
 
-Para desenvolvedores que desejam ter mais controle de baixo nível, o autofree pode ser desabilitado com
-`-manualfree`, ou adicionando um` [manualfree]` em cada função que deseja gerenciar sua
+Para desenvolvedores que desejam ter mais controle
+de baixo nível, o autofree pode ser desabilitado com
+`-manualfree`, ou adicionando um` [manualfree]` em
+cada função que deseja gerenciar sua
 memória manualmente. (Veja [attributes](#attributes))._
 
-Nota: neste momento, o autofree está escondido atrás da flag '-autofree'. Será habilitado por
-padrão em V 0.3. Se o autofree não for usado, os programas V vazarão memória._
+Nota: neste momento, o autofree está escondido atrás
+da flag '-autofree'. Será habilitado por
+padrão em V 0.3. Se o autofree não for usado,
+os programas V vazarão memória._
 
 ### Exemplos
 
@@ -3177,11 +3294,14 @@ fn draw_scene() {
 }
 ```
 
-As strings não escapam de `draw_text`, então elas são limpas quando
+As strings não escapam de `draw_text`,
+então elas são limpas quando
 a função sai.
 
-Na verdade, com o sinalizador `-prealloc`, as duas primeiras chamadas não resultarão em nenhuma alocação.
-Essas duas strings são pequenas, então V usará um buffer pré-alocado para elas.
+Na verdade, com o sinalizador `-prealloc`,
+as duas primeiras chamadas não resultarão em nenhuma alocação.
+Essas duas strings são pequenas,
+então V usará um buffer pré-alocado para elas.
 
 ```v
 struct User {
@@ -3204,16 +3324,22 @@ fn test() []int {
 
 (Ainda está em estado alfa)
 
-V tem um ORM embutido (mapeamento objeto-relacional) que suporta SQLite, MySQL e Postgres,
+V tem um ORM embutido (mapeamento objeto-relacional)
+que suporta SQLite, MySQL e Postgres,
 mas em breve terá suporte para MS SQL e Oracle.
 
 ORM da V oferece uma série de benefícios:
 
-- Uma sintaxe para todos os dialetos SQL. (Migrar entre bancos de dados se torna muito mais fácil.)
-- As consultas são construídas usando a sintaxe de V. (Não há necessidade de aprender outra sintaxe.)
-- Segurança. (Todas as consultas são automaticamente higienizadas para evitar injeção de SQL.)
-- Compilar verificações de tempo. (Isso evita erros de digitação que só podem ser detectados durante o tempo de execução.)
-- Legibilidade e simplicidade. (Você não precisa analisar manualmente os resultados de uma consulta e
+- Uma sintaxe para todos os dialetos SQL.
+(Migrar entre bancos de dados se torna muito mais fácil.)
+- As consultas são construídas usando a sintaxe de V.
+(Não há necessidade de aprender outra sintaxe.)
+- Segurança.
+(Todas as consultas são automaticamente higienizadas para evitar injeção de SQL.)
+- Compilar verificações de tempo.
+(Isso evita erros de digitação que só podem ser detectados durante o tempo de execução.)
+- Legibilidade e simplicidade.
+(Você não precisa analisar manualmente os resultados de uma consulta e
     em seguida, construir manualmente os objetos a partir dos resultados analisados.)
 
 ```v
@@ -3263,15 +3389,18 @@ sql db {
 }
 ```
 
-Para mais exemplos e docs, veja <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
+Para mais exemplos e docs,
+veja <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
 
 ## Escrevendo a Documentação
 
-A forma como funciona é muito semelhante ao Go. É muito simples: não há necessidade de
+A forma como funciona é muito semelhante ao Go.
+É muito simples: não há necessidade de
 escrever a documentação separadamente para o seu código,
 vdoc irá gerá-lo a partir de docstrings no código-fonte.
 
-A documentação para cada função/tipo/const deve ser colocada logo antes da declaração:
+A documentação para cada função/tipo/const
+deve ser colocada logo antes da declaração:
 
 ```v
 // clearall clears all bits in the array
@@ -3281,8 +3410,10 @@ fn clearall() {
 
 O comentário deve começar com o nome da definição.
 
-Às vezes, uma linha não é suficiente para explicar o que uma função faz, nesse caso, os comentários devem
-alcançar a função documentada usando comentários de uma única linha:
+Às vezes, uma linha não é suficiente para explicar
+o que uma função faz, nesse caso, os comentários devem
+alcançar a função documentada usando comentários
+de uma única linha:
 
 ```v
 // copy_all recursively copies all elements of the array by their value,
@@ -3292,31 +3423,37 @@ fn copy_all(dupes bool) {
 }
 ```
 
-Por convenção, é preferível que os comentários sejam escritos no * tempo presente *.
+Por convenção, é preferível que os comentários
+sejam escritos no * tempo presente *.
 
-Uma visão geral do módulo deve ser colocada no primeiro comentário logo após o nome do módulo.
+Uma visão geral do módulo deve ser colocada
+no primeiro comentário logo após o nome do módulo.
 
-Para gerar a documentação, use o vdoc, por exemplo `v doc net.http`.
+Para gerar a documentação, use o vdoc,
+por exemplo `v doc net.http`.
 
 ## Ferramentas
 
 ### v fmt
 
-Você não precisa se preocupar em formatar seu código ou definir diretrizes de estilo.
+Você não precisa se preocupar em formatar
+seu código ou definir diretrizes de estilo.
 `v fmt` cuida disso:
 
 ```shell
 v fmt file.v
 ```
 
-É recomendado configurar seu editor, de forma que `v fmt -w` execute a cada salvamento.
+É recomendado configurar seu editor,
+de forma que `v fmt -w` execute a cada salvamento.
 Uma execução vfmt geralmente é bem barata (leva < 30ms).
 
 Sempre execute `v fmt -w file.v` antes de subir seu código
 
 ### Profiling
 
-V tem um bom suporte para traçar o perfil de seus programas: `v -profile profile.txt run file.v`
+V tem um bom suporte para traçar o perfil
+de seus programas: `v -profile profile.txt run file.v`
 Isso produzirá um arquivo profile.txt, que você pode analisar.
 
 O arquivo profile.txt gerado terá linhas com 4 colunas:
@@ -3328,7 +3465,8 @@ d) o nome da função v
 Você pode classificar na coluna 3 (tempo médio por função) usando:
 `sort -n -k3 profile.txt | tail`
 
-Você também pode usar cronômetros para medir apenas partes do seu código explicitamente:
+Você também pode usar cronômetros para medir
+apenas partes do seu código explicitamente:
 ```v
 import time
 
@@ -3376,11 +3514,14 @@ a própria expressão e o valor da expressão.
 
 ## Memory-unsafe code
 
-Às vezes, para eficiência, você pode querer escrever um código de baixo nível que pode potencialmente
-corromper a memória ou ser vulnerável a falhas de segurança. V suporta escrever esse código,
+Às vezes, para eficiência,
+você pode querer escrever um código de baixo nível que pode potencialmente
+corromper a memória ou ser
+vulnerável a falhas de segurança. V suporta escrever esse código,
 mas não por padrão.
 
-V requer que quaisquer operações potencialmente inseguras para a memória sejam marcadas intencionalmente.
+V requer que quaisquer operações potencialmente
+inseguras para a memória sejam marcadas intencionalmente.
 Marcá-los também indica para quem está lendo o código que pode haver
 violações de segurança de memória se houver um erro.
 
@@ -3391,7 +3532,8 @@ Exemplos de operações potencialmente inseguras para a memória são:
 * Conversão para ponteiro de um tipo incompatível
 * Chamar certas funções C, por exemplo `free`,` strlen` e `strncmp`.
 
-Para marcar operações potencialmente inseguras para a memória, coloque-as em um bloco `unsafe`:
+Para marcar operações potencialmente
+inseguras para a memória, coloque-as em um bloco `unsafe`:
 
 ```v wip
 // alocar 2 bytes não inicializados e retornar uma referência a eles
@@ -3408,9 +3550,12 @@ unsafe {
 assert *p == `i`
 ```
 
-A prática recomendada é evitar colocar expressões seguras de memória dentro de um bloco `unsafe`,
-para que o motivo do uso de `unsafe` seja o mais claro possível. Geralmente qualquer código
-que você acha que é seguro para a memória não deve estar dentro de um bloco `unsafe`, então o compilador
+A prática recomendada é evitar colocar
+expressões seguras de memória dentro de um bloco `unsafe`,
+para que o motivo do uso de `unsafe`
+seja o mais claro possível. Geralmente qualquer código
+que você acha que é seguro para a
+memória não deve estar dentro de um bloco `unsafe`, então o compilador
 pode verificar isso.
 
 Se você suspeita que seu programa viola a segurança da memória, você tem uma vantagem
@@ -3421,11 +3566,15 @@ código circundante).
 
 ### Structs com campos de referência
 
-Structs com referências requerem definir explicitamente o valor inicial para um
-valor de referência, a menos que a struct já defina seu próprio valor inicial.
+Structs com referências requerem definir
+explicitamente o valor inicial para um
+valor de referência, a menos que a struct
+já defina seu próprio valor inicial.
 
-Referências de valor zero, ou ponteiros nulos, ** NÃO ** serão compatíveis no futuro,
-por enquanto, structs de dados como Linked Lists ou Árvores Binárias que dependem de campos de referência
+Referências de valor zero, ou ponteiros nulos,
+** NÃO ** serão compatíveis no futuro,
+por enquanto, structs de dados como Linked Lists
+ou Árvores Binárias que dependem de campos de referência
 que podem usar o valor `0`, entendendo que não é seguro, e que pode
 causar pânico.
 
@@ -3458,7 +3607,8 @@ println(qux)
 ## sizeof and __offsetof
 
 * `sizeof(Type)` dá o tamanho de um tipo em bytes.
-* `__offsetof(Struct, field_name)` fornece o deslocamento em bytes de um campo de estrutura.
+* `__offsetof(Struct, field_name)` fornece o
+deslocamento em bytes de um campo de estrutura.
 
 ```v
 struct Foo {
@@ -3542,7 +3692,8 @@ fn main() {
 
 ### Passando sinalizadores de compilação C
 
-Adicione as diretivas `#flag` ao topo de seus arquivos V para fornecer sinalizadores de compilação C como:
+Adicione as diretivas `#flag` ao topo de seus
+arquivos V para fornecer sinalizadores de compilação C como:
 
 - `-I` para adicionar caminhos de pesquisa de arquivos de inclusão C
 - `-l` para adicionar nomes de bibliotecas C que você deseja vincular
@@ -3572,31 +3723,42 @@ e configurações `-cflags`, ao invés de incluí-los no comando de construção
 
 ### #pkgconfig
 
-Adicionar a diretiva `#pkgconfig` é usada para dizer ao compilador quais módulos devem ser usados ​​para compilar
-e vinculando usando os arquivos pkg-config fornecidos pelas respectivas dependências.
+Adicionar a diretiva `#pkgconfig` é usada para dizer
+ao compilador quais módulos devem ser usados ​​para compilar
+e vinculando usando os arquivos pkg-config fornecidos
+pelas respectivas dependências.
 
-Contanto que crases não possam ser usados ​​em `#flag` e processos de spawning não sejam desejáveis ​​para segurança
-e por motivos de portabilidade, V usa sua própria biblioteca pkgconfig que é compatível com o padrão
+Contanto que crases não possam ser usados ​​em `#flag` e
+processos de spawning não sejam desejáveis ​​para segurança
+e por motivos de portabilidade,
+V usa sua própria biblioteca pkgconfig que é compatível com o padrão
 freedesktop one.
 
-Se nenhuma sinalização for passada, ele adicionará `--cflags` e` --libs`, ambas as linhas abaixo fazem o mesmo:
+Se nenhuma sinalização for passada,
+ele adicionará `--cflags` e` --libs`, ambas as linhas abaixo fazem o mesmo:
 
 ```v oksyntax
 #pkgconfig r_core
 #pkgconfig --cflags --libs r_core
 ```
 
-Os arquivos `.pc` são pesquisados ​​em uma lista codificada de caminhos padrão do pkg-config, o usuário pode adicionar
-caminhos extras usando a variável de ambiente `PKG_CONFIG_PATH`. Vários módulos podem ser passados.
+Os arquivos `.pc` são pesquisados ​​em
+uma lista codificada de caminhos padrão do pkg-config, o usuário pode adicionar
+caminhos extras usando a variável de
+ambiente `PKG_CONFIG_PATH`. Vários módulos podem ser passados.
 
 ### Incluindo código C
 
-Você também pode incluir o código C diretamente em seu módulo V.
-Por exemplo, digamos que seu código C esteja localizado em uma pasta chamada 'c' dentro da pasta do módulo.
+Você também pode incluir o código C
+diretamente em seu módulo V.
+Por exemplo, digamos que seu código C
+esteja localizado em uma pasta chamada 'c' dentro da pasta do módulo.
 Então:
 
-* Coloque um arquivo v.mod dentro da pasta de nível superior do seu módulo (se você
-criou seu módulo com `v new` você já tem o arquivo v.mod). Por
+* Coloque um arquivo v.mod dentro da
+pasta de nível superior do seu módulo (se você
+criou seu módulo com `v new` você já
+tem o arquivo v.mod). Por
 exemplo:
 ```v ignore
 Module {
@@ -3614,56 +3776,78 @@ Module {
 #flag @ VMODROOT / c / implementação.o
 #include "header.h"
 `` `
-Obs: @VMODROOT será substituído por V com a * pasta pai mais próxima, onde existe um arquivo v.mod *.
-Qualquer arquivo .v ao lado ou abaixo da pasta onde o arquivo v.mod está,
-pode usar `#flag @ VMODROOT/abc` para se referir a esta pasta.
-A pasta @VMODROOT também é * anexada * ao caminho de pesquisa do módulo,
-assim você pode * importar * outros módulos em seu @VMODROOT, apenas nomeando-os.
+Obs: @VMODROOT será substituído por 
+V com a * pasta pai mais próxima,
+onde existe um arquivo v.mod *.
+Qualquer arquivo .v ao lado ou abaixo
+da pasta onde o arquivo v.mod está,
+pode usar `#flag @ VMODROOT/abc` para
+se referir a esta pasta.
+A pasta @VMODROOT também é * anexada *
+ao caminho de pesquisa do módulo,
+assim você pode * importar * outros módulos
+em seu @VMODROOT, apenas nomeando-os.
 
-As instruções acima farão com que V procure um arquivo .o compilado em
+As instruções acima farão com que
+V procure um arquivo .o compilado em
 seu módulo `pasta/c/implementation.o`.
-Se V o encontrar, o arquivo .o será vinculado ao executável principal, que usou o módulo.
+Se V o encontrar, o arquivo 
+será vinculado ao executável principal, que usou o módulo.
 Se não o encontrar, V assume que existe um arquivo `@ VMODROOT/c/implementation.c`,
 e tenta compilá-lo em um arquivo .o, então o usará.
 
-Isso permite que você tenha um código C, que está contido em um módulo V, para que sua distribuição seja mais fácil.
-Você pode ver um exemplo mínimo completo para usar o código C em um módulo V wrapper aqui:
+Isso permite que você tenha um código C,
+que está contido em um módulo V, para que sua distribuição seja mais fácil.
+Você pode ver um exemplo mínimo completo
+para usar o código C em um módulo V wrapper aqui:
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
-Outro exemplo, demonstrando a passagem de estruturas de C para V e vice-versa:
+Outro exemplo, demonstrando a passagem de
+estruturas de C para V e vice-versa:
 [interoperar entre C para V para C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
 ### Tipos C
 
-Strings C terminadas em zero comuns podem ser convertidas em strings V com
+Strings C terminadas em zero comuns podem
+ser convertidas em strings V com
 `unsafe {& char(cstring) .vstring()}` ou se você já sabe o comprimento com
 `inseguro {& char(cstring) .vstring_with_len(len)}`.
 
-Obs: Os métodos .vstring() e .vstring_with_len() NÃO criam uma cópia do `cstring`,
+Obs: Os métodos .vstring() e
+.vstring_with_len() NÃO criam uma cópia do `cstring`,
 então você NÃO deve liberá-lo após chamar o método `.vstring()`.
-Se você precisar fazer uma cópia da string C (algumas APIs libc como `getenv` praticamente exigem isso,
-já que eles retornam ponteiros para a memória libc interna), você pode usar `cstring_to_vstring(cstring)`.
+Se você precisar fazer uma cópia da string C
+(algumas APIs libc como `getenv` praticamente exigem isso,
+já que eles retornam ponteiros para a memória
+libc interna), você pode usar `cstring_to_vstring(cstring)`.
 
-No Windows, as APIs C geralmente retornam as chamadas strings `wide` (codificação utf16).
+No Windows, as APIs C geralmente retornam
+as chamadas strings `wide` (codificação utf16).
 Eles podem ser convertidos em strings V com `string_from_wide(&u16(cwidestring))`.
 
-V tem esses tipos para facilitar a interoperabilidade com C:
+V tem esses tipos para facilitar a
+interoperabilidade com C:
 
 - `voidptr` para` void * `do C,
 - `& byte` para` byte * `do C e
 - `& char` para` char * `do C.
 - `&& char` para` char ** `do C
 
-Para converter um `voidptr` para uma referência V, use` user := &User(user_void_ptr) `.
+Para converter um `voidptr` para uma
+referência V, use` user := &User(user_void_ptr) `.
 
-`voidptr` também pode ser desreferenciado em uma estrutura V através da conversão:` user := User(user_void_ptr) `.
+`voidptr` também pode ser desreferenciado
+em uma estrutura V através da conversão:` user := User(user_void_ptr) `.
 
 [um exemplo de um módulo que chama o código C de V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
 
 ### Declarações C
 
-Os identificadores C são acessados ​​com o prefixo `C` da mesma forma que
-identificadores são acessados. As funções devem ser declaradas novamente em V antes que possam ser usadas.
-Qualquer tipo C pode ser usado atrás do prefixo `C`, mas os tipos devem ser declarados novamente em V em
+Os identificadores C são acessados ​​com
+o prefixo `C` da mesma forma que
+identificadores são acessados. As funções devem ser declaradas
+novamente em V antes que possam ser usadas.
+Qualquer tipo C pode ser usado atrás do prefixo `C`,
+mas os tipos devem ser declarados novamente em V em
 para acessar os membros do tipo.
 
 Para redeclarar tipos complexos, como no seguinte código C:
@@ -3683,7 +3867,8 @@ struct SomeCStruct {
 };
 ```
 
-membros de subestruturas de dados podem ser declarados diretamente na estrutura de contenção conforme abaixo:
+membros de subestruturas de dados podem ser declarados
+diretamente na estrutura de contenção conforme abaixo:
 
 ```v
 struct C.SomeCStruct {
@@ -3701,7 +3886,8 @@ struct C.SomeCStruct {
 }
 ```
 
-A existência dos membros de dados é informada a V, e eles podem ser usados ​​sem
+A existência dos membros de dados é informada a V,
+e eles podem ser usados ​​sem
 recriando exatamente a estrutura original.
 
 Alternativamente, você pode [embed](#embedded-structs) as subestruturas de dados para manter
@@ -3724,10 +3910,12 @@ Para depurar problemas no código C gerado, você pode passar estes sinalizadore
 - `-show-c-output` - imprime a saída que seu compilador C produziu
     enquanto compila seu programa.
 - `-keepc` - não exclui o arquivo de código-fonte C gerado após um
-    compilação. Além disso, continue usando o mesmo caminho de arquivo, para que seja mais estável,
+    compilação. Além disso, continue usando o mesmo caminho de arquivo,
+	para que seja mais estável,
     e mais fácil de manter aberto em um editor / IDE.
 
-Para obter a melhor experiência de depuração, se você estiver escrevendo um wrapper de baixo nível para um existente
+Para obter a melhor experiência de depuração,
+se você estiver escrevendo um wrapper de baixo nível para um existente
 Biblioteca C, você pode passar vários desses sinalizadores ao mesmo tempo:
 `v -keepc -cg -showcc yourprogram.v`, então apenas execute o seu depurador (gdb/lldb) ou IDE
 no executável produzido `your program`.
@@ -3787,10 +3975,13 @@ $if option ? {
 }
 ```
 
-Se você deseja que um `if` seja avaliado em tempo de compilação, ele deve ser prefixado com um sinal `$`.
-No momento, ele pode ser usado para detectar um sistema operacional, compilador, plataforma ou opções de compilação.
+Se você deseja que um `if` seja avaliado em tempo de compilação,
+ele deve ser prefixado com um sinal `$`.
+No momento, ele pode ser usado para detectar um sistema operacional,
+compilador, plataforma ou opções de compilação.
 `$if debug` é uma opção especial como `$if windows` ou `$if x32`.
-Se estiver usando um ifdef personalizado, você precisa da opção `$if?{} `e compilar com a opção `v -d`.
+Se estiver usando um ifdef personalizado, você precisa da opção `$if?{}`
+e compilar com a opção `v -d`.
 Lista completa de opções integradas:
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
@@ -3811,10 +4002,12 @@ fn main() {
 ```
 
 V pode embutir arquivos arbitrários no executável com o `$ embed_file(<path>)`
-chamada de tempo de compilação. Os caminhos podem ser absolutos ou relativos ao arquivo de origem.
+chamada de tempo de compilação. Os caminhos podem ser absolutos
+ou relativos ao arquivo de origem.
 
 Quando você não usa `-prod`, o arquivo não será incorporado. Em vez disso,
-será carregado * pela primeira vez * que seu programa chama `f.data()` em tempo de execução, tornando
+será carregado * pela primeira vez * que seu programa chama `f.data()`
+em tempo de execução, tornando
 mais fácil mudar em programas de editor externo, sem a necessidade de recompilar
 seu executável.
 
@@ -3825,7 +4018,8 @@ e sempre retornará os mesmos dados.
 
 #### $tmpl para incorporar e analisar arquivos de modelo V
 
-V tem uma linguagem de modelo simples para modelos de texto e html, e eles podem facilmente
+V tem uma linguagem de modelo simples para modelos de texto e html,
+e eles podem facilmente
 ser embutido via `$tmpl('path/to/template.txt')`:
 
 
@@ -3890,7 +4084,8 @@ V pode trazer valores em tempo de compilação a partir de variáveis ​​de a
 
 ### Arquivos específicos do ambiente
 
-Se um arquivo tiver um sufixo específico do ambiente, ele será compilado apenas para esse ambiente.
+Se um arquivo tiver um sufixo específico do ambiente,
+ele será compilado apenas para esse ambiente.
 
 - `.js.v` => será usado apenas pelo back-end JS. Esses arquivos podem conter código JS.
 - `.c.v` => será usado apenas pelo back-end C. Esses arquivos podem conter código C.
@@ -3939,7 +4134,8 @@ Isso corresponde a `$if customflag?{} `, mas para um arquivo inteiro, não apena
 bloco único. `customflag` deve ser um identificador snake_case, não pode
 conter caracteres arbitrários (apenas letras latinas minúsculas + números + `_`).
 NB: um postfix combinatório `_d_customflag_linux.c.v` não funcionará.
-Se você precisar de um arquivo de sinalizador personalizado, que tenha código dependente da plataforma, use o
+Se você precisar de um arquivo de sinalizador personalizado,
+que tenha código dependente da plataforma, use o
 postfix `_d_customflag.v`, e então use o tempo de compilação dependente do plaftorm
 blocos condicionais dentro dele, ou seja, `$if linux{}` etc.
 
@@ -3981,7 +4177,8 @@ eprintln('$vm.name $vm.version\n $vm.description')
 ## Performance tuning
 
 O código C gerado, geralmente, é rápido o suficiente, quando você compila seu código
-com `-prod`. Existem algumas situações, porém, em que você pode querer dar
+com `-prod`.
+Existem algumas situações, porém, em que você pode querer dar
 dicas adicionais para o compilador, para que ele possa otimizar ainda mais alguns
 blocos de código.
 
@@ -3996,7 +4193,8 @@ mas pode afetar o tamanho do seu executável.
 
 `[direct_array_access]` - em funções marcadas com `[direct_array_access]`
 o compilador irá traduzir as operações de array diretamente em operações de array C -
-omitindo a verificação de limites. Isso pode economizar muito tempo em uma função que itera
+omitindo a verificação de limites.
+Isso pode economizar muito tempo em uma função que itera
 sobre um array, mas ao custo de tornar a função insegura - a menos que
 os limites serão verificados pelo usuário.
 
@@ -4013,7 +4211,8 @@ a expressão booleana é altamente improvável. No back-end JS, isso não faz na
 ## Compile-time reflection
 
 Ter suporte JSON integrado é bom, mas V também permite que você crie
-serializadores para qualquer formato de dados. V tem construções `if` e` for` em tempo de compilação:
+serializadores para qualquer formato de dados.
+V tem construções `if` e` for` em tempo de compilação:
 
 ```v wip
 // TODO: não totalmente implementado
@@ -4095,7 +4294,8 @@ Para melhorar a segurança e facilidade de manutenção, a sobrecarga do operado
 - `!=`, `>`, `<=` e `>=` são gerados automaticamente quando `==` e `<` são definidos.
 - Ambos os argumentos devem ter o mesmo tipo (assim como todos os operadores em V).
 - Operadores de atribuição (`*=`, `+=`, `/=`, etc)
-são gerados automaticamente quando os operadores são definidos, embora devam retornar o mesmo tipo.
+são gerados automaticamente quando os operadores são definidos,
+embora devam retornar o mesmo tipo.
 
 ## Inline assembly
 <!-- ignore because it doesn't pass fmt test (why?) -->
@@ -4116,13 +4316,14 @@ println('b: $b') // 20
 println('c: $c') // 120
 ```
 
-Para mais exemplos, veja [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
+Para mais exemplos, veja [asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
 
 ## Traduzindo C para V
 
 TODO: a tradução de C para V estará disponível em V 0.3.
 
-V pode traduzir seu código C para código V legível por humanos e gerar wrapper V em cima de bibliotecas C.
+V pode traduzir seu código C para código
+V legível por humanos e gerar wrapper V em cima de bibliotecas C.
 
 
 Vamos criar um programa simples `test.c` primeiro:
@@ -4221,7 +4422,8 @@ v -os linux .
 
 (Cross compiling para macOS, temporariamente, não é possível.)
 
-Se você não tiver nenhuma dependência C, isso é tudo que você precisa fazer. Isso funciona até
+Se você não tiver nenhuma dependência C,
+isso é tudo que você precisa fazer. Isso funciona até
 ao compilar aplicativos GUI usando o módulo `ui` ou aplicativos gráficos usando` gg`.
 
 Você precisará instalar o Clang, LLD linker e baixar um arquivo zip com
@@ -4229,10 +4431,12 @@ bibliotecas e incluem arquivos para Windows e Linux. V irá fornecer-lhe um link
 
 ## Cross-platform shell scripts em V
 
-V pode ser usado como uma alternativa ao Bash para escrever scripts de implantação, construir scripts, etc.
+V pode ser usado como uma alternativa ao Bash para escrever
+scripts de implantação, construir scripts, etc.
 
 A vantagem de usar V para isso é a simplicidade e previsibilidade da linguagem, e
-suporte multiplataforma. Os "scripts V" são executados em sistemas do tipo Unix e também no Windows.
+suporte multiplataforma. Os "scripts V"
+são executados em sistemas do tipo Unix e também no Windows.
 
 Use a extensão de arquivo `.vsh`. Isso fará com que todas as funções no `os`
 módulo global (para que você possa usar `mkdir()` ao invés de `os.mkdir()`, por exemplo).
@@ -4274,14 +4478,16 @@ if result.exit_code != 0 {
 // }
 ```
 
-Agora você pode compilar isso como um programa V normal e obter um executável que você pode implantar e executar
+Agora você pode compilar isso como um programa V normal e
+obter um executável que você pode implantar e executar
 em qualquer lugar:
 `v deploy.vsh && ./deploy`
 
 Ou apenas execute-o mais como um script Bash tradicional:
 `v execute deploy.vsh`
 
-Em plataformas do tipo Unix, o arquivo pode ser executado diretamente após torná-lo executável usando `chmod + x`:
+Em plataformas do tipo Unix, o arquivo pode ser executado
+diretamente após torná-lo executável usando `chmod + x`:
 `./deploy.vsh`
 
 ## Attributes
@@ -4353,7 +4559,8 @@ fn risky_business() {
 fn custom_allocations() {
 }
 
-// Somente para interoperabilidade C, diz a V que a struct a seguir é definida com `struct typedef` em C
+// Somente para interoperabilidade C, diz a V que a struct a seguir
+// é definida com `struct typedef` em C
 [typedef]
 struct C.Foo {
 }
