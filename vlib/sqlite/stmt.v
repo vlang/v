@@ -6,15 +6,19 @@ fn C.sqlite3_bind_int64(&C.sqlite3_stmt, int, i64) int
 fn C.sqlite3_bind_text(&C.sqlite3_stmt, int, &char, int, voidptr) int
 
 // Only for V ORM
-fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
+fn (db DB) init_stmt(query string) (&C.sqlite3_stmt, int) {
 	// println('init_stmt("$query")')
 	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	return stmt
+	err := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	return stmt, err
 }
 
-fn (db DB) new_init_stmt(query string) Stmt {
-	return Stmt{db.init_stmt(query), unsafe { &db }}
+fn (db DB) new_init_stmt(query string) ?Stmt {
+	stmt, err := db.init_stmt(query)
+	if err != sqlite_ok {
+		return db.error_message(err, query)
+	}
+	return Stmt{stmt, unsafe { &db }}
 }
 
 fn (stmt Stmt) bind_int(idx int, v int) int {

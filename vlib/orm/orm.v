@@ -279,9 +279,9 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			continue
 		}
 		mut stmt := ''
-		mut field_name := field.name
+		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
-			field_name = '${field.name}_id'
+			field_name = '${field_name}_id'
 			sql_from_v(8) ?
 		}
 		if ctyp == '' {
@@ -338,10 +338,22 @@ fn sql_field_type(field OrmTableField) int {
 				typ = -1
 				break
 			}
+			typ = orm.type_idx[attr.arg]
+			break
 		}
-		typ = orm.type_idx[attr.arg]
 	}
 	return typ
+}
+
+fn sql_field_name(field OrmTableField) string {
+	mut name := field.name
+	for attr in field.attrs {
+		if attr.name == 'sql' && attr.has_arg && attr.kind == .string {
+			name = attr.arg
+			break
+		}
+	}
+	return name
 }
 
 // needed for backend functions

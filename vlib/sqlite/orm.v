@@ -7,7 +7,7 @@ import time
 
 pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
-	stmt := db.new_init_stmt(query)
+	stmt := db.new_init_stmt(query) ?
 	sqlite_stmt_binder(stmt, data, query) ?
 	sqlite_stmt_binder(stmt, where, query) ?
 
@@ -20,7 +20,6 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 	}
 
 	for {
-		eprintln(ret)
 		step := stmt.step()
 		if step == sqlite_done {
 			break
@@ -33,12 +32,9 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 			primitive := stmt.sqlite_select_column(i, typ) ?
 			row << primitive
 		}
-		
-		ret << row
-		eprintln(ret)
-	}
 
-	eprintln(ret)
+		ret << row
+	}
 
 	return ret
 }
@@ -47,8 +43,6 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 
 pub fn (db DB) insert(table string, data orm.OrmQueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data, orm.OrmQueryData{})
-	eprintln(table)
-	eprintln(data)
 	sqlite_stmt_worker(db, query, data, orm.OrmQueryData{}) ?
 }
 
@@ -82,7 +76,7 @@ pub fn (db DB) drop(table string) ? {
 // helper
 
 fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
-	stmt := db.new_init_stmt(query)
+	stmt := db.new_init_stmt(query) ?
 	sqlite_stmt_binder(stmt, data, query) ?
 	sqlite_stmt_binder(stmt, where, query) ?
 	stmt.orm_step(query) ?
@@ -92,8 +86,6 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 	mut c := 1
 	for data in d.data {
-		eprintln(c)
-		eprintln(data)
 		mut err := 0
 		match data {
 			i8, i16, int, byte, u16, u32, bool {
@@ -112,7 +104,6 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 				err = stmt.bind_int(c, int(data.unix))
 			}
 		}
-		eprintln('error: $err')
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
@@ -122,7 +113,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
 
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	mut primitive := orm.Primitive(0)
-	
+
 	if typ in orm.nums || typ == -1 {
 		primitive = stmt.get_int(idx)
 	} else if typ in orm.num64 {
