@@ -1,5 +1,7 @@
 # V Documentation
 
+## Translation
+[Portuguese](pt_br/docs.md)
 ## Introduction
 
 V is a statically typed compiled programming language designed for building maintainable software.

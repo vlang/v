@@ -4,6 +4,9 @@
 Please refer to [docs.md](https://github.com/vlang/v/blob/master/doc/docs.md)
 for the current state of V***
 
+## Translation
+[Portuguese](pt_br/upcoming.md)
+
 ## Table of Contents
 
 * [Concurrency](#concurrency)
