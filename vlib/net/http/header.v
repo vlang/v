@@ -499,7 +499,7 @@ pub struct HeaderRenderConfig {
 }
 
 // Renders the Header into a string for use in sending
-// HTTP requests. All header lines will end in `\n\r`
+// HTTP requests. All header lines will end in `\r\n`
 [manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
@@ -524,7 +524,7 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			}
 			k := data_keys[data_keys.len - 1]
 			sb.write_string(h.data[k].join(','))
-			sb.write_string('\n\r')
+			sb.write_string('\r\n')
 		}
 	} else {
 		for k, v in h.data {
@@ -538,7 +538,7 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			sb.write_string(key)
 			sb.write_string(': ')
 			sb.write_string(v.join(','))
-			sb.write_string('\n\r')
+			sb.write_string('\r\n')
 		}
 	}
 	res := sb.str()
