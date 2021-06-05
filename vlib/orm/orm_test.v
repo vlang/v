@@ -19,20 +19,18 @@ struct User {
 	skipped_string string [skip]
 }
 
-struct Foo {
-	age int
-}
-
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 
-	mut u := User{
-		name: 'test'
-		age: 10
-	}
-
-	mut a := Module{
-		user: u
+	mut mod := Module{
+		name: 'V ORM'
+		nr_downloads: 100
+		user: User{
+			age: 17
+			name: 'Louis Schmieder'
+			is_customer: false
+			skipped_string: 'abc'
+		}
 	}
 
 	sql db {
@@ -40,8 +38,19 @@ fn test_orm_sqlite() {
 	}
 
 	sql db {
-		insert a into Module
+		insert mod into Module
 	}
+
+	modl := sql db {
+		select from Module
+	}
+
+	assert modl[0].name == mod.name
+	assert modl[0].nr_downloads == 100
+	assert modl[0].user.age == mod.user.age
+	assert modl[0].user.name == mod.user.name
+	assert modl[0].user.is_customer == mod.user.is_customer
+	assert modl[0].user.skipped_string == ''
 
 	sql db {
 		drop table Module

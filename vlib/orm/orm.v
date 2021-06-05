@@ -89,6 +89,7 @@ pub:
 	is_count   bool
 	has_where  bool
 	has_order  bool
+	order      string
 	order_type OrmOrderType
 	has_limit  bool
 	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
@@ -101,7 +102,7 @@ pub interface OrmConnection {
 	@select(config OrmSelectConfig, data OrmQueryData, where OrmQueryData) ?[][]Primitive
 	insert(table string, data OrmQueryData) ?
 	update(table string, data OrmQueryData, where OrmQueryData) ?
-	delete(table string, data OrmQueryData, where OrmQueryData) ?
+	delete(table string, where OrmQueryData) ?
 	create(table string, fields []OrmTableField) ?
 	drop(talbe string) ?
 	last_id() Primitive
@@ -202,9 +203,11 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, sta
 
 	str += ' ORDER BY '
 	if orm.has_order {
+		str += '$para$orm.order$para '
 		str += orm.order_type.to_str()
 	} else {
-		str += '$para$orm.primary$para'
+		str += '$para$orm.primary$para '
+		str += orm.order_type.to_str()
 	}
 
 	if orm.has_limit {
@@ -310,7 +313,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		fs << stmt
 	}
 	if primary == '' {
-		return error('A primary key is required')
+		return error('A primary key is required for $table')
 	}
 	if unique.len > 0 {
 		for k, v in unique {

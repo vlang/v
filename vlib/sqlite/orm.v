@@ -14,7 +14,11 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
-		stmt.orm_step(query) ?
+		step := stmt.step()
+		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
+			return db.error_message(step, query)
+		}
+		stmt.finalize()
 		ret << [orm.Primitive(stmt.get_count())]
 		return ret
 	}
@@ -35,7 +39,7 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 
 		ret << row
 	}
-
+	stmt.finalize()
 	return ret
 }
 
@@ -51,9 +55,9 @@ pub fn (db DB) update(table string, data orm.OrmQueryData, where orm.OrmQueryDat
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
-pub fn (db DB) delete(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, data, where)
-	sqlite_stmt_worker(db, query, data, where) ?
+pub fn (db DB) delete(table string, where orm.OrmQueryData) ? {
+	query := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, orm.OrmQueryData{}, where)
+	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, where) ?
 }
 
 pub fn (db DB) last_id() orm.Primitive {
