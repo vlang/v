@@ -568,6 +568,23 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 							break
 						}
 					}
+				} else if arg_sym.kind == .array_fixed && param_type_sym.kind == .array_fixed {
+					mut arg_elem_info := arg_sym.info as ast.ArrayFixed
+					mut param_elem_info := param_type_sym.info as ast.ArrayFixed
+					mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+					mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+					for {
+						if arg_elem_sym.kind == .array_fixed && param_elem_sym.kind == .array_fixed
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
+							arg_elem_info = arg_elem_sym.info as ast.ArrayFixed
+							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+							param_elem_info = param_elem_sym.info as ast.ArrayFixed
+							param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+						} else {
+							to_set = arg_elem_info.elem_type
+							break
+						}
+					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
 				} else if arg_sym.kind == .struct_ && param.typ.has_flag(.generic) {

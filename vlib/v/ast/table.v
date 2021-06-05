@@ -1144,6 +1144,14 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			idx := t.find_or_register_array_with_dims(typ, dims)
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
+	} else if sym.kind == .array_fixed {
+		info := sym.info as ArrayFixed
+		if typ := t.resolve_generic_to_concrete(info.elem_type, generic_names, concrete_types,
+			is_inst)
+		{
+			idx := t.find_or_register_array_fixed(typ, info.size, None{})
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
+		}
 	} else if mut sym.info is Chan {
 		if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names, concrete_types,
 			is_inst)
