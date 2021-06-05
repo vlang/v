@@ -16,7 +16,7 @@ pub mut:
 }
 
 pub fn (mut s Server) listen_and_serve() ? {
-	if int(s.handler) == 0 {
+	if voidptr(s.handler) == 0 {
 		eprintln('Server handler not set, using debug handler')
 		s.handler = fn(req Request) Response {
 			$if debug {
