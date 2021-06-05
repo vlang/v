@@ -31,12 +31,16 @@ fn test_orm_sqlite() {
 		age: 10
 	}
 
+	mut a := Module{
+		user: u
+	}
+
 	sql db {
 		create table Module
 	}
 
 	sql db {
-		insert u into User
+		insert a into Module
 	}
 
 	sql db {
@@ -285,55 +289,3 @@ fn test_orm_sqlite() {
 	assert null_user.name == ''
 }
 */
-fn test_orm_pg() {
-	/*
-	dbname := os.getenv('VDB_NAME')
-	dbuser := os.getenv('VDB_USER')
-	if dbname == '' || dbuser == '' {
-		eprintln(term.red('NB: this test requires VDB_NAME and VDB_USER env variables to be set'))
-		return
-	}
-	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
-	_ = db
-	nr_modules := db.select count from modules
-	//nr_modules := db.select count from Modules where id == 1
-	nr_modules := db.select count from Modules where
-		name == 'Bob' && id == 1
-	println(nr_modules)
-
-	mod := db.select from Modules where id = 1 limit 1
-	println(mod)
-
-	mods := db.select from Modules limit 10
-	for mod in mods {
-	println(mod)
-	}
-	*/
-	/*
-	mod := db.retrieve<Module>(1)
-	mod := db.select from Module where id = 1
-
-	mod := db.update Module set name = name + '!' where id > 10
-
-
-	nr_modules := db.select count from Modules
-		where id > 1 && name == ''
-	println(nr_modules)
-
-	nr_modules := db.select count from modules
-	nr_modules := db.select from modules
-	nr_modules := db[:modules].select
-	*/
-	/*
-	mod := select from db.modules where id = 1 limit 1
-	println(mod.name)
-	top_mods := select from db.modules where nr_downloads > 1000 order by nr_downloads desc limit 10
-	top_mods := db.select from modules where nr_downloads > 1000 order by nr_downloads desc limit 10
-	top_mods := db.select<Module>(m => m.nr_downloads > 1000).order_by(m => m.nr_downloads).desc().limit(10)
-	names := select name from db.modules // []string
-
-
-	n := db.q_int('select count(*) from modules')
-	println(n)
-	*/
-}

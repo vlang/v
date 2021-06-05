@@ -56,21 +56,21 @@ pub fn (db DB) delete(table string, data orm.OrmQueryData, where orm.OrmQueryDat
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
+pub fn (db DB) last_id() orm.Primitive {
+	query := 'SELECT last_insert_rowid();'
+	id := db.q_int(query)
+	return orm.Primitive(id)
+}
+
 // table
 pub fn (db DB) create(table string, fields []orm.OrmTableField) ? {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, sqlite_type_from_v) or { return err }
-	err := db.exec_none(query)
-	if err != sqlite_ok && err != sqlite_done {
-		return db.error_message(err, query)
-	}
+	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
 }
 
 pub fn (db DB) drop(table string) ? {
 	query := 'DROP TABLE `$table`;'
-	err := db.exec_none(query)
-	if err != sqlite_ok && err != sqlite_done {
-		return db.error_message(err, query)
-	}
+	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
 }
 
 // helper

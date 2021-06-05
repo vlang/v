@@ -104,6 +104,7 @@ pub interface OrmConnection {
 	delete(table string, data OrmQueryData, where OrmQueryData) ?
 	create(table string, fields []OrmTableField) ?
 	drop(talbe string) ?
+	last_id() Primitive
 }
 
 pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, start_pos int, data OrmQueryData, where OrmQueryData) string {
