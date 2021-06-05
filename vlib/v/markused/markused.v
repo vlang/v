@@ -311,7 +311,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused ? {
 		eprintln('>> t.used_fns: $table.used_fns.keys()')
 		eprintln('>> t.used_consts: $table.used_consts.keys()')
-		eprintln('>> walker.n_maps: $walker.n_maps')
+		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
 	}
 }
 
