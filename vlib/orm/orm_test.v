@@ -4,10 +4,10 @@
 import sqlite
 
 struct Module {
-	id           int [primary; sql: serial]
+	id           int    [primary; sql: serial]
 	name         string
 	nr_downloads int
-	user User
+	user         User
 }
 
 [table: 'userlist']
@@ -26,7 +26,10 @@ struct Foo {
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 
-	mut u := User{name: 'test', age: 10}
+	mut u := User{
+		name: 'test'
+		age: 10
+	}
 
 	sql db {
 		create table Module
@@ -41,7 +44,8 @@ fn test_orm_sqlite() {
 	}
 }
 
-/*fn test_orm_sqlite() {
+/*
+fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
 	sql db {
