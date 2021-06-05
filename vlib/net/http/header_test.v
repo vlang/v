@@ -181,16 +181,16 @@ fn test_render_version() ? {
 	h.add(.accept, 'baz')
 
 	s1_0 := h.render(version: .v1_0)
-	assert s1_0.contains('accept: foo\n\r')
-	assert s1_0.contains('Accept: bar,baz\n\r')
+	assert s1_0.contains('accept: foo\r\n')
+	assert s1_0.contains('Accept: bar,baz\r\n')
 
 	s1_1 := h.render(version: .v1_1)
-	assert s1_1.contains('accept: foo\n\r')
-	assert s1_1.contains('Accept: bar,baz\n\r')
+	assert s1_1.contains('accept: foo\r\n')
+	assert s1_1.contains('Accept: bar,baz\r\n')
 
 	s2_0 := h.render(version: .v2_0)
-	assert s2_0.contains('accept: foo\n\r')
-	assert s2_0.contains('accept: bar,baz\n\r')
+	assert s2_0.contains('accept: foo\r\n')
+	assert s2_0.contains('accept: bar,baz\r\n')
 }
 
 fn test_render_coerce() ? {
@@ -201,16 +201,16 @@ fn test_render_coerce() ? {
 	h.add(.host, 'host')
 
 	s1_0 := h.render(version: .v1_1, coerce: true)
-	assert s1_0.contains('accept: foo,bar,baz\n\r')
-	assert s1_0.contains('Host: host\n\r')
+	assert s1_0.contains('accept: foo,bar,baz\r\n')
+	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, coerce: true)
-	assert s1_1.contains('accept: foo,bar,baz\n\r')
-	assert s1_1.contains('Host: host\n\r')
+	assert s1_1.contains('accept: foo,bar,baz\r\n')
+	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, coerce: true)
-	assert s2_0.contains('accept: foo,bar,baz\n\r')
-	assert s2_0.contains('host: host\n\r')
+	assert s2_0.contains('accept: foo,bar,baz\r\n')
+	assert s2_0.contains('host: host\r\n')
 }
 
 fn test_render_canonicalize() ? {
@@ -221,19 +221,19 @@ fn test_render_canonicalize() ? {
 	h.add(.host, 'host')
 
 	s1_0 := h.render(version: .v1_1, canonicalize: true)
-	assert s1_0.contains('Accept: foo\n\r')
-	assert s1_0.contains('Accept: bar,baz\n\r')
-	assert s1_0.contains('Host: host\n\r')
+	assert s1_0.contains('Accept: foo\r\n')
+	assert s1_0.contains('Accept: bar,baz\r\n')
+	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, canonicalize: true)
-	assert s1_1.contains('Accept: foo\n\r')
-	assert s1_1.contains('Accept: bar,baz\n\r')
-	assert s1_1.contains('Host: host\n\r')
+	assert s1_1.contains('Accept: foo\r\n')
+	assert s1_1.contains('Accept: bar,baz\r\n')
+	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, canonicalize: true)
-	assert s2_0.contains('accept: foo\n\r')
-	assert s2_0.contains('accept: bar,baz\n\r')
-	assert s2_0.contains('host: host\n\r')
+	assert s2_0.contains('accept: foo\r\n')
+	assert s2_0.contains('accept: bar,baz\r\n')
+	assert s2_0.contains('host: host\r\n')
 }
 
 fn test_render_coerce_canonicalize() ? {
@@ -244,16 +244,16 @@ fn test_render_coerce_canonicalize() ? {
 	h.add(.host, 'host')
 
 	s1_0 := h.render(version: .v1_1, coerce: true, canonicalize: true)
-	assert s1_0.contains('Accept: foo,bar,baz\n\r')
-	assert s1_0.contains('Host: host\n\r')
+	assert s1_0.contains('Accept: foo,bar,baz\r\n')
+	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, coerce: true, canonicalize: true)
-	assert s1_1.contains('Accept: foo,bar,baz\n\r')
-	assert s1_1.contains('Host: host\n\r')
+	assert s1_1.contains('Accept: foo,bar,baz\r\n')
+	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, coerce: true, canonicalize: true)
-	assert s2_0.contains('accept: foo,bar,baz\n\r')
-	assert s2_0.contains('host: host\n\r')
+	assert s2_0.contains('accept: foo,bar,baz\r\n')
+	assert s2_0.contains('host: host\r\n')
 }
 
 fn test_str() ? {
@@ -263,6 +263,6 @@ fn test_str() ? {
 	h.add_custom('X-custom', 'Hello') ?
 
 	// key order is not guaranteed
-	assert h.str() == 'Accept: text/html,image/jpeg\n\rX-custom: Hello\n\r'
-		|| h.str() == 'X-custom: Hello\n\rAccept:text/html,image/jpeg\n\r'
+	assert h.str() == 'Accept: text/html,image/jpeg\r\nX-custom: Hello\r\n'
+		|| h.str() == 'X-custom: Hello\r\nAccept:text/html,image/jpeg\r\n'
 }

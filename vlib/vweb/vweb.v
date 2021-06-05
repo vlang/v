@@ -63,6 +63,23 @@ pub mut:
 	max_chunk_len     int = 20
 }
 
+struct FileData {
+pub:
+	filename     string
+	content_type string
+	data         string
+}
+
+struct UnexpectedExtraAttributeError {
+	msg  string
+	code int
+}
+
+struct MultiplePathAttributesError {
+	msg  string = 'Expected at most one path attribute'
+	code int
+}
+
 // declaring init_server in your App struct is optional
 pub fn (ctx Context) init_server() {}
 
