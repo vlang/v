@@ -55,6 +55,24 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 	mut subs := false
 
 	if node.kind != .create {
+		mut fields := []ast.StructField{}
+		for f in node.fields {
+			mut skip := false
+			mut primary := false
+			for attr in f.attrs {
+				if attr.name == 'primary' {
+					primary = true
+				}
+				if attr.name == 'skip' {
+					skip = true
+				}
+			}
+			if !skip && !primary {
+				fields << f
+			}
+		}
+		node.fields = fields.clone()
+		unsafe { fields.free() }
 	}
 
 	if node.kind == .create {
@@ -414,6 +432,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 			g.writeln('};')
 		}
 
+		g.writeln('if (${res}.len > 0) {')
 		for i, field in fields {
 			sel := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get($res, $idx)), $i))'
 			sym := g.table.get_type_symbol(field.typ)
@@ -440,6 +459,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 				g.writeln('${tmp}.$field.name = *(${sel}._$typ);')
 			}
 		}
+		g.writeln('}')
 
 		if node.is_array {
 			g.writeln('array_push(&${tmp}_array, _MOV(($typ_str[]){ $tmp }));')

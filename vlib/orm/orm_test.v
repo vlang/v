@@ -20,7 +20,7 @@ struct User {
 }
 
 fn test_orm_sqlite() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect('test.sqlite') or { panic(err) }
 
 	mut mod := Module{
 		name: 'V ORM'
@@ -33,28 +33,42 @@ fn test_orm_sqlite() {
 		}
 	}
 
+	mut mod1 := Module{
+		name: 'V ORM'
+		nr_downloads: 100
+		user: User{
+			age: 17
+			name: 'ABC Schmieder'
+			is_customer: false
+			skipped_string: 'abc'
+		}
+	}
+
 	sql db {
 		create table Module
 	}
 
 	sql db {
 		insert mod into Module
+		update Module set nr_downloads = 101 where id == 1
 	}
 
 	modl := sql db {
-		select from Module
+		select from Module where id == 1
 	}
 
-	assert modl[0].name == mod.name
-	assert modl[0].nr_downloads == 100
-	assert modl[0].user.age == mod.user.age
-	assert modl[0].user.name == mod.user.name
-	assert modl[0].user.is_customer == mod.user.is_customer
-	assert modl[0].user.skipped_string == ''
+	assert modl.id == 1
+	assert modl.name == mod.name
+	assert modl.nr_downloads == 101
+	assert modl.user.age == mod.user.age
+	assert modl.user.name == mod.user.name
+	assert modl.user.is_customer == mod.user.is_customer
+	assert modl.user.skipped_string == ''
 
+	/*
 	sql db {
 		drop table Module
-	}
+	}*/
 }
 
 /*

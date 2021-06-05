@@ -64,7 +64,7 @@ fn (stmt Stmt) step() int {
 
 fn (stmt Stmt) orm_step(query string) ? {
 	res := stmt.step()
-	if res != sqlite_ok && res != sqlite_done {
+	if res != sqlite_ok && res != sqlite_done && res != sqlite_row {
 		return stmt.db.error_message(res, query)
 	}
 }

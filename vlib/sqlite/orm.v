@@ -11,6 +11,10 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 	sqlite_stmt_binder(stmt, data, query) ?
 	sqlite_stmt_binder(stmt, where, query) ?
 
+	defer {
+		stmt.finalize()
+	}
+
 	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
@@ -18,7 +22,6 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
 			return db.error_message(step, query)
 		}
-		stmt.finalize()
 		ret << [orm.Primitive(stmt.get_count())]
 		return ret
 	}
@@ -36,10 +39,8 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 			primitive := stmt.sqlite_select_column(i, typ) ?
 			row << primitive
 		}
-
 		ret << row
 	}
-	stmt.finalize()
 	return ret
 }
 
