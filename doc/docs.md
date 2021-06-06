@@ -710,16 +710,18 @@ Arrays with mixed types use [structs](#structs).
 
 ```v
 struct User {
-	name string
+	name  string
 	likes int
 }
+
 mut user_list := []User{}
-user_list << User {
+user_list << User{
 	name: 'Max'
 	likes: 101
 }
 println(user_list)
-/* Output:
+/*
+Output:
 [User{
     name: 'Max'
     likes: 101
