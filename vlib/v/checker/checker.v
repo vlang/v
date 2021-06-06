@@ -1730,7 +1730,11 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	call_expr.receiver_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
-	mut unknown_method_msg := 'unknown method: `${left_type_sym.name}.$method_name`'
+	mut unknown_method_msg := if field := c.table.find_field(left_type_sym, method_name) {
+		'unknown method `$field.name` did you mean to access the field with the same name instead?'
+	} else {
+		'unknown method or field: `${left_type_sym.name}.$method_name`'
+	}
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return ast.void_type
@@ -2896,7 +2900,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return ast.u32_type
 		}
 	}
-	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
+	mut unknown_field_msg := 'type `$sym.name` has no field named `$field_name`'
 	mut has_field := false
 	mut field := ast.StructField{}
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
