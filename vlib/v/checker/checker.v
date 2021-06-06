@@ -7367,4 +7367,3 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 		else {}
 	}
 }
-

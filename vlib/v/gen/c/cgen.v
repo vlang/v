@@ -6661,4 +6661,3 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 	}
 	return ''
 }
-

@@ -1,4 +1,4 @@
-import util
+import v.tests.assembly.util
 
 fn test_inline_asm() {
 	a, mut b := 10, 0
@@ -186,4 +186,3 @@ fn generic_asm<T>(var &T) T {
 	}
 	return ret
 }
-
