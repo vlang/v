@@ -404,10 +404,11 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.get_type_symbol(node.args[1].typ)
 	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg2_array {
-		g.write('array_insert_many(&')
+		g.write('array_insert_many${noscan}(&')
 	} else {
-		g.write('array_insert(&')
+		g.write('array_insert${noscan}(&')
 	}
 	g.expr(node.left)
 	g.write(', ')
