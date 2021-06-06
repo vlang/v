@@ -9,8 +9,9 @@ const voptions = ' -skip-unused -show-timings -stats '
 
 fn main() {
 	exe := os.executable()
-	dir := os.dir(exe)
-	vdir := os.dir(os.dir(os.dir(dir)))
+	fast_dir := os.dir(exe)
+	vdir := os.dir(os.dir(os.dir(fast_dir)))
+	os.chdir(fast_dir)
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
@@ -40,20 +41,21 @@ fn main() {
 	// println('Checking out ${commit}...')
 	// exec('git checkout $commit')
 	println('  Building vprod...')
-	exec('v -o $vdir/vprod -prod -prealloc $vdir/cmd/v')
+	os.chdir(vdir)
+	exec('v -o $vdir/vprod -prod -prealloc cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
 	// cache vlib modules
 	exec('v wipe-cache')
-	exec('v -o v2 -prod -usecache $vdir/cmd/v')
+	exec('v -o v2 -prod -usecache cmd/v')
 	// measure
-	diff1 := measure('$vdir/vprod $voptions -o v.c $vdir/cmd/v', 'v.c')
+	diff1 := measure('$vdir/vprod $voptions -o v.c cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
 	}
-	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
+	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
-	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang $vdir/examples/hello_world.v',
+	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang examples/hello_world.v',
 		'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen
@@ -61,6 +63,8 @@ fn main() {
 	// println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 	date := time.unix(commit_date.int())
+	//
+	os.chdir(fast_dir)
 	mut out := os.create('table.html') ?
 	// Place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
@@ -128,7 +132,7 @@ fn measure(cmd string, description string) int {
 }
 
 fn measure_steps(vdir string) (int, int, int, int, int) {
-	resp := os.execute_or_panic('$vdir/vprod $voptions -o v.c $vdir/cmd/v')
+	resp := os.execute_or_panic('$vdir/vprod $voptions -o v.c cmd/v')
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
