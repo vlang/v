@@ -5,10 +5,6 @@ module c
 import v.ast
 import v.util
 
-fn (mut g Gen) write_str_fn_definitions() {
-	g.writeln(c_str_fn_defs)
-}
-
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		escaped_val := util.smart_quote(node.val, true)

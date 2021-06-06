@@ -221,7 +221,7 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 fn (mut g Gen) get_var_offset(var_name string) int {
 	offset := g.var_offset[var_name]
 	if offset == 0 {
-		panic('0 offset for var `$var_name`')
+		verror('unknown variable `$var_name`')
 	}
 	return offset
 }
@@ -235,13 +235,24 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 				g.gen_print(expr.val)
 			}
 		}
-		else {}
+		ast.CallExpr {
+			g.call_fn(expr)
+			g.gen_print_reg(.rax, 3)
+		}
+		ast.Ident {
+			g.expr(expr)
+			g.gen_print_reg(.rax, 3)
+		}
+		else {
+			dump(expr)
+			verror('expected string as argument for print')
+		}
 	}
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
 	addr := g.pos()
-	// println('reg fn addr $name $addr')
+	// eprintln('register function $name = $addr')
 	g.fn_addr[name] = addr
 }
 
@@ -325,10 +336,36 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write8(b)
 			}
 		}
-		ast.Module {}
+		ast.Module {
+			eprintln('module')
+			dump(node)
+		}
 		ast.Return {
-			zero := ast.IntegerLiteral{}
-			g.gen_exit(zero)
+			// dump(node.exprs[0])
+			// if in main
+			// zero := ast.IntegerLiteral{}
+			// g.gen_exit(zero)
+			dump(node)
+			dump(node.types)
+			mut s := '?' //${node.exprs[0].val.str()}'
+			e0 := node.exprs[0]
+			match e0 {
+				ast.IntegerLiteral {
+					// TODO
+				}
+				ast.StringLiteral {
+					s = e0.val.str()
+					eprintln('jlalala $s')
+				}
+				else {
+					verror('unknown return type')
+				}
+			}
+			g.expr(node.exprs[0])
+			g.mov64(.rax, g.allocate_string(s, 2))
+			// intel specific
+			g.add8(.rsp, 0x20) // XXX depends on scope frame size
+			g.pop(.rbp)
 			g.ret()
 		}
 		ast.StructDecl {}
@@ -342,7 +379,9 @@ fn C.strtol(str &char, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
-		ast.ArrayInit {}
+		ast.ArrayInit {
+			verror('array init expr not supported yet')
+		}
 		ast.BoolLiteral {}
 		ast.CallExpr {
 			if node.name == 'exit' {
@@ -391,6 +430,8 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	}
 }
 
+// not yet supported
+[noreturn]
 fn verror(s string) {
 	util.verror('native gen error', s)
 }

@@ -1,17 +1,18 @@
 module sqlite
 
-#flag darwin  -lsqlite3
-#flag linux   -lsqlite3
-#flag solaris -lsqlite3
-#flag freebsd -I/usr/local/include
-#flag freebsd -Wl -L/usr/local/lib -lsqlite3
-#flag windows -I@VEXEROOT/thirdparty/sqlite
-#flag windows -L@VEXEROOT/thirdparty/sqlite
-#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-// #flag linux -I @VEXEROOT/thirdparty/sqlite
-// #flag @VEXEROOT/thirdparty/sqlite/sqlite.c
+$if freebsd || openbsd {
+	#flag -I/usr/local/include
+	#flag -L/usr/local/lib
+}
+$if windows {
+	#flag windows -I@VEXEROOT/thirdparty/sqlite
+	#flag windows -L@VEXEROOT/thirdparty/sqlite
+	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+} $else {
+	#flag -lsqlite3
+}
+
 #include "sqlite3.h"
-//
 
 const (
 	sqlite_ok    = 0
@@ -57,6 +58,8 @@ pub mut:
 fn C.sqlite3_open(&char, &&C.sqlite3) int
 
 fn C.sqlite3_close(&C.sqlite3) int
+
+fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 
 //
 fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
@@ -127,6 +130,12 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
+}
+
+// Returns last insert rowid
+// https://www.sqlite.org/c3ref/last_insert_rowid.html
+pub fn (db DB) last_insert_rowid() i64 {
+	return C.sqlite3_last_insert_rowid(db.conn)
 }
 
 // Returns a single cell with value int.

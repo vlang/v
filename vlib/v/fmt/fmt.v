@@ -126,7 +126,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
-	if f.out.buf[f.out.buf.len - 1] == ` ` {
+	if f.out[f.out.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -149,7 +149,7 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	mut buffer := if cfg.imports_buffer { unsafe { &f.out_imports } } else { unsafe { &f.out } }
 	mut i := 0
 	for i = buffer.len - 1; i >= 0; i-- {
-		if !buffer.buf[i].is_space() { // != `\n` {
+		if !buffer.byte_at(i).is_space() { // != `\n` {
 			break
 		}
 	}
@@ -1561,6 +1561,7 @@ fn should_decrease_arr_penalty(e ast.Expr) bool {
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
+	f.mark_types_import_as_used(node.typ)
 	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
 	f.write(' as $type_str')
@@ -2429,6 +2430,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
+	f.mark_types_import_as_used(node.typ)
 	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 }
 

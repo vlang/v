@@ -106,7 +106,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			prev_guard = true
 		} else {
 			prev_guard = false
+			p.comp_if_cond = true
 			cond = p.expr(0)
+			p.comp_if_cond = false
 		}
 		comments << p.eat_comments({})
 		end_pos := p.prev_tok.position()
@@ -132,7 +134,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
 				return ast.IfExpr{}
 			}
-			if p.peek_tok.kind == .key_else {
+			if p.tok.kind != .rcbr && p.peek_tok.kind == .key_else {
 				p.check(.dollar)
 			}
 		}

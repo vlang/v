@@ -73,7 +73,7 @@ fn get_abs_path(path string) string {
 
 // check file is v file and exists
 fn check_file(file string) {
-	if os.file_ext(file) !in ['.v', '.vsh'] {
+	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
 		panic('the file `$file` must be a v file or vsh file')
 	}
 	if !os.exists(file) {
@@ -687,7 +687,9 @@ fn (t Tree) defer_stmt(node ast.DeferStmt) &Node {
 	obj := new_object()
 	obj.add('ast_type', t.string_node('DeferStmt'))
 	obj.add('stmts', t.array_node_stmt(node.stmts))
+	obj.add('defer_vars', t.array_node_ident(node.defer_vars))
 	obj.add('ifdef', t.string_node(node.ifdef))
+	obj.add('idx_in_fn', t.number_node(node.idx_in_fn))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -1329,10 +1331,11 @@ fn (t Tree) if_branch(node ast.IfBranch) &Node {
 fn (t Tree) ident(node ast.Ident) &Node {
 	obj := new_object()
 	obj.add('ast_type', t.string_node('Ident'))
-	obj.add('name', t.string_node(node.name))
 	obj.add('mod', t.string_node(node.mod))
+	obj.add('name', t.string_node(node.name))
 	obj.add('language', t.enum_node(node.language))
 	obj.add('is_mut', t.bool_node(node.is_mut))
+	obj.add('comptime', t.bool_node(node.comptime))
 	obj.add('tok_kind', t.token_node(node.tok_kind))
 	obj.add('kind', t.enum_node(node.kind))
 	obj.add('info', t.ident_info(node.info))

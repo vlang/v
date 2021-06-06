@@ -212,7 +212,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	}
 	mut return_type := ast.void_type
 	mut return_type_pos := token.Position{}
-	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
+	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() && !p.is_attributes() {
 		return_type_pos = p.tok.position()
 		return_type = p.parse_type()
 		if return_type.has_flag(.generic) {

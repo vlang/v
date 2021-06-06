@@ -33,7 +33,14 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
-			node = p.parse_ident(ast.Language.v)
+			ident := p.parse_ident(ast.Language.v)
+			node = ident
+			if p.inside_defer {
+				if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+					&& ident.name != 'err' {
+					p.defer_vars << ident
+				}
+			}
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name, .question {
@@ -345,6 +352,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 
 pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
+	if p.inside_asm && p.prev_tok.position().line_nr < p.tok.position().line_nr {
+		return node
+	}
 	// Infix
 	for precedence < p.tok.precedence() {
 		if p.tok.kind == .dot {
