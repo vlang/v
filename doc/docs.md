@@ -790,6 +790,7 @@ There are further built in methods for arrays:
 * `a.delete_last()` remove last element from array
 * `b := a.reverse()` make `b` contain the elements of `a` in reversed order
 * `a.reverse_in_place()` reverse the order of elements in `a`
+* `a.join(joiner)` concatenate array of strings into a string using `joiner` string as a separator
 
 #### Sorting Arrays
 
