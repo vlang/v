@@ -3,7 +3,6 @@
 module c
 
 import v.ast
-import strings
 import v.util
 
 enum SqlExprSide {

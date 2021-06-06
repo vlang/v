@@ -28,6 +28,7 @@ const (
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
+		'vlib/sqlite/orm.v' /* mut c &int -> mut c int */,
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
