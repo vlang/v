@@ -6595,8 +6595,8 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		// Handle `builtin` enums like `ChanState`, so that `x := ChanState.closed` works.
 		// In the checker the name for such enums was set to `main.ChanState` instead of
 		// just `ChanState`.
-		if node.enum_name.starts_with('main.') {
-			typ_idx = c.table.find_type_idx(node.enum_name['.main'.len..])
+		if node.enum_name.starts_with('${c.mod}.') {
+			typ_idx = c.table.find_type_idx(node.enum_name['${c.mod}.'.len..])
 			if typ_idx == 0 {
 				c.error('unknown enum `$node.enum_name` (type_idx=0)', node.pos)
 				return ast.void_type
