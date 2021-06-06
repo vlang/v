@@ -629,6 +629,7 @@ pub:
 	tok_kind token.Kind
 	pos      token.Position
 	mut_pos  token.Position
+	comptime bool
 pub mut:
 	scope  &Scope
 	obj    ScopeObject
@@ -983,8 +984,9 @@ pub:
 	stmts []Stmt
 	pos   token.Position
 pub mut:
-	ifdef     string
-	idx_in_fn int = -1 // index in FnDecl.defer_stmts
+	defer_vars []Ident
+	ifdef      string
+	idx_in_fn  int = -1 // index in FnDecl.defer_stmts
 }
 
 // `(3+4)`
@@ -1575,7 +1577,7 @@ pub fn (expr Expr) is_expr() bool {
 
 pub fn (expr Expr) is_lit() bool {
 	return match expr {
-		BoolLiteral, StringLiteral, IntegerLiteral { true }
+		BoolLiteral, CharLiteral, StringLiteral, IntegerLiteral { true }
 		else { false }
 	}
 }

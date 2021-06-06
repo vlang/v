@@ -508,9 +508,9 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					info := sym.info as ast.Struct
 					if c.table.cur_fn.generic_names.len > 0 { // in generic fn
 						if gt_name in c.table.cur_fn.generic_names
-							&& c.table.cur_fn.generic_names.len == c.cur_concrete_types.len {
+							&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 							idx := c.table.cur_fn.generic_names.index(gt_name)
-							typ = c.cur_concrete_types[idx]
+							typ = c.table.cur_concrete_types[idx]
 						}
 					} else { // in non-generic fn
 						receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
@@ -562,6 +562,23 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 							arg_elem_info = arg_elem_sym.info as ast.Array
 							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
 							param_elem_info = param_elem_sym.info as ast.Array
+							param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+						} else {
+							to_set = arg_elem_info.elem_type
+							break
+						}
+					}
+				} else if arg_sym.kind == .array_fixed && param_type_sym.kind == .array_fixed {
+					mut arg_elem_info := arg_sym.info as ast.ArrayFixed
+					mut param_elem_info := param_type_sym.info as ast.ArrayFixed
+					mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+					mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+					for {
+						if arg_elem_sym.kind == .array_fixed && param_elem_sym.kind == .array_fixed
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
+							arg_elem_info = arg_elem_sym.info as ast.ArrayFixed
+							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+							param_elem_info = param_elem_sym.info as ast.ArrayFixed
 							param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
 						} else {
 							to_set = arg_elem_info.elem_type

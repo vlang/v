@@ -11,7 +11,6 @@ pub mut:
 	table       &ast.Table
 	used_fns    map[string]bool // used_fns['println'] == true
 	used_consts map[string]bool // used_consts['os.args'] == true
-	n_maps      int
 	n_asserts   int
 mut:
 	files      []&ast.File
@@ -95,6 +94,9 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.expr(node.cond)
 			w.expr(node.high)
 			w.stmts(node.stmts)
+			if node.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.ForStmt {
 			w.expr(node.cond)
@@ -216,6 +218,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			w.or_block(node.or_expr)
+			sym := w.table.get_final_type_symbol(node.left_type)
+			if sym.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
@@ -229,6 +235,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 				if opmethod := sym.find_method(node.op.str()) {
 					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
 				}
+			}
+			right_sym := w.table.get_type_symbol(node.right_type)
+			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
+				w.table.used_maps++
 			}
 		}
 		ast.IfGuardExpr {
@@ -261,7 +271,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
-			w.n_maps++
+			w.table.used_maps++
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)

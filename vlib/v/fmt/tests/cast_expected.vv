@@ -1,4 +1,4 @@
-import v.ast
+import v.ast { InfixExpr }
 import v.table
 
 fn test_as() {

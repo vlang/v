@@ -39,7 +39,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	g.gen_attrs(node.attrs)
 	// g.tmp_count = 0 TODO
 	mut skip := false
-	pos := g.out.buf.len
+	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
 		// if node.name.contains('parse_text') {
@@ -103,6 +103,18 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// || node.no_body {
 		return
 	}
+
+	tmp_defer_vars := g.defer_vars // must be here because of workflow
+	if !g.anon_fn {
+		g.defer_vars = []string{}
+	} else {
+		if node.defer_stmts.len > 0 {
+			g.defer_vars = []string{}
+			defer {
+				g.defer_vars = tmp_defer_vars
+			}
+		}
+	}
 	// Skip [if xxx] if xxx is not defined
 	/*
 	for attr in node.attrs {
@@ -129,7 +141,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
+	if node.generic_names.len > 0 && g.table.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
@@ -137,10 +149,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				the_type := syms.map(node.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
-			g.cur_concrete_types = concrete_types
+			g.table.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
-		g.cur_concrete_types = []
+		g.table.cur_concrete_types = []
 		return
 	}
 	cur_fn_save := g.table.cur_fn
@@ -178,11 +190,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = c_name(name)
 	}
 	mut type_name := g.typ(node.return_type)
-	if g.cur_concrete_types.len > 0 {
+	if g.table.cur_concrete_types.len > 0 {
 		// foo<T>() => foo_T_int(), foo_T_string() etc
 		// Using _T_ to differentiate between get<string> and get_string
 		name += '_T'
-		for concrete_type in g.cur_concrete_types {
+		for concrete_type in g.table.cur_concrete_types {
 			gen_name := g.typ(concrete_type)
 			name += '_' + gen_name
 		}
@@ -265,6 +277,18 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	g.writeln(') {')
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
+		for var in defer_stmt.defer_vars {
+			if var.name in fargs || var.kind == .constant {
+				continue
+			}
+			if var.info is ast.IdentVar {
+				info := var.info
+				if var.name !in g.defer_vars {
+					g.defer_vars << var.name
+					g.writeln('${g.typ(info.typ)} $var.name;')
+				}
+			}
+		}
 	}
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
@@ -480,7 +504,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.cur_concrete_types, false)
+			g.table.cur_concrete_types, false)
 		{
 			return t_typ
 		}

@@ -124,22 +124,20 @@ mut:
 	is_builtin_mod         bool
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
-	// cur_fn                 ast.FnDecl
-	cur_concrete_types []ast.Type // current concrete types, e.g. <int, string>
-	sql_i              int
-	sql_stmt_name      string
-	sql_bind_name      string
-	sql_idents         []string
-	sql_idents_types   []ast.Type
-	sql_left_type      ast.Type
-	sql_table_name     string
-	sql_fkey           string
-	sql_parent_id      string
-	sql_side           SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl   bool
-	inside_return      bool
-	inside_or_block    bool
-	strs_to_free0      []string // strings.Builder
+	sql_i                  int
+	sql_stmt_name          string
+	sql_bind_name          string
+	sql_idents             []string
+	sql_idents_types       []ast.Type
+	sql_left_type          ast.Type
+	sql_table_name         string
+	sql_fkey               string
+	sql_parent_id          string
+	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl       bool
+	inside_return          bool
+	inside_or_block        bool
+	strs_to_free0          []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
@@ -174,6 +172,8 @@ mut:
 	obf_table          map[string]string
 	// main_fn_decl_node  ast.FnDecl
 	expected_cast_type ast.Type // for match expr of sumtypes
+	defer_vars         []string
+	anon_fn            bool
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -405,9 +405,12 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
-			g.cheaders.writeln(bare_c_headers)
+			g.cheaders.writeln(c_bare_headers)
 		} else {
 			g.cheaders.writeln(c_headers)
+		}
+		if !g.pref.skip_unused || g.table.used_maps > 0 {
+			g.cheaders.writeln(c_wyhash_headers)
 		}
 	}
 	if g.pref.os == .ios {
@@ -417,10 +420,6 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
-	if g.pref.build_mode != .build_module {
-		// _STR functions should not be defined in builtin.o
-		g.write_str_fn_definitions()
-	}
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
@@ -822,9 +821,6 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			.map {
 				g.type_definitions.writeln('typedef map $typ.cname;')
 			}
-			.function {
-				g.write_fn_typesymbol_declaration(typ)
-			}
 			else {
 				continue
 			}
@@ -833,6 +829,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	for typ in g.table.type_symbols {
 		if typ.kind == .alias && typ.name !in c.builtins {
 			g.write_alias_typesymbol_declaration(typ)
+		}
+	}
+	for typ in g.table.type_symbols {
+		if typ.kind == .function && typ.name !in c.builtins {
+			g.write_fn_typesymbol_declaration(typ)
 		}
 	}
 	// Generating interfaces after all the common types have been defined
@@ -2248,7 +2249,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
 				mut is_auto_heap := false
+				mut ident := ast.Ident{
+					scope: 0
+				}
 				if lx is ast.Ident {
+					ident = lx
 					if lx.kind == .blank_ident {
 						continue
 					}
@@ -2256,7 +2261,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						is_auto_heap = lx.obj.is_auto_heap
 					}
 				}
-				styp := g.typ(assign_stmt.left_types[i])
+				styp := if ident.name in g.defer_vars {
+					''
+				} else {
+					g.typ(assign_stmt.left_types[i])
+				}
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
 					if is_auto_heap {
@@ -2403,7 +2412,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := g.typ(var_type)
+		styp := if ident.name in g.defer_vars { '' } else { g.typ(var_type) }
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -2946,7 +2955,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	if !node.has_gen {
 		pos := g.out.len
+		g.anon_fn = true
 		g.stmt(node.decl)
+		g.anon_fn = false
 		fn_body := g.out.after(pos)
 		g.out.go_back(fn_body.len)
 		g.anon_fn_definitions << fn_body
@@ -4025,7 +4036,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
 					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
-						|| stmt.expr is ast.MatchExpr {
+						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
 						return true
 					}
 				}
@@ -4856,8 +4868,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp in ['Option2', 'Option']
+		mut is_regular_option := ftyp == 'Option'
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
+			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+				test_error_var := g.new_tmp_var()
+				g.write('$ret_typ $test_error_var = ')
+				g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+				g.writeln(';')
+				g.write_defer_stmts_when_needed()
+				g.gen_failing_return_error_for_test_fn(node, test_error_var)
+				return
+			}
 			if use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
@@ -4980,7 +5001,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option2', 'Option'] {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
 			g.write('opt_ok(&($styp[]) { ')
@@ -5160,9 +5181,6 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	if styp == 'Option2' {
-		styp = 'IError'
-	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
@@ -5574,7 +5592,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option2', 'Option']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option']
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -5716,7 +5734,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
-				if !elem_sym.is_builtin() {
+				if !elem_sym.is_builtin() && !typ.info.elem_type.has_flag(.generic) {
 					// .array_fixed {
 					styp := typ.cname
 					// array_fixed_char_300 => char x[300]
@@ -5837,9 +5855,9 @@ fn (mut g Gen) insert_before_stmt(s string) {
 }
 
 fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
-	pos := g.out.buf.len
+	pos := g.out.len
 	g.expr(expr)
-	return g.out.cut_last(g.out.buf.len - pos)
+	return g.out.cut_last(g.out.len - pos)
 }
 
 // fn (mut g Gen) start_tmp() {
@@ -5893,6 +5911,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.indent--
 		} else {
 			g.stmts(stmts)
+			if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
@@ -5923,7 +5944,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 	}
-	g.write('}')
+	g.writeln('}')
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`

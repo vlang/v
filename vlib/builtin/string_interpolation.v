@@ -1,3 +1,8 @@
+module builtin
+
+import strconv
+import strings
+
 /*=============================================================================
 Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -5,11 +10,6 @@ that can be found in the LICENSE file.
 
 This file contains string interpolation V functions
 =============================================================================*/
-
-module builtin
-
-import strconv
-import strings
 
 //=============================================================================
 // Enum format types max 0x1F => 32 types
@@ -60,35 +60,6 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
-/*
-pub fn (x StrIntpType) data_str() string {
-	match x {
-		.si_no_str{ return "no_str" }
-		.si_c     { return "d_c" }
-		
-		.si_u8    { return "d_u8" }
-		.si_i8    { return "d_i8" }
-		.si_u16   { return "d_u16" }
-		.si_i16   { return "d_i16" }
-		.si_u32   { return "d_u32" }
-		.si_i32   { return "d_i32" }
-		.si_u64   { return "d_u64" }
-		.si_i64   { return "d_i64" }
-		
-		.si_f32   { return "d_f32" }
-		.si_f64   { return "d_f64" }
-		.si_g32   { return "d_f32" }  // g32 format use f32 data
-		.si_g64   { return "d_f64" }  // g64 format use f64 data
-		.si_e32   { return "d_f32" }  // e32 format use f32 data
-		.si_e64   { return "d_f64" }  // e64 format use f64 data
-
-		.si_s     { return "d_s" }
-		.si_p     { return "d_p" }
-		.si_vp    { return "d_vp" }
-	}
-}
-*/
-
 //=============================================================================
 // Union data
 //=============================================================================
@@ -110,25 +81,19 @@ pub mut:
 	d_vp  voidptr
 }
 
-fn fabs64(x f64) f64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
+[inline]
 fn fabs32(x f32) f32 {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return if x < 0 { -x } else { x }
 }
 
+[inline]
+fn fabs64(x f64) f64 {
+	return if x < 0 { -x } else { x }
+}
+
+[inline]
 fn abs64(x i64) u64 {
-	if x < 0 {
-		return u64(-x)
-	}
-	return u64(x)
+	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
 //=========================================

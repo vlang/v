@@ -44,6 +44,9 @@ type F6 = fn (int, int)
 
 type F7 = fn (time.Time, int)
 
+type MyTime = time.Time
+type F8 = fn (MyTime)
+
 fn C.atoi(&byte) int
 fn C.freec(ptr voidptr)
 

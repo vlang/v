@@ -458,8 +458,7 @@ fn (mut v Builder) setup_output_name() {
 fn (mut v Builder) vjs_cc() bool {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
-	// Just create a C/JavaScript file and exit
-	// for example: `v -o v.c compiler`
+	// Just create a .c/.js file and exit, for example: `v -o v.c compiler`
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
@@ -489,8 +488,11 @@ fn (mut v Builder) vjs_cc() bool {
 				}
 			}
 		}
+		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		util.timing_start(msg_mv)
 		// v.out_name_c may be on a different partition than v.out_name
 		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
+		util.timing_measure(msg_mv)
 		return true
 	}
 	return false

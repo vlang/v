@@ -24,7 +24,7 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
-		.sum_type, .function, .alias] {
+		.sum_type, .function, .alias, .chan] {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
@@ -43,7 +43,6 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	} else if sym.kind == .i64 {
 		return .si_i64
 	}
-
 	return .si_i32
 }
 
@@ -186,13 +185,15 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 	} else if sym.kind == .function {
 		return '${fn_name}()'
 	} else {
+		if sym.kind == .chan {
+			return '${fn_name}(it.${c_name(field_name)})'
+		}
 		mut method_str := 'it.${c_name(field_name)}'
 		if sym.kind == .bool {
 			method_str += ' ? _SLIT("true") : _SLIT("false")'
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
 			&& field_type.is_ptr() && !expects_ptr {
-			// ptr int can be "nil", so this needs to be castet to a string
-
+			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
@@ -205,7 +206,6 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 				fmt_type := StrIntpType.si_u64
 				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}}))'
 			}
-
 			fmt_type := StrIntpType.si_i32
 			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))'
 		}

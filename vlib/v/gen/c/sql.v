@@ -14,6 +14,7 @@ enum SqlType {
 	sqlite3
 	mysql
 	psql
+	mssql
 	unknown
 }
 
@@ -27,6 +28,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	match typ {
 		.sqlite3 {
 			fn_prefix = 'sqlite__DB'
+		}
+		.mssql {
+			g.mssql_create_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -656,6 +660,9 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 		}
 		'pg.DB' {
 			return .psql
+		}
+		'mssql.Connection' {
+			return .mssql
 		}
 		else {
 			return .unknown

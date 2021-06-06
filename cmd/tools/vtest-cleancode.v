@@ -36,7 +36,6 @@ const (
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
-		'examples/c_interop_wkhtmltopdf.v' /* &charptr --> &&char */,
 	]
 	vfmt_verify_list                = [
 		'cmd/',

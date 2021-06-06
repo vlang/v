@@ -85,6 +85,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'21.clone_static',
 		'21.first',
 		'21.last',
+		'21.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
 		'21.reverse',
 		'21.repeat',
 		'21.slice',
@@ -141,7 +142,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if k.ends_with('.str') {
+		// auto generated string interpolation functions, may
+		// call .str or .auto_str methods for user types:
+		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			all_fn_root_names << k
 			continue
 		}
@@ -153,11 +156,26 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
+
+		// sync:
+		if k == 'sync.new_channel_st' {
+			all_fn_root_names << k
+			continue
+		}
+		if k == 'sync.channel_select' {
+			all_fn_root_names << k
+			continue
+		}
+		if method_receiver_typename == '&sync.Channel' {
+			all_fn_root_names << k
+			continue
+		}
 		if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
 			|| k.ends_with('.runlock') {
 			all_fn_root_names << k
 			continue
 		}
+		// testing framework:
 		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
@@ -169,6 +187,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				continue
 			}
 		}
+		// public/exported functions can not be skipped,
+		// especially when producing a shared library:
 		if mfn.is_pub && pref.is_shared {
 			all_fn_root_names << k
 			continue
@@ -252,7 +272,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	if walker.n_asserts > 0 {
 		walker.fn_decl(mut all_fns['__print_assert_failure'])
 	}
-	if walker.n_maps > 0 {
+	if table.used_maps > 0 {
 		for k, mut mfn in all_fns {
 			mut method_receiver_typename := ''
 			if mfn.is_method {
@@ -262,6 +282,19 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
+			}
+		}
+	} else {
+		for map_fn_name in ['new_map', 'new_map_init', 'map_hash_string', 'new_dense_array'] {
+			walker.used_fns.delete(map_fn_name)
+		}
+		for k, mut mfn in all_fns {
+			if !mfn.is_method {
+				continue
+			}
+			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
+			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
+				walker.used_fns.delete(k)
 			}
 		}
 	}
@@ -278,7 +311,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused ? {
 		eprintln('>> t.used_fns: $table.used_fns.keys()')
 		eprintln('>> t.used_consts: $table.used_consts.keys()')
-		eprintln('>> walker.n_maps: $walker.n_maps')
+		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
 	}
 }
 
