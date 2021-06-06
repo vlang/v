@@ -240,8 +240,12 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, sta
 	return str
 }
 
-pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []OrmTableField, sql_from_v fn (int) ?string) ?string {
+pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []OrmTableField, sql_from_v fn (int) ?string, alternative bool) ?string {
 	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
+
+	if alternative {
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$para$table_name$para and xtype=$paraU$para) CREATE TABLE $para$table_name$para ('
+	}
 
 	mut fs := []string{}
 	mut unique_fields := []string{}
