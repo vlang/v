@@ -1,4 +1,4 @@
-import v.tests.assembly.util
+import util
 
 fn test_inline_asm() {
 	a, mut b := i64(10), i64(0)
@@ -183,3 +183,26 @@ fn test_flag_output() {
 	assert out
 	assert maybe_four == 9
 }
+
+fn test_asm_generic() {
+	u := u64(49)
+	b := unsafe { bool(123) }
+	assert generic_asm(u) == 14
+	assert u == 63
+	assert u64(generic_asm(b)) == 14
+	assert u64(b) == 137
+}
+
+fn generic_asm<T>(var &T) T {
+	mut ret := T(14)
+	unsafe {
+		asm volatile amd64 {
+			add var, ret
+			; +m (var[0]) as var
+			  +r (ret)
+			; ; memory
+		}
+	}
+	return ret
+}
+
