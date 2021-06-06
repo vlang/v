@@ -8,8 +8,9 @@ import time
 pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	stmt := db.new_init_stmt(query) ?
-	sqlite_stmt_binder(stmt, data, query) ?
-	sqlite_stmt_binder(stmt, where, query) ?
+	mut c := 1
+	sqlite_stmt_binder(stmt, where, query, mut c) ?
+	sqlite_stmt_binder(stmt, data, query, mut c) ?
 
 	defer {
 		stmt.finalize()
@@ -22,10 +23,10 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
 			return db.error_message(step, query)
 		}
-		ret << [orm.Primitive(stmt.get_count())]
+		count := stmt.sqlite_select_column(0, 8) ?
+		ret << [count]
 		return ret
 	}
-
 	for {
 		step := stmt.step()
 		if step == sqlite_done {
@@ -82,14 +83,14 @@ pub fn (db DB) drop(table string) ? {
 
 fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
 	stmt := db.new_init_stmt(query) ?
-	sqlite_stmt_binder(stmt, data, query) ?
-	sqlite_stmt_binder(stmt, where, query) ?
+	mut c := 1
+	sqlite_stmt_binder(stmt, data, query, mut c) ?
+	sqlite_stmt_binder(stmt, where, query, mut c) ?
 	stmt.orm_step(query) ?
 	stmt.finalize()
 }
 
-fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string) ? {
-	mut c := 1
+fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c int) ? {
 	for data in d.data {
 		mut err := 0
 		match data {

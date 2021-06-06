@@ -1452,12 +1452,12 @@ pub mut:
 
 pub struct SqlStmtLine {
 pub:
-	kind            SqlStmtKind
-	object_var_name string // `user`
-	pos             token.Position
-	where_expr      Expr
-	update_exprs    []Expr // for `update`
+	kind         SqlStmtKind
+	pos          token.Position
+	where_expr   Expr
+	update_exprs []Expr // for `update`
 pub mut:
+	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`
 	table_expr      TypeNode
 	fields          []StructField

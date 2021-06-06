@@ -39,7 +39,6 @@ fn test_orm_array() {
 	}
 
 	sql db {
-		drop table Chield
 		drop table Parent
 	}
 

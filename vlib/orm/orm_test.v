@@ -19,59 +19,10 @@ struct User {
 	skipped_string string [skip]
 }
 
-fn test_orm_sqlite() {
-	db := sqlite.connect('test.sqlite') or { panic(err) }
-
-	mut mod := Module{
-		name: 'V ORM'
-		nr_downloads: 100
-		user: User{
-			age: 17
-			name: 'Louis Schmieder'
-			is_customer: false
-			skipped_string: 'abc'
-		}
-	}
-
-	mut mod1 := Module{
-		name: 'V ORM'
-		nr_downloads: 100
-		user: User{
-			age: 17
-			name: 'ABC Schmieder'
-			is_customer: false
-			skipped_string: 'abc'
-		}
-	}
-
-	sql db {
-		create table Module
-	}
-
-	sql db {
-		insert mod into Module
-		update Module set nr_downloads = 101 where id == 1
-	}
-
-	modl := sql db {
-		select from Module where id == 1
-	}
-
-	assert modl.id == 1
-	assert modl.name == mod.name
-	assert modl.nr_downloads == 101
-	assert modl.user.age == mod.user.age
-	assert modl.user.name == mod.user.name
-	assert modl.user.is_customer == mod.user.is_customer
-	assert modl.user.skipped_string == ''
-
-	/*
-	sql db {
-		drop table Module
-	}*/
+struct Foo {
+	age int
 }
 
-/*
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
@@ -311,4 +262,3 @@ fn test_orm_sqlite() {
 	}
 	assert null_user.name == ''
 }
-*/

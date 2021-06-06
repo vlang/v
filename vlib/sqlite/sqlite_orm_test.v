@@ -45,6 +45,7 @@ fn test_sqlite_orm() {
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(100)]
 		types: [18, 8]
+		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }
 
@@ -66,56 +67,4 @@ fn test_sqlite_orm() {
 	if age is i64 {
 		assert age == 100
 	}
-}
-
-fn test_orm() {
-	sdb := sqlite.connect(':memory:') or { panic(err) }
-	db := orm.OrmConnection(sdb)
-
-	db.create('userlist', [
-		orm.OrmTableField{
-			name: 'id'
-			typ: 7
-			attrs: [
-				StructAttribute{
-					name: 'primary'
-				},
-				StructAttribute{
-					name: 'sql'
-					has_arg: true
-					arg: 'serial'
-					kind: .plain
-				},
-			]
-		},
-		orm.OrmTableField{
-			name: 'age'
-			typ: 7
-		},
-		orm.OrmTableField{
-			name: 'name'
-			attrs: [
-				StructAttribute{
-					name: 'sql'
-					has_arg: true
-					arg: 'username'
-					kind: .string
-				},
-			]
-			typ: 18
-		},
-		orm.OrmTableField{
-			name: 'is_customer'
-			typ: 16
-		},
-	]) or { panic(err) }
-
-	db.insert('userlist', orm.OrmQueryData{
-		fields: ['age', 'username', 'is_customer']
-		data: [orm.int_to_primitive(10), orm.string_to_primitive('Louis'),
-			orm.bool_to_primitive(false),
-		]
-	}) or { panic(err) }
-
-	db.drop('userlist') or { panic(err) }
 }

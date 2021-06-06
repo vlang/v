@@ -43,6 +43,7 @@ pub enum StmtKind {
 }
 
 pub enum OrmOrderType {
+	asc
 	desc
 }
 
@@ -63,6 +64,9 @@ fn (kind OrmOrderType) to_str() string {
 		.desc {
 			'DESC'
 		}
+		.asc {
+			'ASC'
+		}
 	}
 }
 
@@ -72,6 +76,7 @@ pub:
 	data   []Primitive
 	types  []int
 	kinds  []OperationKind
+	is_and []bool
 }
 
 pub struct OrmTableField {
@@ -80,6 +85,7 @@ pub:
 	typ         int
 	is_time     bool
 	default_val string
+	is_arr      bool
 	attrs       []StructAttribute
 }
 
@@ -196,7 +202,11 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, sta
 				c++
 			}
 			if i < where.fields.len - 1 {
-				str += ' AND '
+				if where.is_and[i] {
+					str += ' AND '
+				} else {
+					str += ' OR '
+				}
 			}
 		}
 	}
@@ -239,6 +249,9 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 	mut primary := ''
 
 	for field in fields {
+		if field.is_arr {
+			continue
+		}
 		mut no_null := false
 		mut is_unique := false
 		mut is_skip := false
