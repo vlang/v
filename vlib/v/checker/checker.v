@@ -6587,10 +6587,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	mut typ_idx := if node.enum_name == '' {
 		c.expected_type.idx()
-	} else { //
+	} else {
 		c.table.find_type_idx(node.enum_name)
 	}
-	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
 		// Handle `builtin` enums like `ChanState`, so that `x := ChanState.closed` works.
 		// In the checker the name for such enums was set to `main.ChanState` instead of
@@ -6614,7 +6613,6 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		return ast.void_type
 	}
 	mut typ_sym := c.table.get_type_symbol(typ)
-	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
 	if typ_sym.kind == .array && node.enum_name.len == 0 {
 		array_info := typ_sym.info as ast.Array
 		typ = array_info.elem_type
@@ -6632,10 +6630,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	if !(typ_sym.is_public || typ_sym.mod == c.mod) {
 		c.error('enum `$typ_sym.name` is private', node.pos)
 	}
-	// info := typ_sym.info as ast.Enum
 	info := typ_sym.enum_info()
-	// rintln('checker: x = $info.x enum val $c.expected_type $typ_sym.name')
-	// println(info.vals)
 	if node.val !in info.vals {
 		suggestion := util.new_suggestion(node.val, info.vals)
 		c.error(suggestion.say('enum `$typ_sym.name` does not have a value `$node.val`'),
