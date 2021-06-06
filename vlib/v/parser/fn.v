@@ -578,6 +578,15 @@ fn (mut p Parser) parse_generic_names() []string {
 		}
 		p.check(.name)
 		param_names << name
+		if p.table.find_type_idx(name) == 0 {
+			p.table.register_type_symbol(ast.TypeSymbol{
+				name: name
+				cname: util.no_dots(name)
+				mod: p.mod
+				kind: .any
+				is_public: true
+			})
+		}
 		first_done = true
 		count++
 	}
