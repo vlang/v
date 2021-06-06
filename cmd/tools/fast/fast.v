@@ -83,7 +83,7 @@ fn main() {
 		<td>${cgen}ms</td>
 		<td>${scan}ms</td>
 		<td>$vlines</td>
-		<td>${int(f64(vlines) / f64(diff1) * 1000.0)} lines/s</td>
+		<td>${int(f64(vlines) / f64(diff1) * 1000.0)}</td>
 	</tr>\n' +
 		table.trim_space()
 	out.writeln(table) ?
