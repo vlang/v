@@ -114,7 +114,8 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 				}
 				// relative (which don't require v.mod files)
 				if try_path.starts_with(pref_path) {
-					return try_path.replace(pref_path+os.path_separator, '').replace(os.path_separator, '.')
+					return try_path.replace(pref_path + os.path_separator, '').replace(os.path_separator,
+						'.')
 				}
 			}
 		}
