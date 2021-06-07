@@ -66,74 +66,72 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 			break
 		}
 	}
-	println('~~~ path: $path ~~~')
-	println('~~~ pref.path: $pref.path ~~~')
-	println('~~~ mod: $mod ~~~')
-
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
+
+	mut pref_path := os.real_path(pref.path)
+	if pref_path.ends_with('.v') && os.is_file(pref_path) {
+		pref_path = os.dir(pref_path)
+	}
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i >= 0; i-- {
 		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
-		println('~~~ try_path: $try_path ~~~')
 		// found module path
 		if os.is_dir(try_path) {
-			println('~~~ if os.is_dir(try_path) ~~~')
-			// so we can work our way backwards until we reach a vmod folder
-			for j := i; j >= 0; j-- {
-				path_part := path_parts[j]
-				// we reached a vmod folder
-				if path_part in vmod_folders {
-					mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
-					println('~~~ mod_full_name: $mod_full_name ~~~')
-					return mod_full_name
+			// we know we are in one of the `vmod_folders`
+			if in_vmod_path {
+				// so we can work our way backwards until we reach a vmod folder
+				for j := i; j >= 0; j-- {
+					path_part := path_parts[j]
+					// we reached a vmod folder
+					if path_part in vmod_folders {
+						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						return mod_full_name
+					}
 				}
-			}
-			// not in one of the `vmod_folders` so work backwards through each parent
-			// looking for for a `v.mod` file and break at the first path without it
-
-			mut try_path_parts := try_path.split(os.path_separator)
-			println('~~~ try_path_parts: $try_path_parts ~~~')
-			// last index in try_path_parts that contains a `v.mod`
-			mut last_v_mod := -1
-			for j := try_path_parts.len; j > 0; j-- {
-				parent := try_path_parts[0..j].join(os.path_separator)
-
-				pref_path := os.dir(os.real_path(pref.path))
-				println('~~~ pref_path: $pref_path ~~~')
-				if parent != pref_path && parent.starts_with(pref_path + os.path_separator) {
-					mod_full_name := parent.all_after(pref_path + os.path_separator).replace(os.path_separator,
-						'.')
-					println('~~~ mod_full_name: $mod_full_name ~~~')
-					return mod_full_name
-				}
-
-				if in_vmod_path {
-					println('~~~ parent: $parent ~~~')
+				// not in one of the `vmod_folders` so work backwards through each parent
+				// looking for for a `v.mod` file and break at the first path without it
+			} else {
+				mut try_path_parts := try_path.split(os.path_separator)
+				// last index in try_path_parts that contains a `v.mod`
+				mut last_v_mod := -1
+				for j := try_path_parts.len; j > 0; j-- {
+					parent := try_path_parts[0..j].join(os.path_separator)
 					if ls := os.ls(parent) {
 						// currently CI clones some modules into the v repo to test, the condition
 						// after `'v.mod' in ls` can be removed once a proper solution is added
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
 							last_v_mod = j
-							println('~~~ last_v_mod: $last_v_mod ~~~')
 						}
 						continue
 					}
 					break
 				}
+				if last_v_mod > -1 {
+					mod_full_name := try_path_parts[last_v_mod..].join('.')
+					return mod_full_name
+				}
+				// relative (which don't require v.mod files)
+				if try_path.starts_with(pref_path) {
+					return try_path.replace(pref_path+os.path_separator, '').replace(os.path_separator, '.')
+				}
 			}
-			if last_v_mod > -1 {
-				println('~~~ if last_v_mod > -1 { ~~~')
-				mod_full_name := try_path_parts[last_v_mod..].join('.')
-				println('~~~ mod_full_name: $mod_full_name ~~~')
-				return mod_full_name
-			}
-			println('~~~ if os.is_dir(try_path) { end ~~~')
 		}
-		println('~~~ try_path: end ~~~')
 	}
-	println('~~~ mod: $mod end ~~~')
+	println('~~~ pref.path: $pref.path ~~~')
+	println('~~~ path: $path ~~~')
+	println('~~~ pref_path: $pref_path ~~~')
+
+	if os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		rel_mod_path := path.all_after(pref_path + os.path_separator)
+		println('~~~ rel_mod_path: $rel_mod_path ~~~')
+		if rel_mod_path != path {
+			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
+			println('~~~ full_mod_name: $full_mod_name ~~~')
+			return full_mod_name
+		}
+	}
 
 	return error('module not found')
 }
