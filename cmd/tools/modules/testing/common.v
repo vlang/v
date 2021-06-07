@@ -124,7 +124,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if macos {
 			skip_files << 'examples/database/mysql.v'
 			skip_files << 'examples/database/orm.v'
-			skip_files << 'examples/database/pg/customer.v'
+			skip_files << 'examples/database/psql/customer.v'
 		}
 		$if windows {
 			skip_files << 'examples/database/mysql.v'
