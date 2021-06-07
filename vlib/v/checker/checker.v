@@ -7252,6 +7252,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('missing return at end of function `$node.name`', node.pos)
 		}
 	}
+	if node.is_method {
+		sym := c.table.get_type_symbol(node.receiver.typ)
+		if sym.kind == .struct_ {
+			info := sym.info as ast.Struct
+			if info.is_generic && c.table.cur_fn.generic_names.len == 0 {
+				c.error('receiver must specify the generic type names, e.g. Foo<T>', node.method_type_pos)
+			}
+		}
+	}
 	c.returns = false
 	node.source_file = c.file
 }
