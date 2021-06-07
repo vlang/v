@@ -9,6 +9,9 @@ fn test_native() {
 	$if !amd64 {
 		return
 	}
+	$if aarch64 {
+		return
+	}
 	// some tests are running fine in macos
 	if os.user_os() != 'linux' && os.user_os() != 'macos' {
 		eprintln('native tests only run on Linux and macOS for now.')
