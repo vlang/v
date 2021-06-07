@@ -1937,7 +1937,8 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	for mut template in stmt.templates {
+	for template_tmp in stmt.templates {
+		mut template := template_tmp
 		g.write('"')
 		if template.is_directive {
 			g.write('.')
