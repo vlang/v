@@ -4,7 +4,7 @@ then copy the `include` and `lib` folders to `<V install directory>\thirdparty\m
 
 ## Basic Usage
 
-```v
+```v oksyntax
 import mysql
 
 // Create connection
