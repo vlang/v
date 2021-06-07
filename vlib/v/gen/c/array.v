@@ -439,10 +439,11 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg_sym := g.table.get_type_symbol(node.args[0].typ)
 	is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
+	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg_array {
-		g.write('array_prepend_many(&')
+		g.write('array_prepend_many${noscan}(&')
 	} else {
-		g.write('array_prepend(&')
+		g.write('array_prepend${noscan}(&')
 	}
 	g.expr(node.left)
 	if is_arg_array {
