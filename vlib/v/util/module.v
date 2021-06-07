@@ -32,7 +32,7 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 	if mod == 'main' {
 		return mod
 	}
-	clean_file_path := file_path.all_before_last(os.path_separator)
+	clean_file_path := file_path.all_before_last('/')
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
@@ -110,32 +110,5 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 			}
 		}
 	}
-
-	println('~~~ pref.path: $pref.path ~~~')
-	println('~~~ path: $path ~~~')
-	println('~~~ mod1: $mod ~~~')
-
-	pref_path := os.real_path(pref.path)
-	println('~~~ pref_path: $pref_path ~~~')
-
-	if os.is_dir(pref_path + os.path_separator + mod) {
-		println('~~~ mod2: $mod ~~~')
-		return mod
-	}
-
-	r_path := os.real_path(path)
-	println('~~~ r_path: $r_path ~~~')
-
-	if os.is_dir(r_path) && r_path.contains(mod) {
-		rel_mod_path := r_path.replace(pref_path.all_before_last(os.path_separator) +
-			os.path_separator, '')
-		if rel_mod_path != path {
-			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
-			println('~~~ full_mod_name: $full_mod_name ~~~')
-			return full_mod_name
-		}
-	}
-	println('~~~ mod3: $mod ~~~')
-
 	return error('module not found')
 }
