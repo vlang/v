@@ -81,6 +81,9 @@ or create the file `.vscode/launch.json`:
 }
 ```
 
+**Optional:** use `"program": "${fileDirname}/${fileBasenameNoExtension}"` to debug 
+any current open source file with an existing binary with the same name but without any extention.
+
 ### Usage
 
 To allow your compiled application to be debugged.
