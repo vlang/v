@@ -18,7 +18,8 @@
 You can run `v` commands in `Visual Studio 2019 Developer Command Prompt` to be safe.
 * C Headers and dlls can be automatically resolved by `msvc`.
 ### Using `tcc` 
-* Copy those headers to `@VEXEROOT\thirdparty\mssql\include`. The version number `10.0.18362.0` might differ on your system.
+* Copy those headers to `@VEXEROOT\thirdparty\mssql\include`. 
+The version number `10.0.18362.0` might differ on your system. 
 Command Prompt commands:
 ```cmd
 copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\um\sql.h" thirdparty\mssql\include
