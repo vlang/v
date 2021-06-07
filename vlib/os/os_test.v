@@ -561,29 +561,30 @@ fn test_posix_set_bit() {
 	} $else {
 		fpath := '/tmp/permtest'
 		os.create(fpath) or { panic("Couldn't create file") }
-		os.chmod(fpath, 0o7777)
+		os.chmod(fpath, 0o0777)
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		// Take the permissions part of the mode
-		mut mode := u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mut mode := u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
 		// `chmod u-r`
 		os.posix_set_permission_bit(fpath, os.s_irusr, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7377
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0377
 		// `chmod u+r`
 		os.posix_set_permission_bit(fpath, os.s_irusr, true)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
+		// NB: setting the sticky bit is platform dependend
 		// `chmod -s -g -t`
 		os.posix_set_permission_bit(fpath, os.s_isuid, false)
 		os.posix_set_permission_bit(fpath, os.s_isgid, false)
@@ -591,7 +592,7 @@ fn test_posix_set_bit() {
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
+		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
 		// `chmod g-w o-w`
 		os.posix_set_permission_bit(fpath, os.s_iwgrp, false)

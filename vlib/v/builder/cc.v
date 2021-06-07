@@ -205,6 +205,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-trigraphs' /* see stackoverflow.com/a/8435413 */,
 		'-Wno-missing-braces' /* see stackoverflow.com/q/13746033 */,
 		// enable additional warnings:
+		'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
+		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
 		'-Wdate-time',
 		'-Wduplicated-branches',
 		'-Wduplicated-cond',
@@ -264,8 +266,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			'-Wno-enum-conversion' /* used in vlib/sokol, where C enums in C structs are typed as V structs instead */,
 			'-Wno-sometimes-uninitialized' /* produced after exhaustive matches */,
 			'-Wno-int-to-void-pointer-cast',
-			'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
-			'-Wno-unknown-warning-option' /* clang equivalent of the above */,
 		]
 	}
 	if ccoptions.is_cc_gcc {
