@@ -611,7 +611,7 @@ will have the type of `f64`.
 
 ### Arrays
 #### Basic Array Concepts
-Arrays are collections of data elements of the same type. They can be represented by
+Arrays are **collections of data elements** of the **same type**. They can be represented by
 a list of elements surrounded by brackets. The elements can be accessed by appending
 an *index* (starting with `0`) in brackets to the array variable:
 ```v
@@ -622,7 +622,6 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-
 #### Array Properties
 There are two properties that control the "size" of an array:
 * `len`: *length* - the number of defined elements of the array
@@ -685,6 +684,70 @@ for i in 0 .. 1000 {
 Note: The above code uses a [range `for`](#range-for) statement and a
 [push operator (`<<`)](#array-operations).
 
+#### Array Types
+
+An array can be of these types:
+| Types        | Example Definition    |
+| ------------ | --------------------- |
+| Number       | `[]int,[]i64`         |
+| String       | `[]string`            |
+| Rune         | `[]rune`              |
+| Boolean      | `[]bool`              |
+| Array        | `[][]int`             |
+| Struct       | `[]MyStructName`      |
+| Channel      | `[]chan`              |
+| Function     | `[]func`              |
+| Interface    | `[]MyInterfaceName`   |
+| Sum Type     | `[]MySumTypeName`     |
+| Generic Type | `[]<T>`               |
+| Map          | `[]map`               |
+| Enum         | `[]enum`              |
+| Alias        | `[]MyAliasTypeName`   |
+| Thread       | `[]xx`                |
+| Reference    | `[]&f64`              |
+| Shared       | `[]xx`                |
+
+**Example Code:**
+
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
+which an handle different types (e.g. Points, Lines) of data elements.
+
+```v
+struct Point {
+	x int
+	y int
+}
+
+struct Line {
+	p1 Point
+	p2 Point
+}
+
+type ObjectSumType = Line | Point
+
+mut object_list := []ObjectSumType{}
+object_list << Point{1, 1}
+object_list << Line{
+	p1: Point{3, 3}
+	p2: Point{4, 4}
+}
+dump(object_list)
+/*
+object_list: [ObjectSumType(Point{
+    x: 1
+    y: 1
+}), ObjectSumType(Line{
+    p1: Point{
+        x: 3
+        y: 3
+    }
+    p2: Point{
+        x: 4
+        y: 4
+    }
+})]
+*/
+```
 
 #### Multidimensional Arrays
 
@@ -702,36 +765,6 @@ println(a) // [[0, 2, 0], [0, 0, 0]]
 mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
-```
-
-#### Mixed Types Structs Arrays
-
-Arrays with mixed types use [structs](#structs).
-
-```v
-struct User {
-	name  string
-	likes int
-}
-
-mut user_list := []User{}
-user_list << User{
-	name: 'Max'
-	likes: 101
-}
-println(user_list)
-/*
-Output:
-[User{
-    name: 'Max'
-    likes: 101
-}]
-*/
-```
-
-Short [structs forms](#short-struct-initialization-syntax):
-```
-list := [User{'Max',101},User{'Sunny',202}]
 ```
 
 #### Array Operations
@@ -1601,10 +1634,6 @@ Without embedding we'd have to name the `Widget` field and do:
 button.widget.x = 3
 ```
 
-### Array Structs
-
-Arrays can use structs to [handle mixed content](#mixed-types-structs-arrays).
-
 ### Default field values
 
 ```v
@@ -1657,6 +1686,10 @@ p = {
 	y: 4
 }
 assert p.y == 4
+//
+// array: first element defines type of array
+points := [Point{10, 20}, Point{20, 30}, Point{40, 50}]
+println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}]
 ```
 
 Omitting the struct name also works for returning a struct literal or passing one
