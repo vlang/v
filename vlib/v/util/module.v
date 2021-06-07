@@ -102,7 +102,7 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
 
-					pref_path := os.dir(pref.path) + os.path_separator
+					pref_path := os.dir(os.real_path(pref.path)) + os.path_separator
 					println('~~~ pref_path: $pref_path ~~~')
 					if parent.starts_with(pref_path) {
 						mod_full_name := parent.all_after(pref_path).replace(os.path_separator,
