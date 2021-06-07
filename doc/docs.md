@@ -611,7 +611,7 @@ will have the type of `f64`.
 
 ### Arrays
 #### Basic Array Concepts
-Arrays are **collections of data elements** of the **same type**. They can be represented by
+Arrays are collections of data elements of the same type. They can be represented by
 a list of elements surrounded by brackets. The elements can be accessed by appending
 an *index* (starting with `0`) in brackets to the array variable:
 ```v
@@ -687,30 +687,30 @@ Note: The above code uses a [range `for`](#range-for) statement and a
 #### Array Types
 
 An array can be of these types:
-| Types        | Example Definition    |
-| ------------ | --------------------- |
-| Number       | `[]int,[]i64`         |
-| String       | `[]string`            |
-| Rune         | `[]rune`              |
-| Boolean      | `[]bool`              |
-| Array        | `[][]int`             |
-| Struct       | `[]MyStructName`      |
-| Channel      | `[]chan`              |
-| Function     | `[]func`              |
-| Interface    | `[]MyInterfaceName`   |
-| Sum Type     | `[]MySumTypeName`     |
-| Generic Type | `[]<T>`               |
-| Map          | `[]map`               |
-| Enum         | `[]enum`              |
-| Alias        | `[]MyAliasTypeName`   |
-| Thread       | `[]xx`                |
-| Reference    | `[]&f64`              |
-| Shared       | `[]xx`                |
+| Types        | Example Definition                   |
+| ------------ | ------------------------------------ |
+| Number       | `[]int,[]i64`                        |
+| String       | `[]string`                           |
+| Rune         | `[]rune`                             |
+| Boolean      | `[]bool`                             |
+| Array        | `[][]int`                            |
+| Struct       | `[]MyStructName`                     |
+| Channel      | `[]chan f64`                         |
+| Function     | `[]MyFunctionType` `[]fn (int) bool` |
+| Interface    | `[]MyInterfaceName`                  |
+| Sum Type     | `[]MySumTypeName`                    |
+| Generic Type | `[]T`                                |
+| Map          | `[]map[string]f64`                   |
+| Enum         | `[]MyEnumType`                       |
+| Alias        | `[]MyAliasTypeName`                  |
+| Thread       | `[]thread int`                       |
+| Reference    | `[]&f64`                             |
+| Shared       | `[]shared MyStructType`              |
 
 **Example Code:**
 
 This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
-which an handle different types (e.g. Points, Lines) of data elements.
+which can handle different types (e.g. Points, Lines) of data elements.
 
 ```v
 struct Point {
