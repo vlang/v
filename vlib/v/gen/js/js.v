@@ -105,7 +105,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.pref.is_vlines || g.pref.is_debug {
 			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
 		}
-		// TODO: Add '[-no]-sourcemap' flag
+		// TODO: Add '[-no]-sourcemap' flag, further options to include V source code and create external map files
 		if g.pref.is_debug {
 			mut sg := sourcemap.generate_empty_map()
 			g.sourcemap = sg.add_map('', '/', 0, 0)
