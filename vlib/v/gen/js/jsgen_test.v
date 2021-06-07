@@ -12,6 +12,8 @@ fn testsuite_end() {
 
 const there_is_node_available = is_nodejs_working()
 
+const there_is_grep_available = is_grep_working()
+
 fn test_example_compilation() {
 	vexe := os.getenv('VEXE')
 	os.chdir(os.dir(vexe))
@@ -20,7 +22,12 @@ fn test_example_compilation() {
 	for file in files {
 		path := os.join_path(test_dir, file)
 		println('Testing $file')
-		v_code := os.system('$vexe $v_options -o $output_dir${file}.js $path')
+		v_options_file := if file.ends_with('_sourcemap.v') {
+			v_options + ' -g' // activate souremap generation
+		} else {
+			v_options
+		}
+		v_code := os.system('$vexe $v_options_file -o $output_dir${file}.js $path')
 		if v_code != 0 {
 			assert false
 		}
@@ -36,6 +43,16 @@ fn test_example_compilation() {
 		}
 		// Running failed
 		assert js_code == 0
+		if file.ends_with('_sourcemap.v') {
+			if there_is_grep_available {
+				grep_code := os.system('grep -q $output_dir${file}.js')
+				if grep_code != 0 {
+					assert false
+				}
+			} else {
+				println(' ... skipping testing for sourcemap $file, there is no grep present')
+			}
+		}
 	}
 }
 
@@ -49,6 +66,14 @@ fn find_test_files() []string {
 
 fn is_nodejs_working() bool {
 	node_res := os.execute('node --version')
+	if node_res.exit_code != 0 {
+		return false
+	}
+	return true
+}
+
+fn is_grep_working() bool {
+	node_res := os.execute('grep --version')
 	if node_res.exit_code != 0 {
 		return false
 	}
