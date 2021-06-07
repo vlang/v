@@ -6,6 +6,8 @@ import v.token
 import v.pref
 import v.util
 import v.depgraph
+import encoding.base64
+import aheissenberger.sourcemap
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -22,14 +24,23 @@ const (
 		.int_literal, .float_literal, .size_t, .bool, .string]
 )
 
+struct SourcemapHelper {
+	src_path  string
+	src_line  int
+	ns_pos    int
+	js_line   int
+	js_column int
+}
+
 struct Namespace {
 	name string
 mut:
-	out      strings.Builder = strings.new_builder(128)
-	pub_vars []string
-	imports  map[string]string
-	indent   int
-	methods  map[string][]ast.FnDecl
+	out       strings.Builder = strings.new_builder(128)
+	pub_vars  []string
+	imports   map[string]string
+	indent    int
+	methods   map[string][]ast.FnDecl
+	sourcemap []SourcemapHelper
 }
 
 [heap]
@@ -60,6 +71,8 @@ mut:
 	empty_line          bool
 	cast_stack          []ast.Type
 	call_stack          []ast.CallExpr
+	vlines_path         string // set to the proper path for generating #line directives
+	sourcemap           sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -88,6 +101,15 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.is_test = g.pref.is_test
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
+		// add Line Infos
+		if g.pref.is_vlines || g.pref.is_debug {
+			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
+		}
+		// TODO: Add '[-no]-sourcemap' flag
+		if g.pref.is_debug {
+			mut sg := sourcemap.generate_empty_map()
+			g.sourcemap = sg.add_map('', '/', 0, 0)
+		}
 	}
 	for file in files {
 		g.file = file
@@ -135,8 +157,26 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			out += val
 		}
 		out += ') {\n\t'
-		// private scope
-		out += namespace.out.str().trim_space()
+		// calculate current output start line
+		mut current_line := out.count('\n') + 1
+		namespace_code := namespace.out.str()
+		mut sm_pos := 0
+		for sourcemap_entry in namespace.sourcemap {
+			// calculate final generated location in output based on position
+			current_segment := namespace_code.substr(sm_pos, sourcemap_entry.ns_pos)
+			current_line += current_segment.count('\n')
+			current_column := if last_nl_pos := current_segment.last_index('\n') {
+				current_segment.len - last_nl_pos - 1
+			} else {
+				0
+			}
+			g.sourcemap.add_mapping(sourcemap_entry.src_path, sourcemap.SourcePosition{
+				source_line: u32(sourcemap_entry.src_line)
+				source_column: 0 // sourcemap_entry.src_column
+			}, u32(current_line), u32(current_column), '')
+			sm_pos = sourcemap_entry.ns_pos
+		}
+		out += namespace_code
 		// public scope
 		out += '\n'
 		if g.enable_doc {
@@ -195,6 +235,18 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
 	}
 	out += '\n'
+	if g.pref.is_debug {
+		out += g.create_sourcemap()
+	}
+	return out
+}
+
+fn (g JsGen) create_sourcemap() string {
+	mut sm := g.sourcemap
+	mut out := '\n//# sourceMappingURL=data:application/json;base64,'
+	out += base64.encode(sm.to_json().str().bytes())
+	out += '\n'
+
 	return out
 }
 
@@ -354,6 +406,23 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	g.dec_indent()
 }
 
+[inline]
+fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
+	// g.inside_ternary == 0 &&
+	if g.pref.is_debug {
+		g.ns.sourcemap << SourcemapHelper{
+			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
+			src_line: pos.line_nr + 1
+			ns_pos: g.ns.out.len
+			js_line: 0
+			js_column: 0
+		}
+	}
+	if g.pref.is_vlines {
+		g.write(' /* ${pos.line_nr + 1} $g.ns.out.len */ ')
+	}
+}
+
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
@@ -362,45 +431,56 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			panic('inline asm is not supported by js')
 		}
 		ast.AssertStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
 		}
 		ast.AssignStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
+			g.write_v_source_line_info(node.pos)
 			g.gen_block(node)
 			g.writeln('')
 		}
 		ast.BranchStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_branch_stmt(node)
 		}
 		ast.CompFor {}
 		ast.ConstDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}
 		ast.EnumDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_enum_decl(node)
 			g.writeln('')
 		}
 		ast.ExprStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
+			g.write_v_source_line_info(node.pos)
 			g.fn_decl = unsafe { &node }
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_c_stmt(node)
 			g.writeln('')
 		}
 		ast.ForInStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_in_stmt(node)
 			g.writeln('')
 		}
 		ast.ForStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_stmt(node)
 			g.writeln('')
 		}
@@ -408,18 +488,21 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			// TODO
 		}
 		ast.GotoLabel {
+			g.write_v_source_line_info(node.pos)
 			g.writeln('${g.js_name(node.name)}:')
 		}
 		ast.GotoStmt {
 			// skip: JS has no goto
 		}
 		ast.HashStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_hash_stmt(node)
 		}
 		ast.Import {
 			g.ns.imports[node.mod] = node.alias
 		}
 		ast.InterfaceDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_interface_decl(node)
 		}
 		ast.Module {
@@ -434,6 +517,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		}
 		ast.SqlStmt {}
 		ast.StructDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_struct_decl(node)
 		}
 		ast.TypeDecl {
