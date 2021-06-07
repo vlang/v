@@ -750,6 +750,25 @@ fn (a array) repeat_noscan(count int) array {
 	return arr
 }
 
+fn (mut a array) ensure_cap_noscan(required int) {
+	if required <= a.cap {
+		return
+	}
+	mut cap := if a.cap > 0 { a.cap } else { 2 }
+	for required > cap {
+		cap *= 2
+	}
+	new_size := cap * a.element_size
+	new_data := vcalloc_noscan(new_size)
+	if a.data != voidptr(0) {
+		unsafe { C.memcpy(new_data, a.data, a.len * a.element_size) }
+		// TODO: the old data may be leaked when no GC is used (ref-counting?)
+	}
+	a.data = new_data
+	a.offset = 0
+	a.cap = cap
+}
+
 pub fn (a &array) clone_noscan() array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
@@ -827,4 +846,48 @@ fn (a array) reverse_noscan() array {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
 	}
 	return arr
+}
+
+// insert inserts a value in the array at index `i`
+pub fn (mut a array) insert_noscan(i int, val voidptr) {
+	$if !no_bounds_checking ? {
+		if i < 0 || i > a.len {
+			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+		}
+	}
+	a.ensure_cap_noscan(a.len + 1)
+	unsafe {
+		C.memmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
+		a.set_unsafe(i, val)
+	}
+	a.len++
+}
+
+// insert_many inserts many values into the array from index `i`.
+[unsafe]
+pub fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
+	$if !no_bounds_checking ? {
+		if i < 0 || i > a.len {
+			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+		}
+	}
+	a.ensure_cap_noscan(a.len + size)
+	elem_size := a.element_size
+	unsafe {
+		iptr := a.get_unsafe(i)
+		C.memmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
+		C.memcpy(iptr, val, size * elem_size)
+	}
+	a.len += size
+}
+
+// prepend prepends one value to the array.
+pub fn (mut a array) prepend_noscan(val voidptr) {
+	a.insert_noscan(0, val)
+}
+
+// prepend_many prepends another array to this array.
+[unsafe]
+pub fn (mut a array) prepend_many_noscan(val voidptr, size int) {
+	unsafe { a.insert_many_noscan(0, val, size) }
 }
