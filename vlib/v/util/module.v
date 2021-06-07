@@ -108,18 +108,20 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 					return mod_full_name
 				}
 
-				println('~~~ parent: $parent ~~~')
-				if ls := os.ls(parent) {
-					// currently CI clones some modules into the v repo to test, the condition
-					// after `'v.mod' in ls` can be removed once a proper solution is added
-					if 'v.mod' in ls
-						&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
-						last_v_mod = j
-						println('~~~ last_v_mod: $last_v_mod ~~~')
+				if in_vmod_path {
+					println('~~~ parent: $parent ~~~')
+					if ls := os.ls(parent) {
+						// currently CI clones some modules into the v repo to test, the condition
+						// after `'v.mod' in ls` can be removed once a proper solution is added
+						if 'v.mod' in ls
+							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
+							last_v_mod = j
+							println('~~~ last_v_mod: $last_v_mod ~~~')
+						}
+						continue
 					}
-					continue
+					break
 				}
-				break
 			}
 			if last_v_mod > -1 {
 				println('~~~ if last_v_mod > -1 { ~~~')
