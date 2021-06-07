@@ -4127,7 +4127,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if is_expr && tmp_var.len == 0 {
 						g.write(' : ')
 					} else {
-						g.writeln('')
 						g.write_v_source_line_info(branch.pos)
 						g.write('else ')
 					}
@@ -4168,7 +4167,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
-				g.write('}')
+				g.writeln('}')
+				g.stmt_path_pos << g.out.len
 			}
 			sumtype_index++
 			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
