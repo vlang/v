@@ -102,7 +102,7 @@ fn (a array) repeat_noscan(count int) array {
 		if a.len > 0 && a.element_size == size_of_array {
 			ary := array{}
 			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
+			ary_clone := ary.clone_noscan()
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
 		} else {
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
@@ -112,7 +112,7 @@ fn (a array) repeat_noscan(count int) array {
 }
 
 // insert inserts a value in the array at index `i`
-pub fn (mut a array) insert_noscan(i int, val voidptr) {
+fn (mut a array) insert_noscan(i int, val voidptr) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
 			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
@@ -128,7 +128,7 @@ pub fn (mut a array) insert_noscan(i int, val voidptr) {
 
 // insert_many inserts many values into the array from index `i`.
 [unsafe]
-pub fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
+fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
 			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
@@ -145,17 +145,17 @@ pub fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 }
 
 // prepend prepends one value to the array.
-pub fn (mut a array) prepend_noscan(val voidptr) {
+fn (mut a array) prepend_noscan(val voidptr) {
 	a.insert_noscan(0, val)
 }
 
 // prepend_many prepends another array to this array.
 [unsafe]
-pub fn (mut a array) prepend_many_noscan(val voidptr, size int) {
+fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
 
-pub fn (a &array) clone_noscan() array {
+fn (a &array) clone_noscan() array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
@@ -167,23 +167,7 @@ pub fn (a &array) clone_noscan() array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
-		for i in 0 .. a.len {
-			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
-			unsafe { arr.set_unsafe(i, &ar_clone) }
-		}
-		if is_elem_array {
-			return arr
-		}
-	}
+	// ... this is not necessary, here, since `clone()` would be called
 
 	if !isnil(a.data) {
 		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
@@ -220,6 +204,34 @@ fn (a &array) slice_clone_noscan(start int, _end int) array {
 	return res.clone_noscan()
 }
 
+fn (mut a array) push_noscan(val voidptr) {
+	a.ensure_cap_noscan(a.len + 1)
+	unsafe { C.memmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	a.len++
+}
+
+// push_many implements the functionality for pushing another array.
+// `val` is array.data and user facing usage is `a << [1,2,3]`
+[unsafe]
+pub fn (mut a3 array) push_many_noscan(val voidptr, size int) {
+	if a3.data == val && !isnil(a3.data) {
+		// handle `arr << arr`
+		copy := a3.clone()
+		a3.ensure_cap_noscan(a3.len + size)
+		unsafe {
+			// C.memcpy(a.data, copy.data, copy.element_size * copy.len)
+			C.memcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
+		}
+	} else {
+		a3.ensure_cap_noscan(a3.len + size)
+		if !isnil(a3.data) && !isnil(val) {
+			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
+		}
+	}
+	a3.len += size
+}
+
+// reverse returns a new array with the elements of the original array in reverse order.
 fn (a array) reverse_noscan() array {
 	if a.len < 2 {
 		return a
@@ -234,4 +246,16 @@ fn (a array) reverse_noscan() array {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
 	}
 	return arr
+}
+
+// grow_cap grows the array's capacity by `amount` elements.
+fn (mut a array) grow_cap_noscan(amount int) {
+	a.ensure_cap_noscan(a.cap + amount)
+}
+
+// grow_len ensures that an array has a.len + amount of length
+[unsafe]
+fn (mut a array) grow_len_noscan(amount int) {
+	a.ensure_cap_noscan(a.len + amount)
+	a.len += amount
 }

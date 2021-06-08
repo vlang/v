@@ -664,4 +664,3 @@ pub fn (data voidptr) vbytes(len int) []byte {
 pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
 }
-
