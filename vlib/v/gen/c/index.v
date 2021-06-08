@@ -46,9 +46,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('string_substr(')
 		g.expr(node.left)
 	} else if sym.kind == .array {
-		info := sym.info as ast.Array
-		noscan := g.check_noscan(info.elem_type)
-		g.write('array_slice${noscan}(')
+		g.write('array_slice(')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -57,7 +55,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		info := sym.info as ast.ArrayFixed
 		noscan := g.check_noscan(info.elem_type)
-		g.write('array_slice${noscan}(new_array_from_c_array${noscan}(')
+		g.write('array_slice(new_array_from_c_array${noscan}(')
 		g.write('$info.size')
 		g.write(', $info.size')
 		g.write(', sizeof(')
