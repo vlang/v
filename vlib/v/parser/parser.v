@@ -3074,7 +3074,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
 			end_pos)
 	}
-	return ast.EnumDecl{
+
+	enum_decl := ast.EnumDecl{
 		name: name
 		is_pub: is_pub
 		is_flag: is_flag
@@ -3084,6 +3085,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
+
+	p.table.register_enum_decl(enum_decl)
+
+	return enum_decl
 }
 
 fn (mut p Parser) type_decl() ast.TypeDecl {
