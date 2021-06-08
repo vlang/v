@@ -7,7 +7,7 @@ import v.pref
 import v.util
 import v.depgraph
 import encoding.base64
-import aheissenberger.sourcemap
+import sourcemap
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
