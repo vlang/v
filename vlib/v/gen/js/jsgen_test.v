@@ -23,6 +23,7 @@ fn test_example_compilation() {
 		path := os.join_path(test_dir, file)
 		println('Testing $file')
 		v_options_file := if file.ends_with('_sourcemap.v') {
+			println('activate sourcemap creation')
 			v_options + ' -g' // activate souremap generation
 		} else {
 			v_options
@@ -45,10 +46,9 @@ fn test_example_compilation() {
 		assert js_code == 0
 		if file.ends_with('_sourcemap.v') {
 			if there_is_grep_available {
-				grep_code := os.system('grep -q $output_dir${file}.js')
-				if grep_code != 0 {
-					assert false
-				}
+				grep_code_sourcemap_found := os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" $output_dir${file}.js')
+
+				assert grep_code_sourcemap_found == 0
 			} else {
 				println(' ... skipping testing for sourcemap $file, there is no grep present')
 			}
