@@ -29,6 +29,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 		.sqlite3 {
 			fn_prefix = 'sqlite__DB'
 		}
+		.mysql {
+			fn_prefix = 'mysql__Connection'
+		}
 		.mssql {
 			// g.mssql_create_table(node, typ, expr)
 		}
@@ -413,6 +416,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	match typ {
 		.sqlite3 {
 			fn_prefix = 'sqlite__DB'
+		}
+		.mysql {
+			fn_prefix = 'mysql__Connection'
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error

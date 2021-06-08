@@ -19,6 +19,11 @@ pub enum ConnectionFlag {
 	client_remember_options = C.CLIENT_REMEMBER_OPTIONS
 }
 
+struct SQLError {
+	msg  string
+	code int
+}
+
 // TODO: Documentation
 pub struct Connection {
 mut:

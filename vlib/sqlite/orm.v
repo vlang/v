@@ -92,7 +92,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 	stmt.finalize()
 }
 
-fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c int) ? {
+fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c &int) ? {
 	for data in d.data {
 		mut err := 0
 		match data {
