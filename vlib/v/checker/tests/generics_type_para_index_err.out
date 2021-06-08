@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generics_type_para_index_err.vv:2:24: error: generic type `T` does not support indexing, please use compound type, e.g. `[]T`
+    1 | fn show_element<T>(arr &T) string {
+    2 |     return unsafe { '${arr[1]}' }
+      |                           ~~~
+    3 | }
+    4 |
