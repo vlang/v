@@ -86,9 +86,8 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('fread failed')
 	}
 	C.fclose(fp)
-	fres := res[0..nr_read_elements * fsize].clone()
-	unsafe { res.free() }
-	return fres
+	res.trim(nr_read_elements * fsize)
+	return res
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -156,6 +155,10 @@ pub fn truncate(path string, len u64) ? {
 	}
 }
 
+fn eprintln_unknown_file_size() {
+	eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
+}
+
 // file_size returns the size of the file located in `path`.
 // If an error occurs it returns 0.
 // Note that use of this on symbolic links on Windows returns always 0.
@@ -166,15 +169,13 @@ pub fn file_size(path string) u64 {
 			$if windows {
 				mut swin := C.__stat64{}
 				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return swin.st_size
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
@@ -186,15 +187,13 @@ pub fn file_size(path string) u64 {
 			}
 			$if windows {
 				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
@@ -818,7 +817,7 @@ pub fn real_path(fpath string) string {
 		}
 		res = unsafe { string_from_wide(fullpath) }
 		//}
-		// C.CloseHandle(file)		
+		// C.CloseHandle(file)
 	} $else {
 		fullpath = vcalloc(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
