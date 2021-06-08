@@ -23,18 +23,15 @@ fn test_example_compilation() {
 	for file in files {
 		path := os.join_path(test_dir, file)
 		println('Testing $file')
+		mut v_options_file := v_options
+		mut node_options_file := node_options
 		should_create_source_map := file.ends_with('_sourcemap.v')
-		v_options_file := if should_create_source_map {
+		if should_create_source_map {
 			println('activate sourcemap creation')
-			v_options + ' -g' // activate souremap generation
-		} else {
-			v_options
-		}
-		node_options_file := if should_create_source_map {
+			v_options_file += ' -g' // activate souremap generation
+
 			println('add node option: --enable-source-maps') // requieres node >=12.12.0
-			v_options + ' -g' // activate souremap generation
-		} else {
-			v_options
+			node_options_file += ' -g' // activate souremap generation
 		}
 		v_code := os.system('$vexe $v_options_file -o $output_dir${file}.js $path')
 		if v_code != 0 {
@@ -52,11 +49,11 @@ fn test_example_compilation() {
 		}
 		// Running failed
 		assert js_code == 0
-		if file.ends_with('_sourcemap.v') {
+		if should_create_source_map {
 			if there_is_grep_available {
 				grep_code_sourcemap_found := os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" $output_dir${file}.js')
-
 				assert grep_code_sourcemap_found == 0
+				println('file has a source map embeded')
 			} else {
 				println(' ... skipping testing for sourcemap $file, there is no grep present')
 			}
