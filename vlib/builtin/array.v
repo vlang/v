@@ -371,35 +371,6 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	}
 }
 
-fn (a &array) slice_clone(start int, _end int) array {
-	mut end := _end
-	$if !no_bounds_checking ? {
-		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
-		}
-		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
-		}
-		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
-		}
-	}
-	mut data := &byte(0)
-	offset := start * a.element_size
-	unsafe {
-		data = &byte(a.data) + offset
-	}
-	l := end - start
-	res := array{
-		element_size: a.element_size
-		data: data
-		offset: offset
-		len: l
-		cap: l
-	}
-	return res.clone()
-}
-
 // we manually inline this for single operations for performance without -prod
 [inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
@@ -783,33 +754,6 @@ pub fn (a &array) clone_noscan() array {
 		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 	}
 	return arr
-}
-
-fn (a &array) slice_clone_noscan(start int, _end int) array {
-	mut end := _end
-	$if !no_bounds_checking ? {
-		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
-		}
-		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
-		}
-		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
-		}
-	}
-	mut data := &byte(0)
-	unsafe {
-		data = &byte(a.data) + start * a.element_size
-	}
-	l := end - start
-	res := array{
-		element_size: a.element_size
-		data: data
-		len: l
-		cap: l
-	}
-	return res.clone_noscan()
 }
 
 fn (a array) reverse_noscan() array {
