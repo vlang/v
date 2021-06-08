@@ -336,7 +336,14 @@ fn (a array) clone_static() array {
 }
 
 // clone returns an independent copy of a given array.
+// this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
 pub fn (a &array) clone() array {
+	return unsafe { a.clone_to_depth(0) }
+}
+
+// recursively clone given array - `unsafe` when called directly because depth is not checked
+[unsafe]
+pub fn (a &array) clone_to_depth(depth int) array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
@@ -348,28 +355,20 @@ pub fn (a &array) clone() array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
+	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
+			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-		if is_elem_array {
-			return arr
+		return arr
+	} else {
+		if !isnil(a.data) {
+			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
+		return arr
 	}
-
-	if !isnil(a.data) {
-		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
-	}
-	return arr
 }
 
 fn (a &array) slice_clone(start int, _end int) array {
