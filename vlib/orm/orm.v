@@ -244,7 +244,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$para$table_name$para and xtype=$paraU$para) CREATE TABLE $para$table_name$para ('
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$para$table$para and xtype=${para}U$para) CREATE TABLE $para$table$para ('
 	}
 
 	mut fs := []string{}

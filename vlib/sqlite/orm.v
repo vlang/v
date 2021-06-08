@@ -70,7 +70,9 @@ pub fn (db DB) last_id() orm.Primitive {
 
 // table
 pub fn (db DB) create(table string, fields []orm.OrmTableField) ? {
-	query := orm.orm_table_gen(table, '`', true, 0, fields, sqlite_type_from_v) or { return err }
+	query := orm.orm_table_gen(table, '`', true, 0, fields, sqlite_type_from_v, false) or {
+		return err
+	}
 	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
 }
 
@@ -90,7 +92,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 	stmt.finalize()
 }
 
-fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c &int) ? {
+fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c int) ? {
 	for data in d.data {
 		mut err := 0
 		match data {
