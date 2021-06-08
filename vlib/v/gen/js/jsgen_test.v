@@ -1,9 +1,10 @@
 import os
 
 const (
-	test_dir   = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
-	output_dir = '_js_tests/'
-	v_options  = '-b js -w'
+	test_dir     = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
+	output_dir   = '_js_tests/'
+	v_options    = '-b js -w'
+	node_options = ''
 )
 
 fn testsuite_end() {
@@ -22,8 +23,15 @@ fn test_example_compilation() {
 	for file in files {
 		path := os.join_path(test_dir, file)
 		println('Testing $file')
-		v_options_file := if file.ends_with('_sourcemap.v') {
+		should_create_source_map := file.ends_with('_sourcemap.v')
+		v_options_file := if should_create_source_map {
 			println('activate sourcemap creation')
+			v_options + ' -g' // activate souremap generation
+		} else {
+			v_options
+		}
+		node_options_file := if should_create_source_map {
+			println('add node option: --enable-source-maps') // requieres node >=12.12.0
 			v_options + ' -g' // activate souremap generation
 		} else {
 			v_options
