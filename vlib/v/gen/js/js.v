@@ -7,7 +7,7 @@ import v.pref
 import v.util
 import v.depgraph
 import encoding.base64
-import sourcemap
+import v.gen.js.sourcemap
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -25,19 +25,19 @@ const (
 )
 
 struct SourcemapHelper {
-	src_path  string
-	src_line  u32
-	ns_pos    u32
+	src_path string
+	src_line u32
+	ns_pos   u32
 }
 
 struct Namespace {
 	name string
 mut:
-	out       strings.Builder = strings.new_builder(128)
-	pub_vars  []string
-	imports   map[string]string
-	indent    int
-	methods   map[string][]ast.FnDecl
+	out              strings.Builder = strings.new_builder(128)
+	pub_vars         []string
+	imports          map[string]string
+	indent           int
+	methods          map[string][]ast.FnDecl
 	sourcemap_helper []SourcemapHelper
 }
 
@@ -69,7 +69,7 @@ mut:
 	empty_line          bool
 	cast_stack          []ast.Type
 	call_stack          []ast.CallExpr
-	is_vlines_enabled   bool     // is it safe to generate #line directives when -g is passed
+	is_vlines_enabled   bool   // is it safe to generate #line directives when -g is passed
 	vlines_path         string // set to the proper path for generating #line directives
 	sourcemap           sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 }
@@ -412,12 +412,12 @@ fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
 	// g.inside_ternary == 0 &&
 	if g.pref.is_debug {
 		g.ns.sourcemap_helper << SourcemapHelper{
-			src_path: util.vlines_escape_path(g.file.path,g.pref.ccompiler)
+			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
 			src_line: u32(pos.line_nr + 1)
 			ns_pos: u32(g.ns.out.len)
 		}
 	}
-	if g.pref.is_vlines && g.is_vlines_enabled{
+	if g.pref.is_vlines && g.is_vlines_enabled {
 		g.write(' /* ${pos.line_nr + 1} $g.ns.out.len */ ')
 	}
 }
