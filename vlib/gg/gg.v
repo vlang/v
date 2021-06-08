@@ -9,7 +9,6 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 import math
-import math.mathutil as mu
 
 // import time
 pub type FNCb = fn (x voidptr)
@@ -569,8 +568,8 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	$if !android {
 		if ctx.scale > 1 {
 			// Make the line more clear on hi dpi screens: draw a rectangle
-			mut width := mu.abs(x2 - x)
-			mut height := mu.abs(y2 - y)
+			mut width := (x2 - x)
+			mut height := (y2 - y)
 			if width == 0 {
 				width = 1
 			} else if height == 0 {
