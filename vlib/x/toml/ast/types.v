@@ -10,7 +10,7 @@ pub:
 	text     string
 	pos      token.Position
 pub mut:
-	children []Node
+	children []&Node
 }
 
 pub fn (c Comment) str() string {

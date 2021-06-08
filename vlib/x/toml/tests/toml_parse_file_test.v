@@ -10,6 +10,6 @@ fn test_parse_file() {
 	os.mkdir_all(out_path) or { assert false }
 	os.write_file(test_file, toml_str) or { assert false }
 	ast_root := toml.parse_file(test_file)
-	//eprintln('$ast_root')
-	//assert false
+	eprintln('$ast_root')
+	assert false
 }

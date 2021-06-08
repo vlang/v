@@ -7,7 +7,7 @@ import x.toml.input
 //import x.toml.token
 
 interface Node {
-	children []Node
+	children []&Node
 }
 
 //pub type Node = Root | Comment
@@ -18,7 +18,7 @@ pub struct Root {
 pub:
 	input              input.Config // User input configuration
 pub mut:
-	children           []Node
+	children           []&Node
 //	scope              &Scope
 	//errors           []errors.Error    // all the checker errors in the file
 }

@@ -52,13 +52,11 @@ fn (mut p Parser) next() {
 	p.peek_tok = p.scanner.scan()
 }
 
-pub fn (mut p Parser) comment() ast.Comment {
-	pos := p.tok.position()
-	text := p.tok.lit
-	//println('parsed comment "$text"')
+pub fn (mut p Parser) comment() &ast.Comment {
+	//println('parsed comment "${p.tok.lit}"')
 	p.next()
-	return ast.Comment{
-		text: text
-		pos: pos
+	return &ast.Comment{
+		text: p.tok.lit
+		pos: p.tok.position()
 	}
 }
