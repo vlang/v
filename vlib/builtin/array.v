@@ -107,7 +107,15 @@ fn (mut a array) ensure_cap(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
+// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
 pub fn (a array) repeat(count int) array {
+	return unsafe { a.repeat_to_depth(count, 0) }
+}
+
+// version of `repeat()` that handles multi dimensional arrays
+// `unsafe` to call directly because `depth` is not checked
+[unsafe]
+pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
@@ -121,12 +129,11 @@ pub fn (a array) repeat(count int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
-	size_of_array := int(sizeof(array))
 	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
+		if a.len > 0 && depth > 0 {
 			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
+			unsafe { C.memcpy(&ary, a.data, int(sizeof(array))) }
+			ary_clone := unsafe { ary.clone_to_depth(depth - 1) }
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
 		} else {
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
@@ -692,7 +699,16 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 	return arr
 }
 
-fn (a array) repeat_noscan(count int) array {
+// repeat returns a new array with the given array elements repeated given times.
+// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+pub fn (a array) repeat_noscan(count int) array {
+	return unsafe { a.repeat_to_depth_noscan(count, 0) }
+}
+
+// version of `repeat()` that handles multi dimensional arrays
+// `unsafe` to call directly because `depth` is not checked
+[unsafe]
+fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
@@ -702,16 +718,16 @@ fn (a array) repeat_noscan(count int) array {
 	}
 	arr := array{
 		element_size: a.element_size
-		data: vcalloc_noscan(size)
+		data: if depth > 0 { vcalloc(size) } else { vcalloc_noscan(size) }
 		len: count * a.len
 		cap: count * a.len
 	}
 	size_of_array := int(sizeof(array))
 	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
+		if a.len > 0 && depth > 0 {
 			ary := array{}
 			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
+			ary_clone := unsafe { ary.clone_to_depth_noscan(depth - 1) }
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
 		} else {
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
@@ -720,40 +736,32 @@ fn (a array) repeat_noscan(count int) array {
 	return arr
 }
 
-pub fn (a &array) clone_noscan() array {
+pub fn (a &array) clone_to_depth_noscan(depth int) array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
 	}
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc_noscan(size)
+		data: if depth > 0 { vcalloc(size) } else { vcalloc_noscan(size) }
 		len: a.len
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
+	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
+			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			ar_clone := unsafe { ar.clone_to_depth_noscan(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-		if is_elem_array {
-			return arr
+		return arr
+	} else {
+		if !isnil(a.data) {
+			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
+		return arr
 	}
-
-	if !isnil(a.data) {
-		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
-	}
-	return arr
 }
 
 fn (a array) reverse_noscan() array {
