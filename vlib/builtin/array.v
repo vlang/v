@@ -342,6 +342,10 @@ fn (a array) clone_static() array {
 	return a.clone()
 }
 
+fn (a array) clone_static_to_depth(depth int) array {
+	return unsafe { a.clone_to_depth(depth) }
+}
+
 // clone returns an independent copy of a given array.
 // this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
 pub fn (a &array) clone() array {
