@@ -2775,9 +2775,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_
 		if add_eq {
 			g.write('=')
 		}
-		g.write(' array_clone_static(')
+		g.write(' array_clone_static_to_depth(')
 		g.expr(val)
-		g.write(')')
+		elem_type := (right_sym.info as ast.Array).elem_type
+		array_depth := g.get_array_depth(elem_type)
+		g.write(', $array_depth)')
 	} else if g.is_autofree && right_sym.kind == .string {
 		if add_eq {
 			g.write('=')
@@ -6598,6 +6600,17 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 fn (mut g Gen) trace(fbase string, message string) {
 	if g.file.path_base == fbase {
 		println('> g.trace | ${fbase:-10s} | $message')
+	}
+}
+
+pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
+	typ := g.unwrap_generic(el_typ)
+	sym := g.table.get_final_type_symbol(typ)
+	if sym.kind == .array {
+		info := sym.info as ast.Array
+		return 1 + g.get_array_depth(info.elem_type)
+	} else {
+		return 0
 	}
 }
 

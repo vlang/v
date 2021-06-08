@@ -107,7 +107,15 @@ fn (mut a array) ensure_cap(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
+// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
 pub fn (a array) repeat(count int) array {
+	return unsafe { a.repeat_to_depth(count, 0) }
+}
+
+// version of `repeat()` that handles multi dimensional arrays
+// `unsafe` to call directly because `depth` is not checked
+[unsafe]
+pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
@@ -121,13 +129,10 @@ pub fn (a array) repeat(count int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
-	size_of_array := int(sizeof(array))
 	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
+		if a.len > 0 && depth > 0 {
+			ary_clone := unsafe { a.clone_to_depth(depth - 1) }
+			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 		} else {
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 		}
@@ -335,8 +340,19 @@ fn (a array) clone_static() array {
 	return a.clone()
 }
 
+fn (a array) clone_static_to_depth(depth int) array {
+	return unsafe { a.clone_to_depth(depth) }
+}
+
 // clone returns an independent copy of a given array.
+// this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
 pub fn (a &array) clone() array {
+	return unsafe { a.clone_to_depth(0) }
+}
+
+// recursively clone given array - `unsafe` when called directly because depth is not checked
+[unsafe]
+pub fn (a &array) clone_to_depth(depth int) array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
@@ -348,57 +364,20 @@ pub fn (a &array) clone() array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
+	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
+			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-		if is_elem_array {
-			return arr
+		return arr
+	} else {
+		if !isnil(a.data) {
+			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
+		return arr
 	}
-
-	if !isnil(a.data) {
-		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
-	}
-	return arr
-}
-
-fn (a &array) slice_clone(start int, _end int) array {
-	mut end := _end
-	$if !no_bounds_checking ? {
-		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
-		}
-		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
-		}
-		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
-		}
-	}
-	mut data := &byte(0)
-	offset := start * a.element_size
-	unsafe {
-		data = &byte(a.data) + offset
-	}
-	l := end - start
-	res := array{
-		element_size: a.element_size
-		data: data
-		offset: offset
-		len: l
-		cap: l
-	}
-	return res.clone()
 }
 
 // we manually inline this for single operations for performance without -prod
