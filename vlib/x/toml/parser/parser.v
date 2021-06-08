@@ -37,10 +37,16 @@ pub fn new_parser(config Config) Parser {
 
 pub fn (mut p Parser) parse() &ast.Root {
 	mut root := &ast.Root{}
+	p.next()
 	for p.tok.kind != .eof {
 		p.next()
-		if p.tok.kind == .hash {
-			root.children << p.comment()
+		match p.tok.kind {
+			.hash {
+				root.children << p.comment()
+			}
+			else {
+				panic(@MOD + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}")\n$p.tok\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+			}
 		}
 	}
 	return root

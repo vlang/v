@@ -6,6 +6,7 @@ fn test_parse_file() {
 	test_file := os.join_path(out_path, 'toml_parse_file_test_1.toml')
 	toml_str := '# Test TOML file
 
+title = "TOML Example"
 '
 	os.mkdir_all(out_path) or { assert false }
 	os.write_file(test_file, toml_str) or { assert false }

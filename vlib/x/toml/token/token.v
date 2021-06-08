@@ -31,6 +31,8 @@ pub enum Kind {
 	rsbr // ]
 	nl // linefeed / newline character
 	cr // carrige return
+	tab // \t character
+	whitespace // ` `
 	dot // .
 	_end_
 }
