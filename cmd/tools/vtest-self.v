@@ -7,6 +7,7 @@ import v.pref
 const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
+		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit

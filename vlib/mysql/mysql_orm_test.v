@@ -34,13 +34,13 @@ fn test_mysql_orm() {
 		},
 		orm.OrmTableField{
 			name: 'age'
-			typ: 8
+			typ: 7
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.OrmQueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
+		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(100)]
 	}) or { panic(err) }
 	/*
 	res := db.@select(orm.OrmSelectConfig{

@@ -5,46 +5,44 @@ struct C.MYSQL_STMT {}
 struct C.MYSQL_BIND {
 	buffer_type   int
 	buffer        voidptr
-	buffer_length &u32
-	is_null       &bool
-	length        &u32
+	buffer_length u32
 }
 
 struct StmtResultBuffer {
 	buffer []C.MYSQL_BIND
 }
 
-enum FieldTypes {
-	mysql_type_decimal
-	mysql_type_tiny
-	mysql_type_short
-	mysql_type_long
-	mysql_type_float
-	mysql_type_double
-	mysql_type_null
-	mysql_type_timestamp
-	mysql_type_longlong
-	mysql_type_int24
-	mysql_type_date
-	mysql_type_time
-	mysql_type_datetime
-	mysql_type_year
-	mysql_type_varchar
-	mysql_type_bit
-	mysql_type_timestamp2
-	mysql_type_invalid = 243
-	mysql_type_json = 245
-	mysql_type_newdecimal = 246
-	mysql_type_enum = 247
-	mysql_type_set = 248
-	mysql_type_tiny_blob = 249
-	mysql_type_medium_blob = 250
-	mysql_type_long_blob = 251
-	mysql_type_blob = 252
-	mysql_type_var_string = 253
-	mysql_type_string = 254
-	mysql_type_geometry = 255
-}
+const (
+	mysql_type_decimal     = C.MYSQL_TYPE_DECIMAL
+	mysql_type_tiny        = C.MYSQL_TYPE_TINY
+	mysql_type_short       = C.MYSQL_TYPE_SHORT
+	mysql_type_long        = C.MYSQL_TYPE_LONG
+	mysql_type_float       = C.MYSQL_TYPE_FLOAT
+	mysql_type_double      = C.MYSQL_TYPE_DOUBLE
+	mysql_type_null        = C.MYSQL_TYPE_NULL
+	mysql_type_timestamp   = C.MYSQL_TYPE_TIMESTAMP
+	mysql_type_longlong    = C.MYSQL_TYPE_LONGLONG
+	mysql_type_int24       = C.MYSQL_TYPE_INT24
+	mysql_type_date        = C.MYSQL_TYPE_DATE
+	mysql_type_time        = C.MYSQL_TYPE_TIME
+	mysql_type_datetime    = C.MYSQL_TYPE_DATETIME
+	mysql_type_year        = C.MYSQL_TYPE_YEAR
+	mysql_type_varchar     = C.MYSQL_TYPE_VARCHAR
+	mysql_type_bit         = C.MYSQL_TYPE_BIT
+	mysql_type_timestamp22 = C.MYSQL_TYPE_TIMESTAMP
+	mysql_type_invalid     = C.MYSQL_TYPE_INVALID
+	mysql_type_json        = C.MYSQL_TYPE_JSON
+	mysql_type_newdecimal  = C.MYSQL_TYPE_NEWDECIMAL
+	mysql_type_enum        = C.MYSQL_TYPE_ENUM
+	mysql_type_set         = C.MYSQL_TYPE_SET
+	mysql_type_tiny_blob   = C.MYSQL_TYPE_TINY_BLOB
+	mysql_type_medium_blob = C.MYSQL_TYPE_MEDIUM_BLOB
+	mysql_type_long_blob   = C.MYSQL_TYPE_LONG_BLOB
+	mysql_type_blob        = C.MYSQL_TYPE_BLOB
+	mysql_type_var_string  = C.MYSQL_TYPE_VAR_STRING
+	mysql_type_string      = C.MYSQL_TYPE_STRING
+	mysql_type_geometry    = C.MYSQL_TYPE_GEOMETRY
+)
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
 fn C.mysql_stmt_prepare(&C.MYSQL_STMT, &char, u32) int
@@ -80,8 +78,9 @@ pub fn (stmt Stmt) prepare() ? {
 }
 
 pub fn (stmt Stmt) bind_params() ? {
-	res := C.mysql_stmt_bind_param(stmt.stmt, stmt.binds.data)
-	if !res && stmt.get_error_msg() != '' {
+	eprintln(stmt.binds)
+	res := C.mysql_stmt_bind_param(stmt.stmt, &C.MYSQL_BIND(stmt.binds.data))
+	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
@@ -94,8 +93,9 @@ pub fn (stmt Stmt) execute() ? {
 }
 
 pub fn (stmt Stmt) bind_result_buffer(buffer StmtResultBuffer) ? {
-	res := C.mysql_stmt_bind_result(stmt.stmt, buffer.buffer.data)
-	if !res && stmt.get_error_msg() != '' {
+	eprintln(stmt.binds)
+	res := C.mysql_stmt_bind_result(stmt.stmt, &C.MYSQL_BIND(buffer.buffer.data))
+	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
@@ -132,59 +132,58 @@ fn (stmt Stmt) get_field_count() u16 {
 }
 
 pub fn (mut stmt Stmt) bind_bool(b bool) {
-	stmt.bind(.mysql_type_tiny, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_tiny, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_byte(b byte) {
-	stmt.bind(.mysql_type_tiny, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_tiny, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_i8(b i8) {
-	stmt.bind(.mysql_type_tiny, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_tiny, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_i16(b i16) {
-	stmt.bind(.mysql_type_short, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_short, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_u16(b u16) {
-	stmt.bind(.mysql_type_short, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_short, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_int(b int) {
-	stmt.bind(.mysql_type_long, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_long, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_u32(b u32) {
-	stmt.bind(.mysql_type_long, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_long, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_i64(b i64) {
-	stmt.bind(.mysql_type_longlong, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_longlong, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_u64(b u64) {
-	stmt.bind(.mysql_type_longlong, &b, 0, false, 0)
+	stmt.bind(mysql.mysql_type_longlong, &b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_f32(b f32) {
-	stmt.bind(.mysql_type_float, unsafe { *(&f32(&b)) }, 0, false, 0)
+	stmt.bind(mysql.mysql_type_float, unsafe { *(&f32(&b)) }, 0)
 }
 
 pub fn (mut stmt Stmt) bind_f64(b f64) {
-	stmt.bind(.mysql_type_double, unsafe { *(&f64(&b)) }, 0, false, 0)
+	stmt.bind(mysql.mysql_type_double, unsafe { *(&f64(&b)) }, 0)
 }
 
 pub fn (mut stmt Stmt) bind_text(b string) {
-	stmt.bind(.mysql_type_string, b.str, u32(b.len), false, 0)
+	stmt.bind(mysql.mysql_type_string, b.str, u32(b.len))
 }
 
-pub fn (mut stmt Stmt) bind(typ FieldTypes, buffer voidptr, len u32, is_null bool, length u32) {
+pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
+	eprintln(&int(buffer))
 	stmt.binds << C.MYSQL_BIND{
-		buffer_type: unsafe { int(typ) }
+		buffer_type: typ
 		buffer: buffer
-		buffer_length: len
-		is_null: unsafe { &is_null }
-		length: unsafe { &length }
+		buffer_length: buf_len
 	}
 }
