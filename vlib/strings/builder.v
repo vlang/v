@@ -17,6 +17,9 @@ pub fn new_builder(initial_size int) Builder {
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
 [unsafe]
 pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
+	if len == 0 {
+		return
+	}
 	unsafe { b.push_many(ptr, len) }
 }
 
@@ -27,6 +30,9 @@ pub fn (mut b Builder) write_b(data byte) {
 
 // write implements the Writer interface
 pub fn (mut b Builder) write(data []byte) ?int {
+	if data.len == 0 {
+		return 0
+	}
 	b << data
 	return data.len
 }
@@ -85,7 +91,9 @@ pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
-	unsafe { b.push_many(s.str, s.len) }
+	if s.len > 0 {
+		unsafe { b.push_many(s.str, s.len) }
+	}
 	// b.buf << []byte(s)  // TODO
 	b << byte(`\n`)
 }

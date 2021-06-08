@@ -231,17 +231,16 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
-	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string__plus(indents, _SLIT("    "));')
-	g.auto_str_funcs.writeln('\t}')
-
-	g.auto_str_funcs.writeln('\treturn str_intp(3, _MOV((StrIntpData[]){
+	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
+	g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+	g.auto_str_funcs.writeln('\tstring res = str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, $c.si_s_code, {.d_s = indents }},
-		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = ${parent_str_fn_name}(it) }},
+		{_SLIT("${clean_type_v_type_name}("), $c.si_s_code, {.d_s = tmp_ds }},
 		{_SLIT(")"), 0, {.d_c = 0 }}
-	}));\n')
-
+	}));')
+	g.auto_str_funcs.writeln('\tstring_free(&indents);')
+	g.auto_str_funcs.writeln('\tstring_free(&tmp_ds);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 

@@ -216,7 +216,10 @@ pub fn malloc(n int) &byte {
 	}
 	$if vplayground ? {
 		if n > 10000 {
-			panic('allocating more than 10 KB is not allowed in the playground')
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
 	}
 	$if trace_malloc ? {
@@ -259,6 +262,9 @@ pub fn malloc(n int) &byte {
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
 pub fn v_realloc(b &byte, n int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'v_realloc new_size: %6d\n', new_size)
+	}
 	mut new_ptr := &byte(0)
 	$if prealloc {
 		unsafe {
@@ -287,6 +293,9 @@ pub fn v_realloc(b &byte, n int) &byte {
 // `-d debug_realloc`.
 [unsafe]
 pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'realloc_data old_size: %6d new_size: %6d\n', old_size, new_size)
+	}
 	$if prealloc {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
@@ -329,6 +338,10 @@ pub fn vcalloc(n int) &byte {
 	} else if n == 0 {
 		return &byte(0)
 	}
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -341,6 +354,10 @@ pub fn vcalloc(n int) &byte {
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
 pub fn vcalloc_noscan(n int) &byte {
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
