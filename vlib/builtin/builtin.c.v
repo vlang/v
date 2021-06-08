@@ -263,7 +263,7 @@ pub fn malloc(n int) &byte {
 [unsafe]
 pub fn v_realloc(b &byte, n int) &byte {
 	$if trace_realloc ? {
-		C.fprintf(C.stderr, c'v_realloc new_size: %6d\n', new_size)
+		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
 	mut new_ptr := &byte(0)
 	$if prealloc {
