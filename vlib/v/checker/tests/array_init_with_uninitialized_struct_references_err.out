@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_init_with_uninitialized_struct_references_err.vv:6:10: error: array type cannot be uninitialized reference type
+vlib/v/checker/tests/array_init_with_uninitialized_struct_references_err.vv:6:10: error: an array of references with `len:` > 0, should always be initialized with `init:`
     4 | 
     5 | fn main() {
     6 |     println([]&Person{len: 4})

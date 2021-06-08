@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fixed_array_init_with_uninitialized_struct_references_err.vv:6:10: error: an array of references with `len:` > 0, should always be initialized with `init:`
+    4 |
+    5 | fn main() {
+    6 |     println([4]&Person{})
+      |             ~~~~~~~~~~~~
+    7 | }
