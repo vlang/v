@@ -131,10 +131,8 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	}
 	for i in 0 .. count {
 		if a.len > 0 && depth > 0 {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, int(sizeof(array))) }
-			ary_clone := unsafe { ary.clone_to_depth(depth - 1) }
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
+			ary_clone := unsafe { a.clone_to_depth(depth - 1) }
+			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 		} else {
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 		}
