@@ -16,7 +16,7 @@ struct TestData {
 
 type TestDataList = []TestData
 
-fn test_decode_a() {
+fn test_decode_a() ? {
 	decode_values := [
 		TestData{'A', 0},
 		TestData{'C', 1},
@@ -30,7 +30,7 @@ fn test_decode_a() {
 	for _, test_data in decode_values {
 		mut input := make_test_reader(test_data.decode_val)
 
-		res := decode(mut &input) or { panic('panic') }
+		res := decode(mut &input) ?
 		assert res == test_data.expected
 	}
 }
