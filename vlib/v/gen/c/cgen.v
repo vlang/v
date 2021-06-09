@@ -4086,7 +4086,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if need_tmp_var {
 		g.empty_line = true
-		cur_line = g.go_before_stmt(0).trim_space()
+		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		g.writeln('${g.typ(node.return_type)} $tmp_var;')
 	}
