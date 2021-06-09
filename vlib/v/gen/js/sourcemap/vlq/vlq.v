@@ -28,7 +28,7 @@ const (
 
 [inline]
 fn abs64(x i64) u64 {
-    return if x < 0 { u64(-x) } else { u64(x) }
+	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
 // Decode a single base64 digit.
@@ -73,7 +73,7 @@ pub fn decode(mut input io.Reader) ?i64 {
 	}
 
 	abs_value := accum / 2
-	if abs_value > max_i64 {
+	if abs_value > vlq.max_i64 {
 		return error('Overflow')
 	}
 
@@ -96,7 +96,7 @@ pub fn encode(value i64, mut output io.Writer) {
 	if signed {
 		if value_u64 == 0 {
 			// Wrapped
-			value_u64 = max_i64 + 1
+			value_u64 = vlq.max_i64 + 1
 		}
 		value_u64 |= 1
 	}
