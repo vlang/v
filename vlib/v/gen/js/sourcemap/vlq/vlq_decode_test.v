@@ -45,9 +45,8 @@ fn (mut b TestReader) read(mut buf []byte) ?int {
 }
 
 fn make_test_reader(data string) io.Reader {
-	buf := TestReader{
+	buf := &TestReader{
 		bytes: data.bytes()
 	}
-
 	return io.new_buffered_reader(reader: buf)
 }
