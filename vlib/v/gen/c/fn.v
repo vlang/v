@@ -654,9 +654,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if node.name in ['clone', 'repeat'] {
 			elem_type := (left_sym.info as ast.Array).elem_type
 			array_depth = g.get_array_depth(elem_type)
-			if node.name == 'repeat' {
-				array_depth++
-			}
 		}
 	} else if left_sym.kind == .chan {
 		if node.name in ['close', 'try_pop', 'try_push'] {
