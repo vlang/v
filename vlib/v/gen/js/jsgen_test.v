@@ -27,11 +27,11 @@ fn test_example_compilation() {
 		mut node_options_file := node_options
 		should_create_source_map := file.ends_with('_sourcemap.v')
 		if should_create_source_map {
-			println('activate sourcemap creation')
-			v_options_file += ' -g' // activate souremap generation
+			println('activate -sourcemap creation')
+			v_options_file += ' -sourcemap' // activate souremap generation
 
 			println('add node option: --enable-source-maps') // requieres node >=12.12.0
-			node_options_file += ' -g' // activate souremap generation
+			node_options_file += ' --enable-source-maps' // activate souremap generation
 		}
 		v_code := os.system('$vexe $v_options_file -o $output_dir${file}.js $path')
 		if v_code != 0 {

@@ -69,8 +69,7 @@ mut:
 	empty_line          bool
 	cast_stack          []ast.Type
 	call_stack          []ast.CallExpr
-	is_vlines_enabled   bool   // is it safe to generate #line directives when -g is passed
-	vlines_path         string // set to the proper path for generating #line directives
+	is_vlines_enabled   bool // is it safe to generate #line directives when -g is passed
 	sourcemap           sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 }
 
@@ -94,11 +93,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	g.init()
 	mut graph := depgraph.new_dep_graph()
-	// init sourcemap when flag '-g'
-	// TODO: Add '[-no]-sourcemap' flag, further options to include V source code and create external map files...
-	if g.pref.is_debug {
+	if g.pref.sourcemap {
 		mut sg := sourcemap.generate_empty_map()
-		g.sourcemap = sg.add_map('', '', 0, 0)
+		g.sourcemap = sg.add_map('', '', g.pref.sourcemap_src_included, 0, 0)
 	}
 	// Get class methods
 	for file in files {
@@ -107,10 +104,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.is_test = g.pref.is_test
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
-		// add Line Infos
-		if g.pref.is_vlines || g.pref.is_debug {
-			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
-		}
 	}
 	for file in files {
 		g.file = file
@@ -158,26 +151,29 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			out += val
 		}
 		out += ') {\n\t'
-		// calculate current output start line
-		mut current_line := u32(out.count('\n') + 1)
 		namespace_code := namespace.out.str()
-		mut sm_pos := u32(0)
-		for sourcemap_ns_entry in namespace.sourcemap_helper {
-			// calculate final generated location in output based on position
-			current_segment := namespace_code.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
-			current_line += u32(current_segment.count('\n'))
-			current_column := if last_nl_pos := current_segment.last_index('\n') {
-				u32(current_segment.len - last_nl_pos - 1)
-			} else {
-				u32(0)
+		if g.pref.sourcemap {
+			// calculate current output start line
+			mut current_line := u32(out.count('\n') + 1)
+			mut sm_pos := u32(0)
+			for sourcemap_ns_entry in namespace.sourcemap_helper {
+				// calculate final generated location in output based on position
+				current_segment := namespace_code.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
+				current_line += u32(current_segment.count('\n'))
+				current_column := if last_nl_pos := current_segment.last_index('\n') {
+					u32(current_segment.len - last_nl_pos - 1)
+				} else {
+					u32(0)
+				}
+				g.sourcemap.add_mapping(sourcemap_ns_entry.src_path, sourcemap.SourcePosition{
+					source_line: sourcemap_ns_entry.src_line
+					source_column: 0 // sourcemap_ns_entry.src_column
+				}, current_line, current_column, '')
+				sm_pos = sourcemap_ns_entry.ns_pos
 			}
-			g.sourcemap.add_mapping(sourcemap_ns_entry.src_path, sourcemap.SourcePosition{
-				source_line: sourcemap_ns_entry.src_line
-				source_column: 0 // sourcemap_ns_entry.src_column
-			}, current_line, current_column, '')
-			sm_pos = sourcemap_ns_entry.ns_pos
 		}
 		out += namespace_code
+
 		// public scope
 		out += '\n'
 		if g.enable_doc {
@@ -236,7 +232,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
 	}
 	out += '\n'
-	if g.pref.is_debug {
+	if g.pref.sourcemap {
 		out += g.create_sourcemap()
 	}
 	return out
@@ -410,7 +406,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 [inline]
 fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
 	// g.inside_ternary == 0 &&
-	if g.pref.is_debug {
+	if g.pref.sourcemap {
 		g.ns.sourcemap_helper << SourcemapHelper{
 			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
 			src_line: u32(pos.line_nr + 1)
