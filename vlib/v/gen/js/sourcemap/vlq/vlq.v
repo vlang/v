@@ -59,9 +59,9 @@ pub fn decode(mut input io.Reader) ?i64 {
 
 	mut keep_going := true
 	for keep_going {
-		len := input.read(mut buf) or { panic('Unexpected EOF') }
+		len := input.read(mut buf) or { return error('Unexpected EOF') }
 		if len == 0 {
-			panic('no content')
+			return error('no content')
 		}
 		digit = decode64(buf[0])
 		keep_going = (digit & vlq.continued) != 0
@@ -90,7 +90,7 @@ fn encode64(input byte) byte {
 }
 
 // Encode a value as Base64 VLQ, sending it to the writer
-pub fn encode(value i64, mut output io.Writer) {
+pub fn encode(value i64, mut output io.Writer) ? {
 	signed := value < 0
 	mut value_u64 := abs64(value) << 1
 	if signed {
@@ -107,7 +107,7 @@ pub fn encode(value i64, mut output io.Writer) {
 			digit |= vlq.continued
 		}
 		bytes := [encode64(digit)]
-		output.write(bytes) or { panic('Write failed') }
+		output.write(bytes) or { return error('Write failed') }
 		if value_u64 == 0 {
 			break
 		}
