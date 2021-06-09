@@ -108,6 +108,9 @@ fn (mut a array) ensure_cap(required int) {
 
 // repeat returns a new array with the given array elements repeated given times.
 // `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+
+// This is a dummy placeholder that will be overridden by `cgen` with an appropriate
+// call to `repeat_to_depth()`. However the `checker` needs it here.
 pub fn (a array) repeat(count int) array {
 	return unsafe { a.repeat_to_depth(count, 0) }
 }
@@ -338,16 +341,13 @@ fn (a array) slice2(start int, _end int, end_max bool) array {
 
 // clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
-fn (a array) clone_static() array {
-	return a.clone()
-}
-
 fn (a array) clone_static_to_depth(depth int) array {
 	return unsafe { a.clone_to_depth(depth) }
 }
 
 // clone returns an independent copy of a given array.
 // this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
+// However the `checker` needs it here.
 pub fn (a &array) clone() array {
 	return unsafe { a.clone_to_depth(0) }
 }
@@ -705,9 +705,6 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 
 // repeat returns a new array with the given array elements repeated given times.
 // `cgen` will replace this with an apropriate call to `repeat_to_depth()`
-pub fn (a array) repeat_noscan(count int) array {
-	return unsafe { a.repeat_to_depth_noscan(count, 0) }
-}
 
 // version of `repeat()` that handles multi dimensional arrays
 // `unsafe` to call directly because `depth` is not checked
