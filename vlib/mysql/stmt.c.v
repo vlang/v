@@ -10,6 +10,9 @@ struct C.MYSQL_BIND {
 
 struct StmtResultBuffer {
 	buffer []C.MYSQL_BIND
+	stmt   &Stmt
+mut:
+	idx int
 }
 
 const (
@@ -42,6 +45,7 @@ const (
 	mysql_type_var_string  = C.MYSQL_TYPE_VAR_STRING
 	mysql_type_string      = C.MYSQL_TYPE_STRING
 	mysql_type_geometry    = C.MYSQL_TYPE_GEOMETRY
+	mysql_no_data = C.MYSQL_NO_DATA
 )
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
@@ -54,6 +58,7 @@ fn C.mysql_stmt_error(&C.MYSQL_STMT) &char
 
 fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
 fn C.mysql_stmt_bind_result(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
+fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
 
 struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(0)
@@ -92,17 +97,17 @@ pub fn (stmt Stmt) execute() ? {
 	}
 }
 
-pub fn (stmt Stmt) bind_result_buffer(buffer StmtResultBuffer) ? {
-	eprintln(stmt.binds)
-	res := C.mysql_stmt_bind_result(stmt.stmt, &C.MYSQL_BIND(buffer.buffer.data))
-	if res && stmt.get_error_msg() != '' {
-		return stmt.error(1)
+pub fn (srb StmtResultBuffer) bind_result_buffer() ? {
+	res := C.mysql_stmt_bind_result(srb.stmt.stmt, &C.MYSQL_BIND(srb.buffer.data))
+	if res && srb.stmt.get_error_msg() != '' {
+		return srb.stmt.error(1)
 	}
 }
 
 pub fn (stmt Stmt) gen_result_buffer() StmtResultBuffer {
 	return StmtResultBuffer{
 		buffer: []C.MYSQL_BIND{len: int(stmt.get_field_count())}
+		stmt: unsafe { &stmt }
 	}
 }
 
@@ -185,4 +190,117 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 		buffer: buffer
 		buffer_length: buf_len
 	}
+}
+
+pub fn (mut res StmtResultBuffer) fetch_row() int {
+	r := C.mysql_stmt_fetch(res.stmt.stmt)
+	return r
+}
+
+pub fn (mut res StmtResultBuffer) next() bool {
+	if res.idx < res.buffer.len - 1 {
+		res.idx++
+		return true
+	}
+	return false
+}
+
+pub fn (mut res StmtResultBuffer) get_buffer() (int, voidptr) {
+	return res.buffer[res.idx].buffer_type, res.buffer[res.idx].buffer
+}
+
+pub fn (mut res StmtResultBuffer) get_bool() ?bool {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_tiny {
+		return error('Invalid mysql type for type `bool`')
+	}
+	return *(&bool(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_i8() ?i8 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_tiny {
+		return error('Invalid mysql type for type `i8`')
+	}
+	return *(&i8(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_i16() ?i16 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_short {
+		return error('Invalid mysql type for type `i16`')
+	}
+	return *(&i16(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_int() ?int {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_long {
+		return error('Invalid mysql type for type `int`')
+	}
+	return *(&int(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_i64() ?i64 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_longlong {
+		return error('Invalid mysql type for type `i64`')
+	}
+	return *(&i64(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_byte() ?byte {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_tiny {
+		return error('Invalid mysql type for type `byte`')
+	}
+	return *(&byte(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_u16() ?u16 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_short {
+		return error('Invalid mysql type for type `u16`')
+	}
+	return *(&u16(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_u32() ?u32 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_long {
+		return error('Invalid mysql type for type `u32`')
+	}
+	return *(&u32(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_u64() ?u64 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_longlong {
+		return error('Invalid mysql type for type `u64`')
+	}
+	return *(&u64(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_f32() ?f32 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_float {
+		return error('Invalid mysql type for type `f32`')
+	}
+	return *(&f32(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_f64() ?f64 {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_double {
+		return error('Invalid mysql type for type `f64`')
+	}
+	return *(&f64(buf))
+}
+
+pub fn (mut res StmtResultBuffer) get_text() ?string {
+	typ, buf := res.get_buffer()
+	if typ != mysql.mysql_type_double {
+		return error('Invalid mysql type for type `string`')
+	}
+	return unsafe { charptr(buf).vstring() }
 }

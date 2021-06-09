@@ -6,8 +6,36 @@ import time
 // sql expr
 
 pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
-	// query := orm.orm_select_gen(config, '`', false, '?', 0, where)
+	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
+	mut stmt := db.init_stmt(query)
+	stmt.prepare() ?
+	mysql_stmt_binder(mut stmt, where) ?
+	mysql_stmt_binder(mut stmt, data) ?
+	if data.data.len > 0 || where.data.len > 0 {
+		stmt.bind_params() ?
+	}
+	mut rb := stmt.gen_result_buffer()
+	rb.bind_result_buffer() ?
+	stmt.execute() ?
+
+	for {
+		res := rb.fetch_row()
+		if res == mysql_no_data {
+			break
+		}
+		if res != 0 {
+			return stmt.error(res)
+		}
+		mut row := []orm.Primitive{}
+		for rb.next() {
+			primitive := rb.mysql_select_column(config.types[rb.idx]) ?
+			row << primitive
+		}
+		ret << row
+	}
+
+	stmt.close() ?
 
 	return ret
 }
@@ -101,32 +129,63 @@ fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
 				stmt.bind_text(data)
 			}
 			time.Time {
-				stmt.bind_u64(&data.unix)
+				stmt.bind_int(&int(data.unix))
 			}
 		}
 	}
 }
 
-/*
-fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
-	mut primitive := orm.Primitive(0)
 
-	if typ in orm.nums || typ == -1 {
-		primitive = stmt.get_int(idx)
-	} else if typ in orm.num64 {
-		primitive = stmt.get_i64(idx)
-	} else if typ in orm.float {
-		primitive = stmt.get_f64(idx)
-	} else if typ == orm.string {
-		primitive = stmt.get_text(idx).clone()
-	} else if typ == orm.time {
-		primitive = time.unix(stmt.get_int(idx))
-	} else {
-		return error('Unknown type $typ')
+fn (mut rb StmtResultBuffer) mysql_select_column(typ int) ?orm.Primitive {
+	mut primitive := orm.Primitive(0)
+	match typ {
+		5 {
+			primitive = rb.get_i8() ?
+		}
+		6 {
+			primitive = rb.get_i16() ?
+		}
+		7, -1 {
+			primitive = rb.get_int() ?
+		}
+		8 {
+			primitive = rb.get_i64() ?
+		}
+		9 {
+			primitive = rb.get_byte() ?
+		}
+		10 {
+			primitive = rb.get_u16() ?
+		}
+		11 {
+			primitive = rb.get_u32() ?
+		}
+		12 {
+			primitive = rb.get_u64() ?
+		}
+		13 {
+			primitive = rb.get_f32() ?
+		}
+		14 {
+			primitive = rb.get_f64() ?
+		}
+		15 {
+			primitive = rb.get_bool() ?
+		}
+		orm.string {
+			primitive = rb.get_text() ?
+		}
+		orm.time {
+			timestamp := rb.get_int() ?
+			primitive = time.unix(timestamp)
+		}
+		else {
+			return error('Unknown type $typ')
+		}
 	}
 
 	return primitive
-}*/
+}
 
 fn mysql_type_from_v(typ int) ?string {
 	str := match typ {

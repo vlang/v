@@ -50,7 +50,7 @@ pub enum OrmOrderType {
 fn (kind OperationKind) to_str() string {
 	str := match kind {
 		.neq { '!=' }
-		.eq { '==' }
+		.eq { '=' }
 		.gt { '>' }
 		.lt { '<' }
 		.ge { '>=' }
