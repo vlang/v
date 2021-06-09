@@ -339,8 +339,9 @@ fn (a array) slice2(start int, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
-// clone_static returns an independent copy of a given array
-// It should be used only in -autofree generated code.
+// `clone_static_to_depth()` returns an independent copy of a given array.
+// Unlike `clone_to_depth()` it has a value receiver and is used internally
+// for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.
 fn (a array) clone_static_to_depth(depth int) array {
 	return unsafe { a.clone_to_depth(depth) }
 }
