@@ -131,48 +131,48 @@ fn (stmt Stmt) get_field_count() u16 {
 	return C.mysql_stmt_field_count(stmt.stmt)
 }
 
-pub fn (mut stmt Stmt) bind_bool(b bool) {
-	stmt.bind(mysql.mysql_type_tiny, &b, 0)
+pub fn (mut stmt Stmt) bind_bool(b &bool) {
+	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_byte(b byte) {
-	stmt.bind(mysql.mysql_type_tiny, &b, 0)
+pub fn (mut stmt Stmt) bind_byte(b &byte) {
+	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_i8(b i8) {
-	stmt.bind(mysql.mysql_type_tiny, &b, 0)
+pub fn (mut stmt Stmt) bind_i8(b &i8) {
+	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_i16(b i16) {
-	stmt.bind(mysql.mysql_type_short, &b, 0)
+pub fn (mut stmt Stmt) bind_i16(b &i16) {
+	stmt.bind(mysql.mysql_type_short, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_u16(b u16) {
-	stmt.bind(mysql.mysql_type_short, &b, 0)
+pub fn (mut stmt Stmt) bind_u16(b &u16) {
+	stmt.bind(mysql.mysql_type_short, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_int(b int) {
-	stmt.bind(mysql.mysql_type_long, &b, 0)
+pub fn (mut stmt Stmt) bind_int(b &int) {
+	stmt.bind(mysql.mysql_type_long, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_u32(b u32) {
-	stmt.bind(mysql.mysql_type_long, &b, 0)
+pub fn (mut stmt Stmt) bind_u32(b &u32) {
+	stmt.bind(mysql.mysql_type_long, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_i64(b i64) {
-	stmt.bind(mysql.mysql_type_longlong, &b, 0)
+pub fn (mut stmt Stmt) bind_i64(b &i64) {
+	stmt.bind(mysql.mysql_type_longlong, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_u64(b u64) {
-	stmt.bind(mysql.mysql_type_longlong, &b, 0)
+pub fn (mut stmt Stmt) bind_u64(b &u64) {
+	stmt.bind(mysql.mysql_type_longlong, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_f32(b f32) {
-	stmt.bind(mysql.mysql_type_float, unsafe { *(&f32(&b)) }, 0)
+pub fn (mut stmt Stmt) bind_f32(b &f32) {
+	stmt.bind(mysql.mysql_type_float, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_f64(b f64) {
-	stmt.bind(mysql.mysql_type_double, unsafe { *(&f64(&b)) }, 0)
+pub fn (mut stmt Stmt) bind_f64(b &f64) {
+	stmt.bind(mysql.mysql_type_double, b, 0)
 }
 
 pub fn (mut stmt Stmt) bind_text(b string) {
