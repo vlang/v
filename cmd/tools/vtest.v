@@ -80,6 +80,9 @@ pub fn should_test_dir(path string, backend string) ([]string, []string) { // re
 	for file in files {
 		p := path + local_path_separator + file
 		if os.is_dir(p) && !os.is_link(p) {
+			if file == 'testdata' {
+				continue
+			}
 			ret_files, ret_skip_files := should_test_dir(p, backend)
 			res_files << ret_files
 			skip_files << ret_skip_files

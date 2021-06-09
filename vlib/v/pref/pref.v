@@ -646,6 +646,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
+		if command_pos + 1 >= args.len {
+			eprintln('v build-module: no module specified')
+			exit(1)
+		}
 		res.path = args[command_pos + 1]
 	}
 	// keep only the unique res.build_options:

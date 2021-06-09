@@ -57,13 +57,22 @@ fn (set ComparatorSet) satisfies(ver Version) bool {
 }
 
 fn (c Comparator) satisfies(ver Version) bool {
-	return match c.op {
-		.gt { ver.gt(c.ver) }
-		.lt { ver.lt(c.ver) }
-		.ge { ver.ge(c.ver) }
-		.le { ver.le(c.ver) }
-		.eq { ver.eq(c.ver) }
+	if c.op == .gt {
+		return ver.gt(c.ver)
 	}
+	if c.op == .lt {
+		return ver.lt(c.ver)
+	}
+	if c.op == .ge {
+		return ver.ge(c.ver)
+	}
+	if c.op == .le {
+		return ver.le(c.ver)
+	}
+	if c.op == .eq {
+		return ver.eq(c.ver)
+	}
+	return false
 }
 
 fn parse_range(input string) ?Range {

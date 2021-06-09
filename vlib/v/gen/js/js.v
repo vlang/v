@@ -104,6 +104,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.is_test = g.pref.is_test
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
+		// add Line Infos
+		if g.pref.is_vlines || g.pref.is_debug {
+			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
+		}
 	}
 	for file in files {
 		g.file = file

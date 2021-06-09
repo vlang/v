@@ -649,7 +649,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
-	if left_sym.kind == .chan {
+	mut array_depth := -1
+	if left_sym.kind == .array {
+		if node.name in ['clone', 'repeat'] {
+			elem_type := (left_sym.info as ast.Array).elem_type
+			array_depth = g.get_array_depth(elem_type)
+			if node.name == 'repeat' {
+				array_depth++
+			}
+		}
+	} else if left_sym.kind == .chan {
 		if node.name in ['close', 'try_pop', 'try_push'] {
 			name = 'sync__Channel_$node.name'
 		}
@@ -702,6 +711,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
+		if array_depth >= 0 {
+			name = name + '_to_depth'
+		}
 		g.write('${name}(')
 	}
 	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
@@ -773,6 +785,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	*/
 	// ///////
 	g.call_args(node)
+	if array_depth >= 0 {
+		g.write(', $array_depth')
+	}
 	g.write(')')
 }
 

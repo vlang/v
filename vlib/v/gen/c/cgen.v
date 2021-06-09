@@ -405,9 +405,12 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
-			g.cheaders.writeln(bare_c_headers)
+			g.cheaders.writeln(c_bare_headers)
 		} else {
 			g.cheaders.writeln(c_headers)
+		}
+		if !g.pref.skip_unused || g.table.used_maps > 0 {
+			g.cheaders.writeln(c_wyhash_headers)
 		}
 	}
 	if g.pref.os == .ios {
@@ -417,10 +420,6 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
-	if g.pref.build_mode != .build_module {
-		// _STR functions should not be defined in builtin.o
-		g.write_str_fn_definitions()
-	}
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
@@ -1938,7 +1937,8 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	for mut template in stmt.templates {
+	for template_tmp in stmt.templates {
+		mut template := template_tmp
 		g.write('"')
 		if template.is_directive {
 			g.write('.')
@@ -2775,9 +2775,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_
 		if add_eq {
 			g.write('=')
 		}
-		g.write(' array_clone_static(')
+		g.write(' array_clone_static_to_depth(')
 		g.expr(val)
-		g.write(')')
+		elem_type := (right_sym.info as ast.Array).elem_type
+		array_depth := g.get_array_depth(elem_type)
+		g.write(', $array_depth)')
 	} else if g.is_autofree && right_sym.kind == .string {
 		if add_eq {
 			g.write('=')
@@ -4128,7 +4130,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if is_expr && tmp_var.len == 0 {
 						g.write(' : ')
 					} else {
-						g.writeln('')
 						g.write_v_source_line_info(branch.pos)
 						g.write('else ')
 					}
@@ -4169,7 +4170,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
-				g.write('}')
+				g.writeln('}')
+				g.stmt_path_pos << g.out.len
 			}
 			sumtype_index++
 			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
@@ -4869,8 +4871,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp in ['Option2', 'Option']
+		mut is_regular_option := ftyp == 'Option'
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
+			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+				test_error_var := g.new_tmp_var()
+				g.write('$ret_typ $test_error_var = ')
+				g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+				g.writeln(';')
+				g.write_defer_stmts_when_needed()
+				g.gen_failing_return_error_for_test_fn(node, test_error_var)
+				return
+			}
 			if use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
@@ -4993,7 +5004,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option2', 'Option'] {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
 			g.write('opt_ok(&($styp[]) { ')
@@ -5173,9 +5184,6 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	if styp == 'Option2' {
-		styp = 'IError'
-	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
@@ -5587,7 +5595,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option2', 'Option']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option']
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -5729,7 +5737,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
-				if !elem_sym.is_builtin() {
+				if !elem_sym.is_builtin() && !typ.info.elem_type.has_flag(.generic) {
 					// .array_fixed {
 					styp := typ.cname
 					// array_fixed_char_300 => char x[300]
@@ -5906,6 +5914,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.indent--
 		} else {
 			g.stmts(stmts)
+			if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
@@ -5936,7 +5947,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 	}
-	g.write('}')
+	g.writeln('}')
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
@@ -6589,6 +6600,17 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 fn (mut g Gen) trace(fbase string, message string) {
 	if g.file.path_base == fbase {
 		println('> g.trace | ${fbase:-10s} | $message')
+	}
+}
+
+pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
+	typ := g.unwrap_generic(el_typ)
+	sym := g.table.get_final_type_symbol(typ)
+	if sym.kind == .array {
+		info := sym.info as ast.Array
+		return 1 + g.get_array_depth(info.elem_type)
+	} else {
+		return 0
 	}
 }
 

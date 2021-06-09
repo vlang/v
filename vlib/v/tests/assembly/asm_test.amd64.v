@@ -169,4 +169,39 @@ fn test_flag_output() {
 		; r (zero)
 	}
 	assert out
+
+	mut maybe_four := 4
+	mut four := 4
+	asm amd64 {
+		subl four, maybe_four
+		testl four, maybe_four
+		movl maybe_four, 9
+		; +m (maybe_four)
+		  +r (four)
+		  =@ccz (out)
+	}
+	assert out
+	assert maybe_four == 9
+}
+
+fn test_asm_generic() {
+	u := u64(49)
+	b := unsafe { bool(123) }
+	assert generic_asm(u) == 14
+	assert u == 63
+	assert u64(generic_asm(b)) == 14
+	assert u64(b) == 137
+}
+
+fn generic_asm<T>(var &T) T {
+	mut ret := T(14)
+	unsafe {
+		asm volatile amd64 {
+			add var, ret
+			; +m (var[0]) as var
+			  +r (ret)
+			; ; memory
+		}
+	}
+	return ret
 }

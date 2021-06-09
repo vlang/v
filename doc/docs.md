@@ -129,7 +129,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
-    * [Debugging generated C code](#debugging-generated-c-code)
+    * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
     * [Compile-time reflection](#compile-time-reflection)
@@ -622,7 +622,6 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-
 #### Array Properties
 There are two properties that control the "size" of an array:
 * `len`: *length* - the number of defined elements of the array
@@ -685,6 +684,70 @@ for i in 0 .. 1000 {
 Note: The above code uses a [range `for`](#range-for) statement and a
 [push operator (`<<`)](#array-operations).
 
+#### Array Types
+
+An array can be of these types:
+| Types        | Example Definition                   |
+| ------------ | ------------------------------------ |
+| Number       | `[]int,[]i64`                        |
+| String       | `[]string`                           |
+| Rune         | `[]rune`                             |
+| Boolean      | `[]bool`                             |
+| Array        | `[][]int`                            |
+| Struct       | `[]MyStructName`                     |
+| Channel      | `[]chan f64`                         |
+| Function     | `[]MyFunctionType` `[]fn (int) bool` |
+| Interface    | `[]MyInterfaceName`                  |
+| Sum Type     | `[]MySumTypeName`                    |
+| Generic Type | `[]T`                                |
+| Map          | `[]map[string]f64`                   |
+| Enum         | `[]MyEnumType`                       |
+| Alias        | `[]MyAliasTypeName`                  |
+| Thread       | `[]thread int`                       |
+| Reference    | `[]&f64`                             |
+| Shared       | `[]shared MyStructType`              |
+
+**Example Code:**
+
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
+which can handle different types (e.g. Points, Lines) of data elements.
+
+```v
+struct Point {
+	x int
+	y int
+}
+
+struct Line {
+	p1 Point
+	p2 Point
+}
+
+type ObjectSumType = Line | Point
+
+mut object_list := []ObjectSumType{}
+object_list << Point{1, 1}
+object_list << Line{
+	p1: Point{3, 3}
+	p2: Point{4, 4}
+}
+dump(object_list)
+/*
+object_list: [ObjectSumType(Point{
+    x: 1
+    y: 1
+}), ObjectSumType(Line{
+    p1: Point{
+        x: 3
+        y: 3
+    }
+    p2: Point{
+        x: 4
+        y: 4
+    }
+})]
+*/
+```
 
 #### Multidimensional Arrays
 
@@ -790,6 +853,7 @@ There are further built in methods for arrays:
 * `a.delete_last()` remove last element from array
 * `b := a.reverse()` make `b` contain the elements of `a` in reversed order
 * `a.reverse_in_place()` reverse the order of elements in `a`
+* `a.join(joiner)` concatenate array of strings into a string using `joiner` string as a separator
 
 #### Sorting Arrays
 
@@ -1623,6 +1687,10 @@ p = {
 	y: 4
 }
 assert p.y == 4
+//
+// array: first element defines type of array
+points := [Point{10, 20}, Point{20, 30}, Point{40, 50}]
+println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}]
 ```
 
 Omitting the struct name also works for returning a struct literal or passing one
@@ -3219,6 +3287,25 @@ To test an entire module, use `v test mymodule`. You can also use `v test .` to 
 everything inside your current folder (and subfolders). You can pass the `-stats`
 option to see more details about the individual tests run.
 
+You can put additional test data, including .v source files in a folder, named
+`testdata`, right next to your _test.v files. V's test framework will *ignore*
+such folders, while scanning for tests to run. This is usefull, if you want to
+put .v files with invalid V source code, or other tests, including known 
+failing ones, that should be run in a specific way/options by a parent _test.v 
+file.
+
+NB: the path to the V compiler, is available through @VEXE, so a _test.v
+file, can easily run *other* test files like this:
+```v oksyntax
+import os
+
+fn test_subtest() {
+	res := os.execute('${@VEXE} other_test.v')
+	assert res.exit_code == 1
+	assert res.output.contains('other_test.v does not exist')
+}
+```
+
 ## Memory management
 
 V avoids doing unnecessary allocations in the first place by using value types,
@@ -3806,9 +3893,11 @@ re-creating the original structure exactly.
 Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
 
-## Debugging generated C code
+## Debugging
 
-To debug issues in the generated C code, you can pass these flags:
+### C Backend binaries (Default) 
+
+To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
     V will enforce line numbers from the .v files in the stacktraces, that the
@@ -3838,8 +3927,35 @@ This will make V produce the `file.c` then stop.
 If you want to see the generated C source code for *just* a single C function,
 for example `main`, you can use: `-printfn main -o file.c`.
 
+To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
+
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed, 
+so that the executable is not deleted, after it was created and ran.
+
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
+
+**Commandline Debugging**
+
+1. compile your binary with debugging info `v -g hello.v`
+2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+
+Troubleshooting (debugging) executables [created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
+
+**Visual debugging Setup:**
+* [Visual Studio Code](vscode.md)
+
+### Native Backend binaries
+
+Currently there is no debugging support for binaries, created by the
+native backend (flag: `-b native`).
+
+### Javascript Backend
+
+There is currently no support for source maps for Javascript output,
+created by the JS Backend (flag: `-b js`).
+
+
 
 ## Conditional compilation
 

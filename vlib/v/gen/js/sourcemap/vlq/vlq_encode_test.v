@@ -10,7 +10,7 @@ pub mut:
 	bytes []byte
 }
 
-fn test_encode_a() {
+fn test_encode_a() ? {
 	decode_values := [
 		TestData{'A', 0},
 		TestData{'C', 1},
@@ -23,7 +23,7 @@ fn test_encode_a() {
 	for _, test_data in decode_values {
 		mut output := TestWriter{}
 
-		encode(test_data.data_val, mut &output)
+		encode(test_data.data_val, mut &output) ?
 		// dump(output.bytes)
 		assert output.bytes == test_data.expected.bytes()
 	}

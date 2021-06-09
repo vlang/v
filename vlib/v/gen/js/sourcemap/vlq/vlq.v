@@ -1,12 +1,12 @@
 module vlq
 
-import math
 import io
 
 const (
 	shift                  = byte(5)
 	mask                   = byte((1 << shift) - 1)
 	continued              = byte(1 << shift)
+	max_i64                = u64(9223372036854775807)
 
 	// index start is: byte - vlq.enc_char_special_plus
 	enc_index              = [62, 0, 0, 0, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
@@ -25,6 +25,11 @@ const (
 	enc_char_special_plus  = 43
 	enc_char_special_slash = 47
 )
+
+[inline]
+fn abs64(x i64) u64 {
+	return if x < 0 { u64(-x) } else { u64(x) }
+}
 
 // Decode a single base64 digit.
 [inline]
@@ -54,9 +59,9 @@ pub fn decode(mut input io.Reader) ?i64 {
 
 	mut keep_going := true
 	for keep_going {
-		len := input.read(mut buf) or { panic('Unexpected EOF') }
+		len := input.read(mut buf) or { return error('Unexpected EOF') }
 		if len == 0 {
-			panic('no content')
+			return error('no content')
 		}
 		digit = decode64(buf[0])
 		keep_going = (digit & vlq.continued) != 0
@@ -68,7 +73,7 @@ pub fn decode(mut input io.Reader) ?i64 {
 	}
 
 	abs_value := accum / 2
-	if abs_value > math.max_i64 {
+	if abs_value > vlq.max_i64 {
 		return error('Overflow')
 	}
 
@@ -85,13 +90,13 @@ fn encode64(input byte) byte {
 }
 
 // Encode a value as Base64 VLQ, sending it to the writer
-pub fn encode(value i64, mut output io.Writer) {
+pub fn encode(value i64, mut output io.Writer) ? {
 	signed := value < 0
-	mut value_u64 := u64(math.abs(value)) << 1
+	mut value_u64 := abs64(value) << 1
 	if signed {
 		if value_u64 == 0 {
 			// Wrapped
-			value_u64 = u64(math.max_i64) + 1
+			value_u64 = vlq.max_i64 + 1
 		}
 		value_u64 |= 1
 	}
@@ -102,7 +107,7 @@ pub fn encode(value i64, mut output io.Writer) {
 			digit |= vlq.continued
 		}
 		bytes := [encode64(digit)]
-		output.write(bytes) or { panic('Write failed') }
+		output.write(bytes) or { return error('Write failed') }
 		if value_u64 == 0 {
 			break
 		}

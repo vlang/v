@@ -181,10 +181,6 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
-	// println('parse_file("$path")')
-	// text := os.read_file(path) or {
-	// panic(err)
-	// }
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
@@ -274,7 +270,6 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.check_unused_imports()
 			break
 		}
-		// println('stmt at ' + p.tok.str())
 		stmt := p.top_stmt()
 		// clear the attributes after each statement
 		if !(stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.Comment) {
@@ -282,10 +277,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 		stmts << stmt
 	}
-	// println('nr stmts = $stmts.len')
-	// println(stmts[0])
 	p.scope.end_pos = p.tok.pos
-	//
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -343,7 +335,6 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, glo
 	$if time_parsing ? {
 		timers.should_print = true
 	}
-	// println('nr_cpus= $nr_cpus')
 	$if macos {
 		/*
 		if pref.is_parallel && paths[0].contains('/array.v') {
@@ -367,10 +358,8 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, glo
 		}
 		*/
 	}
-	// ///////////////
 	mut files := []&ast.File{}
 	for path in paths {
-		// println('parse_files $path')
 		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref, global_scope)
 		timers.show('parse_file $path')
@@ -414,10 +403,8 @@ pub fn (mut p Parser) close_scope() {
 
 pub fn (mut p Parser) parse_block() []ast.Stmt {
 	p.open_scope()
-	// println('parse block')
 	stmts := p.parse_block_no_scope(false)
 	p.close_scope()
-	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
 
@@ -685,7 +672,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			pos.update_last_line(p.prev_tok.line_nr)
 			return ast.AssertStmt{
 				expr: expr
-				pos: pos
+				pos: pos.extend(p.tok.position())
 				is_used: p.inside_test_file || !p.pref.is_prod
 			}
 		}
@@ -1411,7 +1398,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		if mut expr is ast.ParExpr {
 			expr = expr.expr
 		} else {
-			p.error('asm in/output must be incolsed in brackets $expr.type_name()')
+			p.error('asm in/output must be incolsed in brackets')
 		}
 		mut alias := ''
 		if p.tok.kind == .key_as {
@@ -1458,6 +1445,28 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 		}
 	}
 	return exprs, comments
+}
+
+fn (mut p Parser) is_attributes() bool {
+	if p.tok.kind != .lsbr {
+		return false
+	}
+	mut i := 0
+	for {
+		tok := p.peek_token(i)
+		if tok.kind == .eof || tok.line_nr != p.tok.line_nr {
+			return false
+		}
+		if tok.kind == .rsbr {
+			break
+		}
+		i++
+	}
+	peek_rsbr_tok := p.peek_token(i + 1)
+	if peek_rsbr_tok.line_nr == p.tok.line_nr && peek_rsbr_tok.kind != .rcbr {
+		return false
+	}
+	return true
 }
 
 // when is_top_stmt is true attrs are added to p.attrs
@@ -2067,7 +2076,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return node
 		} else {
 			// fn call
-			// println('calling $p.tok.lit')
 			if is_optional {
 				p.error_with_pos('unexpected $p.prev_tok', p.prev_tok.position())
 			}
@@ -2114,10 +2122,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
 		}
-		// p.warn('Color.green $enum_name ' + p.prepend_mod(enum_name) + 'mod=$mod')
 		p.check(.dot)
 		val := p.check_name()
-		// println('enum val $enum_name . $val')
 		p.expr_mod = ''
 		return ast.EnumVal{
 			enum_name: enum_name
@@ -3156,7 +3162,6 @@ fn (mut p Parser) assoc() ast.Assoc {
 		}
 	}
 	v.is_used = true
-	// println('assoc var $name typ=$var.typ')
 	mut fields := []string{}
 	mut vals := []ast.Expr{}
 	p.check(.pipe)
