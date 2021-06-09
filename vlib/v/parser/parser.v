@@ -3228,7 +3228,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	no_token := token.Token{}
 	p.prev_tok = no_token
 	p.tok = no_token
-	p.peek_tok = no_token
+	p.peek_tok = no_token // requires 2 calls p.next() or check p.tok.kind != token.Kind.unknown
 	for {
 		p.next()
 		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
