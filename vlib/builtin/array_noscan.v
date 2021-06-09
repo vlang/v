@@ -83,7 +83,12 @@ fn (mut a array) ensure_cap_noscan(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
-fn (a array) repeat_noscan(count int) array {
+// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+
+// version of `repeat()` that handles multi dimensional arrays
+// `unsafe` to call directly because `depth` is not checked
+[unsafe]
+fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
@@ -93,19 +98,18 @@ fn (a array) repeat_noscan(count int) array {
 	}
 	arr := array{
 		element_size: a.element_size
-		data: vcalloc_noscan(size)
+		data: if depth > 0 { vcalloc(size) } else { vcalloc_noscan(size) }
 		len: count * a.len
 		cap: count * a.len
 	}
-	size_of_array := int(sizeof(array))
-	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone_noscan()
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
-		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+	if a.len > 0 {
+		for i in 0 .. count {
+			if depth > 0 {
+				ary_clone := unsafe { a.clone_to_depth_noscan(depth) }
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+			} else {
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+			}
 		}
 	}
 	return arr
