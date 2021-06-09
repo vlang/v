@@ -2,7 +2,7 @@ module sourcemap
 
 fn test_simple() {
 	mut sg := generate_empty_map()
-	mut sm := sg.add_map('hello.js', '/', 0, 0)
+	mut sm := sg.add_map('hello.js', '/', true, 0, 0)
 	sm.set_source_content('hello.v', "fn main(){nprintln('Hello World! Helo \$a')\n}")
 
 	mlist := [
@@ -138,7 +138,7 @@ fn test_simple() {
 
 fn test_source_null() {
 	mut sg := generate_empty_map()
-	mut sm := sg.add_map('hello.js', '/', 0, 0)
+	mut sm := sg.add_map('hello.js', '/', true, 0, 0)
 	sm.add_mapping('hello.v', SourcePosition{
 		source_line: 0
 		source_column: 0
