@@ -108,6 +108,9 @@ fn (mut a array) ensure_cap(required int) {
 
 // repeat returns a new array with the given array elements repeated given times.
 // `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+
+// This is a dummy placeholder that will be overridden by `cgen` with an appropriate
+// call to `repeat_to_depth()`. However the `checker` needs it here.
 pub fn (a array) repeat(count int) array {
 	return unsafe { a.repeat_to_depth(count, 0) }
 }
@@ -129,12 +132,14 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
-	for i in 0 .. count {
-		if a.len > 0 && depth > 0 {
-			ary_clone := unsafe { a.clone_to_depth(depth - 1) }
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
-		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+	if a.len > 0 {
+		for i in 0 .. count {
+			if depth > 0 {
+				ary_clone := unsafe { a.clone_to_depth(depth) }
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+			} else {
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+			}
 		}
 	}
 	return arr
@@ -334,18 +339,16 @@ fn (a array) slice2(start int, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
-// clone_static returns an independent copy of a given array
-// It should be used only in -autofree generated code.
-fn (a array) clone_static() array {
-	return a.clone()
-}
-
+// `clone_static_to_depth()` returns an independent copy of a given array.
+// Unlike `clone_to_depth()` it has a value receiver and is used internally
+// for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.
 fn (a array) clone_static_to_depth(depth int) array {
 	return unsafe { a.clone_to_depth(depth) }
 }
 
 // clone returns an independent copy of a given array.
 // this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
+// However the `checker` needs it here.
 pub fn (a &array) clone() array {
 	return unsafe { a.clone_to_depth(0) }
 }
@@ -703,9 +706,6 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 
 // repeat returns a new array with the given array elements repeated given times.
 // `cgen` will replace this with an apropriate call to `repeat_to_depth()`
-pub fn (a array) repeat_noscan(count int) array {
-	return unsafe { a.repeat_to_depth_noscan(count, 0) }
-}
 
 // version of `repeat()` that handles multi dimensional arrays
 // `unsafe` to call directly because `depth` is not checked
@@ -724,15 +724,14 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
-	size_of_array := int(sizeof(array))
-	for i in 0 .. count {
-		if a.len > 0 && depth > 0 {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := unsafe { ary.clone_to_depth_noscan(depth - 1) }
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
-		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+	if a.len > 0 {
+		for i in 0 .. count {
+			if depth > 0 {
+				ary_clone := unsafe { a.clone_to_depth_noscan(depth) }
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+			} else {
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+			}
 		}
 	}
 	return arr
