@@ -180,7 +180,6 @@ pub fn (mut stmt Stmt) bind_text(b string) {
 }
 
 pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
-	eprintln(&int(buffer))
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type: typ
 		buffer: buffer

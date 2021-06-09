@@ -6,7 +6,7 @@ import time
 // sql expr
 
 pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
-	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
+	// query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
 
 	return ret
@@ -128,7 +128,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	return primitive
 }*/
 
-fn sqlite_type_from_v(typ int) ?string {
+fn mysql_type_from_v(typ int) ?string {
 	str := match typ {
 		5, 9, 16 {
 			'TINYINT'
