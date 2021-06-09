@@ -168,7 +168,7 @@ pub fn (a &array) clone_to_depth_noscan(depth int) array {
 	}
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc(size)
+		data: if depth == 0 { vcalloc_noscan(size) } else { vcalloc(size) }
 		len: a.len
 		cap: a.cap
 	}
