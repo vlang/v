@@ -6510,10 +6510,16 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				break
 			}
 			.any {
+				gname := typ_sym.name
 				typ = c.unwrap_generic(typ)
 				node.left_type = typ
 				typ_sym = c.table.get_final_type_symbol(typ)
-				continue
+				if typ.is_ptr() {
+					continue
+				} else {
+					c.error('generic type $gname does not support indexing, pass an array, or a reference instead, e.g. []$gname or &$gname',
+						node.pos)
+				}
 			}
 			else {
 				break
