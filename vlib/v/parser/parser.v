@@ -3232,7 +3232,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	for {
 		p.next()
 		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
-		if tidx == p.tok.tidx {
+		if tidx == p.tok.tidx && p.tok.kind != token.Kind.unknown {
 			break
 		}
 	}
