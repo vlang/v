@@ -2327,7 +2327,7 @@ Modules are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` you already have a v.mod file). 
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file). 
 
 	```sh
 	v new mymodule
@@ -2364,7 +2364,8 @@ Modules are up to date.
 	}
 	```
 
-2. Create a git repository in the folder with the `v.mod` file:
+2. Create a git repository in the folder with the `v.mod` file 
+	(this is not required if you used `v new` or `v init`):
 	```sh
 	git init
 	git add .
