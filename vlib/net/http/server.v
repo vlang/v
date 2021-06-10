@@ -33,7 +33,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 			}
 		}
 	}
-	mut l := net.listen_tcp(s.port) ?
+	mut l := net.listen_tcp(.ip6, ':$s.port') ?
 	eprintln('Listening on :$s.port')
 	for {
 		mut conn := l.accept() or {
