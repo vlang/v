@@ -2274,16 +2274,17 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 				g.expr(lx)
+				noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 				if is_opt {
 					mr_base_styp := g.base_type(return_type)
 					if is_auto_heap {
-						g.writeln(' = HEAP($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+						g.writeln(' = HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
 					} else {
 						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
 					}
 				} else {
 					if is_auto_heap {
-						g.writeln(' = HEAP($styp, ${mr_var_name}.arg$i);')
+						g.writeln(' = HEAP${noscan}($styp, ${mr_var_name}.arg$i);')
 					} else {
 						g.writeln(' = ${mr_var_name}.arg$i;')
 					}
@@ -6649,6 +6650,15 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 			info := sym.info as ast.Aggregate
 			for atyp in info.types {
 				if g.contains_ptr(atyp) {
+					return true
+				}
+			}
+			return false
+		}
+		.multi_return {
+			info := sym.info as ast.MultiReturn
+			for mrtyp in info.types {
+				if g.contains_ptr(mrtyp) {
 					return true
 				}
 			}
