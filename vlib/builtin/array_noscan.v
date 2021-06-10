@@ -159,6 +159,22 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
 
+// pop returns the last element of the array, and removes it.
+fn (mut a array) pop_noscan() voidptr {
+	// in a sense, this is the opposite of `a << x`
+	$if !no_bounds_checking ? {
+		if a.len == 0 {
+			panic('array.pop: array is empty')
+		}
+	}
+	new_len := a.len - 1
+	last_elem := unsafe { &byte(a.data) + new_len * a.element_size }
+	a.len = new_len
+	// NB: a.cap is not changed here *on purpose*, so that
+	// further << ops on that array will be more efficient.
+	return unsafe { memdup_noscan(last_elem, a.element_size) }
+}
+
 // `clone_static_to_depth_noscan()` returns an independent copy of a given array.
 // Unlike `clone_to_depth_noscan()` it has a value receiver and is used internally
 // for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.

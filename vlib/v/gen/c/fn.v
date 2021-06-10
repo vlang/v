@@ -658,7 +658,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			array_depth = g.get_array_depth(elem_type)
 		}
 		maybe_noscan := needs_depth
-			|| node.name in ['push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
+			|| node.name in ['pop', 'push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
 		if maybe_noscan {
 			info := left_sym.info as ast.Array
 			noscan = g.check_noscan(info.elem_type)
