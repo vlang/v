@@ -194,7 +194,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	g.writeln(';')
-	g.writeln('\tarray_push((array*)&$tmp, &ti);')
+	g.writeln('\tarray_push${noscan}((array*)&$tmp, &ti);')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -387,7 +387,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\tarray_push((array*)&$tmp, &it); \n\t\t}')
+	g.writeln('\t\tarray_push${noscan}((array*)&$tmp, &it); \n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
