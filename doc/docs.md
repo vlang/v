@@ -2107,7 +2107,7 @@ println(blue)
 
 Global variables are not normally allowed, so this can be really useful.
 
-#### Modules
+**Modules**
 
 Constants can be made public with `pub const`:
 ```v oksyntax
