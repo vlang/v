@@ -60,7 +60,7 @@ const (
 	max_read    = 4096
 	max_write   = 8192
 )
-						
+
 enum Event {
 	read = C.PICOEV_READ
 	write = C.PICOEV_WRITE
@@ -225,7 +225,7 @@ pub fn new(config Config) &Picoev {
 	addr.sin_port = C.htons(config.port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	bind_res := C.bind(fd, unsafe { &net.Addr( &addr ) }, size)
+	bind_res := C.bind(fd, unsafe { &net.Addr(&addr) }, size)
 	assert bind_res == 0
 	listen_res := C.listen(fd, C.SOMAXCONN)
 	assert listen_res == 0
