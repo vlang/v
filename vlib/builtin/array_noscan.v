@@ -159,6 +159,13 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
 
+// `clone_static_to_depth_noscan()` returns an independent copy of a given array.
+// Unlike `clone_to_depth_noscan()` it has a value receiver and is used internally
+// for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.
+fn (a array) clone_static_to_depth_noscan(depth int) array {
+	return unsafe { a.clone_to_depth_noscan(depth) }
+}
+
 // recursively clone given array - `unsafe` when called directly because depth is not checked
 [unsafe]
 pub fn (a &array) clone_to_depth_noscan(depth int) array {
