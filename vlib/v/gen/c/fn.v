@@ -650,10 +650,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
 	mut array_depth := -1
+	mut noscan := ''
 	if left_sym.kind == .array {
-		if node.name in ['clone', 'repeat'] {
+		needs_depth :=  node.name in ['clone', 'repeat']
+		if needs_depth {
 			elem_type := (left_sym.info as ast.Array).elem_type
 			array_depth = g.get_array_depth(elem_type)
+		}
+		maybe_noscan := needs_depth || node.name in ['push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
+		if maybe_noscan {
+			info := left_sym.info as ast.Array
+			noscan = g.check_noscan(info.elem_type)
 		}
 	} else if left_sym.kind == .chan {
 		if node.name in ['close', 'try_pop', 'try_push'] {
@@ -708,10 +715,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
-		if array_depth >= 0 {
-			name = name + '_to_depth'
+		if left_sym.kind == .array {
+			if array_depth >= 0 {
+				name = name + '_to_depth'
+			}
+			g.write('${name}${noscan}(')
+		} else {
+			g.write('${name}(')
 		}
-		g.write('${name}(')
 	}
 	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
 		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
