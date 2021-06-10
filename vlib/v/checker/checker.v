@@ -3596,19 +3596,19 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			continue
 		}
 
-    // Do not allow `a = b`, only `a = b.clone()`
-		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
+        // Do not allow `a = b`, only `a = b.clone()`
+		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
 			&& right !is ast.ArrayInit && right !is ast.CallExpr && !right.is_literal() {
 			if right is ast.IndexExpr {
 				if !c.is_immutable(left, i) || !c.is_immutable(right.left, i) {
-					c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
-						assign_stmt.pos)
+					c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
+						node.pos)
 				}
 			} else {
 				if !c.is_immutable(left, i) || !c.is_immutable(right, i) {
-					c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
-						assign_stmt.pos)
+					c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
+						node.pos)
 				}
 			}
 		}
