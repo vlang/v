@@ -652,12 +652,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut array_depth := -1
 	mut noscan := ''
 	if left_sym.kind == .array {
-		needs_depth :=  node.name in ['clone', 'repeat']
+		needs_depth := node.name in ['clone', 'repeat']
 		if needs_depth {
 			elem_type := (left_sym.info as ast.Array).elem_type
 			array_depth = g.get_array_depth(elem_type)
 		}
-		maybe_noscan := needs_depth || node.name in ['push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
+		maybe_noscan := needs_depth
+			|| node.name in ['push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
 		if maybe_noscan {
 			info := left_sym.info as ast.Array
 			noscan = g.check_noscan(info.elem_type)
@@ -719,7 +720,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if array_depth >= 0 {
 				name = name + '_to_depth'
 			}
-			g.write('${name}${noscan}(')
+			g.write('$name${noscan}(')
 		} else {
 			g.write('${name}(')
 		}
