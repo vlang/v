@@ -166,6 +166,15 @@ pub fn stderr() File {
 	}
 }
 
+// read implements the Reader interface.
+pub fn (f &File) read(mut buf []byte) ?int {
+	if buf.len == 0 {
+		return 0
+	}
+	nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+	return nbytes
+}
+
 // **************************** Write ops  ***************************
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
@@ -437,15 +446,6 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 		return nbytes
 	}
 	return error('Could not read file')
-}
-
-// read implements the Reader interface.
-pub fn (f &File) read(mut buf []byte) ?int {
-	if buf.len == 0 {
-		return 0
-	}
-	nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
-	return nbytes
 }
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.

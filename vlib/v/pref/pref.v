@@ -85,25 +85,28 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_test           bool   // `v test string_test.v`
-	is_script         bool   // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool   // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool   // main program that contains live/hot code
-	is_liveshared     bool   // a shared library, that will be used in a -live main program
-	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
-	is_prof           bool   // benchmark every function
-	profile_file      string // the profile results will be stored inside profile_file
-	profile_no_inline bool   // when true, [inline] functions would not be profiled
-	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod           bool   // use "-O2"
-	obfuscate         bool   // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl           bool
-	is_run            bool
-	sanitize          bool // use Clang's new "-fsanitize" option
-	is_debug          bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
-	show_cc           bool // -showcc, print cc command
-	show_c_output     bool // -show-c-output, print all cc output even if the code was compiled correctly
+	is_test                bool   // `v test string_test.v`
+	is_script              bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh                 bool   // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain            bool   // main program that contains live/hot code
+	is_liveshared          bool   // a shared library, that will be used in a -live main program
+	is_shared              bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_prof                bool   // benchmark every function
+	profile_file           string // the profile results will be stored inside profile_file
+	profile_no_inline      bool   // when true, [inline] functions would not be profiled
+	translated             bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod                bool   // use "-O2"
+	obfuscate              bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_repl                bool
+	is_run                 bool
+	sanitize               bool // use Clang's new "-fsanitize" option
+	is_debug               bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
+	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
+	sourcemap_src_included bool // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
+	is_vlines              bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
+	show_cc                bool // -showcc, print cc command
+	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
@@ -321,6 +324,15 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.retry_compilation = false
 				res.show_cc = true
 				res.show_c_output = true
+			}
+			'-sourcemap' {
+				res.sourcemap = true
+			}
+			'-sourcemap-src-included' {
+				res.sourcemap_src_included = true
+			}
+			'-sourcemap-inline' {
+				res.sourcemap_inline = true
 			}
 			'-repl' {
 				res.is_repl = true
