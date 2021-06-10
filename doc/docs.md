@@ -2359,7 +2359,7 @@ Modules are up to date.
 	```v
 	module mymodule
 
-	fn hello_world() {
+	pub fn hello_world() {
 		println('Hello World!')
 	}
 	```
