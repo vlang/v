@@ -47,10 +47,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		return
 	}
 	elem_type_str := g.typ(node.elem_type)
+	noscan := g.check_noscan(node.elem_type)
 	if node.exprs.len == 0 {
 		elem_sym := g.table.get_type_symbol(node.elem_type)
 		is_default_array := elem_sym.kind == .array && node.has_default
-		noscan := g.check_noscan(node.elem_type)
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else {
@@ -104,7 +104,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
-		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	}
 	if len > 8 {
 		g.writeln('')
