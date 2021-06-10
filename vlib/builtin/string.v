@@ -1491,7 +1491,7 @@ pub fn (s &string) free() {
 		}
 		return
 	}
-	if s.is_lit == 1 || s.len == 0 || s.str == 0 {
+	if s.is_lit == 1 || s.str == 0 {
 		return
 	}
 	unsafe {
