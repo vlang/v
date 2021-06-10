@@ -341,7 +341,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	end_pos := p.prev_tok.position()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
-	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
+		&& (p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv'))
 
 	// Register
 	if is_method {
@@ -578,6 +579,15 @@ fn (mut p Parser) parse_generic_names() []string {
 		}
 		p.check(.name)
 		param_names << name
+		if p.table.find_type_idx(name) == 0 {
+			p.table.register_type_symbol(ast.TypeSymbol{
+				name: name
+				cname: util.no_dots(name)
+				mod: p.mod
+				kind: .any
+				is_public: true
+			})
+		}
 		first_done = true
 		count++
 	}

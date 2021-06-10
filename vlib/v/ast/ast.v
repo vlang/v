@@ -1592,7 +1592,7 @@ pub fn (expr Expr) is_literal() bool {
 
 pub fn (expr Expr) is_lit() bool {
 	return match expr {
-		BoolLiteral, StringLiteral, IntegerLiteral { true }
+		BoolLiteral, CharLiteral, StringLiteral, IntegerLiteral { true }
 		else { false }
 	}
 }

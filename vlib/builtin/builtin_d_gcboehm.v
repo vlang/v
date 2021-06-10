@@ -25,9 +25,8 @@ $if static_boehm ? {
 	$if windows {
 		#flag -I@VEXEROOT/thirdparty/libgc/include
 		#flag -L@VEXEROOT/thirdparty/libgc
-	} $else {
-		#flag -lgc
 	}
+	#flag -lgc
 }
 
 $if gcboehm_leak ? {

@@ -121,6 +121,6 @@ pub fn iter_data<T>(data []T) Iterator<T> {
 
 fn test_generics_return_generic_struct_from_fn() {
 	mut it := iter_data<int>([1, 2, 3])
-	println(it.next())
+	println(it.next() or { -1 })
 	assert '$it.next()' == 'Option(1)'
 }

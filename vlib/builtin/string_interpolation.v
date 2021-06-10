@@ -593,11 +593,15 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			}
 			// runes
 			.si_c {
-				sb.write_string(utf32_to_str(data.d.d_c))
+				ss := utf32_to_str(data.d.d_c)
+				sb.write_string(ss)
+				ss.free()
 			}
 			// v pointers
 			.si_vp {
-				sb.write_string(u64(data.d.d_vp).hex())
+				ss := u64(data.d.d_vp).hex()
+				sb.write_string(ss)
+				ss.free()
 			}
 			else {
 				sb.write_string('***ERROR!***')

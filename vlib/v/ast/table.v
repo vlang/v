@@ -25,6 +25,7 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
+	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
@@ -1141,6 +1142,14 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			is_inst)
 		{
 			idx := t.find_or_register_array_with_dims(typ, dims)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
+		}
+	} else if sym.kind == .array_fixed {
+		info := sym.info as ArrayFixed
+		if typ := t.resolve_generic_to_concrete(info.elem_type, generic_names, concrete_types,
+			is_inst)
+		{
+			idx := t.find_or_register_array_fixed(typ, info.size, None{})
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if mut sym.info is Chan {

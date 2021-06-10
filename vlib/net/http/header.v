@@ -469,6 +469,16 @@ pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 	return h.data[data_key][0]
 }
 
+// Gets the first value of the header starting with key, or none if the key does not exist.
+pub fn (h Header) starting_with(key string) ?string {
+	for k, _ in h.data {
+		if k.starts_with(key) {
+			return k
+		}
+	}
+	return none
+}
+
 // Gets all values for the CommonHeader.
 pub fn (h Header) values(key CommonHeader) []string {
 	return h.custom_values(key.str())
@@ -499,7 +509,7 @@ pub struct HeaderRenderConfig {
 }
 
 // Renders the Header into a string for use in sending
-// HTTP requests. All header lines will end in `\n\r`
+// HTTP requests. All header lines will end in `\r\n`
 [manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
@@ -524,7 +534,7 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			}
 			k := data_keys[data_keys.len - 1]
 			sb.write_string(h.data[k].join(','))
-			sb.write_string('\n\r')
+			sb.write_string('\r\n')
 		}
 	} else {
 		for k, v in h.data {
@@ -538,7 +548,7 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			sb.write_string(key)
 			sb.write_string(': ')
 			sb.write_string(v.join(','))
-			sb.write_string('\n\r')
+			sb.write_string('\r\n')
 		}
 	}
 	res := sb.str()
@@ -566,11 +576,24 @@ fn (mut h Header) add_key(key string) {
 	}
 }
 
+// Custom error struct for invalid header tokens
+struct HeaderKeyError {
+	msg string
+	code int
+	header string
+	invalid_char byte
+}
+
 // Checks if the header token is valid
 fn is_valid(header string) ? {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
-			return error('Invalid header key')
+			return IError(HeaderKeyError{
+				msg: "Invalid header key: '$header'"
+				code: 1
+				header: header
+				invalid_char: c
+			})
 		}
 	}
 }

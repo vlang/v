@@ -352,6 +352,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 
 pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
+	if p.inside_asm && p.prev_tok.position().line_nr < p.tok.position().line_nr {
+		return node
+	}
 	// Infix
 	for precedence < p.tok.precedence() {
 		if p.tok.kind == .dot {

@@ -5,10 +5,6 @@ module c
 import v.ast
 import v.util
 
-fn (mut g Gen) write_str_fn_definitions() {
-	g.writeln(c_str_fn_defs)
-}
-
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		escaped_val := util.smart_quote(node.val, true)
@@ -104,7 +100,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
-			ast.SelectorExpr, ast.Ident { true }
+			ast.SelectorExpr, ast.Ident, ast.CTempVar { true }
 			else { false }
 		}
 		if is_var {

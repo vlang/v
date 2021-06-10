@@ -4,7 +4,7 @@
 
 ### Structs
 
-- `[tablename: 'name']` sets a custom table name
+- `[table: 'name']` sets a custom table name
 
 ### Fields
 

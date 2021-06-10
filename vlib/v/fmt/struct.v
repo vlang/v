@@ -256,7 +256,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	type_sym := f.table.get_type_symbol(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
-	if !name.starts_with('C.') {
+	if !name.starts_with('C.') && !name.starts_with('JS.') {
 		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
 	}
 	if name == 'void' {

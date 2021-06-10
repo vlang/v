@@ -317,47 +317,50 @@ pub fn system_font_path() string {
 fn get_font_path_variant(font_path string, variant FontVariant) string {
 	// TODO: find some way to make this shorter and more eye-pleasant
 	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
-	mut fpath := font_path.replace('.ttf', '')
+	mut file := os.file_name(font_path)
+	mut fpath := font_path.replace(file, '')
+	file = file.replace('.ttf', '')
+
 	match variant {
 		.normal {}
 		.bold {
 			if fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', '-Bold')
-			} else if fpath.starts_with('DejaVuSans') {
-				fpath += '-Bold'
-			} else if fpath.to_lower().starts_with('arial') {
-				fpath += 'bd'
+				file = file.replace('-Regular', '-Bold')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Bold'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'bd'
 			} else {
-				fpath += '-bold'
+				file += '-bold'
 			}
 			$if macos {
 				if os.exists('SFNS-bold') {
-					fpath = 'SFNS-bold'
+					file = 'SFNS-bold'
 				}
 			}
 		}
 		.italic {
-			if fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', '-Italic')
-			} else if fpath.starts_with('DejaVuSans') {
-				fpath += '-Oblique'
-			} else if fpath.to_lower().starts_with('arial') {
-				fpath += 'i'
+			if file.ends_with('-Regular') {
+				file = file.replace('-Regular', '-Italic')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Oblique'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'i'
 			} else {
-				fpath += 'Italic'
+				file += 'Italic'
 			}
 		}
 		.mono {
-			if !fpath.ends_with('Mono-Regular') && fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', 'Mono-Regular')
-			} else if fpath.to_lower().starts_with('arial') {
+			if !file.ends_with('Mono-Regular') && file.ends_with('-Regular') {
+				file = file.replace('-Regular', 'Mono-Regular')
+			} else if file.to_lower().starts_with('arial') {
 				// Arial has no mono variant
 			} else {
-				fpath += 'Mono'
+				file += 'Mono'
 			}
 		}
 	}
-	return fpath + '.ttf'
+	return fpath + file + '.ttf'
 }
 
 fn debug_font_println(s string) {

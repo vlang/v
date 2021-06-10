@@ -1,0 +1,16 @@
+struct Abc {
+	f1 int [required]
+	f2 int
+	f3 fn () [attr1; required; attr2]
+}
+
+fn main() {
+	_ = Abc{
+		f1: 123
+		f3: fn () {}
+	}
+	_ = Abc{
+		f1: 123
+		f2: 789
+	}
+}

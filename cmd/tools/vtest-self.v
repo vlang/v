@@ -40,6 +40,7 @@ const (
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
@@ -78,6 +79,7 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
@@ -97,6 +99,7 @@ const (
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 	]
 	skip_on_non_windows           = [
@@ -123,7 +126,7 @@ fn main() {
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
-	tsession.files << all_test_files
+	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
 	mut werror := false
 	mut sanitize_memory := false

@@ -405,9 +405,12 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
-			g.cheaders.writeln(bare_c_headers)
+			g.cheaders.writeln(c_bare_headers)
 		} else {
 			g.cheaders.writeln(c_headers)
+		}
+		if !g.pref.skip_unused || g.table.used_maps > 0 {
+			g.cheaders.writeln(c_wyhash_headers)
 		}
 	}
 	if g.pref.os == .ios {
@@ -417,10 +420,6 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
-	if g.pref.build_mode != .build_module {
-		// _STR functions should not be defined in builtin.o
-		g.write_str_fn_definitions()
-	}
 	g.write_sorted_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
@@ -1938,7 +1937,8 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	for mut template in stmt.templates {
+	for template_tmp in stmt.templates {
+		mut template := template_tmp
 		g.write('"')
 		if template.is_directive {
 			g.write('.')
@@ -2775,9 +2775,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_
 		if add_eq {
 			g.write('=')
 		}
-		g.write(' array_clone_static(')
+		g.write(' array_clone_static_to_depth(')
 		g.expr(val)
-		g.write(')')
+		elem_type := (right_sym.info as ast.Array).elem_type
+		array_depth := g.get_array_depth(elem_type)
+		g.write(', $array_depth)')
 	} else if g.is_autofree && right_sym.kind == .string {
 		if add_eq {
 			g.write('=')
@@ -4128,7 +4130,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if is_expr && tmp_var.len == 0 {
 						g.write(' : ')
 					} else {
-						g.writeln('')
 						g.write_v_source_line_info(branch.pos)
 						g.write('else ')
 					}
@@ -4169,7 +4170,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
-				g.write('}')
+				g.writeln('}')
+				g.stmt_path_pos << g.out.len
 			}
 			sumtype_index++
 			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
@@ -5735,7 +5737,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
-				if !elem_sym.is_builtin() {
+				if !elem_sym.is_builtin() && !typ.info.elem_type.has_flag(.generic) {
 					// .array_fixed {
 					styp := typ.cname
 					// array_fixed_char_300 => char x[300]
@@ -5912,6 +5914,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.indent--
 		} else {
 			g.stmts(stmts)
+			if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
@@ -5942,7 +5947,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 	}
-	g.write('}')
+	g.writeln('}')
 }
 
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
@@ -6400,32 +6405,26 @@ fn (mut g Gen) interface_table() string {
 		interface_name := ityp.cname
 		// generate a struct that references interface methods
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
-		mut methods_typ_def := strings.new_builder(100)
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('$methods_struct_name {')
-		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
 		mut methodidx := map[string]int{}
 		for k, method in inter_info.methods {
 			methodidx[method.name] = k
-			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)
-			methods_typ_def.write_string('typedef $ret_styp (*$typ_name)(void* _')
+			methods_struct_def.write_string('\t$ret_styp (*_method_${c_name(method.name)})(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
 				arg := method.params[i]
-				methods_typ_def.write_string(', ${g.typ(arg.typ)} $arg.name')
+				methods_struct_def.write_string(', ${g.typ(arg.typ)} $arg.name')
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
-			methods_typ_def.writeln(');')
-			methods_struct_def.writeln('\t$typ_name _method_${c_name(method.name)};')
-			imethods[method.name] = typ_name
+			methods_struct_def.writeln(');')
 		}
 		methods_struct_def.writeln('};')
 		// generate an array of the interface methods for the structs using the interface
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
 		//
-		mut staticprefix := 'static'
 		iname_table_length := inter_info.types.len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
@@ -6462,7 +6461,7 @@ fn (mut g Gen) interface_table() string {
 			current_iinidx++
 			if ityp.name != 'vweb.DbInterface' { // TODO remove this
 				// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-				sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+				sb.writeln('static $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
 				mut cast_struct := strings.new_builder(100)
 				cast_struct.writeln('($interface_name) {')
 				cast_struct.writeln('\t\t._$cctype = x,')
@@ -6490,7 +6489,7 @@ fn (mut g Gen) interface_table() string {
 
 				cast_functions.writeln('
 // Casting functions for converting "$cctype" to interface "$interface_name"
-$staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
+static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
 }')
 			}
@@ -6499,7 +6498,7 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 				methods_struct.writeln('\t{')
 			}
 			for _, method in st_sym.methods {
-				if method.name !in imethods {
+				if method.name !in methodidx {
 					// a method that is not part of the interface should be just skipped
 					continue
 				}
@@ -6555,7 +6554,6 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 		sb.writeln('')
 		if inter_info.methods.len > 0 {
 			sb.writeln(methods_wrapper.str())
-			sb.writeln(methods_typ_def.str())
 			sb.writeln(methods_struct_def.str())
 			sb.writeln(methods_struct.str())
 		}
@@ -6595,6 +6593,17 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 fn (mut g Gen) trace(fbase string, message string) {
 	if g.file.path_base == fbase {
 		println('> g.trace | ${fbase:-10s} | $message')
+	}
+}
+
+pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
+	typ := g.unwrap_generic(el_typ)
+	sym := g.table.get_final_type_symbol(typ)
+	if sym.kind == .array {
+		info := sym.info as ast.Array
+		return 1 + g.get_array_depth(info.elem_type)
+	} else {
+		return 0
 	}
 }
 
