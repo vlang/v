@@ -248,11 +248,7 @@ pub fn (a string) clone() string {
 		return ''
 	}
 	mut b := string{
-		str: $if gcboehm_opt ? {
-			unsafe { C.GC_MALLOC_ATOMIC(a.len + 1) }
-		} $else {
-			unsafe { malloc(a.len + 1) }
-		}
+		str: unsafe { malloc_noscan(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -307,11 +303,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
-	mut b := $if gcboehm_opt ? {
-		unsafe { C.GC_MALLOC_ATOMIC(new_len + 1) }
-	} $else {
-		unsafe { malloc(new_len + 1) } // add space for the null byte at the end
-	}
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -414,11 +406,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort2()
-	mut b := $if gcboehm_opt ? {
-		unsafe { C.GC_MALLOC_ATOMIC(new_len + 1) }
-	} $else {
-		unsafe { malloc(new_len + 1) } // add space for 0 terminator
-	}
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -544,11 +532,7 @@ fn (s string) < (a string) bool {
 fn (s string) + (a string) string {
 	new_len := a.len + s.len
 	mut res := string{
-		str: $if gcboehm_opt ? {
-			unsafe { C.GC_MALLOC_ATOMIC(new_len + 1) }
-		} $else {
-			unsafe { malloc(new_len + 1) }
-		}
+		str: unsafe { malloc_noscan(new_len + 1) }
 		len: new_len
 	}
 	for j in 0 .. s.len {
@@ -692,11 +676,7 @@ pub fn (s string) substr(start int, end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: $if gcboehm_opt ? {
-			unsafe { C.GC_MALLOC_ATOMIC(len + 1) }
-		} $else {
-			unsafe { malloc(len + 1) }
-		}
+		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
 	for i in 0 .. len {
@@ -968,11 +948,7 @@ pub fn (s string) ends_with(p string) bool {
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
 	unsafe {
-		mut b := $if gcboehm_opt ? {
-			C.GC_MALLOC_ATOMIC(s.len + 1)
-		} $else {
-			malloc(s.len + 1)
-		}
+		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
@@ -1001,11 +977,7 @@ pub fn (s string) is_lower() bool {
 // Example: assert 'Hello V'.to_upper() == 'HELLO V'
 pub fn (s string) to_upper() string {
 	unsafe {
-		mut b := $if gcboehm_opt ? {
-			C.GC_MALLOC_ATOMIC(s.len + 1)
-		} $else {
-			malloc(s.len + 1)
-		}
+		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
@@ -1290,7 +1262,7 @@ pub fn (s string) ustring() ustring {
 	mut res := ustring{
 		s: s // runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
-		runes: __new_array_noscan(0, s.len, int(sizeof(int)))
+		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(unsafe { s.str[i] })
@@ -1614,11 +1586,7 @@ pub fn (a []string) join(sep string) string {
 	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
-		str: $if gcboehm_opt ? {
-			unsafe { C.GC_MALLOC_ATOMIC(len + 1) }
-		} $else {
-			unsafe { malloc(len + 1) }
-		}
+		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
 	mut idx := 0
@@ -1653,11 +1621,7 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: $if gcboehm_opt ? {
-			unsafe { C.GC_MALLOC_ATOMIC(s.len + 1) }
-		} $else {
-			unsafe { malloc(s.len + 1) }
-		}
+		str: unsafe { malloc_noscan(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -1712,11 +1676,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s.clone()
 	}
-	mut ret := $if gcboehm_opt ? {
-		unsafe { C.GC_MALLOC_ATOMIC(s.len * count + 1) }
-	} $else {
-		unsafe { malloc(s.len * count + 1) }
-	}
+	mut ret := unsafe { malloc_noscan(s.len * count + 1) }
 	for i in 0 .. count {
 		for j in 0 .. s.len {
 			unsafe {
@@ -1793,11 +1753,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := $if gcboehm_opt ? {
-		unsafe { C.GC_MALLOC_ATOMIC(s.len + 1) }
-	} $else {
-		unsafe { malloc(s.len + 1) }
-	}
+	mut ret := unsafe { malloc_noscan(s.len + 1) }
 	mut count := 0
 	for i := 0; i < s.len; i++ {
 		if s[i] in [10, 13] {
