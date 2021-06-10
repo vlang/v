@@ -160,7 +160,13 @@ fn (mut f MDFile) progress(message string) {
 	}
 }
 
+struct Headline {
+	level int
+	line  int
+}
+
 fn (mut f MDFile) check() CheckResult {
+	mut headlines := map[string]Headline{}
 	mut res := CheckResult{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
@@ -185,6 +191,21 @@ fn (mut f MDFile) check() CheckResult {
 				eprintln(eline(f.path, j, line.len, 'line too long'))
 				eprintln(line)
 				res.errors++
+			}
+		}
+		if f.state == .markdown && line.starts_with('#') {
+			if headline_start_pos := line.index(' ') {
+				headline := line.substr(headline_start_pos + 1, line.len)
+				if headline in headlines {
+					eprintln(eline(f.path, j, line.len, 'broken headline link - other headline with same wording exists'))
+					eprintln(line)
+					res.errors++
+				} else {
+					headlines[headline] = Headline{
+						level: headline_start_pos
+						line: j
+					}
+				}
 			}
 		}
 		f.parse_line(j, line)
