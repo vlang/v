@@ -19,7 +19,7 @@ struct User {
 }
 
 struct Parent {
-	id       int      [primary; sql: serial]
+	id       int     [primary; sql: serial]
 	name     string
 	children []Child [fkey: 'parent_id']
 }
