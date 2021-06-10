@@ -2,6 +2,8 @@ import net
 
 $if windows {
 	#include <afunix.h>
+} $else {
+	#include <sys/un.h>
 }
 
 struct C.sockaddr_in6 {
