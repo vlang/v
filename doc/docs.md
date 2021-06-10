@@ -2119,6 +2119,9 @@ fn calc() {
 	println(mymodule.golden_ratio)
 }
 ```
+The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
+a `const ( )` block.
+
 Outside from module main all constants need to be prefixed with the module name.
 
 ### Required module prefix
