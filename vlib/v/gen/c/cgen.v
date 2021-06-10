@@ -4233,6 +4233,27 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.expr(expr)
 						g.write(')')
 					}
+				} else if type_sym.kind == .array {
+					ptr_typ := g.gen_array_equality_fn(node.cond_type)
+					g.write('${ptr_typ}_arr_eq(')
+					g.write(cond_var)
+					g.write(', ')
+					g.expr(expr)
+					g.write(')')
+				} else if type_sym.kind == .array_fixed {
+					ptr_typ := g.gen_fixed_array_equality_fn(node.cond_type)
+					g.write('${ptr_typ}_arr_eq(')
+					g.write(cond_var)
+					g.write(', ')
+					g.expr(expr)
+					g.write(')')
+				} else if type_sym.kind == .map {
+					ptr_typ := g.gen_map_equality_fn(node.cond_type)
+					g.write('${ptr_typ}_map_eq(')
+					g.write(cond_var)
+					g.write(', ')
+					g.expr(expr)
+					g.write(')')
 				} else if expr is ast.RangeExpr {
 					// if type is unsigned and low is 0, check is unneeded
 					mut skip_low := false
