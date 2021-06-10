@@ -20,8 +20,10 @@ fn handle_conn(mut c net.TcpConn) {
 }
 
 fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
+	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return none }
+	eprintln('    > new_conn: $new_conn')
 	handle_conn(mut new_conn)
 	new_conn.close() or {}
 	return none
@@ -52,9 +54,12 @@ fn test_tcp_ip6() {
 	eprintln('\n>>> ${@FN}')
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
+	dump(l)
 	start_echo_server(mut l)
 	echo(address) or { panic(err) }
 	l.close() or {}
+	// ensure there is at least one new socket created before the next test
+	l = net.listen_tcp(.ip6, ':${test_port + 1}') or { panic(err) }
 }
 
 fn start_echo_server(mut l net.TcpListener) {
@@ -67,6 +72,7 @@ fn test_tcp_ip() {
 	eprintln('\n>>> ${@FN}')
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip, address) or { panic(err) }
+	dump(l)
 	start_echo_server(mut l)
 	echo(address) or { panic(err) }
 	l.close() or {}
