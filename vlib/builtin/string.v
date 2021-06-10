@@ -1262,7 +1262,11 @@ pub fn (s string) ustring() ustring {
 	mut res := ustring{
 		s: s // runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
-		runes: __new_array(0, s.len, int(sizeof(int)))
+	}
+	$if gcboehm_opt ? {
+		res.runes = __new_array_noscan(0, s.len, int(sizeof(int)))
+	} $else {
+		res.runes = __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(unsafe { s.str[i] })
@@ -1282,7 +1286,11 @@ __global (
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
-		g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
+		$if gcboehm_opt ? {
+			g_ustring_runes = __new_array_noscan(0, 128, int(sizeof(int)))
+		} $else {
+			g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
+		}
 	}
 	mut res := ustring{
 		s: s
@@ -1311,7 +1319,11 @@ fn (u ustring) < (a ustring) bool {
 fn (u ustring) + (a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
-		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
+	}
+	$if gcboehm_opt ? {
+		res.runes = __new_array_noscan(0, u.s.len + a.s.len, int(sizeof(int)))
+	} $else {
+		res.runes = __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {
