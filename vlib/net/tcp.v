@@ -7,6 +7,7 @@ const (
 	tcp_default_write_timeout = 30 * time.second
 )
 
+[heap]
 pub struct TcpConn {
 pub mut:
 	sock TcpSocket
