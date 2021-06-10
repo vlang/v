@@ -3268,6 +3268,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left is ast.CallExpr {
 			c.error('cannot call function `${left.name}()` on the left side of an assignment',
 				left.pos)
+		} else if left is ast.IndexExpr {
+			if left.index is ast.RangeExpr {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
