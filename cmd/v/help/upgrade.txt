@@ -1,0 +1,8 @@
+Usage:
+  v upgrade
+	Upgrades all outdated modules.
+
+Options:
+  -help        - Show usage info.
+  -v           - Print more details about the performed operation.
+  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.
