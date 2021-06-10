@@ -2274,16 +2274,17 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 				g.expr(lx)
+				noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 				if is_opt {
 					mr_base_styp := g.base_type(return_type)
 					if is_auto_heap {
-						g.writeln(' = HEAP($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+						g.writeln(' = HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
 					} else {
 						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
 					}
 				} else {
 					if is_auto_heap {
-						g.writeln(' = HEAP($styp, ${mr_var_name}.arg$i);')
+						g.writeln(' = HEAP${noscan}($styp, ${mr_var_name}.arg$i);')
 					} else {
 						g.writeln(' = ${mr_var_name}.arg$i;')
 					}
@@ -3750,9 +3751,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// arr << val
 		tmp := g.new_tmp_var()
 		info := left_final_sym.info as ast.Array
+		noscan := g.check_noscan(info.elem_type)
 		if right_final_sym.kind == .array && info.elem_type != g.unwrap_generic(node.right_type) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
-			g.write('_PUSH_MANY(')
+			g.write('_PUSH_MANY${noscan}(')
 			mut expected_push_many_atype := left_type
 			if !expected_push_many_atype.is_ptr() {
 				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &
@@ -3769,7 +3771,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
-			g.write('array_push((array*)')
+			g.write('array_push${noscan}((array*)')
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
@@ -6648,6 +6650,15 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 			info := sym.info as ast.Aggregate
 			for atyp in info.types {
 				if g.contains_ptr(atyp) {
+					return true
+				}
+			}
+			return false
+		}
+		.multi_return {
+			info := sym.info as ast.MultiReturn
+			for mrtyp in info.types {
+				if g.contains_ptr(mrtyp) {
 					return true
 				}
 			}

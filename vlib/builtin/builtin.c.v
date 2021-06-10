@@ -408,6 +408,17 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	}
 }
 
+[unsafe]
+pub fn memdup_noscan(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc_noscan(1)
+	}
+	unsafe {
+		mem := vcalloc_noscan(sz)
+		return C.memcpy(mem, src, sz)
+	}
+}
+
 [inline]
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking ? {
