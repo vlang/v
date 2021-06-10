@@ -100,7 +100,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Package management](#package-management)
+    * [Manage Packages](#manage-packages)
 	* [Publish package](#publish-package)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
@@ -2244,7 +2244,7 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
-### Package management
+### Manage Packages
 
 Briefly:
 
