@@ -875,9 +875,12 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.variadic) {
 				res = t.type_to_str_using_aliases(t.value_type(typ), import_aliases)
 			} else {
-				info := sym.info as Array
-				elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
-				res = '[]$elem_str'
+				if sym.info is Array {
+					elem_str := t.type_to_str_using_aliases(sym.info.elem_type, import_aliases)
+					res = '[]$elem_str'
+				} else {
+					res = 'array'
+				}
 			}
 		}
 		.array_fixed {
