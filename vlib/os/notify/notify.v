@@ -2,7 +2,7 @@ module notify
 
 import time
 
-// Not strictly necessary but provides a good template when writing the backends
+// Backends should provide a `new() ?FdNotifier` function
 interface FdNotifier {
 	add(fd int, events FdEventType, conf ...FdConfigFlags) ?
 	remove(fd int) ?

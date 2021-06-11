@@ -39,14 +39,16 @@ pub:
 	kind FdEventType
 }
 
-pub fn new() ?EpollNotifier {
+pub fn new() ?FdNotifier {
 	fd := C.epoll_create1(0) // 0 indicates default behavior
 	if fd == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}
-	return EpollNotifier{
+	// Needed to circumvent V limitations
+	x := &EpollNotifier{
 		epoll_fd: fd
 	}
+	return x
 }
 
 const (
