@@ -25,7 +25,7 @@ fn C.epoll_ctl(int, int, int, &C.epoll_event) int
 fn C.epoll_wait(int, &C.epoll_event, int, int) int
 
 [noinit]
-pub struct EpollNotifier {
+struct EpollNotifier {
 	epoll_fd int
 mut:
 	watching map[int]bool
@@ -33,7 +33,7 @@ mut:
 }
 
 [noinit]
-pub struct EpollEvent {
+struct EpollEvent {
 pub:
 	fd   int
 	kind FdEventType
@@ -64,7 +64,7 @@ const (
 	epoll_exclusive    = u32(C.EPOLLEXCLUSIVE)
 )
 
-pub fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
+fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
 	if fd in en.watching {
 		// TODO: we could modify / overwrite existing event
 		return error('already watching fd $fd')
@@ -81,7 +81,7 @@ pub fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFl
 	en.watching[fd] = true
 }
 
-pub fn (mut en EpollNotifier) remove(fd int) ? {
+fn (mut en EpollNotifier) remove(fd int) ? {
 	if fd !in en.watching {
 		return error('not watching fd $fd')
 	}
@@ -92,7 +92,7 @@ pub fn (mut en EpollNotifier) remove(fd int) ? {
 }
 
 [direct_array_access]
-pub fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
+fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	if en.events.cap < en.watching.len {
 		en.events.grow_cap(en.watching.len - en.events.cap)
 	}
@@ -114,7 +114,7 @@ pub fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 				// (or possibly garbage)
 				panic('encountered an empty event kind; this is most likely due to using tcc')
 			}
-			arr << EpollEvent{
+			arr << &EpollEvent{
 				fd: fd
 				kind: kind
 			}
@@ -124,7 +124,7 @@ pub fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	return []
 }
 
-pub fn (mut en EpollNotifier) close() ? {
+fn (mut en EpollNotifier) close() ? {
 	if C.close(en.epoll_fd) == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}

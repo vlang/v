@@ -3,14 +3,14 @@ module notify
 import time
 
 // Backends should provide a `new() ?FdNotifier` function
-interface FdNotifier {
+pub interface FdNotifier {
 	add(fd int, events FdEventType, conf ...FdConfigFlags) ?
 	remove(fd int) ?
 	wait(timeout time.Duration) []FdEvent
 	close() ?
 }
 
-interface FdEvent {
+pub interface FdEvent {
 	fd int
 	kind FdEventType
 }
