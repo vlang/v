@@ -4254,6 +4254,13 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(', ')
 					g.expr(expr)
 					g.write(')')
+				} else if type_sym.kind == .struct_ {
+					ptr_typ := g.gen_struct_equality_fn(node.cond_type)
+					g.write('${ptr_typ}_struct_eq(')
+					g.write(cond_var)
+					g.write(', ')
+					g.expr(expr)
+					g.write(')')
 				} else if expr is ast.RangeExpr {
 					// if type is unsigned and low is 0, check is unneeded
 					mut skip_low := false
