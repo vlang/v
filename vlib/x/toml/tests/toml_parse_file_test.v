@@ -12,5 +12,5 @@ title = "TOML Example"
 	os.write_file(test_file, toml_str) or { assert false }
 	ast_root := toml.parse_file(test_file)
 	eprintln('$ast_root')
-	assert false
+	//assert false
 }

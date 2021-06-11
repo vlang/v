@@ -35,19 +35,38 @@ pub fn new_parser(config Config) Parser {
 	}
 }
 
+pub fn (mut p Parser) init() {
+	p.tok = p.scanner.scan()
+	p.peek_tok = p.scanner.scan()
+}
+
 pub fn (mut p Parser) parse() &ast.Root {
 	mut root := &ast.Root{}
-	p.next()
+	mut parent := root
+	p.init()
 	for p.tok.kind != .eof {
 		p.next()
 		match p.tok.kind {
+			.assign {
+				parent.children << p.assign()
+			}
 			.hash {
-				root.children << p.comment()
+				parent.children << p.comment()
+			}
+			.name {
+				parent.children << p.identifier()
+			}
+			.string {
+				parent.children << p.assign()
+			}
+			.eof {
+				parent.children << p.eof()
 			}
 			else {
-				panic(@MOD + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}")\n$p.tok\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+				panic(@MOD + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
 			}
 		}
+
 	}
 	return root
 }
@@ -59,10 +78,40 @@ fn (mut p Parser) next() {
 }
 
 pub fn (mut p Parser) comment() &ast.Comment {
-	//println('parsed comment "${p.tok.lit}"')
-	p.next()
+	//println('parsed "${p.tok.lit}"')
 	return &ast.Comment{
 		text: p.tok.lit
+		pos: p.tok.position()
+	}
+}
+
+pub fn (mut p Parser) identifier() &ast.Identifier {
+	//println('parsed comment "${p.tok.lit}"')
+	return &ast.Identifier{
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
+}
+
+pub fn (mut p Parser) assign() &ast.Assign {
+	//println('parsed "${p.tok.lit}"')
+	return &ast.Assign {
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
+}
+
+pub fn (mut p Parser) sstring() &ast.String {
+	//println('parsed "${p.tok.lit}"')
+	return &ast.String {
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
+}
+
+pub fn (mut p Parser) eof() &ast.EOF {
+	//println('parsed "${p.tok.lit}"')
+	return &ast.EOF {
 		pos: p.tok.position()
 	}
 }

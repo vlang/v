@@ -10,7 +10,7 @@ interface Node {
 	children []&Node
 }
 
-//pub type Node = Root | Comment
+//pub type Node = Root | Comment | Identifier
 
 // Root represents the root structure of any parsed TOML text snippet or file.
 [heap]
@@ -24,7 +24,7 @@ pub mut:
 }
 
 pub fn (r Root) str() string {
-	mut s := '${typeof(r).name}{\n'
+	mut s := typeof(r).name+'{\n'
 	s += '  input:  $r.input\n'
 	s += '  children:  $r.children\n'
 	s += '}'
