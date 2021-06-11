@@ -1,0 +1,8 @@
+Usage: v self
+
+Rebuilds V with the passed options.
+
+Options:
+  -debug       - Display debugging info.
+  
+  Others: All other options are passed to the rebuild command. (e.g. -prod)

@@ -1,0 +1,7 @@
+Usage: v upgrade
+
+Upgrades all outdated modules.
+
+Options:
+  -help        - Show usage info.
+  -v           - Print more details about the performed operation.
