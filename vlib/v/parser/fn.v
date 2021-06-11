@@ -353,7 +353,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		mut is_non_local := type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v
 		// check maps & arrays, must be defined in same module as the elem type
-		if !is_non_local && type_sym.kind in [.array, .map] {
+		if !is_non_local && !(p.builtin_mod && p.pref.is_fmt) && type_sym.kind in [.array, .map] {
 			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec.typ))
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
