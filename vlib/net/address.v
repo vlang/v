@@ -3,8 +3,6 @@ module net
 import io.util
 import os
 
-const max_unix_path = 104
-
 union AddrData {
 	Unix
 	Ip

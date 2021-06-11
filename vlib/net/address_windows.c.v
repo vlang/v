@@ -1,5 +1,7 @@
 module net
 
+const max_unix_path = 110
+
 [_pack: '2']
 struct Ip6 {
 	port u16
@@ -18,7 +20,6 @@ struct Ip {
 
 struct Unix {
 	path [max_unix_path]byte
-	sun_pad [6]byte
 }
 
 [_pack: '8']
