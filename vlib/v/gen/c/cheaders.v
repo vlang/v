@@ -50,6 +50,7 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 '
 
 const c_common_macros = '
+typedef unsigned char u8;
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION
@@ -194,7 +195,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
-#define _SLIT0 (string){.len=0} 
+#define _SLIT0 (string){.len=0}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 //#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 // take the address of an rvalue
