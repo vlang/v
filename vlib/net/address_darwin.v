@@ -1,5 +1,7 @@
 module net
 
+const max_unix_path = 104
+
 [_pack: '2']
 struct Ip6 {
 	port      u16
@@ -28,6 +30,7 @@ struct Unix {
 [_pack: '2']
 struct Addr {
 pub:
+	len  u8
 	f    u16
 	addr AddrData
 }
