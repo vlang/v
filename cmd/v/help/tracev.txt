@@ -1,0 +1,5 @@
+Usage: v tracev <target.v|target_directory>
+
+Compile with tracing options enabled.
+
+Options: All options are passed to the build command.
