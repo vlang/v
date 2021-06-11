@@ -9,6 +9,7 @@ import rand
 import term
 import vhelp
 import v.pref
+import regex
 
 const (
 	too_long_line_length = 100
@@ -165,8 +166,21 @@ struct Headline {
 	line  int
 }
 
+struct HeadlineReference {
+	line  int
+	lable string
+	link  string
+}
+
+struct HeadlineReferenceList {
+mut:
+	list []HeadlineReference
+}
+
 fn (mut f MDFile) check() CheckResult {
-	mut headlines := map[string]Headline{}
+	mut headlines := map[string]&Headline{}
+	mut headlines_refs := map[string]&Headline{}
+	mut headline_references := HeadlineReferenceList{}
 	mut res := CheckResult{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
@@ -197,18 +211,30 @@ fn (mut f MDFile) check() CheckResult {
 			if headline_start_pos := line.index(' ') {
 				headline := line.substr(headline_start_pos + 1, line.len)
 				if headline in headlines {
-					eprintln(eline(f.path, j, line.len, 'broken headline link - other headline with same wording exists'))
+					eprintln(eline(f.path, j, line.len, 'dupplicated headline wording - headline with same wording exists at $f.path:${headlines[headline].line}'))
 					eprintln(line)
 					res.errors++
 				} else {
-					headlines[headline] = Headline{
+					h := Headline{
 						level: headline_start_pos
 						line: j
 					}
+					headlines[headline] = &h
+					headlines_refs[create_ref_link(headline)] = &h
 				}
 			}
 		}
+		if f.state == .markdown && line.contains('](#') {
+			headline_references.add_ref_links(j, line)
+		}
 		f.parse_line(j, line)
+	}
+
+	for ref in headline_references.list {
+		if !(ref.link in headlines_refs) {
+			eprintln(eline(f.path, ref.line, 0, 'broken local headline link [$ref.lable](#$ref.link)'))
+			res.errors++
+		}
 	}
 	res += f.check_examples()
 	return res
@@ -253,6 +279,27 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 	if f.state == .vexample {
 		f.current.text << line
 	}
+}
+
+fn (mut hl HeadlineReferenceList) add_ref_links(line_number int, line string) {
+	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z\-]+)\)'
+	mut re := regex.regex_opt(query) or { panic(err) }
+	res := re.find_all_str(line)
+
+	for elem in res {
+		re.match_string(elem)
+		hl.list << HeadlineReference{
+			line: line_number
+			lable: re.get_group_by_name(elem, 'lable')
+			link: re.get_group_by_name(elem, 'link')
+		}
+	}
+}
+
+fn create_ref_link(s string) string {
+	query_remove := r'[^a-z \-]'
+	mut re := regex.regex_opt(query_remove) or { panic(err) }
+	return re.replace_simple(s.to_lower(), '').replace(' ', '-')
 }
 
 fn (mut f MDFile) debug() {

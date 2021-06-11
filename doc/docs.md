@@ -2270,7 +2270,7 @@ You can also install modules already created by someone else with [VPM](https://
 ```powershell
 v install [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v install ui
 ```
@@ -2280,7 +2280,7 @@ Removing a module with v:
 ```powershell
 v remove [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v remove ui
 ```
@@ -2290,7 +2290,7 @@ Updating an installed module from [VPM](https://vpm.vlang.io/):
 ```powershell
 v update [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v update ui
 ```
@@ -2305,7 +2305,7 @@ To see all the modules you have installed, you can use:
 ```powershell
 v list
 ```
-###### Example
+**Example:**
 ```powershell
 > v list
 Installed modules:
@@ -2318,7 +2318,7 @@ outdated          Show installed modules that need updates.
 ```powershell
 v outdated
 ```
-###### Example
+**Example:**
 ```powershell
 > v outdated
 Modules are up to date.
