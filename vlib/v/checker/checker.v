@@ -7379,7 +7379,7 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return error('unknown type')
+		return
 	}
 	sym := c.table.get_type_symbol(typ)
 	match sym.kind {
@@ -7387,7 +7387,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 			if sym.language == .v && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					pos)
-				return error('unknown type')
+				return
 			}
 		}
 		.int_literal, .float_literal {
@@ -7400,7 +7400,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 					'unknown type `$sym.name`.\nDid you mean `f64`?'
 				}
 				c.error(msg, pos)
-				return error(msg)
+				return
 			}
 		}
 		.array {

@@ -332,10 +332,9 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 }
 
 pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
-	if c.check_types(got, expected) {
-		return
+	if !c.check_types(got, expected) {
+		return error(c.expected_msg(got, expected))
 	}
-	return error(c.expected_msg(got, expected))
 }
 
 [inline]
