@@ -5933,13 +5933,8 @@ fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
-	is_none_ok := mr_styp == 'void'
 	g.writeln(';')
-	if is_none_ok {
-		g.writeln('if (${cvar_name}.state != 0 && ${cvar_name}.err._typ != _IError_None___index) {')
-	} else {
-		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
-	}
+	g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	if or_block.kind == .block {
 		if g.inside_or_block {
 			g.writeln('\terr = ${cvar_name}.err;')

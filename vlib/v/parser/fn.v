@@ -512,13 +512,13 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	rec.typ = p.parse_type_with_mut(rec.is_mut)
 	if rec.typ.idx() == 0 {
 		// error is set in parse_type
-		return none
+		return error('void receiver type')
 	}
 	rec.type_pos = rec.type_pos.extend(p.prev_tok.position())
 	if is_amp && rec.is_mut {
 		p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
 			lpar_pos.extend(p.tok.position()))
-		return none
+		return error('invalid `mut f &Foo`')
 	}
 	if is_shared {
 		rec.typ = rec.typ.set_flag(.shared_f)
