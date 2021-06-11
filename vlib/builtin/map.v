@@ -800,6 +800,16 @@ pub fn (m &map) free() {
 [inline]
 fn new_dense_array_noscan(key_bytes int, keys_noscan bool, value_bytes int, values_noscan bool) DenseArray {
 	cap := 8
+	keys := if keys_noscan {
+		unsafe { malloc_noscan(cap * key_bytes) }
+	} else {
+		unsafe { malloc(cap * key_bytes) }
+	}
+	values := if values_noscan {
+		unsafe { malloc_noscan(cap * value_bytes) }
+	} else {
+		unsafe { malloc(cap * value_bytes) }
+	}
 	return DenseArray{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -807,16 +817,8 @@ fn new_dense_array_noscan(key_bytes int, keys_noscan bool, value_bytes int, valu
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		keys: if keys_noscan {
-			unsafe { malloc_noscan(cap * key_bytes) }
-		} else {
-			unsafe { malloc(cap * key_bytes) }
-		}
-		values: if values_noscan {
-			unsafe { malloc_noscan(cap * value_bytes) }
-		} else {
-			unsafe { malloc(cap * value_bytes) }
-		}
+		keys: keys
+		values: values
 	}
 }
 
