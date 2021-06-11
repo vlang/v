@@ -7260,7 +7260,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		&& (node.is_method || node.name !in ['panic', 'exit']) {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
-		} else {
+		} else if !node.attrs.contains('_naked') {
 			c.error('missing return at end of function `$node.name`', node.pos)
 		}
 	}

@@ -332,7 +332,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	} else {
 		g.defer_stmts = []
 	}
-	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return {
+	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return
+		&& !node.attrs.contains('_naked') {
 		default_expr := g.type_default(node.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
@@ -1353,6 +1354,9 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
 				// repeated invocations of the function with the same argument values.
 				g.write('__attribute__((const)) ')
+			}
+			'_naked' {
+				g.write('__attribute__((naked)) ')
 			}
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)
