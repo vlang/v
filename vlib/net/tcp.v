@@ -39,12 +39,11 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 	}
 	// failed
-	return none
+	return error('dial_tcp failed')
 }
 
 pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 // write_ptr blocks and attempts to write all data
@@ -220,7 +219,7 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 		l.wait_for_accept() ?
 		new_handle = C.accept(l.sock.handle, &addr, &size)
 		if new_handle == -1 || new_handle == 0 {
-			return none
+			return error('accept failed')
 		}
 	}
 	new_sock := tcp_socket_from_handle(new_handle) ?
@@ -235,7 +234,7 @@ pub fn (c &TcpListener) accept_deadline() ?time.Time {
 	if c.accept_deadline.unix != 0 {
 		return c.accept_deadline
 	}
-	return none
+	return error('invalid deadline')
 }
 
 pub fn (mut c TcpListener) set_accept_deadline(deadline time.Time) {
@@ -256,7 +255,6 @@ pub fn (mut c TcpListener) wait_for_accept() ? {
 
 pub fn (mut c TcpListener) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 pub fn (c &TcpListener) addr() ?Addr {
@@ -317,7 +315,6 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// }
 	x := int(value)
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
-	return none
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
@@ -327,7 +324,6 @@ pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int))) ?
-	return none
 }
 
 fn (mut s TcpSocket) close() ? {
@@ -344,9 +340,8 @@ const (
 
 fn (mut s TcpSocket) connect(a Addr) ? {
 	res := C.connect(s.handle, &a, a.len())
-
 	if res == 0 {
-		return none
+		return
 	}
 
 	// The  socket  is  nonblocking and the connection cannot be completed
@@ -367,7 +362,7 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 			return wrap_error(err)
 		}
 		// Succeeded
-		return none
+		return
 	}
 
 	// Get the error

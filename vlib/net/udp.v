@@ -257,7 +257,6 @@ pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// }
 	x := int(value)
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
-	return none
 }
 
 pub fn (mut s UdpSocket) set_dualstack(on bool) ? {

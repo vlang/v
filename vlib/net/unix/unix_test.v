@@ -30,7 +30,6 @@ fn echo_server(mut l unix.StreamListener) ? {
 		mut new_conn := l.accept() or { continue }
 		go handle_conn(mut new_conn)
 	}
-	return none
 }
 
 fn echo() ? {
@@ -47,7 +46,7 @@ fn echo() ? {
 		assert buf[i] == data[i]
 	}
 	println('Got "$buf.bytestr()"')
-	return none
+	return
 }
 
 fn test_tcp() {

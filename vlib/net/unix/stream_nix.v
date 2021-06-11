@@ -71,13 +71,13 @@ fn (mut s StreamSocket) connect(a string) ? {
 	// return none
 	//}
 	if res == 0 {
-		return none
+		return
 	}
 	_ := error_code()
 	write_result := s.@select(.write, unix.connect_timeout) ?
 	if write_result {
 		// succeeded
-		return none
+		return
 	}
 	except_result := s.@select(.except, unix.connect_timeout) ?
 	if except_result {
@@ -121,7 +121,7 @@ pub fn (mut l StreamListener) accept() ?&StreamConn {
 		l.wait_for_accept() ?
 		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
-			return none
+			return error('accept failed')
 		}
 	}
 	new_sock := StreamSocket{
@@ -138,7 +138,7 @@ pub fn (c &StreamListener) accept_deadline() ?time.Time {
 	if c.accept_deadline.unix != 0 {
 		return c.accept_deadline
 	}
-	return none
+	return error('no deadline')
 }
 
 pub fn (mut c StreamListener) set_accept_deadline(deadline time.Time) {
@@ -159,12 +159,10 @@ pub fn (mut c StreamListener) wait_for_accept() ? {
 
 pub fn (mut c StreamListener) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 pub fn (mut c StreamConn) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 // write_ptr blocks and attempts to write all data
@@ -231,7 +229,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
 	} else {
 		net.wrap_error(code) ?
 	}
-	return none
+	return net.socket_error(code)
 }
 
 pub fn (mut c StreamConn) read(mut buf []byte) ?int {

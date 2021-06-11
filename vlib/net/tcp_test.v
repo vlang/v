@@ -22,11 +22,10 @@ fn handle_conn(mut c net.TcpConn) {
 fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
-	mut new_conn := l.accept() or { return none }
+	mut new_conn := l.accept() or { return error('could not accept') }
 	eprintln('    > new_conn: $new_conn')
 	handle_conn(mut new_conn)
 	new_conn.close() or {}
-	return none
 }
 
 fn echo(address string) ? {
@@ -47,7 +46,6 @@ fn echo(address string) ? {
 		assert buf[i] == data[i]
 	}
 	println('Got "$buf.bytestr()"')
-	return none
 }
 
 fn test_tcp_ip6() {
