@@ -342,7 +342,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
 	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
-		&& (p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv'))
+		&& (p.file_base.ends_with('_test.v')
+		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test'))
 
 	// Register
 	if is_method {

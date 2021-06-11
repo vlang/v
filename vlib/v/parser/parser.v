@@ -900,7 +900,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			p.check(.name)
 		}
 		// dots are part of instructions for some riscv extensions
-		if arch in [.rv32, .rv64] {
+		if arch in [.rv32, .rv64, .amd64] {
 			for p.tok.kind == .dot {
 				name += '.'
 				p.next()
