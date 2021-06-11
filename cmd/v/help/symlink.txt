@@ -2,4 +2,4 @@ Usage: v symlink
 
 This command adds a symlink for the V compiler executable.
 
-Note that on Unix systems this command requires root to work properly.
+Note that on Unix systems this command requires access to /usr/local/bin to work.

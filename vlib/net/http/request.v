@@ -76,7 +76,6 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	scheme := url.scheme
 	p := url.path.trim_left('/')
 	path := if url.query().len > 0 { '/$p?$url.query().encode()' } else { '/$p' }
-	println(path)
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http' {
