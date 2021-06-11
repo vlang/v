@@ -6,7 +6,15 @@ import time
 
 struct C.epoll_event {
 	events u32
-	data   int
+	data   C.epoll_data_t
+}
+
+[typedef]
+union C.epoll_data_t {
+	ptr voidptr
+	fd int
+	u32 u32
+	u64 u64
 }
 
 fn C.epoll_create1(int) int
@@ -45,7 +53,7 @@ pub:
 }
 
 pub fn new_notifier() ?EpollNotifier {
-	fd := C.epoll_create1(0) // default behavior
+	fd := C.epoll_create1(0) // 0 indicates default behavior
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -71,7 +79,7 @@ pub const (
 pub fn (mut en EpollNotifier) add(fd int, flags u32) ? {
 	event := C.epoll_event{
 		events: flags
-		data: fd
+		data: C.epoll_data_t{ fd: fd }
 	}
 	if C.epoll_ctl(en.epoll_fd, C.EPOLL_CTL_ADD, fd, &event) == -1 {
 		return error(posix_get_error_msg(C.errno))
@@ -89,19 +97,29 @@ pub fn (mut en EpollNotifier) remove(fd int) ? {
 [direct_array_access]
 pub fn (mut en EpollNotifier) wait(timeout time.Duration) []EpollEvent {
 	if en.events.cap < en.num_watching {
-		en.events = []C.epoll_event{cap: en.num_watching}
+		en.events.grow_cap(en.num_watching - en.events.cap)
 	}
+	// populate en.events.data with the new events
 	count := C.epoll_wait(en.epoll_fd, en.events.data, en.events.cap, int(timeout / time.millisecond))
+
+	// set len to count
+	en.events.clear()
+	unsafe { en.events.grow_len(count) }
+
 	if count > 0 {
 		mut arr := []EpollEvent{cap: count}
-		// TODO: This is the best way I could find to interop with
-		//       a C union. Returning en.events[0].data directly results
-		//       in a C error.
 		for i := 0; i < count; i++ {
-			fd := &en.events[i].data
+			fd := unsafe { en.events[i].data.fd }
+			kind := event_mask_to_flag(en.events[i].events)
+			if kind.is_empty() {
+				// NOTE: tcc only reports the first event for some
+				// reason, leaving subsequent structs in the array as 0
+				// (or possibly garbage)
+				panic('encountered an empty event kind; this is most likely due to using tcc')
+			}
 			arr << EpollEvent{
-				fd: *fd
-				kind: event_mask_to_flag(en.events[i].events)
+				fd: fd
+				kind: kind
 			}
 		}
 		return arr
