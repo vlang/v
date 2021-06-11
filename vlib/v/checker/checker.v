@@ -3266,8 +3266,15 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	for i, left in node.left {
 		if left is ast.CallExpr {
+			// ban `foo() = 10`
 			c.error('cannot call function `${left.name}()` on the left side of an assignment',
 				left.pos)
+		} else if left is ast.PrefixExpr {
+			// ban `*foo() = 10`
+			if left.right is ast.CallExpr && left.op == .mul {
+				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
+					left.pos)
+			}
 		} else if left is ast.IndexExpr {
 			if left.index is ast.RangeExpr {
 				c.error('cannot reassign using range expression on the left side of an assignment',
