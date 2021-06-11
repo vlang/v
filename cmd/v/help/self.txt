@@ -2,4 +2,4 @@ Usage: v self
 
 Rebuild V with the passed options.
 
-Options: All other option are passed to the rebuild command. (e.g. -prod)
+Options: All other options are passed to the build command. (e.g. -prod)
