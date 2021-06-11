@@ -1,6 +1,6 @@
 Usage: v upgrade
 
-Upgrades all outdated modules.
+Upgrade all outdated modules.
 
 Options:
   -help        - Show usage info.

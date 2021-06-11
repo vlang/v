@@ -1,6 +1,6 @@
 Usage: v self
 
-Rebuilds V with the passed options.
+Rebuild V with the passed options.
 
 Options:
   -debug       - Display debugging info.
