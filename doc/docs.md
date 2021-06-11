@@ -83,7 +83,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Structs](#structs)
     * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
-    * [Short struct literal syntax](#short-struct-initialization-syntax)
+    * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [Unions](#unions)

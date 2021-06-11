@@ -233,6 +233,7 @@ fn (mut f MDFile) check() CheckResult {
 	for ref in headline_references.list {
 		if !(ref.link in headlines_refs) {
 			eprintln(eline(f.path, ref.line, 0, 'broken local headline link [$ref.lable](#$ref.link)'))
+			eprintln('')
 			res.errors++
 		}
 	}
