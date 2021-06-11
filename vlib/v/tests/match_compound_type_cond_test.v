@@ -36,7 +36,7 @@ fn test_match_array_or_map_cond() {
 	}
 	println('ret3 is $ret3')
 	assert ret3
-	
+
 	// struct
 	y4 := Foo{}
 	x4 := Foo{}
