@@ -159,7 +159,17 @@ pub fn new_table() &Table {
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
+	set_global_table(t)
 	return t
+}
+
+const global_table = &Table(0)
+
+pub fn set_global_table(t &Table) {
+	unsafe {
+		mut pg := &ast.global_table
+		*pg = t
+	}
 }
 
 // used to compare fn's & for naming anon fn's
