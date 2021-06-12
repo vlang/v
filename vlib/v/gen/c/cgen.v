@@ -1026,7 +1026,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				g.skip_stmt_pos = true
 				g.write('$tmp_var = ')
 				g.stmt(stmt)
-				g.writeln(';')
+				if !g.out.last_n(2).contains(';') {
+					g.writeln(';')
+				}
 			}
 		} else {
 			g.stmt(stmt)
@@ -4086,7 +4088,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if need_tmp_var {
 		g.empty_line = true
-		cur_line = g.go_before_stmt(0)
+		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		g.writeln('${g.typ(node.return_type)} $tmp_var;')
 	}
