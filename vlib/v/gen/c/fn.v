@@ -332,7 +332,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	} else {
 		g.defer_stmts = []
 	}
-	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return {
+	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return
+		&& !node.attrs.contains('_naked') {
 		default_expr := g.type_default(node.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
@@ -650,10 +651,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
 	mut array_depth := -1
+	mut noscan := ''
 	if left_sym.kind == .array {
-		if node.name in ['clone', 'repeat'] {
+		needs_depth := node.name in ['clone', 'repeat']
+		if needs_depth {
 			elem_type := (left_sym.info as ast.Array).elem_type
 			array_depth = g.get_array_depth(elem_type)
+		}
+		maybe_noscan := needs_depth
+			|| node.name in ['pop', 'push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
+		if maybe_noscan {
+			info := left_sym.info as ast.Array
+			noscan = g.check_noscan(info.elem_type)
 		}
 	} else if left_sym.kind == .chan {
 		if node.name in ['close', 'try_pop', 'try_push'] {
@@ -708,10 +717,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
-		if array_depth >= 0 {
-			name = name + '_to_depth'
+		if left_sym.kind == .array {
+			if array_depth >= 0 {
+				name = name + '_to_depth'
+			}
+			g.write('$name${noscan}(')
+		} else {
+			g.write('${name}(')
 		}
-		g.write('${name}(')
 	}
 	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
 		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
@@ -1167,7 +1180,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			g.expr(args[args.len - 1].expr)
 		} else {
 			if variadic_count > 0 {
-				g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
+				noscan := g.check_noscan(arr_info.elem_type)
+				g.write('new_array_from_c_array${noscan}($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
 				for j in arg_nr .. args.len {
 					g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
 					if j < args.len - 1 {
@@ -1340,6 +1354,9 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				// Declaring such functions with the const attribute allows GCC to avoid emitting some calls in
 				// repeated invocations of the function with the same argument values.
 				g.write('__attribute__((const)) ')
+			}
+			'_naked' {
+				g.write('__attribute__((naked)) ')
 			}
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)

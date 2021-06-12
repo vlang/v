@@ -121,10 +121,25 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
+			'memdup_noscan',
 			'__new_array_noscan',
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
+			'21.clone_static_to_depth_noscan',
+			'21.clone_to_depth_noscan',
+			'21.reverse_noscan',
+			'21.repeat_to_depth_noscan',
+			'65557.pop_noscan',
+			'65557.push_noscan',
+			'65557.push_many_noscan',
+			'65557.insert_noscan',
+			'65557.insert_many_noscan',
+			'65557.prepend_noscan',
+			'65557.prepend_many_noscan',
+			'65557.reverse_noscan',
+			'65557.grow_cap_noscan',
+			'65557.grow_len_noscan',
 		]
 	}
 

@@ -1242,7 +1242,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				}
 				if right_final.kind == .array
-					&& c.check_types(left_value_type, c.table.value_type(right_type)) {
+					&& c.check_array_value_types(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return ast.void_type
 				}
@@ -3266,8 +3266,20 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	for i, left in node.left {
 		if left is ast.CallExpr {
+			// ban `foo() = 10`
 			c.error('cannot call function `${left.name}()` on the left side of an assignment',
 				left.pos)
+		} else if left is ast.PrefixExpr {
+			// ban `*foo() = 10`
+			if left.right is ast.CallExpr && left.op == .mul {
+				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
+					left.pos)
+			}
+		} else if left is ast.IndexExpr {
+			if left.index is ast.RangeExpr {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
@@ -7255,7 +7267,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		&& (node.is_method || node.name !in ['panic', 'exit']) {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
-		} else {
+		} else if !node.attrs.contains('_naked') {
 			c.error('missing return at end of function `$node.name`', node.pos)
 		}
 	}
