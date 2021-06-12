@@ -635,7 +635,11 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
+	res := t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
+	if !res && t.kind == .alias {
+		return (t.info as Alias).parent_type.is_number()
+	}
+	return res
 }
 
 [inline]

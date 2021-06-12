@@ -49,7 +49,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.sql_expr()
 				p.inside_match = false
 			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
-				&& p.file_base == 'map.v') {
+				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
 				p.next() // `map`
 				p.next() // `{`
 				node = p.map_init()
