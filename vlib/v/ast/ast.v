@@ -12,9 +12,9 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
 	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
-	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
+	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | IsRefType | Likely | LockExpr |
 	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | RefType | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
@@ -1338,7 +1338,7 @@ pub mut:
 	typ Type
 }
 
-pub struct RefType {
+pub struct IsRefType {
 pub:
 	pos     token.Position
 pub mut:

@@ -229,7 +229,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			p.expr_mod = save_expr_mod
 			typ := p.parse_type()
 			p.check(.rpar)
-			node = ast.RefType{
+			node = ast.IsRefType{
 				typ: typ
 				pos: pos
 			}

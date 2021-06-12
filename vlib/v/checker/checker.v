@@ -4834,7 +4834,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			}
 			return ast.u32_type
 		}
-		ast.RefType {
+		ast.IsRefType {
 			return ast.bool_type
 		}
 		ast.OffsetOf {
