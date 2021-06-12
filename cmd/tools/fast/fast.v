@@ -7,10 +7,15 @@ import time
 // TODO -usecache
 const voptions = ' -skip-unused -show-timings -stats '
 
+const exe = os.executable()
+
+const fast_dir = os.dir(exe)
+
+const vdir = @VEXEROOT
+
 fn main() {
-	exe := os.executable()
-	fast_dir := os.dir(exe)
-	vdir := os.dir(os.dir(os.dir(fast_dir)))
+	dump(fast_dir)
+	dump(vdir)
 	os.chdir(fast_dir)
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
@@ -42,11 +47,11 @@ fn main() {
 	// exec('git checkout $commit')
 	println('  Building vprod...')
 	os.chdir(vdir)
-	exec('v -o $vdir/vprod -prod -prealloc cmd/v')
+	exec('$vdir/v -o $vdir/vprod -prod -prealloc cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
 	// cache vlib modules
-	exec('v wipe-cache')
-	// exec('v -o v2 -prod cmd/v')
+	exec('$vdir/v wipe-cache')
+	exec('$vdir/v -o v2 -prod cmd/v')
 	// measure
 	diff1 := measure('$vdir/vprod $voptions -o v.c cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
