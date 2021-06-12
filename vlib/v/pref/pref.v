@@ -67,7 +67,6 @@ pub enum Arch {
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
-	_max
 }
 
 const (
@@ -755,16 +754,20 @@ pub fn cc_from_string(cc_str string) CompilerType {
 }
 
 pub fn get_host_arch() Arch {
-	// NB: we can not use `$if arch` here, because V skips cgen for the non
-	// current comptime branches by default, so there is a bootstrapping
-	// problem => the __V_architecture macro is used to resolve it.
-	// TODO: think about how to solve it for non C backends, perhaps we
-	// need a comptime `$if native {` too, and/or a mechanism to always
-	// generate all branches for specific functions?
-	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
-		panic('unknown host CPU architecture')
+	$if amd64 {
+		return .amd64
 	}
-	return Arch(C.__V_architecture)
+	// $if i386 {
+	// 	return .amd64
+	// }
+	// $if arm64 { // requires new vc
+	$if aarch64 {
+		return .arm64
+	}
+	// $if arm32 {
+	// 	return .arm32
+	// }
+	panic('unknown host OS')
 }
 
 fn parse_define(mut prefs Preferences, define string) {
