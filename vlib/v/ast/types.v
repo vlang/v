@@ -51,7 +51,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.i386 {
 			Language.i386
 		}
-		._auto, ._max {
+		._auto {
 			Language.v
 		}
 	}
