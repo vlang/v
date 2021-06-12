@@ -202,7 +202,11 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 	addr := addrs[0]
 
 	// cast to the correct type
-	socket_error(C.bind(s.handle, &addr, addr.len())) ?
+	alen := addr.len()
+	dump(alen)
+	bindres := C.bind(s.handle, &addr, alen)
+	dump(bindres)
+	socket_error(bindres) ?
 	socket_error(C.listen(s.handle, 128)) ?
 	return &TcpListener{
 		sock: s

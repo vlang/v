@@ -13,6 +13,7 @@ $if windows {
 struct C.sockaddr_in6 {
 	sin6_addr int
 	sin6_port u16
+	sin6_family u16
 }
 
 struct C.sockaddr_in {
@@ -27,6 +28,7 @@ struct C.sockaddr_un {
 const aoffset = __offsetof(net.Addr, addr)
 
 fn test_offsets() {
+dump(__offsetof(C.sockaddr_in6, sin6_family))
 	assert __offsetof(C.sockaddr_in6, sin6_addr) == __offsetof(net.Ip6, addr) + aoffset
 	assert __offsetof(C.sockaddr_in, sin_addr) == __offsetof(net.Ip, addr) + aoffset
 	assert __offsetof(C.sockaddr_un, sun_path) == __offsetof(net.Unix, path) + aoffset

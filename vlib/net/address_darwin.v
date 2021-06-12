@@ -2,7 +2,7 @@ module net
 
 const max_unix_path = 104
 
-[_pack: '2']
+[_pack: '1']
 struct Ip6 {
 	port      u16
 	flow_info u32
@@ -23,6 +23,7 @@ struct Ip {
 	sin_pad [10]byte
 }
 
+[_pack: '1']
 struct Unix {
 	path [max_unix_path]byte
 }
