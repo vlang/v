@@ -1730,7 +1730,11 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	call_expr.receiver_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
-	mut unknown_method_msg := 'unknown method: `${left_type_sym.name}.$method_name`'
+	mut unknown_method_msg := if field := c.table.find_field(left_type_sym, method_name) {
+		'unknown method `$field.name` did you mean to access the field with the same name instead?'
+	} else {
+		'unknown method or field: `${left_type_sym.name}.$method_name`'
+	}
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return ast.void_type
@@ -2896,7 +2900,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return ast.u32_type
 		}
 	}
-	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
+	mut unknown_field_msg := 'type `$sym.name` has no field named `$field_name`'
 	mut has_field := false
 	mut field := ast.StructField{}
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
@@ -3054,7 +3058,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.type_implements(got_typ, exp_type, node.pos)
 				continue
 			}
-			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
+			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
@@ -3432,7 +3436,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
 				if left.op == .mul {
-					if !c.inside_unsafe {
+					if !c.inside_unsafe && !c.pref.translated {
 						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 							node.pos)
 					} else {
