@@ -46,7 +46,7 @@ fn main() {
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
 	// cache vlib modules
 	exec('v wipe-cache')
-	exec('v -o v2 -prod -usecache cmd/v')
+	// exec('v -o v2 -prod cmd/v')
 	// measure
 	diff1 := measure('$vdir/vprod $voptions -o v.c cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
