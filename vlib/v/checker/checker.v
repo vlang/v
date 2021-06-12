@@ -3058,7 +3058,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.type_implements(got_typ, exp_type, node.pos)
 				continue
 			}
-			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
+			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
