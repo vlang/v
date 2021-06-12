@@ -649,7 +649,7 @@ pub fn (mut u URL) set_path(p string) ?bool {
 // their results.
 // In general, code should call escaped_path instead of
 // reading u.raw_path directly.
-fn (u &URL) escaped_path() string {
+pub fn (u &URL) escaped_path() string {
 	if u.raw_path != '' && valid_encoded_path(u.raw_path) {
 		unescape(u.raw_path, .encode_path) or { return '' }
 		return u.raw_path
