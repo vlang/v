@@ -115,7 +115,12 @@ fn (mut app App) draw() {
 		sgl.rotate(v.angle, 0, 0, 1)
 		app.gg.draw_image_cfg(
 			img: &app.image
-			img_rect: { x: v.x, y: v.y, width: v.w, height: v.h }
+			img_rect: {
+				x: v.x
+				y: v.y
+				width: v.w
+				height: v.h
+			}
 			z: v.z
 		)
 		//
