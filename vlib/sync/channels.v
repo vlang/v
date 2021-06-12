@@ -121,8 +121,6 @@ pub:
 
 pub fn new_channel<T>(n u32) &Channel {
 	st := sizeof(T)
-	// TODO: compile time detection if `T` has to be scanned by GC like
-	// `if is_ref(T) { new_channel_st(...) } else { new_channel_st_noscan(...) }`
 	return new_channel_st(n, st)
 }
 
@@ -130,7 +128,7 @@ fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &byte(0) }
-	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
+	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { &byte(0) }
 	mut ch := &Channel{
 		objsize: st
 		cap: n
