@@ -4024,7 +4024,7 @@ created by the JS Backend (flag: `-b js`).
 
 `$` is used as a prefix for compile-time operations.
 
-#### $if
+#### `$if` condition
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -4076,7 +4076,7 @@ Full list of builtin options:
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
 | `solaris` | | | |
 
-#### $embed_file
+#### `$embed_file`
 
 ```v ignore
 import os
@@ -4099,7 +4099,7 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
-#### $tmpl for embedding and parsing V template files
+#### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
@@ -4149,7 +4149,7 @@ numbers: [1, 2, 3]
 
 
 
-#### $env
+#### `$env`
 
 ```v
 module main
