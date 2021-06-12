@@ -111,6 +111,8 @@ pub:
 
 pub fn new_channel<T>(n u32) &Channel {
 	st := sizeof(T)
+	// TODO: compile time detection if `T` has to be scanned by GC like
+	// `if is_ref(T) { new_channel_st(...) } else { new_channel_st_noscan(...) }`
 	return new_channel_st(n, st)
 }
 
