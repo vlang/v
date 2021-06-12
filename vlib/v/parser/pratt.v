@@ -190,7 +190,8 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				pos: pos
 			}
 		}
-		.key_sizeof {
+		.key_sizeof, .key_isreftype {
+			is_reftype := p.tok.kind == .key_isreftype
 			p.next() // sizeof
 			p.check(.lpar)
 			pos := p.tok.position()
@@ -198,10 +199,18 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			// assume mod. prefix leads to a type
 			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
 				expr := p.expr(0)
-				node = ast.SizeOf{
-					is_type: false
-					expr: expr
-					pos: pos
+				if is_reftype {
+					node = ast.IsRefType{
+						is_type: false
+						expr: expr
+						pos: pos
+					}
+				} else {
+					node = ast.SizeOf{
+						is_type: false
+						expr: expr
+						pos: pos
+					}
 				}
 			} else {
 				if p.tok.kind == .name {
@@ -209,30 +218,23 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				}
 				save_expr_mod := p.expr_mod
 				p.expr_mod = ''
-				sizeof_type := p.parse_type()
+				arg_type := p.parse_type()
 				p.expr_mod = save_expr_mod
-				node = ast.SizeOf{
-					is_type: true
-					typ: sizeof_type
-					pos: pos
+				if is_reftype {
+					node = ast.IsRefType{
+						is_type: true
+						typ: arg_type
+						pos: pos
+					}
+				} else {
+					node = ast.SizeOf{
+						is_type: true
+						typ: arg_type
+						pos: pos
+					}
 				}
 			}
 			p.check(.rpar)
-		}
-		.key_reftype {
-			pos := p.tok.position()
-			p.next() // reftype
-			p.check(.lpar)
-			save_expr_mod := p.expr_mod
-			p.expr_mod = ''
-			sizeof_type := p.parse_type()
-			p.expr_mod = save_expr_mod
-			typ := p.parse_type()
-			p.check(.rpar)
-			node = ast.IsRefType{
-				typ: typ
-				pos: pos
-			}
 		}
 		.key_typeof {
 			spos := p.tok.position()
