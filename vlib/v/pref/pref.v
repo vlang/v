@@ -590,6 +590,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	if res.is_debug {
 		parse_define(mut res, 'debug')
 	}
+
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')

@@ -37,6 +37,9 @@ fn (mut p Preferences) expand_lookup_paths() {
 }
 
 pub fn (mut p Preferences) fill_with_defaults() {
+	if p.arch == ._auto {
+		p.arch = get_host_arch()
+	}
 	p.expand_lookup_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {

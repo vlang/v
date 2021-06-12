@@ -29,7 +29,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
-		} $else $if aarch64 {
+		} $else $if arm64 {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/8

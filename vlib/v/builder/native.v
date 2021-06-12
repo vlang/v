@@ -17,9 +17,6 @@ pub fn (mut b Builder) build_native(v_files []string, out_file string) {
 pub fn (mut b Builder) compile_native() {
 	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
 	files := [b.pref.path]
-	if b.pref.arch == ._auto {
-		b.pref.arch = pref.get_host_arch()
-	}
 	b.set_module_lookup_paths()
 	b.build_native(files, b.pref.out_name)
 }

@@ -24,9 +24,8 @@ const (
 		'haiku',
 	]
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comp_if_platforms     = ['amd64', 'aarch64', 'arm64', 'x64', 'x32', 'little_endian',
-		'big_endian',
-	]
+	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
+	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads']
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
@@ -6201,15 +6200,29 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			}
 		}
 		ast.Ident {
-			if cond.name in checker.valid_comp_if_os {
-				return cond.name != c.pref.os.str().to_lower() // TODO hack
-			} else if cond.name in checker.valid_comp_if_compilers {
-				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
-			} else if cond.name in checker.valid_comp_if_platforms {
-				return false // TODO
-			} else if cond.name in checker.valid_comp_if_other {
-				// TODO: This should probably be moved
-				match cond.name {
+			cname := cond.name
+			if cname in checker.valid_comp_if_os {
+				return cname != c.pref.os.str().to_lower()
+			} else if cname in checker.valid_comp_if_compilers {
+				return pref.cc_from_string(cname) != c.pref.ccompiler_type
+			} else if cname in checker.valid_comp_if_platforms {
+				if cname == 'aarch64' {
+					c.note('use `arm64` instead of `aarch64`', pos)
+				}
+				match cname {
+					'amd64' { return c.pref.arch != .amd64 }
+					'i386' { return c.pref.arch != .i386 }
+					'aarch64' { return c.pref.arch != .arm64 }
+					'arm64' { return c.pref.arch != .arm64 }
+					'arm32' { return c.pref.arch != .arm32 }
+					'rv64' { return c.pref.arch != .rv64 }
+					'rv32' { return c.pref.arch != .rv32 }
+					else { return false }
+				}
+			} else if cname in checker.valid_comp_if_cpu_features {
+				return false
+			} else if cname in checker.valid_comp_if_other {
+				match cname {
 					'js' { return c.pref.backend != .js }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
@@ -6217,12 +6230,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'glibc' { return false } // TODO
 					'threads' { return c.table.gostmts == 0 }
 					'prealloc' { return !c.pref.prealloc }
-					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
+					'no_bounds_checking' { return cname !in c.pref.compile_defines_all }
 					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
 					else { return false }
 				}
-			} else if cond.name !in c.pref.compile_defines_all {
-				if cond.name == 'linux_or_macos' {
+			} else if cname !in c.pref.compile_defines_all {
+				if cname == 'linux_or_macos' {
 					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
 						cond.pos)
 					return false
@@ -6231,7 +6244,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				typ := c.expr(cond)
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
-					c.error('unknown var: `$cond.name`', pos)
+					c.error('unknown var: `$cname`', pos)
 					return false
 				}
 				expr := c.find_obj_definition(cond.obj) or {
