@@ -213,15 +213,20 @@ pub fn (ctx &Context) draw_image_cfg(config DrawImageConfig) {
 	flip_x := config.flip_x
 	flip_y := config.flip_y
 
+	mut u0f := if !flip_x { u0 } else { u1 }
+	mut u1f := if !flip_x { u1 } else { u0 }
+	mut v0f := if !flip_y { v0 } else { v1 }
+	mut v1f := if !flip_y { v1 } else { v0 }
+
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
-	sgl.v3f_t2f(x0, y0, config.z, if !flip_x { u0 } else { u1 }, if !flip_y { v0 } else { v1 })
-	sgl.v3f_t2f(x1, y0, config.z, if !flip_x { u1 } else { u0 }, if !flip_y { v0 } else { v1 })
-	sgl.v3f_t2f(x1, y1, config.z, if !flip_x { u1 } else { u0 }, if !flip_y { v1 } else { v0 })
-	sgl.v3f_t2f(x0, y1, config.z, if !flip_x { u0 } else { u1 }, if !flip_y { v1 } else { v0 })
+	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
+	sgl.v3f_t2f(x1, y0, config.z, u1f, v0f)
+	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
+	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
 	sgl.end()
 	sgl.disable_texture()
 }
