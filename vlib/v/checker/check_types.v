@@ -331,6 +331,13 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	return true
 }
 
+fn (mut c Checker) check_array_value_types(got ast.Type, expected ast.Type) bool {
+	if expected.is_number() && got.is_number() && expected != c.table.mktyp(got) {
+		return false
+	}
+	return c.check_types(got, expected)
+}
+
 pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
 	if c.check_types(got, expected) {
 		return

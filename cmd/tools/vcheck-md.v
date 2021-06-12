@@ -308,16 +308,19 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 
 fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult) {
 	mut checked_headlines := []string{}
+	mut found_error_warning := false
 	for link, linkdata in ad.links {
 		if link in ad.anchors {
 			checked_headlines << link
 			if ad.anchors[link].len > 1 {
+				found_error_warning = true
 				res.errors++
 				for anchordata in ad.anchors[link] {
 					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#$link)'))
 				}
 			}
 		} else {
+			found_error_warning = true
 			res.errors++
 			for brokenlink in linkdata {
 				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [$brokenlink.lable](#$link)'))
@@ -337,12 +340,15 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 						}
 					}
 					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#$link)'))
+					found_error_warning = true
 					res.warnings++
 				}
 			}
 		}
 	}
-	eprintln('')
+	if found_error_warning {
+		eprintln('') // fix suppressed last error output
+	}
 }
 
 fn create_ref_link(s string) string {

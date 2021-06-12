@@ -47,10 +47,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		return
 	}
 	elem_type_str := g.typ(node.elem_type)
+	noscan := g.check_noscan(node.elem_type)
 	if node.exprs.len == 0 {
 		elem_sym := g.table.get_type_symbol(node.elem_type)
 		is_default_array := elem_sym.kind == .array && node.has_default
-		noscan := g.check_noscan(node.elem_type)
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else {
@@ -104,7 +104,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
-		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	}
 	if len > 8 {
 		g.writeln('')
@@ -194,7 +194,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	g.writeln(';')
-	g.writeln('\tarray_push((array*)&$tmp, &ti);')
+	g.writeln('\tarray_push${noscan}((array*)&$tmp, &ti);')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -387,7 +387,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\tarray_push((array*)&$tmp, &it); \n\t\t}')
+	g.writeln('\t\tarray_push${noscan}((array*)&$tmp, &it); \n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -404,10 +404,11 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.get_type_symbol(node.args[1].typ)
 	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg2_array {
-		g.write('array_insert_many(&')
+		g.write('array_insert_many${noscan}(&')
 	} else {
-		g.write('array_insert(&')
+		g.write('array_insert${noscan}(&')
 	}
 	g.expr(node.left)
 	g.write(', ')
@@ -438,10 +439,11 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg_sym := g.table.get_type_symbol(node.args[0].typ)
 	is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
+	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg_array {
-		g.write('array_prepend_many(&')
+		g.write('array_prepend_many${noscan}(&')
 	} else {
-		g.write('array_prepend(&')
+		g.write('array_prepend${noscan}(&')
 	}
 	g.expr(node.left)
 	if is_arg_array {

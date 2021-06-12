@@ -1242,7 +1242,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				}
 				if right_final.kind == .array
-					&& c.check_types(left_value_type, c.table.value_type(right_type)) {
+					&& c.check_array_value_types(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return ast.void_type
 				}
@@ -1730,7 +1730,11 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	call_expr.receiver_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
-	mut unknown_method_msg := 'unknown method: `${left_type_sym.name}.$method_name`'
+	mut unknown_method_msg := if field := c.table.find_field(left_type_sym, method_name) {
+		'unknown method `$field.name` did you mean to access the field with the same name instead?'
+	} else {
+		'unknown method or field: `${left_type_sym.name}.$method_name`'
+	}
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return ast.void_type
@@ -2896,7 +2900,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return ast.u32_type
 		}
 	}
-	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
+	mut unknown_field_msg := 'type `$sym.name` has no field named `$field_name`'
 	mut has_field := false
 	mut field := ast.StructField{}
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
@@ -3266,8 +3270,20 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	for i, left in node.left {
 		if left is ast.CallExpr {
+			// ban `foo() = 10`
 			c.error('cannot call function `${left.name}()` on the left side of an assignment',
 				left.pos)
+		} else if left is ast.PrefixExpr {
+			// ban `*foo() = 10`
+			if left.right is ast.CallExpr && left.op == .mul {
+				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
+					left.pos)
+			}
+		} else if left is ast.IndexExpr {
+			if left.index is ast.RangeExpr {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
@@ -3420,7 +3436,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
 				if left.op == .mul {
-					if !c.inside_unsafe {
+					if !c.inside_unsafe && !c.pref.translated {
 						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 							node.pos)
 					} else {
@@ -7255,7 +7271,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		&& (node.is_method || node.name !in ['panic', 'exit']) {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
-		} else {
+		} else if !node.attrs.contains('_naked') {
 			c.error('missing return at end of function `$node.name`', node.pos)
 		}
 	}
