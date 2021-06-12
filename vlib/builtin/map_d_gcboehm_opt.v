@@ -1,6 +1,8 @@
-// "noscan" versions of `map` initialization routines if the compiler can proof that
-// either the keys or the values of both do not contain any pointers they can
-// be placed in a memory area that is no scanned by the garbage collector
+// "noscan" versions of `map` initialization routines
+//
+// They are used when the compiler can proof that either the keys or the values or both
+// do not contain any pointers. Such objects can be placed in a memory area that is not
+// scanned by the garbage collector
 
 module builtin
 
