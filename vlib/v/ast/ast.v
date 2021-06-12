@@ -14,7 +14,7 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
 	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	PrefixExpr | RangeExpr | RefType | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
@@ -1333,6 +1333,13 @@ pub struct SizeOf {
 pub:
 	is_type bool
 	expr    Expr // checker uses this to set typ
+	pos     token.Position
+pub mut:
+	typ Type
+}
+
+pub struct RefType {
+pub:
 	pos     token.Position
 pub mut:
 	typ Type
