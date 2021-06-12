@@ -3301,6 +3301,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
+		ast.RefType {
+			node_typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(node_typ)
+			if sym.language == .v && sym.kind in [.placeholder, .any] {
+				g.error('unknown type `$sym.name`', node.pos)
+			}
+			noscan := g.check_noscan(node_typ)
+			g.write('/*RefType*/ ${noscan.len == 0}')
+		}
 		ast.OffsetOf {
 			styp := g.typ(node.struct_type)
 			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
