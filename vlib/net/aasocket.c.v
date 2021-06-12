@@ -3,7 +3,7 @@ module net
 $if windows {
 	// This is mainly here for tcc on windows
 	// which apparently doesnt have this definition
-	#include "ipv6_v6only.h"
+	#include "@VROOT/vlib/net/ipv6_v6only.h"
 }
 
 // Select represents a select operation

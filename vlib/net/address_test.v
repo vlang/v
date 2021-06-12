@@ -1,7 +1,11 @@
 import net
 
 $if windows {
-	#include <afunix.h>
+	$if msvc {
+		#include <afunix.h>
+	} $else {
+		#include "@VROOT/vlib/net/afunix.h"
+	}
 } $else {
 	#include <sys/un.h>
 }
