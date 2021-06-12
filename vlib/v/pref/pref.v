@@ -178,7 +178,7 @@ pub mut:
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	// checker settings:
-	checker_match_exhaustive_cutoff_limit int = 10
+	checker_match_exhaustive_cutoff_limit int = 12
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
