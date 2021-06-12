@@ -118,7 +118,7 @@ fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &byte(0) }
-	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { &byte(0) }
+	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
 	mut ch := &Channel{
 		objsize: st
 		cap: n
