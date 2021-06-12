@@ -27,7 +27,7 @@ struct Unix {
 	path [max_unix_path]byte
 }
 
-[_pack: '2']
+[_pack: '1']
 struct Addr {
 pub:
 	len  u8
