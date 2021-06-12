@@ -1,6 +1,6 @@
 module net
 
-const max_unix_path = 104
+const max_unix_path = 106
 
 [_pack: '1']
 struct Ip6 {
@@ -8,7 +8,6 @@ struct Ip6 {
 	flow_info u32
 	addr      [16]byte
 	scope_id  u32
-	sin6_pad  [2]byte
 }
 
 [_pack: '4']

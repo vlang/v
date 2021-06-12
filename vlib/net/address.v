@@ -180,14 +180,11 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	sport := '$port'
 
-	// Cast for signedness
-	addr_str := charptr(address.str)
-
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(addr_str, sport.str, &hints, &results)) ?
+		socket_error(0 - C.getaddrinfo(charptr(address.str), charptr(sport.str), &hints, &results)) ?
 	} $else {
-		x := C.getaddrinfo(addr_str, sport.str, &hints, &results)
+		x := C.getaddrinfo(charptr(address.str), charptr(sport.str), &hints, &results)
 		wrap_error(x) ?
 	}
 
