@@ -3309,8 +3309,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
 				g.error('unknown type `$sym.name`', node.pos)
 			}
-			noscan := g.check_noscan(node_typ)
-			g.write('/*IsRefType*/ ${noscan.len == 0}')
+			is_ref_type := g.contains_ptr(node_typ)
+			g.write('/*IsRefType*/ $is_ref_type')
 		}
 		ast.OffsetOf {
 			styp := g.typ(node.struct_type)
