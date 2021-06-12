@@ -219,6 +219,21 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 			p.check(.rpar)
 		}
+		.key_reftype {
+			pos := p.tok.position()
+			p.next() // reftype
+			p.check(.lpar)
+			save_expr_mod := p.expr_mod
+			p.expr_mod = ''
+			sizeof_type := p.parse_type()
+			p.expr_mod = save_expr_mod
+			typ := p.parse_type()
+			p.check(.rpar)
+			node = ast.RefType{
+				typ: typ
+				pos: pos
+			}
+		}
 		.key_typeof {
 			spos := p.tok.position()
 			p.next()
