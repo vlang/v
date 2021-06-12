@@ -979,6 +979,9 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		ast.SizeOf {
 			return t.size_of(expr)
 		}
+		ast.IsRefType {
+			return t.is_ref_type(expr)
+		}
 		ast.PrefixExpr {
 			return t.prefix_expr(expr)
 		}
@@ -1218,6 +1221,16 @@ fn (t Tree) type_expr(node ast.TypeNode) &Node {
 fn (t Tree) size_of(node ast.SizeOf) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('SizeOf'))
+	obj.add('is_type', t.bool_node(node.is_type))
+	obj.add('typ', t.type_node(node.typ))
+	obj.add('expr', t.expr(node.expr))
+	obj.add('pos', t.position(node.pos))
+	return obj
+}
+
+fn (t Tree) is_ref_type(node ast.IsRefType) &Node {
+	mut obj := new_object()
+	obj.add('ast_type', t.string_node('IsRefType'))
 	obj.add('is_type', t.bool_node(node.is_type))
 	obj.add('typ', t.type_node(node.typ))
 	obj.add('expr', t.expr(node.expr))
