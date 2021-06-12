@@ -637,7 +637,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
-		ast.SizeOf {
+		ast.SizeOf, ast.IsRefType {
 			// TODO
 		}
 		ast.OffsetOf {
