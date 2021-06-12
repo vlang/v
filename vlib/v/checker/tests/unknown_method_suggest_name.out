@@ -6,7 +6,7 @@ Did you mean `crc32.Crc32`?
       |               ~~~~~
    14 | }
    15 |
-vlib/v/checker/tests/unknown_method_suggest_name.vv:27:9: error: unknown method: `Point.tranzlate`.
+vlib/v/checker/tests/unknown_method_suggest_name.vv:27:9: error: unknown method or field: `Point.tranzlate`.
 Did you mean `translate`?
    25 |     p := Point{1, 2, 3}
    26 |     v := Vector{x: 5, y: 5, z: 10}
