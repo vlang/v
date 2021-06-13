@@ -2,6 +2,18 @@ module net
 
 const max_unix_path = 106
 
+struct C.addrinfo {
+mut:
+	ai_family    int
+	ai_socktype  int
+	ai_flags     int
+	ai_protocol  int
+	ai_addrlen   int
+	ai_addr      voidptr
+	ai_canonname voidptr
+	ai_next      voidptr
+}
+
 struct C.sockaddr_in6 {
 	sin6_len    u8
 	sin6_family u16
