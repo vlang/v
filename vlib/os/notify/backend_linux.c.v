@@ -28,7 +28,7 @@ fn C.epoll_wait(int, &C.epoll_event, int, int) int
 struct EpollNotifier {
 	epoll_fd int
 mut:
-	watching map[int]bool
+	num_watching int // heuristic
 	events   []C.epoll_event
 }
 
@@ -64,40 +64,47 @@ const (
 	epoll_exclusive    = u32(C.EPOLLEXCLUSIVE)
 )
 
-fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
-	if fd in en.watching {
-		// TODO: we could modify / overwrite existing event
-		return error('already watching fd $fd')
-	}
+fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
 	event := C.epoll_event{
-		events: flags_to_mask(events, ...conf)
+		events: mask
 		data: C.epoll_data_t{
 			fd: fd
 		}
 	}
-	if C.epoll_ctl(en.epoll_fd, C.EPOLL_CTL_ADD, fd, &event) == -1 {
+	if C.epoll_ctl(en.epoll_fd, op, fd, &event) == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}
-	en.watching[fd] = true
+}
+
+fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
+	mask := flags_to_mask(events, ...conf)
+	en.ctl(fd, C.EPOLL_CTL_ADD, mask) ?
+	en.num_watching++
+}
+
+fn (mut en EpollNotifier) modify(fd int, events FdEventType, conf ...FdConfigFlags) ? {
+	mask := flags_to_mask(events, ...conf)
+	en.ctl(fd, C.EPOLL_CTL_MOD, mask) ?
 }
 
 fn (mut en EpollNotifier) remove(fd int) ? {
-	if fd !in en.watching {
-		return error('not watching fd $fd')
+	en.ctl(fd, C.EPOLL_CTL_DEL, 0) ?
+	if en.num_watching > 0 {
+		en.num_watching--
 	}
-	if C.epoll_ctl(en.epoll_fd, C.EPOLL_CTL_DEL, fd, 0) == -1 {
-		return error(os.posix_get_error_msg(C.errno))
-	}
-	en.watching.delete(fd)
 }
 
 [direct_array_access]
 fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
-	if en.events.cap < en.watching.len {
-		en.events.grow_cap(en.watching.len - en.events.cap)
+	if en.events.cap < en.num_watching {
+		en.events.grow_cap(en.num_watching - en.events.cap)
 	}
 	// populate en.events.data with the new events
-	count := C.epoll_wait(en.epoll_fd, en.events.data, en.events.cap, int(timeout / time.millisecond))
+	to := match timeout {
+		time.infinite { -1 }
+		else { int(timeout / time.millisecond) }
+	}
+	count := C.epoll_wait(en.epoll_fd, en.events.data, en.events.cap, to)
 
 	// set len to count
 	en.events.clear()
