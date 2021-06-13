@@ -113,7 +113,7 @@ fn (mut app App) draw() {
 		sgl.defaults()
 		sgl.perspective(sgl.rad(90), 1.0, 1.0, 100.0)
 		sgl.rotate(v.angle, 0, 0, 1)
-		app.gg.draw_image_cfg(
+		app.gg.draw_image_with_config(
 			img: &app.image
 			img_rect: {
 				x: v.x
