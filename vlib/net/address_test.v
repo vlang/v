@@ -34,23 +34,47 @@ const aoffset = __offsetof(Addr, addr)
 fn test_diagnostics() {
 	dump(net.aoffset)
 	eprintln('--------')
+	in6 := C.sockaddr_in6{}
+	our_ip6 := Ip6{}
 	dump(__offsetof(C.sockaddr_in6, sin6_len))
 	dump(__offsetof(C.sockaddr_in6, sin6_family))
 	dump(__offsetof(C.sockaddr_in6, sin6_port))
 	dump(__offsetof(C.sockaddr_in6, sin6_addr))
+	dump(sizeof(in6.sin6_len))
+	dump(sizeof(in6.sin6_family))
+	dump(sizeof(in6.sin6_port))
+	dump(sizeof(in6.sin6_addr))
+	eprintln('')
 	dump(__offsetof(Ip6, port))
 	dump(__offsetof(Ip6, addr))
+	dump(sizeof(our_ip6.port))
+	dump(sizeof(our_ip6.addr))
 	eprintln('--------')
+	in4 := C.sockaddr_in{}
+	our_ip4 := Ip{}
 	dump(__offsetof(C.sockaddr_in, sin_len))
 	dump(__offsetof(C.sockaddr_in, sin_family))
 	dump(__offsetof(C.sockaddr_in, sin_port))
 	dump(__offsetof(C.sockaddr_in, sin_addr))
+	dump(sizeof(in4.sin_len))
+	dump(sizeof(in4.sin_family))
+	dump(sizeof(in4.sin_port))
+	dump(sizeof(in4.sin_addr))
+	eprintln('')
 	dump(__offsetof(Ip, port))
 	dump(__offsetof(Ip, addr))
+	dump(sizeof(our_ip4.port))
+	dump(sizeof(our_ip4.addr))
 	eprintln('--------')
 	dump(__offsetof(C.sockaddr_un, sun_path))
 	dump(__offsetof(Unix, path))
 	eprintln('--------')
+}
+
+fn test_sizes_unix_sun_path() {
+	x1 := C.sockaddr_un{}
+	x2 := Unix{}
+	assert sizeof(x1.sun_path) == sizeof(x2.path)
 }
 
 fn test_offsets_ipv6() {
@@ -81,10 +105,4 @@ fn test_sizes_unix() {
 	// > assert sizeof(Type(80)) == sizeof(Type(84))
 	//       Left value: 110
 	//      Right value: 104
-}
-
-fn test_sizes_unix_sun_path() {
-	x1 := C.sockaddr_un{}
-	x2 := Unix{}
-	assert sizeof(x1.sun_path) == sizeof(x2.path)
 }
