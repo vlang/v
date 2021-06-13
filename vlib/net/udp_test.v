@@ -15,14 +15,14 @@ fn echo_server(mut c net.UdpConn) {
 }
 
 const (
-	local_addr = ':40003'
+	local_addr  = ':40003'
 	remote_addr = 'localhost:40003'
 )
 
 fn echo() ? {
 	mut c := net.dial_udp(remote_addr) ?
 	defer {
-		c.close() or { }
+		c.close() or {}
 	}
 	data := 'Hello from vlib/net!'
 

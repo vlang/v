@@ -23,7 +23,7 @@ fn test_diagnostics() {
 	dump(__offsetof(C.sockaddr_in6, sin6_family))
 	dump(__offsetof(C.sockaddr_in6, sin6_port))
 	dump(__offsetof(C.sockaddr_in6, sin6_addr))
-	$if macos {	
+	$if macos {
 		dump(sizeof(in6.sin6_len))
 	}
 	dump(sizeof(in6.sin6_family))

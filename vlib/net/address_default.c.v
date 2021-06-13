@@ -16,8 +16,8 @@ mut:
 
 struct C.sockaddr_in {
 	sin_family u16
-	sin_port u16
-	sin_addr u32
+	sin_port   u16
+	sin_addr   u32
 }
 
 struct C.sockaddr_in6 {
@@ -28,5 +28,5 @@ struct C.sockaddr_in6 {
 
 struct C.sockaddr_un {
 	sun_family u16
-	sun_path [max_unix_path]char
+	sun_path   [max_unix_path]char
 }

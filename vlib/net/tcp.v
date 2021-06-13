@@ -19,16 +19,14 @@ mut:
 }
 
 pub fn dial_tcp(address string) ?&TcpConn {
-	addrs := resolve_addrs_fuzzy(address, .tcp)?
+	addrs := resolve_addrs_fuzzy(address, .tcp) ?
 
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) ?
 		s.connect(addr) or {
 			// Connection failed
-			s.close() or {
-				continue
-			}
+			s.close() or { continue }
 			continue
 		}
 
@@ -173,10 +171,10 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 }
 
 pub fn (c &TcpConn) peer_ip() ?string {
-	return c.peer_addr()?.str()
+	return c.peer_addr() ?.str()
 }
 
-pub fn(c &TcpConn) addr() ?Addr {
+pub fn (c &TcpConn) addr() ?Addr {
 	return c.sock.address()
 }
 
@@ -196,7 +194,7 @@ mut:
 pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 	s := new_tcp_socket(family) ?
 
-	addrs := resolve_addrs(saddr, family, .tcp)?
+	addrs := resolve_addrs(saddr, family, .tcp) ?
 
 	// TODO(logic to pick here)
 	addr := addrs[0]
@@ -295,7 +293,7 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
-	//s.set_option_bool(.reuse_addr, true)?
+	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
@@ -323,7 +321,8 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
 	x := int(!on)
-	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x, sizeof(int)))?
+	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
+		sizeof(int))) ?
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
@@ -370,7 +369,7 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 	}
 
 	// Get the error
-	socket_error(C.connect(s.handle, &a, a.len()))?
+	socket_error(C.connect(s.handle, &a, a.len())) ?
 
 	// otherwise we timed out
 	return err_connect_timed_out

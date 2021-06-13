@@ -28,7 +28,7 @@ struct C.sockaddr_in6 {
 
 struct C.sockaddr_un {
 	sun_family u16
-	sun_path [max_unix_path]char
+	sun_path   [max_unix_path]char
 }
 
 [_pack: '2']

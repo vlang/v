@@ -11,11 +11,11 @@ union AddrData {
 
 const (
 	addr_ip6_any = [16]byte{init: byte(0)}
-	addr_ip_any = [4]byte{init: byte(0)}
+	addr_ip_any  = [4]byte{init: byte(0)}
 )
 
 fn new_ip6(port u16, addr [16]byte) Addr {
-	a := Addr {
+	a := Addr{
 		f: u16(AddrFamily.ip6)
 		addr: {
 			Ip6: {
@@ -30,7 +30,7 @@ fn new_ip6(port u16, addr [16]byte) Addr {
 }
 
 fn new_ip(port u16, addr [4]byte) Addr {
-	a :=  Addr {
+	a := Addr{
 		f: u16(AddrFamily.ip)
 		addr: {
 			Ip: {
@@ -47,12 +47,12 @@ fn new_ip(port u16, addr [4]byte) Addr {
 fn temp_unix() ?Addr {
 	// create a temp file to get a filename
 	// close it
-	// remove it 
+	// remove it
 	// then reuse the filename
-	mut file, filename := util.temp_file({})?
+	mut file, filename := util.temp_file({}) ?
 	file.close()
-	os.rm(filename)?
-	addrs := resolve_addrs(filename, .unix, .udp)?
+	os.rm(filename) ?
+	addrs := resolve_addrs(filename, .unix, .udp) ?
 	return addrs[0]
 }
 
@@ -61,14 +61,14 @@ pub fn (a Addr) family() AddrFamily {
 }
 
 const (
-	max_ip_len = 24
+	max_ip_len  = 24
 	max_ip6_len = 46
 )
 
 fn (a Ip) str() string {
-	buf := []byte{len: max_ip_len, init: 0}
+	buf := []byte{len: net.max_ip_len, init: 0}
 
-	res := charptr(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
+	res := &char(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
@@ -81,9 +81,9 @@ fn (a Ip) str() string {
 }
 
 fn (a Ip6) str() string {
-	buf := []byte{len: max_ip6_len, init: 0}
+	buf := []byte{len: net.max_ip6_len, init: 0}
 
-	res := charptr(C.inet_ntop(.ip6, &a.addr, buf.data, buf.len))
+	res := &char(C.inet_ntop(.ip6, &a.addr, buf.data, buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
@@ -100,15 +100,12 @@ fn (a Addr) len() u32 {
 		.ip {
 			return sizeof(Ip)
 		}
-
 		.ip6 {
 			return sizeof(Ip6)
 		}
-		
 		.unix {
 			return sizeof(Unix)
 		}
-
 		else {
 			panic('Unknown address family')
 		}
@@ -120,9 +117,8 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 		.ip, .ip6, .unspec {
 			return resolve_ipaddrs(addr, family, @type)
 		}
-
 		.unix {
-			resolved := Unix {}
+			resolved := Unix{}
 
 			if addr.len > max_unix_path {
 				return error('net: resolve_addr2 Unix socket address is too long')
@@ -133,7 +129,12 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 				C.memcpy(&resolved.path, addr.str, addr.len)
 			}
 
-			return [Addr{f: u16(AddrFamily.unix) addr: AddrData{Unix: resolved}}]
+			return [Addr{
+				f: u16(AddrFamily.unix)
+				addr: AddrData{
+					Unix: resolved
+				}
+			}]
 		}
 	}
 }
@@ -160,7 +161,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	if addr[0] == `:` {
 		// Use in6addr_any
-		return [new_ip6(port, addr_ip6_any)]
+		return [new_ip6(port, net.addr_ip6_any)]
 	}
 
 	mut hints := C.addrinfo{
@@ -182,13 +183,16 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(charptr(address.str), charptr(sport.str), &hints, &results)) ?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints,
+			&results)) ?
 	} $else {
-		x := C.getaddrinfo(charptr(address.str), charptr(sport.str), &hints, &results)
+		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
 		wrap_error(x) ?
 	}
 
-	defer { C.freeaddrinfo(results) }
+	defer {
+		C.freeaddrinfo(results)
+	}
 
 	// Now that we have our linked list of addresses
 	// convert them into an array
@@ -203,9 +207,8 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 				}
 				addresses << new_addr
 			}
-
 			else {
-				panic('Unexpected address family ${result.ai_family}')
+				panic('Unexpected address family $result.ai_family')
 			}
 		}
 	}
@@ -220,19 +223,16 @@ fn (a Addr) str() string {
 				return a.addr.Ip.str()
 			}
 		}
-
 		.ip6 {
 			unsafe {
 				return a.addr.Ip6.str()
 			}
 		}
-
 		.unix {
 			unsafe {
 				return tos_clone(a.addr.Unix.path[0..max_unix_path].data)
 			}
 		}
-		
 		.unspec {
 			return '<.unspec>'
 		}

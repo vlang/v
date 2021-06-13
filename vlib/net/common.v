@@ -16,7 +16,6 @@ pub const no_timeout = time.Duration(0)
 // only ever return with data)
 pub const infinite_timeout = time.Duration(-1)
 
-
 // Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {
 	$if windows {

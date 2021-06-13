@@ -47,9 +47,9 @@ fn C.listen(sockfd int, backlog int) int
 // fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
 fn C.accept(sockfd int, addr &Addr, addrlen &u32) int
 
-fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
+fn C.getaddrinfo(node &char, service &char, hints &C.addrinfo, res &&C.addrinfo) int
 
-fn C.freeaddrinfo(info &C.addrinfo) 
+fn C.freeaddrinfo(info &C.addrinfo)
 
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 fn C.connect(sockfd int, addr &Addr, addrlen u32) int
@@ -73,9 +73,9 @@ fn C.ntohs(netshort u16) int
 // fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &C.socklen_t) int
 fn C.getpeername(sockfd int, addr &Addr, addlen &u32) int
 
-fn C.inet_ntop(af AddrFamily, src voidptr, dst charptr, dst_size int) charptr
+fn C.inet_ntop(af AddrFamily, src voidptr, dst &char, dst_size int) &char
 
-fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString charptr, lpdwAddressStringLength &u32) int
+fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char, lpdwAddressStringLength &u32) int
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
 fn C.getsockname(sockfd int, addr &Addr, addrlen &u32) int
@@ -98,7 +98,7 @@ fn C.FD_SET(fd int, fdset &C.fd_set)
 
 fn C.FD_ISSET(fd int, fdset &C.fd_set) bool
 
-fn C.inet_pton(family AddrFamily, saddr charptr, addr voidptr) int
+fn C.inet_pton(family AddrFamily, saddr &char, addr voidptr) int
 
 [typedef]
 pub struct C.fd_set {}
