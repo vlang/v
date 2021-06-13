@@ -10,7 +10,7 @@ struct Ip6 {
 	scope_id  u32
 }
 
-[_pack: '4']
+[_pack: '1']
 struct Ip {
 	port u16
 	addr [4]byte
