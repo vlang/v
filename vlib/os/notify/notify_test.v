@@ -4,11 +4,14 @@ import time
 
 // make a pipe and return the (read, write) file descriptors
 fn make_pipe() ?(int, int) {
-	pipefd := [2]int{}
-	if C.pipe(&pipefd[0]) != 0 {
-		return error('error $C.errno: ' + os.posix_get_error_msg(C.errno))
+	$if linux {
+		pipefd := [2]int{}
+		if C.pipe(&pipefd[0]) != 0 {
+			return error('error $C.errno: ' + os.posix_get_error_msg(C.errno))
+		}
+		return pipefd[0], pipefd[1]
 	}
-	return pipefd[0], pipefd[1]
+	return -1, -1
 }
 
 fn test_notify_level_trigger() ? {

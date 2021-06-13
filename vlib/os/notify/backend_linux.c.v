@@ -29,7 +29,7 @@ struct EpollNotifier {
 	epoll_fd int
 mut:
 	num_watching int // heuristic
-	events   []C.epoll_event
+	events       []C.epoll_event
 }
 
 [noinit]
