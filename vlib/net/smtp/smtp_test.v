@@ -1,5 +1,5 @@
 import os
-import smtp
+import net.smtp
 import time
 
 // Used to test that a function call returns an error
