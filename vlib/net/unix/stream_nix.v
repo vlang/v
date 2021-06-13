@@ -211,7 +211,7 @@ pub fn (mut c StreamConn) write_string(s string) ?int {
 }
 
 pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 	}
@@ -221,7 +221,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 		$if trace_unix ? {
 			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}

@@ -90,7 +90,7 @@ pub fn (mut c TcpConn) write_string(s string) ?int {
 }
 
 pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 	}
@@ -100,7 +100,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}
@@ -164,9 +164,13 @@ pub fn (mut c TcpConn) wait_for_write() ? {
 }
 
 pub fn (c &TcpConn) peer_addr() ?Addr {
-	mut addr := Addr{}
+	mut addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
 	mut size := sizeof(Addr)
-	socket_error(C.getpeername(c.sock.handle, &addr, &size)) ?
+	socket_error(C.getpeername(c.sock.handle, voidptr(&addr), &size)) ?
 	return addr
 }
 
@@ -202,7 +206,7 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 	// cast to the correct type
 	alen := addr.len()
 	dump(alen)
-	bindres := C.bind(s.handle, &addr, alen)
+	bindres := C.bind(s.handle, voidptr(&addr), alen)
 	dump(bindres)
 	socket_error(bindres) ?
 	socket_error(C.listen(s.handle, 128)) ?
@@ -214,12 +218,16 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 }
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
-	addr := Addr{}
+	addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
 	size := sizeof(Addr)
-	mut new_handle := C.accept(l.sock.handle, &addr, &size)
+	mut new_handle := C.accept(l.sock.handle, voidptr(&addr), &size)
 	if new_handle <= 0 {
 		l.wait_for_accept() ?
-		new_handle = C.accept(l.sock.handle, &addr, &size)
+		new_handle = C.accept(l.sock.handle, voidptr(&addr), &size)
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
 		}
@@ -342,7 +350,7 @@ const (
 )
 
 fn (mut s TcpSocket) connect(a Addr) ? {
-	res := C.connect(s.handle, &a, a.len())
+	res := C.connect(s.handle, voidptr(&a), a.len())
 	if res == 0 {
 		return
 	}
@@ -369,7 +377,7 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 	}
 
 	// Get the error
-	socket_error(C.connect(s.handle, &a, a.len())) ?
+	socket_error(C.connect(s.handle, voidptr(&a), a.len())) ?
 
 	// otherwise we timed out
 	return err_connect_timed_out

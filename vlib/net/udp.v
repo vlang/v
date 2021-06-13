@@ -77,14 +77,14 @@ pub fn (mut c UdpConn) write_string(s string) ?int {
 }
 
 pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
-	res := C.sendto(c.sock.handle, b, len, 0, &addr, addr.len())
+	res := C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())
 	if res >= 0 {
 		return res
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_write() ?
-		socket_error(C.sendto(c.sock.handle, b, len, 0, &addr, addr.len())) ?
+		socket_error(C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())) ?
 	} else {
 		wrap_error(code) ?
 	}
@@ -103,10 +103,14 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 
 // read reads from the socket into buf up to buf.len returning the number of bytes read
 pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
-	mut addr := Addr{}
+	mut addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
 	len := sizeof(Addr)
-	mut res := wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr,
-		&len)) ?
+	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf.data), buf.len,
+		0, voidptr(&addr), &len)) ?
 	if res > 0 {
 		return res, addr
 	}
@@ -114,8 +118,8 @@ pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
 		// same setup as in tcp
-		res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr,
-			&len)) ?
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf.data), buf.len, 0,
+			voidptr(&addr), &len)) ?
 		res2 := socket_error(res) ?
 		return res2, addr
 	} else {
@@ -201,6 +205,11 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 	mut s := &UdpSocket{
 		handle: sockfd
 		l: local_addr
+		r: Addr{
+			addr: {
+				Ip6: {}
+			}
+		}
 	}
 
 	s.set_option_bool(.reuse_addr, true) ?
@@ -218,7 +227,7 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 	}
 
 	// cast to the correct type
-	socket_error(C.bind(s.handle, &local_addr, local_addr.len())) ?
+	socket_error(C.bind(s.handle, voidptr(&local_addr), local_addr.len())) ?
 	return s
 }
 
@@ -236,7 +245,11 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 		else {
 			panic('Invalid family')
 			// Appease compiler
-			Addr{}
+			Addr{
+				addr: {
+					Ip6: {}
+				}
+			}
 		}
 	}
 

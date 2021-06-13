@@ -201,7 +201,11 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	for result := results; !isnil(result); result = result.ai_next {
 		match AddrFamily(result.ai_family) {
 			.ip, .ip6 {
-				new_addr := Addr{}
+				new_addr := Addr{
+					addr: {
+						Ip6: {}
+					}
+				}
 				unsafe {
 					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
 				}
@@ -240,10 +244,14 @@ fn (a Addr) str() string {
 }
 
 pub fn addr_from_socket_handle(handle int) Addr {
-	addr := Addr{}
+	addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
 	size := sizeof(addr)
 
-	C.getsockname(handle, &addr, &size)
+	C.getsockname(handle, voidptr(&addr), &size)
 
 	return addr
 }

@@ -52,7 +52,7 @@ pub fn wrap_error(error_code int) ? {
 
 // wrap_read_result takes a read result and sees if it is 0 for graceful
 // connection termination and returns none
-// e.g. res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
+// e.g. res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 [inline]
 fn wrap_read_result(result int) ?int {
 	if result == 0 {
