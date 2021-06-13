@@ -90,6 +90,8 @@ pub struct Cookie {
 	name      string
 	value     string
 	expires   time.Time
+	path      ?string
+	domain    ?string
 	secure    bool
 	http_only bool
 }
