@@ -2,7 +2,7 @@ module net
 
 const max_unix_path = 104
 
-const addr_offset_fix = -1
+const addr_offset_fix = 0
 
 struct C.addrinfo {
 mut:
@@ -17,10 +17,15 @@ mut:
 }
 
 struct C.sockaddr_in6 {
-	sin6_len    byte
-	sin6_family u16
-	sin6_port   u16
-	sin6_addr   [4]u32
+	// 1 + 2 + 2 + 4 + 16 + 4 = 29;
+	// actual size: 28 according to sizeof(C.sockaddr_in6);
+	// sin6_len should be ignored?
+	sin6_len      byte     // 1
+	sin6_family   u16      // 2
+	sin6_port     u16      // 2
+	sin6_flowinfo u32      // 4
+	sin6_addr     [16]byte // 16
+	sin6_scope_id u32      // 4
 }
 
 struct C.sockaddr_in {
