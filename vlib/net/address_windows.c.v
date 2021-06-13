@@ -2,8 +2,6 @@ module net
 
 const max_unix_path = 110
 
-const addr_offset_fix = 0
-
 struct C.addrinfo {
 mut:
 	ai_family    int

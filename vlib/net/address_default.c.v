@@ -2,8 +2,6 @@ module net
 
 const max_unix_path = 104
 
-const addr_offset_fix = 0
-
 struct C.addrinfo {
 mut:
 	ai_family    int
@@ -17,18 +15,18 @@ mut:
 }
 
 struct C.sockaddr_in {
-	sin_family u16
+	sin_family byte
 	sin_port   u16
 	sin_addr   u32
 }
 
 struct C.sockaddr_in6 {
-	sin6_family u16
+	sin6_family byte
 	sin6_port   u16
 	sin6_addr   [4]u32
 }
 
 struct C.sockaddr_un {
-	sun_family u16
+	sun_family byte
 	sun_path   [max_unix_path]char
 }

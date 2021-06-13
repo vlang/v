@@ -93,5 +93,5 @@ fn test_sizes_ipv4() {
 }
 
 fn test_sizes_unix() {
-	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2 + addr_offset_fix
+	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2
 }

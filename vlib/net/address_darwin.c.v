@@ -2,8 +2,6 @@ module net
 
 const max_unix_path = 104
 
-const addr_offset_fix = 0
-
 struct C.addrinfo {
 mut:
 	ai_family    int
@@ -17,11 +15,10 @@ mut:
 }
 
 struct C.sockaddr_in6 {
-	// 1 + 2 + 2 + 4 + 16 + 4 = 29;
-	// actual size: 28 according to sizeof(C.sockaddr_in6);
-	// sin6_len should be ignored?
+mut:
+	// 1 + 1 + 2 + 4 + 16 + 4 = 28;
 	sin6_len      byte     // 1
-	sin6_family   u16      // 2
+	sin6_family   byte     // 1
 	sin6_port     u16      // 2
 	sin6_flowinfo u32      // 4
 	sin6_addr     [16]byte // 16
@@ -29,16 +26,18 @@ struct C.sockaddr_in6 {
 }
 
 struct C.sockaddr_in {
+mut:
 	sin_len    byte
-	sin_family u16
+	sin_family byte
 	sin_port   u16
 	sin_addr   u32
 	sin_zero   [8]char
 }
 
 struct C.sockaddr_un {
+mut:
 	sun_len    byte
-	sun_family u16
+	sun_family byte
 	sun_path   [max_unix_path]char
 }
 
@@ -48,6 +47,7 @@ struct Ip6 {
 	flow_info u32
 	addr      [16]byte
 	scope_id  u32
+	padding   [2]byte
 }
 
 [_pack: '1']
@@ -62,7 +62,6 @@ struct Ip {
 	sin_pad [10]byte
 }
 
-[_pack: '1']
 struct Unix {
 	path [max_unix_path]char
 }
@@ -71,6 +70,6 @@ struct Unix {
 struct Addr {
 pub:
 	len  u8
-	f    u16
+	f    u8
 	addr AddrData
 }
