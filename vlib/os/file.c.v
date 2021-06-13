@@ -493,14 +493,32 @@ pub fn (mut f File) write_str(s string) ? {
 	f.write_string(s) or { return err }
 }
 
+pub struct ErrFileNotOpened {
+	msg  string = 'os: file not opened'
+	code int
+}
+
+pub struct ErrSizeOfTypeIs0 {
+	msg  string = 'os: size of type is 0'
+	code int
+}
+
+fn error_file_not_opened() IError {
+	return IError(&ErrFileNotOpened{})
+}
+
+fn error_size_of_type_0() IError {
+	return IError(&ErrSizeOfTypeIs0{})
+}
+
 // read_struct reads a single struct of type `T`
 pub fn (mut f File) read_struct<T>(mut t T) ? {
 	if !f.is_opened {
-		return none
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(*t))
 	if tsize == 0 {
-		return none
+		return error_size_of_type_0()
 	}
 	nbytes := fread(t, 1, tsize, f.cfile) ?
 	if nbytes != tsize {
@@ -511,11 +529,11 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 // read_struct_at reads a single struct of type `T` at position specified in file
 pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 	if !f.is_opened {
-		return none
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(*t))
 	if tsize == 0 {
-		return none
+		return error_size_of_type_0()
 	}
 	mut nbytes := 0
 	$if x64 {
@@ -542,11 +560,11 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 // read_raw reads and returns a single instance of type `T`
 pub fn (mut f File) read_raw<T>() ?T {
 	if !f.is_opened {
-		return none
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return none
+		return error_size_of_type_0()
 	}
 	mut t := T{}
 	nbytes := fread(&t, 1, tsize, f.cfile) ?
@@ -559,11 +577,11 @@ pub fn (mut f File) read_raw<T>() ?T {
 // read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
 pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 	if !f.is_opened {
-		return none
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return none
+		return error_size_of_type_0()
 	}
 	mut nbytes := 0
 	mut t := T{}
@@ -605,11 +623,11 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 // write_struct writes a single struct of type `T`
 pub fn (mut f File) write_struct<T>(t &T) ? {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return error('struct size is 0')
+		return error_size_of_type_0()
 	}
 	C.errno = 0
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
@@ -624,11 +642,11 @@ pub fn (mut f File) write_struct<T>(t &T) ? {
 // write_struct_at writes a single struct of type `T` at position specified in file
 pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ? {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return error('struct size is 0')
+		return error_size_of_type_0()
 	}
 	C.errno = 0
 	mut nbytes := 0
@@ -661,11 +679,11 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ? {
 // write_raw writes a single instance of type `T`
 pub fn (mut f File) write_raw<T>(t &T) ? {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return error('struct size is 0')
+		return error_size_of_type_0()
 	}
 	C.errno = 0
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
@@ -680,11 +698,11 @@ pub fn (mut f File) write_raw<T>(t &T) ? {
 // write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
 pub fn (mut f File) write_raw_at<T>(t &T, pos u64) ? {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	tsize := int(sizeof(T))
 	if tsize == 0 {
-		return error('struct size is 0')
+		return error_size_of_type_0()
 	}
 	mut nbytes := 0
 

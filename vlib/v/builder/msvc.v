@@ -144,9 +144,8 @@ fn new_windows_kit(kit_root string, target_arch string) ?WindowsKit {
 fn find_windows_kit_root_by_env(target_arch string) ?WindowsKit {
 	kit_root := os.getenv('WindowsSdkDir')
 	if kit_root == '' {
-		return none
+		return error('empty WindowsSdkDir')
 	}
-
 	return new_windows_kit(kit_root, target_arch)
 }
 
@@ -210,12 +209,12 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsI
 fn find_vs_by_env(host_arch string, target_arch string) ?VsInstallation {
 	vs_dir := os.getenv('VSINSTALLDIR')
 	if vs_dir == '' {
-		return none
+		return error('empty VSINSTALLDIR')
 	}
 
 	vc_tools_dir := os.getenv('VCToolsInstallDir')
 	if vc_tools_dir == '' {
-		return none
+		return error('empty VCToolsInstallDir')
 	}
 
 	bin_dir := '${vc_tools_dir}bin\\Host$host_arch\\$target_arch'

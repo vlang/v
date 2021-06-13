@@ -1,83 +1,259 @@
 module net
 
-// Addr represents an ip address
-pub struct Addr {
-	addr C.sockaddr
-	len  int
-pub:
-	saddr string
-	port  int
-}
+import io.util
+import os
 
-struct C.addrinfo {
-}
-
-pub fn (a Addr) str() string {
-	return '$a.saddr:$a.port'
+union AddrData {
+	Unix
+	Ip
+	Ip6
 }
 
 const (
-	max_ipv4_addr_len = 24
-	ipv4_addr_size    = sizeof(C.sockaddr_in)
+	addr_ip6_any = [16]byte{init: byte(0)}
+	addr_ip_any  = [4]byte{init: byte(0)}
 )
 
-fn new_addr(addr C.sockaddr) ?Addr {
-	addr_len := if addr.sa_family == int(SocketFamily.inet) {
-		sizeof(C.sockaddr)
-	} else {
-		// TODO NOOOOOOOOOOOO
-		0
-	}
-	// Convert to string representation
-	buf := []byte{len: net.max_ipv4_addr_len, init: 0}
-	$if windows {
-		res := C.WSAAddressToStringA(&addr, addr_len, C.NULL, buf.data, unsafe { &u32(&buf.len) })
-		if res != 0 {
-			socket_error(-1) ?
-		}
-	} $else {
-		res := &char(C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len))
-		if res == 0 {
-			socket_error(-1) ?
+fn new_ip6(port u16, addr [16]byte) Addr {
+	a := Addr{
+		f: u16(AddrFamily.ip6)
+		addr: {
+			Ip6: {
+				port: u16(C.htons(port))
+			}
 		}
 	}
-	mut saddr := buf.bytestr()
 
-	hport := unsafe { &C.sockaddr_in(&addr) }.sin_port
-	port := C.ntohs(hport)
+	copy(a.addr.Ip6.addr[0..], addr[0..])
 
-	$if windows {
-		// strip the port from the address string
-		saddr = saddr.split(':')[0]
-	}
-
-	return Addr{addr, int(addr_len), saddr, port}
+	return a
 }
 
-pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
+fn new_ip(port u16, addr [4]byte) Addr {
+	a := Addr{
+		f: u16(AddrFamily.ip)
+		addr: {
+			Ip: {
+				port: u16(C.htons(port))
+			}
+		}
+	}
+
+	copy(a.addr.Ip6.addr[0..], addr[0..])
+
+	return a
+}
+
+fn temp_unix() ?Addr {
+	// create a temp file to get a filename
+	// close it
+	// remove it
+	// then reuse the filename
+	mut file, filename := util.temp_file({}) ?
+	file.close()
+	os.rm(filename) ?
+	addrs := resolve_addrs(filename, .unix, .udp) ?
+	return addrs[0]
+}
+
+pub fn (a Addr) family() AddrFamily {
+	return AddrFamily(a.f)
+}
+
+const (
+	max_ip_len  = 24
+	max_ip6_len = 46
+)
+
+fn (a Ip) str() string {
+	buf := []byte{len: net.max_ip_len, init: 0}
+
+	res := &char(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
+
+	if res == 0 {
+		return '<Unknown>'
+	}
+
+	saddr := buf.bytestr()
+	port := C.ntohs(a.port)
+
+	return '$saddr:$port'
+}
+
+fn (a Ip6) str() string {
+	buf := []byte{len: net.max_ip6_len, init: 0}
+
+	res := &char(C.inet_ntop(.ip6, &a.addr, buf.data, buf.len))
+
+	if res == 0 {
+		return '<Unknown>'
+	}
+
+	saddr := buf.bytestr()
+	port := C.ntohs(a.port)
+
+	return '[$saddr]:$port'
+}
+
+const aoffset = __offsetof(Addr, addr)
+
+fn (a Addr) len() u32 {
+	match a.family() {
+		.ip {
+			return sizeof(Ip) + aoffset
+		}
+		.ip6 {
+			return sizeof(Ip6) + aoffset
+		}
+		.unix {
+			return sizeof(Unix) + aoffset
+		}
+		else {
+			panic('Unknown address family')
+		}
+	}
+}
+
+pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
+	match family {
+		.ip, .ip6, .unspec {
+			return resolve_ipaddrs(addr, family, @type)
+		}
+		.unix {
+			resolved := Unix{}
+
+			if addr.len > max_unix_path {
+				return error('net: resolve_addrs Unix socket address is too long')
+			}
+
+			// Copy the unix path into the address struct
+			unsafe {
+				C.memcpy(&resolved.path, addr.str, addr.len)
+			}
+
+			return [Addr{
+				f: u16(AddrFamily.unix)
+				addr: AddrData{
+					Unix: resolved
+				}
+			}]
+		}
+	}
+}
+
+pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
+	if addr.len == 0 {
+		return none
+	}
+
+	// Use a small heuristic to figure out what address family this is
+	// (out of the ones that we support)
+
+	if addr.contains(':') {
+		// Colon is a reserved character in unix paths
+		// so this must be an ip address
+		return resolve_addrs(addr, .unspec, @type)
+	}
+
+	return resolve_addrs(addr, .unix, @type)
+}
+
+pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
-	mut hints := C.addrinfo{}
+	if addr[0] == `:` {
+		// Use in6addr_any
+		return [new_ip6(port, net.addr_ip6_any)]
+	}
+
+	mut hints := C.addrinfo{
+		// ai_family: int(family)
+		// ai_socktype: int(typ)
+		// ai_flags: C.AI_PASSIVE
+	}
 	hints.ai_family = int(family)
 	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = 0
 	hints.ai_addrlen = 0
-	hints.ai_canonname = C.NULL
-	hints.ai_addr = C.NULL
-	hints.ai_next = C.NULL
-	info := &C.addrinfo(0)
+	hints.ai_addr = voidptr(0)
+	hints.ai_canonname = voidptr(0)
+	hints.ai_next = voidptr(0)
+	results := &C.addrinfo(0)
 
 	sport := '$port'
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
 		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints,
-			&info)) ?
+			&results)) ?
 	} $else {
-		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &info)
+		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
 		wrap_error(x) ?
 	}
 
-	return new_addr(*info.ai_addr)
+	defer {
+		C.freeaddrinfo(results)
+	}
+
+	// Now that we have our linked list of addresses
+	// convert them into an array
+	mut addresses := []Addr{}
+
+	for result := results; !isnil(result); result = result.ai_next {
+		match AddrFamily(result.ai_family) {
+			.ip, .ip6 {
+				new_addr := Addr{
+					addr: {
+						Ip6: {}
+					}
+				}
+				unsafe {
+					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
+				}
+				addresses << new_addr
+			}
+			else {
+				panic('Unexpected address family $result.ai_family')
+			}
+		}
+	}
+
+	return addresses
+}
+
+fn (a Addr) str() string {
+	match AddrFamily(a.f) {
+		.ip {
+			unsafe {
+				return a.addr.Ip.str()
+			}
+		}
+		.ip6 {
+			unsafe {
+				return a.addr.Ip6.str()
+			}
+		}
+		.unix {
+			unsafe {
+				return tos_clone(a.addr.Unix.path[0..max_unix_path].data)
+			}
+		}
+		.unspec {
+			return '<.unspec>'
+		}
+	}
+}
+
+pub fn addr_from_socket_handle(handle int) Addr {
+	addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
+	size := sizeof(addr)
+
+	C.getsockname(handle, voidptr(&addr), &size)
+
+	return addr
 }

@@ -83,7 +83,6 @@ fn (mut ws Client) shutdown_socket() ? {
 	} else {
 		ws.conn.close() ?
 	}
-	return none
 }
 
 // dial_socket connects tcp socket and initializes default configurations

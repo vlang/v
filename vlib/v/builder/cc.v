@@ -45,7 +45,7 @@ const (
 
 fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
-		return none
+		return
 	}
 	ccompiler_version_res := os.execute('$v.pref.ccompiler -v')
 	if ccompiler_version_res.exit_code != 0 {
@@ -63,7 +63,7 @@ fn (mut v Builder) find_win_cc() ? {
 				if v.pref.is_verbose {
 					println('tcc not found')
 				}
-				return none
+				return error('tcc not found')
 			}
 			v.pref.ccompiler = thirdparty_tcc
 			v.pref.ccompiler_type = .tinyc

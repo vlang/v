@@ -5371,21 +5371,23 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
-		for embed in info.embeds {
-			embed_sym := g.table.get_type_symbol(embed)
-			embed_name := embed_sym.embed_name()
-			if embed_name !in inited_fields {
-				default_init := ast.StructInit{
-					typ: embed
+		if !info.is_union {
+			for embed in info.embeds {
+				embed_sym := g.table.get_type_symbol(embed)
+				embed_name := embed_sym.embed_name()
+				if embed_name !in inited_fields {
+					default_init := ast.StructInit{
+						typ: embed
+					}
+					g.write('.$embed_name = ')
+					g.struct_init(default_init)
+					if is_multiline {
+						g.writeln(',')
+					} else {
+						g.write(',')
+					}
+					initialized = true
 				}
-				g.write('.$embed_name = ')
-				g.struct_init(default_init)
-				if is_multiline {
-					g.writeln(',')
-				} else {
-					g.write(',')
-				}
-				initialized = true
 			}
 		}
 		// g.zero_struct_fields(info, inited_fields)
@@ -5691,6 +5693,22 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
+
+				mut pre_pragma := ''
+				mut post_pragma := ''
+
+				for attr in typ.info.attrs {
+					match attr.name {
+						'_pack' {
+							pre_pragma += '#pragma pack(push, $attr.arg)\n'
+							post_pragma += '#pragma pack(pop)'
+						}
+						else {}
+					}
+				}
+
+				g.type_definitions.writeln(pre_pragma)
+
 				if typ.info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
@@ -5726,12 +5744,13 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
-				attrs := if typ.info.attrs.contains('packed') {
+				ti_attrs := if typ.info.attrs.contains('packed') {
 					'__attribute__((__packed__))'
 				} else {
 					''
 				}
-				g.type_definitions.writeln('}$attrs;\n')
+				g.type_definitions.writeln('}$ti_attrs;\n')
+				g.type_definitions.writeln(post_pragma)
 			}
 			ast.Alias {
 				// ast.Alias { TODO
@@ -5916,7 +5935,7 @@ fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
-	is_none_ok := mr_styp == 'void'
+	is_none_ok := return_type == ast.ovoid_type
 	g.writeln(';')
 	if is_none_ok {
 		g.writeln('if (${cvar_name}.state != 0 && ${cvar_name}.err._typ != _IError_None___index) {')
