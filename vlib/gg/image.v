@@ -173,9 +173,9 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	return img
 }
 
-// draw_image_cfg takes in a config that details how the
+// draw_image_with_config takes in a config that details how the
 // provided image should be drawn onto the screen.
-pub fn (ctx &Context) draw_image_cfg(config DrawImageConfig) {
+pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
 		eprintln('gg: draw_image() bad img id $id (img cache len = $ctx.image_cache.len)')
@@ -239,7 +239,7 @@ pub fn (ctx &Context) draw_image_cfg(config DrawImageConfig) {
 // draw_image_part(Rect{0, 0, 600, 600}, Rect{0, 0, 400, 400}, img)
 [deprecated]
 pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image) {
-	ctx.draw_image_cfg(
+	ctx.draw_image_with_config(
 		img: img_
 		img_rect: img_rect
 		part_rect: part_rect
@@ -265,7 +265,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 		}
 	}
 
-	ctx.draw_image_cfg(
+	ctx.draw_image_with_config(
 		img: img_
 		img_rect: Rect{x, y, width, height}
 		part_rect: Rect{0, 0, img_.width, img_.height}
@@ -274,7 +274,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 
 [deprecated]
 pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
-	ctx.draw_image_cfg(
+	ctx.draw_image_with_config(
 		flip_x: true
 		img: img_
 		img_rect: Rect{x, y, width, height}
@@ -283,7 +283,7 @@ pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, im
 
 [deprecated]
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
-	ctx.draw_image_cfg(
+	ctx.draw_image_with_config(
 		img_id: id
 		img_rect: Rect{x, y, width, height}
 	)
@@ -291,7 +291,7 @@ pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id i
 
 [deprecated]
 pub fn (ctx &Context) draw_image_3d(x f32, y f32, z f32, width f32, height f32, img_ &Image) {
-	ctx.draw_image_cfg(
+	ctx.draw_image_with_config(
 		img: img_
 		img_rect: Rect{x, y, width, height}
 		z: z
