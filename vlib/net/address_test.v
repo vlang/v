@@ -10,25 +10,6 @@ $if windows {
 	#include <sys/un.h>
 }
 
-struct C.sockaddr_in6 {
-	sin6_len    u8
-	sin6_family u16
-	sin6_port   u16
-	sin6_addr   [4]u32
-}
-
-struct C.sockaddr_in {
-	sin_len    u8
-	sin_family u16
-	sin_port   u16
-	sin_addr   u32
-	sin_zero   [8]i8
-}
-
-struct C.sockaddr_un {
-	sun_path int
-}
-
 const aoffset = __offsetof(Addr, addr)
 
 fn test_diagnostics() {
@@ -36,11 +17,15 @@ fn test_diagnostics() {
 	eprintln('--------')
 	in6 := C.sockaddr_in6{}
 	our_ip6 := Ip6{}
-	dump(__offsetof(C.sockaddr_in6, sin6_len))
+	$if macos {
+		dump(__offsetof(C.sockaddr_in6, sin6_len))
+	}
 	dump(__offsetof(C.sockaddr_in6, sin6_family))
 	dump(__offsetof(C.sockaddr_in6, sin6_port))
 	dump(__offsetof(C.sockaddr_in6, sin6_addr))
-	dump(sizeof(in6.sin6_len))
+	$if macos {	
+		dump(sizeof(in6.sin6_len))
+	}
 	dump(sizeof(in6.sin6_family))
 	dump(sizeof(in6.sin6_port))
 	dump(sizeof(in6.sin6_addr))
@@ -52,11 +37,15 @@ fn test_diagnostics() {
 	eprintln('--------')
 	in4 := C.sockaddr_in{}
 	our_ip4 := Ip{}
-	dump(__offsetof(C.sockaddr_in, sin_len))
+	$if macos {
+		dump(__offsetof(C.sockaddr_in, sin_len))
+	}
 	dump(__offsetof(C.sockaddr_in, sin_family))
 	dump(__offsetof(C.sockaddr_in, sin_port))
 	dump(__offsetof(C.sockaddr_in, sin_addr))
-	dump(sizeof(in4.sin_len))
+	$if macos {
+		dump(sizeof(in4.sin_len))
+	}
 	dump(sizeof(in4.sin_family))
 	dump(sizeof(in4.sin_port))
 	dump(sizeof(in4.sin_addr))
@@ -100,7 +89,7 @@ fn test_sizes_ipv4() {
 }
 
 fn test_sizes_unix() {
-	assert sizeof(C.sockaddr_un) == sizeof(Unix)
+	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2
 	// ^ the above fails for strict == on linux with:
 	// > assert sizeof(Type(80)) == sizeof(Type(84))
 	//       Left value: 110

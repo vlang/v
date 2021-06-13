@@ -2,6 +2,25 @@ module net
 
 const max_unix_path = 106
 
+struct C.sockaddr_in6 {
+	sin6_len    u8
+	sin6_family u16
+	sin6_port   u16
+	sin6_addr   [4]u32
+}
+
+struct C.sockaddr_in {
+	sin_len    u8
+	sin_family u16
+	sin_port   u16
+	sin_addr   u32
+	sin_zero   [8]i8
+}
+
+struct C.sockaddr_un {
+	sun_path int
+}
+
 [_pack: '1']
 struct Ip6 {
 	port      u16

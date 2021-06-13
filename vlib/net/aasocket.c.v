@@ -28,23 +28,6 @@ pub enum AddrFamily {
 	unspec = C.AF_UNSPEC
 }
 
-struct C.addrinfo {
-mut:
-	ai_family    int
-	ai_socktype  int
-	ai_flags     int
-	ai_protocol  int
-	ai_addrlen   int
-	ai_addr      voidptr
-	ai_canonname voidptr
-	ai_next      voidptr
-}
-
-struct C.sockaddr_in {
-	sin_family int 
-	sin_port int
-}
-
 fn C.socket(domain AddrFamily, typ SocketType, protocol int) int
 
 // fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
