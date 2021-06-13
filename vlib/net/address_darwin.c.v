@@ -47,7 +47,6 @@ struct Ip6 {
 	flow_info u32
 	addr      [16]byte
 	scope_id  u32
-	padding   [2]byte
 }
 
 [_pack: '1']
@@ -59,7 +58,7 @@ struct Ip {
 	// TODO(emily): I would really like to use
 	// some constant calculations here
 	// so that this doesnt have to be hardcoded
-	sin_pad [10]byte
+	sin_pad [8]byte
 }
 
 struct Unix {

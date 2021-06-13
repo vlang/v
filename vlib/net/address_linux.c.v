@@ -31,16 +31,15 @@ struct C.sockaddr_un {
 	sun_path   [max_unix_path]char
 }
 
-[_pack: '2']
+[_pack: '1']
 struct Ip6 {
 	port      u16
 	flow_info u32
 	addr      [16]byte
 	scope_id  u32
-	sin6_pad  [2]byte
 }
 
-[_pack: '4']
+[_pack: '1']
 struct Ip {
 	port u16
 	addr [4]byte
@@ -49,14 +48,14 @@ struct Ip {
 	// TODO(emily): I would really like to use
 	// some constant calculations here
 	// so that this doesnt have to be hardcoded
-	sin_pad [10]byte
+	sin_pad [8]byte
 }
 
 struct Unix {
 	path [max_unix_path]byte
 }
 
-[_pack: '2']
+[_pack: '1']
 struct Addr {
 pub:
 	f    u16

@@ -2,6 +2,9 @@ module net
 
 $if windows {
 	$if msvc {
+		// Force these to be included before afunix!
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
 		#include <afunix.h>
 	} $else {
 		#include "@VROOT/vlib/net/afunix.h"
@@ -9,8 +12,6 @@ $if windows {
 } $else {
 	#include <sys/un.h>
 }
-
-const aoffset = __offsetof(Addr, addr)
 
 fn test_diagnostics() {
 	dump(net.aoffset)
@@ -85,13 +86,13 @@ fn test_offsets_unix() {
 }
 
 fn test_sizes_ipv6() {
-	assert sizeof(C.sockaddr_in6) == sizeof(Ip6)
+	assert sizeof(C.sockaddr_in6) == sizeof(Ip6) + aoffset
 }
 
 fn test_sizes_ipv4() {
-	assert sizeof(C.sockaddr_in) == sizeof(Ip)
+	assert sizeof(C.sockaddr_in) == sizeof(Ip) + aoffset
 }
 
 fn test_sizes_unix() {
-	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2
+	assert sizeof(C.sockaddr_un) == sizeof(Unix) + aoffset
 }

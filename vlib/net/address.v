@@ -95,16 +95,18 @@ fn (a Ip6) str() string {
 	return '[$saddr]:$port'
 }
 
+const aoffset = __offsetof(Addr, addr)
+
 fn (a Addr) len() u32 {
 	match a.family() {
 		.ip {
-			return sizeof(Ip)
+			return sizeof(Ip) + aoffset
 		}
 		.ip6 {
-			return sizeof(Ip6)
+			return sizeof(Ip6) + aoffset
 		}
 		.unix {
-			return sizeof(Unix)
+			return sizeof(Unix) + aoffset
 		}
 		else {
 			panic('Unknown address family')
@@ -121,7 +123,7 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 			resolved := Unix{}
 
 			if addr.len > max_unix_path {
-				return error('net: resolve_addr2 Unix socket address is too long')
+				return error('net: resolve_addrs Unix socket address is too long')
 			}
 
 			// Copy the unix path into the address struct

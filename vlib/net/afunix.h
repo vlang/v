@@ -9,9 +9,18 @@
 
 #define UNIX_PATH_MAX 108
 
+#if !defined(ADDRESS_FAMILY)
+#define UNDEF_ADDRESS_FAMILY
+#define ADDRESS_FAMILY unsigned short
+#endif
+
 typedef struct sockaddr_un {
   ADDRESS_FAMILY sun_family;
   char sun_path[UNIX_PATH_MAX];
 } SOCKADDR_UN, *PSOCKADDR_UN;
+
+#if defined(UNDEF_ADDRESS_FAMILY)
+#undef ADDRESS_FAMILY
+#endif
 
 #endif /* _AFUNIX_ */
