@@ -10,7 +10,7 @@ $if windows {
 	#include <sys/un.h>
 }
 
-const aoffset = __offsetof(Addr, addr)
+const aoffset = __offsetof(Addr, addr) + addr_offset_fix
 
 fn test_diagnostics() {
 	dump(net.aoffset)
@@ -81,7 +81,7 @@ fn test_offsets_unix() {
 }
 
 fn test_sizes_ipv6() {
-	assert sizeof(C.sockaddr_in6) == sizeof(Ip6)
+	assert sizeof(C.sockaddr_in6) == sizeof(Ip6) + net.aoffset
 }
 
 fn test_sizes_ipv4() {
