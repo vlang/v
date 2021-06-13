@@ -174,7 +174,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 }
 
 // draw_image_with_config takes in a config that details how the
-// provided image should be drawn onto the screen.
+// provided image should be drawn onto the screen
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
@@ -237,7 +237,6 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 // eg. On a 600*600 context, to display only the first 400*400 pixels of a 2000*2000 image
 // on the entire context surface, call :
 // draw_image_part(Rect{0, 0, 600, 600}, Rect{0, 0, 400, 400}, img)
-[deprecated]
 pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image) {
 	ctx.draw_image_with_config(
 		img: img_
@@ -272,7 +271,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 	)
 }
 
-[deprecated]
+// draw_image_flipped draws the provided image flipped horizontally (use `draw_image_with_config` to flip vertically)
 pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
 	ctx.draw_image_with_config(
 		flip_x: true
@@ -281,7 +280,7 @@ pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, im
 	)
 }
 
-[deprecated]
+// draw_image_by_id draws an image based by an id
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
 	ctx.draw_image_with_config(
 		img_id: id
@@ -289,7 +288,7 @@ pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id i
 	)
 }
 
-[deprecated]
+// draw_image_3d draws an image with a z depth
 pub fn (ctx &Context) draw_image_3d(x f32, y f32, z f32, width f32, height f32, img_ &Image) {
 	ctx.draw_image_with_config(
 		img: img_
