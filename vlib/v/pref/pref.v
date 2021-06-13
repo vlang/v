@@ -763,7 +763,6 @@ pub fn get_host_arch() Arch {
 	// need a comptime `$if native {` too, and/or a mechanism to always
 	// generate all branches for specific functions?
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
-		eprintln('unknown host CPU architecture')
 		return Arch.amd64
 	}
 	return Arch(C.__V_architecture)
