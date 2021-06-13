@@ -10,7 +10,7 @@ $if windows {
 	#include <sys/un.h>
 }
 
-const aoffset = __offsetof(Addr, addr) + addr_offset_fix
+const aoffset = __offsetof(Addr, addr)
 
 fn test_diagnostics() {
 	dump(net.aoffset)
@@ -85,7 +85,7 @@ fn test_offsets_unix() {
 }
 
 fn test_sizes_ipv6() {
-	assert sizeof(C.sockaddr_in6) == sizeof(Ip6) + 2
+	assert sizeof(C.sockaddr_in6) == sizeof(Ip6)
 }
 
 fn test_sizes_ipv4() {
@@ -93,9 +93,5 @@ fn test_sizes_ipv4() {
 }
 
 fn test_sizes_unix() {
-	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2
-	// ^ the above fails for strict == on linux with:
-	// > assert sizeof(Type(80)) == sizeof(Type(84))
-	//       Left value: 110
-	//      Right value: 104
+	assert sizeof(C.sockaddr_un) == sizeof(Unix) + 2 + addr_offset_fix
 }
