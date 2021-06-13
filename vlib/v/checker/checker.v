@@ -1235,14 +1235,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					return ast.void_type
 				}
-				// the expressions have different types (array_x and x)
-				if c.check_types(right_type, left_value_type) { // , right_type) {
-					// []T << T
-					return ast.void_type
-				}
-				if right_final.kind == .array
-					&& c.check_array_value_types(left_value_type, c.table.value_type(right_type)) {
-					// []T << []T
+				// []T << T or []T << []T
+				if c.check_types(right_type, left_value_type)
+					|| c.check_types(right_type, left_type) {
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
