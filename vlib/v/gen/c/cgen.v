@@ -4234,70 +4234,61 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if i > 0 {
 					g.write(' || ')
 				}
-				if type_sym.kind == .string {
-					if expr is ast.StringLiteral && (expr as ast.StringLiteral).val == '' {
-						g.write('${cond_var}.len == 0')
-					} else {
-						g.write('string__eq(')
-						g.write(cond_var)
-						g.write(', ')
+				match type_sym.kind {
+					.array {
+						ptr_typ := g.gen_array_equality_fn(node.cond_type)
+						g.write('${ptr_typ}_arr_eq($cond_var, ')
 						g.expr(expr)
 						g.write(')')
 					}
-				} else if type_sym.kind == .array {
-					ptr_typ := g.gen_array_equality_fn(node.cond_type)
-					g.write('${ptr_typ}_arr_eq(')
-					g.write(cond_var)
-					g.write(', ')
-					g.expr(expr)
-					g.write(')')
-				} else if type_sym.kind == .array_fixed {
-					ptr_typ := g.gen_fixed_array_equality_fn(node.cond_type)
-					g.write('${ptr_typ}_arr_eq(')
-					g.write(cond_var)
-					g.write(', ')
-					g.expr(expr)
-					g.write(')')
-				} else if type_sym.kind == .map {
-					ptr_typ := g.gen_map_equality_fn(node.cond_type)
-					g.write('${ptr_typ}_map_eq(')
-					g.write(cond_var)
-					g.write(', ')
-					g.expr(expr)
-					g.write(')')
-				} else if type_sym.kind == .struct_ {
-					ptr_typ := g.gen_struct_equality_fn(node.cond_type)
-					g.write('${ptr_typ}_struct_eq(')
-					g.write(cond_var)
-					g.write(', ')
-					g.expr(expr)
-					g.write(')')
-				} else if expr is ast.RangeExpr {
-					// if type is unsigned and low is 0, check is unneeded
-					mut skip_low := false
-					if expr.low is ast.IntegerLiteral {
-						if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-							&& expr.low.val == '0' {
-							skip_low = true
+					.array_fixed {
+						ptr_typ := g.gen_fixed_array_equality_fn(node.cond_type)
+						g.write('${ptr_typ}_arr_eq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.map {
+						ptr_typ := g.gen_map_equality_fn(node.cond_type)
+						g.write('${ptr_typ}_map_eq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.string {
+						g.write('string__eq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.struct_ {
+						ptr_typ := g.gen_struct_equality_fn(node.cond_type)
+						g.write('${ptr_typ}_struct_eq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					else {
+						if expr is ast.RangeExpr {
+							// if type is unsigned and low is 0, check is unneeded
+							mut skip_low := false
+							if expr.low is ast.IntegerLiteral {
+								if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
+									&& expr.low.val == '0' {
+									skip_low = true
+								}
+							}
+							g.write('(')
+							if !skip_low {
+								g.write('$cond_var >= ')
+								g.expr(expr.low)
+								g.write(' && ')
+							}
+							g.write('$cond_var <= ')
+							g.expr(expr.high)
+							g.write(')')
+						} else {
+							g.write('$cond_var == (')
+							g.expr(expr)
+							g.write(')')
 						}
 					}
-					g.write('(')
-					if !skip_low {
-						g.write(cond_var)
-						g.write(' >= ')
-						g.expr(expr.low)
-						g.write(' && ')
-					}
-					g.write(cond_var)
-					g.write(' <= ')
-					g.expr(expr.high)
-					g.write(')')
-				} else {
-					g.write(cond_var)
-					g.write(' == ')
-					g.write('(')
-					g.expr(expr)
-					g.write(')')
 				}
 			}
 			if is_expr && tmp_var.len == 0 {
