@@ -94,7 +94,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
-    * [Anonymous & high order functions](#anonymous--high-order-functions)
+    * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
@@ -1964,7 +1964,7 @@ b := [5, 6, 7]
 println(sum(...b)) // output: 18
 ```
 
-### Anonymous & high order functions
+### Anonymous & higher order functions
 
 ```v
 fn sqr(n int) int {
