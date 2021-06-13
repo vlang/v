@@ -4335,11 +4335,22 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		styp = g.typ(node.typ)
 		g.write('($styp*)memdup(ADDR($styp, ')
 	}
+	noscan_key := g.check_noscan(node.key_type)
+	noscan_value := g.check_noscan(node.value_type)
+	mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
+	if noscan.len != 0 {
+		if noscan_key.len != 0 {
+			noscan += '_key'
+		}
+		if noscan_value.len != 0 {
+			noscan += '_value'
+		}
+	}
 	if size > 0 {
 		if value_typ.kind == .function {
-			g.write('new_map_init($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
 		} else {
-			g.write('new_map_init($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
 		}
 		for expr in node.keys {
 			g.expr(expr)
@@ -4359,7 +4370,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		}
 		g.write('}))')
 	} else {
-		g.write('new_map(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
+		g.write('new_map${noscan}(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 	}
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
@@ -6076,7 +6087,18 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			info := sym.map_info()
 			key_typ := g.table.get_type_symbol(info.key_type)
 			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-			init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+			noscan_key := g.check_noscan(info.key_type)
+			noscan_value := g.check_noscan(info.value_type)
+			mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
+			if noscan.len != 0 {
+				if noscan_key.len != 0 {
+					noscan += '_key'
+				}
+				if noscan_value.len != 0 {
+					noscan += '_value'
+				}
+			}
+			init_str := 'new_map${noscan}(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
 			if typ.has_flag(.shared_f) {
 				mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
 				return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
