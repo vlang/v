@@ -3,7 +3,7 @@ module clipboard
 import time
 
 #include <windows.h>
-#flag -lUser32
+#flag -luser32
 
 struct WndClassEx {
 	cb_size         u32
