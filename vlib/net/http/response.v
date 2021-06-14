@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-import chunked
+import net.http.chunked
 
 // Response represents the result of the request
 pub struct Response {
@@ -23,9 +23,9 @@ fn (mut resp Response) free() {
 pub fn (resp Response) bytes() []byte {
 	// TODO: build []byte directly; this uses two allocations
 	// TODO: cookies
-	return ('$resp.version $resp.status_code ${status_from_int(resp.status_code).str()}\r\n' +
-		'${resp.header.render(version: resp.version)}\r\n' +
-		'$resp.text').bytes()
+	return ('$resp.version $resp.status_code ${status_from_int(resp.status_code).str()}\r\n' + '${resp.header.render(
+		version: resp.version
+	)}\r\n' + '$resp.text').bytes()
 }
 
 // Parse a raw HTTP response into a Response object
@@ -66,7 +66,9 @@ pub fn parse_response(resp string) Response {
 		parts := cookie.split_nth('=', 2)
 		cookies[parts[0]] = parts[1]
 	}
-	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or { '' } == '' {
+	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or {
+		''
+	} == '' {
 		text = chunked.decode(text)
 	}
 	return Response{

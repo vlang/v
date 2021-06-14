@@ -7,6 +7,7 @@ import strings
 // followed by \r\n as a line separator,
 // followed by a chunk of data of the given size.
 // The end is marked with a chunk with size 0.
+
 struct ChunkScanner {
 mut:
 	pos  int
@@ -23,7 +24,7 @@ fn (mut s ChunkScanner) read_chunk_size() int {
 		if !c.is_hex_digit() {
 			break
 		}
-		n = n<<4
+		n = n << 4
 		n += int(unhex(c))
 		s.pos++
 	}
@@ -33,11 +34,9 @@ fn (mut s ChunkScanner) read_chunk_size() int {
 fn unhex(c byte) byte {
 	if `0` <= c && c <= `9` {
 		return c - `0`
-	}
-	else if `a` <= c && c <= `f` {
+	} else if `a` <= c && c <= `f` {
 		return c - `a` + 10
-	}
-	else if `A` <= c && c <= `F` {
+	} else if `A` <= c && c <= `F` {
 		return c - `A` + 10
 	}
 	return 0
