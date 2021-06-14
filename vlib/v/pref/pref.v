@@ -261,7 +261,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'' {
+					'', 'none' {
 						res.gc_mode = .no_gc
 					}
 					'boehm_full' {
@@ -299,12 +299,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
-						eprintln('  `-gc boehm` ............ default mode (currently `boehm_full_opt`)')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}
 				}
