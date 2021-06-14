@@ -83,7 +83,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Structs](#structs)
     * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
-    * [Short struct literal syntax](#short-struct-initialization-syntax)
+    * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [Unions](#unions)
@@ -2270,7 +2270,7 @@ You can also install modules already created by someone else with [VPM](https://
 ```powershell
 v install [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v install ui
 ```
@@ -2280,7 +2280,7 @@ Removing a module with v:
 ```powershell
 v remove [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v remove ui
 ```
@@ -2290,7 +2290,7 @@ Updating an installed module from [VPM](https://vpm.vlang.io/):
 ```powershell
 v update [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v update ui
 ```
@@ -2305,7 +2305,7 @@ To see all the modules you have installed, you can use:
 ```powershell
 v list
 ```
-###### Example
+**Example:**
 ```powershell
 > v list
 Installed modules:
@@ -2318,7 +2318,7 @@ outdated          Show installed modules that need updates.
 ```powershell
 v outdated
 ```
-###### Example
+**Example:**
 ```powershell
 > v outdated
 Modules are up to date.
@@ -4024,7 +4024,7 @@ created by the JS Backend (flag: `-b js`).
 
 `$` is used as a prefix for compile-time operations.
 
-#### $if
+#### `$if` condition
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -4076,7 +4076,7 @@ Full list of builtin options:
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
 | `solaris` | | | |
 
-#### $embed_file
+#### `$embed_file`
 
 ```v ignore
 import os
@@ -4099,7 +4099,7 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
-#### $tmpl for embedding and parsing V template files
+#### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
@@ -4149,7 +4149,7 @@ numbers: [1, 2, 3]
 
 
 
-#### $env
+#### `$env`
 
 ```v
 module main
