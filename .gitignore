@@ -1,5 +1,6 @@
-# ignore all build binaries
-*
+# ignore sub-level build binaries and v binary
+*/**/*
+v
 !*/
 !*.*
 *.exe
