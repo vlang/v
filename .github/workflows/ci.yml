@@ -794,7 +794,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build V
-        run: make && ./v symlink
+        run: make && sudo ./v symlink
 
   ## vls
       - name: Clone VLS tree-sitter
