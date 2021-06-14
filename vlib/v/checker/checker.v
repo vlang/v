@@ -2900,8 +2900,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
 		&& sym.language == .v {
 		// x.Foo.y => access the embedded struct
-		sym_info := sym.info as ast.Struct
-		for embed in sym_info.embeds {
+		for embed in sym.info.embeds {
 			embed_sym := c.table.get_type_symbol(embed)
 			if embed_sym.embed_name() == field_name {
 				node.typ = embed
@@ -4241,7 +4240,6 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 		if infix.op == .key_is {
 			if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
 				&& infix.right is ast.TypeNode {
-				right_expr := infix.right as ast.TypeNode
 				is_variable := if mut infix.left is ast.Ident {
 					infix.left.kind == .variable
 				} else {
@@ -4251,7 +4249,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 				left_sym := c.table.get_type_symbol(left_type)
 				if is_variable {
 					if left_sym.kind in [.sum_type, .interface_] {
-						c.smartcast(infix.left, infix.left_type, right_expr.typ, mut node.scope)
+						c.smartcast(infix.left, infix.left_type, infix.right.typ, mut node.scope)
 					}
 				}
 			}
@@ -5863,6 +5861,53 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	return t
 }
 
+fn (mut c Checker) smartcasts_in_multi_conds(node ast.Expr, pos token.Position, mut scope ast.Scope) {
+	if node is ast.InfixExpr {
+		if node.op == .and {
+			c.smartcasts_in_multi_conds(node.left, pos, mut scope)
+			c.smartcasts_in_multi_conds(node.right, pos, mut scope)
+		} else if node.op == .key_is {
+			right_expr := node.right
+			right_type := match right_expr {
+				ast.TypeNode {
+					right_expr.typ
+				}
+				ast.None {
+					ast.none_type_idx
+				}
+				else {
+					c.error('invalid type `$right_expr`', right_expr.position())
+					ast.Type(0)
+				}
+			}
+			if right_type != ast.Type(0) {
+				left_sym := c.table.get_type_symbol(node.left_type)
+				expr_type := c.expr(node.left)
+				if left_sym.kind == .interface_ {
+					c.type_implements(right_type, expr_type, pos)
+				} else if !c.check_types(right_type, expr_type) {
+					expect_str := c.table.type_to_str(right_type)
+					expr_str := c.table.type_to_str(expr_type)
+					c.error('cannot use type `$expect_str` as type `$expr_str`', pos)
+				}
+				if (node.left is ast.Ident || node.left is ast.SelectorExpr)
+					&& node.right is ast.TypeNode {
+					is_variable := if mut node.left is ast.Ident {
+						node.left.kind == .variable
+					} else {
+						true
+					}
+					if is_variable {
+						if left_sym.kind in [.interface_, .sum_type] {
+							c.smartcast(node.left, node.left_type, right_type, mut scope)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
@@ -5925,7 +5970,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
 						&& sym.kind == .interface_ {
 						// is interface
-						checked_type := c.unwrap_generic((left as ast.TypeNode).typ)
+						checked_type := c.unwrap_generic(left.typ)
 						should_skip = !c.table.type_implements_interface(checked_type,
 							got_type)
 					} else if left is ast.TypeNode {
@@ -5969,50 +6014,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.skip_flags = cur_skip_flags
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
-			pos := branch.cond.position()
-			if branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_is {
-					right_expr := branch.cond.right
-					right_type := match right_expr {
-						ast.TypeNode {
-							right_expr.typ
-						}
-						ast.None {
-							ast.none_type_idx
-						}
-						else {
-							c.error('invalid type `$right_expr`', right_expr.position())
-							ast.Type(0)
-						}
-					}
-					if right_type != ast.Type(0) {
-						left_sym := c.table.get_type_symbol(branch.cond.left_type)
-						expr_type := c.expr(branch.cond.left)
-						if left_sym.kind == .interface_ {
-							c.type_implements(right_type, expr_type, pos)
-						} else if !c.check_types(right_type, expr_type) {
-							expect_str := c.table.type_to_str(right_type)
-							expr_str := c.table.type_to_str(expr_type)
-							c.error('cannot use type `$expect_str` as type `$expr_str`',
-								pos)
-						}
-						if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
-							&& branch.cond.right is ast.TypeNode {
-							is_variable := if mut branch.cond.left is ast.Ident {
-								branch.cond.left.kind == .variable
-							} else {
-								true
-							}
-							if is_variable {
-								if left_sym.kind in [.interface_, .sum_type] {
-									c.smartcast(branch.cond.left, branch.cond.left_type,
-										right_type, mut branch.scope)
-								}
-							}
-						}
-					}
-				}
-			}
+			c.smartcasts_in_multi_conds(branch.cond, branch.cond.position(), mut branch.scope)
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
@@ -6157,8 +6159,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				.key_is, .not_is {
 					if cond.left is ast.TypeNode && cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
-						type_node := cond.right as ast.TypeNode
-						sym := c.table.get_type_symbol(type_node.typ)
+						sym := c.table.get_type_symbol(cond.right.typ)
 						if sym.kind != .interface_ {
 							c.expr(cond.left)
 							// c.error('`$sym.name` is not an interface', cond.right.position())

@@ -34,7 +34,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if !is_count && where_expr is ast.InfixExpr {
 			e := where_expr as ast.InfixExpr
 			if e.op == .eq && e.left is ast.Ident {
-				ident := e.left as ast.Ident
+				ident := e.left
 				if ident.name == 'id' {
 					query_one = true
 				}
