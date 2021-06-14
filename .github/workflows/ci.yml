@@ -794,15 +794,23 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build V
-        run: make -j2 && ./v -cc gcc -o v cmd/v
+        run: make && ./v symlink
 
   ## vls
-      - name: Clone VLS
-        run: git clone --depth 1 https://github.com/vlang/vls && git checkout master
-      - name: Build VLS
-        run: cd vls; ../v cmd/vls ; cd ..
-      - name: Build VLS with -prod
-        run: cd vls; ../v -prod cmd/vls ; cd ..
+      - name: Clone VLS tree-sitter
+        run: git clone --depth 1 --no-single-branch https://github.com/vlang/vls
+      - name: Checkout branch tree-sitter
+        run: pushd vls; git checkout use-tree-sitter; popd
+      - name: Build VLS tree-sitter
+        run: pushd vls; v cmd/vls ; popd
+      - name: Build VLS tree-sitter with -prod
+        run: pushd vls; v -prod cmd/vls; popd
+      - name: Checkout branch master
+        run: pushd vls; git checkout master; popd
+      - name: Build VLS master
+        run: pushd vls; v cmd/vls ; popd
+      - name: Build VLS master with -prod
+        run: pushd vls; v -prod cmd/vls ; popd
 
   ## vab
       - name: Clone vab
