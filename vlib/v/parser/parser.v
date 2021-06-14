@@ -2940,14 +2940,32 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.next()
 	}
 	p.check(.key_enum)
-	end_pos := p.tok.position()
-	enum_name := p.check_name()
+	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
+		ast.Language.c
+	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
+		ast.Language.js
+	} else {
+		ast.Language.v
+	}
+	if language != .v {
+		p.next() // C || JS
+		p.next() // .
+	}
+	name_pos := p.tok.position()
+	p.check_for_impure_v(language, name_pos)
+	mut enum_name := p.check_name()
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
-			end_pos)
+			name_pos)
 		return ast.EnumDecl{}
 	}
-	name := p.prepend_mod(enum_name)
+	if language == .c {
+		enum_name = 'C.$enum_name'
+	} else if language == .js {
+		enum_name = 'JS.$enum_name'
+	} else {
+		enum_name = p.prepend_mod(enum_name)
+	}
 	p.check(.lcbr)
 	enum_decl_comments := p.eat_comments({})
 	mut vals := []string{}
@@ -2969,6 +2987,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			name: val
 			pos: pos
 			expr: expr
+			language: language
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
 			next_comments: p.eat_comments({})
@@ -3003,8 +3022,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	idx := p.table.register_type_symbol(ast.TypeSymbol{
 		kind: .enum_
-		name: name
-		cname: util.no_dots(name)
+		name: enum_name
+		cname: util.no_dots(enum_name)
 		mod: p.mod
 		info: ast.Enum{
 			vals: vals
@@ -3014,16 +3033,16 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		is_public: is_pub
 	})
 	if idx == -1 {
-		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
-			end_pos)
+		p.error_with_pos('cannot register enum `$enum_name`, another type with this name exists',
+			name_pos)
 	}
 	return ast.EnumDecl{
-		name: name
+		name: enum_name
 		is_pub: is_pub
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
 		fields: fields
-		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		pos: start_pos.extend_with_last_line(name_pos, p.prev_tok.line_nr)
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}

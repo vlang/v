@@ -3189,7 +3189,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	}
 	*/
 	for i, field in decl.fields {
-		if !c.pref.experimental && util.contains_capital(field.name) {
+		if !c.pref.experimental && util.contains_capital(field.name) && field.language == .v {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
 				field.pos)

@@ -925,6 +925,7 @@ pub struct EnumField {
 pub:
 	name          string
 	pos           token.Position
+	language      Language
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
 	expr          Expr      // the value of current EnumField; 123 in `ename = 123`
