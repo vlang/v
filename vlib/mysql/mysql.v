@@ -126,7 +126,7 @@ pub fn (conn &Connection) tables(wildcard string) ?[]string {
 // taking into account the current character set of the connection.
 pub fn (conn &Connection) escape_string(s string) string {
 	unsafe {
-		to := malloc(2 * s.len + 1)
+		to := malloc_noscan(2 * s.len + 1)
 		C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
 		return to.vstring()
 	}

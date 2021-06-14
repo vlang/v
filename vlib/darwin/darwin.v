@@ -42,7 +42,7 @@ pub fn resource_path() string {
 		panic('CFBundleCopyResourcesDirectoryURL failed')
 	}
 	buffer_size := 4096
-	mut buffer := unsafe { malloc(buffer_size) }
+	mut buffer := unsafe { malloc_noscan(buffer_size) }
 	unsafe {
 		buffer[0] = 0
 	}

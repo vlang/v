@@ -42,7 +42,7 @@ fn (nn int) str_l(max int) string {
 			is_neg = true
 		}
 		mut index := max
-		mut buf := malloc(max + 1)
+		mut buf := malloc_noscan(max + 1)
 		buf[index] = 0
 		index--
 
@@ -119,7 +119,7 @@ pub fn (nn u32) str() string {
 			return '0'
 		}
 		max := 12
-		mut buf := malloc(max + 1)
+		mut buf := malloc_noscan(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
@@ -163,7 +163,7 @@ pub fn (nn i64) str() string {
 			return '0'
 		}
 		max := 20
-		mut buf := malloc(max + 1)
+		mut buf := malloc_noscan(max + 1)
 		mut is_neg := false
 		if n < 0 {
 			n = -n
@@ -210,7 +210,7 @@ pub fn (nn u64) str() string {
 			return '0'
 		}
 		max := 20
-		mut buf := malloc(max + 1)
+		mut buf := malloc_noscan(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
@@ -423,7 +423,7 @@ pub fn (b byte) str() string {
 // Example: assert byte(97).ascii_str() == 'a'
 pub fn (b byte) ascii_str() string {
 	mut str := string{
-		str: unsafe { malloc(2) }
+		str: unsafe { malloc_noscan(2) }
 		len: 1
 	}
 	unsafe {
