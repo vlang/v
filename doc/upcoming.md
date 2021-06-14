@@ -74,37 +74,37 @@ different capabilities:
 | structured data types     |     +     |   +   |     +    |          |
 
 ### Strengths
-#### default
+**default**
 - very fast
 - unlimited access from different coroutines
 - easy to handle
 
-#### `mut`
+**`mut`**
 - very fast
 - easy to handle
 
-#### `shared`
+**`shared`**
 - concurrent access from different coroutines
 - data type may be complex structure
 - sophisticated access possible (several statements within one `lock`
   block)
 
-#### `atomic`
+**`atomic`**
 - concurrent access from different coroutines
 - reasonably fast
 
 ### Weaknesses
-#### default
+**default**
 - read only
 
-#### `mut`
+**`mut`**
 - access only from one coroutine at a time
 
-#### `shared`
+**`shared`**
 - lock/unlock are slow
 - moderately difficult to handle (needs `lock` block)
 
-#### `atomic`
+**`atomic`**
 - limited to single (max. 64 bit) integers (and pointers)
 - only a small set of predefined operations possible
 - very difficult to handle correctly
@@ -191,3 +191,5 @@ are sometimes surprising. Each statement should be seen as a single
 transaction that is unrelated to the previous or following
 statement. Therefore - but also for performance reasons - it's often
 better to group consecutive coherent statements in an explicit `lock` block.
+
+### Channels

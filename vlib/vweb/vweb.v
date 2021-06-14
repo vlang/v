@@ -303,7 +303,8 @@ pub fn run<T>(global_app &T, port int) {
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
 
-	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code $err') }
+
 	println('[Vweb] Running app on http://localhost:$port')
 	// app.Context = Context{
 	// conn: 0

@@ -1,9 +1,9 @@
 module http
 
 fn test_header_new() {
-	h := http.new_header(
-		{key: .accept, value: 'nothing'},
-		{key: .expires, value: 'yesterday'}
+	h := new_header({ key: .accept, value: 'nothing' },
+		key: .expires
+		value: 'yesterday'
 	)
 	assert h.contains(.accept)
 	assert h.contains(.expires)
@@ -14,21 +14,21 @@ fn test_header_new() {
 }
 
 fn test_header_invalid_key() {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('space is invalid', ':(') or { return }
 	panic('should have returned')
 }
 
 fn test_header_adds_multiple() {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add(.accept, 'one')
 	h.add(.accept, 'two')
 
-	assert h.values(.accept) == ['one' 'two']
+	assert h.values(.accept) == ['one', 'two']
 }
 
 fn test_header_get() ? {
-	mut h := http.new_header(key: .dnt, value: 'one')
+	mut h := new_header(key: .dnt, value: 'one')
 	h.add_custom('dnt', 'two') ?
 	dnt := h.get_custom('dnt') or { '' }
 	exact := h.get_custom('dnt', exact: true) or { '' }
@@ -37,27 +37,27 @@ fn test_header_get() ? {
 }
 
 fn test_header_set() ? {
-	mut h := http.new_header(
-		{key: .dnt, value: 'one'},
-		{key: .dnt, value: 'two'}
+	mut h := new_header({ key: .dnt, value: 'one' },
+		key: .dnt
+		value: 'two'
 	)
-	assert h.values(.dnt) == ['one' 'two']
+	assert h.values(.dnt) == ['one', 'two']
 	h.set_custom('DNT', 'three') ?
 	assert h.values(.dnt) == ['three']
 }
 
 fn test_header_delete() {
-	mut h := http.new_header(
-		{key: .dnt, value: 'one'},
-		{key: .dnt, value: 'two'}
+	mut h := new_header({ key: .dnt, value: 'one' },
+		key: .dnt
+		value: 'two'
 	)
-	assert h.values(.dnt) == ['one' 'two']
+	assert h.values(.dnt) == ['one', 'two']
 	h.delete(.dnt)
 	assert h.values(.dnt) == []
 }
 
 fn test_header_delete_not_existing() {
-	mut h := http.new_header()
+	mut h := new_header()
 	assert h.data.len == 0
 	assert h.keys.len == 0
 	h.delete(.dnt)
@@ -66,7 +66,7 @@ fn test_header_delete_not_existing() {
 }
 
 fn test_custom_header() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('AbC', 'dEf') ?
 	h.add_custom('aBc', 'GhI') ?
 	assert h.custom_values('AbC', exact: true) == ['dEf']
@@ -90,7 +90,7 @@ fn test_custom_header() ? {
 }
 
 fn test_contains_custom() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('Hello', 'world') ?
 	assert h.contains_custom('hello')
 	assert h.contains_custom('HELLO')
@@ -100,7 +100,7 @@ fn test_contains_custom() ? {
 }
 
 fn test_get_custom() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('Hello', 'world') ?
 	assert h.get_custom('hello') ? == 'world'
 	assert h.get_custom('HELLO') ? == 'world'
@@ -116,7 +116,7 @@ fn test_get_custom() ? {
 }
 
 fn test_starting_with() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('Hello-1', 'world') ?
 	h.add_custom('Hello-21', 'world') ?
 	assert h.starting_with('Hello-') ? == 'Hello-1'
@@ -124,7 +124,7 @@ fn test_starting_with() ? {
 }
 
 fn test_custom_values() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('Hello', 'world') ?
 	assert h.custom_values('hello') == ['world']
 	assert h.custom_values('HELLO') == ['world']
@@ -134,7 +134,7 @@ fn test_custom_values() ? {
 }
 
 fn test_coerce() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add(.accept, 'bar')
 	assert h.values(.accept) == ['foo', 'bar']
@@ -146,7 +146,7 @@ fn test_coerce() ? {
 }
 
 fn test_coerce_canonicalize() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add(.accept, 'bar')
 	assert h.values(.accept) == ['foo', 'bar']
@@ -158,7 +158,7 @@ fn test_coerce_canonicalize() ? {
 }
 
 fn test_coerce_custom() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('Hello', 'foo') ?
 	h.add_custom('hello', 'bar') ?
 	h.add_custom('HELLO', 'baz') ?
@@ -171,7 +171,7 @@ fn test_coerce_custom() ? {
 }
 
 fn test_coerce_canonicalize_custom() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('foo-BAR', 'foo') ?
 	h.add_custom('FOO-bar', 'bar') ?
 	assert h.custom_values('foo-bar') == ['foo', 'bar']
@@ -183,7 +183,7 @@ fn test_coerce_canonicalize_custom() ? {
 }
 
 fn test_render_version() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
@@ -202,7 +202,7 @@ fn test_render_version() ? {
 }
 
 fn test_render_coerce() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
@@ -222,7 +222,7 @@ fn test_render_coerce() ? {
 }
 
 fn test_render_canonicalize() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
@@ -245,7 +245,7 @@ fn test_render_canonicalize() ? {
 }
 
 fn test_render_coerce_canonicalize() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add_custom('accept', 'foo') ?
 	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
@@ -265,7 +265,7 @@ fn test_render_coerce_canonicalize() ? {
 }
 
 fn test_str() ? {
-	mut h := http.new_header()
+	mut h := new_header()
 	h.add(.accept, 'text/html')
 	h.add_custom('Accept', 'image/jpeg') ?
 	h.add_custom('X-custom', 'Hello') ?

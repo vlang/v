@@ -9,8 +9,12 @@ const (
 
 struct UdpSocket {
 	handle int
-	local  Addr
-	remote ?Addr
+	l      Addr
+	// TODO(emily): replace with option again
+	// when i figure out how to coerce it properly
+mut:
+	has_r bool
+	r     Addr
 }
 
 pub struct UdpConn {
@@ -23,27 +27,36 @@ mut:
 	write_timeout  time.Duration
 }
 
-pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
-	local := resolve_addr(laddr, .inet, .udp) ?
-	sbase := new_udp_socket(local.port) ?
-	sock := UdpSocket{
-		handle: sbase.handle
-		local: local
-		remote: resolve_wrapper(raddr)
+pub fn dial_udp(raddr string) ?&UdpConn {
+	addrs := resolve_addrs_fuzzy(raddr, .udp) ?
+
+	for addr in addrs {
+		// create a local socket for this
+		// bind to any port (or file) (we dont care in this
+		// case because we only care about the remote)
+		if sock := new_udp_socket_for_remote(addr) {
+			return &UdpConn{
+				sock: sock
+				read_timeout: net.udp_default_read_timeout
+				write_timeout: net.udp_default_write_timeout
+			}
+		}
 	}
-	return &UdpConn{
-		sock: sock
-		read_timeout: net.udp_default_read_timeout
-		write_timeout: net.udp_default_write_timeout
-	}
+
+	return none
 }
 
-fn resolve_wrapper(raddr string) ?Addr {
-	// Dont have to do this when its fixed
-	// this just allows us to store this `none` optional in a struct
-	x := resolve_addr(raddr, .inet, .udp) or { return none }
-	return x
-}
+// pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
+// 	local := resolve_addr(laddr, .inet, .udp) ?
+
+// 	sbase := new_udp_socket() ?
+
+// 	sock := UdpSocket{
+// 		handle: sbase.handle
+// 		l: local
+// 		r: resolve_wrapper(raddr)
+// 	}
+// }
 
 pub fn (mut c UdpConn) write_ptr(b &byte, len int) ?int {
 	remote := c.sock.remote() or { return err_no_udp_remote }
@@ -64,14 +77,14 @@ pub fn (mut c UdpConn) write_string(s string) ?int {
 }
 
 pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
-	res := C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)
+	res := C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())
 	if res >= 0 {
 		return res
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_write() ?
-		socket_error(C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)) ?
+		socket_error(C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())) ?
 	} else {
 		wrap_error(code) ?
 	}
@@ -90,22 +103,24 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 
 // read reads from the socket into buf up to buf.len returning the number of bytes read
 pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
-	mut addr_from := C.sockaddr{}
-	len := sizeof(C.sockaddr)
-	mut res := wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from,
-		&len)) ?
+	mut addr := Addr{
+		addr: {
+			Ip6: {}
+		}
+	}
+	len := sizeof(Addr)
+	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf.data), buf.len,
+		0, voidptr(&addr), &len)) ?
 	if res > 0 {
-		addr := new_addr(addr_from) ?
 		return res, addr
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
 		// same setup as in tcp
-		res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from,
-			&len)) ?
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf.data), buf.len, 0,
+			voidptr(&addr), &len)) ?
 		res2 := socket_error(res) ?
-		addr := new_addr(addr_from) ?
 		return res2, addr
 	} else {
 		wrap_error(code) ?
@@ -170,44 +185,79 @@ pub fn (mut c UdpConn) close() ? {
 	return c.sock.close()
 }
 
-pub fn listen_udp(port int) ?&UdpConn {
-	s := new_udp_socket(port) ?
+pub fn listen_udp(laddr string) ?&UdpConn {
+	addrs := resolve_addrs_fuzzy(laddr, .udp) ?
+	// TODO(emily):
+	// here we are binding to the first address
+	// and that is probably not ideal
+	addr := addrs[0]
 	return &UdpConn{
-		sock: s
+		sock: new_udp_socket(addr) ?
 		read_timeout: net.udp_default_read_timeout
 		write_timeout: net.udp_default_write_timeout
 	}
 }
 
-fn new_udp_socket(local_port int) ?&UdpSocket {
-	sockfd := socket_error(C.socket(SocketFamily.inet, SocketType.udp, 0)) ?
+fn new_udp_socket(local_addr Addr) ?&UdpSocket {
+	family := local_addr.family()
+
+	sockfd := socket_error(C.socket(family, SocketType.udp, 0)) ?
 	mut s := &UdpSocket{
 		handle: sockfd
-	}
-	s.set_option_bool(.reuse_addr, true) ?
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-		} $else {
-			socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+		l: local_addr
+		r: Addr{
+			addr: {
+				Ip6: {}
+			}
 		}
 	}
-	// In UDP we always have to bind to a port
-	validate_port(local_port) ?
-	mut addr := C.sockaddr_in{}
-	addr.sin_family = int(SocketFamily.inet)
-	addr.sin_port = C.htons(local_port)
-	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
-	size := sizeof(C.sockaddr_in)
+
+	s.set_option_bool(.reuse_addr, true) ?
+
+	if family == .ip6 {
+		s.set_dualstack(true) ?
+	}
+
+	// NOTE: refer to comments in tcp.v
+	$if windows {
+		t := u32(1) // true
+		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+	} $else {
+		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+	}
+
 	// cast to the correct type
-	sockaddr := unsafe { &C.sockaddr(&addr) }
-	socket_error(C.bind(s.handle, sockaddr, size)) ?
+	socket_error(C.bind(s.handle, voidptr(&local_addr), local_addr.len())) ?
 	return s
 }
 
-pub fn (s &UdpSocket) remote() ?Addr {
-	return s.remote
+fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
+	// Invent a sutible local address for this remote addr
+	addr := match raddr.family() {
+		.ip, .ip6 {
+			// Use ip6 dualstack
+			new_ip6(0, addr_ip6_any)
+		}
+		.unix {
+			x := temp_unix() ?
+			x
+		}
+		else {
+			panic('Invalid family')
+			// Appease compiler
+			Addr{
+				addr: {
+					Ip6: {}
+				}
+			}
+		}
+	}
+
+	mut sock := new_udp_socket(addr) ?
+	sock.has_r = true
+	sock.r = raddr
+
+	return sock
 }
 
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
@@ -220,7 +270,12 @@ pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// }
 	x := int(value)
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
-	return none
+}
+
+pub fn (mut s UdpSocket) set_dualstack(on bool) ? {
+	x := int(!on)
+	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
+		sizeof(int))) ?
 }
 
 fn (mut s UdpSocket) close() ? {
@@ -229,4 +284,11 @@ fn (mut s UdpSocket) close() ? {
 
 fn (mut s UdpSocket) @select(test Select, timeout time.Duration) ?bool {
 	return @select(s.handle, test, timeout)
+}
+
+fn (s &UdpSocket) remote() ?Addr {
+	if s.has_r {
+		return s.r
+	}
+	return none
 }

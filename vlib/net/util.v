@@ -7,7 +7,7 @@ const (
 // validate_port checks whether a port is valid
 // and returns the port or an error
 pub fn validate_port(port int) ?u16 {
-	if port <= socket_max_port {
+	if port <= net.socket_max_port {
 		return u16(port)
 	} else {
 		return err_port_out_of_range
@@ -19,6 +19,9 @@ pub fn split_address(addr string) ?(string, u16) {
 	port := addr.all_after_last(':').int()
 	address := addr.all_before_last(':')
 
-	p := validate_port(port)?
+	// TODO(emily): Maybe do some more checking here
+	// to validate ipv6 address sanity?
+
+	p := validate_port(port) ?
 	return address, p
 }

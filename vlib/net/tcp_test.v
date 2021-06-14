@@ -1,4 +1,5 @@
 import net
+import os
 
 const (
 	test_port = 45123
@@ -18,19 +19,24 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn echo_server(mut l net.TcpListener) ? {
-	for {
-		mut new_conn := l.accept() or { continue }
-		go handle_conn(mut new_conn)
-	}
-	return none
+fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
+	eprintln('> one_shot_echo_server')
+	ch_started <- 1
+	mut new_conn := l.accept() or { return error('could not accept') }
+	eprintln('    > new_conn: $new_conn')
+	handle_conn(mut new_conn)
+	new_conn.close() or {}
 }
 
-fn echo() ? {
-	mut c := net.dial_tcp('127.0.0.1:$test_port') ?
+fn echo(address string) ? {
+	mut c := net.dial_tcp(address) ?
 	defer {
-		c.close() or { }
+		c.close() or {}
 	}
+
+	println('local: ' + c.addr() ?.str())
+	println(' peer: ' + c.peer_addr() ?.str())
+
 	data := 'Hello from vlib/net!'
 	c.write_string(data) ?
 	mut buf := []byte{len: 4096}
@@ -40,12 +46,55 @@ fn echo() ? {
 		assert buf[i] == data[i]
 	}
 	println('Got "$buf.bytestr()"')
-	return none
 }
 
-fn test_tcp() {
-	mut l := net.listen_tcp(test_port) or { panic(err) }
-	go echo_server(mut l)
-	echo() or { panic(err) }
-	l.close() or { }
+fn test_tcp_ip6() {
+	eprintln('\n>>> ${@FN}')
+	address := 'localhost:$test_port'
+	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
+	dump(l)
+	start_echo_server(mut l)
+	echo(address) or { panic(err) }
+	l.close() or {}
+	// ensure there is at least one new socket created before the next test
+	l = net.listen_tcp(.ip6, ':${test_port + 1}') or { panic(err) }
+}
+
+fn start_echo_server(mut l net.TcpListener) {
+	ch_server_started := chan int{}
+	go one_shot_echo_server(mut l, ch_server_started)
+	_ := <-ch_server_started
+}
+
+fn test_tcp_ip() {
+	eprintln('\n>>> ${@FN}')
+	address := 'localhost:$test_port'
+	mut l := net.listen_tcp(.ip, address) or { panic(err) }
+	dump(l)
+	start_echo_server(mut l)
+	echo(address) or { panic(err) }
+	l.close() or {}
+}
+
+fn test_tcp_unix() {
+	eprintln('\n>>> ${@FN}')
+	// TODO(emily):
+	// whilst windows supposedly supports unix sockets
+	// this doesnt work (wsaeopnotsupp at the call to bind())
+	$if !windows {
+		address := os.real_path('tcp-test.sock')
+		// address := 'tcp-test.sock'
+		println('$address')
+
+		mut l := net.listen_tcp(.unix, address) or { panic(err) }
+		start_echo_server(mut l)
+		echo(address) or { panic(err) }
+		l.close() or {}
+
+		os.rm(address) or { panic('failed to remove socket file') }
+	}
+}
+
+fn testsuite_end() {
+	eprintln('\ndone')
 }

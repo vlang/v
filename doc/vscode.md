@@ -23,7 +23,7 @@ provides V language support for Visual Studio Code.
 [install V compiler](https://github.com/vlang/v/blob/master/doc/docs.md#install-from-source)
 on your operating system.
 
-### Setup
+### Setup Extention
 
 Install [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang).
 
@@ -45,7 +45,7 @@ for Visual Studio Code provides visual conditional debugging.
 [DWARF](https://en.wikipedia.org/wiki/DWARF) information to show and 
 edit the variable.
 
-### Setup
+### Setup Debugging
 
 1. Install the [C/C++ Extention](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 2. Open `RUN AND DEBUG` panel (Debug Icon in left panel).

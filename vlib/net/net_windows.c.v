@@ -1,9 +1,5 @@
 module net
 
-// needed for unix domain sockets support
-// is not included in CI rn
-// #include <afunix.h>
-
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
@@ -770,11 +766,13 @@ mut:
 	szSystemStatus [129]byte
 	iMaxSockets    u16
 	iMaxUdpDg      u16
-	lpVendorInfo   byteptr
+	lpVendorInfo   &byte
 }
 
 fn init() {
-	mut wsadata := C.WSAData{}
+	mut wsadata := C.WSAData{
+		lpVendorInfo: 0
+	}
 	res := C.WSAStartup(net.wsa_v22, &wsadata)
 	if res != 0 {
 		panic('socket: WSAStartup failed')

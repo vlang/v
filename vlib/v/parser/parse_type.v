@@ -13,31 +13,38 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
 		size_expr := p.expr(0)
-		match size_expr {
-			ast.IntegerLiteral {
-				fixed_size = size_expr.val.int()
-			}
-			ast.Ident {
-				if const_field := p.global_scope.find_const('${p.mod}.$size_expr.name') {
-					if const_field.expr is ast.IntegerLiteral {
-						fixed_size = const_field.expr.val.int()
+		if p.pref.is_fmt {
+			fixed_size = 987654321
+		} else {
+			match size_expr {
+				ast.IntegerLiteral {
+					fixed_size = size_expr.val.int()
+				}
+				ast.Ident {
+					mut show_non_const_error := false
+					if const_field := p.global_scope.find_const('${p.mod}.$size_expr.name') {
+						if const_field.expr is ast.IntegerLiteral {
+							fixed_size = const_field.expr.val.int()
+						} else {
+							show_non_const_error = true
+						}
 					} else {
-						p.error_with_pos('non-constant array bound `$size_expr.name`',
-							size_expr.pos)
+						if p.pref.is_fmt {
+							// for vfmt purposes, pretend the constant does exist
+							// it may have been defined in another .v file:
+							fixed_size = 1
+						} else {
+							show_non_const_error = true
+						}
 					}
-				} else {
-					if p.pref.is_fmt {
-						// for vfmt purposes, pretend the constant does exist, it may have
-						// been defined in another .v file:
-						fixed_size = 1
-					} else {
+					if show_non_const_error {
 						p.error_with_pos('non-constant array bound `$size_expr.name`',
 							size_expr.pos)
 					}
 				}
-			}
-			else {
-				p.error('expecting `int` for fixed size')
+				else {
+					p.error('expecting `int` for fixed size')
+				}
 			}
 		}
 		p.check(.rsbr)

@@ -330,16 +330,13 @@ fn modify(mut numbers []int) {
 }
 
 fn test_mut_slice() {
-	/*
-	QTODO
 	mut n := [1, 2, 3]
-	//modify(mut n)
+	// modify(mut n)
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
-	*/
 }
 
 fn double_up(mut a []int) {
@@ -544,7 +541,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-/*
 fn test_reduce() {
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
@@ -559,7 +555,7 @@ fn test_reduce() {
 	assert f == -6
 	assert g == -7
 }
-*/
+
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }

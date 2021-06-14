@@ -3026,6 +3026,10 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	got_types_0_idx := got_types[0].idx()
 	if exp_is_optional
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
+		if got_types_0_idx == ast.none_type_idx && expected_type == ast.ovoid_type {
+			c.error('returning `none` in functions, that have a `?` result type is not allowed anymore, either `return error(message)` or just `return` instead',
+				node.pos)
+		}
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -3802,7 +3806,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
-				ast.EmptyExpr{})
+				ast.empty_expr())
 			if elem_type.has_flag(.generic) {
 				array_init.typ = ast.new_type(idx).set_flag(.generic)
 			} else {
@@ -7375,7 +7379,7 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return none
+		return
 	}
 	sym := c.table.get_type_symbol(typ)
 	match sym.kind {
@@ -7383,7 +7387,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 			if sym.language == .v && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					pos)
-				return none
+				return
 			}
 		}
 		.int_literal, .float_literal {
@@ -7396,7 +7400,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 					'unknown type `$sym.name`.\nDid you mean `f64`?'
 				}
 				c.error(msg, pos)
-				return none
+				return
 			}
 		}
 		.array {

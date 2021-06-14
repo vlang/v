@@ -9,6 +9,7 @@ import rand
 import term
 import vhelp
 import v.pref
+import regex
 
 const (
 	too_long_line_length = 100
@@ -162,6 +163,7 @@ fn (mut f MDFile) progress(message string) {
 
 fn (mut f MDFile) check() CheckResult {
 	mut res := CheckResult{}
+	mut anchor_data := AnchorData{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
 		if line.len > too_long_line_length {
@@ -187,8 +189,14 @@ fn (mut f MDFile) check() CheckResult {
 				res.errors++
 			}
 		}
+		if f.state == .markdown {
+			anchor_data.add_links(j, line)
+			anchor_data.add_link_targets(j, line)
+		}
+
 		f.parse_line(j, line)
 	}
+	anchor_data.check_link_target_match(f.path, mut res)
 	res += f.check_examples()
 	return res
 }
@@ -232,6 +240,121 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 	if f.state == .vexample {
 		f.current.text << line
 	}
+}
+
+struct Headline {
+	line  int
+	lable string
+	level int
+}
+
+struct Anchor {
+	line int
+}
+
+type AnchorTarget = Anchor | Headline
+
+struct AnchorLink {
+	line  int
+	lable string
+}
+
+struct AnchorData {
+mut:
+	links   map[string][]AnchorLink
+	anchors map[string][]AnchorTarget
+}
+
+fn (mut ad AnchorData) add_links(line_number int, line string) {
+	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z\-]+)\)'
+	mut re := regex.regex_opt(query) or { panic(err) }
+	res := re.find_all_str(line)
+
+	for elem in res {
+		re.match_string(elem)
+		link := re.get_group_by_name(elem, 'link')
+		ad.links[link] << AnchorLink{
+			line: line_number
+			lable: re.get_group_by_name(elem, 'lable')
+		}
+	}
+}
+
+fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
+	if line.trim_space().starts_with('#') {
+		if headline_start_pos := line.index(' ') {
+			headline := line.substr(headline_start_pos + 1, line.len)
+			link := create_ref_link(headline)
+			ad.anchors[link] << Headline{
+				line: line_number
+				lable: headline
+				level: headline_start_pos
+			}
+		}
+	} else {
+		query := r'<a\s*id=["\'](?P<link>[a-z\-]+)["\']\s*/>'
+		mut re := regex.regex_opt(query) or { panic(err) }
+		res := re.find_all_str(line)
+
+		for elem in res {
+			re.match_string(elem)
+			link := re.get_group_by_name(elem, 'link')
+			ad.anchors[link] << Anchor{
+				line: line_number
+			}
+		}
+	}
+}
+
+fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult) {
+	mut checked_headlines := []string{}
+	mut found_error_warning := false
+	for link, linkdata in ad.links {
+		if link in ad.anchors {
+			checked_headlines << link
+			if ad.anchors[link].len > 1 {
+				found_error_warning = true
+				res.errors++
+				for anchordata in ad.anchors[link] {
+					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#$link)'))
+				}
+			}
+		} else {
+			found_error_warning = true
+			res.errors++
+			for brokenlink in linkdata {
+				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [$brokenlink.lable](#$link)'))
+			}
+		}
+	}
+	for link, anchor_lists in ad.anchors {
+		if !(link in checked_headlines) {
+			if anchor_lists.len > 1 {
+				for anchor in anchor_lists {
+					line := match anchor {
+						Headline {
+							anchor.line
+						}
+						Anchor {
+							anchor.line
+						}
+					}
+					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#$link)'))
+					found_error_warning = true
+					res.warnings++
+				}
+			}
+		}
+	}
+	if found_error_warning {
+		eprintln('') // fix suppressed last error output
+	}
+}
+
+fn create_ref_link(s string) string {
+	query_remove := r'[^a-z \-]'
+	mut re := regex.regex_opt(query_remove) or { panic(err) }
+	return re.replace_simple(s.to_lower(), '').replace(' ', '-')
 }
 
 fn (mut f MDFile) debug() {

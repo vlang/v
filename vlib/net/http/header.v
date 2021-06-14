@@ -578,9 +578,9 @@ fn (mut h Header) add_key(key string) {
 
 // Custom error struct for invalid header tokens
 struct HeaderKeyError {
-	msg string
-	code int
-	header string
+	msg          string
+	code         int
+	header       string
 	invalid_char byte
 }
 
