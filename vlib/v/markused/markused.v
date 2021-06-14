@@ -56,6 +56,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// string. methods
 		'18.add',
 		'18.trim_space',
+		'18.repeat',
 		'18.replace',
 		'18.clone',
 		'18.clone_static',
@@ -301,6 +302,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
+			}
+			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
+					'new_map_init_noscan_key', 'new_map_init_noscan_value',
+					'new_map_init_noscan_key_value',
+				] {
+					walker.fn_decl(mut mfn)
+				}
 			}
 		}
 	} else {

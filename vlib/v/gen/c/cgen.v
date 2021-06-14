@@ -3116,7 +3116,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.ChanInit {
 			elem_typ_str := g.typ(node.elem_type)
-			g.write('sync__new_channel_st(')
+			noscan := g.check_noscan(node.elem_type)
+			g.write('sync__new_channel_st${noscan}(')
 			if node.has_cap {
 				g.expr(node.cap_expr)
 			} else {
@@ -6074,8 +6075,10 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			return g.type_default((sym.info as ast.Alias).parent_type)
 		}
 		.chan {
-			elemtypstr := g.typ(sym.chan_info().elem_type)
-			return 'sync__new_channel_st(0, sizeof($elemtypstr))'
+			elem_type := sym.chan_info().elem_type
+			elemtypstr := g.typ(elem_type)
+			noscan := g.check_noscan(elem_type)
+			return 'sync__new_channel_st${noscan}(0, sizeof($elemtypstr))'
 		}
 		.array {
 			elem_typ := sym.array_info().elem_type
