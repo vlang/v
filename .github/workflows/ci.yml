@@ -797,6 +797,8 @@ jobs:
         run: make && sudo ./v symlink
 
   ## vls
+      - name: Clone tree-sitter-v to ~/.vmodules/tree_sitter_v
+        run: git clone --depth 1 https://github.com/nedpals/tree-sitter-v ~/.vmodules/tree_sitter_v
       - name: Clone VLS tree-sitter
         run: git clone --depth 1 --no-single-branch https://github.com/vlang/vls
       - name: Checkout branch tree-sitter
