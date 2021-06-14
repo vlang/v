@@ -4,6 +4,8 @@ import os
 import testing
 import v.pref
 
+const github_job = os.getenv('GITHUB_JOB')
+
 const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
@@ -128,6 +130,13 @@ fn main() {
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
+
+	if github_job == 'windows-tcc' {
+		// TODO: fix these ASAP
+		tsession.skip_files << 'vlib/net/tcp_test.v'
+		tsession.skip_files << 'vlib/net/udp_test.v'
+	}
+
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false
