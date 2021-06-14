@@ -5863,6 +5863,53 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	return t
 }
 
+fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
+	if node is ast.InfixExpr {
+		if node.op == .and {
+			c.smartcast_if_conds(node.left, mut scope)
+			c.smartcast_if_conds(node.right, mut scope)
+		} else if node.op == .key_is {
+			right_expr := node.right
+			right_type := match right_expr {
+				ast.TypeNode {
+					right_expr.typ
+				}
+				ast.None {
+					ast.none_type_idx
+				}
+				else {
+					c.error('invalid type `$right_expr`', right_expr.position())
+					ast.Type(0)
+				}
+			}
+			if right_type != ast.Type(0) {
+				left_sym := c.table.get_type_symbol(node.left_type)
+				expr_type := c.expr(node.left)
+				if left_sym.kind == .interface_ {
+					c.type_implements(right_type, expr_type, node.pos)
+				} else if !c.check_types(right_type, expr_type) {
+					expect_str := c.table.type_to_str(right_type)
+					expr_str := c.table.type_to_str(expr_type)
+					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+				}
+				if (node.left is ast.Ident || node.left is ast.SelectorExpr)
+					&& node.right is ast.TypeNode {
+					is_variable := if mut node.left is ast.Ident {
+						node.left.kind == .variable
+					} else {
+						true
+					}
+					if is_variable {
+						if left_sym.kind in [.interface_, .sum_type] {
+							c.smartcast(node.left, node.left_type, right_type, mut scope)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
