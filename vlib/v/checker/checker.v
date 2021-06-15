@@ -2977,6 +2977,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = field.typ
 		return field.typ
 	}
+	if node.expr.str().starts_with('C.') {
+		return ast.new_type(node.expr_type)
+	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` has no property `$node.field_name`', node.pos)
