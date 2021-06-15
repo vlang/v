@@ -2108,6 +2108,23 @@ println(blue)
 
 Global variables are not normally allowed, so this can be really useful.
 
+**Modules**
+
+Constants can be made public with `pub const`:
+```v oksyntax
+module mymodule
+
+pub const golden_ratio = 1.61803
+
+fn calc() {
+	println(mymodule.golden_ratio)
+}
+```
+The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
+a `const ( )` block.
+
+Outside from module main all constants need to be prefixed with the module name.
+
 ### Required module prefix
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
