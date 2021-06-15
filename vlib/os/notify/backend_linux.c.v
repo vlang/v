@@ -24,8 +24,8 @@ fn C.epoll_ctl(int, int, int, &C.epoll_event) int
 
 fn C.epoll_wait(int, &C.epoll_event, int, int) int
 
-// EpollNotifier struct provides methods that implement FdNotifier
-// using the epoll I/O event notification facility
+// EpollNotifier provides methods that implement FdNotifier using the
+// epoll I/O event notification facility (linux only)
 [noinit]
 struct EpollNotifier {
 	epoll_fd int
@@ -40,8 +40,9 @@ pub:
 	kind FdEventType
 }
 
-// Create a new EpollNotifier returned as the FdNotifier interface. This is to
-// allow OS specific implementations without exposing the concrete type.
+// new creates a new EpollNotifier
+// The FdNotifier interface is returned to allow OS specific
+// implementations without exposing the concrete type
 pub fn new() ?FdNotifier {
 	fd := C.epoll_create1(0) // 0 indicates default behavior
 	if fd == -1 {
@@ -67,7 +68,7 @@ const (
 	epoll_exclusive    = u32(C.EPOLLEXCLUSIVE)
 )
 
-// Helper function for add, modify, and remove
+// ctl is a helper method for add, modify, and remove
 fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
 	event := C.epoll_event{
 		events: mask
@@ -80,26 +81,25 @@ fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
 	}
 }
 
-// Add a file descriptor to the watch list
+// add adds a file descriptor to the watch list
 fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
 	mask := flags_to_mask(events, ...conf)
 	en.ctl(fd, C.EPOLL_CTL_ADD, mask) ?
 }
 
-// Set an existing entry in the watch list to the provided events and configuration
+// modify sets an existing entry in the watch list to the provided events and configuration
 fn (mut en EpollNotifier) modify(fd int, events FdEventType, conf ...FdConfigFlags) ? {
 	mask := flags_to_mask(events, ...conf)
 	en.ctl(fd, C.EPOLL_CTL_MOD, mask) ?
 }
 
-// Remove a file descriptor from the watch list
+// remove removes a file descriptor from the watch list
 fn (mut en EpollNotifier) remove(fd int) ? {
 	en.ctl(fd, C.EPOLL_CTL_DEL, 0) ?
 }
 
-// Wait to be notified of events. Returns at most 512 events.
-// This function returns immediately if timeout is 0 and blocks
-// until there is an event if the timeout is time.infinite.
+// wait waits to be notified of events on the watch list,
+// returns at most 512 events
 fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	// arbitrary 512 limit; events will round robin on successive
 	// waits if the number exceeds this
@@ -134,16 +134,16 @@ fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	return []
 }
 
-// Close the EpollNotifier; any successive calls to add, modify, remove,
-// and wait should fail
+// close closes the EpollNotifier,
+// any successive calls to add, modify, remove, and wait should fail
 fn (mut en EpollNotifier) close() ? {
 	if C.close(en.epoll_fd) == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}
 }
 
-// Helper function; convert a bitmask returned by epoll_wait to
-// FdEventType
+// event_mask_to_flag is a helper function that converts a bitmask
+// returned by epoll_wait to FdEventType
 fn event_mask_to_flag(mask u32) FdEventType {
 	mut flags := FdEventType{}
 
@@ -169,8 +169,8 @@ fn event_mask_to_flag(mask u32) FdEventType {
 	return flags
 }
 
-// Helper function; convert FdEventType and FdConfigFlags to a bitmask
-// used by the C functions
+// flags_to_mask is a helper function that converts FdEventType and
+// FdConfigFlags to a bitmask used by the C functions
 fn flags_to_mask(events FdEventType, confs ...FdConfigFlags) u32 {
 	mut mask := u32(0)
 	if events.has(.read) {
