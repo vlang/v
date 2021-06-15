@@ -2499,6 +2499,60 @@ fn main() {
 }
 ```
 
+### Function Types
+
+Function signatures can be declared as types - for example:
+
+```v
+type Filter = fn (string) string
+```
+
+This works like any other type - for example, a function can accept an argument of a function type:
+
+```
+fn filter(s string, f Filter) string {
+  return f(s)
+}
+```
+
+V has duck-typing, so functions don't need to declare compatibility with a function type - they just have to be compatible:
+
+```
+fn uppercase(s string) string {
+	return s.to_upper()
+}
+```
+
+Compatible functions can be explicitly cast to a function type:
+
+```v
+my_filter := Filter(uppercase)
+```
+
+The cast here is purely informational - again, duck-typing means that the resulting type is the same without an explicit cast:
+
+```v
+my_filter := uppercase
+```
+
+You can pass the assigned function as an argument:
+
+```v
+println(filter("Hello world", my_filter)) // prints "HELLO WORLD"
+```
+
+And you could of course have passed it directly as well, without using a local variable:
+
+```v
+println(filter("Hello world", uppercase)) // prints "HELLO WORLD"
+```
+
+And finally, this works with anonymous functions as well:
+
+```v
+println(filter("Hello world", fn (s string) string { return s.to_upper() }))
+```
+
 ### Enums
 
 ```v
