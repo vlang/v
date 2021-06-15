@@ -25,6 +25,19 @@ pub mut:
 	path        string
 }
 
+// DrawImageConfig struct defines the various options
+// that can be used to draw an image onto the screen
+pub struct DrawImageConfig {
+pub:
+	flip_x    bool
+	flip_y    bool
+	img       &Image = voidptr(0)
+	img_id    int
+	img_rect  Rect // defines the size and position on image when rendering to the screen
+	part_rect Rect // defines the size and position of part of the image to use when rendering
+	z         f32
+}
+
 pub struct Rect {
 pub:
 	x      f32
@@ -160,22 +173,30 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	return img
 }
 
-// Draw part of an image using uv coordinates
-// img_rect is the size and position (in pixels on screen) of the displayed rectangle (ie the draw_image args)
-// part_rect is the size and position (in absolute pixels in the image) of the wanted part
-// eg. On a 600*600 context, to display only the first 400*400 pixels of a 2000*2000 image
-// on the entire context surface, call :
-// draw_image_part(Rect{0, 0, 600, 600}, Rect{0, 0, 400, 400}, img)
-pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image) {
-	if img_.id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+// draw_image_with_config takes in a config that details how the
+// provided image should be drawn onto the screen
+pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
+	id := if !isnil(config.img) { config.img.id } else { config.img_id }
+	if id >= ctx.image_cache.len {
+		eprintln('gg: draw_image() bad img id $id (img cache len = $ctx.image_cache.len)')
 		return
 	}
-	img := ctx.image_cache[img_.id] // fetch the image from cache
 
+	img := ctx.image_cache[id]
 	if !img.simg_ok {
 		return
 	}
+
+	mut img_rect := config.img_rect
+	if img_rect.width == 0 && img_rect.height == 0 {
+		img_rect = Rect{img_rect.x, img_rect.y, img.width, img.height}
+	}
+
+	mut part_rect := config.part_rect
+	if part_rect.width == 0 && part_rect.height == 0 {
+		part_rect = Rect{part_rect.x, part_rect.y, img.width, img.height}
+	}
+
 	u0 := part_rect.x / img.width
 	v0 := part_rect.y / img.height
 	u1 := (part_rect.x + part_rect.width) / img.width
@@ -188,20 +209,43 @@ pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image
 		scale := f32(img.width) / f32(img_rect.width)
 		y1 = f32(img_rect.y + int(f32(img.height) / scale)) * ctx.scale
 	}
-	//
+
+	flip_x := config.flip_x
+	flip_y := config.flip_y
+
+	mut u0f := if !flip_x { u0 } else { u1 }
+	mut u1f := if !flip_x { u1 } else { u0 }
+	mut v0f := if !flip_y { v0 } else { v1 }
+	mut v1f := if !flip_y { v1 } else { v0 }
+
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
-	sgl.v2f_t2f(x0, y0, u0, v0)
-	sgl.v2f_t2f(x1, y0, u1, v0)
-	sgl.v2f_t2f(x1, y1, u1, v1)
-	sgl.v2f_t2f(x0, y1, u0, v1)
+	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
+	sgl.v3f_t2f(x1, y0, config.z, u1f, v0f)
+	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
+	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
 	sgl.end()
 	sgl.disable_texture()
 }
 
+// Draw part of an image using uv coordinates
+// img_rect is the size and position (in pixels on screen) of the displayed rectangle (ie the draw_image args)
+// part_rect is the size and position (in absolute pixels in the image) of the wanted part
+// eg. On a 600*600 context, to display only the first 400*400 pixels of a 2000*2000 image
+// on the entire context surface, call :
+// draw_image_part(Rect{0, 0, 600, 600}, Rect{0, 0, 400, 400}, img)
+pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image) {
+	ctx.draw_image_with_config(
+		img: img_
+		img_rect: img_rect
+		part_rect: part_rect
+	)
+}
+
+// draw_image draws the provided image onto the screen
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	$if macos {
 		if img_.id >= ctx.image_cache.len {
@@ -220,74 +264,35 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 		}
 	}
 
-	ctx.draw_image_part(Rect{x, y, width, height}, Rect{0, 0, img_.width, img_.height},
-		img_)
+	ctx.draw_image_with_config(
+		img: img_
+		img_rect: Rect{x, y, width, height}
+		part_rect: Rect{0, 0, img_.width, img_.height}
+	)
 }
 
-// TODO remove copy pasta, merge the functions
+// draw_image_flipped draws the provided image flipped horizontally (use `draw_image_with_config` to flip vertically)
 pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
-	if img_.id >= ctx.image_cache.len {
-		eprintln('gg: draw_image_flipped() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
-		return
-	}
-	img := ctx.image_cache[img_.id] // fetch the image from cache
-	if !img.simg_ok {
-		return
-	}
-	u0 := f32(0.0)
-	v0 := f32(0.0)
-	u1 := f32(1.0)
-	v1 := f32(1.0)
-	x0 := f32(x) * ctx.scale
-	y0 := f32(y) * ctx.scale
-	x1 := f32(x + width) * ctx.scale
-	y1 := f32(y + height) * ctx.scale
-	//
-	sgl.load_pipeline(ctx.timage_pip)
-	sgl.enable_texture()
-	sgl.texture(img.simg)
-	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
-	sgl.v2f_t2f(x0, y0, u1, v0)
-	sgl.v2f_t2f(x1, y0, u0, v0)
-	sgl.v2f_t2f(x1, y1, u0, v1)
-	sgl.v2f_t2f(x0, y1, u1, v1)
-	sgl.end()
-	sgl.disable_texture()
+	ctx.draw_image_with_config(
+		flip_x: true
+		img: img_
+		img_rect: Rect{x, y, width, height}
+	)
 }
 
+// draw_image_by_id draws an image based by an id
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
-	img := ctx.image_cache[id]
-	ctx.draw_image(x, y, width, height, img)
+	ctx.draw_image_with_config(
+		img_id: id
+		img_rect: Rect{x, y, width, height}
+	)
 }
 
+// draw_image_3d draws an image with a z depth
 pub fn (ctx &Context) draw_image_3d(x f32, y f32, z f32, width f32, height f32, img_ &Image) {
-	if img_.id >= ctx.image_cache.len {
-		eprintln('gg: draw_image_3d() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
-		return
-	}
-	img := ctx.image_cache[img_.id] // fetch the image from cache
-	if !img.simg_ok {
-		return
-	}
-	u0 := f32(0.0)
-	v0 := f32(0.0)
-	u1 := f32(1.0)
-	v1 := f32(1.0)
-	x0 := f32(x) * ctx.scale
-	y0 := f32(y) * ctx.scale
-	x1 := f32(x + width) * ctx.scale
-	y1 := f32(y + height) * ctx.scale
-	//
-	sgl.load_pipeline(ctx.timage_pip)
-	sgl.enable_texture()
-	sgl.texture(img.simg)
-	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
-	sgl.v3f_t2f(x0, y0, z, u0, v0)
-	sgl.v3f_t2f(x1, y0, z, u1, v0)
-	sgl.v3f_t2f(x1, y1, z, u1, v1)
-	sgl.v3f_t2f(x0, y1, z, u0, v1)
-	sgl.end()
-	sgl.disable_texture()
+	ctx.draw_image_with_config(
+		img: img_
+		img_rect: Rect{x, y, width, height}
+		z: z
+	)
 }
