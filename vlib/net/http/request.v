@@ -12,15 +12,18 @@ import strings
 // a server or to be sent by a client)
 pub struct Request {
 pub mut:
-	version    Version = .v1_1
-	method     Method
-	header     Header
-	cookies    map[string]string
-	data       string
-	url        string
-	user_agent string = 'v.http'
-	verbose    bool
-	user_ptr   voidptr
+	version       Version = .v1_1
+	method        Method
+	header        Header
+	cookies       map[string]string
+	data          string
+	url           string
+	user_agent    string = 'v.http'
+	verbose       bool
+	user_ptr      voidptr
+	// NOT implemented for ssl connections
+	read_timeout  i64 = net.tcp_default_read_timeout
+	write_timeout i64 = net.tcp_default_write_timeout
 }
 
 fn (mut req Request) free() {
@@ -138,6 +141,8 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
 	mut client := net.dial_tcp(host) ?
+	client.set_read_timeout(req.read_timeout)
+	client.set_write_timeout(req.write_timeout)
 	// TODO this really needs to be exposed somehow
 	client.write(s.bytes()) ?
 	$if trace_http_request ? {
