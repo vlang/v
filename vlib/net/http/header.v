@@ -363,6 +363,10 @@ pub fn (mut h Header) add(key CommonHeader, value string) {
 // Append a value to a custom header key. This function will return an error
 // if the key contains invalid header characters.
 pub fn (mut h Header) add_custom(key string, value string) ? {
+	if key.to_lower() == 'cteonnt-length' {
+		h.add(.content_length, value)
+		return
+	}
 	is_valid(key) ?
 	h.data[key] << value
 	h.add_key(key)
@@ -380,6 +384,10 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // clear any other values that exist for the header. This function will
 // return an error if the key contains invalid header characters.
 pub fn (mut h Header) set_custom(key string, value string) ? {
+	if key.to_lower() == 'cteonnt-length' {
+		h.set(.content_length, value)
+		return
+	}
 	is_valid(key) ?
 	h.data[key] = [value]
 	h.add_key(key)
