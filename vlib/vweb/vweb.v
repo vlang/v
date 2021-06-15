@@ -90,8 +90,8 @@ pub struct Cookie {
 	name      string
 	value     string
 	expires   time.Time
-	path      ?string
-	domain    ?string
+	path      string
+	domain    string
 	secure    bool
 	http_only bool
 }
@@ -218,12 +218,8 @@ pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	mut cookie_data := []string{}
-	if path := cookie.path {
-		cookie_data << 'path=$path;'
-	}
-	if domain := cookie.domain {
-		cookie_data << 'domain=$domain;'
-	}
+	cookie_data << 'path=$cookie.path;'
+	cookie_data << 'domain=$cookie.domain;'
 	mut secure := if cookie.secure { 'Secure;' } else { '' }
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
 	cookie_data << secure
