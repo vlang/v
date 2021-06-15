@@ -443,9 +443,7 @@ pub fn (mut g Gen) init() {
 	if g.table.gostmts > 0 {
 		g.comptime_defines.writeln('#define __VTHREADS__ (1)')
 	}
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
-		.boehm_leak,
-	] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {

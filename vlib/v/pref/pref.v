@@ -29,7 +29,6 @@ pub enum GarbageCollectionMode {
 	boehm_incr // incremental garbage colletion mode
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage colletion mode
-	boehm // default Boehm-GC mode for architecture
 	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
@@ -262,7 +261,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'' {
+					'', 'none' {
 						res.gc_mode = .no_gc
 					}
 					'boehm_full' {
@@ -288,8 +287,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm_opt')
 					}
 					'boehm' {
-						res.gc_mode = .boehm
+						res.gc_mode = .boehm_full_opt // default mode
 						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
 					}
 					'boehm_leak' {
 						res.gc_mode = .boehm_leak
@@ -298,12 +299,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
-						eprintln('  `-gc boehm` ............ default mode for the platform')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}
 				}
