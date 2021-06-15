@@ -2403,7 +2403,7 @@ Modules are up to date.
 **Optional:** tag your V module with `vlang` and `vlang-module` on github.com 
 to allow a better search experiance.
 
-## Types 2
+## Type Declarations
 
 ### Interfaces
 
