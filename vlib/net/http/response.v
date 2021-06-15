@@ -66,9 +66,7 @@ pub fn parse_response(resp string) Response {
 		parts := cookie.split_nth('=', 2)
 		cookies[parts[0]] = parts[1]
 	}
-	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or {
-		''
-	} == '' {
+	if header.get(.transfer_encoding) or { '' } == 'chunked' {
 		text = chunked.decode(text)
 	}
 	return Response{
