@@ -787,7 +787,7 @@ pub fn real_path(fpath string) string {
 		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			unsafe { free(fullpath) }
-			return fpath
+			return fpath.clone()
 		}
 		res = unsafe { string_from_wide(fullpath) }
 	} $else {
@@ -795,7 +795,7 @@ pub fn real_path(fpath string) string {
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			unsafe { free(fullpath) }
-			return fpath
+			return fpath.clone()
 		}
 		res = unsafe { fullpath.vstring() }
 	}
