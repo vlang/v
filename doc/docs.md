@@ -4013,10 +4013,11 @@ native backend (flag: `-b native`).
 
 ### Javascript Backend
 
-There is currently no support for source maps for Javascript output,
-created by the JS Backend (flag: `-b js`).
+To debug the generated Javascript output you can active source maps:
+`v -b js -sourcemap hello.v -o hello.js`
 
-
+For all supported options check the latest help:
+`v help build-js`
 
 ## Conditional compilation
 
