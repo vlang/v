@@ -108,7 +108,7 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
-		mut str := malloc(fsize + 1)
+		mut str := malloc_noscan(fsize + 1)
 		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
@@ -496,7 +496,7 @@ pub fn get_raw_line() string {
 	$if windows {
 		unsafe {
 			max_line_chars := 256
-			buf := malloc(max_line_chars * 2)
+			buf := malloc_noscan(max_line_chars * 2)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
@@ -538,7 +538,7 @@ pub fn get_raw_stdin() []byte {
 		unsafe {
 			block_bytes := 512
 			mut old_size := block_bytes
-			mut buf := malloc(block_bytes)
+			mut buf := malloc_noscan(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			mut offset := 0
@@ -584,7 +584,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := unsafe { malloc(fsize) }
+	buf := unsafe { malloc_noscan(fsize) }
 	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
