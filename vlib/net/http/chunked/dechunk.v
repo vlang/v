@@ -68,5 +68,9 @@ pub fn decode(text string) string {
 		cscanner.skip_crlf()
 	}
 	cscanner.skip_crlf()
-	return sb.str()
+	if sb.len > 0 {
+		return sb.str()
+	} else {
+		return text
+	}
 }

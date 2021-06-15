@@ -1156,6 +1156,23 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
+			} else if (left_sym.kind == .string && !left_type.has_flag(.optional))
+				|| (right_sym.kind == .string && !right_type.has_flag(.optional)) {
+				deref_left_type := if node.left.is_auto_deref_var() {
+					left_type.deref()
+				} else {
+					left_type
+				}
+				deref_right_type := if node.right.is_auto_deref_var() {
+					right_type.deref()
+				} else {
+					right_type
+				}
+				left_name := c.table.type_to_str(deref_left_type)
+				right_name := c.table.type_to_str(deref_right_type)
+				if left_name != right_name {
+					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+				}
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
 				if promoted_type.idx() == ast.void_type_idx {
