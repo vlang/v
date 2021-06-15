@@ -7,6 +7,7 @@ import io
 import net
 import net.urllib
 import strings
+import time
 
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
@@ -22,8 +23,8 @@ pub mut:
 	verbose       bool
 	user_ptr      voidptr
 	// NOT implemented for ssl connections
-	read_timeout  i64 = net.tcp_default_read_timeout
-	write_timeout i64 = net.tcp_default_write_timeout
+	read_timeout  i64 = 30 * time.second
+	write_timeout i64 = 30 * time.second
 }
 
 fn (mut req Request) free() {
