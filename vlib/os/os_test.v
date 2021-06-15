@@ -308,7 +308,9 @@ fn test_realpath_existing() {
 	os.rm(existing_file) or {}
 	os.write_file(existing_file, 'abc') or {}
 	assert os.exists(existing_file)
-	assert os.real_path(existing_file) == existing_file
+	rpath := os.real_path(existing_file)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(existing_file_name)
 	os.rm(existing_file) or {}
 }
 
