@@ -287,7 +287,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm_opt')
 					}
 					'boehm' {
-						res.gc_mode = .boehm_full_opt /* default mode */
+						res.gc_mode = .boehm_full_opt // default mode
 						parse_define(mut res, 'gcboehm')
 						parse_define(mut res, 'gcboehm_full')
 						parse_define(mut res, 'gcboehm_opt')
