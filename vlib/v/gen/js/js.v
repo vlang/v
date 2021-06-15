@@ -850,8 +850,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 	for field in it.fields {
 		g.write('$field.name: ')
 		if field.has_expr && field.expr is ast.IntegerLiteral {
-			e := field.expr as ast.IntegerLiteral
-			i = e.val.int()
+			i = field.expr.val.int()
 		}
 		g.writeln('$i,')
 		i++
