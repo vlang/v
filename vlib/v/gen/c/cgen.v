@@ -3874,13 +3874,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			} else {
 				(left_sym.info as ast.Alias).parent_type
 			}
-			nr_muls := '*'.repeat(the_left_type.nr_muls())
+			left_nr_muls := '*'.repeat(the_left_type.nr_muls())
 			g.write(g.typ(the_left_type.set_nr_muls(0)))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
-			g.write('($nr_muls')
+			g.write('($left_nr_muls')
 			g.expr(node.left)
-			g.write(', $nr_muls')
+			right_nr_muls := '*'.repeat(node.right_type.nr_muls())
+			g.write(', $right_nr_muls')
 			g.expr(node.right)
 			g.write(')')
 		} else if node.op in [.ne, .gt, .ge, .le] && ((is_v_struct && !is_alias && not_exception)
