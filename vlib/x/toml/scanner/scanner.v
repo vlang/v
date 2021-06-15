@@ -71,6 +71,11 @@ pub fn (mut s Scanner) scan() token.Token {
 			util.printdbg(@MOD + '.' + @FN, 'identified a bare key "$key" ($key.len)')
 			return s.new_token(.bare, key, key.len)
 		}
+		if util.is_number(byte(c)) {
+			num := ascii+s.identify_number()
+			util.printdbg(@MOD + '.' + @FN, 'identified a number "$num" ($num.len)')
+			return s.new_token(.number, num, num.len)
+		}
 		match rune(c) {
 			` `, `\t`, `\n` {
 				if s.config.tokenize_formating {
