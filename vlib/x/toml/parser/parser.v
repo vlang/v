@@ -4,6 +4,7 @@
 module parser
 
 import x.toml.ast
+import x.toml.util
 import x.toml.token
 import x.toml.scanner
 
@@ -19,6 +20,8 @@ mut:
 	prev_tok token.Token
 	tok token.Token
 	peek_tok token.Token
+
+	root &ast.Root = &ast.Root{}
 }
 
 // Config is used to configure a Scanner instance.
@@ -36,39 +39,13 @@ pub fn new_parser(config Config) Parser {
 }
 
 pub fn (mut p Parser) init() {
-	p.tok = p.scanner.scan()
-	p.peek_tok = p.scanner.scan()
+	p.next()
 }
 
 pub fn (mut p Parser) parse() &ast.Root {
-	mut root := &ast.Root{}
-	mut parent := root
 	p.init()
-	for p.tok.kind != .eof {
-		p.next()
-		match p.tok.kind {
-			.assign {
-				parent.children << p.assign()
-			}
-			.hash {
-				parent.children << p.comment()
-			}
-			.name {
-				parent.children << p.identifier()
-			}
-			.string {
-				parent.children << p.assign()
-			}
-			.eof {
-				parent.children << p.eof()
-			}
-			else {
-				panic(@MOD + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
-			}
-		}
-
-	}
-	return root
+	p.root.table = p.table()
+	return p.root
 }
 
 fn (mut p Parser) next() {
@@ -77,41 +54,204 @@ fn (mut p Parser) next() {
 	p.peek_tok = p.scanner.scan()
 }
 
-pub fn (mut p Parser) comment() &ast.Comment {
-	//println('parsed "${p.tok.lit}"')
-	return &ast.Comment{
+fn (mut p Parser) expect(expected_token token.Kind) {
+	if p.tok.kind == expected_token {
+		p.next()
+	} else {
+		panic(@MOD + '.' + @STRUCT + '.' + @FN + ' expected token "$expected_token" but found "$p.peek_tok.kind"')
+	}
+}
+
+/*
+pub fn (mut p Parser) value() ast.Value {
+	for p.tok.kind != .eof {
+		p.next()
+		util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsing value...')
+		match p.tok.kind {
+			.hash {
+				// TODO table.comments << p.comment()
+				p.comment()
+			}
+			.bare, .quoted{
+				if p.peek_tok.kind == .assign {
+					key, val := p.key_value()
+					match parent {
+						map[string]ast.Value {
+							parent[key.str()] = val
+						} else {
+							panic(@MOD + '.' + @STRUCT + '.' + @FN + ' cannot insert to parent "$parent"')
+						}
+					}
+
+				}
+			}
+			.lsbr {
+				if p.peek_tok.kind == .lsbr {
+					//p.array()
+				} else {
+					key := p.key()
+					//for p.tok.kind in [.whitespace, .tab, .nl] {
+					//	p.next()
+					//}
+					match parent {
+						map[string]ast.Value {
+							mut val := map[string]ast.Value
+							p.value(mut val)
+							parent[key.str()] = val
+						} else {
+							panic(@MOD + '.' + @STRUCT + '.' + @FN + ' cannot parse other than map[string]Value currently')
+						}
+					}
+				}
+
+			}
+			.eof {
+				//parent.children << p.eof()
+			}
+			else {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+			}
+		}
+	}
+}*/
+
+pub fn (mut p Parser) table() ast.Value {
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsing table...')
+	mut table := map[string]ast.Value
+	for p.tok.kind != .eof {
+		p.next()
+		match p.tok.kind {
+			.hash {
+				// TODO table.comments << p.comment()
+				c := p.comment()
+				util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+			}
+			.bare, .quoted{
+				if p.peek_tok.kind == .assign {
+					key, val := p.key_value()
+					table[key.str()] = val
+				}
+			}
+			.lsbr {
+				if p.peek_tok.kind == .lsbr {
+					//p.array()
+				} else {
+					key := p.key()
+					table[key.str()] = p.table()
+				}
+
+			}
+			.eof {
+				//parent.children << p.eof()
+			}
+			else {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+			}
+
+		}
+	}
+	return ast.Value(table)
+}
+
+pub fn (mut p Parser) comment() ast.Comment {
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed hash comment "#$p.tok.lit"')
+	return ast.Comment{
 		text: p.tok.lit
 		pos: p.tok.position()
 	}
 }
 
-pub fn (mut p Parser) identifier() &ast.Identifier {
+pub fn (mut p Parser) key() ast.Key {
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsing key...')
+
+	p.expect(.lsbr) // '[' bracket
+	key := match p.tok.kind {
+		.bare {
+			bare := p.bare()
+			ast.Key(bare)
+		}
+		.quoted {
+			quoted := p.quoted()
+			ast.Key(quoted)
+		}
+		else {
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key expected .bare or .quoted')
+			ast.Key(ast.Bare{}) // TODO workaround bug
+		}
+	}
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
+	p.next()
+	//p.expect(.rsbr) // ']' bracket
+	return key
+
+/*
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
+	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok')
+	return ast.Key(ast.Bare{})*/
+}
+
+pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
 	//println('parsed comment "${p.tok.lit}"')
-	return &ast.Identifier{
+	//mut key := ast.Key{}
+
+	key := match p.tok.kind {
+		.bare {
+			ast.Key(p.bare())
+		}
+		.quoted {
+			ast.Key(p.quoted())
+		}
+		else {
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key expected .bare or .quoted')
+			ast.Key(ast.Bare{}) // TODO workaround bug
+		}
+	}
+	p.next()
+	p.expect(.assign) // Assignment operator
+
+	//mut value := ast.Value{}
+	value := match p.tok.kind {
+		.quoted {
+			ast.Value(p.quoted())
+		}
+		else {
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' value expected .quoted')
+			ast.Value(ast.Quoted{}) // TODO workaround bug
+		}
+	}
+	/*if value is ast.Err {
+		panic(@MOD + '.' + @STRUCT + '.' + @FN + ' expected .quoted value')
+	}*/
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = "$value"')
+	return key, value
+}
+
+pub fn (mut p Parser) bare() ast.Bare {
+	return ast.Bare{
 		text: p.tok.lit
 		pos: p.tok.position()
 	}
 }
 
-pub fn (mut p Parser) assign() &ast.Assign {
-	//println('parsed "${p.tok.lit}"')
+/*
+pub fn (mut p Parser) assign() ast.Assign {
 	return &ast.Assign {
 		text: p.tok.lit
 		pos: p.tok.position()
 	}
 }
+*/
 
-pub fn (mut p Parser) sstring() &ast.String {
-	//println('parsed "${p.tok.lit}"')
-	return &ast.String {
+pub fn (mut p Parser) quoted() ast.Quoted {
+	return ast.Quoted{
 		text: p.tok.lit
 		pos: p.tok.position()
 	}
 }
 
-pub fn (mut p Parser) eof() &ast.EOF {
-	//println('parsed "${p.tok.lit}"')
-	return &ast.EOF {
+pub fn (mut p Parser) eof() ast.EOF {
+	return ast.EOF {
 		pos: p.tok.position()
 	}
 }

@@ -68,7 +68,7 @@ fn test_peek_n() {
 	assert s.next() == `c`
 	assert s.next() == -1
 }
-
+/*
 fn test_back() {
 	mut s := scanner.new_scanner(input: scan_input)
 	assert s.next() == `a`
@@ -91,7 +91,7 @@ fn test_back_n() {
 	s.back_n(2)
 	assert s.next() == `b`
 }
-
+*/
 fn test_reset() {
 	mut s := scanner.new_scanner(input: scan_input)
 	assert s.next() == `a`

@@ -17,9 +17,9 @@ pub:
 pub enum Kind {
 	unknown
 	eof
-	name // user
+	bare // user
 	number // 123
-	string // 'foo', "foo", """foo""" or '''foo'''
+	quoted // 'foo', "foo", """foo""" or '''foo'''
 	chartoken // `A` - rune
 	plus // +
 	minus // -
@@ -27,10 +27,12 @@ pub enum Kind {
 	colon // :
 	hash // # comment
 	assign // =
+	lcbr // {
+	rcbr // }
 	lsbr // [
 	rsbr // ]
-	nl // linefeed / newline character
-	cr // carrige return
+	nl // \n linefeed / newline character
+	cr // \r carrige return
 	tab // \t character
 	whitespace // ` `
 	dot // .

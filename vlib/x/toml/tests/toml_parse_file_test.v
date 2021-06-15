@@ -7,10 +7,14 @@ fn test_parse_file() {
 	toml_str := '# Test TOML file
 
 title = "TOML Example"
+
+[owner]
+name = "Tom Preston-Werner"
+#dob = 1979-05-27T07:32:00-08:00 # First class dates
 '
 	os.mkdir_all(out_path) or { assert false }
 	os.write_file(test_file, toml_str) or { assert false }
 	ast_root := toml.parse_file(test_file)
-	eprintln('$ast_root')
+	//dump(ast_root)
 	//assert false
 }
