@@ -49,7 +49,7 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	unsafe {
-		mut buf := malloc(maxbytes + 1)
+		mut buf := malloc_noscan(maxbytes + 1)
 		nbytes := C.read(fd, buf, maxbytes)
 		if nbytes < 0 {
 			free(buf)

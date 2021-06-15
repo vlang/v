@@ -243,8 +243,8 @@ pub fn new(config Config) &Picoev {
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
 		date: C.get_date()
-		buf: unsafe { malloc(picoev.max_fds * picoev.max_read + 1) }
-		out: unsafe { malloc(picoev.max_fds * picoev.max_write + 1) }
+		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
+		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
 	C.picoev_add(loop, fd, int(Event.read), 0, accept_callback, pv)
 	go update_date(mut pv)

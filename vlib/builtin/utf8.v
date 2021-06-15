@@ -11,7 +11,7 @@ pub fn utf8_char_len(b byte) int {
 // utf32 == Codepoint
 pub fn utf32_to_str(code u32) string {
 	unsafe {
-		mut buffer := malloc(5)
+		mut buffer := malloc_noscan(5)
 		return utf32_to_str_no_malloc(code, buffer)
 	}
 }

@@ -237,7 +237,7 @@ fn (s Scanner) num_lit(start int, end int) string {
 	}
 	unsafe {
 		txt := s.text.str
-		mut b := malloc(end - start + 1) // add a byte for the endstring 0
+		mut b := malloc_noscan(end - start + 1) // add a byte for the endstring 0
 		mut i1 := 0
 		for i := start; i < end; i++ {
 			if txt[i] != scanner.num_sep {

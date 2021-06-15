@@ -173,7 +173,7 @@ fn get_cursor_position() (int, int) {
 	print('\033[6n')
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
@@ -196,7 +196,7 @@ fn supports_truecolor() bool {
 	print('\x1bP\$qm\x1b\\')
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
