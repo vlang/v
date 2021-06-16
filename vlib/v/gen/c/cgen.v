@@ -6549,7 +6549,9 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-						if st != ast.voidptr_type {
+						if st == ast.voidptr_type {
+							cast_struct.write_string('/*.... ast.voidptr_type */')
+						} else {
 							for embed_type in st_sym.struct_info().embeds {
 								embed_sym := g.table.get_type_symbol(embed_type)
 								if _ := embed_sym.find_field(field.name) {
@@ -6573,6 +6575,13 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
+			}
+			if st == ast.voidptr_type {
+				for mname, _ in methodidx {
+					if g.pref.build_mode != .build_module {
+						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
+					}
+				}
 			}
 			for _, method in st_sym.methods {
 				if method.name !in methodidx {
