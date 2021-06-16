@@ -2721,8 +2721,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 				continue
 			}
-			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-				pos)
+			// voidptr is an escape hatch, it should be allowed to be passed
+			if utyp != ast.voidptr_type {
+				c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+					pos)
+			}
 		}
 		inter_sym.info.types << utyp
 	}

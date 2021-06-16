@@ -6549,11 +6549,13 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-						for embed_type in st_sym.struct_info().embeds {
-							embed_sym := g.table.get_type_symbol(embed_type)
-							if _ := embed_sym.find_field(field.name) {
-								cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
-								break
+						if st != ast.voidptr_type {
+							for embed_type in st_sym.struct_info().embeds {
+								embed_sym := g.table.get_type_symbol(embed_type)
+								if _ := embed_sym.find_field(field.name) {
+									cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
+									break
+								}
 							}
 						}
 						cast_struct.writeln('),')
