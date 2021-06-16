@@ -8,11 +8,6 @@ import time
 #include <synchapi.h>
 #include <time.h>
 
-struct C._FILETIME {
-	dwLowDateTime  u32
-	dwHighDateTime u32
-}
-
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
@@ -180,7 +175,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	mut ft_start := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_start)
 	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
-		timeout / (100 * time.nanosecond)
+		u64(timeout / (100 * time.nanosecond))
 	mut t_ms := u32(timeout / time.millisecond)
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	mut res := 0
