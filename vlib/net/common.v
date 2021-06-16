@@ -65,6 +65,28 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	return C.FD_ISSET(handle, &set)
 }
 
+// select_with_retry will retry the select if select is failing
+// due to interrupted system call. This can happen on signals
+// for example the GC Boehm uses signals internally on garbage
+// collection
+[inline]
+fn select_with_retry(handle int, test Select, timeout time.Duration) ?bool {
+	mut retries := 3
+	for retries > 0 {
+		ready := @select(handle, test, timeout) or {
+			if err.code == 4 {
+				// signal! lets retry max 3 times
+				retries -= 1
+				continue
+			}
+			// we got other error
+			return err
+		}
+		return ready
+	}
+	return error('failed to @select more that three times due to interrupted system call')
+}
+
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
 	if deadline.unix == 0 {
@@ -73,7 +95,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		if timeout < 0 && timeout != net.infinite_timeout {
 			return err_timed_out
 		}
-		ready := @select(handle, test, timeout) ?
+		ready := select_with_retry(handle, test, timeout) ?
 		if ready {
 			return
 		}
@@ -87,8 +109,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		// timed out
 		return err_timed_out
 	}
-
-	ready := @select(handle, test, d_timeout) ?
+	ready := select_with_retry(handle, test, timeout) ?
 	if ready {
 		return
 	}
