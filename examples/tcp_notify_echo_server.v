@@ -15,14 +15,18 @@ fn main() {
 
 	// create TCP listener
 	mut listener := net.listen_tcp(.ip, 'localhost:9001') ?
-	defer { listener.close() or {} }
+	defer {
+		listener.close() or {}
+	}
 	addr := listener.addr() ?
 	eprintln('Listening on $addr')
 	eprintln('Type `stop` to stop the server')
 
 	// create file descriptor notifier
 	mut notifier := notify.new() ?
-	defer { notifier.close() or {} }
+	defer {
+		notifier.close() or {}
+	}
 	notifier.add(os.stdin().fd, .read) ?
 	notifier.add(listener.sock.handle, .read) ?
 
