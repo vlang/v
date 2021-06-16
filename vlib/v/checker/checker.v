@@ -4658,19 +4658,15 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
-					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
-				mut s := 'cannot cast non-sum type `$expr_type_sym.name` using `as`'
-				if type_sym.kind == .sum_type {
-					s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
-				}
-				c.error(s, node.pos)
+				// mut s := 'cannot cast non-sum type `$expr_type_sym.name` using `as`'
+				// if type_sym.kind == .sum_type {
+				// 	s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
+				// }
+				// c.error(s, node.pos)
 			}
-			if expr_type_sym.kind == .sum_type {
-				return node.typ
-			}
-			return node.typ.to_ptr()
+			return node.typ
 		}
 		ast.Assoc {
 			v := node.scope.find_var(node.var_name) or { panic(err) }
@@ -6038,50 +6034,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.skip_flags = cur_skip_flags
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
-			pos := branch.cond.position()
-			if branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_is {
-					right_expr := branch.cond.right
-					right_type := match right_expr {
-						ast.TypeNode {
-							right_expr.typ
-						}
-						ast.None {
-							ast.none_type_idx
-						}
-						else {
-							c.error('invalid type `$right_expr`', right_expr.position())
-							ast.Type(0)
-						}
-					}
-					if right_type != ast.Type(0) {
-						left_sym := c.table.get_type_symbol(branch.cond.left_type)
-						expr_type := c.expr(branch.cond.left)
-						if left_sym.kind == .interface_ {
-							c.type_implements(right_type, expr_type, pos)
-						} else if !c.check_types(right_type, expr_type) {
-							expect_str := c.table.type_to_str(right_type)
-							expr_str := c.table.type_to_str(expr_type)
-							c.error('cannot use type `$expect_str` as type `$expr_str`',
-								pos)
-						}
-						if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
-							&& branch.cond.right is ast.TypeNode {
-							is_variable := if mut branch.cond.left is ast.Ident {
-								branch.cond.left.kind == .variable
-							} else {
-								true
-							}
-							if is_variable {
-								if left_sym.kind in [.interface_, .sum_type] {
-									c.smartcast(branch.cond.left, branch.cond.left_type,
-										right_type, mut branch.scope)
-								}
-							}
-						}
-					}
-				}
-			}
+			c.smartcast_if_conds(branch.cond, mut branch.scope)
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
