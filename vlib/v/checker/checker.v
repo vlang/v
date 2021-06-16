@@ -3973,12 +3973,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			typ := c.unwrap_generic(node.typ)
-			sym := c.table.get_type_symbol(typ)
-			if sym.kind == .placeholder || typ.has_flag(.generic) {
-				c.error('unknown type `$sym.name`', node.typ_pos)
-			}
-			c.stmts(node.stmts)
+			c.comp_for(node)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -4147,6 +4142,18 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
+}
+
+fn (mut c Checker) comp_for(node ast.CompFor) {
+	typ := c.unwrap_generic(node.typ)
+	sym := c.table.get_type_symbol(typ)
+	if sym.kind == .placeholder || typ.has_flag(.generic) {
+		c.error('unknown type `$sym.name`', node.typ_pos)
+	}
+	if node.kind == .fields {
+		c.comptime_fields_type[node.val_var] = node.typ
+	}
+	c.stmts(node.stmts)
 }
 
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {

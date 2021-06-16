@@ -113,11 +113,12 @@ pub:
 // FieldData holds information about a field. Fields reside on structs.
 pub struct FieldData {
 pub:
-	name   string
-	attrs  []string
-	is_pub bool
-	is_mut bool
-	typ    int
+	name      string
+	attrs     []string
+	is_pub    bool
+	is_mut    bool
+	is_shared bool
+	typ       int
 }
 
 enum AttributeKind {
