@@ -6,7 +6,14 @@ module sync
 import time
 
 #include <synchapi.h>
+#include <time.h>
 
+struct C._FILETIME {
+	dwLowDateTime u32
+	dwHighDateTime u32
+}
+
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
@@ -170,8 +177,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 			return true
 		}
 	}
+	mut ft_start := C._FILETIME{}
+	C.GetSystemTimeAsFileTime(&ft_start)
+	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
+		timeout / (100 * time.nanosecond)
+	mut t_ms := u32(timeout / time.millisecond)
 	C.AcquireSRWLockExclusive(&sem.mtx)
-	t_ms := u32(timeout / time.millisecond)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
 
@@ -191,6 +202,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				break outer
 			}
 		}
+		C.GetSystemTimeAsFileTime(&ft_start)
+		time_now := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) // in 100ns
+		if time_now > time_end {
+			break outer // timeout exceeded
+		}
+		t_ms = u32((time_end - time_now) / 10000)
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return res != 0
