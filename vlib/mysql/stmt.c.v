@@ -1,7 +1,9 @@
 module mysql
 
+[typedef]
 struct C.MYSQL_STMT {}
 
+[typedef]
 struct C.MYSQL_BIND {
 	buffer_type   int
 	buffer        voidptr
@@ -33,7 +35,6 @@ const (
 	mysql_type_varchar     = C.MYSQL_TYPE_VARCHAR
 	mysql_type_bit         = C.MYSQL_TYPE_BIT
 	mysql_type_timestamp22 = C.MYSQL_TYPE_TIMESTAMP
-	mysql_type_invalid     = C.MYSQL_TYPE_INVALID
 	mysql_type_json        = C.MYSQL_TYPE_JSON
 	mysql_type_newdecimal  = C.MYSQL_TYPE_NEWDECIMAL
 	mysql_type_enum        = C.MYSQL_TYPE_ENUM
@@ -45,7 +46,7 @@ const (
 	mysql_type_var_string  = C.MYSQL_TYPE_VAR_STRING
 	mysql_type_string      = C.MYSQL_TYPE_STRING
 	mysql_type_geometry    = C.MYSQL_TYPE_GEOMETRY
-	mysql_no_data = C.MYSQL_NO_DATA
+	mysql_no_data          = C.MYSQL_NO_DATA
 )
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
@@ -302,5 +303,5 @@ pub fn (mut res StmtResultBuffer) get_text() ?string {
 	if typ != mysql.mysql_type_double {
 		return error('Invalid mysql type for type `string`')
 	}
-	return unsafe { charptr(buf).vstring() }
+	return unsafe { &char(buf).vstring() }
 }

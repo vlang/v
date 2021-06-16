@@ -135,7 +135,6 @@ fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
 	}
 }
 
-
 fn (mut rb StmtResultBuffer) mysql_select_column(typ int) ?orm.Primitive {
 	mut primitive := orm.Primitive(0)
 	match typ {

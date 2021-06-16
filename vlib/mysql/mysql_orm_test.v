@@ -42,7 +42,7 @@ fn test_mysql_orm() {
 		fields: ['name', 'age']
 		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
-	
+
 	res := db.@select(orm.OrmSelectConfig{
 		table: 'Test'
 		has_where: true

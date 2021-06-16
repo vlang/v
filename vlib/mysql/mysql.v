@@ -132,7 +132,7 @@ pub fn (conn &Connection) tables(wildcard string) ?[]string {
 pub fn (conn &Connection) escape_string(s string) string {
 	unsafe {
 		to := malloc_noscan(2 * s.len + 1)
-		C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
+		C.mysql_real_escape_string(conn.conn, to, s.str, s.len)
 		return to.vstring()
 	}
 }
