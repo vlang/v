@@ -9,6 +9,13 @@ const (
 
 struct App {
 	vweb.Context
+mut:
+	state shared State
+}
+
+struct State {
+mut:
+	cnt int
 }
 
 fn main() {
@@ -27,6 +34,9 @@ pub fn (mut app App) user_endpoint(user string) vweb.Result {
 }
 
 pub fn (mut app App) index() vweb.Result {
+	lock app.state {
+		app.state.cnt++
+	}
 	show := true
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
