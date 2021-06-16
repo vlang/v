@@ -334,7 +334,7 @@ pub fn run<T>(global_app &T, port int) {
 		// conn: 0
 		//}
 		mut conn := l.accept() or { panic('accept() failed') }
-		handle_conn<T>(mut conn, mut request_app)
+		go handle_conn<T>(mut conn, mut request_app)
 	}
 }
 
