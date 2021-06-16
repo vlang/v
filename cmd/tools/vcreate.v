@@ -50,6 +50,7 @@ fn vmod_content(c Create) string {
 		"	license: '$c.license'",
 		'	dependencies: []',
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -59,6 +60,7 @@ fn main_content() string {
 		'fn main() {',
 		"	println('Hello World!')",
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -72,6 +74,7 @@ fn gen_gitignore(name string) string {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'',
 	].join('\n')
 }
 
