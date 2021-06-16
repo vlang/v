@@ -160,7 +160,7 @@ fn init_project() {
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
-	c.create_git_repo('')
+	c.create_git_repo('.')
 
 	println("Change your module's description in `v.mod`")
 }
