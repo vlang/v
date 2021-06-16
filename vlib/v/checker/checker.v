@@ -4651,7 +4651,8 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot yy cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
+					c.error('cannot yy cast `$expr_type_sym.name` to `$type_sym.name`',
+						node.pos)
 				}
 			} else {
 				// mut s := 'cannot cast non-sum type `$expr_type_sym.name` using `as`'
