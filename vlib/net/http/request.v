@@ -13,16 +13,17 @@ import time
 // a server or to be sent by a client)
 pub struct Request {
 pub mut:
-	version       Version = .v1_1
-	method        Method
-	header        Header
-	cookies       map[string]string
-	data          string
-	url           string
-	user_agent    string = 'v.http'
-	verbose       bool
-	user_ptr      voidptr
+	version    Version = .v1_1
+	method     Method
+	header     Header
+	cookies    map[string]string
+	data       string
+	url        string
+	user_agent string = 'v.http'
+	verbose    bool
+	user_ptr   voidptr
 	// NOT implemented for ssl connections
+	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 }
