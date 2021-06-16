@@ -1122,6 +1122,9 @@ fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 			return false
 		}
 		inter_sym.info.types << utyp
+		if !inter_sym.info.types.contains(voidptr_type) {
+			inter_sym.info.types << voidptr_type
+		}
 	}
 	return true
 }
