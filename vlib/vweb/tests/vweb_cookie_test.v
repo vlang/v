@@ -2,7 +2,7 @@ import vweb
 import net.http
 
 const (
-	port = 8000
+	port = 12380
 )
 
 struct App {
@@ -26,7 +26,7 @@ fn (mut app App) index() vweb.Result {
 
 fn test_cookie() {
 	go vweb.run(&App{}, port)
-	resp := http.get('http://127.0.0.1:$port/') or { panic('server not running') }
+	resp := http.get('http://127.0.0.1:$port/') or { panic(err) }
 	darkmode := resp.cookies['darkmode'] or { panic('cookie not set') }
 	value := darkmode[0].ascii_str().int()
 	mut path := ''
