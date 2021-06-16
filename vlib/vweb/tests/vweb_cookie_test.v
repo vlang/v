@@ -24,7 +24,7 @@ fn (mut app App) index() vweb.Result {
 	return app.html('<h1>Hello world</h1>')
 }
 
-fn main() {
+fn test_cookie() {
 	go vweb.run(&App{}, port)
 	resp := http.get('http://127.0.0.1:$port/') or { panic('server not running') }
 	darkmode := resp.cookies['darkmode'] or { panic('cookie not set') }
