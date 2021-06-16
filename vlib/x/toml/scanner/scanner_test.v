@@ -1,7 +1,9 @@
 import x.toml.input
 import x.toml.scanner
 
-const scan_input = input.Config{text: 'abc'}
+const scan_input = input.Config{
+	text: 'abc'
+}
 
 fn test_remaining() {
 	mut s := scanner.new_scanner(input: scan_input)
@@ -68,6 +70,7 @@ fn test_peek_n() {
 	assert s.next() == `c`
 	assert s.next() == -1
 }
+
 /*
 fn test_back() {
 	mut s := scanner.new_scanner(input: scan_input)

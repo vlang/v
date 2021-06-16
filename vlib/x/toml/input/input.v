@@ -7,8 +7,8 @@ module input
 // Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
 pub struct Config {
 pub:
-	text           string // TOML text
-	file_path      string // '/path/to/file.toml'
+	text      string // TOML text
+	file_path string // '/path/to/file.toml'
 }
 
 pub fn (c Config) validate() {

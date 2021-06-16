@@ -11,7 +11,6 @@ pub:
 	line_nr int    // the line number in the source where the token occured
 	pos     int    // the position of the token in scanner text
 	len     int    // length of the literal
-	//	tidx    int    // the index of the token
 }
 
 pub enum Kind {
@@ -20,7 +19,6 @@ pub enum Kind {
 	bare // user
 	number // 123
 	quoted // 'foo', "foo", """foo""" or '''foo'''
-	chartoken // `A` - rune
 	plus // +
 	minus // -
 	comma // ,

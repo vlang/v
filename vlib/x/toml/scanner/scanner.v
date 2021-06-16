@@ -17,9 +17,9 @@ pub:
 	config Config
 	text   string // the input TOML text
 mut:
-	col     int // current column number (x coordinate)
+	col     int  // current column number (x coordinate)
 	line_nr int = 1 // current line number (y coordinate)
-	pos     int // current flat/index position in the `text` field
+	pos     int  // current flat/index position in the `text` field
 	mode    Mode // sub-mode of the scanner
 }
 
@@ -32,7 +32,7 @@ enum Mode {
 // Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
 pub struct Config {
 pub:
-	input input.Config
+	input              input.Config
 	tokenize_formating bool // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
 }
 
@@ -43,7 +43,7 @@ pub fn new_scanner(config Config) &Scanner {
 	file_path := config.input.file_path
 	if os.is_file(file_path) {
 		text = os.read_file(file_path) or {
-			panic(@MOD + '.' + @FN + ' Could not read "$file_path": "$err.msg"')
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' Could not read "$file_path": "$err.msg"')
 		}
 	}
 	mut s := &Scanner{
@@ -58,23 +58,27 @@ pub fn (mut s Scanner) scan() token.Token {
 	for {
 		c := s.next()
 
-		if c == -1 || s.pos == s.text.len{
+		if c == -1 || s.pos == s.text.len {
 			s.inc_line_number()
 			return s.new_token(.eof, '', 1)
 		}
 
 		ascii := byte(c).ascii_str()
-		util.printdbg(@MOD + '.' + @FN, 'current char "$ascii"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'current char "$ascii"')
 
-		if util.is_key_char(byte(c)) {
-			key := ascii+s.identify_key()
-			util.printdbg(@MOD + '.' + @FN, 'identified a bare key "$key" ($key.len)')
-			return s.new_token(.bare, key, key.len)
-		}
-		if util.is_number(byte(c)) {
-			num := ascii+s.identify_number()
-			util.printdbg(@MOD + '.' + @FN, 'identified a number "$num" ($num.len)')
+		if byte(c).is_digit() {
+			num := ascii + s.identify_number()
+			/*
+			if s.peek() == `-` {
+				util.printdbg(@MOD + '.' + @STRUCT + '.'  + @FN, 'identified a date "$num" ($num.len)')
+			}*/
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
+		}
+		if util.is_key_char(byte(c)) {
+			key := ascii + s.identify_key()
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a bare key "$key" ($key.len)')
+			return s.new_token(.bare, key, key.len)
 		}
 		match rune(c) {
 			` `, `\t`, `\n` {
@@ -86,48 +90,57 @@ pub fn (mut s Scanner) scan() token.Token {
 					if c == `\n` {
 						kind = token.Kind.nl
 					}
-					util.printdbg(@MOD + '.' + @FN, 'identified one of " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified one of " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
 					return s.new_token(kind, ascii, ascii.len)
 				} else {
-					util.printdbg(@MOD + '.' + @FN, 'skipping " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
 				}
 				if c == `\n` {
 					s.inc_line_number()
-					util.printdbg(@MOD + '.' + @FN, 'incremented line nr to $s.line_nr')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'incremented line nr to $s.line_nr')
 				}
 				continue
 			}
+			`-` {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified minus "$ascii" ($ascii.len)')
+				return s.new_token(.minus, ascii, ascii.len)
+			}
+			`+` {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified plus "$ascii" ($ascii.len)')
+				return s.new_token(.plus, ascii, ascii.len)
+			}
 			`=` {
-				util.printdbg(@MOD + '.' + @FN, 'identified assignment "$ascii" ($ascii.len)')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified assignment "$ascii" ($ascii.len)')
 				return s.new_token(.assign, ascii, ascii.len)
 			}
 			`"` { // ... some string"
 				ident_string := s.identify_string()
-				util.printdbg(@MOD + '.' + @FN, 'identified quoted string "$ident_string"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string "$ident_string"')
 				return s.new_token(.quoted, ident_string, ident_string.len + 2) // + two quotes
 			}
 			`#` {
 				start := s.pos + 1
 				s.ignore_line()
-				//s.next()
+				// s.next()
 				hash := s.text[start..s.pos]
-				util.printdbg(@MOD + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
 			}
 			`[` {
-				util.printdbg(@MOD + '.' + @FN, 'identified left square bracket "$ascii" ($ascii.len)')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified left square bracket "$ascii" ($ascii.len)')
 				return s.new_token(.lsbr, ascii, ascii.len)
 			}
 			`]` {
-				util.printdbg(@MOD + '.' + @FN, 'identified right square bracket "$ascii" ($ascii.len)')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified right square bracket "$ascii" ($ascii.len)')
 				return s.new_token(.rsbr, ascii, ascii.len)
 			}
 			else {
-				panic(@MOD + '.' + @FN + ' could not scan character code $c ("$ascii") at $s.pos ($s.line_nr,$s.col) "${s.text[s.pos]}"')
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not scan character code $c ("$ascii") at $s.pos ($s.line_nr,$s.col) "${s.text[s.pos]}"')
 			}
 		}
 	}
-	util.printdbg(@MOD + '.' + @FN, 'unknown character code at $s.pos ($s.line_nr,$s.col) "${s.text[s.pos]}"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'unknown character code at $s.pos ($s.line_nr,$s.col) "${s.text[s.pos]}"')
 	return s.new_token(.unknown, '', 0)
 }
 
@@ -201,31 +214,6 @@ pub fn (s &Scanner) peek_n(n int) int {
 	return -1
 }
 
-/*
-// back goes back 1 character from the current scanner position.
-[inline]
-pub fn (mut s Scanner) back() {
-	if s.pos > 0 {
-		s.pos--
-	}
-	s.col = s.pos
-}
-*/
-
-/*
-// back_n goes back `n` characters from the current scanner position.
-pub fn (mut s Scanner) back_n(n int) {
-	s.pos -= n
-	if s.pos < 0 {
-		s.pos = 0
-	}
-	if s.pos > s.text.len {
-		s.pos = s.text.len
-	}
-	s.col = s.pos
-}
-*/
-
 // reset resets the internal state of the scanner.
 pub fn (mut s Scanner) reset() {
 	s.pos = 0
@@ -236,13 +224,13 @@ pub fn (mut s Scanner) reset() {
 // new_token returns a new `token.Token`.
 [inline]
 fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
-	//line_offset := 1
-	//println('new_token($lit)')
+	// line_offset := 1
+	// println('new_token($lit)')
 	return token.Token{
 		kind: kind
 		lit: lit
 		col: mathutil.max(1, s.col - len + 1)
-		line_nr: s.line_nr //+ line_offset
+		line_nr: s.line_nr + 1 //+ line_offset
 		pos: s.pos - len + 1
 		len: len
 	}
@@ -263,7 +251,7 @@ fn (mut s Scanner) inc_line_number() {
 fn (mut s Scanner) eat_to_end_of_line() {
 	for c := s.peek(); c != -1 && c != `\n`; c = s.peek() {
 		s.next()
-		util.printdbg(@MOD + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
 		continue
 	}
 }
@@ -275,18 +263,18 @@ fn (mut s Scanner) identify_key() string {
 	s.col++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !(util.is_key_char(c) || c.is_digit()) {
+		if !(util.is_key_char(c) || c.is_digit() || c == `_` || c == `-`) {
 			break
 		}
 		s.pos++
 		s.col++
 	}
 	key := s.text[start..s.pos]
-	//s.pos--
+	// s.pos--
 	return key
 }
 
-[direct_array_access]
+[direct_array_access; inline]
 fn (mut s Scanner) identify_string() string {
 	s.pos--
 	s.col--
@@ -297,18 +285,36 @@ fn (mut s Scanner) identify_string() string {
 		s.pos++
 		s.col++
 		if s.pos >= s.text.len {
-			panic(@MOD + '.' + @FN + ' unfinished string literal "${q.ascii_str()}" started at $start ($s.line_nr,$s.col) "${byte(s.text[s.pos]).ascii_str()}"')
-			//break
+			panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				' unfinished string literal "$q.ascii_str()" started at $start ($s.line_nr,$s.col) "${byte(s.text[s.pos]).ascii_str()}"')
+			// break
 		}
 		c := s.text[s.pos]
-		util.printdbg(@MOD + '.' + @FN, 'c: "${c.ascii_str()}" / $c (q: $q)')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: "$c.ascii_str()" / $c (q: $q)')
 		if c == q {
 			s.pos++
 			s.col++
 			return lit
 		}
 		lit += c.ascii_str()
-		//println('lit: "$lit"')
+		// println('lit: "$lit"')
 	}
 	return lit
+}
+
+[direct_array_access; inline]
+fn (mut s Scanner) identify_number() string {
+	start := s.pos
+	s.pos++
+	s.col++
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(c.is_digit() || c == `_`) {
+			break
+		}
+		s.pos++
+		s.col++
+	}
+	key := s.text[start..s.pos]
+	return key
 }

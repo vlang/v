@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module toml
 
-//import os
+// import os
 import x.toml.ast
 import x.toml.input
 import x.toml.scanner
@@ -24,10 +24,10 @@ pub fn parse_file(path string) &ast.Root {
 	in_config := input.Config{
 		file_path: path
 	}
-	scanner_config := scanner.Config {
+	scanner_config := scanner.Config{
 		input: in_config
 	}
-	parser_config := parser.Config {
+	parser_config := parser.Config{
 		scanner: scanner.new_scanner(scanner_config)
 	}
 	mut p := parser.new_parser(parser_config)

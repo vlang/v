@@ -5,7 +5,7 @@ module util
 
 [inline]
 pub fn is_key_char(c byte) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`  || c == `-`
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) // || c == `_`  || c == `-` <- these are identified when tokenizing
 }
 
 [if debug]

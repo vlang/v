@@ -6,8 +6,8 @@ module ast
 [heap]
 pub struct Scope {
 mut:
-	parent               &Scope = 0
-	children             []&Scope
+	parent   &Scope = 0
+	children []&Scope
 }
 
 [unsafe]
