@@ -9,7 +9,7 @@ import time
 #include <time.h>
 
 struct C._FILETIME {
-	dwLowDateTime u32
+	dwLowDateTime  u32
 	dwHighDateTime u32
 }
 
@@ -213,6 +213,5 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return res != 0
 }
 
-pub fn (s Semaphore) destroy() bool {
-	return true
+pub fn (s Semaphore) destroy() {
 }

@@ -184,6 +184,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return false
 }
 
-pub fn (sem Semaphore) destroy() bool {
-	return C.sem_destroy(&sem.sem, &t_spec) == 0
+pub fn (sem Semaphore) destroy() {
+	res := C.sem_destroy(&sem.sem)
+	if res == 0 {
+		return
+	}
+	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
 }
