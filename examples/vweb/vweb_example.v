@@ -9,8 +9,6 @@ const (
 
 struct App {
 	vweb.Context
-mut:
-	cnt int
 }
 
 fn main() {
@@ -29,9 +27,7 @@ pub fn (mut app App) user_endpoint(user string) vweb.Result {
 }
 
 pub fn (mut app App) index() vweb.Result {
-	app.cnt++
 	show := true
-	// app.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
 	app.enable_chunked_transfer(40)
