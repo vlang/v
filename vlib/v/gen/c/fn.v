@@ -441,7 +441,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.inside_call = false
 	}
 	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type
-		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm]
+		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 	cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
@@ -505,7 +505,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.table.cur_concrete_types, false)
+			g.table.cur_concrete_types, true)
 		{
 			return t_typ
 		}
@@ -954,7 +954,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write(json_obj)
 			} else {
 				if node.is_keep_alive
-					&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm] {
+					&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 					cur_line := g.go_before_stmt(0)
 					tmp_cnt_save = g.keep_alive_call_pregen(node)
 					g.write(cur_line)

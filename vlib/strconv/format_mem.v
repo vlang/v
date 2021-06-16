@@ -440,7 +440,7 @@ pub fn format_es(f f64, p BF_param) string {
 [direct_array_access]
 pub fn remove_tail_zeros(s string) string {
 	unsafe{
-		mut buf := malloc(s.len + 1)
+		mut buf := malloc_noscan(s.len + 1)
 		mut i_d := 0
 		mut i_s := 0
 		

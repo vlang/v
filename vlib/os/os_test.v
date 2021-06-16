@@ -284,8 +284,62 @@ fn test_cp_all() {
 	assert os.exists(os.join_path('nonexisting', 'ex1.txt'))
 }
 
-fn test_realpath() {
+fn test_realpath_of_empty_string_works() {
 	assert os.real_path('') == ''
+}
+
+fn test_realpath_non_existing() {
+	non_existing_path := 'sdyfuisd_non_existing_file'
+	rpath := os.real_path(non_existing_path)
+	$if windows {
+		// on windows, the workdir is prepended, so the result is absolute:
+		assert rpath.len > non_existing_path.len
+	}
+	$if !windows {
+		// on unix, the workdir is NOT prepended for now, so the result remains the same.
+		// TODO: the windows behaviour seems saner, think about normalising the unix case to do the same.
+		assert os.real_path(non_existing_path) == non_existing_path
+	}
+}
+
+fn test_realpath_existing() {
+	existing_file_name := 'existing_file.txt'
+	existing_file := os.join_path(os.temp_dir(), existing_file_name)
+	os.rm(existing_file) or {}
+	os.write_file(existing_file, 'abc') or {}
+	assert os.exists(existing_file)
+	rpath := os.real_path(existing_file)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(existing_file_name)
+	os.rm(existing_file) or {}
+}
+
+fn test_realpath_removes_dots() {
+	examples_folder := os.join_path(@VEXEROOT, 'vlib', 'v', '..', '..', 'cmd', '.', '..',
+		'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert real_path_of_examples_folder.len < examples_folder.len
+	assert !real_path_of_examples_folder.contains('..')
+}
+
+fn test_realpath_absolutizes_existing_relative_paths() {
+	old_wd := os.getwd()
+	defer {
+		os.chdir(old_wd)
+	}
+	os.chdir(@VEXEROOT)
+	examples_folder := os.join_path('vlib', 'v', '..', '..', 'cmd', '.', '..', 'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert os.is_abs_path(real_path_of_examples_folder)
+}
+
+// TODO: think much more about whether this is desirable:
+fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
+	relative_path := os.join_path('one', 'nonexisting_folder', '..', 'something')
+	$if !windows {
+		assert os.real_path(relative_path).contains('..')
+		assert os.real_path(relative_path) == relative_path
+	}
 }
 
 fn test_tmpdir() {

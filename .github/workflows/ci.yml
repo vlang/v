@@ -128,27 +128,27 @@ jobs:
         run: |
           thirdparty/tcc/tcc.exe -version
           ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-      - name: v self compilation with -gc boehm_full_opt
+      - name: v self compilation with -gc boehm
         run: |
-          ./v -gc boehm_full_opt -o v2 cmd/v && ./v2 -gc boehm_full_opt -o v3 cmd/v && ./v3 -gc boehm_full_opt -o v4 cmd/v
+          ./v -gc boehm -o v2 cmd/v && ./v2 -gc boehm -o v3 cmd/v && ./v3 -gc boehm -o v4 cmd/v
           mv v4 v
       - name: v doctor
         run: |
           ./v doctor
-      - name: Verify `v -gc boehm_full_opt test` works
+      - name: Verify `v -gc boehm test` works
         run: |
-          ./v -gc boehm_full_opt cmd/tools/test_if_v_test_system_works.v
+          ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: Self tests with `-gc boehm_full_opt` with V compiler using Boehm-GC itself
-        run: ./v -gc boehm_full_opt -silent test-self
+      - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
+        run: ./v -gc boehm -silent test-self
       - name: Test leak detector
         run: |
           ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.v
           ./testcase_leak 2>leaks.txt
           grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
-      - name: Test leak detector not being active for `-gc boehm_full_opt`
+      - name: Test leak detector not being active for `-gc boehm`
         run: |
-          ./v -gc boehm_full_opt -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.v
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
       - name: Test leak detector not being active for normal compile

@@ -443,9 +443,7 @@ pub fn (mut g Gen) init() {
 	if g.table.gostmts > 0 {
 		g.comptime_defines.writeln('#define __VTHREADS__ (1)')
 	}
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
-		.boehm_leak,
-	] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
@@ -6551,11 +6549,15 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-						for embed_type in st_sym.struct_info().embeds {
-							embed_sym := g.table.get_type_symbol(embed_type)
-							if _ := embed_sym.find_field(field.name) {
-								cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
-								break
+						if st == ast.voidptr_type {
+							cast_struct.write_string('/*.... ast.voidptr_type */')
+						} else {
+							for embed_type in st_sym.struct_info().embeds {
+								embed_sym := g.table.get_type_symbol(embed_type)
+								if _ := embed_sym.find_field(field.name) {
+									cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
+									break
+								}
 							}
 						}
 						cast_struct.writeln('),')
@@ -6573,6 +6575,13 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
+			}
+			if st == ast.voidptr_type {
+				for mname, _ in methodidx {
+					if g.pref.build_mode != .build_module {
+						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
+					}
+				}
 			}
 			for _, method in st_sym.methods {
 				if method.name !in methodidx {

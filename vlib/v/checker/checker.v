@@ -1156,8 +1156,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if (left_sym.kind == .string && !left_type.has_flag(.optional))
-				|| (right_sym.kind == .string && !right_type.has_flag(.optional)) {
+			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
 				deref_left_type := if node.left.is_auto_deref_var() {
 					left_type.deref()
 				} else {
@@ -1168,8 +1167,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else {
 					right_type
 				}
-				left_name := c.table.type_to_str(deref_left_type)
-				right_name := c.table.type_to_str(deref_right_type)
+				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
+				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
 				if left_name != right_name {
 					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				}
@@ -1374,7 +1373,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated {
+		&& !c.pref.translated && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -2699,8 +2698,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 			continue
 		}
-		c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
-			pos)
+		// voidptr is an escape hatch, it should be allowed to be passed
+		if utyp != ast.voidptr_type {
+			c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
+				pos)
+		}
 	}
 	// Verify fields
 	if mut inter_sym.info is ast.Interface {
@@ -2719,8 +2721,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 				continue
 			}
-			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-				pos)
+			// voidptr is an escape hatch, it should be allowed to be passed
+			if utyp != ast.voidptr_type {
+				c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+					pos)
+			}
 		}
 		inter_sym.info.types << utyp
 	}
@@ -3619,8 +3624,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !right.is_auto_deref_var() && right_sym.kind != .placeholder
-			&& left_sym.kind != .interface_ {
+		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
+			&& right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow for ptr += 2

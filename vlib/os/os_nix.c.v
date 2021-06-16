@@ -68,7 +68,7 @@ pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
 	unsafe {
-		x := malloc(int(utsize))
+		x := malloc_noscan(int(utsize))
 		d := &C.utsname(x)
 		if C.uname(d) == 0 {
 			u.sysname = cstring_to_vstring(d.sysname)
@@ -85,7 +85,7 @@ pub fn uname() Uname {
 pub fn hostname() string {
 	mut hstnme := ''
 	size := 256
-	mut buf := unsafe { &char(malloc(size)) }
+	mut buf := unsafe { &char(malloc_noscan(size)) }
 	if C.gethostname(buf, size) == 0 {
 		hstnme = unsafe { cstring_to_vstring(buf) }
 		unsafe { free(buf) }
@@ -203,7 +203,7 @@ pub fn execute(cmd string) Result {
 			output: 'exec("$cmd") failed'
 		}
 	}
-	buf := unsafe { malloc(4096) }
+	buf := unsafe { malloc_noscan(4096) }
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }

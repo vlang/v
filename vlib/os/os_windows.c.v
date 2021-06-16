@@ -167,7 +167,7 @@ pub fn get_file_handle(path string) HANDLE {
 pub fn get_module_filename(handle HANDLE) ?string {
 	unsafe {
 		mut sz := 4096 // Optimized length
-		mut buf := &u16(malloc(4096))
+		mut buf := &u16(malloc_noscan(4096))
 		for {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {

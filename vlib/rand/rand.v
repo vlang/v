@@ -197,7 +197,7 @@ pub fn string_from_set(charset string, len int) string {
 	if len == 0 {
 		return ''
 	}
-	mut buf := unsafe { malloc(len + 1) }
+	mut buf := unsafe { malloc_noscan(len + 1) }
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = charset[intn(charset.len)]
@@ -228,7 +228,7 @@ pub fn ascii(len int) string {
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
 	buflen := 36
-	mut buf := unsafe { malloc(37) }
+	mut buf := unsafe { malloc_noscan(37) }
 	mut i_buf := 0
 	mut x := u64(0)
 	mut d := byte(0)
@@ -281,7 +281,7 @@ pub fn ulid() string {
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	buflen := 26
-	mut buf := unsafe { malloc(27) }
+	mut buf := unsafe { malloc_noscan(27) }
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
