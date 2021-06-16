@@ -324,6 +324,14 @@ pub fn run<T>(global_app &T, port int) {
 		} $else {
 			// println('vweb no db')
 		}
+		$for field in T.fields {
+			// if field.is_shared {
+			// println(field)
+			//}
+			//$if field.typ is string {
+			request_app.$(field.name) = global_app.$(field.name)
+			//}
+		}
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		// request_app.Context = Context{
 		// conn: 0

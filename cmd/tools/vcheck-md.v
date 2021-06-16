@@ -266,7 +266,7 @@ mut:
 }
 
 fn (mut ad AnchorData) add_links(line_number int, line string) {
-	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z\-]+)\)'
+	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z0-9\-]+)\)'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	res := re.find_all_str(line)
 
@@ -292,7 +292,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 			}
 		}
 	} else {
-		query := r'<a\s*id=["\'](?P<link>[a-z\-]+)["\']\s*/>'
+		query := r'<a\s*id=["\'](?P<link>[a-z0-9\-]+)["\']\s*/>'
 		mut re := regex.regex_opt(query) or { panic(err) }
 		res := re.find_all_str(line)
 
@@ -352,7 +352,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 }
 
 fn create_ref_link(s string) string {
-	query_remove := r'[^a-z \-]'
+	query_remove := r'[^a-z0-9 \-]'
 	mut re := regex.regex_opt(query_remove) or { panic(err) }
 	return re.replace_simple(s.to_lower(), '').replace(' ', '-')
 }
