@@ -244,6 +244,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 			g.gen_print_reg(.rax, 3)
 		}
 		else {
+			dump(typeof(expr).name)
 			dump(expr)
 			verror('expected string as argument for print')
 		}
@@ -336,10 +337,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.write8(b)
 			}
 		}
-		ast.Module {
-			eprintln('module')
-			dump(node)
-		}
+		ast.Module {}
 		ast.Return {
 			// dump(node.exprs[0])
 			// if in main

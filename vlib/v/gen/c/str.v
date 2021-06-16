@@ -100,7 +100,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
-			ast.SelectorExpr, ast.Ident { true }
+			ast.SelectorExpr, ast.Ident, ast.CTempVar { true }
 			else { false }
 		}
 		if is_var {

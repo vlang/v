@@ -21,7 +21,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'v_realloc' /* needed for _STR */,
-		'v_malloc' /* needed for _STR */,
+		'malloc',
+		'malloc_noscan',
+		'vcalloc',
+		'vcalloc_noscan',
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
@@ -53,6 +56,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// string. methods
 		'18.add',
 		'18.trim_space',
+		'18.repeat',
 		'18.replace',
 		'18.clone',
 		'18.clone_static',
@@ -82,12 +86,13 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'21.get_unsafe',
 		'21.set_unsafe',
 		'21.get_with_check' /* used for `x := a[i] or {}` */,
-		'21.clone_static',
+		'21.clone_static_to_depth',
+		'21.clone_to_depth',
 		'21.first',
 		'21.last',
 		'21.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
 		'21.reverse',
-		'21.repeat',
+		'21.repeat_to_depth',
 		'21.slice',
 		'21.slice2',
 		'59.get',
@@ -120,10 +125,25 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
+			'memdup_noscan',
 			'__new_array_noscan',
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
+			'21.clone_static_to_depth_noscan',
+			'21.clone_to_depth_noscan',
+			'21.reverse_noscan',
+			'21.repeat_to_depth_noscan',
+			'65557.pop_noscan',
+			'65557.push_noscan',
+			'65557.push_many_noscan',
+			'65557.insert_noscan',
+			'65557.insert_many_noscan',
+			'65557.prepend_noscan',
+			'65557.prepend_many_noscan',
+			'65557.reverse_noscan',
+			'65557.grow_cap_noscan',
+			'65557.grow_len_noscan',
 		]
 	}
 
@@ -282,6 +302,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
+			}
+			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
+					'new_map_init_noscan_key', 'new_map_init_noscan_value',
+					'new_map_init_noscan_key_value',
+				] {
+					walker.fn_decl(mut mfn)
+				}
 			}
 		}
 	} else {

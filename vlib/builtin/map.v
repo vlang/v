@@ -338,7 +338,7 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
 		key_values: new_dense_array(key_bytes, value_bytes)
-		metas: unsafe { &u32(vcalloc(metasize)) }
+		metas: unsafe { &u32(vcalloc_noscan(metasize)) }
 		extra_metas: extra_metas_inc
 		len: 0
 		has_string_keys: has_string_keys

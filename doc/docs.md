@@ -83,7 +83,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Structs](#structs)
     * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
-    * [Short struct literal syntax](#short-struct-initialization-syntax)
+    * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [Unions](#unions)
@@ -94,13 +94,14 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
-    * [Anonymous & high order functions](#anonymous--high-order-functions)
+    * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Module/package management](#modulepackage-management)
+    * [Manage Packages](#manage-packages)
+	* [Publish package](#publish-package)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -622,7 +623,6 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-
 #### Array Properties
 There are two properties that control the "size" of an array:
 * `len`: *length* - the number of defined elements of the array
@@ -685,6 +685,70 @@ for i in 0 .. 1000 {
 Note: The above code uses a [range `for`](#range-for) statement and a
 [push operator (`<<`)](#array-operations).
 
+#### Array Types
+
+An array can be of these types:
+| Types        | Example Definition                   |
+| ------------ | ------------------------------------ |
+| Number       | `[]int,[]i64`                        |
+| String       | `[]string`                           |
+| Rune         | `[]rune`                             |
+| Boolean      | `[]bool`                             |
+| Array        | `[][]int`                            |
+| Struct       | `[]MyStructName`                     |
+| Channel      | `[]chan f64`                         |
+| Function     | `[]MyFunctionType` `[]fn (int) bool` |
+| Interface    | `[]MyInterfaceName`                  |
+| Sum Type     | `[]MySumTypeName`                    |
+| Generic Type | `[]T`                                |
+| Map          | `[]map[string]f64`                   |
+| Enum         | `[]MyEnumType`                       |
+| Alias        | `[]MyAliasTypeName`                  |
+| Thread       | `[]thread int`                       |
+| Reference    | `[]&f64`                             |
+| Shared       | `[]shared MyStructType`              |
+
+**Example Code:**
+
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
+which can handle different types (e.g. Points, Lines) of data elements.
+
+```v
+struct Point {
+	x int
+	y int
+}
+
+struct Line {
+	p1 Point
+	p2 Point
+}
+
+type ObjectSumType = Line | Point
+
+mut object_list := []ObjectSumType{}
+object_list << Point{1, 1}
+object_list << Line{
+	p1: Point{3, 3}
+	p2: Point{4, 4}
+}
+dump(object_list)
+/*
+object_list: [ObjectSumType(Point{
+    x: 1
+    y: 1
+}), ObjectSumType(Line{
+    p1: Point{
+        x: 3
+        y: 3
+    }
+    p2: Point{
+        x: 4
+        y: 4
+    }
+})]
+*/
+```
 
 #### Multidimensional Arrays
 
@@ -1624,6 +1688,10 @@ p = {
 	y: 4
 }
 assert p.y == 4
+//
+// array: first element defines type of array
+points := [Point{10, 20}, Point{20, 30}, Point{40, 50}]
+println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}]
 ```
 
 Omitting the struct name also works for returning a struct literal or passing one
@@ -1896,7 +1964,7 @@ b := [5, 6, 7]
 println(sum(...b)) // output: 18
 ```
 
-### Anonymous & high order functions
+### Anonymous & higher order functions
 
 ```v
 fn sqr(n int) int {
@@ -2040,6 +2108,23 @@ println(blue)
 
 Global variables are not normally allowed, so this can be really useful.
 
+**Modules**
+
+Constants can be made public with `pub const`:
+```v oksyntax
+module mymodule
+
+pub const golden_ratio = 1.61803
+
+fn calc() {
+	println(mymodule.golden_ratio)
+}
+```
+The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
+a `const ( )` block.
+
+Outside from module main all constants need to be prefixed with the module name.
+
 ### Required module prefix
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
@@ -2176,7 +2261,7 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
-### Module/package management
+### Manage Packages
 
 Briefly:
 
@@ -2202,7 +2287,7 @@ You can also install modules already created by someone else with [VPM](https://
 ```powershell
 v install [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v install ui
 ```
@@ -2212,7 +2297,7 @@ Removing a module with v:
 ```powershell
 v remove [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v remove ui
 ```
@@ -2222,7 +2307,7 @@ Updating an installed module from [VPM](https://vpm.vlang.io/):
 ```powershell
 v update [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v update ui
 ```
@@ -2237,7 +2322,7 @@ To see all the modules you have installed, you can use:
 ```powershell
 v list
 ```
-###### Example
+**Example:**
 ```powershell
 > v list
 Installed modules:
@@ -2250,13 +2335,73 @@ outdated          Show installed modules that need updates.
 ```powershell
 v outdated
 ```
-###### Example
+**Example:**
 ```powershell
 > v outdated
 Modules are up to date.
 ```
 
-You can also add your module to VPM by following the instructions on the website https://vpm.vlang.io/new
+### Publish package
+
+1. Put a `v.mod` file inside the toplevel folder of your module (if you
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file). 
+
+	```sh
+	v new mymodule
+	Input your project description: My nice module.
+	Input your project version: (0.0.0) 0.0.1
+	Input your project license: (MIT) 
+	Initialising ...
+	Complete!
+	```
+
+	Example `v.mod`:
+	```v ignore
+	Module {
+		name: 'mymodule'
+		description: 'My nice module.'
+		version: '0.0.1'
+		license: 'MIT'
+		dependencies: []
+	}
+	```
+
+	Minimal file structure:
+	```
+	v.mod
+	mymodule.v
+	```
+
+	Check that your module name is used in `mymodule.v`:
+	```v
+	module mymodule
+
+	pub fn hello_world() {
+		println('Hello World!')
+	}
+	```
+
+2. Create a git repository in the folder with the `v.mod` file 
+	(this is not required if you used `v new` or `v init`):
+	```sh
+	git init
+	git add .
+	git commit -m "INIT"
+	````
+
+3. Create a public repository on github.com.
+4. Connect your local repository to the remote repository and push the changes.
+5. Add your module to the public V module registry VPM:
+	https://vpm.vlang.io/new
+
+	You will have to login with your Github account to register the module.
+	**Warning:** _Currently it is not possibility to edit your entry after submiting.
+	Check your module name and github url twice as this cannot be changed by you later._
+6. The final module name is a combination of your github account and 
+	the module name you provided e.g. `mygithubname.mymodule`.
+
+**Optional:** tag your V module with `vlang` and `vlang-module` on github.com 
+to allow a better search experiance.
 
 ## Types 2
 
@@ -3860,6 +4005,11 @@ This will make V produce the `file.c` then stop.
 If you want to see the generated C source code for *just* a single C function,
 for example `main`, you can use: `-printfn main -o file.c`.
 
+To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
+
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed, 
+so that the executable is not deleted, after it was created and ran.
+
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
 
@@ -3880,10 +4030,11 @@ native backend (flag: `-b native`).
 
 ### Javascript Backend
 
-There is currently no support for source maps for Javascript output,
-created by the JS Backend (flag: `-b js`).
+To debug the generated Javascript output you can active source maps:
+`v -b js -sourcemap hello.v -o hello.js`
 
-
+For all supported options check the latest help:
+`v help build-js`
 
 ## Conditional compilation
 
@@ -3891,7 +4042,7 @@ created by the JS Backend (flag: `-b js`).
 
 `$` is used as a prefix for compile-time operations.
 
-#### $if
+#### `$if` condition
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3943,7 +4094,7 @@ Full list of builtin options:
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
 | `solaris` | | | |
 
-#### $embed_file
+#### `$embed_file`
 
 ```v ignore
 import os
@@ -3966,7 +4117,7 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
-#### $tmpl for embedding and parsing V template files
+#### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
@@ -4016,7 +4167,7 @@ numbers: [1, 2, 3]
 
 
 
-#### $env
+#### `$env`
 
 ```v
 module main

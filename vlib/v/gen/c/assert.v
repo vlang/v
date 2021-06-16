@@ -88,7 +88,6 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln(';')
-			//
 			g.write('\t${metaname}.rvalue = ')
 			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
 			g.writeln(';')

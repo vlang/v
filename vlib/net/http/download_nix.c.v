@@ -21,10 +21,10 @@ fn download_cb(ptr voidptr, size size_t, nmemb size_t, userp voidptr) {
 	data.cb(data.written)
 	//#data->cb(data->written); // TODO
 	return written
-*/
+	*/
 }
 
-pub fn download_file_with_progress(url string, out string, cb DownloadFn, cb_finished fn()) {
+pub fn download_file_with_progress(url string, out string, cb DownloadFn, cb_finished fn ()) {
 	/*
 	curl := C.curl_easy_init()
 	if isnil(curl) {
@@ -45,7 +45,7 @@ pub fn download_file_with_progress(url string, out string, cb DownloadFn, cb_fin
 	C.curl_easy_cleanup(curl)
 	C.fclose(fp)
 	cb_finished()
-*/
+	*/
 }
 
 fn empty() {

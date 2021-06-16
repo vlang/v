@@ -1,9 +1,11 @@
-This package is to generate data-driven HTML output.
+V allows for easily using text templates, expanded at compile time to
+V functions, that efficiently produce text output. This is especially
+usefull for templated HTML views, but the mechanism is general enough
+to be used for other kinds of text output also.
 
-# Directives
-Each directive begins with an `@` sign.
-Some directives begin contains a `{}` block, others only have `''` (string) parameters.
-More on the directives itself.
+# Template directives
+Each template directive begins with an `@` sign.
+Some directives contain a `{}` block, others only have `''` (string) parameters.
 
 Newlines on the beginning and end are ignored in `{}` blocks,
 otherwise this (see [if](#if) for this syntax):
@@ -12,17 +14,17 @@ otherwise this (see [if](#if) for this syntax):
     <span>This is shown if bool_val is true</span>
 }
 ```
-would result in:
+... would output:
 ```html
 
     <span>This is shown if bool_val is true</span>
 
 ```
-which could result in unreadable output.
+... which is less readable.
 
 ## if
-The if directive consists of three parts, the `@if` tag, the condition (same syntax like in V)
-and the `{}` block where you can write html which will be rendered if the condition is true:
+The if directive, consists of three parts, the `@if` tag, the condition (same syntax like in V)
+and the `{}` block, where you can write html, which will be rendered if the condition is true:
 ```
 @if <condition> {}
 ```
@@ -42,19 +44,20 @@ The first example would result in:
 ```html
     <span>This is shown if bool_val is true</span>
 ```
-while the one-liner results in:
+... while the one-liner results in:
 ```html
 <span>This is shown if bool_val is true</span>
 ```
 
 ## for
-The for directive consists of three parts, the `@for` tag, the condition (same syntax like in V)
-and the `{}` block where you can write html which will be rendered for each loop:
+The for directive consists of three parts, the `@for` tag,
+the condition (same syntax like in V) and the `{}` block,
+where you can write text, rendered for each iteration of the loop:
 ```
 @for <condition> {}
 ```
 
-### Example
+### Example for @for
 ```html
 @for i, val in my_vals {
     <span>$i - $val</span>
@@ -72,7 +75,7 @@ The first example would result in:
     <span>2 - "Third"</span>
     ...
 ```
-while the one-liner results in:
+... while the one-liner results in:
 ```html
 <span>0 - "First"</span>
 <span>1 - "Second"</span>
@@ -92,8 +95,7 @@ The include directive is for including other html files (which will be processed
 and consists of two parts, the `@include` tag and a following `'<path>'` string.
 The path parameter is relative to the `/templates` directory in the corresponding project.
 
-### Example
-Files
+### Example for the folder structure of a project using templates:
 ```
 Project root
 /templates
@@ -117,11 +119,11 @@ where you can insert your src
 @js '<url>'
 ```
 
-### Example
+### Example for the @js directive:
 ```html
 @js 'myscripts.js'
 ```
 
 # Variables
-All variables which are declared before can be used through the `@{my_var}` syntax.
+All variables, which are declared before the $tmpl can be used through the `@{my_var}` syntax.
 It's also possible to use properties of structs here like `@{my_struct.prop}`.

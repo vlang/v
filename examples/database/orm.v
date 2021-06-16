@@ -19,12 +19,12 @@ struct User {
 }
 
 struct Parent {
-	id       int      [primary; sql: serial]
+	id       int     [primary; sql: serial]
 	name     string
-	children []Chield [fkey: 'parent_id']
+	children []Child [fkey: 'parent_id']
 }
 
-struct Chield {
+struct Child {
 	id        int    [primary; sql: serial]
 	parent_id int
 	name      string
@@ -49,10 +49,10 @@ fn sqlite3_array() {
 	par := Parent{
 		name: 'test'
 		children: [
-			Chield{
+			Child{
 				name: 'abc'
 			},
-			Chield{
+			Child{
 				name: 'def'
 			},
 		]
@@ -67,7 +67,7 @@ fn sqlite3_array() {
 	}
 
 	sql db {
-		drop table Chield
+		drop table Child
 		drop table Parent
 	}
 
@@ -91,10 +91,10 @@ fn mysql_array() {
 	par := Parent{
 		name: 'test'
 		children: [
-			Chield{
+			Child{
 				name: 'abc'
 			},
-			Chield{
+			Child{
 				name: 'def'
 			},
 		]
@@ -111,7 +111,7 @@ fn mysql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Chield
+		drop table Child
 		drop table Parent
 	}
 
@@ -130,10 +130,10 @@ fn psql_array() {
 	par := Parent{
 		name: 'test'
 		children: [
-			Chield{
+			Child{
 				name: 'abc'
 			},
-			Chield{
+			Child{
 				name: 'def'
 			},
 		]
@@ -150,7 +150,7 @@ fn psql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Chield
+		drop table Child
 		drop table Parent
 	}
 

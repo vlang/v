@@ -216,7 +216,10 @@ pub fn malloc(n int) &byte {
 	}
 	$if vplayground ? {
 		if n > 10000 {
-			panic('allocating more than 10 KB is not allowed in the playground')
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
 	}
 	$if trace_malloc ? {
@@ -253,12 +256,68 @@ pub fn malloc(n int) &byte {
 	return res
 }
 
+[unsafe]
+pub fn malloc_noscan(n int) &byte {
+	if n <= 0 {
+		panic('> V malloc(<=0)')
+	}
+	$if vplayground ? {
+		if n > 10000 {
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
+		}
+	}
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	mut res := &byte(0)
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if gcboehm ? {
+		$if gcboehm_opt ? {
+			unsafe {
+				res = C.GC_MALLOC_ATOMIC(n)
+			}
+		} $else {
+			unsafe {
+				res = C.GC_MALLOC(n)
+			}
+		}
+	} $else $if freestanding {
+		mut e := Errno{}
+		res, e = mm_alloc(u64(n))
+		if e != .enoerror {
+			eprint('malloc() failed: ')
+			eprintln(e.str())
+			panic('malloc() failed')
+		}
+	} $else {
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		panic('malloc($n) failed')
+	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		unsafe { C.memset(res, 0x88, n) }
+	}
+	return res
+}
+
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
 pub fn v_realloc(b &byte, n int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
+	}
 	mut new_ptr := &byte(0)
 	$if prealloc {
 		unsafe {
@@ -287,6 +346,9 @@ pub fn v_realloc(b &byte, n int) &byte {
 // `-d debug_realloc`.
 [unsafe]
 pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'realloc_data old_size: %6d new_size: %6d\n', old_size, new_size)
+	}
 	$if prealloc {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
@@ -329,6 +391,10 @@ pub fn vcalloc(n int) &byte {
 	} else if n == 0 {
 		return &byte(0)
 	}
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -341,6 +407,10 @@ pub fn vcalloc(n int) &byte {
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
 pub fn vcalloc_noscan(n int) &byte {
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -352,7 +422,11 @@ pub fn vcalloc_noscan(n int) &byte {
 		if n < 0 {
 			panic('calloc(<0)')
 		}
-		return unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+		return $if gcboehm_opt ? {
+			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+		} $else {
+			unsafe { &byte(C.GC_MALLOC(n)) }
+		}
 	} $else {
 		return unsafe { vcalloc(n) }
 	}
@@ -387,6 +461,17 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	}
 	unsafe {
 		mem := malloc(sz)
+		return C.memcpy(mem, src, sz)
+	}
+}
+
+[unsafe]
+pub fn memdup_noscan(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc_noscan(1)
+	}
+	unsafe {
+		mem := vcalloc_noscan(sz)
 		return C.memcpy(mem, src, sz)
 	}
 }

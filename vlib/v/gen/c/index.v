@@ -54,7 +54,8 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.kind == .array_fixed {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		info := sym.info as ast.ArrayFixed
-		g.write('array_slice(new_array_from_c_array(')
+		noscan := g.check_noscan(info.elem_type)
+		g.write('array_slice(new_array_from_c_array${noscan}(')
 		g.write('$info.size')
 		g.write(', $info.size')
 		g.write(', sizeof(')

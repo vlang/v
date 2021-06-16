@@ -12,10 +12,10 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
 	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
-	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
-	StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
+	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | IsRefType |
+	Likely | LockExpr | MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr |
+	PostfixExpr | PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr |
+	StringInterLiteral | StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
 	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
@@ -1338,6 +1338,15 @@ pub mut:
 	typ Type
 }
 
+pub struct IsRefType {
+pub:
+	is_type bool
+	expr    Expr // checker uses this to set typ
+	pos     token.Position
+pub mut:
+	typ Type
+}
+
 pub struct OffsetOf {
 pub:
 	struct_type Type
@@ -1516,10 +1525,10 @@ pub fn (expr Expr) position() token.Position {
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
 		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
-		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, Likely, LockExpr,
-		MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr,
-		SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit,
-		TypeNode, TypeOf, UnsafeExpr {
+		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
+		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
+		StructInit, TypeNode, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		IndexExpr {

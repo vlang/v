@@ -404,7 +404,7 @@ fn utf8_to_upper(in_cp int) int {
 fn up_low(s string, upper_flag bool) string {
 	mut index := 0
 	mut tab_char := 0
-	mut str_res := unsafe { malloc(s.len + 1) }
+	mut str_res := unsafe { malloc_noscan(s.len + 1) }
 
 	for {
 		ch_len := utf8_char_len(s[index])

@@ -9,16 +9,16 @@ import time
 
 pub struct Server {
 pub mut:
-	port int = 8080
-	handler fn(Request) Response
-	read_timeout time.Duration = 30 * time.second
+	port          int = 8080
+	handler       fn (Request) Response
+	read_timeout  time.Duration = 30 * time.second
 	write_timeout time.Duration = 30 * time.second
 }
 
 pub fn (mut s Server) listen_and_serve() ? {
 	if voidptr(s.handler) == 0 {
 		eprintln('Server handler not set, using debug handler')
-		s.handler = fn(req Request) Response {
+		s.handler = fn (req Request) Response {
 			$if debug {
 				eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
 			} $else {
@@ -33,7 +33,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 			}
 		}
 	}
-	mut l := net.listen_tcp(s.port) ?
+	mut l := net.listen_tcp(.ip6, ':$s.port') ?
 	eprintln('Listening on :$s.port')
 	for {
 		mut conn := l.accept() or {
@@ -67,7 +67,5 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	if resp.version == .unknown {
 		resp.version = req.version
 	}
-	conn.write(resp.bytes()) or {
-		eprintln('error sending response: $err')
-	}
+	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
 }

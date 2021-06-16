@@ -50,6 +50,7 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 '
 
 const c_common_macros = '
+//typedef unsigned char u8;
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION
@@ -60,11 +61,17 @@ const c_common_macros = '
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
+#define __V_architecture 0
 #if defined(__x86_64__)
 #define __V_amd64  1
+#undef __V_architecture
+#define __V_architecture 1
 #endif
+
 #if defined(__aarch64__) || defined(__arm64__)
 #define __V_arm64  1
+#undef __V_architecture
+#define __V_architecture 2
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -194,14 +201,16 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
-#define _SLIT0 (string){.len=0} 
+#define _SLIT0 (string){.len=0}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 //#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 // copy something to the heap
 #define HEAP(type, expr) ((type*)memdup((void*)&((type[]){expr}[0]), sizeof(type)))
+#define HEAP_noscan(type, expr) ((type*)memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
+#define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
 const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +

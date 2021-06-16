@@ -1,5 +1,6 @@
-# ignore all build binaries
-*
+# ignore sub-level build binaries and v binary
+*/**/*
+v
 !*/
 !*.*
 *.exe
@@ -22,6 +23,8 @@ a.out
 /v.c
 /v.*.c
 /v.c.out
+/v_old
+/v_old.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v

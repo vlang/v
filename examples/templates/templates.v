@@ -193,5 +193,4 @@ fn main() {
 	// data_dump(data)
 	b := filled_in_template()
 	println(b)
-	os.write_file('result.md', b) or { panic(err) }
 }

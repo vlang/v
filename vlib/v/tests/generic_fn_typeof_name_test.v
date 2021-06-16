@@ -41,3 +41,20 @@ fn test_no_paras_generics_fn_typeof_name() {
 	ret = print_type<bool>()
 	assert ret == 'bool'
 }
+
+// test generic method receiver typeof name
+struct Num<T> {
+	num T
+}
+
+fn (num Num<T>) test(v T) {
+	println(typeof(num).name)
+	assert typeof(num).name == 'Num<int>'
+	println(typeof(v).name)
+	assert typeof(v).name == 'int'
+}
+
+fn test_generic_method_receiver_typeof_name() {
+	num := Num<int>{3}
+	num.test(100)
+}

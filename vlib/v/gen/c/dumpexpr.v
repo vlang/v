@@ -22,7 +22,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			is_ptr := ast.Type(dump_type).is_ptr()
 			ptr_suffix := if is_ptr { '*' } else { '' }
 			dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
-			g.definitions.writeln('$cname$ptr_suffix ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_suffix x) {')
+			g.writeln_fn_header('$cname$ptr_suffix ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_suffix x)')
 		}
 	} else {
 		for dump_type, cname in g.table.dumps {
@@ -30,7 +30,9 @@ fn (mut g Gen) dump_expr_definitions() {
 			is_ptr := ast.Type(dump_type).is_ptr()
 			ptr_astarisk := if is_ptr { '*' } else { '' }
 			dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
-			g.definitions.writeln('$cname$ptr_astarisk ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_astarisk x) {')
+			if g.writeln_fn_header('$cname$ptr_astarisk ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_astarisk x)') {
+				continue
+			}
 			g.definitions.writeln('\teprint(${ctoslit('[')});')
 			g.definitions.writeln('\teprint(fpath);')
 			g.definitions.writeln('\teprint(${ctoslit(':')});')
@@ -49,4 +51,13 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.definitions.writeln('}')
 		}
 	}
+}
+
+fn (mut g Gen) writeln_fn_header(s string) bool {
+	if g.pref.build_mode == .build_module {
+		g.definitions.writeln('$s;')
+		return true
+	}
+	g.definitions.writeln('$s {')
+	return false
 }

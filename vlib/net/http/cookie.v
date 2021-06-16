@@ -10,20 +10,21 @@ pub struct Cookie {
 pub mut:
 	name        string
 	value       string
-	path        string // optional
-	domain      string // optional
+	path        string    // optional
+	domain      string    // optional
 	expires     time.Time // optional
-	raw_expires string // for reading cookies only. optional.
+	raw_expires string    // for reading cookies only. optional.
 	// max_age=0 means no 'Max-Age' attribute specified.
 	// max_age<0 means delete cookie now, equivalently 'Max-Age: 0'
 	// max_age>0 means Max-Age attribute present and given in seconds
-	max_age     int
-	secure      bool
-	http_only   bool
-	same_site   SameSite
-	raw         string
-	unparsed    []string // Raw text of unparsed attribute-value pairs
+	max_age   int
+	secure    bool
+	http_only bool
+	same_site SameSite
+	raw       string
+	unparsed  []string // Raw text of unparsed attribute-value pairs
 }
+
 // SameSite allows a server to define a cookie attribute making it impossible for
 // the browser to send this cookie along with cross-site requests. The main
 // goal is to mitigate the risk of cross-origin information leakage, and provide
@@ -61,12 +62,10 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 		if !is_cookie_name_valid(name) {
 			continue
 		}
-		value := parse_cookie_value(raw_value, true) or {
-			continue
-		}
-		mut c  := &Cookie{
-			name: name,
-			value: value,
+		value := parse_cookie_value(raw_value, true) or { continue }
+		mut c := &Cookie{
+			name: name
+			value: value
 			raw: line
 		}
 		for i, _ in parts {
@@ -182,10 +181,11 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			if filter != '' && filter != name {
 				continue
 			}
-			val = parse_cookie_value(val, true) or {
-				continue
+			val = parse_cookie_value(val, true) or { continue }
+			cookies << &Cookie{
+				name: name
+				value: val
 			}
-			cookies << &Cookie{name: name, value: val}
 		}
 	}
 	return cookies
@@ -203,7 +203,8 @@ pub fn (c &Cookie) str() string {
 	// extra_cookie_length derived from typical length of cookie attributes
 	// see RFC 6265 Sec 4.1.
 	extra_cookie_length := 110
-	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len + extra_cookie_length)
+	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len +
+		extra_cookie_length)
 	b.write_string(c.name)
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
@@ -229,7 +230,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		e := c.expires
-		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
+		time_str := '$e.weekday_str(), $e.day.str() $e.smonth() $e.year $e.hhmmss() GMT'
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}
@@ -264,9 +265,9 @@ pub fn (c &Cookie) str() string {
 	return b.str()
 }
 
-fn sanitize(valid fn(byte) bool, v string) string {
+fn sanitize(valid fn (byte) bool, v string) string {
 	mut ok := true
-	for i in 0..v.len {
+	for i in 0 .. v.len {
 		if valid(v[i]) {
 			continue
 		}
@@ -370,7 +371,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 			}
 			part_len = 0
 		} else {
-			 return false
+			return false
 		}
 		last = c
 	}
@@ -386,7 +387,7 @@ fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
 	if allow_double_quote && raw.len > 1 && raw[0] == `"` && raw[raw.len - 1] == `"` {
 		raw = raw.substr(1, raw.len - 1)
 	}
-	for i in 0..raw.len {
+	for i in 0 .. raw.len {
 		if !valid_cookie_value_byte(raw[i]) {
 			return error('http.cookie: invalid cookie value')
 		}

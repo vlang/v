@@ -14,6 +14,20 @@ import picohttpparser
 #flag @VEXEROOT/thirdparty/picoev/picoev.o
 #include "src/picoev.h"
 
+struct C.in_addr {
+mut:
+	s_addr int
+}
+
+struct C.sockaddr_in {
+mut:
+	sin_family int
+	sin_port   int
+	sin_addr   C.in_addr
+}
+
+struct C.sockaddr_storage {}
+
 fn C.atoi() int
 
 fn C.strncasecmp(s1 &char, s2 &char, n size_t) int
@@ -194,7 +208,7 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 }
 
 pub fn new(config Config) &Picoev {
-	fd := C.socket(net.SocketFamily.inet, net.SocketType.tcp, 0)
+	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
 	assert fd != -1
 	flag := 1
 	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
@@ -211,7 +225,7 @@ pub fn new(config Config) &Picoev {
 	addr.sin_port = C.htons(config.port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	bind_res := C.bind(fd, &addr, size)
+	bind_res := C.bind(fd, unsafe { &net.Addr(&addr) }, size)
 	assert bind_res == 0
 	listen_res := C.listen(fd, C.SOMAXCONN)
 	assert listen_res == 0
@@ -229,8 +243,8 @@ pub fn new(config Config) &Picoev {
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
 		date: C.get_date()
-		buf: unsafe { malloc(picoev.max_fds * picoev.max_read + 1) }
-		out: unsafe { malloc(picoev.max_fds * picoev.max_write + 1) }
+		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
+		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
 	C.picoev_add(loop, fd, int(Event.read), 0, accept_callback, pv)
 	go update_date(mut pv)

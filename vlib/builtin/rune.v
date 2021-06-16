@@ -45,7 +45,7 @@ pub fn (b []byte) clone() []byte {
 // TODO remove this once runes are implemented
 pub fn (b []byte) bytestr() string {
 	unsafe {
-		buf := malloc(b.len + 1)
+		buf := malloc_noscan(b.len + 1)
 		C.memcpy(buf, b.data, b.len)
 		buf[b.len] = 0
 		return tos(buf, b.len)

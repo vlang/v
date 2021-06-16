@@ -900,7 +900,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			p.check(.name)
 		}
 		// dots are part of instructions for some riscv extensions
-		if arch in [.rv32, .rv64] {
+		if arch in [.rv32, .rv64, .amd64] {
 			for p.tok.kind == .dot {
 				name += '.'
 				p.next()
@@ -2086,8 +2086,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		// map.v has struct literal: map{field: expr}
-		if p.peek_tok.kind == .lcbr && !(p.builtin_mod && p.file_base == 'map.v')
-			&& p.tok.lit == 'map' {
+		if p.peek_tok.kind == .lcbr && !(p.builtin_mod
+			&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) && p.tok.lit == 'map' {
 			// map{key_expr: val_expr}
 			p.check(.name)
 			p.check(.lcbr)

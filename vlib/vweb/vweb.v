@@ -303,7 +303,8 @@ pub fn run<T>(global_app &T, port int) {
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
 
-	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code $err') }
+
 	println('[Vweb] Running app on http://localhost:$port')
 	// app.Context = Context{
 	// conn: 0
@@ -322,6 +323,11 @@ pub fn run<T>(global_app &T, port int) {
 			request_app.db = global_app.db
 		} $else {
 			// println('vweb no db')
+		}
+		$for field in T.fields {
+			if field.is_shared {
+				request_app.$(field.name) = global_app.$(field.name)
+			}
 		}
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		// request_app.Context = Context{

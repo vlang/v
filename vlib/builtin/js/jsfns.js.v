@@ -21,6 +21,15 @@ pub struct JS.Array {
 
 pub struct JS.Map {}
 
+// browser: https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/Error
+// node: https://nodejs.org/api/errors.html#errors_class_error
+pub struct JS.Error {
+pub:
+	name    string
+	message string
+	stack   string
+}
+
 // Type prototype functions
 fn (v JS.String) toString() JS.String
 fn (v JS.Number) toString() JS.String

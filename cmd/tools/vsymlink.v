@@ -4,8 +4,8 @@ import v.util
 
 $if windows {
 	$if tinyc {
-		#flag -lAdvapi32
-		#flag -lUser32
+		#flag -ladvapi32
+		#flag -luser32
 	}
 }
 fn main() {

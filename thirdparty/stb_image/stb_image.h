@@ -5399,7 +5399,7 @@ static void *stbi__bmp_load(stbi__context *s, int *x, int *y, int *comp, int req
    }
    if (psize == 0) {
       STBI_ASSERT(info.offset == s->callback_already_read + (int) (s->img_buffer - s->img_buffer_original));
-      if (info.offset != s->callback_already_read + (s->img_buffer - s->buffer_start)) {
+      if (info.offset != s->callback_already_read + (int) (s->img_buffer - s->img_buffer_original)) {
         return stbi__errpuc("bad offset", "Corrupt BMP");
       }
    }

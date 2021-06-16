@@ -1,7 +1,13 @@
 import os
+import net
 import x.websocket
 import time
 import rand
+
+// TODO: fix connecting to ipv4 websockets
+// (the server seems to work with .ip, but
+// Client can not connect, it needs to be passed
+// .ip too?)
 
 struct WebsocketTestResults {
 pub mut:
@@ -9,23 +15,37 @@ pub mut:
 	nr_pong_received int
 }
 
+// Do not run these tests everytime, since they are flaky.
+// They have their own specialized CI runner.
 const github_job = os.getenv('GITHUB_JOB')
 
+const should_skip = github_job != '' && github_job != 'websocket_tests'
+
 // tests with internal ws servers
-fn test_ws() {
-	if github_job != '' && github_job != 'websocket_tests' {
-		// Do not run these tests everytime, since they are flaky.
-		// They have their own specialized CI runner.
+fn test_ws_ipv6() {
+	if should_skip {
 		return
 	}
 	port := 30000 + rand.intn(1024)
-	go start_server(port)
+	go start_server(.ip6, port)
 	time.sleep(500 * time.millisecond)
-	ws_test('ws://localhost:$port') or { assert false }
+	ws_test(.ip6, 'ws://localhost:$port') or { assert false }
 }
 
-fn start_server(listen_port int) ? {
-	mut s := websocket.new_server(listen_port, '')
+// tests with internal ws servers
+fn test_ws_ipv4() {
+	// TODO: fix client
+	if true || should_skip {
+		return
+	}
+	port := 30000 + rand.intn(1024)
+	go start_server(.ip, port)
+	time.sleep(500 * time.millisecond)
+	ws_test(.ip, 'ws://localhost:$port') or { assert false }
+}
+
+fn start_server(family net.AddrFamily, listen_port int) ? {
+	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
 
@@ -52,7 +72,7 @@ fn start_server(listen_port int) ? {
 }
 
 // ws_test tests connect to the websocket server from websocket client
-fn ws_test(uri string) ? {
+fn ws_test(family net.AddrFamily, uri string) ? {
 	eprintln('connecting to $uri ...')
 
 	mut test_results := WebsocketTestResults{}

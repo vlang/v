@@ -341,7 +341,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	end_pos := p.prev_tok.position()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
-	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
+		&& (p.file_base.ends_with('_test.v')
+		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test'))
 
 	// Register
 	if is_method {
@@ -351,7 +353,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		mut is_non_local := type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v
 		// check maps & arrays, must be defined in same module as the elem type
-		if !is_non_local && type_sym.kind in [.array, .map] {
+		if !is_non_local && !(p.builtin_mod && p.pref.is_fmt) && type_sym.kind in [.array, .map] {
 			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec.typ))
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
@@ -510,13 +512,13 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	rec.typ = p.parse_type_with_mut(rec.is_mut)
 	if rec.typ.idx() == 0 {
 		// error is set in parse_type
-		return none
+		return error('void receiver type')
 	}
 	rec.type_pos = rec.type_pos.extend(p.prev_tok.position())
 	if is_amp && rec.is_mut {
 		p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
 			lpar_pos.extend(p.tok.position()))
-		return none
+		return error('invalid `mut f &Foo`')
 	}
 	if is_shared {
 		rec.typ = rec.typ.set_flag(.shared_f)

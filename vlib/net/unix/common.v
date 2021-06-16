@@ -9,7 +9,7 @@ const (
 
 fn C.SUN_LEN(ptr &C.sockaddr_un) int
 
-fn C.strncpy(charptr, charptr, int)
+fn C.strncpy(&char, &char, int)
 
 // Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {
@@ -20,8 +20,6 @@ fn shutdown(handle int) ? {
 		C.shutdown(handle, C.SHUT_RDWR)
 		net.socket_error(C.close(handle)) ?
 	}
-
-	return none
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
@@ -72,7 +70,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		}
 		ready := @select(handle, test, timeout) ?
 		if ready {
-			return none
+			return
 		}
 		return net.err_timed_out
 	}
@@ -87,7 +85,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 
 	ready := @select(handle, test, d_timeout) ?
 	if ready {
-		return none
+		return
 	}
 	return net.err_timed_out
 }

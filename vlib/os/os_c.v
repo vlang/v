@@ -86,9 +86,8 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('fread failed')
 	}
 	C.fclose(fp)
-	fres := res[0..nr_read_elements * fsize].clone()
-	unsafe { res.free() }
-	return fres
+	res.trim(nr_read_elements * fsize)
+	return res
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -109,7 +108,7 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
-		mut str := malloc(fsize + 1)
+		mut str := malloc_noscan(fsize + 1)
 		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
@@ -156,6 +155,10 @@ pub fn truncate(path string, len u64) ? {
 	}
 }
 
+fn eprintln_unknown_file_size() {
+	eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
+}
+
 // file_size returns the size of the file located in `path`.
 // If an error occurs it returns 0.
 // Note that use of this on symbolic links on Windows returns always 0.
@@ -166,15 +169,13 @@ pub fn file_size(path string) u64 {
 			$if windows {
 				mut swin := C.__stat64{}
 				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return swin.st_size
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
@@ -186,15 +187,13 @@ pub fn file_size(path string) u64 {
 			}
 			$if windows {
 				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					eprintln('os.file_size() Cannot determine file-size: ' +
-						posix_get_error_msg(C.errno))
+					eprintln_unknown_file_size()
 					return 0
 				}
 				return u64(s.st_size)
@@ -488,7 +487,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := unsafe { tos_clone(&byte(C.strerror(C.errno))) }
+	se := unsafe { tos_clone(&byte(C.strerror(e))) }
 	println('errno=$e err=$se')
 }
 
@@ -497,7 +496,7 @@ pub fn get_raw_line() string {
 	$if windows {
 		unsafe {
 			max_line_chars := 256
-			buf := malloc(max_line_chars * 2)
+			buf := malloc_noscan(max_line_chars * 2)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
@@ -539,7 +538,7 @@ pub fn get_raw_stdin() []byte {
 		unsafe {
 			block_bytes := 512
 			mut old_size := block_bytes
-			mut buf := malloc(block_bytes)
+			mut buf := malloc_noscan(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			mut offset := 0
@@ -585,7 +584,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := unsafe { malloc(fsize) }
+	buf := unsafe { malloc_noscan(fsize) }
 	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
@@ -620,20 +619,18 @@ pub fn on_segfault(f voidptr) {
 [manualfree]
 pub fn executable() string {
 	$if linux {
-		mut xresult := vcalloc(max_path_len)
+		mut xresult := vcalloc_noscan(max_path_len)
 		count := C.readlink(c'/proc/self/exe', &char(xresult), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { xresult.vstring() }.clone()
-		unsafe { free(xresult) }
-		return res
+		return unsafe { xresult.vstring() }
 	}
 	$if windows {
 		max := 512
 		size := max * 2 // max_path_len * sizeof(wchar_t)
-		mut result := unsafe { &u16(vcalloc(size)) }
+		mut result := unsafe { &u16(vcalloc_noscan(size)) }
 		len := C.GetModuleFileName(0, result, max)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(result)
@@ -642,7 +639,7 @@ pub fn executable() string {
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
 			if file != voidptr(-1) {
-				final_path := unsafe { &u16(vcalloc(size)) }
+				final_path := unsafe { &u16(vcalloc_noscan(size)) }
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {
@@ -658,7 +655,7 @@ pub fn executable() string {
 		return unsafe { string_from_wide2(result, len) }
 	}
 	$if macos {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, max_path_len)
 		if ret <= 0 {
@@ -668,7 +665,7 @@ pub fn executable() string {
 		return unsafe { result.vstring() }
 	}
 	$if freebsd {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
 		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
@@ -682,7 +679,7 @@ pub fn executable() string {
 	$if haiku {
 	}
 	$if netbsd {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
@@ -691,7 +688,7 @@ pub fn executable() string {
 		return unsafe { result.vstring_with_len(count) }
 	}
 	$if dragonfly {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
@@ -754,7 +751,7 @@ pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
 		unsafe {
-			buf := &u16(vcalloc(max * 2))
+			buf := &u16(vcalloc_noscan(max * 2))
 			if C._wgetcwd(buf, max) == 0 {
 				free(buf)
 				return ''
@@ -762,15 +759,13 @@ pub fn getwd() string {
 			return string_from_wide(buf)
 		}
 	} $else {
-		buf := vcalloc(512)
+		buf := vcalloc_noscan(max_path_len)
 		unsafe {
-			if C.getcwd(&char(buf), 512) == 0 {
+			if C.getcwd(&char(buf), max_path_len) == 0 {
 				free(buf)
 				return ''
 			}
-			res := buf.vstring().clone()
-			free(buf)
-			return res
+			return buf.vstring()
 		}
 	}
 }
@@ -783,55 +778,31 @@ pub fn getwd() string {
 [manualfree]
 pub fn real_path(fpath string) string {
 	mut fullpath := &byte(0)
-	defer {
-		unsafe { free(fullpath) }
-	}
 	mut res := ''
 	$if windows {
-		/*
-		// GetFullPathName doesn't work with symbolic links
-		// TODO: TCC32 gets runtime error
-		max := 512
-		size := max * 2 // max_path_len * sizeof(wchar_t)
-		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
-		// use get_file_handle instead of C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
-		// try to open the file to get symbolic link path
-		file := get_file_handle(fpath)
-		if file != voidptr(-1) {
-			fullpath = unsafe { &u16(vcalloc(size)) }
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
-			if final_len < size {
-				ret := unsafe { string_from_wide2(fullpath, final_len) }
-				res = ret[4..]
-			} else {
-				eprintln('os.real_path() saw that the file path was too long')
-			}
-		} else {
-		*/
-		// if it is not a file get full path
-		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
+		// GetFullPathName doesn't work with symbolic links,
+		// so if it is not a file, get full path
+		fullpath = unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
 		// TODO: check errors if path len is not enough
 		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
-			return fpath
+			unsafe { free(fullpath) }
+			return fpath.clone()
 		}
 		res = unsafe { string_from_wide(fullpath) }
-		//}
-		// C.CloseHandle(file)		
 	} $else {
-		fullpath = vcalloc(max_path_len)
+		fullpath = vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
-			return fpath
+			unsafe { free(fullpath) }
+			return fpath.clone()
 		}
 		res = unsafe { fullpath.vstring() }
 	}
-	nres := normalize_drive_letter(res)
-	cres := nres.clone()
-	return cres
+	return normalize_drive_letter(res)
 }
 
+[direct_array_access; manualfree]
 fn normalize_drive_letter(path string) string {
 	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
 	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...

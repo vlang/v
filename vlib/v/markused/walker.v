@@ -298,7 +298,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.expr(node.high)
 			}
 		}
-		ast.SizeOf {
+		ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {

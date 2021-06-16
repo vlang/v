@@ -26,9 +26,9 @@ mut:
 }
 
 pub fn new_waitgroup() &WaitGroup {
-	mut wg := &WaitGroup{}
+	mut wg := WaitGroup{}
 	wg.init()
-	return wg
+	return &wg
 }
 
 pub fn (mut wg WaitGroup) init() {

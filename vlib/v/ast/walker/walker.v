@@ -19,7 +19,7 @@ pub fn (i &Inspector) visit(node ast.Node) ? {
 	if i.inspector_callback(node, i.data) {
 		return
 	}
-	return none
+	return error('')
 }
 
 // inspect traverses and checks the AST node on a depth-first order and based on the data given

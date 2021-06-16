@@ -51,7 +51,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.i386 {
 			Language.i386
 		}
-		._auto {
+		._auto, ._max {
 			Language.v
 		}
 	}
@@ -635,7 +635,11 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
+	res := t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
+	if !res && t.kind == .alias {
+		return (t.info as Alias).parent_type.is_number()
+	}
+	return res
 }
 
 [inline]
@@ -805,8 +809,8 @@ pub mut:
 
 pub struct ArrayFixed {
 pub:
-	size int
-	expr Expr // used by fmt for e.g. ´[my_const]byte´
+	size      int
+	size_expr Expr // used by fmt for e.g. ´[my_const]byte´
 pub mut:
 	elem_type Type
 }
@@ -875,21 +879,22 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.variadic) {
 				res = t.type_to_str_using_aliases(t.value_type(typ), import_aliases)
 			} else {
-				info := sym.info as Array
-				elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
-				res = '[]$elem_str'
+				if sym.info is Array {
+					elem_str := t.type_to_str_using_aliases(sym.info.elem_type, import_aliases)
+					res = '[]$elem_str'
+				} else {
+					res = 'array'
+				}
 			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
-			mut size_str := info.size.str()
-			if t.is_fmt {
-				if info.expr is Ident {
-					size_str = info.expr.name
-				}
+			if info.size_expr is EmptyExpr {
+				res = '[$info.size]$elem_str'
+			} else {
+				res = '[$info.size_expr]$elem_str'
 			}
-			res = '[$size_str]$elem_str'
 		}
 		.chan {
 			// TODO currently the `chan` struct in builtin is not considered a struct but a chan

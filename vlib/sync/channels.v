@@ -11,14 +11,24 @@ $if windows {
 
 $if linux {
 	$if tinyc {
-		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		$if amd64 {
+			// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		} $else $if arm64 {
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/8
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/9
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/10
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/11
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/12
+		}
 		#flag -latomic
 	}
 }
@@ -111,15 +121,19 @@ pub:
 
 pub fn new_channel<T>(n u32) &Channel {
 	st := sizeof(T)
-	return new_channel_st(n, st)
+	if isreftype(T) {
+		return new_channel_st(n, st)
+	} else {
+		return new_channel_st_noscan(n, st)
+	}
 }
 
 fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &byte(0) }
-	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { &byte(0) }
-	mut ch := &Channel{
+	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
+	mut ch := Channel{
 		objsize: st
 		cap: n
 		write_free: n
@@ -133,7 +147,33 @@ fn new_channel_st(n u32, st u32) &Channel {
 	ch.readsem.init(rsem)
 	ch.writesem_im.init(0)
 	ch.readsem_im.init(0)
-	return ch
+	return &ch
+}
+
+fn new_channel_st_noscan(n u32, st u32) &Channel {
+	$if gcboehm_opt ? {
+		wsem := if n > 0 { n } else { 1 }
+		rsem := if n > 0 { u32(0) } else { 1 }
+		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &byte(0) }
+		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
+		mut ch := Channel{
+			objsize: st
+			cap: n
+			write_free: n
+			read_avail: 0
+			ringbuf: rbuf
+			statusbuf: sbuf
+			write_subscriber: 0
+			read_subscriber: 0
+		}
+		ch.writesem.init(wsem)
+		ch.readsem.init(rsem)
+		ch.writesem_im.init(0)
+		ch.readsem_im.init(0)
+		return &ch
+	} $else {
+		return new_channel_st(n, st)
+	}
 }
 
 pub fn (ch &Channel) auto_str(typename string) string {
