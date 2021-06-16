@@ -301,8 +301,8 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 	prev_line_nr := prev_node.position().last_line
 	// The nodes are Stmts
 	if node is ast.Stmt && prev_node is ast.Stmt {
-		stmt := node as ast.Stmt
-		prev_stmt := prev_node as ast.Stmt
+		stmt := node
+		prev_stmt := prev_node
 		// Force a newline after a block of HashStmts
 		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
@@ -1662,8 +1662,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	}
 	for i, arg in args {
 		if i == args.len - 1 && arg.expr is ast.StructInit {
-			struct_expr := arg.expr as ast.StructInit
-			if struct_expr.typ == ast.void_type {
+			if arg.expr.typ == ast.void_type {
 				f.use_short_fn_args = true
 			}
 		}
@@ -2477,7 +2476,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	mut is_pe_amp_ce := false
 	if node is ast.PrefixExpr {
 		if node.right is ast.CastExpr && node.op == .amp {
-			mut ce := node.right as ast.CastExpr
+			mut ce := node.right
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
