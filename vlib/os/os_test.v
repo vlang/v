@@ -342,6 +342,20 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
+fn test_realpath_absolutepath_symlink() {
+	file_name := 'tolink_file.txt'
+	symlink_name := 'symlink.txt'
+	mut f := os.create(file_name) or { panic(err) }
+	f.close()
+	assert os.symlink(file_name, symlink_name) or { panic(err) }
+	rpath := os.real_path(symlink_name)
+	println(rpath)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(file_name)
+	os.rm(symlink_name) or {}
+	os.rm(file_name) or {}
+}
+
 fn test_tmpdir() {
 	t := os.temp_dir()
 	assert t.len > 0
