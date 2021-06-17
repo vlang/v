@@ -384,7 +384,7 @@ pub:
 	generic_names   []string
 	is_direct_arr   bool // direct array access
 	attrs           []Attr
-	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
+	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	params          []Param
 	stmts           []Stmt
@@ -392,12 +392,14 @@ pub mut:
 	return_type     Type
 	return_type_pos token.Position // `string` in `fn (u User) name() string` position
 	has_return      bool
-	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file     &File = 0
-	scope           &Scope
-	label_names     []string
-	pos             token.Position // function declaration position
+	//
+	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
+	//
+	source_file &File = 0
+	scope       &Scope
+	label_names []string
+	pos         token.Position // function declaration position
 }
 
 // break, continue

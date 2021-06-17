@@ -1520,17 +1520,24 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	mut name := ''
 	mut has_arg := false
 	mut arg := ''
+	mut comptime_cond := ast.empty_expr()
+	mut comptime_cond_opt := false
 	if p.tok.kind == .key_if {
 		kind = .comptime_define
 		p.next()
-		p.check(.name)
-		// TODO: remove this check after bootstrapping
-		// it is only for compatibility with the new
-		// [if user_defined?] syntax.
-		if p.tok.kind == .question {
-			p.next()
+		p.comp_if_cond = true
+		p.inside_if_expr = true
+		p.inside_ct_if_expr = true
+		comptime_cond = p.expr(0)
+		p.comp_if_cond = false
+		p.inside_if_expr = false
+		p.inside_ct_if_expr = false
+		if comptime_cond is ast.PostfixExpr {
+			x := comptime_cond as ast.PostfixExpr
+			comptime_cond_opt = true
+			comptime_cond = x.expr
 		}
-		name = p.prev_tok.lit
+		name = comptime_cond.str()
 	} else if p.tok.kind == .string {
 		name = p.tok.lit
 		kind = .string
@@ -1562,6 +1569,8 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		has_arg: has_arg
 		arg: arg
 		kind: kind
+		ct_expr: comptime_cond
+		ct_opt: comptime_cond_opt
 		pos: apos.extend(p.tok.position())
 	}
 }

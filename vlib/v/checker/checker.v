@@ -28,10 +28,21 @@ const (
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads']
+	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
+
+fn all_valid_comptime_idents() []string {
+	mut res := []string{}
+	res << checker.valid_comp_if_os
+	res << checker.valid_comp_if_compilers
+	res << checker.valid_comp_if_platforms
+	res << checker.valid_comp_if_cpu_features
+	res << checker.valid_comp_if_other
+	return res
+}
 
 [heap]
 pub struct Checker {
@@ -66,6 +77,7 @@ pub mut:
 	inside_ref_lit bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_c_call  bool // true inside C.printf( param ) calls, but NOT in nested calls, unless they are also C.
+	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
@@ -1860,9 +1872,8 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			&& method.no_body {
 			c.error('cannot call a method that does not have a body', call_expr.pos)
 		}
-		if method.return_type == ast.void_type && method.ctdefine.len > 0
-			&& method.ctdefine !in c.pref.compile_defines {
-			call_expr.should_be_skipped = true
+		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
+			call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 		}
 		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
 		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 {
@@ -2408,9 +2419,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			call_expr.pos)
 		return func.return_type
 	}
-	if func.return_type == ast.void_type && func.ctdefine.len > 0
-		&& func.ctdefine !in c.pref.compile_defines {
-		call_expr.should_be_skipped = true
+	if func.return_type == ast.void_type && func.is_conditional && func.ctdefine_idx != -1 {
+		call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
 	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
@@ -5370,7 +5380,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 	} else if ident.name == 'errcode' {
 		c.error('undefined ident: `errcode`; did you mean `err.code`?', ident.pos)
 	} else {
-		c.error('undefined ident: `$ident.name`', ident.pos)
+		if c.inside_ct_attr {
+			c.note('`[if $ident.name]` is deprecated. Use `[if $ident.name?]` instead',
+				ident.pos)
+		} else {
+			c.error('undefined ident: `$ident.name`', ident.pos)
+		}
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
@@ -6273,11 +6288,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						cond.pos)
 					return false
 				}
-				// `$if some_var {}`
+				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
 				typ := c.expr(cond)
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
-					c.error('unknown var: `$cname`', pos)
+					if !c.inside_ct_attr {
+						c.error('unknown var: `$cname`', pos)
+					}
 					return false
 				}
 				expr := c.find_obj_definition(cond.obj) or {
@@ -7141,6 +7158,45 @@ fn (mut c Checker) post_process_generic_fns() {
 	}
 }
 
+fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
+	if a.ct_evaled {
+		return a.ct_skip
+	}
+	if a.ct_expr is ast.Ident {
+		if a.ct_opt {
+			if a.ct_expr.name in checker.valid_comp_not_user_defined {
+				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
+					a.pos)
+				a.ct_skip = true
+			} else {
+				a.ct_skip = a.ct_expr.name !in c.pref.compile_defines
+			}
+			a.ct_evaled = true
+			return a.ct_skip
+		} else {
+			if a.ct_expr.name !in checker.valid_comp_not_user_defined {
+				// TODO: uncomment after [if x] is deprecated in favour of [if x?], see also vlib/v/ast/str.v:343
+				// c.note('`[if $a.ct_expr.name]` is deprecated. Use `[if $a.ct_expr.name ?]` instead', a.pos)
+				a.ct_skip = a.ct_expr.name !in c.pref.compile_defines
+				a.ct_evaled = true
+				return a.ct_skip
+			} else {
+				if a.ct_expr.name in c.pref.compile_defines {
+					// explicitly allow custom user overrides with `-d linux` for example, for easier testing:
+					a.ct_skip = false
+					a.ct_evaled = true
+					return a.ct_skip
+				}
+			}
+		}
+	}
+	c.inside_ct_attr = true
+	a.ct_skip = c.comp_if_branch(a.ct_expr, a.pos)
+	c.inside_ct_attr = false
+	a.ct_evaled = true
+	return a.ct_skip
+}
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
@@ -7178,8 +7234,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.main_fn_decl_node = node
 	}
 	if node.return_type != ast.void_type {
-		if ct_name := node.attrs.find_comptime_define() {
-			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
+		if ct_attr_idx := node.attrs.find_comptime_define() {
+			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
+			c.error('only functions that do NOT return values can have `[if $sexpr]` tags',
 				node.pos)
 		}
 		if node.generic_names.len > 0 {
@@ -7189,6 +7246,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
 						node.return_type_pos)
 				}
+			}
+		}
+	}
+	if node.return_type == ast.void_type {
+		for mut a in node.attrs {
+			if a.kind == .comptime_define {
+				c.evaluate_once_comptime_if_attribute(mut a)
 			}
 		}
 	}
