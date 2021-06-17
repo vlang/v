@@ -94,6 +94,37 @@ fn init_os_args_wide(argc int, argv &&byte) []string {
 	return args_
 }
 
+pub fn glob(patterns string) ?[]string {
+	mut find_file_data := Win32finddata{}
+	mut mtchd := []string{}
+
+	patterns_ := patterns.replace('/', '\\')
+
+	$if debug {
+		println('os.glob() does not have all the features on Windows as it has on Unix operating systems')
+	}
+
+	// FindFirstFile() and FindNextFile() both have a globbing function.
+	// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
+	h_find_files := C.FindFirstFile(patterns_.to_wide(), voidptr(&find_file_data))
+	if h_find_files == C.INVALID_HANDLE_VALUE {
+		return error('os.glob(): Could not get a file handle: ' +
+			get_error_msg(int(C.GetLastError())))
+	}
+	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	if first_filename != '.' && first_filename != '..' {
+		mtchd << first_filename
+	}
+	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
+		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		if filename != '.' && filename != '..' {
+			mtchd << real_path(filename.clone())
+		}
+	}
+	C.FindClose(h_find_files)
+	return mtchd
+}
+
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string{}

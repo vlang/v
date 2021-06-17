@@ -6,6 +6,7 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <glob.h>
 
 pub const (
 	path_separator = '/'
@@ -47,6 +48,14 @@ mut:
 	machine  &char
 }
 
+[typedef]
+struct C.glob_t {
+mut:
+	gl_pathc size_t // number of matched paths
+	gl_pathv &&char // list of matched pathnames
+	gl_offs  size_t // slots to reserve in gl_pathv
+}
+
 fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
@@ -63,6 +72,30 @@ fn C.getppid() int
 fn C.getgid() int
 
 fn C.getegid() int
+
+fn C.glob(&char, int, int, voidptr) int
+
+fn C.globfree(voidptr)
+
+pub fn glob(pattern string) ?[]string {
+	mut mtchd := []string{}
+
+	unsafe {
+		arr := [&char(''.str), &char(''.str)]
+		g := &C.glob_t{
+			gl_pathv: arr.data
+		}
+		if C.glob(&char(pattern.str), C.GLOB_DOOFFS, C.NULL, g) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+
+		for i := 0; i < int(g.gl_pathc); i++ {
+			mtchd << cstring_to_vstring(g.gl_pathv[i])
+		}
+		C.globfree(g)
+	}
+	return mtchd
+}
 
 pub fn uname() Uname {
 	mut u := Uname{}
