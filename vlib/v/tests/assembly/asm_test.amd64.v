@@ -80,6 +80,7 @@ fn test_inline_asm() {
 	asm amd64 {
 		movq [m], 7 // have to specify size with q
 		; ; r (m)
+		; memory
 	}
 	assert l == 7
 
@@ -98,15 +99,15 @@ fn test_inline_asm() {
 
 	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v imported files
 
-	mut manu := Manu{}
+	mut o := Manu{}
 	asm amd64 {
 		mov eax, 0
 		cpuid
-		; =b (manu.ebx) as ebx0
-		  =d (manu.edx) as edx0
-		  =c (manu.ecx) as ecx0
+		; =b (o.ebx) as ebx0
+		  =d (o.edx) as edx0
+		  =c (o.ecx) as ecx0
 	}
-	manu.str()
+	o.str()
 }
 
 [packed]
@@ -129,19 +130,47 @@ fn (m Manu) str() string {
 }
 
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
+// doesn't actually work
+[if !macos]
 fn test_rip_relative_label() {
-	mut a := i64(4)
-	asm amd64 {
-		mov a, [rip + one_two_three] // see below
-		; =r (a)
+	$if !macos {
+		mut a := i64(4)
+		asm amd64 {
+			mov a, [rip + one_two_three] // see below
+			; =r (a)
+		}
+		assert a == 48321074923
 	}
-	assert a == 48321074923
 }
 
-asm amd64 {
-	.global one_two_three
-	one_two_three:
-	.quad 48321074923
+$if !macos {
+	asm amd64 {
+		.global one_two_three
+		one_two_three:
+		.quad 48321074923
+	}
+}
+
+// this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
+// doesn't actually work
+[if !macos]
+fn test_rip_relative_label_byte() {
+	$if !macos {
+		mut a := int(4)
+		asm amd64 {
+			mov a, [rip + byte_sequence] // see below
+			; =r (a)
+		}
+		assert a == 0x480f3527
+	}
+}
+
+$if !macos {
+	asm amd64 {
+		.global one_two_three
+		byte_sequence:
+		.byte 0x27, 0x35, 0x0f, 0x48
+	}
 }
 
 fn test_flag_output() {
