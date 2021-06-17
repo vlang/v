@@ -150,8 +150,8 @@ fn compare_by_generated_positions_inflated(mapping_a Mapping, mapping_b Mapping)
 
 	if mapping_a.source_position.type_name() == mapping_b.source_position.type_name()
 		&& mapping_b.source_position is SourcePosition {
-		if
-			(mapping_a.source_position as SourcePosition).source_line != (mapping_b.source_position as SourcePosition).source_line || (mapping_a.source_position as SourcePosition).source_column != (mapping_b.source_position as SourcePosition).source_column {
+		if mapping_a.source_position.source_line != mapping_b.source_position.source_line
+			|| mapping_a.source_position.source_column != mapping_b.source_position.source_column {
 			return true
 		}
 	} else {
@@ -161,8 +161,8 @@ fn compare_by_generated_positions_inflated(mapping_a Mapping, mapping_b Mapping)
 	}
 
 	if mapping_a.names_ind.type_name() == mapping_b.names_ind.type_name()
-		&& mapping_a.names_ind is IndexNumber {
-		return (mapping_a.names_ind as IndexNumber) != (mapping_b.names_ind as IndexNumber)
+		&& mapping_a.names_ind is IndexNumber && mapping_b.names_ind is IndexNumber {
+		return mapping_a.names_ind != mapping_b.names_ind
 	} else {
 		return mapping_a.names_ind.type_name() != mapping_b.names_ind.type_name()
 	}
