@@ -266,7 +266,7 @@ mut:
 }
 
 fn (mut ad AnchorData) add_links(line_number int, line string) {
-	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z0-9\-]+)\)'
+	query := r'\[(?P<lable>[^\]]+)\]\(\s*#(?P<link>[a-z0-9\-\_\x7f-\uffff]+)\)'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	res := re.find_all_str(line)
 
@@ -292,7 +292,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 			}
 		}
 	} else {
-		query := r'<a\s*id=["\'](?P<link>[a-z0-9\-]+)["\']\s*/>'
+		query := r'<a\s*id=["\'](?P<link>[a-z0-9\-\_\x7f-\uffff]+)["\']\s*/>'
 		mut re := regex.regex_opt(query) or { panic(err) }
 		res := re.find_all_str(line)
 
@@ -351,10 +351,30 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 	}
 }
 
+// based on a reference sample md doc
+// https://github.com/aheissenberger/vlang-markdown-module/blob/master/test.md
 fn create_ref_link(s string) string {
-	query_remove := r'[^a-z0-9 \-]'
-	mut re := regex.regex_opt(query_remove) or { panic(err) }
-	return re.replace_simple(s.to_lower(), '').replace(' ', '-')
+	mut result := ''
+	for c in s.trim_space() {
+		result += match c {
+			`a`...`z`, `0`...`9` {
+				c.ascii_str()
+			}
+			`A`...`Z` {
+				c.ascii_str().to_lower()
+			}
+			` `, `-` {
+				'-'
+			}
+			`_` {
+				'_'
+			}
+			else {
+				if c > 127 { c.ascii_str() } else { '' }
+			}
+		}
+	}
+	return result
 }
 
 fn (mut f MDFile) debug() {
