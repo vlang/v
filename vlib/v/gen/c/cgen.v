@@ -1950,7 +1950,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 			g.write(' ')
 		}
 		// swap destionation and operands for att syntax
-		if template.args.len != 0 {
+		if template.args.len != 0 && !template.is_directive {
 			template.args.prepend(template.args[template.args.len - 1])
 			template.args.delete(template.args.len - 1)
 		}
@@ -2052,8 +2052,16 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 					g.write(')')
 				}
 				.index_times_scale_plus_displacement {
-					g.asm_arg(displacement, stmt)
-					g.write('(')
+					if displacement is ast.AsmDisp {
+						g.asm_arg(displacement, stmt)
+						g.write('(, ')
+					} else if displacement is ast.AsmRegister {
+						g.write('(')
+						g.asm_arg(displacement, stmt)
+						g.write(',')
+					} else {
+						panic('unexpected $displacement.type_name()')
+					}
 					g.asm_arg(index, stmt)
 					g.write(',$scale)')
 				}
