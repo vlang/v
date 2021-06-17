@@ -76,6 +76,29 @@ fn C.getgid() int
 fn C.getegid() int
 
 fn C.ptrace(u32, u32, voidptr, int) u64
+fn C.glob(&char, int, voidptr, voidptr) int
+
+fn C.globfree(voidptr)
+
+pub fn glob(pattern string) ?[]string {
+	mut mtchd := []string{}
+
+	unsafe {
+		arr := [&char(''.str), &char(''.str)]
+		g := &C.glob_t{
+			gl_pathv: arr.data
+		}
+		if C.glob(&char(pattern.str), C.GLOB_DOOFFS, C.NULL, g) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+
+		for i := 0; i < int(g.gl_pathc); i++ {
+			mtchd << cstring_to_vstring(g.gl_pathv[i])
+		}
+		C.globfree(g)
+	}
+	return mtchd
+}
 
 fn C.glob(&char, int, voidptr, voidptr) int
 
