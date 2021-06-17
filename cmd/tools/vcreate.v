@@ -50,6 +50,7 @@ fn vmod_content(c Create) string {
 		"	license: '$c.license'",
 		'	dependencies: []',
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -59,6 +60,7 @@ fn main_content() string {
 		'fn main() {',
 		"	println('Hello World!')",
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -72,6 +74,7 @@ fn gen_gitignore(name string) string {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'',
 	].join('\n')
 }
 
@@ -160,7 +163,7 @@ fn init_project() {
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
-	c.create_git_repo('')
+	c.create_git_repo('.')
 
 	println("Change your module's description in `v.mod`")
 }

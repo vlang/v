@@ -6422,6 +6422,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			variant_sym := g.table.get_type_symbol(variant)
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
+	} else {
+		g.expr(node.expr)
 	}
 }
 

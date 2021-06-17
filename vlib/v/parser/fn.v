@@ -197,7 +197,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
-	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
+	conditional_ctdefine_idx := p.attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -376,12 +376,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
-			ctdefine: conditional_ctdefine
+			//
+			attrs: p.attrs
+			is_conditional: conditional_ctdefine_idx != -1
+			ctdefine_idx: conditional_ctdefine_idx
+			//
 			no_body: no_body
 			mod: p.mod
-			attrs: p.attrs
 		})
 	} else {
 		if language == .c {
@@ -405,12 +407,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
-			ctdefine: conditional_ctdefine
+			//
+			attrs: p.attrs
+			is_conditional: conditional_ctdefine_idx != -1
+			ctdefine_idx: conditional_ctdefine_idx
+			//
 			no_body: no_body
 			mod: p.mod
-			attrs: p.attrs
 			language: language
 		})
 	}
@@ -449,8 +453,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic: is_variadic
 		is_main: is_main
 		is_test: is_test
-		is_conditional: conditional_ctdefine != ''
 		is_keep_alive: is_keep_alive
+		//
+		attrs: p.attrs
+		is_conditional: conditional_ctdefine_idx != -1
+		ctdefine_idx: conditional_ctdefine_idx
+		//
 		receiver: ast.StructField{
 			name: rec.name
 			typ: rec.typ
@@ -467,7 +475,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
-		attrs: p.attrs
 		scope: p.scope
 		label_names: p.label_names
 	}

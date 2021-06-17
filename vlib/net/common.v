@@ -71,11 +71,14 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 // collection
 [inline]
 fn select_with_retry(handle int, test Select, timeout time.Duration) ?bool {
-	mut retries := 3
+	mut retries := 10
 	for retries > 0 {
 		ready := @select(handle, test, timeout) or {
 			if err.code == 4 {
-				// signal! lets retry max 3 times
+				// signal! lets retry max 10 times
+				// suspend thread with sleep to let the gc get
+				// cycles in the case the Bohem gc is interupting
+				time.sleep(1 * time.millisecond)
 				retries -= 1
 				continue
 			}
