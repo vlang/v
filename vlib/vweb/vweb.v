@@ -333,7 +333,11 @@ pub fn run<T>(global_app &T, port int) {
 		// request_app.Context = Context{
 		// conn: 0
 		//}
-		mut conn := l.accept() or { panic('accept() failed') }
+		mut conn := l.accept() or {
+			// failures should not panic
+			eprintln('accept() failed with error: $err.msg')
+			continue
+		}
 		go handle_conn<T>(mut conn, mut request_app)
 	}
 }
