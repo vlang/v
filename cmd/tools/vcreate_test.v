@@ -65,10 +65,8 @@ fn test_v_init_in_git_dir() ? {
 fn test_v_init_no_overwrite_gitignore() ? {
 	dir := os.join_path(os.temp_dir(), test_path)
 	os.rmdir_all(dir) or {}
-	os.mkdir(dir) ?
-	mut fl := os.create('$dir/.gitignore') ?
-	fl.write_string('blah') ?
-	fl.close()
+	os.mkdir(dir) or {}
+	os.write_file('$dir/.gitignore', 'blah') ?
 	defer {
 		os.rmdir_all(dir) or {}
 	}
