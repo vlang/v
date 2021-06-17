@@ -502,17 +502,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
-	if typ.has_flag(.generic) {
-		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.table.cur_concrete_types, true)
-		{
-			return t_typ
-		}
-	}
-	return typ
-}
-
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
