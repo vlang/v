@@ -109,14 +109,14 @@ fn (c &Create) create_git_repo(dir string) {
 			cerror('Unable to create git repo')
 			exit(4)
 		}
-		if !os.exists('$dir/.gitignore') {
-			mut fl := os.create('$dir/.gitignore') or {
-				// We don't really need a .gitignore, it's just a nice-to-have
-				return
-			}
-			fl.write_string(gen_gitignore(c.name)) or { panic(err) }
-			fl.close()
+	}
+	if !os.exists('$dir/.gitignore') {
+		mut fl := os.create('$dir/.gitignore') or {
+			// We don't really need a .gitignore, it's just a nice-to-have
+			return
 		}
+		fl.write_string(gen_gitignore(c.name)) or { panic(err) }
+		fl.close()
 	}
 }
 
