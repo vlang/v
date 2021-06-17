@@ -929,7 +929,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short {
+				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
 					mut found := false
 					for init_field in node.fields {
 						if field.name == init_field.name {
