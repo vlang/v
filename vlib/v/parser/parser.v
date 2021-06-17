@@ -1524,6 +1524,12 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		kind = .comptime_define
 		p.next()
 		p.check(.name)
+		// TODO: remove this check after bootstrapping
+		// it is only for compatibility with the new
+		// [if user_defined?] syntax.
+		if p.tok.kind == .question {
+			p.next()
+		}
 		name = p.prev_tok.lit
 	} else if p.tok.kind == .string {
 		name = p.tok.lit
