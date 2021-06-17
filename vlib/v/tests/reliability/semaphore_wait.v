@@ -124,12 +124,12 @@ fn main() {
 		eprintln('usage:\n\t${os.args[0]} [num_iterations]')
 		exit(1)
 	}
-	for _ in 0 .. 4 {
-		go waste_mem()
-	}
 	mut sem := sync.new_semaphore()
 	go do_rec(mut sem, timed)
 	go do_send(mut sem)
+	for _ in 0 .. 4 {
+		go waste_mem()
+	}
 	mut last := time.sys_mono_now()
 	for _ in 0 .. n_iterations {
 		now := time.sys_mono_now()
