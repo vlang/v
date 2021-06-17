@@ -6433,9 +6433,14 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
-					if type_sym.kind == .struct_ {
-						info := type_sym.info as ast.Struct
-						if !info.is_heap {
+					match type_sym.kind {
+						.struct_ {
+							info := type_sym.info as ast.Struct
+							if !info.is_heap {
+								node.obj.is_auto_heap = true
+							}
+						}
+						else {
 							node.obj.is_auto_heap = true
 						}
 					}
