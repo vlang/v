@@ -78,7 +78,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := left.sym.has_method('==')
+	has_operator_overloading := g.table.type_has_method(left.sym, '==')
 	if (left.typ.idx() == ast.string_type_idx || (!has_operator_overloading
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
 		&& (node.right as ast.StringLiteral).val == '' {
@@ -92,7 +92,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.op == .ne {
 			g.write('!')
 		}
-		g.write(g.typ(left.typ.set_nr_muls(0)))
+		g.write(g.typ(left.unaliased.set_nr_muls(0)))
 		g.write('__eq(')
 		g.write('*'.repeat(left.typ.nr_muls()))
 		g.expr(node.left)
@@ -100,7 +100,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write('*'.repeat(right.typ.nr_muls()))
 		g.expr(node.right)
 		g.write(')')
-	} else if left.unaliased.idx() == right.unaliased.idx()
+	} else if left.typ.idx() == right.typ.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
 		match left.sym.kind {
 			.alias {
@@ -255,7 +255,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := left.sym.has_method('<')
+	has_operator_overloading := g.table.type_has_method(left.sym, '<')
 	if left.sym.kind == right.sym.kind && has_operator_overloading {
 		if node.op in [.le, .ge] {
 			g.write('!')
@@ -423,7 +423,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := left.sym.has_method(node.op.str())
+	has_operator_overloading := g.table.type_has_method(left.sym, node.op.str())
 	if left.sym.kind == right.sym.kind && has_operator_overloading {
 		g.write(g.typ(left.typ.set_nr_muls(0)))
 		g.write('_')
