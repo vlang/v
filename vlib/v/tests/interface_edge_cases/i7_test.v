@@ -21,7 +21,8 @@ fn (p Point) draw() string {
 // interface dispatch ast. Now, it should not be needed anymore,
 // but it is better to test it too, to prevent future interface regressions.
 fn (x Point) tointerface() Drawable {
-	return x
+	x2 := x // `x2` is allocated on the heap (it's address is returned)
+	return x2
 }
 
 fn to_string(d Drawable) string {
