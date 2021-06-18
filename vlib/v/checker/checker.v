@@ -3102,8 +3102,8 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
-					if !got_typ.is_ptr() && got_typ_sym.kind != .interface_ {
-						c.mark_as_referenced(mut &node.exprs[i])
+					if !got_typ.is_ptr() && got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
 				continue
@@ -6407,7 +6407,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	return typ
 }
 
-pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
+pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 	match mut node {
 		ast.Ident {
 			if mut node.obj is ast.Var {
@@ -6423,7 +6423,8 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
 					if !c.pref.translated {
-						c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
+						mischief := if as_interface { 'used as interface object' } else { 'referenced' }
+						c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 							node.pos)
 					}
 				} else if type_sym.kind == .array_fixed {
@@ -6446,11 +6447,11 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			if !node.expr_type.is_ptr() {
-				c.mark_as_referenced(mut &node.expr)
+				c.mark_as_referenced(mut &node.expr, as_interface)
 			}
 		}
 		ast.IndexExpr {
-			c.mark_as_referenced(mut &node.left)
+			c.mark_as_referenced(mut &node.left, as_interface)
 		}
 		else {}
 	}
@@ -6515,12 +6516,12 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 		}
 		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right)
+			c.mark_as_referenced(mut &node.right, false)
 		}
 		return right_type.to_ptr()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
 		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right)
+			c.mark_as_referenced(mut &node.right, false)
 		}
 		if node.right.is_auto_deref_var() {
 			return right_type
