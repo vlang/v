@@ -6,7 +6,7 @@ const base_digits = '0123456789abcdefghijklmnopqrstuvwxyz'
 // for digit values > 10, this function uses the small latin leters a-z.
 [manualfree]
 pub fn format_int(n i64, radix int) string {
-	unsafe{
+	unsafe {
 		if radix < 2 || radix > 36 {
 			panic('invalid radix: $radix . It should be => 2 and <= 36')
 		}
@@ -22,11 +22,11 @@ pub fn format_int(n i64, radix int) string {
 		mut res := ''
 		for n_copy != 0 {
 			tmp_0 := res
-			tmp_1 :=  base_digits[n_copy % radix].ascii_str()
+			tmp_1 := strconv.base_digits[n_copy % radix].ascii_str()
 			res = tmp_1 + res
 			tmp_0.free()
 			tmp_1.free()
-			//res = base_digits[n_copy % radix].ascii_str() + res
+			// res = base_digits[n_copy % radix].ascii_str() + res
 			n_copy /= radix
 		}
 		return '$sign$res'
@@ -37,7 +37,7 @@ pub fn format_int(n i64, radix int) string {
 // for digit values > 10, this function uses the small latin leters a-z.
 [manualfree]
 pub fn format_uint(n u64, radix int) string {
-	unsafe{
+	unsafe {
 		if radix < 2 || radix > 36 {
 			panic('invalid radix: $radix . It should be => 2 and <= 36')
 		}
@@ -49,11 +49,11 @@ pub fn format_uint(n u64, radix int) string {
 		uradix := u64(radix)
 		for n_copy != 0 {
 			tmp_0 := res
-			tmp_1 :=  base_digits[n_copy % uradix].ascii_str()
+			tmp_1 := strconv.base_digits[n_copy % uradix].ascii_str()
 			res = tmp_1 + res
 			tmp_0.free()
 			tmp_1.free()
-			//res = base_digits[n_copy % uradix].ascii_str() + res
+			// res = base_digits[n_copy % uradix].ascii_str() + res
 			n_copy /= uradix
 		}
 		return res

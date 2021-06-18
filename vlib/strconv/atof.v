@@ -414,7 +414,6 @@ Public functions
 
 // atof64 return a f64 from a string doing a parsing operation
 pub fn atof64(s string) f64 {
-
 	mut pn := PrepNumber{}
 	mut res_parsing := 0
 	mut res := Float64u{}

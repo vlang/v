@@ -4,8 +4,8 @@ module strconv
 pub struct PrepNumber {
 pub mut:
 	negative bool // 0 if positive number, 1 if negative
-	exponent int // power of 10 exponent
-	mantissa u64 // integer mantissa
+	exponent int  // power of 10 exponent
+	mantissa u64  // integer mantissa
 }
 
 // dec32 is a floating decimal type representing m * 10^e.
