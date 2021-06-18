@@ -777,12 +777,11 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := &u16(0)
 	mut res := ''
 	$if windows {
 		// GetFullPathName doesn't work with symbolic links,
 		// so if it is not a file, get full path
-		fullpath = unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
+		mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
 		// TODO: check errors if path len is not enough
 		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
@@ -791,7 +790,7 @@ pub fn real_path(fpath string) string {
 		}
 		res = unsafe { string_from_wide(fullpath) }
 	} $else {
-		fullpath = vcalloc_noscan(max_path_len)
+		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			unsafe { free(fullpath) }
