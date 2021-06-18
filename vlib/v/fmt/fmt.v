@@ -1516,14 +1516,33 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 						set_comma = true
 					}
 				}
+				mut next_pos := expr_pos
+				if i + 1 < node.exprs.len {
+					next_pos = node.exprs[i + 1].position()
+				}
 				if cmt.pos.line_nr > expr_pos.last_line {
-					embed := i + 1 < node.exprs.len
-						&& node.exprs[i + 1].position().line_nr == cmt.pos.last_line
+					embed := i + 1 < node.exprs.len && next_pos.line_nr == cmt.pos.last_line
 					f.writeln('')
 					f.comment(cmt, iembed: embed)
 				} else {
-					f.write(' ')
-					f.comment(cmt, iembed: true)
+					if cmt.is_inline {
+						f.write(' ')
+						f.comment(cmt, iembed: true)
+						if cmt.pos.line_nr == expr_pos.last_line && cmt.pos.pos < expr_pos.pos {
+							f.write(',')
+							set_comma = true
+						} else {
+							if !cmt.is_inline {
+								// a // comment, transformed to a /**/ one, needs a comma too
+								f.write(',')
+								set_comma = true
+							}
+						}
+					} else {
+						f.write(', ')
+						f.comment(cmt, iembed: false)
+						set_comma = true
+					}
 				}
 				last_comment_was_inline = cmt.is_inline
 			}
