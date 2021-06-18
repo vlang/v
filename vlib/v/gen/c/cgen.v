@@ -1967,7 +1967,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 		g.writeln('"')
 	}
-	if !stmt.is_top_level {
+	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
 		g.write(': ')
 	}
 	g.gen_asm_ios(stmt.output)
@@ -2008,7 +2008,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmAlias {
 			name := arg.name
 			if name in stmt.local_labels || name in stmt.global_labels
-				|| name in g.file.global_labels || stmt.is_top_level {
+				|| name in g.file.global_labels || stmt.is_top_level
+				|| (name !in stmt.input.map(it.alias) && name !in stmt.output.map(it.alias)) {
 				asm_formatted_name := if name in stmt.global_labels { '%l[$name]' } else { name }
 				g.write(asm_formatted_name)
 			} else {
