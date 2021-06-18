@@ -794,7 +794,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			mut inited_fields := []string{}
-			for i, field in node.fields {
+			for i, mut field in node.fields {
 				mut info_field := ast.StructField{}
 				mut embed_type := ast.Type(0)
 				mut is_embed := false
@@ -866,7 +866,11 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					}
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
-						c.type_implements(expr_type, info_field.typ, field.pos)
+						if c.type_implements(expr_type, info_field.typ, field.pos) {
+							if !expr_type.is_ptr() && !expr_type.is_pointer() && expr_type_sym.kind != .interface_ && !c.inside_unsafe {
+								c.mark_as_referenced(mut &field.expr, true)
+							}
+						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, info_field.typ) or {
 							c.error('cannot assign to field `$info_field.name`: $err.msg',
@@ -3102,7 +3106,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
-					if !got_typ.is_ptr() && got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_ && !c.inside_unsafe {
 						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
