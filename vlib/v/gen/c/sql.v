@@ -1615,7 +1615,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 				g.inc_sql_i(typ)
 				info := expr.info as ast.IdentVar
 				ityp := info.typ
-				if typ == .sqlite3 {
+				if typ in [.sqlite3, .psql] {
 					if ityp == ast.string_type {
 						g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
 							typ)
