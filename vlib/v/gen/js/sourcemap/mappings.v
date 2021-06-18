@@ -149,6 +149,7 @@ fn compare_by_generated_positions_inflated(mapping_a Mapping, mapping_b Mapping)
 	}
 
 	if mapping_a.source_position.type_name() == mapping_b.source_position.type_name()
+		&& mapping_a.source_position is SourcePosition
 		&& mapping_b.source_position is SourcePosition {
 		if mapping_a.source_position.source_line != mapping_b.source_position.source_line
 			|| mapping_a.source_position.source_column != mapping_b.source_position.source_column {

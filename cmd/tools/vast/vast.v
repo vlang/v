@@ -438,7 +438,7 @@ fn (t Tree) comment(node ast.Comment) &Node {
 	obj.add('ast_type', t.string_node('Comment'))
 	obj.add('text', t.string_node(node.text))
 	obj.add('is_multi', t.bool_node(node.is_multi))
-	obj.add('line_nr', t.number_node(node.line_nr))
+	obj.add('is_inline', t.bool_node(node.is_inline))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -1993,9 +1993,9 @@ fn (t Tree) array_node_attr(nodes []ast.Attr) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_scope_struct_field(nodes []ast.ScopeStructField) &Node {
+fn (t Tree) array_node_scope_struct_field(nodes map[string]ast.ScopeStructField) &Node {
 	mut arr := new_array()
-	for node in nodes {
+	for _, node in nodes {
 		arr.add_item(t.scope_struct_field(node))
 	}
 	return arr

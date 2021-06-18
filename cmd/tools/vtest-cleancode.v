@@ -44,7 +44,6 @@ const (
 	]
 	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
 		'vlib/strconv/' /* prevent conflicts, till the new pure V string interpolation is merged */,
-		'vlib/net/http/cookie_test.v' /* a very weird bug where `,` keeps on being added in comments */,
 		'vlib/term/ui/input.v' /* comment after a struct embed is removed */,
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
 		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,

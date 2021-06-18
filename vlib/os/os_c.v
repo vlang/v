@@ -799,17 +799,19 @@ pub fn real_path(fpath string) string {
 		}
 		res = unsafe { fullpath.vstring() }
 	}
-	return normalize_drive_letter(res)
+	unsafe { normalize_drive_letter(res) }
+	return res
 }
 
-[direct_array_access; manualfree]
-fn normalize_drive_letter(path string) string {
-	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
-	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
-	// Capital drive letters do work fine.
+[direct_array_access; manualfree; unsafe]
+fn normalize_drive_letter(path string) {
 	$if !windows {
-		return path
+		return
 	}
+	// normalize_drive_letter is needed, because
+	// a path like c:\nv\.bin (note the small `c`) in %PATH,
+	// is NOT recognized by cmd.exe (and probably other programs too)...
+	// Capital drive letters do work fine.
 	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:`
 		&& path[2] == path_separator[0] {
 		unsafe {
@@ -817,7 +819,6 @@ fn normalize_drive_letter(path string) string {
 			(*x) = *x - 32
 		}
 	}
-	return path
 }
 
 // fork will fork the current system process and return the pid of the fork.
