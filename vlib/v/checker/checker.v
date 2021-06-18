@@ -3101,7 +3101,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				continue
 			}
 			if exp_typ_sym.kind == .interface_ {
-				c.type_implements(got_typ, exp_type, node.pos)
+				if c.type_implements(got_typ, exp_type, node.pos) {
+					if !got_typ.is_ptr() && got_typ_sym.kind != .interface_ {
+						c.mark_as_referenced(mut &node.exprs[i])
+					}
+				}
 				continue
 			}
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',

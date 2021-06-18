@@ -462,9 +462,9 @@ pub mut:
 pub struct Return {
 pub:
 	pos      token.Position
-	exprs    []Expr
 	comments []Comment
 pub mut:
+	exprs []Expr
 	types []Type
 }
 
