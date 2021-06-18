@@ -94,11 +94,11 @@ fn test_inttypes_string_interpolation() {
 	i := -1622999040 // -0x60BD 0000
 	ui := u32(3421958087) // 0xCBF6 EFC7
 	vp := voidptr(ui)
-	mut bp := byteptr(0)
+	mut bp := &byte(0)
 	$if x64 {
-		bp = byteptr(15541149836) // 0x3 9E53 208C
+		bp = &byte(15541149836) // 0x3 9E53 208C
 	} $else {
-		bp = byteptr(3541149836) // 0xD311 A88C
+		bp = &byte(3541149836) // 0xD311 A88C
 	}
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)
