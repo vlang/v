@@ -18,12 +18,12 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 
 struct Type {
 	// typ is the original type
-	typ ast.Type       [required]
-	sym ast.TypeSymbol [required]
+	typ ast.Type        [required]
+	sym &ast.TypeSymbol [required]
 	// unaliased is `typ` once aliased have been resolved
 	// it may not contain informations such as flags and nr_muls
-	unaliased     ast.Type       [required]
-	unaliased_sym ast.TypeSymbol [required]
+	unaliased     ast.Type        [required]
+	unaliased_sym &ast.TypeSymbol [required]
 }
 
 // unwrap returns the following variants of a type:
