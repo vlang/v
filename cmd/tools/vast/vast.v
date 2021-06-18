@@ -1993,9 +1993,9 @@ fn (t Tree) array_node_attr(nodes []ast.Attr) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_scope_struct_field(nodes []ast.ScopeStructField) &Node {
+fn (t Tree) array_node_scope_struct_field(nodes map[string]ast.ScopeStructField) &Node {
 	mut arr := new_array()
-	for node in nodes {
+	for _, node in nodes {
 		arr.add_item(t.scope_struct_field(node))
 	}
 	return arr

@@ -442,13 +442,14 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 						iface.pos)
 					continue
 				}
-				for f in isym.info.fields {
+				isym_info := isym.info as ast.Interface
+				for f in isym_info.fields {
 					if !efnames_ds_info[f.name] {
 						efnames_ds_info[f.name] = true
 						decl_sym.info.fields << f
 					}
 				}
-				for m in isym.info.methods {
+				for m in isym_info.methods {
 					if !emnames_ds_info[m.name] {
 						emnames_ds_info[m.name] = true
 						decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
@@ -2983,7 +2984,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := node.scope.find_struct_field(utyp, field_name) {
+				if scope_field := node.scope.find_struct_field(node.expr.str(), utyp,
+					field_name)
+				{
 					return scope_field.smartcasts.last()
 				}
 			}
@@ -5764,13 +5767,13 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					orig_type = field.typ
 				}
 			}
-			if field := scope.find_struct_field(expr.expr_type, expr.field_name) {
+			if field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if !is_mut || expr.is_mut {
 				smartcasts << to_type
-				scope.register_struct_field(ast.ScopeStructField{
+				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name: expr.field_name
 					typ: cur_type

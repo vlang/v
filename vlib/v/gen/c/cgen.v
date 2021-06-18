@@ -1842,7 +1842,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					}
 				}
 			} else if expr is ast.SelectorExpr {
-				if _ := scope.find_struct_field(expr.expr_type, expr.field_name) {
+				if _ := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
 					is_already_sum_type = true
 				}
 			}
@@ -3457,7 +3457,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
-				if field := scope.find_struct_field(node.expr_type, node.field_name) {
+				if field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name) {
 					if field.orig_type.is_ptr() {
 						sum_type_dot = '->'
 					}
