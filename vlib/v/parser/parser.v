@@ -605,17 +605,20 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 pub fn (mut p Parser) comment() ast.Comment {
 	mut pos := p.tok.position()
 	text := p.tok.lit
-	pos.last_line = pos.line_nr + text.count('\n')
+	num_newlines := text.count('\n')
+	is_multi := num_newlines > 0
+	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
+	pos.last_line = pos.line_nr + num_newlines
 	p.next()
-	is_multi := text.contains('\n')
 	// Filter out false positive space indent vet errors inside comments
 	if p.vet_errors.len > 0 && is_multi {
 		p.vet_errors = p.vet_errors.filter(it.typ != .space_indent
 			|| it.pos.line_nr - 1 > pos.last_line || it.pos.line_nr - 1 <= pos.line_nr)
 	}
 	return ast.Comment{
-		is_multi: is_multi
 		text: text
+		is_multi: is_multi
+		is_inline: is_inline
 		pos: pos
 	}
 }

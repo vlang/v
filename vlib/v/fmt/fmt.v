@@ -26,7 +26,7 @@ pub mut:
 	buffering          bool   // disables line wrapping for exprs that will be analyzed later
 	par_level          int    // how many parentheses are put around the current expression
 	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchie in array init
+	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
 	file               ast.File
@@ -1500,12 +1500,21 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			}
 			f.expr(expr)
 		}
-		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
+		mut last_comment_was_inline := false
+		mut has_comments := node.ecmnts[i].len > 0
+		if i < node.ecmnts.len && has_comments {
 			expr_pos := expr.position()
-			for cmt in node.ecmnts[i] {
+			for icmt, cmt in node.ecmnts[i] {
 				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
-					f.write(',')
-					set_comma = true
+					if icmt > 0 {
+						if last_comment_was_inline {
+							f.write(',')
+							set_comma = true
+						}
+					} else {
+						f.write(',') // first comment needs a comma
+						set_comma = true
+					}
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
 					embed := i + 1 < node.exprs.len
@@ -1516,16 +1525,21 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					f.write(' ')
 					f.comment(cmt, iembed: true)
 				}
+				last_comment_was_inline = cmt.is_inline
 			}
+		}
+		mut put_comma := !set_comma
+		if has_comments && !last_comment_was_inline {
+			put_comma = false
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma {
+				if put_comma {
 					f.write(',')
 				}
 				f.writeln('')
 			}
-		} else if !set_comma {
+		} else if put_comma {
 			f.write(',')
 		}
 		last_line_nr = pos.last_line
