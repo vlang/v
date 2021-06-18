@@ -309,8 +309,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 			return method
 		}
 		if ts.kind == .aggregate {
-			method := t.register_aggregate_method(mut ts, name) ?
-			return method
+			return t.register_aggregate_method(mut ts, name)
 		}
 		if ts.parent_idx == 0 {
 			break
