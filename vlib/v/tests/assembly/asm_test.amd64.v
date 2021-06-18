@@ -167,7 +167,7 @@ fn test_rip_relative_label_byte() {
 
 $if !macos {
 	asm amd64 {
-		.global one_two_three
+		.global byte_sequence
 		byte_sequence:
 		.byte 0x27, 0x35, 0x0f, 0x48
 	}

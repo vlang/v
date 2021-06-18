@@ -1382,7 +1382,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 
 		mut constraint := ''
 		if p.tok.kind == .lpar {
-			constraint = if output { '+r' } else { 'r' } // default constraint
+			constraint = if output { '+r' } else { 'r' } // default constraint, though vfmt fmts to `+r` and `r`
 		} else {
 			constraint += match p.tok.kind {
 				.assign {
