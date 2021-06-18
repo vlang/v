@@ -74,7 +74,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	}
 }
 
-// infix_expr_eq_op generated code for `==` and `!=`
+// infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
@@ -421,7 +421,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 }
 
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
-// It handled operator overloading when necessary
+// It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
@@ -498,10 +498,10 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	}
 }
 
-// gen_plain_infix_expr generated basic code for infix expressions,
+// gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
-// It handled auto dereferencing of variables, as well as automatic casting
+// It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
