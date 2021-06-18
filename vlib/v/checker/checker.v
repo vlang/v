@@ -5047,7 +5047,11 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `$type_name` to struct', node.pos)
 		}
 	} else if to_type_sym.kind == .interface_ {
-		c.type_implements(node.expr_type, node.typ, node.pos)
+		if c.type_implements(node.expr_type, node.typ, node.pos) {
+			if !node.expr_type.is_ptr() && !node.expr_type.is_pointer() && from_type_sym.kind != .interface_ && !c.inside_unsafe {
+				c.mark_as_referenced(mut &node.expr, true)
+			}
+		}
 	} else if node.typ == ast.bool_type && !c.inside_unsafe {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 	} else if node.expr_type == ast.none_type && !node.typ.has_flag(.optional) {
