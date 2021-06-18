@@ -29,7 +29,7 @@ fn C.CopyFile(&u16, &u16, bool) int
 
 // fn C.lstat(charptr, voidptr) u64
 
-fn C._wstat64(&char, voidptr) u64
+fn C._wstat64(&u16, voidptr) u64
 
 fn C.chown(&char, int, int) int
 
@@ -168,7 +168,7 @@ pub fn file_size(path string) u64 {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
+				if C._wstat64(path.to_wide(), voidptr(&swin)) != 0 {
 					eprintln_unknown_file_size()
 					return 0
 				}
@@ -471,7 +471,7 @@ pub fn rm(path string) ? {
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ? {
 	$if windows {
-		rc := C.RemoveDirectory(&char(path.to_wide()))
+		rc := C.RemoveDirectory(path.to_wide())
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
 			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
@@ -777,12 +777,11 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := &byte(0)
 	mut res := ''
 	$if windows {
 		// GetFullPathName doesn't work with symbolic links,
 		// so if it is not a file, get full path
-		fullpath = unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
+		mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
 		// TODO: check errors if path len is not enough
 		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
@@ -791,7 +790,7 @@ pub fn real_path(fpath string) string {
 		}
 		res = unsafe { string_from_wide(fullpath) }
 	} $else {
-		fullpath = vcalloc_noscan(max_path_len)
+		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			unsafe { free(fullpath) }
