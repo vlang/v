@@ -79,7 +79,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
 	has_operator_overloading := g.table.type_has_method(left.sym, '==')
-	if (left.typ.idx() == ast.string_type_idx || (!has_operator_overloading
+	if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
+		g.gen_plain_infix_expr(node)
+	} else if (left.typ.idx() == ast.string_type_idx || (!has_operator_overloading
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
 		&& (node.right as ast.StringLiteral).val == '' {
 		// `str == ''` -> `str.len == 0` optimization
