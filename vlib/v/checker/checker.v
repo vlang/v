@@ -3052,6 +3052,20 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	node.types = got_types
+	$if debug_manualfree ? {
+		cfn := c.table.cur_fn
+		if cfn.is_manualfree {
+			pnames := cfn.params.map(it.name)
+			for expr in node.exprs {
+				if expr is ast.Ident {
+					if expr.name in pnames {
+						c.note('returning a parameter in a fn marked with `[manualfree]` can cause double freeing in the caller',
+							node.pos)
+					}
+				}
+			}
+		}
+	}
 	// allow `none` & `error` return types for function that returns optional
 	option_type_idx := c.table.type_idxs['Option']
 	got_types_0_idx := got_types[0].idx()
