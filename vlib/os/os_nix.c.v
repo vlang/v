@@ -81,7 +81,7 @@ pub fn glob(pattern string) ?[]string {
 	mut mtchd := []string{}
 
 	unsafe {
-		arr := [&char(''.str), &char(''.str)]
+		arr := [&char(c''), &char(c'')]
 		g := &C.glob_t{
 			gl_pathv: arr.data
 		}
