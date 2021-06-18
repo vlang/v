@@ -3676,7 +3676,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if left_sym.kind == .interface_ {
-			c.type_implements(right_type, left_type, right.position())
+			if c.type_implements(right_type, left_type, right.position()) {
+				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_ && !c.inside_unsafe {
+					c.mark_as_referenced(mut &node.right[i], true)
+				}
+			}
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
