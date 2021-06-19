@@ -18,7 +18,11 @@ const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 fn get_scan_timeout_seconds() int {
 	env_vw_timeout := os.getenv('VWATCH_TIMEOUT').int()
 	if env_vw_timeout == 0 {
-		return 5 * 60
+		$if gcboehm ? {
+			return 35000000 // over 1 year
+		} $else {
+			return 5 * 60
+		}
 	}
 	return env_vw_timeout
 }
@@ -296,6 +300,7 @@ const ccontext = Context{
 }
 
 fn main() {
+	dump(scan_timeout_s)
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
