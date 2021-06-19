@@ -577,34 +577,6 @@ pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.height = height
 }
 
-// begin_transformations starts a new batch of transformations. Each
-// `translate`, `rotate`, and `scale` called after this will apply
-// (in reverse order) to each draw call until `end_transformations` is
-// called
-pub fn (gg &Context) begin_transformations() {
-	sgl.push_matrix()
-}
-
-// end_transformations ends an on-going batch of transformations
-pub fn (gg &Context) end_transformations() {
-	sgl.pop_matrix()
-}
-
-// rotate the next draw calls by an angle (in radians) at an offset x, y, z
-pub fn (gg &Context) rotate(angle_rad f32, x f32, y f32, z f32) {
-	sgl.rotate(angle_rad, x, y, z)
-}
-
-// scale the next draw calls by the provided values. (1, 1, 1) would be no scaling
-pub fn (gg &Context) scale(x f32, y f32, z f32) {
-	sgl.scale(x, y, z)
-}
-
-// translate the position of the next draw calls by the adjusted information
-pub fn (gg &Context) translate(x f32, y f32, z f32) {
-	sgl.translate(x, y, z)
-}
-
 // draw_line draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
@@ -634,11 +606,11 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
 	theta := f32(math.atan2(dy, dx))
 
-	ctx.begin_transformations()
+	sgl.push_matrix()
 
-	ctx.translate(nx, ny, 0)
-	ctx.rotate(theta, 0, 0, 1)
-	ctx.translate(-nx, -ny, 0)
+	sgl.translate(nx, ny, 0)
+	sgl.rotate(theta, 0, 0, 1)
+	sgl.translate(-nx, -ny, 0)
 
 	if config.line_type == .solid {
 		ctx.draw_rect(x, y, length, config.thickness, config.color)
@@ -662,7 +634,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 		}
 	}
 
-	ctx.end_transformations()
+	sgl.pop_matrix()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
