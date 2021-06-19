@@ -272,7 +272,7 @@ pub fn f64_to_str_l_no_dot(f f64) string {
 pub fn fxx_to_str_l_parse(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
-		return s
+		return s.clone()
 	}
 
 	m_sgn_flag := false
@@ -395,7 +395,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 pub fn fxx_to_str_l_parse_no_dot(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
-		return s
+		return s.clone()
 	}
 
 	m_sgn_flag := false

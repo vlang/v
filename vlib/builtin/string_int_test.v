@@ -186,7 +186,7 @@ fn test_signed_cast() {
 	}
 
 	// test g format
-	{
+	unsafe {
 		mut u := strconv.Float64u{
 			u: strconv.double_plus_zero
 		}
@@ -202,7 +202,7 @@ fn test_signed_cast() {
 		assert '${u.f:g}' == '-inf'
 		assert '${u.f:G}' == '-INF'
 	}
-	{
+	unsafe {
 		mut u := strconv.Float32u{
 			u: strconv.single_plus_zero
 		}
