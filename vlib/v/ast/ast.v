@@ -902,13 +902,14 @@ pub mut:
 	has_cross_var bool
 }
 
+// `expr as Ident`
 pub struct AsCast {
 pub:
-	expr Expr
-	typ  Type
+	expr Expr // from expr: `expr` in `expr as Ident`
+	typ  Type // to type
 	pos  token.Position
 pub mut:
-	expr_type Type
+	expr_type Type // from type
 }
 
 // an enum value, like OS.macos or .macos
