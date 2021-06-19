@@ -438,7 +438,7 @@ fn (t Tree) comment(node ast.Comment) &Node {
 	obj.add('ast_type', t.string_node('Comment'))
 	obj.add('text', t.string_node(node.text))
 	obj.add('is_multi', t.bool_node(node.is_multi))
-	obj.add('line_nr', t.number_node(node.line_nr))
+	obj.add('is_inline', t.bool_node(node.is_inline))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -493,6 +493,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('no_body', t.bool_node(node.no_body))
 	obj.add('is_builtin', t.bool_node(node.is_builtin))
 	obj.add('is_direct_arr', t.bool_node(node.is_direct_arr))
+	obj.add('ctdefine_idx', t.number_node(node.ctdefine_idx))
 	obj.add('pos', t.position(node.pos))
 	obj.add('body_pos', t.position(node.body_pos))
 	obj.add('return_type_pos', t.position(node.return_type_pos))
@@ -501,7 +502,6 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('return_type', t.type_node(node.return_type))
 	obj.add('source_file', t.number_node(int(node.source_file)))
 	obj.add('scope', t.number_node(int(node.scope)))
-	obj.add('skip_gen', t.bool_node(node.skip_gen))
 	obj.add('attrs', t.array_node_attr(node.attrs))
 	obj.add('params', t.array_node_arg(node.params))
 	obj.add('generic_names', t.array_node_string(node.generic_names))
@@ -630,6 +630,10 @@ fn (t Tree) attr(node ast.Attr) &Node {
 	obj.add('name', t.string_node(node.name))
 	obj.add('has_arg', t.bool_node(node.has_arg))
 	obj.add('kind', t.enum_node(node.kind))
+	obj.add('ct_expr', t.expr(node.ct_expr))
+	obj.add('ct_opt', t.bool_node(node.ct_opt))
+	obj.add('ct_evaled', t.bool_node(node.ct_evaled))
+	obj.add('ct_skip', t.bool_node(node.ct_skip))
 	obj.add('arg', t.string_node(node.arg))
 	return obj
 }
@@ -1989,9 +1993,9 @@ fn (t Tree) array_node_attr(nodes []ast.Attr) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_scope_struct_field(nodes []ast.ScopeStructField) &Node {
+fn (t Tree) array_node_scope_struct_field(nodes map[string]ast.ScopeStructField) &Node {
 	mut arr := new_array()
-	for node in nodes {
+	for _, node in nodes {
 		arr.add_item(t.scope_struct_field(node))
 	}
 	return arr

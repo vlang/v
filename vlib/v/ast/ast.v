@@ -384,7 +384,7 @@ pub:
 	generic_names   []string
 	is_direct_arr   bool // direct array access
 	attrs           []Attr
-	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
+	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	params          []Param
 	stmts           []Stmt
@@ -392,12 +392,14 @@ pub mut:
 	return_type     Type
 	return_type_pos token.Position // `string` in `fn (u User) name() string` position
 	has_return      bool
-	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file     &File = 0
-	scope           &Scope
-	label_names     []string
-	pos             token.Position // function declaration position
+	//
+	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
+	//
+	source_file &File = 0
+	scope       &Scope
+	label_names []string
+	pos         token.Position // function declaration position
 }
 
 // break, continue
@@ -900,13 +902,14 @@ pub mut:
 	has_cross_var bool
 }
 
+// `expr as Ident`
 pub struct AsCast {
 pub:
-	expr Expr
-	typ  Type
+	expr Expr // from expr: `expr` in `expr as Ident`
+	typ  Type // to type
 	pos  token.Position
 pub mut:
-	expr_type Type
+	expr_type Type // from type
 }
 
 // an enum value, like OS.macos or .macos
@@ -1380,10 +1383,10 @@ pub mut:
 
 pub struct Comment {
 pub:
-	text     string
-	is_multi bool
-	line_nr  int
-	pos      token.Position
+	text      string
+	is_multi  bool // true only for /* comment */, that use many lines
+	is_inline bool // true for all /* comment */ comments
+	pos       token.Position
 }
 
 pub struct ConcatExpr {

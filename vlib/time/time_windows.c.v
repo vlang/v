@@ -16,6 +16,8 @@ struct C.tm {
 }
 
 struct C._FILETIME {
+	dwLowDateTime  u32
+	dwHighDateTime u32
 }
 
 struct SystemTime {

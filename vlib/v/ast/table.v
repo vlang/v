@@ -77,12 +77,9 @@ pub:
 	is_placeholder  bool
 	is_main         bool // `fn main(){}`
 	is_test         bool // `fn test_abc(){}`
-	is_conditional  bool // `[if abc]fn(){}`
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
-	ctdefine        string // compile time define. "myflag", when [if myflag] tag
-	attrs           []Attr
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
@@ -91,6 +88,10 @@ pub mut:
 	params      []Param
 	source_fn   voidptr // set in the checker, while processing fn declarations
 	usages      int
+	//
+	attrs          []Attr // all fn attributes
+	is_conditional bool   // true for `[if abc]fn(){}`
+	ctdefine_idx   int    // the index of the attribute, containing the compile time define [if mytag]
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -179,7 +180,8 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
-		sig += '$arg_type_sym.kind'
+		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
+			'chan_', 'map[', 'map_of_', ']', '_to_'])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -308,8 +310,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 			return method
 		}
 		if ts.kind == .aggregate {
-			method := t.register_aggregate_method(mut ts, name) ?
-			return method
+			return t.register_aggregate_method(mut ts, name)
 		}
 		if ts.parent_idx == 0 {
 			break

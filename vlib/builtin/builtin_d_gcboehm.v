@@ -12,6 +12,11 @@ $if static_boehm ? {
 		#flag -I/usr/local/include
 		#flag /usr/local/lib/libgc.a
 		#flag -lpthread
+	} $else $if windows {
+		#define GC_NOT_DLL 1
+		#flag -I@VEXEROOT/thirdparty/libgc/include
+		#flag -L@VEXEROOT/thirdparty/libgc
+		#flag -lgc
 	} $else {
 		#flag -lgc
 	}

@@ -994,6 +994,7 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 			g.writeln('};')
 		}
 		fields := g.new_tmp_var()
+		g.writeln('if (${rows}.len > 0) {')
 		g.writeln('Array_string $fields = (*(pg__Row*) array_get($rows, $tmp_i)).vals;')
 		fld := g.new_tmp_var()
 		g.writeln('string $fld;')
@@ -1050,6 +1051,7 @@ fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sql
 			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));\n')
 			g.writeln('}')
 		}
+		g.writeln('}')
 		g.writeln('string_free(&$g.sql_stmt_name);')
 		if node.is_array {
 			g.writeln('$cur_line ${tmp}_array; ')

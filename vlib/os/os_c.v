@@ -29,7 +29,7 @@ fn C.CopyFile(&u16, &u16, bool) int
 
 // fn C.lstat(charptr, voidptr) u64
 
-fn C._wstat64(&char, voidptr) u64
+fn C._wstat64(&u16, voidptr) u64
 
 fn C.chown(&char, int, int) int
 
@@ -168,7 +168,7 @@ pub fn file_size(path string) u64 {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
+				if C._wstat64(path.to_wide(), voidptr(&swin)) != 0 {
 					eprintln_unknown_file_size()
 					return 0
 				}
@@ -471,7 +471,7 @@ pub fn rm(path string) ? {
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ? {
 	$if windows {
-		rc := C.RemoveDirectory(&char(path.to_wide()))
+		rc := C.RemoveDirectory(path.to_wide())
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
 			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
@@ -777,7 +777,6 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := &byte(0)
 	mut res := ''
 	$if windows {
 		size := max_path_len * 2
@@ -789,6 +788,7 @@ pub fn real_path(fpath string) string {
 			fullpath = unsafe { &u16(vcalloc(size)) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandle(file, fullpath, size, 0)
+			C.CloseHandle(file)
 			if final_len < size {
 				rt := unsafe { string_from_wide2(fullpath, final_len) }
 				res = rt[4..]
@@ -799,7 +799,7 @@ pub fn real_path(fpath string) string {
 			}
 		} else {
 			// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
-			fullpath = unsafe { &u16(vcalloc(size)) }
+			mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
 			// TODO: check errors if path len is not enough
 			ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 			if ret == 0 {
@@ -808,9 +808,8 @@ pub fn real_path(fpath string) string {
 			}
 			res = unsafe { string_from_wide(fullpath) }
 		}
-		C.CloseHandle(file)
 	} $else {
-		fullpath = vcalloc_noscan(max_path_len)
+		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			unsafe { free(fullpath) }
@@ -818,17 +817,19 @@ pub fn real_path(fpath string) string {
 		}
 		res = unsafe { fullpath.vstring() }
 	}
-	return normalize_drive_letter(res)
+	unsafe { normalize_drive_letter(res) }
+	return res
 }
 
-[direct_array_access; manualfree]
-fn normalize_drive_letter(path string) string {
-	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
-	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
-	// Capital drive letters do work fine.
+[direct_array_access; manualfree; unsafe]
+fn normalize_drive_letter(path string) {
 	$if !windows {
-		return path
+		return
 	}
+	// normalize_drive_letter is needed, because
+	// a path like c:\nv\.bin (note the small `c`) in %PATH,
+	// is NOT recognized by cmd.exe (and probably other programs too)...
+	// Capital drive letters do work fine.
 	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:`
 		&& path[2] == path_separator[0] {
 		unsafe {
@@ -836,7 +837,6 @@ fn normalize_drive_letter(path string) string {
 			(*x) = *x - 32
 		}
 	}
-	return path
 }
 
 // fork will fork the current system process and return the pid of the fork.
