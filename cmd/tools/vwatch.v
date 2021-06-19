@@ -5,7 +5,7 @@ import time
 import term
 import flag
 
-const scan_timeout_s = 5 * 60
+const scan_timeout_s = get_scan_timeout_seconds()
 
 const max_v_cycles = 1000
 
@@ -15,8 +15,20 @@ const scan_period_ms = 1000 / scan_frequency_hz
 
 const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 
+fn get_scan_timeout_seconds() int {
+	env_vw_timeout := os.getenv('VWATCH_TIMEOUT').int()
+	if env_vw_timeout == 0 {
+		$if gcboehm ? {
+			return 35000000 // over 1 year
+		} $else {
+			return 5 * 60
+		}
+	}
+	return env_vw_timeout
+}
+
 //
-// Implements `v -watch file.v` , `v -watch run file.v` etc.
+// Implements `v watch file.v` , `v watch run file.v` etc.
 // With this command, V will collect all .v files that are needed for the
 // compilation, then it will enter an infinite loop, monitoring them for
 // changes.
@@ -25,7 +37,7 @@ const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 // still running, then rerun/recompile/etc.
 //
 // In effect, this makes it easy to have an editor session and a separate
-// terminal, running just `v -watch run file.v`, and you will see your
+// terminal, running just `v watch run file.v`, and you will see your
 // changes right after you save your .v file in your editor.
 //
 //
@@ -288,6 +300,7 @@ const ccontext = Context{
 }
 
 fn main() {
+	dump(scan_timeout_s)
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')

@@ -2,15 +2,7 @@ import os
 
 const test_path = 'vcreate_test'
 
-fn test_v_init() ? {
-	dir := os.join_path(os.temp_dir(), test_path)
-	os.rmdir_all(dir) or {}
-	os.mkdir(dir) ?
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.chdir(dir)
-
+fn init_and_check() ? {
 	vexe := os.getenv('VEXE')
 	os.execute_or_panic('$vexe init')
 
@@ -44,4 +36,44 @@ fn test_v_init() ? {
 		'*.dll',
 		'',
 	].join('\n')
+}
+
+fn test_v_init() ? {
+	dir := os.join_path(os.temp_dir(), test_path)
+	os.rmdir_all(dir) or {}
+	os.mkdir(dir) ?
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.chdir(dir)
+
+	init_and_check() ?
+}
+
+fn test_v_init_in_git_dir() ? {
+	dir := os.join_path(os.temp_dir(), test_path)
+	os.rmdir_all(dir) or {}
+	os.execute_or_panic('git init $dir')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.chdir(dir)
+
+	init_and_check() ?
+}
+
+fn test_v_init_no_overwrite_gitignore() ? {
+	dir := os.join_path(os.temp_dir(), test_path)
+	os.rmdir_all(dir) or {}
+	os.mkdir(dir) or {}
+	os.write_file('$dir/.gitignore', 'blah') ?
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.chdir(dir)
+
+	vexe := os.getenv('VEXE')
+	os.execute_or_panic('$vexe init')
+
+	assert os.read_file('.gitignore') ? == 'blah'
 }
