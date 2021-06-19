@@ -101,6 +101,18 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
+pub enum PenLineType {
+	solid
+	dashed
+	dotted
+}
+
+pub struct PenConfig {
+	color     gx.Color
+	line_type PenLineType = .solid
+	thickness int = 1
+}
+
 [heap]
 pub struct Context {
 mut:
@@ -559,34 +571,101 @@ pub fn (gg &Context) end() {
 	*/
 }
 
+// resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
 }
 
+// begin_transformations starts a new batch of transformations. Each
+// `translate`, `rotate`, and `scale` called after this will apply
+// (in reverse order) to each draw call until `end_transformations` is
+// called
+pub fn (gg &Context) begin_transformations() {
+	sgl.push_matrix()
+}
+
+// end_transformations ends an on-going batch of transformations
+pub fn (gg &Context) end_transformations() {
+	sgl.pop_matrix()
+}
+
+// rotate the next draw calls by an angle (in radians) at an offset x, y, z
+pub fn (gg &Context) rotate(angle_rad f32, x f32, y f32, z f32) {
+	sgl.rotate(angle_rad, x, y, z)
+}
+
+// scale the next draw calls by the provided values. (1, 1, 1) would be no scaling
+pub fn (gg &Context) scale(x f32, y f32, z f32) {
+	sgl.scale(x, y, z)
+}
+
+// translate the position of the next draw calls by the adjusted information
+pub fn (gg &Context) translate(x f32, y f32, z f32) {
+	sgl.translate(x, y, z)
+}
+
+// draw_line draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-	$if !android {
-		if ctx.scale > 1 {
-			// Make the line more clear on hi dpi screens: draw a rectangle
-			mut width := (x2 - x)
-			mut height := (y2 - y)
-			if width == 0 {
-				width = 1
-			} else if height == 0 {
-				height = 1
+
+	ctx.draw_line_with_config(x, y, x2, y2, color: c)
+}
+
+// draw_line_with_config draws a line between the points provided with the PenConfig
+pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
+	if config.color.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nx2 := x2 * ctx.scale
+	ny2 := y2 * ctx.scale
+
+	dx := nx2 - nx
+	dy := ny2 - ny
+	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
+	theta := f32(math.atan2(dy, dx))
+
+	ctx.begin_transformations()
+
+	ctx.translate(nx, ny, 0)
+	ctx.rotate(theta, 0, 0, 1)
+	ctx.translate(-nx, -ny, 0)
+
+	if config.line_type == .solid {
+		ctx.draw_rect(x, y, length, config.thickness, config.color)
+	} else {
+		mut size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
+		mut space := if config.line_type == .dotted {
+			config.thickness
+		} else {
+			config.thickness * 3
+		}
+		if space == 1 {
+			space = 2
+		}
+
+		mut available := length
+		mut start_x := x
+
+		for i := 0; available > 0; i++ {
+			if i % 2 == 0 {
+				ctx.draw_rect(start_x, y, size, config.thickness, config.color)
+				available -= size
+				start_x += size
+				continue
 			}
-			ctx.draw_rect(x, y, width, height, c)
-			return
+
+			available -= space
+			start_x += space
 		}
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.end()
+
+	ctx.end_transformations()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
