@@ -16,6 +16,7 @@ $if static_boehm ? {
 		#define GC_NOT_DLL 1
 		#flag -I@VEXEROOT/thirdparty/libgc/include
 		#flag -L@VEXEROOT/thirdparty/libgc
+		#flag -lgc
 	} $else {
 		#flag -lgc
 	}
