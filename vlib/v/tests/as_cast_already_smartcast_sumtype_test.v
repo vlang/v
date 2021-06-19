@@ -5,7 +5,7 @@ struct S1 {
 struct Empty {
 }
 
-type Sum = S1 | Empty
+type Sum = Empty | S1
 
 fn test_as_cast_already_smartcast_sumtype() {
 	a := Sum(S1{})
