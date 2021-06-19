@@ -444,15 +444,18 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := r * ctx.scale
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
 		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
-		xx = r * math.cosf(theta)
-		yy = r * math.sinf(theta)
-		sgl.v2f(xx + x, yy + y)
+		xx = nr * math.cosf(theta)
+		yy = nr * math.sinf(theta)
+		sgl.v2f(xx + nx, yy + ny)
 	}
 	sgl.end()
 }
