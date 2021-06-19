@@ -2499,7 +2499,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			call_expr.expected_arg_types << param.typ
 		}
 	}
-	for i, call_arg in call_expr.args {
+	for i, mut call_arg in call_expr.args {
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params[func.params.len - 1]
 		} else {
@@ -2554,7 +2554,11 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			c.type_implements(typ, param.typ, call_arg.expr.position())
+			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
+				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe && typ_sym.kind != .interface_ {
+					c.mark_as_referenced(mut &call_arg.expr, true)
+				}
+			}
 			continue
 		}
 		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), call_expr.language) or {
