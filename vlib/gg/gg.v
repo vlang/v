@@ -101,6 +101,18 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
+pub enum PenLineType {
+	solid
+	dashed
+	dotted
+}
+
+pub struct PenConfig {
+	color     gx.Color
+	line_type PenLineType = .solid
+	thickness int = 1
+}
+
 [heap]
 pub struct Context {
 mut:
@@ -559,34 +571,70 @@ pub fn (gg &Context) end() {
 	*/
 }
 
+// resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
 }
 
+// draw_line draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-	$if !android {
-		if ctx.scale > 1 {
-			// Make the line more clear on hi dpi screens: draw a rectangle
-			mut width := (x2 - x)
-			mut height := (y2 - y)
-			if width == 0 {
-				width = 1
-			} else if height == 0 {
-				height = 1
+
+	ctx.draw_line_with_config(x, y, x2, y2, color: c)
+}
+
+// draw_line_with_config draws a line between the points provided with the PenConfig
+pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
+	if config.color.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	if config.thickness <= 0 {
+		return
+	}
+
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nx2 := x2 * ctx.scale
+	ny2 := y2 * ctx.scale
+
+	dx := nx2 - nx
+	dy := ny2 - ny
+	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
+	theta := f32(math.atan2(dy, dx))
+
+	sgl.push_matrix()
+
+	sgl.translate(nx, ny, 0)
+	sgl.rotate(theta, 0, 0, 1)
+	sgl.translate(-nx, -ny, 0)
+
+	if config.line_type == .solid {
+		ctx.draw_rect(x, y, length, config.thickness, config.color)
+	} else {
+		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
+		space := if size == 1 { 2 } else { size }
+
+		mut available := length
+		mut start_x := x
+
+		for i := 0; available > 0; i++ {
+			if i % 2 == 0 {
+				ctx.draw_rect(start_x, y, size, config.thickness, config.color)
+				available -= size
+				start_x += size
+				continue
 			}
-			ctx.draw_rect(x, y, width, height, c)
-			return
+
+			available -= space
+			start_x += space
 		}
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.end()
+
+	sgl.pop_matrix()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
