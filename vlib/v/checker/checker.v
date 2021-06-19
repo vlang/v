@@ -5588,7 +5588,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
-		for expr in branch.exprs {
+		for k, expr in branch.exprs {
 			mut key := ''
 			if expr is ast.RangeExpr {
 				mut low := i64(0)
@@ -5658,7 +5658,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// Current solution is to move expr.position() to its own statement
 				// c.type_implements(expr_type, c.expected_type, expr.position())
 				expr_pos := expr.position()
-				c.type_implements(expr_type, c.expected_type, expr_pos)
+				if c.type_implements(expr_type, c.expected_type, expr_pos) {
+					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
+						expr_type_sym := c.table.get_type_symbol(expr_type)
+						if expr_type_sym.kind != .interface_ {
+							c.mark_as_referenced(mut &branch.exprs[k], true)
+						}
+					}
+				}
 			} else if mut cond_type_sym.info is ast.SumType {
 				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)

@@ -769,13 +769,13 @@ pub mut:
 
 pub struct MatchBranch {
 pub:
-	exprs         []Expr      // left side
 	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt      // right side
 	pos           token.Position
 	is_else       bool
 	post_comments []Comment // comments below ´... }´
 pub mut:
+	exprs []Expr      // left side
 	scope &Scope
 }
 
