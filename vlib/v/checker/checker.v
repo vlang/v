@@ -586,8 +586,15 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				}
 				struct_sym.info.fields[i].default_expr_typ = field_expr_type
 				c.check_expected(field_expr_type, field.typ) or {
-					if !(sym.kind == .interface_
-						&& c.type_implements(field_expr_type, field.typ, field.pos)) {
+					if sym.kind == .interface_
+						&& c.type_implements(field_expr_type, field.typ, field.pos) {
+						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer() && !c.inside_unsafe {
+							field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
+							if field_expr_type_sym.kind != .interface_ {
+								c.mark_as_referenced(mut &decl.fields[i].default_expr, true)
+							}
+						}
+					} else {
 						c.error('incompatible initializer for field `$field.name`: $err.msg',
 							field.default_expr.position())
 					}

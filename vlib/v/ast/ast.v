@@ -179,7 +179,6 @@ pub:
 	pos              token.Position
 	type_pos         token.Position
 	comments         []Comment
-	default_expr     Expr
 	has_default_expr bool
 	attrs            []Attr
 	is_pub           bool
@@ -187,6 +186,7 @@ pub:
 	is_mut           bool
 	is_global        bool
 pub mut:
+	default_expr     Expr
 	default_expr_typ Type
 	name             string
 	typ              Type
