@@ -449,9 +449,9 @@ pub struct CallArg {
 pub:
 	is_mut   bool
 	share    ShareType
-	expr     Expr
 	comments []Comment
 pub mut:
+	expr            Expr
 	typ             Type
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Position

@@ -1924,7 +1924,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		// }
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
-		for i, arg in call_expr.args {
+		for i, mut arg in call_expr.args {
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 					method.params[method.params.len - 1].typ
@@ -1954,7 +1954,14 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
+				if c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position()) {
+					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
+						got_arg_typ_sym := c.table.get_type_symbol(got_arg_typ)
+						if got_arg_typ_sym.kind != .interface_ {
+							c.mark_as_referenced(mut &arg.expr, true)
+						}
+					}
+				}
 				continue
 			}
 			if method.generic_names.len > 0 {
