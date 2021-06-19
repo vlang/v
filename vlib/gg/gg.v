@@ -620,6 +620,10 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 
+	if config.thickness <= 0 {
+		return
+	}
+
 	nx := x * ctx.scale
 	ny := y * ctx.scale
 	nx2 := x2 * ctx.scale
@@ -639,15 +643,8 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	if config.line_type == .solid {
 		ctx.draw_rect(x, y, length, config.thickness, config.color)
 	} else {
-		mut size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
-		mut space := if config.line_type == .dotted {
-			config.thickness
-		} else {
-			config.thickness * 3
-		}
-		if space == 1 {
-			space = 2
-		}
+		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
+		space := if size == 1 { 2 } else { size }
 
 		mut available := length
 		mut start_x := x
