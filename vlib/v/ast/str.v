@@ -339,6 +339,13 @@ pub fn (x Expr) str() string {
 		ParExpr {
 			return '($x.expr)'
 		}
+		PostfixExpr {
+			// TODO: uncomment after [if x] is deprecated
+			// if x.op == .question {
+			//	return '$x.expr ?'
+			//}
+			return '$x.expr$x.op'
+		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
 		}

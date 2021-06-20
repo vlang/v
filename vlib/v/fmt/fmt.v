@@ -26,7 +26,7 @@ pub mut:
 	buffering          bool   // disables line wrapping for exprs that will be analyzed later
 	par_level          int    // how many parentheses are put around the current expression
 	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchie in array init
+	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
 	file               ast.File
@@ -301,8 +301,8 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 	prev_line_nr := prev_node.position().last_line
 	// The nodes are Stmts
 	if node is ast.Stmt && prev_node is ast.Stmt {
-		stmt := node as ast.Stmt
-		prev_stmt := prev_node as ast.Stmt
+		stmt := node
+		prev_stmt := prev_node
 		// Force a newline after a block of HashStmts
 		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
@@ -1500,32 +1500,65 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			}
 			f.expr(expr)
 		}
-		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
+		mut last_comment_was_inline := false
+		mut has_comments := node.ecmnts[i].len > 0
+		if i < node.ecmnts.len && has_comments {
 			expr_pos := expr.position()
-			for cmt in node.ecmnts[i] {
+			for icmt, cmt in node.ecmnts[i] {
 				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
-					f.write(',')
-					set_comma = true
+					if icmt > 0 {
+						if last_comment_was_inline {
+							f.write(',')
+							set_comma = true
+						}
+					} else {
+						f.write(',') // first comment needs a comma
+						set_comma = true
+					}
+				}
+				mut next_pos := expr_pos
+				if i + 1 < node.exprs.len {
+					next_pos = node.exprs[i + 1].position()
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
-					embed := i + 1 < node.exprs.len
-						&& node.exprs[i + 1].position().line_nr == cmt.pos.last_line
+					embed := i + 1 < node.exprs.len && next_pos.line_nr == cmt.pos.last_line
 					f.writeln('')
 					f.comment(cmt, iembed: embed)
 				} else {
-					f.write(' ')
-					f.comment(cmt, iembed: true)
+					if cmt.is_inline {
+						f.write(' ')
+						f.comment(cmt, iembed: true)
+						if cmt.pos.line_nr == expr_pos.last_line && cmt.pos.pos < expr_pos.pos {
+							f.write(',')
+							set_comma = true
+						} else {
+							if !cmt.is_inline {
+								// a // comment, transformed to a /**/ one, needs a comma too
+								f.write(',')
+								set_comma = true
+							}
+						}
+					} else {
+						f.write(', ')
+						f.comment(cmt, iembed: false)
+						set_comma = true
+					}
 				}
+				last_comment_was_inline = cmt.is_inline
 			}
+		}
+		mut put_comma := !set_comma
+		if has_comments && !last_comment_was_inline {
+			put_comma = false
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma {
+				if put_comma {
 					f.write(',')
 				}
 				f.writeln('')
 			}
-		} else if !set_comma {
+		} else if put_comma {
 			f.write(',')
 		}
 		last_line_nr = pos.last_line
@@ -1662,8 +1695,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	}
 	for i, arg in args {
 		if i == args.len - 1 && arg.expr is ast.StructInit {
-			struct_expr := arg.expr as ast.StructInit
-			if struct_expr.typ == ast.void_type {
+			if arg.expr.typ == ast.void_type {
 				f.use_short_fn_args = true
 			}
 		}
@@ -2477,7 +2509,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	mut is_pe_amp_ce := false
 	if node is ast.PrefixExpr {
 		if node.right is ast.CastExpr && node.op == .amp {
-			mut ce := node.right as ast.CastExpr
+			mut ce := node.right
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)

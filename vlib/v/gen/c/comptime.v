@@ -325,7 +325,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 						interface_sym := g.table.get_type_symbol(got_type)
 						if interface_sym.info is ast.Interface {
 							// q := g.table.get_type_symbol(interface_sym.info.types[0])
-							checked_type := g.unwrap_generic((left as ast.TypeNode).typ)
+							checked_type := g.unwrap_generic(left.typ)
 							// TODO PERF this check is run twice (also in the checker)
 							// store the result in a field
 							is_true := g.table.type_implements_interface(checked_type,
@@ -500,6 +500,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.typ = $styp;')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
+				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++

@@ -6,6 +6,7 @@ that can be found in the LICENSE file.
 This file contains string interpolation V functions
 =============================================================================*/
 module strconv
+
 import strings
 
 // strings.Builder version of format_str
@@ -19,15 +20,15 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 		sb.write_string(s)
 		return
 	}
-	
+
 	if p.allign == .right {
-		for i1 :=0; i1 < dif; i1++ {
+		for i1 := 0; i1 < dif; i1++ {
 			sb.write_b(p.pad_ch)
 		}
 	}
 	sb.write_string(s)
 	if p.allign == .left {
-		for i1 :=0; i1 < dif; i1++ {
+		for i1 := 0; i1 < dif; i1++ {
 			sb.write_b(p.pad_ch)
 		}
 	}
@@ -60,10 +61,10 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 			}
 		}
 		// write the pad chars
-		for i1 :=0; i1 < dif; i1++ {
+		for i1 := 0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
 		}
-	} 
+	}
 
 	if !sign_written {
 		// no pad char, write the sign before the number
@@ -103,10 +104,14 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 			// calculate the digit_pairs start index
 			d_i = (n - (n1 * 100)) << 1
 			n = n1
-			unsafe{ buf[i] = digit_pairs.str[d_i] }
+			unsafe {
+				buf[i] = strconv.digit_pairs.str[d_i]
+			}
 			i--
 			d_i++
-			unsafe{ buf[i] = digit_pairs.str[d_i] }
+			unsafe {
+				buf[i] = strconv.digit_pairs.str[d_i]
+			}
 			i--
 		}
 		i++
@@ -114,8 +119,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		if d_i < 20 {
 			i++
 		}
-		unsafe{ res.write_ptr(&buf[i],n_char) }
-
+		unsafe { res.write_ptr(&buf[i], n_char) }
 	} else {
 		// we have a zero no need of more code!
 		res.write_b(`0`)
@@ -123,19 +127,16 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	//===========================================
 
 	if p.allign == .left {
-		for i1 :=0; i1 < dif; i1++ {
+		for i1 := 0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
 		}
 	}
 	return
 }
 
-
-
-[manualfree]
-[direct_array_access]
+[direct_array_access; manualfree]
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
-	unsafe{
+	unsafe {
 		// we add the rounding value
 		s := f64_to_str(f + dec_round[dec_digit], 18)
 		// check for +inf -inf Nan
@@ -144,13 +145,13 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		}
 
 		m_sgn_flag := false
-		mut sgn        := 1
-		mut b          := [26]byte{}
-		mut d_pos      := 1
-		mut i          := 0
-		mut i1         := 0
-		mut exp        := 0
-		mut exp_sgn    := 1
+		mut sgn := 1
+		mut b := [26]byte{}
+		mut d_pos := 1
+		mut i := 0
+		mut i1 := 0
+		mut exp := 0
+		mut exp_sgn := 1
 
 		mut dot_res_sp := -1
 
@@ -162,8 +163,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			} else if c == `+` {
 				sgn = 1
 				i++
-			}
-			else if c >= `0` && c <= `9` {
+			} else if c >= `0` && c <= `9` {
 				b[i1] = c
 				i1++
 				i++
@@ -171,7 +171,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 				if sgn > 0 {
 					d_pos = i
 				} else {
-					d_pos = i-1
+					d_pos = i - 1
 				}
 				i++
 			} else if c == `e` {
@@ -179,7 +179,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 				break
 			} else {
 				s.free()
-				return "[Float conversion error!!]"
+				return '[Float conversion error!!]'
 			}
 		}
 		b[i1] = 0
@@ -200,11 +200,11 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		}
 
 		// allocate exp+32 chars for the return string
-		//mut res := []byte{len:exp+32,init:`0`}
-		mut res := []byte{len: exp+32, init: 0}
-		mut r_i := 0  // result string buffer index
+		// mut res := []byte{len:exp+32,init:`0`}
+		mut res := []byte{len: exp + 32, init: 0}
+		mut r_i := 0 // result string buffer index
 
-		//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
+		// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
 
 		// s no more needed
 		s.free()
@@ -239,14 +239,14 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 				r_i++
 				exp--
 			}
-			//println("exp: $exp $r_i $dot_res_sp")
+			// println("exp: $exp $r_i $dot_res_sp")
 		} else {
 			mut dot_p := true
 			for exp > 0 {
 				res[r_i] = `0`
 				r_i++
 				exp--
-				if dot_p  {
+				if dot_p {
 					dot_res_sp = r_i
 					res[r_i] = `.`
 					r_i++
@@ -266,14 +266,14 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			res.free()
 			return tmp_res
 		}
-		
-		//println("r_i-d_pos: ${r_i - d_pos}")
+
+		// println("r_i-d_pos: ${r_i - d_pos}")
 		if dot_res_sp >= 0 {
 			if (r_i - dot_res_sp) > dec_digit {
 				r_i = dot_res_sp + dec_digit + 1
 			}
 			res[r_i] = 0
-			//println("result: [${tos(&res[0],r_i)}]")
+			// println("result: [${tos(&res[0],r_i)}]")
 			tmp_res := tos(res.data, r_i).clone()
 			res.free()
 			return tmp_res
@@ -293,19 +293,18 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			res.free()
 			return tmp_res
 		}
-
 	}
 }
 
 // strings.Builder version of format_fl
 [manualfree]
 pub fn format_fl(f f64, p BF_param) string {
-	unsafe{
-		mut s  := ""
-		//mut fs := "1.2343"
-		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
-		//println("Dario")
-		//println(fs)
+	unsafe {
+		mut s := ''
+		// mut fs := "1.2343"
+		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
+		// println("Dario")
+		// println(fs)
 
 		// error!!
 		if fs[0] == `[` {
@@ -318,7 +317,7 @@ pub fn format_fl(f f64, p BF_param) string {
 			fs = remove_tail_zeros(fs)
 			tmp.free()
 		}
-		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
@@ -338,7 +337,7 @@ pub fn format_fl(f f64, p BF_param) string {
 			if p.positive {
 				if p.sign_flag {
 					tmp := s
-					s = "+" + fs
+					s = '+' + fs
 					tmp.free()
 				} else {
 					tmp := s
@@ -347,7 +346,7 @@ pub fn format_fl(f f64, p BF_param) string {
 				}
 			} else {
 				tmp := s
-				s = "-" + fs
+				s = '-' + fs
 				tmp.free()
 			}
 		}
@@ -355,17 +354,16 @@ pub fn format_fl(f f64, p BF_param) string {
 		dif := p.len0 - s.len + sign_len_diff
 
 		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
+			for i1 := 0; i1 < dif; i1++ {
 				res.write_b(p.pad_ch)
 			}
 		}
 		res.write_string(s)
 		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
+			for i1 := 0; i1 < dif; i1++ {
 				res.write_b(p.pad_ch)
 			}
 		}
-
 
 		s.free()
 		fs.free()
@@ -377,13 +375,13 @@ pub fn format_fl(f f64, p BF_param) string {
 
 [manualfree]
 pub fn format_es(f f64, p BF_param) string {
-	unsafe{
-		mut s := ""
-		mut fs := f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
+	unsafe {
+		mut s := ''
+		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
 		if p.rm_tail_zero {
 			fs = remove_tail_zeros(fs)
 		}
-		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
@@ -403,7 +401,7 @@ pub fn format_es(f f64, p BF_param) string {
 			if p.positive {
 				if p.sign_flag {
 					tmp := s
-					s = "+" + fs
+					s = '+' + fs
 					tmp.free()
 				} else {
 					tmp := s
@@ -412,20 +410,20 @@ pub fn format_es(f f64, p BF_param) string {
 				}
 			} else {
 				tmp := s
-				s = "-" + fs
+				s = '-' + fs
 				tmp.free()
 			}
 		}
 
 		dif := p.len0 - s.len + sign_len_diff
 		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
+			for i1 := 0; i1 < dif; i1++ {
 				res.write_b(p.pad_ch)
 			}
 		}
 		res.write_string(s)
 		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
+			for i1 := 0; i1 < dif; i1++ {
 				res.write_b(p.pad_ch)
 			}
 		}
@@ -439,19 +437,19 @@ pub fn format_es(f f64, p BF_param) string {
 
 [direct_array_access]
 pub fn remove_tail_zeros(s string) string {
-	unsafe{
+	unsafe {
 		mut buf := malloc_noscan(s.len + 1)
 		mut i_d := 0
 		mut i_s := 0
-		
+
 		// skip spaces
-		for i_s < s.len && s[i_s] !in [`-`,`+`] && (s[i_s] > `9` || s[i_s] < `0`) {
+		for i_s < s.len && s[i_s] !in [`-`, `+`] && (s[i_s] > `9` || s[i_s] < `0`) {
 			buf[i_d] = s[i_s]
 			i_s++
 			i_d++
 		}
 		// sign
-		if i_s < s.len && s[i_s] in [`-`,`+`] {
+		if i_s < s.len && s[i_s] in [`-`, `+`] {
 			buf[i_d] = s[i_s]
 			i_s++
 			i_d++

@@ -28,10 +28,21 @@ const (
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads']
+	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
+
+fn all_valid_comptime_idents() []string {
+	mut res := []string{}
+	res << checker.valid_comp_if_os
+	res << checker.valid_comp_if_compilers
+	res << checker.valid_comp_if_platforms
+	res << checker.valid_comp_if_cpu_features
+	res << checker.valid_comp_if_other
+	return res
+}
 
 [heap]
 pub struct Checker {
@@ -66,6 +77,7 @@ pub mut:
 	inside_ref_lit bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_c_call  bool // true inside C.printf( param ) calls, but NOT in nested calls, unless they are also C.
+	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
@@ -430,13 +442,14 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 						iface.pos)
 					continue
 				}
-				for f in isym.info.fields {
+				isym_info := isym.info as ast.Interface
+				for f in isym_info.fields {
 					if !efnames_ds_info[f.name] {
 						efnames_ds_info[f.name] = true
 						decl_sym.info.fields << f
 					}
 				}
-				for m in isym.info.methods {
+				for m in isym_info.methods {
 					if !emnames_ds_info[m.name] {
 						emnames_ds_info[m.name] = true
 						decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
@@ -917,7 +930,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short {
+				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
 					mut found := false
 					for init_field in node.fields {
 						if field.name == init_field.name {
@@ -1156,8 +1169,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if (left_sym.kind == .string && !left_type.has_flag(.optional))
-				|| (right_sym.kind == .string && !right_type.has_flag(.optional)) {
+			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
 				deref_left_type := if node.left.is_auto_deref_var() {
 					left_type.deref()
 				} else {
@@ -1168,8 +1180,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else {
 					right_type
 				}
-				left_name := c.table.type_to_str(deref_left_type)
-				right_name := c.table.type_to_str(deref_right_type)
+				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
+				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
 				if left_name != right_name {
 					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				}
@@ -1374,7 +1386,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated {
+		&& !c.pref.translated && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -1861,9 +1873,8 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			&& method.no_body {
 			c.error('cannot call a method that does not have a body', call_expr.pos)
 		}
-		if method.return_type == ast.void_type && method.ctdefine.len > 0
-			&& method.ctdefine !in c.pref.compile_defines {
-			call_expr.should_be_skipped = true
+		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
+			call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 		}
 		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
 		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 {
@@ -2409,9 +2420,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			call_expr.pos)
 		return func.return_type
 	}
-	if func.return_type == ast.void_type && func.ctdefine.len > 0
-		&& func.ctdefine !in c.pref.compile_defines {
-		call_expr.should_be_skipped = true
+	if func.return_type == ast.void_type && func.is_conditional && func.ctdefine_idx != -1 {
+		call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
 	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
@@ -2699,8 +2709,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 			continue
 		}
-		c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
-			pos)
+		// voidptr is an escape hatch, it should be allowed to be passed
+		if utyp != ast.voidptr_type {
+			c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
+				pos)
+		}
 	}
 	// Verify fields
 	if mut inter_sym.info is ast.Interface {
@@ -2719,8 +2732,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 				continue
 			}
-			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-				pos)
+			// voidptr is an escape hatch, it should be allowed to be passed
+			if utyp != ast.voidptr_type {
+				c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+					pos)
+			}
 		}
 		inter_sym.info.types << utyp
 	}
@@ -2917,8 +2933,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
 		&& sym.language == .v {
 		// x.Foo.y => access the embedded struct
-		sym_info := sym.info as ast.Struct
-		for embed in sym_info.embeds {
+		for embed in sym.info.embeds {
 			embed_sym := c.table.get_type_symbol(embed)
 			if embed_sym.embed_name() == field_name {
 				node.typ = embed
@@ -2969,7 +2984,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := node.scope.find_struct_field(utyp, field_name) {
+				if scope_field := node.scope.find_struct_field(node.expr.str(), utyp,
+					field_name)
+				{
 					return scope_field.smartcasts.last()
 				}
 			}
@@ -3038,6 +3055,20 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	node.types = got_types
+	$if debug_manualfree ? {
+		cfn := c.table.cur_fn
+		if cfn.is_manualfree {
+			pnames := cfn.params.map(it.name)
+			for expr in node.exprs {
+				if expr is ast.Ident {
+					if expr.name in pnames {
+						c.note('returning a parameter in a fn marked with `[manualfree]` can cause double freeing in the caller',
+							node.pos)
+					}
+				}
+			}
+		}
+	}
 	// allow `none` & `error` return types for function that returns optional
 	option_type_idx := c.table.type_idxs['Option']
 	got_types_0_idx := got_types[0].idx()
@@ -3619,8 +3650,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !right.is_auto_deref_var() && right_sym.kind != .placeholder
-			&& left_sym.kind != .interface_ {
+		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
+			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+			&& !right_type_unwrapped.has_flag(.generic) && !left_type_unwrapped.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow for ptr += 2
@@ -3967,12 +3999,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			typ := c.unwrap_generic(node.typ)
-			sym := c.table.get_type_symbol(typ)
-			if sym.kind == .placeholder || typ.has_flag(.generic) {
-				c.error('unknown type `$sym.name`', node.typ_pos)
-			}
-			c.stmts(node.stmts)
+			c.comp_for(node)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -4143,6 +4170,18 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count--
 }
 
+fn (mut c Checker) comp_for(node ast.CompFor) {
+	typ := c.unwrap_generic(node.typ)
+	sym := c.table.get_type_symbol(typ)
+	if sym.kind == .placeholder || typ.has_flag(.generic) {
+		c.error('unknown type `$sym.name`', node.typ_pos)
+	}
+	if node.kind == .fields {
+		c.comptime_fields_type[node.val_var] = node.typ
+	}
+	c.stmts(node.stmts)
+}
+
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
@@ -4258,7 +4297,6 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 		if infix.op == .key_is {
 			if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
 				&& infix.right is ast.TypeNode {
-				right_expr := infix.right as ast.TypeNode
 				is_variable := if mut infix.left is ast.Ident {
 					infix.left.kind == .variable
 				} else {
@@ -4268,7 +4306,8 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 				left_sym := c.table.get_type_symbol(left_type)
 				if is_variable {
 					if left_sym.kind in [.sum_type, .interface_] {
-						c.smartcast(infix.left, infix.left_type, right_expr.typ, mut node.scope)
+						c.smartcast(infix.left, infix.left_type, infix.right.typ, mut
+							node.scope)
 					}
 				}
 			}
@@ -4653,19 +4692,15 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
-					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
-			} else {
+			} else if node.expr_type != node.typ {
 				mut s := 'cannot cast non-sum type `$expr_type_sym.name` using `as`'
 				if type_sym.kind == .sum_type {
 					s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
 				}
 				c.error(s, node.pos)
 			}
-			if expr_type_sym.kind == .sum_type {
-				return node.typ
-			}
-			return node.typ.to_ptr()
+			return node.typ
 		}
 		ast.Assoc {
 			v := node.scope.find_var(node.var_name) or { panic(err) }
@@ -5362,7 +5397,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 	} else if ident.name == 'errcode' {
 		c.error('undefined ident: `errcode`; did you mean `err.code`?', ident.pos)
 	} else {
-		c.error('undefined ident: `$ident.name`', ident.pos)
+		if c.inside_ct_attr {
+			c.note('`[if $ident.name]` is deprecated. Use `[if $ident.name?]` instead',
+				ident.pos)
+		} else {
+			c.error('undefined ident: `$ident.name`', ident.pos)
+		}
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
@@ -5727,13 +5767,13 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					orig_type = field.typ
 				}
 			}
-			if field := scope.find_struct_field(expr.expr_type, expr.field_name) {
+			if field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if !is_mut || expr.is_mut {
 				smartcasts << to_type
-				scope.register_struct_field(ast.ScopeStructField{
+				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name: expr.field_name
 					typ: cur_type
@@ -5989,7 +6029,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
 						&& sym.kind == .interface_ {
 						// is interface
-						checked_type := c.unwrap_generic((left as ast.TypeNode).typ)
+						checked_type := c.unwrap_generic(left.typ)
 						should_skip = !c.table.type_implements_interface(checked_type,
 							got_type)
 					} else if left is ast.TypeNode {
@@ -6033,50 +6073,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.skip_flags = cur_skip_flags
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
-			pos := branch.cond.position()
-			if branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_is {
-					right_expr := branch.cond.right
-					right_type := match right_expr {
-						ast.TypeNode {
-							right_expr.typ
-						}
-						ast.None {
-							ast.none_type_idx
-						}
-						else {
-							c.error('invalid type `$right_expr`', right_expr.position())
-							ast.Type(0)
-						}
-					}
-					if right_type != ast.Type(0) {
-						left_sym := c.table.get_type_symbol(branch.cond.left_type)
-						expr_type := c.expr(branch.cond.left)
-						if left_sym.kind == .interface_ {
-							c.type_implements(right_type, expr_type, pos)
-						} else if !c.check_types(right_type, expr_type) {
-							expect_str := c.table.type_to_str(right_type)
-							expr_str := c.table.type_to_str(expr_type)
-							c.error('cannot use type `$expect_str` as type `$expr_str`',
-								pos)
-						}
-						if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
-							&& branch.cond.right is ast.TypeNode {
-							is_variable := if mut branch.cond.left is ast.Ident {
-								branch.cond.left.kind == .variable
-							} else {
-								true
-							}
-							if is_variable {
-								if left_sym.kind in [.interface_, .sum_type] {
-									c.smartcast(branch.cond.left, branch.cond.left_type,
-										right_type, mut branch.scope)
-								}
-							}
-						}
-					}
-				}
-			}
+			c.smartcast_if_conds(branch.cond, mut branch.scope)
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
@@ -6221,8 +6218,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				.key_is, .not_is {
 					if cond.left is ast.TypeNode && cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
-						type_node := cond.right as ast.TypeNode
-						sym := c.table.get_type_symbol(type_node.typ)
+						sym := c.table.get_type_symbol(cond.right.typ)
 						if sym.kind != .interface_ {
 							c.expr(cond.left)
 							// c.error('`$sym.name` is not an interface', cond.right.position())
@@ -6309,11 +6305,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						cond.pos)
 					return false
 				}
-				// `$if some_var {}`
+				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
 				typ := c.expr(cond)
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
-					c.error('unknown var: `$cname`', pos)
+					if !c.inside_ct_attr {
+						c.error('unknown var: `$cname`', pos)
+					}
 					return false
 				}
 				expr := c.find_obj_definition(cond.obj) or {
@@ -7177,6 +7175,45 @@ fn (mut c Checker) post_process_generic_fns() {
 	}
 }
 
+fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
+	if a.ct_evaled {
+		return a.ct_skip
+	}
+	if a.ct_expr is ast.Ident {
+		if a.ct_opt {
+			if a.ct_expr.name in checker.valid_comp_not_user_defined {
+				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
+					a.pos)
+				a.ct_skip = true
+			} else {
+				a.ct_skip = a.ct_expr.name !in c.pref.compile_defines
+			}
+			a.ct_evaled = true
+			return a.ct_skip
+		} else {
+			if a.ct_expr.name !in checker.valid_comp_not_user_defined {
+				// TODO: uncomment after [if x] is deprecated in favour of [if x?], see also vlib/v/ast/str.v:343
+				// c.note('`[if $a.ct_expr.name]` is deprecated. Use `[if $a.ct_expr.name ?]` instead', a.pos)
+				a.ct_skip = a.ct_expr.name !in c.pref.compile_defines
+				a.ct_evaled = true
+				return a.ct_skip
+			} else {
+				if a.ct_expr.name in c.pref.compile_defines {
+					// explicitly allow custom user overrides with `-d linux` for example, for easier testing:
+					a.ct_skip = false
+					a.ct_evaled = true
+					return a.ct_skip
+				}
+			}
+		}
+	}
+	c.inside_ct_attr = true
+	a.ct_skip = c.comp_if_branch(a.ct_expr, a.pos)
+	c.inside_ct_attr = false
+	a.ct_evaled = true
+	return a.ct_skip
+}
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
@@ -7214,8 +7251,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.main_fn_decl_node = node
 	}
 	if node.return_type != ast.void_type {
-		if ct_name := node.attrs.find_comptime_define() {
-			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
+		if ct_attr_idx := node.attrs.find_comptime_define() {
+			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
+			c.error('only functions that do NOT return values can have `[if $sexpr]` tags',
 				node.pos)
 		}
 		if node.generic_names.len > 0 {
@@ -7225,6 +7263,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
 						node.return_type_pos)
 				}
+			}
+		}
+	}
+	if node.return_type == ast.void_type {
+		for mut a in node.attrs {
+			if a.kind == .comptime_define {
+				c.evaluate_once_comptime_if_attribute(mut a)
 			}
 		}
 	}

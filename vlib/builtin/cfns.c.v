@@ -246,7 +246,7 @@ fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lp
 
 fn C.RegCloseKey(hKey voidptr)
 
-fn C.RemoveDirectory(lpPathName &char) int
+fn C.RemoveDirectory(lpPathName &u16) int
 
 // fn C.GetStdHandle() voidptr
 fn C.GetStdHandle(u32) voidptr

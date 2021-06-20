@@ -19,7 +19,16 @@ pub:
 	has_arg bool
 	arg     string // [name: arg]
 	kind    AttrKind
+	ct_expr Expr // .kind == comptime_define, for [if !name]
+	ct_opt  bool // true for [if user_defined_name?]
 	pos     token.Position
+pub mut:
+	ct_evaled bool // whether ct_skip has been evaluated already
+	ct_skip   bool // is the comptime expr *false*, filled by checker
+}
+
+pub fn (a Attr) debug() string {
+	return 'Attr{ name: "$a.name", has_arg: $a.has_arg, arg: "$a.arg", kind: $a.kind, ct_expr: $a.ct_expr, ct_opt: $a.ct_opt, ct_skip: $a.ct_skip}'
 }
 
 // str returns the string representation without square brackets
@@ -43,10 +52,10 @@ pub fn (attrs []Attr) contains(str string) bool {
 	return attrs.any(it.name == str)
 }
 
-pub fn (attrs []Attr) find_comptime_define() ?string {
-	for a in attrs {
-		if a.kind == .comptime_define {
-			return a.name
+pub fn (attrs []Attr) find_comptime_define() ?int {
+	for idx in 0 .. attrs.len {
+		if attrs[idx].kind == .comptime_define {
+			return idx
 		}
 	}
 	return none

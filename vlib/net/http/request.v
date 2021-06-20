@@ -7,6 +7,7 @@ import io
 import net
 import net.urllib
 import strings
+import time
 
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
@@ -21,6 +22,10 @@ pub mut:
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
+	// NOT implemented for ssl connections
+	// time = -1 for no timeout
+	read_timeout  i64 = 30 * time.second
+	write_timeout i64 = 30 * time.second
 }
 
 fn (mut req Request) free() {
@@ -138,6 +143,8 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
 	mut client := net.dial_tcp(host) ?
+	client.set_read_timeout(req.read_timeout)
+	client.set_write_timeout(req.write_timeout)
 	// TODO this really needs to be exposed somehow
 	client.write(s.bytes()) ?
 	$if trace_http_request ? {

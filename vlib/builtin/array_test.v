@@ -1092,8 +1092,6 @@ fn test_array_int_pop() {
 	assert z == 4
 	x1 := a.pop()
 	x2 := a.pop()
-	dump(x1)
-	dump(x2)
 	final := a.pop()
 	assert final == 1
 }

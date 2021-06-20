@@ -50,6 +50,7 @@ fn vmod_content(c Create) string {
 		"	license: '$c.license'",
 		'	dependencies: []',
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -59,6 +60,7 @@ fn main_content() string {
 		'fn main() {',
 		"	println('Hello World!')",
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -72,6 +74,7 @@ fn gen_gitignore(name string) string {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'',
 	].join('\n')
 }
 
@@ -106,14 +109,14 @@ fn (c &Create) create_git_repo(dir string) {
 			cerror('Unable to create git repo')
 			exit(4)
 		}
-		if !os.exists('$dir/.gitignore') {
-			mut fl := os.create('$dir/.gitignore') or {
-				// We don't really need a .gitignore, it's just a nice-to-have
-				return
-			}
-			fl.write_string(gen_gitignore(c.name)) or { panic(err) }
-			fl.close()
+	}
+	if !os.exists('$dir/.gitignore') {
+		mut fl := os.create('$dir/.gitignore') or {
+			// We don't really need a .gitignore, it's just a nice-to-have
+			return
 		}
+		fl.write_string(gen_gitignore(c.name)) or { panic(err) }
+		fl.close()
 	}
 }
 
@@ -160,7 +163,7 @@ fn init_project() {
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
-	c.create_git_repo('')
+	c.create_git_repo('.')
 
 	println("Change your module's description in `v.mod`")
 }

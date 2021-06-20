@@ -605,17 +605,20 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 pub fn (mut p Parser) comment() ast.Comment {
 	mut pos := p.tok.position()
 	text := p.tok.lit
-	pos.last_line = pos.line_nr + text.count('\n')
+	num_newlines := text.count('\n')
+	is_multi := num_newlines > 0
+	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
+	pos.last_line = pos.line_nr + num_newlines
 	p.next()
-	is_multi := text.contains('\n')
 	// Filter out false positive space indent vet errors inside comments
 	if p.vet_errors.len > 0 && is_multi {
 		p.vet_errors = p.vet_errors.filter(it.typ != .space_indent
 			|| it.pos.line_nr - 1 > pos.last_line || it.pos.line_nr - 1 <= pos.line_nr)
 	}
 	return ast.Comment{
-		is_multi: is_multi
 		text: text
+		is_multi: is_multi
+		is_inline: is_inline
 		pos: pos
 	}
 }
@@ -885,22 +888,32 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	for p.tok.kind !in [.semicolon, .rcbr] {
 		template_pos := p.tok.position()
 		mut name := ''
+		if p.tok.kind == .name && arch == .amd64 && p.tok.lit in ['rex', 'vex', 'xop'] {
+			name += p.tok.lit
+			p.next()
+			for p.tok.kind == .dot {
+				p.next()
+				name += '.' + p.tok.lit
+				p.check(.name)
+			}
+			name += ' '
+		}
 		is_directive := p.tok.kind == .dot
 		if is_directive {
 			p.next()
 		}
 		if p.tok.kind in [.key_in, .key_lock, .key_orelse] { // `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
-			name = p.tok.kind.str()
+			name += p.tok.kind.str()
 			p.next()
 		} else if p.tok.kind == .number {
-			name = p.tok.lit
+			name += p.tok.lit
 			p.next()
 		} else {
-			name = p.tok.lit
+			name += p.tok.lit
 			p.check(.name)
 		}
 		// dots are part of instructions for some riscv extensions
-		if arch in [.rv32, .rv64, .amd64] {
+		if arch in [.rv32, .rv64] {
 			for p.tok.kind == .dot {
 				name += '.'
 				p.next()
@@ -949,8 +962,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 								}
 							}
 							ast.IntegerLiteral {
-								if is_directive || number_lit.val.ends_with('b')
-									|| number_lit.val.ends_with('f') {
+								if (is_directive || number_lit.val.ends_with('b')
+									|| number_lit.val.ends_with('f'))
+									&& !number_lit.val.starts_with('0x') {
 									args << ast.AsmDisp{
 										val: number_lit.val
 										pos: number_lit.pos
@@ -1217,11 +1231,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 		} else if p.tok.kind == .number {
 			displacement := if p.tok.kind == .name {
-				x := ast.AsmArg(p.tok.lit)
-				p.next()
-				x
+				p.reg_or_alias()
 			} else {
-				x := ast.AsmArg(p.tok.lit)
+				x := ast.AsmArg(ast.AsmDisp{
+					val: p.tok.lit
+					pos: p.tok.position()
+				})
 				p.check(.number)
 				x
 			}
@@ -1241,11 +1256,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			p.next()
 
 			displacement := if p.tok.kind == .name {
-				x := ast.AsmArg(p.tok.lit)
-				p.next()
-				x
+				p.reg_or_alias()
 			} else {
-				x := ast.AsmArg(p.tok.lit)
+				x := ast.AsmArg(ast.AsmDisp{
+					val: p.tok.lit
+					pos: p.tok.position()
+				})
 				p.check(.number)
 				x
 			}
@@ -1262,11 +1278,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		if p.peek_tok.kind == .rsbr {
 			if p.tok.kind == .number {
 				displacement := if p.tok.kind == .name {
-					x := ast.AsmArg(p.tok.lit)
-					p.next()
-					x
+					p.reg_or_alias()
 				} else {
-					x := ast.AsmArg(p.tok.lit)
+					x := ast.AsmArg(ast.AsmDisp{
+						val: p.tok.lit
+						pos: p.tok.position()
+					})
 					p.check(.number)
 					x
 				}
@@ -1288,11 +1305,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			p.check(.number)
 			p.check(.plus)
 			displacement := if p.tok.kind == .name {
-				x := ast.AsmArg(p.tok.lit)
-				p.next()
-				x
+				p.reg_or_alias()
 			} else {
-				x := ast.AsmArg(p.tok.lit)
+				x := ast.AsmArg(ast.AsmDisp{
+					val: p.tok.lit
+					pos: p.tok.position()
+				})
 				p.check(.number)
 				x
 			}
@@ -1308,11 +1326,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		} else if p.tok.kind == .plus {
 			p.next()
 			displacement := if p.tok.kind == .name {
-				x := ast.AsmArg(p.tok.lit)
-				p.next()
-				x
+				p.reg_or_alias()
 			} else {
-				x := ast.AsmArg(p.tok.lit)
+				x := ast.AsmArg(ast.AsmDisp{
+					val: p.tok.lit
+					pos: p.tok.position()
+				})
 				p.check(.number)
 				x
 			}
@@ -1333,11 +1352,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		p.check(.number)
 		p.check(.plus)
 		displacement := if p.tok.kind == .name {
-			x := ast.AsmArg(p.tok.lit)
-			p.next()
-			x
+			p.reg_or_alias()
 		} else {
-			x := ast.AsmArg(p.tok.lit)
+			x := ast.AsmArg(ast.AsmDisp{
+				val: p.tok.lit
+				pos: p.tok.position()
+			})
 			p.check(.number)
 			x
 		}
@@ -1365,7 +1385,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 
 		mut constraint := ''
 		if p.tok.kind == .lpar {
-			constraint = if output { '+r' } else { 'r' } // default constraint
+			constraint = if output { '+r' } else { 'r' } // default constraint, though vfmt fmts to `+r` and `r`
 		} else {
 			constraint += match p.tok.kind {
 				.assign {
@@ -1520,11 +1540,24 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	mut name := ''
 	mut has_arg := false
 	mut arg := ''
+	mut comptime_cond := ast.empty_expr()
+	mut comptime_cond_opt := false
 	if p.tok.kind == .key_if {
 		kind = .comptime_define
 		p.next()
-		p.check(.name)
-		name = p.prev_tok.lit
+		p.comp_if_cond = true
+		p.inside_if_expr = true
+		p.inside_ct_if_expr = true
+		comptime_cond = p.expr(0)
+		p.comp_if_cond = false
+		p.inside_if_expr = false
+		p.inside_ct_if_expr = false
+		if comptime_cond is ast.PostfixExpr {
+			x := comptime_cond as ast.PostfixExpr
+			comptime_cond_opt = true
+			comptime_cond = x.expr
+		}
+		name = comptime_cond.str()
 	} else if p.tok.kind == .string {
 		name = p.tok.lit
 		kind = .string
@@ -1556,6 +1589,8 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		has_arg: has_arg
 		arg: arg
 		kind: kind
+		ct_expr: comptime_cond
+		ct_opt: comptime_cond_opt
 		pos: apos.extend(p.tok.position())
 	}
 }
