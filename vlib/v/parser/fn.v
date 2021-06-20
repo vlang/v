@@ -310,10 +310,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					scope: 0
 				}
 			}
-			mut is_stack_obj := true
-			if param.typ.has_flag(.shared_f) {
-				is_stack_obj = false
-			}
+			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
@@ -628,10 +625,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		if arg.name.len == 0 {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
 		}
-		mut is_stack_obj := true
-		if arg.typ.has_flag(.shared_f) {
-			is_stack_obj = false
-		}
+		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
