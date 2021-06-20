@@ -58,4 +58,27 @@ fn test_ref_struct() {
 	assert u.n == 3
 	assert v.n == 7
 	assert w.a.n == 23
+	assert d == 16.0
+}
+
+struct NotHeap {
+mut:
+	f f64
+}
+
+fn return_struct_value_as_ref(q NotHeap) &NotHeap {
+	return &q
+}
+
+fn test_value_ref_struct() {
+	mut x := NotHeap {
+		f: -17.125
+	}
+	y := return_struct_value_as_ref(x)
+	x.f = 91.0625
+	d := owerwrite_stack()
+	assert typeof(y).name == '&NotHeap'
+	assert y.f == -17.125
+	assert x.f == 91.0625
+	assert d == 16.0
 }
