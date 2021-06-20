@@ -229,9 +229,7 @@ function debounce(func, timeout) {
 document.addEventListener('keypress', (ev) => {
   if (ev.key == '/') {
     let search = document.getElementById('search');
-    setTimeout(() => {
-      search.focus();
-    }, 1);
-    return false;
+    ev.preventDefault();
+    search.focus();
   }
 });
