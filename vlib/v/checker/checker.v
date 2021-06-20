@@ -587,10 +587,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				c.check_expected(field_expr_type, field.typ) or {
 					if sym.kind == .interface_
 						&& c.type_implements(field_expr_type, field.typ, field.pos) {
-						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer() && !c.inside_unsafe {
+						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer()
+							&& !c.inside_unsafe {
 							field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 							if field_expr_type_sym.kind != .interface_ {
-								c.mark_as_referenced(mut &decl.fields[i].default_expr, true)
+								c.mark_as_referenced(mut &decl.fields[i].default_expr,
+									true)
 							}
 						}
 					} else {
@@ -873,7 +875,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
 						if c.type_implements(expr_type, info_field.typ, field.pos) {
-							if !expr_type.is_ptr() && !expr_type.is_pointer() && expr_type_sym.kind != .interface_ && !c.inside_unsafe {
+							if !expr_type.is_ptr() && !expr_type.is_pointer()
+								&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
 								c.mark_as_referenced(mut &field.expr, true)
 							}
 						}
@@ -1267,7 +1270,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if right_final.kind != .array {
 						// []Animal << Cat
 						if c.type_implements(right_type, left_value_type, right_pos) {
-							if !right_type.is_ptr() && !right_type.is_pointer() && !c.inside_unsafe && right_sym.kind != .interface_ {
+							if !right_type.is_ptr() && !right_type.is_pointer() && !c.inside_unsafe
+								&& right_sym.kind != .interface_ {
 								c.mark_as_referenced(mut &node.right, true)
 							}
 						}
@@ -2544,7 +2548,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
 			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe && typ_sym.kind != .interface_ {
+				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
+					&& typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
@@ -3113,7 +3118,8 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
-					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
+						&& !c.inside_unsafe {
 						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
@@ -3684,7 +3690,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if left_sym.kind == .interface_ {
 			if c.type_implements(right_type, left_type, right.position()) {
-				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_ && !c.inside_unsafe {
+				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_
+					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)
 				}
 			}
@@ -3858,7 +3865,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 				}
 				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.get_type_symbol(typ)
-					if typ_sym.kind != .interface_ { 
+					if typ_sym.kind != .interface_ {
 						c.mark_as_referenced(mut &expr, true)
 					}
 				}
@@ -5055,7 +5062,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_type_sym.kind == .interface_ {
 		if c.type_implements(node.expr_type, node.typ, node.pos) {
-			if !node.expr_type.is_ptr() && !node.expr_type.is_pointer() && from_type_sym.kind != .interface_ && !c.inside_unsafe {
+			if !node.expr_type.is_ptr() && !node.expr_type.is_pointer()
+				&& from_type_sym.kind != .interface_ && !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
 		}
@@ -6455,7 +6463,11 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
 					if !c.pref.translated {
-						mischief := if as_interface { 'used as interface object' } else { 'referenced' }
+						mischief := if as_interface {
+							'used as interface object'
+						} else {
+							'referenced'
+						}
 						c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 							node.pos)
 					}

@@ -775,7 +775,7 @@ pub:
 	is_else       bool
 	post_comments []Comment // comments below ´... }´
 pub mut:
-	exprs []Expr      // left side
+	exprs []Expr // left side
 	scope &Scope
 }
 
@@ -1093,11 +1093,11 @@ pub:
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
-	arg  Expr // `n` in `string(buf, n)`
-	typ  Type // `string` TODO rename to `type_to_cast_to`
-	pos  token.Position
+	arg Expr // `n` in `string(buf, n)`
+	typ Type // `string` TODO rename to `type_to_cast_to`
+	pos token.Position
 pub mut:
-	expr Expr // `buf` in `string(buf, n)`
+	expr      Expr   // `buf` in `string(buf, n)`
 	typname   string // TypeSymbol.name
 	expr_type Type   // `byteptr`
 	has_arg   bool
