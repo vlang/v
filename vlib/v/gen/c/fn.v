@@ -286,11 +286,17 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			if var.name in fargs || var.kind == .constant {
 				continue
 			}
-			if var.info is ast.IdentVar {
-				info := var.info
+			if var.kind == .variable {
 				if var.name !in g.defer_vars {
 					g.defer_vars << var.name
-					g.writeln('${g.typ(info.typ)} $var.name;')
+					mut deref := ''
+					if v := var.scope.find_var(var.name) {
+						if v.is_auto_heap {
+							deref = '*'
+						}
+					}
+					info := var.obj as ast.Var
+					g.writeln('${g.typ(info.typ)}$deref $var.name;')
 				}
 			}
 		}

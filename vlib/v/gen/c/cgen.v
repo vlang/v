@@ -2422,7 +2422,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := if ident.name in g.defer_vars { '' } else { g.typ(var_type) }
+		styp := g.typ(var_type)
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -2580,9 +2580,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if is_inside_ternary {
 						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
-					g.write('$styp ')
-					if is_auto_heap {
-						g.write('*')
+					if ident.name !in g.defer_vars {
+						g.write('$styp ')
+						if is_auto_heap {
+							g.write('*')
+						}
 					}
 				}
 				if left is ast.Ident || left is ast.SelectorExpr {
