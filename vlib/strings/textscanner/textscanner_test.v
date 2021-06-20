@@ -89,6 +89,36 @@ fn test_back_n() {
 	assert s.next() == `b`
 }
 
+fn test_peek_back() {
+	mut s := textscanner.new('abc')
+	assert s.next() == `a`
+	assert s.next() == `b`
+	// check that calling .peek_back() multiple times
+	// does not change the state:
+	assert s.peek_back() == `a`
+	assert s.peek_back() == `a`
+	assert s.peek_back() == `a`
+	// advance, then peek_back again:
+	assert s.next() == `c`
+	assert s.peek_back() == `b`
+	// peeking before the start:
+	s.reset()
+	assert s.peek_back() == -1
+	// peeking right at the end:
+	s.goto_end()
+	assert s.peek_back() == `b`
+}
+
+fn test_peek_back_n() {
+	mut s := textscanner.new('abc')
+	s.goto_end()
+	assert s.peek_back_n(0) == `c`
+	assert s.peek_back_n(1) == `b`
+	assert s.peek_back_n(2) == `a`
+	assert s.peek_back_n(3) == -1
+	assert s.peek_back_n(4) == -1
+}
+
 fn test_reset() {
 	mut s := textscanner.new('abc')
 	assert s.next() == `a`
@@ -97,4 +127,33 @@ fn test_reset() {
 	assert s.next() == -1
 	s.reset()
 	assert s.next() == `a`
+}
+
+fn test_current() {
+	mut s := textscanner.new('abc')
+	assert s.current() == -1
+	assert s.next() == `a`
+	assert s.current() == `a`
+	assert s.current() == `a`
+	assert s.peek_back() == -1
+	assert s.next() == `b`
+	assert s.current() == `b`
+	assert s.current() == `b`
+	assert s.peek_back() == `a`
+	assert s.next() == `c`
+	assert s.current() == `c`
+	assert s.next() == -1
+	assert s.current() == `c`
+	assert s.next() == -1
+	assert s.current() == `c`
+	s.reset()
+	assert s.current() == -1
+	assert s.next() == `a`
+	assert s.current() == `a`
+}
+
+fn test_goto_end() {
+	mut s := textscanner.new('abc')
+	s.goto_end()
+	assert s.current() == `c`
 }
