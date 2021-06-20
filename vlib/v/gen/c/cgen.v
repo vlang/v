@@ -2473,7 +2473,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
-		is_fixed_array_var := right_sym.kind == .array_fixed && val is ast.Ident
+		is_fixed_array_var := right_sym.kind == .array_fixed && (val is ast.Ident
+			|| val is ast.IndexExpr || val is ast.CallExpr
+			|| val is ast.SelectorExpr)
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
 		if val_type.has_flag(.optional) {
@@ -2490,7 +2492,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if assign_stmt.op == .assign && (is_fixed_array_init || is_fixed_array_var) {
+		} else if assign_stmt.op == .assign
+			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
 			mut v_var := ''
 			arr_typ := styp.trim('*')
 			if is_fixed_array_init {
