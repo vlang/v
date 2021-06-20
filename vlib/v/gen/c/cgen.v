@@ -69,7 +69,6 @@ mut:
 	last_fn_c_name         string
 	tmp_count              int      // counter for unique tmp vars (_tmp1, tmp2 etc)
 	tmp_count2             int      // a separate tmp var counter for autofree fn calls
-	is_c_call              bool     // e.g. `C.printf("v")`
 	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
 	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt      bool     // ExprStmt whos result is discarded

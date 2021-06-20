@@ -872,7 +872,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if node.language == .c {
 		// Skip "C."
 		name = util.no_dots(name[2..])
-		g.is_c_call = true
 	} else {
 		name = c_name(name)
 	}
@@ -968,7 +967,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 		}
 	}
-	g.is_c_call = false
 	g.is_json_fn = false
 }
 
