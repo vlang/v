@@ -7301,9 +7301,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if arg_typ_sym.kind == .struct_ {
 					info := arg_typ_sym.info as ast.Struct
 					if info.is_heap { // set auto_heap to promote value parameter
-						mut v := node.scope.find_var(arg.name) or {
-							continue
-						}
+						mut v := node.scope.find_var(arg.name) or { continue }
 						v.is_auto_heap = true
 					}
 				}
