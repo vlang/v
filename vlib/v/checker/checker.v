@@ -6411,9 +6411,14 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
-					if type_sym.kind == .struct_ {
-						info := type_sym.info as ast.Struct
-						if !info.is_heap {
+					match type_sym.kind {
+						.struct_ {
+							info := type_sym.info as ast.Struct
+							if !info.is_heap {
+								node.obj.is_auto_heap = true
+							}
+						}
+						else {
 							node.obj.is_auto_heap = true
 						}
 					}
@@ -7291,6 +7296,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
+			if !arg.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
+				arg_typ_sym := c.table.get_type_symbol(arg.typ)
+				if arg_typ_sym.kind == .struct_ {
+					info := arg_typ_sym.info as ast.Struct
+					if info.is_heap { // set auto_heap to promote value parameter
+						mut v := node.scope.find_var(arg.name) or { continue }
+						v.is_auto_heap = true
+					}
+				}
+			}
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
