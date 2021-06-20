@@ -35,6 +35,7 @@ pub:
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
+	rotate    int  // amount to rotate the image in degrees
 	z         f32
 }
 
@@ -221,6 +222,17 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
 	sgl.texture(img.simg)
+
+	if config.rotate != 0 {
+		width := img_rect.width * ctx.scale
+		height := (if img_rect.height > 0 { img_rect.height } else { img.height }) * ctx.scale
+
+		sgl.push_matrix()
+		sgl.translate(x0 + (width / 2), y0 + (height / 2), 0)
+		sgl.rotate(sgl.rad(-config.rotate), 0, 0, 1)
+		sgl.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
+	}
+
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
@@ -228,6 +240,11 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
 	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
 	sgl.end()
+
+	if config.rotate != 0 {
+		sgl.pop_matrix()
+	}
+
 	sgl.disable_texture()
 }
 
@@ -280,7 +297,7 @@ pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, im
 	)
 }
 
-// draw_image_by_id draws an image based by an id
+// draw_image_by_id draws an image by its id
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
 	ctx.draw_image_with_config(
 		img_id: id
