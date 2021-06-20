@@ -226,7 +226,7 @@ function debounce(func, timeout) {
     }
 }
 
-document.addEventListener('keypress', (ev) => {
+document.addEventListener('keydown', (ev) => {
   if (ev.key == '/') {
     let search = document.getElementById('search');
     setTimeout(() => {
