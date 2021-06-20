@@ -20,7 +20,7 @@ function setupScrollSpy() {
         sectionPositions.push(section.offsetTop);
     });
     var scrollPos = 0;
-    window.addEventListener('scroll', function (e) {
+    window.addEventListener('scroll', function (_) {
         // Reset classes
         document.querySelectorAll('.doc-toc a[class="active"]').forEach(function (link) {
             link.classList.remove('active');
@@ -52,7 +52,7 @@ function setupScrollSpy() {
 
 function setupMobileToggle() {
     var toggle = document.getElementById('toggle-menu');
-    toggle.addEventListener('click', function (ev) {
+    toggle.addEventListener('click', function (_) {
         var docNav = document.querySelector('.doc-nav');
         var isHidden = docNav.classList.contains('hidden');
         docNav.classList.toggle('hidden');
@@ -225,3 +225,11 @@ function debounce(func, timeout) {
         timer = setTimeout(next, timeout > 0 ? timeout : 300);
     }
 }
+
+document.addEventListener('keypress', (ev) => {
+  if (ev.key == '/') {
+    let search = document.getElementById('search');
+    ev.preventDefault();
+    search.focus();
+  }
+});
