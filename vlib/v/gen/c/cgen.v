@@ -69,7 +69,6 @@ mut:
 	last_fn_c_name         string
 	tmp_count              int      // counter for unique tmp vars (_tmp1, tmp2 etc)
 	tmp_count2             int      // a separate tmp var counter for autofree fn calls
-	is_c_call              bool     // e.g. `C.printf("v")`
 	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
 	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
@@ -2474,7 +2473,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
-		is_fixed_array_var := right_sym.kind == .array_fixed && val is ast.Ident
+		is_fixed_array_var := right_sym.kind == .array_fixed && (val is ast.Ident
+			|| val is ast.IndexExpr || val is ast.CallExpr
+			|| val is ast.SelectorExpr)
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
 		if val_type.has_flag(.optional) {
@@ -2491,7 +2492,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if assign_stmt.op == .assign && (is_fixed_array_init || is_fixed_array_var) {
+		} else if assign_stmt.op == .assign
+			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
 			mut v_var := ''
 			arr_typ := styp.trim('*')
 			if is_fixed_array_init {
