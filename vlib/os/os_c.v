@@ -785,7 +785,7 @@ pub fn real_path(fpath string) string {
 		// try to open the file to get symbolic link path
 		file := C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
 		if file != voidptr(-1) {
-			fullpath = unsafe { &u16(vcalloc(size)) }
+			mut fullpath := unsafe { &u16(vcalloc_noscan(size)) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandle(file, fullpath, size, 0)
 			C.CloseHandle(file)
