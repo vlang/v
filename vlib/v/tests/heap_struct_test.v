@@ -61,6 +61,28 @@ fn test_ref_struct() {
 	assert d == 16.0
 }
 
+fn return_heap_obj_value_as_ref(qpast Qwe) &Qwe {
+	return &qpast
+}
+
+fn test_value_ref_heap_struct() {
+	mut x := Qwe{
+		f: -13.25
+		a: Abc{
+			n: -129
+		}
+	}
+	y := return_heap_obj_value_as_ref(x)
+	x.f = 22.0625
+	d := owerwrite_stack()
+	assert typeof(y).name == '&Qwe'
+	assert x.f == 22.0625
+	assert x.a.n == -129
+	assert y.f == -13.25
+	assert y.a.n == -129
+	assert d == 16.0
+}
+
 struct NotHeap {
 mut:
 	f f64
@@ -71,7 +93,7 @@ fn return_struct_value_as_ref(q NotHeap) &NotHeap {
 }
 
 fn test_value_ref_struct() {
-	mut x := NotHeap {
+	mut x := NotHeap{
 		f: -17.125
 	}
 	y := return_struct_value_as_ref(x)
