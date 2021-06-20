@@ -1,17 +1,17 @@
 // declare interface
 interface MyInterface {
-    val() int
+	val() int
 }
 
 // define struct type
 struct St {
 mut:
-    n int
+	n int
 }
 
 // make the struct type implement the interface
 fn (x St) val() int {
-    return x.n
+	return x.n
 }
 
 fn owerwrite_stack() f64 {
@@ -24,13 +24,15 @@ fn owerwrite_stack() f64 {
 // nothing special so far, but now some functions that return an interfaces
 // these used to cause memory corruptions, but work with this PR:
 fn gen_interface() MyInterface {
-    x := St{n: -123} // `x`will be allocated on heap
-    return x         // because an interface object is returned here that contains the address of x 
+	x := St{
+		n: -123
+	} // `x`will be allocated on heap
+	return x // because an interface object is returned here that contains the address of x
 }
 
 fn return_interface(x St) MyInterface {
-             // x will be copied to stack (requires #10528)
-    return x // because it's address is returned inside the interface
+	// x will be copied to stack (requires #10528)
+	return x // because it's address is returned inside the interface
 }
 
 fn test_gen_interface() {
@@ -41,7 +43,9 @@ fn test_gen_interface() {
 }
 
 fn test_convert_to_interface() {
-	x := St{n: 5}
+	x := St{
+		n: 5
+	}
 	i2 := return_interface(x)
 	d := owerwrite_stack()
 	assert i2.val() == 5
