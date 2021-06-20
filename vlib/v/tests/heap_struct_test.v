@@ -82,3 +82,31 @@ fn test_value_ref_struct() {
 	assert x.f == 91.0625
 	assert d == 16.0
 }
+
+fn get_int_ref() &int {
+	i := 49154
+	return &i
+}
+
+fn test_int_ref() {
+	iptr := get_int_ref()
+	assert typeof(iptr).name == '&int'
+	d := owerwrite_stack()
+	assert *iptr == 49154
+	assert d == 16.0
+}
+
+fn pass_f64_as_ref(f f64) &f64 {
+	return &f
+}
+
+fn test_value_as_ref() {
+	mut x := -31.75
+	y := pass_f64_as_ref(x)
+	assert typeof(y).name == '&f64'
+	x = 23.0625
+	d := owerwrite_stack()
+	assert x == 23.0625
+	assert *y == -31.75
+	assert d == 16.0
+}
