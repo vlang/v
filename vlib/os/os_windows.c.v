@@ -6,7 +6,7 @@ import strings
 #include <process.h>
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
-fn C.CreateSymbolicLink(&u16, &u16, u32) int
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
 fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
@@ -325,7 +325,7 @@ pub fn symlink(origin string, target string) ?bool {
 	}
 
 	flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-	res := C.CreateSymbolicLink(target.to_wide(), origin.to_wide(), flags)
+	res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
 
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {

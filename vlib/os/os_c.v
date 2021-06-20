@@ -787,7 +787,7 @@ pub fn real_path(fpath string) string {
 		if file != voidptr(-1) {
 			mut fullpath := unsafe { &u16(vcalloc_noscan(size)) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandle(file, fullpath, size, 0)
+			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
 			C.CloseHandle(file)
 			if final_len < size {
 				rt := unsafe { string_from_wide2(fullpath, final_len) }
