@@ -319,22 +319,27 @@ pub fn execute(cmd string) Result {
 }
 
 pub fn symlink(origin string, target string) ?bool {
-	mut flags := 0
-	if is_dir(origin) {
-		flags ^= 1
-	}
+	// this is a temporary fix for TCC32 due to runtime error
+	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
+	$if x64 || x32 {
+		mut flags := 0
+		if is_dir(origin) {
+			flags ^= 1
+		}
 
-	flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-	res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
+		flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+		res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
 
-	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
-	if res != 1 {
-		return error(get_error_msg(int(C.GetLastError())))
+		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
+		if res != 1 {
+			return error(get_error_msg(int(C.GetLastError())))
+		}
+		if !exists(target) {
+			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+		}
+		return true
 	}
-	if !exists(target) {
-		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
-	}
-	return true
+	return false
 }
 
 pub fn link(origin string, target string) ?bool {
