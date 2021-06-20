@@ -2474,7 +2474,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
-		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
+		is_fixed_array_var := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
 		if val_type.has_flag(.optional) {
@@ -2491,13 +2491,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if is_fixed_array_init && assign_stmt.op == .assign {
-			right := val as ast.ArrayInit
-			v_var := g.new_tmp_var()
+		} else if assign_stmt.op == .assign && (is_fixed_array_init || is_fixed_array_var) {
+			mut v_var := ''
 			arr_typ := styp.trim('*')
-			g.write('$arr_typ $v_var = ')
-			g.expr(right)
-			g.writeln(';')
+			if is_fixed_array_init {
+				right := val as ast.ArrayInit
+				v_var = g.new_tmp_var()
+				g.write('$arr_typ $v_var = ')
+				g.expr(right)
+				g.writeln(';')
+			} else {
+				right := val as ast.Ident
+				v_var = right.name
+			}
 			pos := g.out.len
 			g.expr(left)
 
@@ -2580,7 +2586,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if left is ast.Ident || left is ast.SelectorExpr {
 					g.prevent_sum_type_unwrapping_once = true
 				}
-				if !is_fixed_array_copy || is_decl {
+				if !is_fixed_array_var || is_decl {
 					if !is_decl && left.is_auto_deref_var() {
 						g.write('*')
 					}
@@ -2593,7 +2599,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
-			if is_fixed_array_copy {
+			if is_fixed_array_var {
 				if is_decl {
 					g.writeln(';')
 				}
@@ -2628,7 +2634,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
-				if is_fixed_array_copy {
+				if is_fixed_array_var {
 					typ_str := g.typ(val_type).trim('*')
 					ref_str := if val_type.is_ptr() { '' } else { '&' }
 					g.write('memcpy(($typ_str*)')
