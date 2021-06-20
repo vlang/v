@@ -76,7 +76,6 @@ pub mut:
 	inside_anon_fn bool
 	inside_ref_lit bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
-	inside_c_call  bool // true inside C.printf( param ) calls, but NOT in nested calls, unless they are also C.
 	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
@@ -1738,11 +1737,6 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 }
 
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
-	was_inside_c_call := c.inside_c_call
-	c.inside_c_call = call_expr.language == .c
-	defer {
-		c.inside_c_call = was_inside_c_call
-	}
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -2228,11 +2222,6 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 }
 
 pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
-	was_inside_c_call := c.inside_c_call
-	c.inside_c_call = call_expr.language == .c
-	defer {
-		c.inside_c_call = was_inside_c_call
-	}
 	fn_name := call_expr.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
@@ -2565,10 +2554,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
 			// sym := c.table.get_type_symbol(typ)
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
-				call_arg.pos)
-		}
-		if func.language == .c && typ == ast.string_type && param.typ in ast.cptr_or_bptr_types {
-			c.warn("automatic string to C-string conversion is deprecated and will be removed on 2021-06-19, use `c'<string_value>'` and set the C function parameter type to `&u8`",
 				call_arg.pos)
 		}
 	}
