@@ -179,7 +179,6 @@ pub:
 	pos              token.Position
 	type_pos         token.Position
 	comments         []Comment
-	default_expr     Expr
 	has_default_expr bool
 	attrs            []Attr
 	is_pub           bool
@@ -187,6 +186,7 @@ pub:
 	is_mut           bool
 	is_global        bool
 pub mut:
+	default_expr     Expr
 	default_expr_typ Type
 	name             string
 	typ              Type
@@ -283,12 +283,12 @@ pub mut:
 
 pub struct StructInitField {
 pub:
-	expr          Expr
 	pos           token.Position
 	name_pos      token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
+	expr          Expr
 	name          string
 	typ           Type
 	expected_type Type
@@ -449,9 +449,9 @@ pub struct CallArg {
 pub:
 	is_mut   bool
 	share    ShareType
-	expr     Expr
 	comments []Comment
 pub mut:
+	expr            Expr
 	typ             Type
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Position
@@ -462,9 +462,9 @@ pub mut:
 pub struct Return {
 pub:
 	pos      token.Position
-	exprs    []Expr
 	comments []Comment
 pub mut:
+	exprs []Expr
 	types []Type
 }
 
@@ -769,13 +769,13 @@ pub mut:
 
 pub struct MatchBranch {
 pub:
-	exprs         []Expr      // left side
 	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt      // right side
 	pos           token.Position
 	is_else       bool
 	post_comments []Comment // comments below ´... }´
 pub mut:
+	exprs []Expr // left side
 	scope &Scope
 }
 
@@ -1093,11 +1093,11 @@ pub:
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
-	expr Expr // `buf` in `string(buf, n)`
-	arg  Expr // `n` in `string(buf, n)`
-	typ  Type // `string` TODO rename to `type_to_cast_to`
-	pos  token.Position
+	arg Expr // `n` in `string(buf, n)`
+	typ Type // `string` TODO rename to `type_to_cast_to`
+	pos token.Position
 pub mut:
+	expr      Expr   // `buf` in `string(buf, n)`
 	typname   string // TypeSymbol.name
 	expr_type Type   // `byteptr`
 	has_arg   bool
