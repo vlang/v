@@ -779,16 +779,35 @@ pub fn getwd() string {
 pub fn real_path(fpath string) string {
 	mut res := ''
 	$if windows {
-		// GetFullPathName doesn't work with symbolic links,
-		// so if it is not a file, get full path
-		mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
-		// TODO: check errors if path len is not enough
-		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
-		if ret == 0 {
-			unsafe { free(fullpath) }
-			return fpath.clone()
+		size := max_path_len * 2
+		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
+		// try to open the file to get symbolic link path
+		file := C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
+		if file != voidptr(-1) {
+			mut fullpath := unsafe { &u16(vcalloc_noscan(size)) }
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
+			C.CloseHandle(file)
+			if final_len < size {
+				rt := unsafe { string_from_wide2(fullpath, final_len) }
+				res = rt[4..]
+			} else {
+				unsafe { free(fullpath) }
+				eprintln('os.real_path() saw that the file path was too long')
+				return fpath.clone()
+			}
+		} else {
+			// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
+			mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
+			// TODO: check errors if path len is not enough
+			ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
+			if ret == 0 {
+				unsafe { free(fullpath) }
+				return fpath.clone()
+			}
+			res = unsafe { string_from_wide(fullpath) }
 		}
-		res = unsafe { string_from_wide(fullpath) }
 	} $else {
 		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
