@@ -9,8 +9,7 @@ import strings
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
-// TCC gets builder error
-// fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
+fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
@@ -321,7 +320,7 @@ pub fn execute(cmd string) Result {
 
 pub fn symlink(origin string, target string) ?bool {
 	// this is a temporary fix for TCC32 due to runtime error
-	// TODO: patch TCC32
+	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
 	$if x64 || x32 {
 		mut flags := 0
 		if is_dir(origin) {
@@ -344,8 +343,6 @@ pub fn symlink(origin string, target string) ?bool {
 }
 
 pub fn link(origin string, target string) ?bool {
-	/*
-	// TODO: TCC gets builder error
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
@@ -353,12 +350,6 @@ pub fn link(origin string, target string) ?bool {
 	}
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
-	}
-	return true
-	*/
-	res := execute('fsutil hardlink create $target $origin')
-	if res.exit_code != 0 {
-		return error(res.output)
 	}
 	return true
 }

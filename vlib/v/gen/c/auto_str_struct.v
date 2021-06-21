@@ -5,6 +5,7 @@ module c
 // that can be found in the LICENSE file.
 import v.ast
 import v.util
+import strings
 
 fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	if typ == ast.byte_type_idx {
@@ -47,30 +48,15 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 }
 
 fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string) {
-	// g.gen_str_for_struct1(info, styp, str_fn_name)
-
-	// TODO: short it if possible
-	// generates all definitions of substructs
-	mut fnames2strfunc := map{
-		'': ''
-	}
-	for field in info.fields {
-		sym := g.table.get_type_symbol(field.typ)
-		if !sym.has_method('str') {
-			mut typ := field.typ
-			if typ.is_ptr() {
-				typ = typ.deref()
-			}
-			field_styp := g.typ(typ)
-			field_fn_name := g.gen_str_for_type(field.typ)
-			fnames2strfunc[field_styp] = field_fn_name
-		}
-	}
 	// _str() functions should have a single argument, the indenting ones take 2:
 	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0);}')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
+	mut fn_builder := strings.new_builder(512)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
 	mut clean_struct_v_type_name := styp.replace('__', '.')
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
@@ -82,15 +68,15 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
-		g.auto_str_funcs.writeln('\treturn _SLIT("$clean_struct_v_type_name{}");')
-		g.auto_str_funcs.writeln('}')
-		g.auto_str_funcs.writeln('')
+		fn_builder.writeln('\treturn _SLIT("$clean_struct_v_type_name{}");')
+		fn_builder.writeln('}')
+		fn_builder.writeln('')
 		return
 	}
 
-	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
-	g.auto_str_funcs.writeln('\tstring res = str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){')
-	g.auto_str_funcs.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
+	fn_builder.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
+	fn_builder.writeln('\tstring res = str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){')
+	fn_builder.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
 
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
@@ -109,9 +95,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 		// first fields doesn't need \n
 		if i == 0 {
-			g.auto_str_funcs.write_string('\t\t{_SLIT0, $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
+			fn_builder.write_string('\t\t{_SLIT0, $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
 		} else {
-			g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
+			fn_builder.write_string('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
 		}
 
 		// custom methods management
@@ -120,15 +106,15 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		field_styp_fn_name := if has_custom_str {
 			'${field_styp}_str'
 		} else {
-			fnames2strfunc[field_styp]
+			g.gen_str_for_type(field.typ)
 		}
 
 		// manage the fact hat with float we use always the g representation
 		if sym.kind !in [.f32, .f64] {
-			g.auto_str_funcs.write_string('{_SLIT("$quote_str"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
+			fn_builder.write_string('{_SLIT("$quote_str"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
 		} else {
 			g_fmt := '0x' + (u32(base_fmt) | u32(0x7F) << 9).hex()
-			g.auto_str_funcs.write_string('{_SLIT("$quote_str"), $g_fmt, {.${data_str(base_fmt)}=')
+			fn_builder.write_string('{_SLIT("$quote_str"), $g_fmt, {.${data_str(base_fmt)}=')
 		}
 
 		mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
@@ -136,32 +122,32 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		// manage reference types can be "nil"
 		if field.typ.is_ptr() && !(field.typ in ast.charptr_types
 			|| field.typ in ast.byteptr_types || field.typ == ast.voidptr_type_idx) {
-			g.auto_str_funcs.write_string('isnil(it.${c_name(field.name)})')
-			g.auto_str_funcs.write_string(' ? _SLIT("nil") : ')
+			fn_builder.write_string('isnil(it.${c_name(field.name)})')
+			fn_builder.write_string(' ? _SLIT("nil") : ')
 			// struct, floats and ints have a special case through the _str function
 			if sym.kind != .struct_ && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
-				g.auto_str_funcs.write_string('*')
+				fn_builder.write_string('*')
 			}
 		}
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp {
-			g.auto_str_funcs.write_string('_SLIT("<circular>")')
+			fn_builder.write_string('_SLIT("<circular>")')
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
-				g.auto_str_funcs.write_string('tos2((byteptr)$func)')
+				fn_builder.write_string('tos2((byteptr)$func)')
 			} else {
-				g.auto_str_funcs.write_string(func)
+				fn_builder.write_string(func)
 			}
 		}
 
-		g.auto_str_funcs.writeln('}}, {_SLIT("$quote_str"), 0, {.d_c=0}},')
+		fn_builder.writeln('}}, {_SLIT("$quote_str"), 0, {.d_c=0}},')
 	}
-	g.auto_str_funcs.writeln('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {.d_c=0}},')
-	g.auto_str_funcs.writeln('\t}));')
-	g.auto_str_funcs.writeln('\tstring_free(&indents);')
-	g.auto_str_funcs.writeln('\treturn res;')
-	g.auto_str_funcs.writeln('}')
+	fn_builder.writeln('\t\t{_SLIT("\\n"), $si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {.d_c=0}},')
+	fn_builder.writeln('\t}));')
+	fn_builder.writeln('\tstring_free(&indents);')
+	fn_builder.writeln('\treturn res;')
+	fn_builder.writeln('}')
 }
 
 fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
