@@ -109,11 +109,10 @@ fn init() {
 	$if ssl_pre_1_1_version ? {
 		// OPENSSL_VERSION_NUMBER < 0x10100000L
 		C.SSL_load_error_strings()
-		C.SSL_library_init()	
+		C.SSL_library_init()
 	} $else {
 		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
 	}
-
 }
 
 pub const (
