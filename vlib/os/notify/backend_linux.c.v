@@ -107,10 +107,7 @@ fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	//       the added bonus of making EpollNotifier thread safe
 	events := [512]C.epoll_event{}
 	// populate events with the new events
-	to := match timeout {
-		time.infinite { -1 }
-		else { int(timeout / time.millisecond) }
-	}
+	to := timeout.sys_milliseconds()
 	count := C.epoll_wait(en.epoll_fd, &events[0], events.len, to)
 
 	if count > 0 {
