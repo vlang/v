@@ -29,7 +29,7 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout.milliseconds() / 1000
+	seconds := timeout / time.second
 	microseconds := timeout - (seconds * time.second)
 
 	mut tt := C.timeval{
@@ -117,7 +117,7 @@ const (
 // infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
 // only ever return with data)
 const (
-	infinite_timeout = time.Duration(-1)
+	infinite_timeout = time.infinite
 )
 
 [inline]
