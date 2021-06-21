@@ -98,7 +98,9 @@ fn builtin_init() {
 			C.setbuf(C.stderr, 0)
 		}
 	}
-	add_unhandled_exception_handler()
+	$if !no_backtrace ? {
+		add_unhandled_exception_handler()
+	}
 }
 
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
