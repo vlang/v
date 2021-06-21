@@ -279,14 +279,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
 			} else {
 				field_type := g.typ(infix_expr.left_type)
-				mut left_expr_str := g.write_expr_to_string(infix_expr.left)
-				mut right_expr_str := g.write_expr_to_string(infix_expr.right)
-				if typ.is_ptr() {
-					left_expr_str = left_expr_str.replace_once('a', '(*a)')
-					right_expr_str = right_expr_str.replace_once('b', '(*b)')
-				}
-				g.definitions.writeln('$field_type a_ = $left_expr_str;')
-				g.definitions.writeln('$field_type b_ = $right_expr_str;')
+				left_expr_str := g.write_expr_to_string(infix_expr.left)
+				right_expr_str := g.write_expr_to_string(infix_expr.right)
+				g.definitions.writeln('\t$field_type a_ = $left_expr_str;')
+				g.definitions.writeln('\t$field_type b_ = $right_expr_str;')
 				mut op1, mut op2 := '', ''
 				if infix_expr.left_type == ast.string_type {
 					if is_reverse {
@@ -306,8 +302,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 						op2 = '${deref_str}a_ > ${deref_str}b_'
 					}
 				}
-				g.definitions.writeln('if ($op1) return -1;')
-				g.definitions.writeln('if ($op2) return 1; else return 0; }\n')
+				g.definitions.writeln('\tif ($op1) return -1;')
+				g.definitions.writeln('\tif ($op2) return 1; \n\telse return 0; \n}\n')
 			}
 		}
 	}
