@@ -229,11 +229,11 @@ pub fn sleep(duration Duration) {
 // some Windows system functions (e.g. `C.WaitForSingleObject()`) accept an `u32`
 // value as *timeout in milliseconds* with the special value `u32(-1)` meaning "infinite"
 pub fn (d Duration) sys_milliseconds() u32 {
-    if d >= u32(-1) * time.millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
-        return u32(-1)
-    } else if d <= 0 {
-        return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
-    } else {
-        return u32(d / time.millisecond)
-    }
+	if d >= u32(-1) * millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
+		return u32(-1)
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return u32(d / millisecond)
+	}
 }
