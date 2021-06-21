@@ -3494,7 +3494,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
-		g.write('(' + '*'.repeat(n_ptr))
+		g.write('(')
+		g.write('*'.repeat(n_ptr))
 		g.expr(node.expr)
 		g.write(')')
 	} else {
