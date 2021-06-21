@@ -30,7 +30,7 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	C.FD_SET(handle, &set)
 
 	seconds := timeout / time.second
-	microseconds := timeout - (seconds * time.second)
+	microseconds := (timeout - (seconds * time.second)).microseconds()
 
 	mut tt := C.timeval{
 		tv_sec: u64(seconds)
