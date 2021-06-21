@@ -35,6 +35,9 @@ pub struct SSL {
 pub struct SSL_METHOD {
 }
 
+pub struct OPENSSL_INIT_SETTINGS {
+}
+
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
 
 fn C.BIO_set_conn_hostname(b &C.BIO, name &char) int
@@ -100,9 +103,16 @@ fn C.TLS_method() voidptr
 
 fn C.TLSv1_2_method() voidptr
 
+fn C.OPENSSL_init_ssl(opts u64, settings &OPENSSL_INIT_SETTINGS) int
+
 fn init() {
-	C.SSL_load_error_strings()
-	C.SSL_library_init()
+	$if ssl_pre_1_1_version ? {
+		// OPENSSL_VERSION_NUMBER < 0x10100000L
+		C.SSL_load_error_strings()
+		C.SSL_library_init()
+	} $else {
+		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
+	}
 }
 
 pub const (

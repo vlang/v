@@ -6872,30 +6872,43 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		return node.typ
 	}
 	if node.keys.len > 0 && node.vals.len > 0 {
-		// `{'age': 20}`
-		mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
-		if node.keys[0].is_auto_deref_var() {
-			key0_type = key0_type.deref()
-		}
-		mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
-		if node.vals[0].is_auto_deref_var() {
-			val0_type = val0_type.deref()
+		mut key0_type := ast.void_type
+		mut val0_type := ast.void_type
+		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
+			&& c.table.get_type_symbol(c.expected_type).kind == .map
+		if use_expected_type {
+			sym := c.table.get_type_symbol(c.expected_type)
+			info := sym.map_info()
+			key0_type = c.unwrap_generic(info.key_type)
+			val0_type = c.unwrap_generic(info.value_type)
+		} else {
+			// `{'age': 20}`
+			key0_type = c.table.mktyp(c.expr(node.keys[0]))
+			if node.keys[0].is_auto_deref_var() {
+				key0_type = key0_type.deref()
+			}
+			val0_type = c.table.mktyp(c.expr(node.vals[0]))
+			if node.vals[0].is_auto_deref_var() {
+				val0_type = val0_type.deref()
+			}
 		}
 		mut same_key_type := true
 		for i, key in node.keys {
-			if i == 0 {
+			if i == 0 && !use_expected_type {
 				continue
 			}
 			val := node.vals[i]
 			key_type := c.expr(key)
 			c.expected_type = val0_type
 			val_type := c.expr(val)
-			if !c.check_types(key_type, key0_type) {
+			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
+				&& key0_type.is_number() && key0_type != c.table.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
 				c.error('invalid map key: $msg', key.position())
 				same_key_type = false
 			}
-			if !c.check_types(val_type, val0_type) {
+			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
+				&& val0_type.is_number() && val0_type != c.table.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
 				c.error('invalid map value: $msg', val.position())
 			}

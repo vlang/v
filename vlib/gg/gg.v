@@ -583,7 +583,11 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 
-	ctx.draw_line_with_config(x, y, x2, y2, color: c)
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.end()
 }
 
 // draw_line_with_config draws a line between the points provided with the PenConfig

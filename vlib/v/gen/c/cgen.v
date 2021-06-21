@@ -3492,7 +3492,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 		}
 	}
-	g.expr(node.expr)
+	n_ptr := node.expr_type.nr_muls() - 1
+	if n_ptr > 0 {
+		g.write('(')
+		g.write('*'.repeat(n_ptr))
+		g.expr(node.expr)
+		g.write(')')
+	} else {
+		g.expr(node.expr)
+	}
 	if is_optional {
 		g.write('.data)')
 	}
