@@ -96,7 +96,7 @@ mut:
 	cmd_after_run   string   // a command to run after each re-run
 }
 
-[if debug_vwatch]
+[if debug_vwatch ?]
 fn (mut context Context) elog(msg string) {
 	eprintln('> vwatch $context.pid, $msg')
 }
