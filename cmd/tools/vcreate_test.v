@@ -41,7 +41,7 @@ fn init_and_check() ? {
 fn test_v_init() ? {
 	dir := os.join_path(os.temp_dir(), test_path)
 	os.rmdir_all(dir) or {}
-	os.mkdir(dir) ?
+	os.mkdir(dir) or {}
 	defer {
 		os.rmdir_all(dir) or {}
 	}
@@ -53,7 +53,7 @@ fn test_v_init() ? {
 fn test_v_init_in_git_dir() ? {
 	dir := os.join_path(os.temp_dir(), test_path)
 	os.rmdir_all(dir) or {}
-	os.mkdir(dir) ?
+	os.mkdir(dir) or {}
 	defer {
 		os.rmdir_all(dir) or {}
 	}
