@@ -1,7 +1,6 @@
 module builtin
 
-#define GC_THREADS 1
-
+#flag -DGC_THREADS=1
 #flag -I@VEXEROOT/thirdparty/libgc
 
 $if windows && tinyc {
@@ -10,7 +9,7 @@ $if windows && tinyc {
 	#flag -lgc
 } $else {
 	$if windows {
-		#define GC_NOT_DLL 1
+		#flag -DGC_NOT_DLL=1
 	}
 	$if tinyc {
 		#flag -DIGNORE_DYNAMIC_LOADING
@@ -20,7 +19,7 @@ $if windows && tinyc {
 }
 
 $if gcboehm_leak ? {
-	#define GC_DEBUG
+	#flag -DGC_DEBUG
 }
 
 #include "gc.h"
