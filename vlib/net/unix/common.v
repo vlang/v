@@ -63,9 +63,8 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
 	if deadline.unix == 0 {
-		// only accept infinite_timeout as a valid
-		// negative timeout - it is handled in @select however
-		if timeout < 0 && timeout != unix.infinite_timeout {
+		// do not accept negative timeout
+		if timeout < 0 {
 			return net.err_timed_out
 		}
 		ready := @select(handle, test, timeout) ?
