@@ -39,7 +39,7 @@ pub fn test_for_in_mut_array_of_reference_values() {
 	for mut thing in bag.things {
 		println(thing)
 		assert '$thing' == '&Thing{}'
-		mut fixed_thing := *thing
+		mut fixed_thing := unsafe { &thing }
 		println(fixed_thing)
 		assert '$fixed_thing' == '&Thing{}'
 	}
