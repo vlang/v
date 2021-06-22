@@ -2501,57 +2501,71 @@ fn main() {
 
 ### Function Types
 
-Function signatures can be declared as types - for example:
+You can use type aliases for naming specific function signatures - for
+example:
 
 ```v
 type Filter = fn (string) string
 ```
 
-This works like any other type - for example, a function can accept an argument of a function type:
+This works like any other type - for example, a function can accept an 
+argument of a function type:
 
-```
+```v
+type Filter = fn (string) string
+
 fn filter(s string, f Filter) string {
-  return f(s)
+	return f(s)
 }
 ```
 
-V has duck-typing, so functions don't need to declare compatibility with a function type - they just have to be compatible:
+V has duck-typing, so functions don't need to declare compatibility with 
+a function type - they just have to be compatible:
 
-```
+```v
 fn uppercase(s string) string {
 	return s.to_upper()
 }
+
+// now `uppercase` can be used everywhere where Filter is expected
 ```
 
-Compatible functions can be explicitly cast to a function type:
+Compatible functions can also be explicitly cast to a function type:
 
-```v
+```v oksyntax
 my_filter := Filter(uppercase)
 ```
 
-The cast here is purely informational - again, duck-typing means that the resulting type is the same without an explicit cast:
+The cast here is purely informational - again, duck-typing means that the
+resulting type is the same without an explicit cast:
 
-```v
+```v oksyntax
 my_filter := uppercase
 ```
 
 You can pass the assigned function as an argument:
 
-```v
-println(filter("Hello world", my_filter)) // prints "HELLO WORLD"
+```v oksyntax
+println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
 ```
 
-And you could of course have passed it directly as well, without using a local variable:
+And you could of course have passed it directly as well, without using a
+local variable:
 
-```v
-println(filter("Hello world", uppercase)) // prints "HELLO WORLD"
+```v oksyntax
+println(filter('Hello world', uppercase))
 ```
 
-And finally, this works with anonymous functions as well:
+And this works with anonymous functions as well:
 
-```v
-println(filter("Hello world", fn (s string) string { return s.to_upper() }))
+```v oksyntax
+println(filter('Hello world', fn (s string) string {
+	return s.to_upper()
+}))
 ```
+
+You can see the complete 
+[example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
 
 ### Enums
 
