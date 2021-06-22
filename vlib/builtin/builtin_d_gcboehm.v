@@ -2,43 +2,28 @@ module builtin
 
 #define GC_THREADS 1
 
-$if static_boehm ? {
-	$if macos {
-		#flag -I$first_existing("/opt/homebrew/include",     "/usr/local/include")
-		#flag   $first_existing("/opt/homebrew/lib/libgc.a", "/usr/local/lib/libgc.a")
-	} $else $if linux {
-		#flag -l:libgc.a
-	} $else $if openbsd {
-		#flag -I/usr/local/include
-		#flag /usr/local/lib/libgc.a
-		#flag -lpthread
-	} $else $if windows {
-		#define GC_NOT_DLL 1
-		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -L@VEXEROOT/thirdparty/libgc
-		#flag -lgc
-	} $else {
-		#flag -lgc
-	}
-} $else {
-	$if macos {
-		#pkgconfig bdw-gc
-	} $else $if openbsd || freebsd {
-		#flag -I/usr/local/include
-		#flag -L/usr/local/lib
-	}
-	$if windows {
-		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -L@VEXEROOT/thirdparty/libgc
-	}
+#flag -I@VEXEROOT/thirdparty/libgc
+
+$if windows && tinyc {
+	// TODO: windows-tcc cannot compile boehm from source yet
+	#flag -L@VEXEROOT/thirdparty/libgc
 	#flag -lgc
+} $else {
+	$if windows {
+		#define GC_NOT_DLL 1
+	}
+	$if tinyc {
+		#flag -DIGNORE_DYNAMIC_LOADING
+	}
+	// we statically link libgc
+	#flag @VEXEROOT/thirdparty/libgc/gc.o
 }
 
 $if gcboehm_leak ? {
 	#define GC_DEBUG
 }
 
-#include <gc.h>
+#include "gc.h"
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
 // for use with Boehm-GC
