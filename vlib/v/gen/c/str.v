@@ -108,10 +108,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
-		is_ptr := typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
+		is_ptr := typ.is_ptr() && !(is_var_mut && typ.nr_muls() == 1)
 		str_fn_name := g.gen_str_for_type(typ)
-		if is_ptr && !is_var_mut {
+		if is_ptr {
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
 		}
 		g.write('${str_fn_name}(')
@@ -131,9 +131,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('->val')
 		}
 		g.write(')')
-		if is_ptr && !is_var_mut {
+		if is_ptr {
 			g.write('}}}))')
-			// g.write(')')
 		}
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
