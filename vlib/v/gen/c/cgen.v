@@ -4102,7 +4102,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	} else if has_else {
 		g.write('0')
 	} else {
-		g.write('-1')
+		g.write('_const_time__infinite')
 	}
 	g.writeln(');')
 	// free the temps that were created
