@@ -67,7 +67,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
-* [Types](#types)
+* [V types](#v-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
@@ -102,7 +102,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Modules](#modules)
     * [Manage Packages](#manage-packages)
 	* [Publish package](#publish-package)
-* [Types 2](#types-2)
+* [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
     * [Sum types](#sum-types)
@@ -399,7 +399,7 @@ fn draw(ctx &gg.Context) {
 }
 ```
 
-## Types
+## V Types
 
 ### Primitive types
 
@@ -4806,7 +4806,7 @@ union
 unsafe
 __offsetof
 ```
-See also [Types](#types).
+See also [V Types](#v-types).
 
 ## Appendix II: Operators
 
