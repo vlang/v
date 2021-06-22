@@ -1,0 +1,3 @@
+cmd/tools/vdoc/tests/testdata/project1/main.v:0:1: error: unexpected unknown, expecting `const`
+    1 | const (
+    2 |     source_root = 'temp'

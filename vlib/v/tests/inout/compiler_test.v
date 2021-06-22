@@ -4,7 +4,7 @@
 import os
 import rand
 import term
-import v.util
+import v.util.diff
 import v.util.vtest
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
@@ -14,7 +14,7 @@ fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	diff_cmd := util.find_working_diff_command() or { '' }
+	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or { panic(err) }
 	tests := files.filter(it.ends_with('.vv'))
@@ -78,7 +78,7 @@ fn test_all() {
 			println(found)
 			if diff_cmd != '' {
 				println(term.header('difference:', '-'))
-				println(util.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			} else {
 				println(term.h_divider('-'))
 			}

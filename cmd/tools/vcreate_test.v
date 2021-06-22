@@ -3,7 +3,7 @@ import os
 const test_path = 'vcreate_test'
 
 fn init_and_check() ? {
-	vexe := os.getenv('VEXE')
+	vexe := @VEXE
 	os.execute_or_panic('$vexe init')
 
 	assert os.read_file('vcreate_test.v') ? == [
@@ -53,12 +53,12 @@ fn test_v_init() ? {
 fn test_v_init_in_git_dir() ? {
 	dir := os.join_path(os.temp_dir(), test_path)
 	os.rmdir_all(dir) or {}
-	os.execute_or_panic('git init $dir')
+	os.mkdir(dir) ?
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	os.chdir(dir)
-
+	os.execute_or_panic('git init .')
 	init_and_check() ?
 }
 
@@ -72,7 +72,7 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	}
 	os.chdir(dir)
 
-	vexe := os.getenv('VEXE')
+	vexe := @VEXE
 	os.execute_or_panic('$vexe init')
 
 	assert os.read_file('.gitignore') ? == 'blah'

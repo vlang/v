@@ -11,6 +11,7 @@ import v.ast
 import v.pref
 import v.fmt
 import v.util
+import v.util.diff
 import v.parser
 import vhelp
 
@@ -203,25 +204,25 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	if foptions.is_diff {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
 		if foptions.is_verbose {
 			eprintln('Using diff command: $diff_cmd')
 		}
-		diff := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if diff.len > 0 {
 			println(diff)
 		}
 		return
 	}
 	if foptions.is_verify {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
-		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		x := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
 			return error('')

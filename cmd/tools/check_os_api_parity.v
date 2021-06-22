@@ -2,6 +2,7 @@ module main
 
 import os
 import v.util
+import v.util.diff
 import v.pref
 import v.builder
 import v.ast
@@ -13,6 +14,7 @@ const (
 	os_names     = ['linux', 'macos', 'windows']
 	skip_modules = [
 		'builtin.bare',
+		'builtin.linux_bare.old',
 		'builtin.js',
 		'strconv',
 		'strconv.ftoa',
@@ -41,7 +43,7 @@ fn main() {
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
 	os.chdir(vroot)
-	cmd := util.find_working_diff_command() or { '' }
+	cmd := diff.find_working_diff_command() or { '' }
 	mut app := App{
 		diff_cmd: cmd
 		is_verbose: os.getenv('VERBOSE').len > 0
@@ -117,7 +119,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 }
 
 fn (mut app App) compare_api(api_base string, api_os string, mod_name string, os_base string, os_target string) {
-	res := util.color_compare_strings(app.diff_cmd, rand.ulid(), api_base, api_os)
+	res := diff.color_compare_strings(app.diff_cmd, rand.ulid(), api_base, api_os)
 	if res.len > 0 {
 		summary := 'Different APIs found for module: `$mod_name`, between OS base: `$os_base` and OS: `$os_target`'
 		eprintln(term.header(summary, '-'))

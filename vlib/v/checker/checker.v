@@ -7367,7 +7367,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 		// needed for proper error reporting during vweb route checking
-		sym.methods[node.method_idx].source_fn = voidptr(node)
+		if node.method_idx < sym.methods.len {
+			sym.methods[node.method_idx].source_fn = voidptr(node)
+		} else {
+			c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
+				node.pos)
+		}
 	}
 	if node.language == .v {
 		// Make sure all types are valid
