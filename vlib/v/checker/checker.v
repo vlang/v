@@ -7259,8 +7259,8 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
 			return a.ct_skip
 		} else {
 			if a.ct_expr.name !in checker.valid_comp_not_user_defined {
-				// TODO: uncomment after [if x] is deprecated in favour of [if x?], see also vlib/v/ast/str.v:343
-				// c.note('`[if $a.ct_expr.name]` is deprecated. Use `[if $a.ct_expr.name ?]` instead', a.pos)
+				c.note('`[if $a.ct_expr.name]` is deprecated. Use `[if $a.ct_expr.name ?]` instead',
+					a.pos)
 				a.ct_skip = a.ct_expr.name !in c.pref.compile_defines
 				a.ct_evaled = true
 				return a.ct_skip

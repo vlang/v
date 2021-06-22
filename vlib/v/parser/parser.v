@@ -1553,9 +1553,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		p.inside_if_expr = false
 		p.inside_ct_if_expr = false
 		if comptime_cond is ast.PostfixExpr {
-			x := comptime_cond as ast.PostfixExpr
 			comptime_cond_opt = true
-			comptime_cond = x.expr
 		}
 		name = comptime_cond.str()
 	} else if p.tok.kind == .string {

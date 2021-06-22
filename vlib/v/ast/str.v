@@ -340,10 +340,9 @@ pub fn (x Expr) str() string {
 			return '($x.expr)'
 		}
 		PostfixExpr {
-			// TODO: uncomment after [if x] is deprecated
-			// if x.op == .question {
-			//	return '$x.expr ?'
-			//}
+			if x.op == .question {
+				return '$x.expr ?'
+			}
 			return '$x.expr$x.op'
 		}
 		PrefixExpr {

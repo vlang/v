@@ -2836,7 +2836,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		stop_pos)
 }
 
-[if trace_autofree]
+[if trace_autofree ?]
 fn (mut g Gen) trace_autofree(line string) {
 	g.writeln(line)
 }
