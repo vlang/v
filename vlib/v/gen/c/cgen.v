@@ -1332,6 +1332,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
+			for method in node.methods {
+				if method.return_type.has_flag(.optional) {
+					// Register an optional if it's not registered yet
+					g.register_optional(method.return_type)
+				}
+			}
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
