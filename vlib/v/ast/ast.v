@@ -1106,12 +1106,12 @@ pub mut:
 
 pub struct AsmStmt {
 pub:
-	arch         pref.Arch
-	is_top_level bool
-	is_volatile  bool
-	is_goto      bool
-	clobbered    []AsmClobbered
-	pos          token.Position
+	arch        pref.Arch
+	is_basic    bool
+	is_volatile bool
+	is_goto     bool
+	clobbered   []AsmClobbered
+	pos         token.Position
 pub mut:
 	templates     []AsmTemplate
 	scope         &Scope
