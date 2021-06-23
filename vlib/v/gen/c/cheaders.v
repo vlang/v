@@ -264,8 +264,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/
-//byte g_str_buf[1024];
-byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
@@ -464,8 +462,6 @@ typedef __builtin_va_list va_list;
 #define va_copy(a, b)  __builtin_va_copy(a, b)
 
 //================================== GLOBALS =================================*/
-//byte g_str_buf[1024];
-byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit(int ___argc, voidptr ___argv);

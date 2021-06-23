@@ -5179,12 +5179,6 @@ fn (mut g Gen) write_init_function() {
 	fn_vinit_start_pos := g.out.len
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
-	if g.is_autofree {
-		// Pre-allocate the string buffer
-		// s_str_buf_size := os.getenv('V_STRBUF_MB')
-		// mb_size := if s_str_buf_size == '' { 1 } else { s_str_buf_size.int() }
-		// g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
-	}
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
 	}
@@ -5223,7 +5217,6 @@ fn (mut g Gen) write_init_function() {
 			g.writeln('\t// Cleanups for module $mod_name :')
 			g.writeln(g.cleanups[mod_name].str())
 		}
-		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
 	}
 	g.writeln('}')
