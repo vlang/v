@@ -931,27 +931,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				}
 				match p.tok.kind {
 					.name {
-						if p.tok.kind == .name && p.tok.lit.len >= 2
-							&& (p.tok.lit.starts_with('b') || p.tok.lit.starts_with('f')) {
-							mut is_digit := true
-							for c in p.tok.lit[1..] {
-								if !c.is_digit() {
-									is_digit = false
-									break
-								}
-							}
-							if is_digit {
-								args << ast.AsmDisp{
-									val: p.tok.lit
-									pos: p.tok.position()
-								}
-								p.check(.name)
-							} else {
-								args << p.reg_or_alias()
-							}
-						} else {
-							args << p.reg_or_alias()
-						}
+						args << p.reg_or_alias()
 					}
 					.number {
 						number_lit := p.parse_number_literal()
@@ -962,9 +942,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 								}
 							}
 							ast.IntegerLiteral {
-								if (is_directive || number_lit.val.ends_with('b')
-									|| number_lit.val.ends_with('f'))
-									&& !number_lit.val.starts_with('0x') {
+								if is_directive {
 									args << ast.AsmDisp{
 										val: number_lit.val
 										pos: number_lit.pos
@@ -1099,7 +1077,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		input: input
 		clobbered: clobbered
 		pos: pos.extend(p.tok.position())
-		is_top_level: is_top_level
+		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels
@@ -1107,18 +1085,21 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 }
 
 fn (mut p Parser) reg_or_alias() ast.AsmArg {
-	if p.tok.lit in p.scope.objects {
-		x := p.scope.objects[p.tok.lit]
+	p.check(.name)
+	if p.prev_tok.lit in p.scope.objects {
+		x := p.scope.objects[p.prev_tok.lit]
 		if x is ast.AsmRegister {
-			b := x
-			p.check(.name)
-			return b
+			return ast.AsmArg(x as ast.AsmRegister)
 		} else {
-			verror('parser bug: non-register ast.ScopeObject found in scope')
+			verror('non-register ast.ScopeObject found in scope')
 			return ast.AsmDisp{} // should not be reached
 		}
+	} else if p.prev_tok.len >= 2 && p.prev_tok.lit[0] in [`b`, `f`]
+		&& p.prev_tok.lit[1..].bytes().all(it.is_digit()) {
+		return ast.AsmDisp{
+			val: p.prev_tok.lit[1..] + p.prev_tok.lit[0].ascii_str()
+		}
 	} else {
-		p.check(.name)
 		return ast.AsmAlias{
 			name: p.prev_tok.lit
 			pos: p.prev_tok.position()
@@ -1215,11 +1196,12 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 // 		pos: pos.extend(p.prev_tok.position())
 // 	}
 // }
+
 fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	pos := p.tok.position()
 	p.check(.lsbr)
 	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],	[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
-	// this mess used to look much cleaner before the removal of peek_tok3, see above
+	// this mess used to look much cleaner before the removal of peek_tok2/3, see above code for cleaner version
 	if p.peek_tok.kind == .rsbr { // [displacement] or [base]
 		if p.tok.kind == .name {
 			base := p.reg_or_alias()
