@@ -234,15 +234,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	if is_default {
 		// users.sort() or users.sort(a > b)
 		compare_fn = match typ {
-			ast.int_type, ast.int_type.to_ptr() {
-				'compare_ints'
-			}
-			ast.string_type, ast.string_type.to_ptr() {
-				'compare_strings'
-			}
-			else {
-				''
-			}
+			ast.int_type, ast.int_type.to_ptr() { 'compare_ints' }
+			ast.string_type, ast.string_type.to_ptr() { 'compare_strings' }
+			else { '' }
 		}
 		if compare_fn != '' && is_reverse {
 			compare_fn += '_reverse'
