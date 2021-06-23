@@ -2184,7 +2184,7 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 			}
 		} else if c.table.unalias_num_type(elem_typ) !in [ast.int_type, ast.int_type.to_ptr(),
 			ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type,
-			ast.byte_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type,
+			ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type,
 			ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type,
 			ast.size_t_type_idx,
 		] {
