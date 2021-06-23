@@ -236,7 +236,11 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		compare_fn = match typ {
 			ast.int_type, ast.int_type.to_ptr() { 'compare_ints' }
 			ast.string_type, ast.string_type.to_ptr() { 'compare_strings' }
-			else { '' }
+			5...16, ast.float_literal_type, ast.int_literal_type { '' }
+			else { 
+				verror('a default comparison function for .sort() cannot be generated for this type')
+				''
+			}
 		}
 		if compare_fn != '' && is_reverse {
 			compare_fn += '_reverse'
