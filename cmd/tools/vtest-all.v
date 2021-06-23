@@ -82,6 +82,13 @@ fn get_all_commands() []Command {
 		okmsg: 'V can compile itself with -skip-unused.'
 		rmfile: 'vtmp_unused'
 	}
+	$if linux {
+		res << Command{
+			line: '$vexe -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg: 'V can compile with -freestanding on Linux with GCC.'
+			rmfile: 'bel'
+		}
+	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'
 		okmsg: 'All .v files are invariant when processed with `v fmt`'
@@ -121,7 +128,7 @@ fn get_all_commands() []Command {
 	}
 	$if macos {
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf v.c'
+			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
