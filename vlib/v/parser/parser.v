@@ -1094,24 +1094,16 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 			verror('non-register ast.ScopeObject found in scope')
 			return ast.AsmDisp{} // should not be reached
 		}
-	} else if p.prev_tok.len >= 2 && p.prev_tok.lit[0] in [`f`, `b`] {
-		// p.tok.lit[1..].all(it.is_digit()) {
-		mut is_digit := false
-		for c in p.prev_tok.lit {
-			if c.is_digit() {
-				is_digit = true
-				break
-			}
+	} else if p.prev_tok.len >= 2 && p.prev_tok.lit[0] in [`b`, `f`]
+		&& p.prev_tok.lit[1..].bytes().all(it.is_digit()) {
+		return ast.AsmDisp{
+			val: p.prev_tok.lit[1..] + p.prev_tok.lit[0].ascii_str()
 		}
-		if is_digit {
-			return ast.AsmDisp{
-				val: p.prev_tok.lit[1..] + p.prev_tok.lit[0].ascii_str()
-			}
+	} else {
+		return ast.AsmAlias{
+			name: p.prev_tok.lit
+			pos: p.prev_tok.position()
 		}
-	}
-	return ast.AsmAlias{
-		name: p.prev_tok.lit
-		pos: p.prev_tok.position()
 	}
 }
 
