@@ -1778,6 +1778,10 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
 		return ast.string_type
 	}
+	if left_type == ast.void_type {
+		c.error('`void` type has no methods', call_expr.left.position())
+		return ast.void_type
+	}
 	mut has_generic := false // x.foo<T>() instead of x.foo<int>()
 	mut concrete_types := []ast.Type{}
 	for concrete_type in call_expr.concrete_types {
@@ -2907,6 +2911,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.name_type = name_type
 		return ast.string_type
 	}
+
 	//
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
@@ -2915,10 +2920,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	//
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
-		// This means that the variable's value was assigned to an
-		// unknown function or method, so the error was already handled
-		// earlier
-		// c.error('unknown selector expression', node.pos)
+		c.error('`void` type has no fields', node.pos)
 		return ast.void_type
 	}
 	node.expr_type = typ
