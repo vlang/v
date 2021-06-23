@@ -730,7 +730,7 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
-	if stmt.is_top_level {
+	if f.indent == 0 {
 		f.writeln('')
 	}
 }
@@ -801,7 +801,13 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(']')
 		}
 		ast.AsmDisp {
-			f.write(arg.val)
+			if arg.val.len >= 2 && arg.val[arg.val.len - 1] in [`b`, `f`]
+				&& arg.val[..arg.val.len - 1].bytes().all(it.is_digit()) {
+				f.write(arg.val[arg.val.len - 1].ascii_str())
+				f.write(arg.val[..arg.val.len - 1])
+			} else {
+				f.write(arg.val)
+			}
 		}
 	}
 }

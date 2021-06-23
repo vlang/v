@@ -1,7 +1,7 @@
 module runner
 
 import os
-import v.util
+import v.util.diff
 
 pub struct RunnerOptions {
 pub:
@@ -35,8 +35,8 @@ pub fn full_path_to_v(dirs_in int) string {
 }
 
 fn diff_files(file_result string, file_expected string) string {
-	diffcmd := util.find_working_diff_command() or { return err }
-	return util.color_compare_files(diffcmd, file_result, file_expected)
+	diffcmd := diff.find_working_diff_command() or { return err }
+	return diff.color_compare_files(diffcmd, file_result, file_expected)
 }
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {

@@ -1,5 +1,8 @@
 module strconv
 
+import math.bits
+// import math
+
 /*
 f32/f64 to string utilities
 
@@ -17,13 +20,9 @@ Pages 270–282 https://doi.org/10.1145/3192366.3192369
 inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 */
-import math.bits
 
-// import math
-
-/*
-General Utilities
-*/
+// General Utilities
+[if debug_strconv ?]
 fn assert1(t bool, msg string) {
 	if !t {
 		panic(msg)

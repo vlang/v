@@ -35,7 +35,7 @@ fn (_ None__) str() string {
 	return 'none'
 }
 
-[if trace_error]
+[if trace_error ?]
 fn trace_error(x string) {
 	eprintln('> ${@FN} | $x')
 }

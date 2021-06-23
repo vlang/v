@@ -8,7 +8,7 @@ import v.fmt
 import v.parser
 import v.ast
 import v.pref
-import v.util
+import v.util.diff
 import v.util.vtest
 
 const (
@@ -32,7 +32,7 @@ fn test_fmt() {
 	os.chdir(vroot)
 	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or { '' }
+	diff_cmd := diff.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
@@ -70,7 +70,7 @@ fn test_fmt() {
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err.msg) }
-			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()

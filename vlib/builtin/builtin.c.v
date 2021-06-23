@@ -91,117 +91,120 @@ pub fn panic(s string) {
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
+	if s.str == 0 {
+		eprintln('eprintln(NIL)')
+		return
+	}
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
-		if s.str == 0 {
-			bare_eprint(c'eprintln(NIL)\n', 14)
-		} else {
-			bare_eprint(s.str, u64(s.len))
-			bare_eprint(c'\n', 1)
-		}
+		bare_eprint(s.str, u64(s.len))
+		bare_eprint(c'\n', 1)
 	} $else $if ios {
-		if s.str == 0 {
-			C.WrappedNSLog(c'eprintln(NIL)\n')
-		} else {
-			C.WrappedNSLog(s.str)
-		}
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		// eprintln is used in panics, so it should not fail at all
 		$if android {
-			if s.str == 0 {
-				C.fprintf(C.stderr, c'eprintln(NIL)\n')
-			} else {
-				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
-			}
+			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		}
-		if s.str == 0 {
-			_ = C.write(2, c'eprintln(NIL)\n', 14)
-		} else {
-			_ = C.write(2, s.str, s.len)
-			_ = C.write(2, c'\n', 1)
-		}
+		_writeln_to_fd(2, s)
 		C.fflush(C.stderr)
 	}
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
+	if s.str == 0 {
+		eprint('eprint(NIL)')
+		return
+	}
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
-		if s.str == 0 {
-			bare_eprint(c'eprint(NIL)\n', 12)
-		} else {
-			bare_eprint(s.str, u64(s.len))
-		}
+		bare_eprint(s.str, u64(s.len))
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
-		if s.str == 0 {
-			C.WrappedNSLog(c'eprint(NIL)')
-		} else {
-			C.WrappedNSLog(s.str)
-		}
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		$if android {
-			if s.str == 0 {
-				C.fprintf(C.stderr, c'eprint(NIL)')
-			} else {
-				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
-			}
+			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		}
-		if s.str == 0 {
-			_ = C.write(2, c'eprint(NIL)', 11)
-		} else {
-			_ = C.write(2, s.str, s.len)
-		}
+		_write_buf_to_fd(2, s.str, s.len)
 		C.fflush(C.stderr)
 	}
 }
 
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
+[manualfree]
 pub fn print(s string) {
-	$if android { // android print for logcat
+	$if android {
+		// android print for logcat
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
-	}
-	$if ios { // no else if because we also need console output on android
+		_write_buf_to_fd(1, s.str, s.len)
+	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
 	} $else {
-		_ = C.write(1, s.str, s.len)
+		_write_buf_to_fd(1, s.str, s.len)
 	}
 }
 
 // println prints a message with a line end, to stdout. stdout is flushed.
+[manualfree]
 pub fn println(s string) {
 	if s.str == 0 {
-		$if android {
-			C.fprintf(C.stdout, c'println(NIL)\n')
-		} $else $if ios {
-			C.WrappedNSLog(c'println(NIL)')
-		} $else $if freestanding {
-			bare_print(c'println(NIL)\n', 13)
-		} $else {
-			_ = C.write(1, c'println(NIL)\n', 13)
-		}
+		println('println(NIL)')
 		return
 	}
-	$if android { // android print for logcat
-		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
-	}
-	$if ios { // no else if because we also need console output on android
+	$if ios {
 		C.WrappedNSLog(s.str)
+		return
+	} $else $if android {
+		// android print for logcat
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+		_writeln_to_fd(1, s)
+		return
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
 		bare_print(c'\n', 1)
+		return
 	} $else {
-		_ = C.write(1, s.str, s.len)
-		_ = C.write(1, c'\n', 1)
+		_writeln_to_fd(1, s)
+	}
+}
+
+[manualfree]
+fn _writeln_to_fd(fd int, s string) {
+	unsafe {
+		buf_len := s.len + 1 // space for \n
+		mut buf := malloc(buf_len)
+		defer {
+			free(buf)
+		}
+		C.memcpy(buf, s.str, s.len)
+		buf[s.len] = `\n`
+		_write_buf_to_fd(fd, buf, buf_len)
+	}
+}
+
+[manualfree]
+fn _write_buf_to_fd(fd int, buf &byte, buf_len int) {
+	if buf_len <= 0 {
+		return
+	}
+	unsafe {
+		mut ptr := buf
+		mut remaining_bytes := buf_len
+		for remaining_bytes > 0 {
+			x := C.write(fd, ptr, remaining_bytes)
+			ptr += x
+			remaining_bytes -= x
+		}
 	}
 }
 

@@ -1496,10 +1496,12 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
+		double_free_msg := c'double string.free() detected\n'
+		double_free_msg_len := unsafe { vstrlen(double_free_msg) }
 		$if freestanding {
-			bare_eprint(c'double string.free() detected\n', 30)
+			bare_eprint(double_free_msg, u64(double_free_msg_len))
 		} $else {
-			C.printf(c'double string.free() detected\n')
+			_write_buf_to_fd(1, double_free_msg, double_free_msg_len)
 		}
 		return
 	}

@@ -1775,7 +1775,7 @@ fn (t Tree) asm_stmt(node ast.AsmStmt) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('AsmStmt'))
 	obj.add('arch', t.enum_node(node.arch))
-	obj.add('is_top_level', t.bool_node(node.is_top_level))
+	obj.add('is_basic', t.bool_node(node.is_basic))
 	obj.add('is_volatile', t.bool_node(node.is_volatile))
 	obj.add('is_goto', t.bool_node(node.is_goto))
 	obj.add('scope', t.scope(node.scope))

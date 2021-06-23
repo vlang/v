@@ -4,42 +4,42 @@ import term
 import v.util.vtest
 import v.util.diff
 
+const vexe = @VEXE
+
+const vroot = @VMODROOT
+
 const diff_cmd = find_diff_cmd()
 
 fn find_diff_cmd() string {
-	res := diff.find_working_diff_command() or { '' }
-	return res
+	return diff.find_working_diff_command() or { '' }
 }
 
 fn test_vet() {
-	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
+	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)
-	test_dir := 'cmd/tools/vvet/tests'
-	tests := get_tests_in_dir(test_dir)
-	fails := check_path(vexe, test_dir, tests)
+	test_dir := 'cmd/tools/vdoc/tests/testdata'
+	main_files := get_main_files_in_dir(test_dir)
+	fails := check_path(vexe, test_dir, main_files)
 	assert fails == 0
 }
 
-fn get_tests_in_dir(dir string) []string {
-	files := os.ls(dir) or { panic(err) }
-	mut tests := files.filter(it.ends_with('.vv'))
-	tests.sort()
-	return tests
+fn get_main_files_in_dir(dir string) []string {
+	mut mfiles := os.walk_ext(dir, '.v')
+	mfiles.sort()
+	return mfiles
 }
 
 fn check_path(vexe string, dir string, tests []string) int {
 	mut nb_fail := 0
-	paths := vtest.filter_vtest_only(tests, basepath: dir)
+	paths := vtest.filter_vtest_only(tests, basepath: vroot)
 	for path in paths {
 		program := path
 		print(path + ' ')
-		// -force is needed so that `v vet` would not skip the regression files
-		res := os.execute('$vexe vet -force -nocolor $program')
+		res := os.execute('$vexe doc $program')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
+		mut expected := os.read_file(program.replace('main.v', 'main.out')) or { panic(err) }
 		expected = clean_line_endings(expected)
 		found := clean_line_endings(res.output)
 		if expected != found {

@@ -602,8 +602,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 }
 
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
-// object referenced by `objrefs[i]`. `timeout < 0` means wait unlimited time. `timeout == 0` means return immediately
-// if no transaction can be performed without waiting.
+// object referenced by `objrefs[i]`. `timeout = time.infinite` means wait unlimited time. `timeout <= 0` means return
+// immediately if no transaction can be performed without waiting.
 // return value: the index of the channel on which a transaction has taken place
 //               -1 if waiting for a transaction has exceeded timeout
 //               -2 if all channels are closed
@@ -646,7 +646,11 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
-	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
+	stopwatch := if timeout == time.infinite || timeout <= 0 {
+		time.StopWatch{}
+	} else {
+		time.new_stopwatch({})
+	}
 	mut event_idx := -1 // negative index means `timed out`
 
 	outer: for {
@@ -679,10 +683,10 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			event_idx = -2
 			break outer
 		}
-		if timeout == 0 {
+		if timeout <= 0 {
 			break outer
 		}
-		if timeout > 0 {
+		if timeout != time.infinite {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
 				break outer

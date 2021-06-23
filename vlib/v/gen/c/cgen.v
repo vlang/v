@@ -1332,6 +1332,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
+			for method in node.methods {
+				if method.return_type.has_flag(.optional) {
+					// Register an optional if it's not registered yet
+					g.register_optional(method.return_type)
+				}
+			}
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
@@ -1955,6 +1961,11 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 
 		for i, arg in template.args {
+			if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
+				&& arg is ast.AsmRegister {
+				g.write('*') // indirect branching
+			}
+
 			g.asm_arg(arg, stmt)
 			if i + 1 < template.args.len {
 				g.write(', ')
@@ -1966,6 +1977,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 		g.writeln('"')
 	}
+
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
 		g.write(': ')
 	}
@@ -2007,7 +2019,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmAlias {
 			name := arg.name
 			if name in stmt.local_labels || name in stmt.global_labels
-				|| name in g.file.global_labels || stmt.is_top_level
+				|| name in g.file.global_labels || stmt.is_basic
 				|| (name !in stmt.input.map(it.alias) && name !in stmt.output.map(it.alias)) {
 				asm_formatted_name := if name in stmt.global_labels { '%l[$name]' } else { name }
 				g.write(asm_formatted_name)
@@ -2025,8 +2037,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$$arg.val.str()')
 		}
 		ast.AsmRegister {
-			if !stmt.is_top_level {
-				g.write('%') // escape percent in extended assembly
+			if !stmt.is_basic {
+				g.write('%') // escape percent with percent in extended assembly
 			}
 			g.write('%$arg.name')
 		}
@@ -2093,25 +2105,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			}
 		}
 		ast.AsmDisp {
-			if arg.val.len >= 2 && arg.val[0] in [`b`, `f`] {
-				mut is_digit := true
-				for c in arg.val[1..] {
-					if !c.is_digit() {
-						is_digit = false
-						break
-					}
-				}
-				if is_digit {
-					g.write(arg.val[1..] + rune(arg.val[0]).str())
-				} else {
-					g.write(arg.val)
-				}
-			} else {
-				g.write(arg.val)
-			}
+			g.write(arg.val)
 		}
 		string {
-			g.write('$arg')
+			g.write(arg)
 		}
 	}
 }
@@ -2836,7 +2833,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		stop_pos)
 }
 
-[if trace_autofree]
+[if trace_autofree ?]
 fn (mut g Gen) trace_autofree(line string) {
 	g.writeln(line)
 }
@@ -3492,7 +3489,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 		}
 	}
-	g.expr(node.expr)
+	n_ptr := node.expr_type.nr_muls() - 1
+	if n_ptr > 0 {
+		g.write('(')
+		g.write('*'.repeat(n_ptr))
+		g.expr(node.expr)
+		g.write(')')
+	} else {
+		g.expr(node.expr)
+	}
 	if is_optional {
 		g.write('.data)')
 	}
@@ -4094,7 +4099,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	} else if has_else {
 		g.write('0')
 	} else {
-		g.write('-1')
+		g.write('_const_time__infinite')
 	}
 	g.writeln(');')
 	// free the temps that were created
@@ -5171,12 +5176,6 @@ fn (mut g Gen) write_init_function() {
 	fn_vinit_start_pos := g.out.len
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
-	if g.is_autofree {
-		// Pre-allocate the string buffer
-		// s_str_buf_size := os.getenv('V_STRBUF_MB')
-		// mb_size := if s_str_buf_size == '' { 1 } else { s_str_buf_size.int() }
-		// g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
-	}
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
 	}
@@ -5215,7 +5214,6 @@ fn (mut g Gen) write_init_function() {
 			g.writeln('\t// Cleanups for module $mod_name :')
 			g.writeln(g.cleanups[mod_name].str())
 		}
-		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
 	}
 	g.writeln('}')

@@ -149,3 +149,15 @@ pub fn sleep(duration Duration) {
 		}
 	}
 }
+
+// some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`
+// value as *timeout in milliseconds* with the special value `-1` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() int {
+	if d > C.INT32_MAX * millisecond { // treat 2147483647000001 .. C.INT64_MAX as "infinite"
+		return -1
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return int(d / millisecond)
+	}
+}
