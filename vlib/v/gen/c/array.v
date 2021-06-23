@@ -240,8 +240,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			ast.string_type, ast.string_type.to_ptr() {
 				'compare_strings'
 			}
-			ast.i8_type, ast.int_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.u16_type,
-			ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type,
+			ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.u16_type, ast.u32_type,
+			ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type,
 			ast.float_literal_type, ast.int_literal_type, ast.size_t_type_idx {
 				''
 			}
