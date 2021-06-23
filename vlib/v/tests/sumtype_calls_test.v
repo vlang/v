@@ -56,9 +56,13 @@ fn test_sum_type_cast() {
 fn test_sum_types() {
 	b := parse_bool()
 	handle_expr(b)
+	handle_expr(parse_bool())
+
 	de := DeclExprA{}
 	handle_expr(de)
 	handle_decl_expr(de)
+	handle_expr(DeclExprA{})
+	handle_decl_expr(DeclExprA{})
 }
 
 /*

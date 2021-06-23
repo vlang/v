@@ -16,7 +16,7 @@ struct Man {
 
 fn test_array_of_structs_interpolation() {
 	people := [
-		Man{'Superman', 30, ['flying','fighting evil','being nice']},
+		Man{'Superman', 30, ['flying', 'fighting evil', 'being nice']},
 		Man{'Bilbo Baggins', 111, ['exploring', 'hiding']},
 	]
 	s := '$people' // the compiler should generate code for both a) and b)
@@ -79,24 +79,30 @@ fn test_array_of_strings_interpolation() {
 
 fn test_array_of_map_interpolation() {
 	mut a := []map[string]int{}
-	a << {'a': int(1), 'b': 2}
-	a << {'c': int(3), 'd': 4}
+	a << map{
+		'a': int(1)
+		'b': 2
+	}
+	a << map{
+		'c': int(3)
+		'd': 4
+	}
 	assert '$a' == "[{'a': 1, 'b': 2}, {'c': 3, 'd': 4}]"
 }
 
 fn test_array_initialization_with_interpolation() {
 	sysroot := '/usr'
 	a := [
-		'abcd'
-		'$sysroot/xyz'
-		'u$sysroot/vw'
-		'/rr$sysroot'
-		'lmno'
+		'abcd',
+		'$sysroot/xyz',
+		'u$sysroot/vw',
+		'/rr$sysroot',
+		'lmno',
 	]
 	assert '$a' == "['abcd', '/usr/xyz', 'u/usr/vw', '/rr/usr', 'lmno']"
 	b := [
-		'a${sysroot:5}/r'
-		'ert'
+		'a${sysroot:5}/r',
+		'ert',
 	]
 	assert '$b' == "['a /usr/r', 'ert']"
 	c := ['xy', 'r$sysroot', '$sysroot/t', '>$sysroot<']

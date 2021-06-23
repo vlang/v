@@ -26,7 +26,6 @@ import math
 // range - Range of the Array ( max - min )
 // -----------------------------------------------------------------------
 
-
 // Measure of Occurance
 // Frequency of a given number
 // Based on
@@ -56,7 +55,7 @@ pub fn mean(arr []f64) f64 {
 	for v in arr {
 		sum += v
 	}
-	return sum/f64(arr.len)
+	return sum / f64(arr.len)
 }
 
 // Measure of Central Tendancy
@@ -71,7 +70,7 @@ pub fn geometric_mean(arr []f64) f64 {
 	for v in arr {
 		sum *= v
 	}
-	return math.pow(sum,f64(1)/arr.len)
+	return math.pow(sum, f64(1) / arr.len)
 }
 
 // Measure of Central Tendancy
@@ -84,9 +83,9 @@ pub fn harmonic_mean(arr []f64) f64 {
 	}
 	mut sum := f64(0)
 	for v in arr {
-		sum += f64(1)/v
+		sum += f64(1) / v
 	}
-	return f64(arr.len)/sum
+	return f64(arr.len) / sum
 }
 
 // Measure of Central Tendancy
@@ -98,11 +97,10 @@ pub fn median(arr []f64) f64 {
 		return f64(0)
 	}
 	if arr.len % 2 == 0 {
-		mid := (arr.len/2)-1
-		return (arr[mid] + arr[mid+1])/f64(2)
-	}
-	else {
-		return arr[((arr.len-1)/2)]
+		mid := (arr.len / 2) - 1
+		return (arr[mid] + arr[mid + 1]) / f64(2)
+	} else {
+		return arr[((arr.len - 1) / 2)]
 	}
 }
 
@@ -116,10 +114,10 @@ pub fn mode(arr []f64) f64 {
 	}
 	mut freqs := []int{}
 	for v in arr {
-		freqs<<freq(arr,v)
+		freqs << freq(arr, v)
 	}
 	mut max := 0
-	for i in 0..freqs.len {
+	for i in 0 .. freqs.len {
 		if freqs[i] > freqs[max] {
 			max = i
 		}
@@ -136,9 +134,9 @@ pub fn rms(arr []f64) f64 {
 	}
 	mut sum := f64(0)
 	for v in arr {
-		sum += math.pow(v,2)
+		sum += math.pow(v, 2)
 	}
-	return math.sqrt(sum/f64(arr.len))
+	return math.sqrt(sum / f64(arr.len))
 }
 
 // Measure of Dispersion / Spread
@@ -152,9 +150,9 @@ pub fn population_variance(arr []f64) f64 {
 	m := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
-		sum += math.pow(v-m,2)
+		sum += math.pow(v - m, 2)
 	}
-	return sum/f64(arr.len)
+	return sum / f64(arr.len)
 }
 
 // Measure of Dispersion / Spread
@@ -168,9 +166,9 @@ pub fn sample_variance(arr []f64) f64 {
 	m := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
-		sum += math.pow(v-m,2)
+		sum += math.pow(v - m, 2)
 	}
-	return sum/f64(arr.len-1)
+	return sum / f64(arr.len - 1)
 }
 
 // Measure of Dispersion / Spread
@@ -206,9 +204,9 @@ pub fn mean_absdev(arr []f64) f64 {
 	amean := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
-		sum += math.abs(v-amean)
+		sum += math.abs(v - amean)
 	}
-	return sum/f64(arr.len)
+	return sum / f64(arr.len)
 }
 
 // Minimum of the given input array

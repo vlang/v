@@ -55,7 +55,7 @@ fn main() {
 
 fn check_ok(cmd string) string {
 	println('>   check_ok cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
+	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('>   check_ok failed.\n$res.output')
 		exit(1)
@@ -65,7 +65,7 @@ fn check_ok(cmd string) string {
 
 fn check_fail(cmd string) string {
 	println('> check_fail cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
+	res := os.execute(cmd)
 	if res.exit_code == 0 {
 		eprintln('> check_fail succeeded, but it should have failed.\n$res.output')
 		exit(1)

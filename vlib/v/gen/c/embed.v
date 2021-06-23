@@ -44,16 +44,16 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	for i, emfile in g.embedded_files {
 		fbytes := os.read_bytes(emfile.apath) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
+		g.embedded_data.write_string('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
 			if j < fbytes.len - 1 {
-				g.embedded_data.write('0x$b,')
+				g.embedded_data.write_string('0x$b,')
 			} else {
-				g.embedded_data.write('0x$b')
+				g.embedded_data.write_string('0x$b')
 			}
 			if 0 == ((j + 1) % 16) {
-				g.embedded_data.write('\n    ')
+				g.embedded_data.write_string('\n    ')
 			}
 		}
 		g.embedded_data.writeln('\n};')
@@ -61,9 +61,9 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, ${ctoslit(emfile.rpath)}, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_$i},')
 	}
-	g.embedded_data.writeln('\t{-1, _SLIT(""), NULL}')
+	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')
 	// see vlib/v/embed_file/embed_file.v, find_index_entry_by_id/2 and find_index_entry_by_path/2
 }

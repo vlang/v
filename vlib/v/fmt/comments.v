@@ -5,24 +5,27 @@ module fmt
 
 import v.ast
 
-enum CommentsLevel {
+pub enum CommentsLevel {
 	keep
 	indent
 }
 
 // CommentsOptions defines the way comments are going to be written
-// - has_nl: adds an newline at the end of the list of comments
-// - inline: single-line comments will be on the same line as the last statement
-// - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
+// - has_nl: adds an newline at the end of a list of comments
+// - inline: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
-struct CommentsOptions {
-	has_nl bool = true
-	inline bool
-	level  CommentsLevel
-	iembed bool
+// - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
+// - prev_line: the line number of the previous token to save linebreaks
+pub struct CommentsOptions {
+	has_nl    bool = true
+	inline    bool
+	level     CommentsLevel
+	iembed    bool
+	prev_line int = -1
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	// Shebang in .vsh files
 	if node.text.starts_with('#!') {
 		f.writeln(node.text)
 		return
@@ -31,45 +34,46 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		f.indent++
 	}
 	if options.iembed {
-		x := node.text.trim_left('\x01')
+		x := node.text.trim_left('\x01').trim_space()
 		if x.contains('\n') {
 			f.writeln('/*')
-			f.writeln(x.trim_space())
+			f.writeln(x)
 			f.write('*/')
 		} else {
-			f.write('/* ${x.trim(' ')} */')
+			f.write('/* $x */')
 		}
 	} else if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := node.text.trim_left('\x01')
+		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
-			if is_first_char_alphanumeric(s) {
+			if is_char_alphanumeric(s[0]) {
 				out_s += ' '
 			}
 			out_s += s
 		}
 		if !is_separate_line && f.indent > 0 {
-			f.remove_new_line() // delete the generated \n
+			f.remove_new_line({}) // delete the generated \n
 			f.write(' ')
 		}
 		f.write(out_s)
 	} else {
 		lines := node.text.trim_space().split_into_lines()
-		expected_line_count := node.pos.last_line - node.pos.line_nr
-		no_new_lines := lines.len > expected_line_count && !is_first_char_alphanumeric(lines[0])
+		start_break := is_char_alphanumeric(node.text[0]) || node.text[0].is_space()
+		end_break := is_char_alphanumeric(node.text.trim('\t').bytes().last())
+			|| node.text.bytes().last().is_space()
 		f.write('/*')
-		if !no_new_lines {
+		if start_break {
 			f.writeln('')
 		}
 		for line in lines {
-			f.writeln(line)
+			f.writeln(line.trim_right(' '))
 			f.empty_line = false
 		}
-		if no_new_lines {
-			f.remove_new_line()
-		} else {
+		if end_break {
 			f.empty_line = true
+		} else {
+			f.remove_new_line({})
 		}
 		f.write('*/')
 	}
@@ -79,7 +83,12 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 }
 
 pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
+	mut prev_line := options.prev_line
 	for i, c in comments {
+		if options.prev_line > -1 && ((c.pos.line_nr > prev_line && f.out.last_n(1) != '\n')
+			|| (c.pos.line_nr > prev_line + 1 && f.out.last_n(2) != '\n\n')) {
+			f.writeln('')
+		}
 		if !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
 		}
@@ -87,6 +96,7 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 		if !options.iembed && (i < comments.len - 1 || options.has_nl) {
 			f.writeln('')
 		}
+		prev_line = c.pos.last_line
 	}
 }
 
@@ -110,22 +120,15 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		return
 	}
 	if options.inline {
-		mut i := 0
-		for i = f.out_imports.len - 1; i >= 0; i-- {
-			if !f.out_imports.buf[i].is_space() { // != `\n` {
-				break
-			}
-		}
-		f.out_imports.go_back(f.out_imports.len - i - 1)
+		f.remove_new_line(imports_buffer: true)
 	}
 	for c in comments {
 		ctext := c.text.trim_left('\x01')
 		if ctext == '' {
 			continue
 		}
-		mut out_s := if options.inline { ' ' } else { '' }
-		out_s += '//'
-		if is_first_char_alphanumeric(ctext) {
+		mut out_s := if options.inline { ' ' } else { '' } + '//'
+		if is_char_alphanumeric(ctext[0]) {
 			out_s += ' '
 		}
 		out_s += ctext
@@ -133,9 +136,6 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 	}
 }
 
-fn is_first_char_alphanumeric(s string) bool {
-	return match s[0] {
-		`a`...`z`, `A`...`Z`, `0`...`9` { true }
-		else { false }
-	}
+fn is_char_alphanumeric(c byte) bool {
+	return c.is_letter() || c.is_digit()
 }

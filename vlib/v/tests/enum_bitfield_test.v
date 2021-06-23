@@ -26,7 +26,7 @@ fn test_enum_bitfield() {
 	assert a.perm.has(.execute)
 	assert !a.perm.has(.write)
 	assert !a.perm.has(.other)
-	mut b := BfPermission(int(BfPermission.read) | int(BfPermission.execute))
+	mut b := BfPermission.read | BfPermission.execute
 	assert int(b) == 1 + 0 + 4 + 0
 	assert b.has(.read)
 	assert b.has(.execute)
@@ -42,4 +42,11 @@ fn test_enum_bitfield() {
 	assert int(b) == 0 + 2 + 0 + 8
 	assert !b.has(.read)
 	assert !b.has(.execute)
+
+	mut c := BfPermission.read
+	c.set(.write | .execute)
+	assert c.has(.read | .write | .execute)
+	assert !c.has(.other)
+	c.toggle(.write | .other)
+	assert '$c' == 'BfPermission{.read | .execute | .other}'
 }

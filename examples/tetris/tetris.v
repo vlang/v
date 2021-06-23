@@ -127,7 +127,7 @@ fn remap(v f32, min f32, max f32, new_min f32, new_max f32) f32 {
 	return (((v - min) * (new_max - new_min)) / (max - min)) + new_min
 }
 
-[if showfps]
+[if showfps ?]
 fn (mut game Game) showfps() {
 	game.frame++
 	last_frame_ms := f64(game.frame_sw.elapsed().microseconds()) / 1000.0
@@ -218,7 +218,7 @@ fn (mut g Game) run() {
 			g.delete_completed_lines()
 		}
 		// glfw.post_empty_event() // force window redraw
-		time.sleep_ms(timer_period)
+		time.sleep(timer_period * time.millisecond)
 	}
 }
 
@@ -321,7 +321,7 @@ fn (mut g Game) generate_tetro() {
 // Get the right tetro from cache
 fn (mut g Game) get_tetro() {
 	idx := g.tetro_idx * tetro_size * tetro_size + g.rotation_idx * tetro_size
-	g.tetro = g.tetros_cache[idx..idx + tetro_size]
+	g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
 // TODO mut

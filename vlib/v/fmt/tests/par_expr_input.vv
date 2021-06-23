@@ -1,0 +1,3 @@
+fn main() {
+	_ := (cond1 && cond2) || (single_ident)
+}

@@ -1,12 +1,13 @@
 import os
+import rand
 import term
 import v.util.vtest
-import v.util
+import v.util.diff
 
 const diff_cmd = find_diff_cmd()
 
 fn find_diff_cmd() string {
-	res := util.find_working_diff_command() or { '' }
+	res := diff.find_working_diff_command() or { '' }
 	return res
 }
 
@@ -34,7 +35,10 @@ fn check_path(vexe string, dir string, tests []string) int {
 		program := path
 		print(path + ' ')
 		// -force is needed so that `v vet` would not skip the regression files
-		res := os.exec('$vexe vet -force $program') or { panic(err) }
+		res := os.execute('$vexe vet -force -nocolor $program')
+		if res.exit_code < 0 {
+			panic(res.output)
+		}
 		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = clean_line_endings(expected)
 		found := clean_line_endings(res.output)
@@ -48,7 +52,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(util.color_compare_strings(diff_cmd, found, expected))
+			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
 			println('============\n')
 			nb_fail++
 		} else {

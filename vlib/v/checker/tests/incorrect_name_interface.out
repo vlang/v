@@ -1,3 +1,3 @@
 vlib/v/checker/tests/incorrect_name_interface.vv:1:1: error: interface name `_MyInterface` must begin with capital letter
     1 | interface _MyInterface {}
-      | ~~~~~~~~~
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~

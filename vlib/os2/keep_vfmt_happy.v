@@ -1,2 +1,2 @@
-//this keeps vfmt happy
+// this keeps vfmt happy
 module os2

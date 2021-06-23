@@ -11,4 +11,4 @@ COPY . .
 RUN make && \
     ln -s /opt/vlang/v /usr/local/bin/v
 
-CMD [ "bash" ]
+CMD [ "v" ]

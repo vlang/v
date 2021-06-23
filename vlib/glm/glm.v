@@ -43,7 +43,7 @@ pub fn vec3(x f32, y f32, z f32) Vec3 {
 
 fn mat4(f &f32) Mat4 {
 	res := Mat4{
-		data: f
+		data: unsafe { f }
 	}
 	return res
 }
@@ -116,7 +116,7 @@ fn (a Vec3) print() {
 	x := a.x
 	y := a.y
 	z := a.z
-	C.printf('vec3{%f,%f,%f}\n', x, y, z)
+	C.printf(c'vec3{%f,%f,%f}\n', x, y, z)
 	// println('vec3{$x,$y,$z}')
 }
 
@@ -129,7 +129,7 @@ fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 }
 */
 fn f32_calloc(n int) &f32 {
-	return voidptr(vcalloc(n * int(sizeof(f32))))
+	return voidptr(vcalloc_noscan(n * int(sizeof(f32))))
 }
 
 // fn translate(vec Vec3) *f32 {
@@ -382,7 +382,7 @@ fn ortho_js(left f32, right f32, bottom f32, top f32) &f32 {
 	bt := 1.0 / (bottom - top)
 	nf := f32(1.0) / 1.0 // (mynear -myfar)
 	unsafe {
-		mut out := &f32(malloc(int(sizeof(f32) * 16)))
+		mut out := &f32(malloc_noscan(int(sizeof(f32) * 16)))
 		out[0] = -2.0 * lr
 		out[1] = 0
 		out[2] = 0

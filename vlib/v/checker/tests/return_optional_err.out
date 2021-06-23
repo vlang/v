@@ -1,7 +1,0 @@
-vlib/v/checker/tests/return_optional_err.vv:4:13: error: cannot use `?string` as type `string` in return argument
-    2 |
-    3 | fn my_func() string {
-    4 |   return os.read_file('/some/file/that/exists.txt') or {panic(err)}
-      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    5 | }
-    6 |

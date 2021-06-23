@@ -1,3 +1,3 @@
-vlib/v/checker/tests/comptime_env/env_parser_errors_1.vv:1:3: error: supply an env variable name like HOME, PATH or USER
+vlib/v/checker/tests/comptime_env/env_parser_errors_1.vv:1:1: error: supply an env variable name like HOME, PATH or USER
     1 | #flag -I $env('')/xyz
-      |   ~~~~~~~~~~~~~~~~~~~
+      | ~~~~~~~~~~~~~~~~~~~~~

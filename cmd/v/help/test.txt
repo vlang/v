@@ -1,26 +1,18 @@
 Usage:
+  v [-stats] test FILE|DIRECTORY[...]
+    Runs test functions in the given FILEs and DIRECTORYs
 
-   A)
-      v test folder/ : run all v tests in the given folder.
-      v -stats test folder/ : the same, but print more stats.
-   B)
-      v test file_test.v : run test functions in a given test file.
-      v -stats test file_test.v : as above, but with more stats.
+    If '-stats' is given, more statistics about the tests are printed along
+    with a report of passes/failures
 
-NB: you can also give many and mixed folder/ file_test.v arguments after test.
+NB 1: very frequently, when you work on a module you can cd into its folder,
+and then you can perform:
+	  v test .
+... to run all the module's '_test.v' files.
 
-NB 2: very frequently, when you work on a module, you can cd into its folder,
-and then you can just run:
-      v test .
-... which will run all the module _test.v files.
-
-
-NB 3: V builtin testing requires you to name your files with a _test.v
-suffix, and to name your test functions with test_ prefix. Each test_
-function in a _test.v file will be called automatically by the test
-framework. You can use `assert condition` inside each test_ function.
+NB 2: V builtin testing requires you to name your files with a _test.v
+suffix, and to name your test functions with test_ prefix. Each 'test_'
+function in a '_test.v' file will be called automatically by the test
+framework. You can use `assert condition` inside each 'test_' function.
 If the asserted condition fails, then v will record that and produce a
 more detailed error message about where the failure was.
-
-After all test_ functions are called, if you passed -stats, v will
-produce a report about how many tests passed, and how many failed.

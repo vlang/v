@@ -22,24 +22,32 @@ pub fn nr_jobs() int {
 
 // is_32bit returns true if the current executable is running on a 32 bit system.
 pub fn is_32bit() bool {
-	$if x32 { return true }
+	$if x32 {
+		return true
+	}
 	return false
 }
 
 // is_64bit returns true if the current executable is running on a 64 bit system.
 pub fn is_64bit() bool {
-	$if x64 { return true }
+	$if x64 {
+		return true
+	}
 	return false
 }
 
 // is_little_endian returns true if the current executable is running on a little-endian system.
 pub fn is_little_endian() bool {
-	$if little_endian { return true }
+	$if little_endian {
+		return true
+	}
 	return false
 }
 
 // is_big_endian returns true if the current executable is running on a big-endian system.
 pub fn is_big_endian() bool {
-	$if big_endian { return true }
+	$if big_endian {
+		return true
+	}
 	return false
 }

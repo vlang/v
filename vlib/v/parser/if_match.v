@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.table
 import v.token
 
 fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
@@ -51,16 +50,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
 					p.scope.register(ast.Var{
-						name: 'errcode'
-						typ: table.int_type
-						pos: body_pos
-						is_used: true
-					})
-					p.scope.register(ast.Var{
 						name: 'err'
-						typ: table.string_type
-						pos: body_pos
+						typ: ast.error_type
+						pos: p.tok.position()
 						is_used: true
+						is_stack_obj: true
 					})
 				}
 				branches << ast.IfBranch{
@@ -85,7 +79,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		comments << p.eat_comments({})
-		mut cond := ast.Expr{}
+		mut cond := ast.empty_expr()
 		mut is_guard := false
 		// `if x := opt() {`
 		if !is_comptime && p.peek_tok.kind == .decl_assign {
@@ -93,6 +87,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			is_guard = true
 			var_pos := p.tok.position()
 			var_name := p.check_name()
+			if p.scope.known_var(var_name) {
+				p.error_with_pos('redefinition of `$var_name`', var_pos)
+			}
 			comments << p.eat_comments({})
 			p.check(.decl_assign)
 			comments << p.eat_comments({})
@@ -109,7 +106,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			prev_guard = true
 		} else {
 			prev_guard = false
+			p.comp_if_cond = true
 			cond = p.expr(0)
+			p.comp_if_cond = false
 		}
 		comments << p.eat_comments({})
 		end_pos := p.prev_tok.position()
@@ -135,7 +134,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
 				return ast.IfExpr{}
 			}
-			if p.peek_tok.kind == .key_else {
+			if p.tok.kind != .rcbr && p.peek_tok.kind == .key_else {
 				p.check(.dollar)
 			}
 		}
@@ -181,16 +180,16 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital()
-			|| (p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0
-			&& p.peek_tok2.lit[0].is_capital()))) || p.tok.kind == .lsbr {
-			mut types := []table.Type{}
+			&& (((p.tok.lit in ast.builtin_type_names || p.tok.lit[0].is_capital())
+			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
+			&& p.peek_token(2).lit[0].is_capital()))) || p.tok.kind == .lsbr {
+			mut types := []ast.Type{}
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
 				ecmnts << p.eat_comments({})
 				types << parsed_type
-				exprs << ast.Type{
+				exprs << ast.TypeNode{
 					typ: parsed_type
 					pos: p.prev_tok.position()
 				}
@@ -260,6 +259,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
@@ -292,7 +292,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		// final else
 		mut is_else := false
 		mut is_timeout := false
-		mut stmt := ast.Stmt{}
+		mut stmt := ast.empty_stmt()
 		if p.tok.kind == .key_else {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',
@@ -390,7 +390,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					}
 				}
 				else {
-					p.error_with_pos('select: transmission statement expected', stmt.position())
+					p.error_with_pos('select: transmission statement expected', stmt.pos)
 					return ast.SelectExpr{}
 				}
 			}
@@ -404,6 +404,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
+			col: branch_first_pos.col
 		}
 		post_comments := p.eat_comments({})
 		pos.update_last_line(p.prev_tok.line_nr)
@@ -428,6 +429,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/direct_map_alias_init_err.vv:4:7: error: direct map alias init is not possible, use `WordSet(map[string]bool{})` instead
+    2 |
+    3 | fn main() {
+    4 |     _ := WordSet{}
+      |          ~~~~~~~~~
+    5 | }

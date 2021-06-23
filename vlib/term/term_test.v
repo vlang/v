@@ -63,16 +63,16 @@ fn test_get_cursor_position() {
 	assert original_position.x == cursor_position_1.x
 	assert original_position.y == cursor_position_1.y
 	//
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 10
 		y: 11
-	})
+	)
 	cursor_position_2 := term.get_cursor_position()
 	//
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 5
 		y: 6
-	})
+	)
 	cursor_position_3 := term.get_cursor_position()
 	//
 	term.set_cursor_position(original_position)
@@ -99,4 +99,17 @@ fn test_set_terminal_title() {
 	}
 	title_change := term.set_terminal_title('v is awesome!')
 	assert title_change == true
+}
+
+fn test_strip_ansi() {
+	strings := [
+		'abc',
+		term.bold('abc'),
+		term.yellow('abc'),
+		term.bold(term.red('abc')),
+		term.strikethrough(term.inverse(term.dim(term.bold(term.bright_bg_blue('abc'))))),
+	]
+	for s in strings {
+		assert term.strip_ansi(s) == 'abc'
+	}
 }

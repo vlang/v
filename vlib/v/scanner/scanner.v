@@ -3,8 +3,9 @@
 // that can be found in the LICENSE file.
 module scanner
 
+import math.mathutil as mu
 import os
-import encoding.utf8
+import strconv
 import v.token
 import v.pref
 import v.util
@@ -16,6 +17,8 @@ const (
 	double_quote = `"`
 	// char used as number separator
 	num_sep      = `_`
+	b_lf         = 10
+	b_cr         = 13
 )
 
 pub struct Scanner {
@@ -25,7 +28,8 @@ pub mut:
 	text              string // the whole text of the file
 	pos               int    // current position in the file, first character is s.text[0]
 	line_nr           int    // current line number
-	last_nl_pos       int    // for calculating column
+	last_nl_pos       int = -1 // for calculating column
+	is_crlf           bool   // special check when computing columns
 	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
 	is_inter_start    bool   // for hacky string interpolation TODO simplify
 	is_inter_end      bool
@@ -50,6 +54,7 @@ pub mut:
 	pref                        &pref.Preferences
 	errors                      []errors.Error
 	warnings                    []errors.Warning
+	notices                     []errors.Notice
 	vet_errors                  []vet.Error
 }
 
@@ -67,8 +72,7 @@ no reason to complain about them.
 When the parser determines, that it is outside of a top level statement,
 it tells the scanner to backtrack s.tidx to the current p.tok index,
 then it changes .is_inside_toplvl_statement to false , and refills its
-lookahead buffer (i.e. p.peek_tok, p.peek_tok2, p.peek_tok3) from the
-scanner.
+lookahead buffer (i.e. p.peek_tok), from the scanner.
 
 In effect, from the parser's point of view, the next tokens, that it will
 receive with p.next(), will be the same, as if comments are not ignored
@@ -98,10 +102,6 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner_file(file_path, comments_mode, pref)
-}
-
-pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -109,19 +109,24 @@ pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_vet_scanner(raw_text, comments_mode, pref)
-	s.file_path = file_path
-	s.file_base = os.base(file_path)
+	mut s := &Scanner{
+		pref: pref
+		text: raw_text
+		is_print_line_on_error: true
+		is_print_colored_error: true
+		is_print_rel_paths_on_error: true
+		is_fmt: pref.is_fmt
+		comments_mode: comments_mode
+		file_path: file_path
+		file_base: os.base(file_path)
+	}
+	s.init_scanner()
 	return s
 }
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner(text, comments_mode, pref)
-}
-
-pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return &Scanner{
+	mut s := &Scanner{
 		pref: pref
 		text: text
 		is_print_line_on_error: true
@@ -131,6 +136,21 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		comments_mode: comments_mode
 		file_path: 'internal_memory'
 		file_base: 'internal_memory'
+	}
+	s.init_scanner()
+	return s
+}
+
+fn (mut s Scanner) init_scanner() {
+	util.get_timers().measure_pause('PARSE')
+	s.scan_all_tokens_in_buffer(s.comments_mode)
+	util.get_timers().measure_resume('PARSE')
+}
+
+[unsafe]
+pub fn (mut s Scanner) free() {
+	unsafe {
+		s.text.free()
 	}
 }
 
@@ -160,9 +180,23 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
+	}
+}
+
+[inline]
+fn (s &Scanner) new_eof_token() token.Token {
+	return token.Token{
+		kind: .eof
+		lit: ''
+		line_nr: s.line_nr + 1
+		col: s.current_column()
+		pos: s.pos
+		len: 1
+		tidx: s.tidx
 	}
 }
 
@@ -174,17 +208,22 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
-	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(util.is_name_char(c) || c.is_digit()) {
+			break
+		}
 		s.pos++
 	}
 	name := s.text[start..s.pos]
@@ -198,7 +237,7 @@ fn (s Scanner) num_lit(start int, end int) string {
 	}
 	unsafe {
 		txt := s.text.str
-		mut b := malloc(end - start + 1) // add a byte for the endstring 0
+		mut b := malloc_noscan(end - start + 1) // add a byte for the endstring 0
 		mut i1 := 0
 		for i := start; i < end; i++ {
 			if txt[i] != scanner.num_sep {
@@ -251,6 +290,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -334,6 +374,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -459,15 +500,22 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
-	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_space() {
-		if util.is_nl(s.text[s.pos]) && s.is_vh {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
 			return
 		}
+		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
+		if c_is_nl && s.is_vh {
+			return
+		}
+		if s.pos + 1 < s.text.len && c == scanner.b_cr && s.text[s.pos + 1] == scanner.b_lf {
+			s.is_crlf = true
+		}
 		// Count \r\n as one line
-		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
+		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == scanner.b_cr && c == scanner.b_lf) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -487,22 +535,20 @@ fn (mut s Scanner) end_of_file() token.Token {
 		s.inc_line_number()
 	}
 	s.pos = s.text.len
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
+pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
 	// in order to implement the .toplevel_comments mode.
-	cmode := s.comments_mode
-	s.comments_mode = .parse_comments
-	for {
-		t := s.text_scan()
-		s.all_tokens << t
-		if t.kind == .eof {
-			break
-		}
+	util.timing_start('SCAN')
+	defer {
+		util.timing_measure_cumulative('SCAN')
 	}
-	s.comments_mode = cmode
+	oldmode := s.comments_mode
+	s.comments_mode = mode
+	s.scan_remaining_text()
+	s.comments_mode = oldmode
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
@@ -511,13 +557,24 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 }
 
-pub fn (mut s Scanner) scan() token.Token {
-	if s.comments_mode == .toplevel_comments {
-		return s.buffer_scan()
+pub fn (mut s Scanner) scan_remaining_text() {
+	for {
+		t := s.text_scan()
+		if s.comments_mode == .skip_comments && t.kind == .comment {
+			continue
+		}
+		s.all_tokens << t
+		if t.kind == .eof {
+			break
+		}
 	}
-	return s.text_scan()
 }
 
+pub fn (mut s Scanner) scan() token.Token {
+	return s.buffer_scan()
+}
+
+[direct_array_access]
 pub fn (mut s Scanner) buffer_scan() token.Token {
 	for {
 		cidx := s.tidx
@@ -532,11 +589,21 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 		}
 		return s.all_tokens[cidx]
 	}
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
-[inline]
-fn (s Scanner) look_ahead(n int) byte {
+[direct_array_access; inline]
+pub fn (s &Scanner) peek_token(n int) token.Token {
+	idx := s.tidx + n
+	if idx >= s.all_tokens.len {
+		return s.new_eof_token()
+	}
+	t := s.all_tokens[idx]
+	return t
+}
+
+[direct_array_access; inline]
+fn (s &Scanner) look_ahead(n int) byte {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
 	} else {
@@ -544,6 +611,7 @@ fn (s Scanner) look_ahead(n int) byte {
 	}
 }
 
+[direct_array_access]
 fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
@@ -704,8 +772,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.question, '', 1)
 			}
 			scanner.single_quote, scanner.double_quote {
+				start_line := s.line_nr
 				ident_string := s.ident_string()
-				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
+				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
+					start_line) // + two quotes
 			}
 			`\`` {
 				// ` // apostrophe balance comment. do not remove
@@ -803,7 +873,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
 				// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
-				if '@' + name in token.valid_at_tokens {
+				if '@' + name in token.valid_at_tokens || name.starts_with('cc') { // `=@cccond` in inline assembly
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
@@ -816,19 +886,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				return s.new_token(.name, name, name.len)
 			}
-			/*
-			case `\r`:
-		if nextc == `\n` {
-			s.pos++
-			s.last_nl_pos = s.pos
-			return s.new_token(.nl, '')
-		}
-	 }
-	case `\n`:
-		s.last_nl_pos = s.pos
-		return s.new_token(.nl, '')
-	 }
-			*/
 			`.` {
 				if nextc == `.` {
 					s.pos++
@@ -850,7 +907,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
-				return s.new_token(.hash, hash, hash.len)
+				return s.new_token(.hash, hash, hash.len + 2)
 			}
 			`>` {
 				if nextc == `=` {
@@ -932,7 +989,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
-					if s.text[s.pos - 1] == `\r` {
+					if s.text[s.pos - 1] == scanner.b_cr {
 						comment_line_end--
 					} else {
 						// fix line_nr, \n was read; the comment is marked on the next line
@@ -944,12 +1001,14 @@ fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
-						for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
+						for j := start - 2; j >= 0 && s.text[j] != scanner.b_lf; j-- {
 							if s.text[j] !in [`\t`, ` `] {
 								is_separate_line_comment = false
 							}
 						}
 						if is_separate_line_comment {
+							// NB: ´\x01´ is used to preserve the initial whitespace in comments
+							//     that are on a separate line
 							comment = '\x01' + comment
 						}
 						return s.new_token(.comment, comment, comment.len + 2)
@@ -970,7 +1029,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							s.line_nr--
 							s.error('comment not terminated')
 						}
-						if s.text[s.pos] == `\n` {
+						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
 							continue
 						}
@@ -1010,8 +1069,8 @@ fn (mut s Scanner) text_scan() token.Token {
 }
 
 fn (mut s Scanner) invalid_character() {
-	len := utf8.char_len(s.text[s.pos])
-	end := util.imin(s.pos + len, s.text.len)
+	len := utf8_char_len(s.text[s.pos])
+	end := mu.min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')
 }
@@ -1031,6 +1090,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	return count
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
@@ -1049,11 +1109,15 @@ fn (mut s Scanner) ident_string() string {
 	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
-	if s.text[start] == s.quote
-		|| (s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
+	start_char := s.text[start]
+	if start_char == s.quote
+		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
+	} else if start_char == scanner.b_lf {
+		s.inc_line_number()
 	}
 	s.is_inside_string = false
+	mut u_escapes_pos := []int{} // pos list of \uXXXX
 	slash := `\\`
 	for {
 		s.pos++
@@ -1071,10 +1135,10 @@ fn (mut s Scanner) ident_string() string {
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
 			break
 		}
-		if c == `\r` {
+		if c == scanner.b_cr {
 			n_cr_chars++
 		}
-		if c == `\n` {
+		if c == scanner.b_lf {
 			s.inc_line_number()
 		}
 		// Don't allow \0
@@ -1099,13 +1163,14 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u` && (s.text[s.pos + 1] == s.quote
-				|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
-				|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
-				|| !s.text[s.pos + 2].is_hex_digit()
-				|| !s.text[s.pos + 3].is_hex_digit()
-				|| !s.text[s.pos + 4].is_hex_digit()) {
-				s.error(r'`\u` incomplete unicode character value')
+			if c == `u` {
+				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
+					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
+					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
+					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
+					s.error(r'`\u` incomplete unicode character value')
+				}
+				u_escapes_pos << s.pos - 1
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
@@ -1132,6 +1197,9 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		if !s.is_fmt && u_escapes_pos.len > 0 {
+			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
+		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
@@ -1142,6 +1210,25 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
+}
+
+fn decode_u_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len * 2 + 1}
+	ss << s[..escapes_pos.first() - start]
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 6 // "\uXXXX".len == 6
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32)))
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
 }
 
 fn trim_slash_line_break(s string) string {
@@ -1190,10 +1277,13 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "'" { '\\' + c } else { c }
+	if c == "'" {
+		return '\\' + c
+	}
+	return c
 }
 
-[inline]
+[direct_array_access; inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
@@ -1213,20 +1303,40 @@ fn (mut s Scanner) ignore_line() {
 	s.inc_line_number()
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
-	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
 		s.pos++
 	}
 }
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = s.pos
+	s.last_nl_pos = mu.min(s.text.len - 1, s.pos)
+	if s.is_crlf {
+		s.last_nl_pos++
+	}
 	s.line_nr++
 	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
+	}
+}
+
+pub fn (mut s Scanner) note(msg string) {
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}
+	if s.pref.output_mode == .stdout {
+		eprintln(util.formatted_error('notice:', msg, s.file_path, pos))
+	} else {
+		s.notices << errors.Notice{
+			file_path: s.file_path
+			pos: pos
+			reporter: .scanner
+			message: msg
+		}
 	}
 }
 
@@ -1238,6 +1348,7 @@ pub fn (mut s Scanner) warn(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
@@ -1255,6 +1366,7 @@ pub fn (mut s Scanner) error(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
@@ -1278,9 +1390,11 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		file_path: s.file_path
 		pos: token.Position{
 			line_nr: s.line_nr
+			col: s.current_column() - 1
 		}
 		kind: .error
 		fix: fix
+		typ: .default
 	}
 	s.vet_errors << ve
 }
@@ -1290,14 +1404,19 @@ pub fn verror(s string) {
 }
 
 pub fn (mut s Scanner) codegen(newtext string) {
+	$if debug_codegen ? {
+		eprintln('scanner.codegen:\n $newtext')
+	}
 	// codegen makes sense only during normal compilation
 	// feeding code generated V code to vfmt or vdoc will
 	// cause them to output/document ephemeral stuff.
 	if s.comments_mode == .skip_comments {
+		s.all_tokens.delete_last() // remove .eof from end of .all_tokens
 		s.text += newtext
-		$if debug_codegen ? {
-			eprintln('scanner.codegen:\n $newtext')
-		}
+		old_tidx := s.tidx
+		s.tidx = s.all_tokens.len
+		s.scan_remaining_text()
+		s.tidx = old_tidx
 	}
 }
 

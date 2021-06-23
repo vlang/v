@@ -4,3 +4,7 @@ fn test_bool_cast() {
 	_ = bool(&v)
 	_ = bool([2])
 }
+
+fn unknown() {
+	_ = Foo(3)
+}

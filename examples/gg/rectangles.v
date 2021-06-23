@@ -19,7 +19,7 @@ fn main() {
 	mut app := &App{
 		gg: 0
 	}
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
 		height: win_height
@@ -29,7 +29,7 @@ fn main() {
 		frame_fn: frame
 		user_data: app
 		init_fn: init_images
-	})
+	)
 	app.image = app.gg.create_image(os.resource_abs_path('logo.png'))
 	app.gg.run()
 }

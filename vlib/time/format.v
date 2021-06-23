@@ -126,8 +126,10 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		.mmddyyyy { '${t.month:02d}|${t.day:02d}|${t.year:04d}' }
 		.mmmd { '$month|$t.day' }
 		.mmmdd { '$month|${t.day:02d}' }
+		.mmmddyy { '$month|${t.day:02d}|$year' }
 		.mmmddyyyy { '$month|${t.day:02d}|${t.year:04d}' }
 		.yyyymmdd { '${t.year:04d}|${t.month:02d}|${t.day:02d}' }
+		.yymmdd { '$year|${t.month:02d}|${t.day:02d}' }
 		else { 'unknown enumeration $fmt_date' }
 	}
 	del := match fmt_dlmtr {

@@ -10,7 +10,7 @@ module ttf
 *
 * Note:
 *
-* TODO: 
+* TODO:
 **********************************************************************/
 pub struct Text_block {
 	x         int  // x postion of the left high corner
@@ -56,7 +56,7 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 
 	for txt in text.split_into_lines() {
 		bmp.space_cw = old_space_cw
-		mut w, mut h := bmp.get_bbox(txt)
+		mut w, _ := bmp.get_bbox(txt)
 		if w <= block.w || block.cut_lines == false {
 			// println("Solid block!")
 			left_offset := int((block.w - w) * offset_flag)
@@ -83,13 +83,13 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 				}
 
 				bmp.space_cw = old_space_cw
-				w, h = bmp.get_bbox(tmp_str)
+				w, _ = bmp.get_bbox(tmp_str)
 				if w <= block.w {
 					mut left_offset := int((block.w - w) * offset_flag)
 					if bmp.justify && (f32(w) / f32(block.w)) >= bmp.justify_fill_ratio {
 						// println("cut phase!")
 						bmp.space_cw = 0.0
-						w, h = bmp.get_bbox(tmp_str)
+						w, _ = bmp.get_bbox(tmp_str)
 						left_offset = int((block.w - w) * offset_flag)
 						bmp.space_cw = bmp.get_justify_space_cw(tmp_str, w, block.w, space_cw)
 					} else {

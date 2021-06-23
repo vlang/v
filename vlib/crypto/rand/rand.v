@@ -4,6 +4,7 @@
 
 module rand
 
-const (
-	read_error = error('crypto.rand.read() error reading random bytes')
-)
+struct ReadError {
+	msg  string = 'crypto.rand.read() error reading random bytes'
+	code int
+}

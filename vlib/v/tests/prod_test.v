@@ -15,7 +15,7 @@ fn test_all_v_prod_files() {
 		bmark.step()
 		fres := runner.run_prod_file(options.wd, options.vexec, file) or {
 			bmark.fail()
-			eprintln(bmark.step_message_fail(err))
+			eprintln(bmark.step_message_fail(err.msg))
 			assert false
 			continue
 		}

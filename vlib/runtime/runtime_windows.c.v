@@ -4,8 +4,9 @@ import os
 
 [typedef]
 struct C.SYSTEM_INFO {
-    dwNumberOfProcessors u32
+	dwNumberOfProcessors u32
 }
+
 fn C.GetSystemInfo(&C.SYSTEM_INFO)
 
 // nr_cpus returns the number of virtual CPU cores found on the system.

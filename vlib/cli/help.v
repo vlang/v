@@ -35,7 +35,7 @@ fn print_help_for_command(help_cmd Command) ? {
 			mut found := false
 			for sub_cmd in cmd.commands {
 				if sub_cmd.name == arg {
-					cmd = &sub_cmd
+					cmd = unsafe { &sub_cmd }
 					found = true
 					break
 				}
@@ -142,7 +142,7 @@ fn pretty_description(s string, indent_len int) string {
 	mut acc := strings.new_builder(((s.len / chars_per_line) + 1) * (width + 1))
 	for k, line in s.split('\n') {
 		if k != 0 {
-			acc.write('\n$indent')
+			acc.write_string('\n$indent')
 		}
 		mut i := chars_per_line - 2
 		mut j := 0
@@ -152,16 +152,16 @@ fn pretty_description(s string, indent_len int) string {
 			}
 			// indent was already done the first iteration
 			if j != 0 {
-				acc.write(indent)
+				acc.write_string(indent)
 			}
 			acc.writeln(line[j..i].trim_space())
 			j = i
 		}
 		// We need this even though it should never happen
 		if j != 0 {
-			acc.write(indent)
+			acc.write_string(indent)
 		}
-		acc.write(line[j..].trim_space())
+		acc.write_string(line[j..].trim_space())
 	}
 	return acc.str()
 }

@@ -18,3 +18,10 @@ vlib/v/checker/tests/cast_err.vv:5:6: error: cannot cast to bool - use e.g. `som
     5 |     _ = bool([2])
       |         ~~~~~~~~~
     6 | }
+    7 |
+vlib/v/checker/tests/cast_err.vv:9:6: error: unknown type `Foo`
+    7 | 
+    8 | fn unknown() {
+    9 |     _ = Foo(3)
+      |         ~~~~~~
+   10 | }

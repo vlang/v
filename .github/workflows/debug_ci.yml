@@ -1,0 +1,46 @@
+name: Debug CI
+
+on: [workflow_dispatch]
+
+jobs:
+
+  debug-msvc:
+    runs-on: windows-2019
+    timeout-minutes: 45
+    env:
+      VFLAGS: -cc msvc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat --verbose -msvc
+          .\v.exe -cflags /WX self
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          ./v -cg cmd\tools\vtest-self.v
+          ./v -silent test-self
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+

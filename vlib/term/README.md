@@ -22,15 +22,18 @@ fn main() {
 	term.set_cursor_position(x: width / 2, y: height / 2) // now we point the cursor to the middle of  the terminal
 	println(term.strikethrough(term.bright_green('hello world'))) // Print green text
 	term.set_cursor_position(x: 0, y: height) // Sets the position of the cursor to the bottom of the terminal
-	mut var := os.input('press q to quit: ')
 	// Keep prompting until the user presses the q key
 	for {
-		if var == 'q' {
+		if var := os.input_opt('press q to quit: ') {
+			if var != 'q' {
+				continue
+			}
 			break
-		} else {
-			var = os.input('press q to quit: ')
 		}
+		println('')
+		break
 	}
+	println('Goodbye.')
 }
 ```
 

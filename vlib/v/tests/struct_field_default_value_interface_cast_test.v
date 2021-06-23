@@ -7,7 +7,9 @@ interface FooBar {
 }
 
 struct Abc {
-    foobar FooBar = Foo { x: 123 }
+	foobar FooBar = Foo{
+		x: 123
+	}
 }
 
 fn test_struct_field_default_value_interface_cast() {

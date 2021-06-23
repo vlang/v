@@ -1,4 +1,4 @@
-struct Foo <T> {
+struct Foo<T> {
 pub:
 	data T
 }
@@ -9,7 +9,7 @@ fn (f Foo<int>) value() string {
 
 type DB = string
 
-struct Repo <T, U> {
+struct Repo<T, U> {
 	db DB
 pub mut:
 	model      T

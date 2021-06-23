@@ -8,5 +8,5 @@ pub interface Writer {
 // RandomWriter represents a stream of data that can be wrote to
 // at a random pos
 pub interface RandomWriter {
-	write_to(pos int, buf []byte) ?int
+	write_to(pos u64, buf []byte) ?int
 }

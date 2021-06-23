@@ -11,6 +11,10 @@ struct Baz {
 	x string
 }
 
+fn bar_func(bar Bar) {}
+
+fn foo_func(f Foo) {}
+
 fn main() {
 	bar_func(x: 'bar', y: 13, z: 42)
 	bar_func(
@@ -47,6 +51,7 @@ fn main() {
 	)
 }
 
-fn bar_func(bar Bar) {}
-
-fn foo_func(f Foo) {}
+fn trailing_struct_with_update_expr() {
+	c.error('duplicate const `$field.name`', { ...field.pos, len: name_len })
+	c.error('duplicate const `$field.name`', Position{ ...field.pos, len: name_len })
+}

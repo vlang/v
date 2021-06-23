@@ -1,6 +1,6 @@
 module main
 
-import genericmodule
+import v.tests.generics_from_modules.genericmodule
 
 fn test_generic_function_from_another_module() {
 	v1 := genericmodule.take<int>(true, 10, 20)

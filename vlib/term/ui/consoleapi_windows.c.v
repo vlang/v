@@ -1,7 +1,5 @@
 module ui
 
-import os
-
 union C.Event {
 	KeyEvent              C.KEY_EVENT_RECORD
 	MouseEvent            C.MOUSE_EVENT_RECORD
@@ -77,8 +75,8 @@ struct C.CONSOLE_SCREEN_BUFFER_INFO {
 	dwMaximumWindowSize C.COORD
 }
 
-fn C.ReadConsoleInput() bool
+fn C.ReadConsoleInput(hConsoleInput C.HANDLE, lpBuffer &C.INPUT_RECORD, nLength u32, lpNumberOfEventsRead &u32) bool
 
-fn C.GetNumberOfConsoleInputEvents() bool
+fn C.GetNumberOfConsoleInputEvents(hConsoleInput C.HANDLE, lpcNumberOfEvents &u32) bool
 
-fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
+fn C.GetConsoleScreenBufferInfo(handle C.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool

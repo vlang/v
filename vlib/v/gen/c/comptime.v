@@ -5,8 +5,8 @@ module c
 
 import os
 import v.ast
-import v.table
 import v.util
+import v.pref
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
@@ -65,7 +65,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.writeln('// \$method call. sym="$node.sym.name"')
+	g.trace_autofree('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
 		m := node.sym.find_method(g.comp_for_method) or { return }
@@ -76,9 +76,33 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
+			arg := node.args[node.args.len - 1]
+			param := m.params[node.args.len]
+
+			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
+				&& g.table.type_to_str(param.typ) != '[]string'
+		} else {
+			false
+		}
+		// check argument length and types
+		if m.params.len - 1 != node.args.len && !expand_strs {
+			// do not generate anything if the argument lengths don't match
+			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
+			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			return
+		}
+		// TODO: check argument types
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
-		if true /* node.receiver_is_mut */ {
-			g.write('&')
+
+		// try to see if we need to pass a pointer
+		if node.left is ast.Ident {
+			scope := g.file.scope.innermost(node.pos.pos)
+			if v := scope.find_var(node.left.name) {
+				if m.params[0].typ.is_ptr() && !v.typ.is_ptr() {
+					g.write('&')
+				}
+			}
 		}
 		g.expr(node.left)
 		if m.params.len > 1 {
@@ -90,15 +114,25 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
-				// Gets the type name and cast the string to the type with the string_<type> function
-				type_name := g.table.types[int(m.params[i].typ)].str()
-				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i - 1}])')
-			} else {
-				g.write('((string*)${node.args_var}.data) [${i - 1}] ')
-			}
-			if i < m.params.len - 1 {
+			if i - 1 < node.args.len - 1 {
+				g.expr(node.args[i - 1].expr)
 				g.write(', ')
+			} else if !expand_strs && i == node.args.len {
+				g.expr(node.args[i - 1].expr)
+				break
+			} else {
+				// last argument; try to expand if it's []string
+				idx := i - node.args.len
+				if m.params[i].typ.is_int() || m.params[i].typ.idx() == ast.bool_type_idx {
+					// Gets the type name and cast the string to the type with the string_<type> function
+					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
+					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
+				} else {
+					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
+				}
+				if i < m.params.len - 1 {
+					g.write(', ')
+				}
 			}
 		}
 		g.write(' ); // vweb action call with args')
@@ -106,7 +140,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 	mut j := 0
 	for method in node.sym.methods {
-		// if method.return_type != table.void_type {
+		// if method.return_type != ast.void_type {
 		if method.return_type != node.result_type {
 			continue
 		}
@@ -122,7 +156,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 			if j > 0 {
 				g.write(' else ')
 			}
-			g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
+			g.write('if (string__eq($node.method_name, _SLIT("$method.name"))) ')
 		}
 		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
@@ -131,7 +165,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
-fn cgen_attrs(attrs []table.Attr) []string {
+fn cgen_attrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
 		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
@@ -155,14 +189,38 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 }
 
 fn (mut g Gen) comp_if(node ast.IfExpr) {
+	if !node.is_expr && !node.has_else && node.branches.len == 1 {
+		if node.branches[0].stmts.len == 0 {
+			// empty ifdef; result of target OS != conditional => skip
+			return
+		}
+		if !g.pref.output_cross_c {
+			if node.branches[0].cond is ast.Ident {
+				if g.pref.os == (pref.os_from_string(node.branches[0].cond.name) or {
+					pref.OS._auto
+				}) {
+					// Same target OS as the conditional...
+					// => skip the #if defined ... #endif wrapper
+					// and just generate the branch statements:
+					g.indent--
+					g.stmts(node.branches[0].stmts)
+					g.indent++
+					return
+				}
+			}
+		}
+	}
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
-		g.write(tabs[g.indent])
+		g.write(util.tabs(g.indent))
 		stmt_str.trim_space()
 	} else {
 		''
 	}
-	mut comp_if_stmts_skip := false
+	mut comp_if_stmts_skip := false // don't write any statements if the condition is false
+	// (so that for example windows calls don't get generated inside `$if macos` which
+	// will lead to compilation errors)
+
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
@@ -215,13 +273,13 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		}
 		g.defer_ifdef = ''
 	}
-	if node.is_expr {
-		g.write('#endif')
-	} else {
-		g.writeln('#endif')
-	}
+	g.writeln('#endif')
 }
 
+/*
+// returning `false` means the statements inside the $if can be skipped
+*/
+// returns the value of the bool comptime expression
 fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 	match cond {
 		ast.BoolLiteral {
@@ -240,7 +298,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		}
 		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
-				verror(err)
+				verror(err.msg)
 				return false
 			}
 			g.write('defined($ifdef)')
@@ -252,17 +310,49 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					l := g.comp_if_cond(cond.left)
 					g.write(' $cond.op ')
 					r := g.comp_if_cond(cond.right)
-					return l && r
+					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
 					left := cond.left
 					mut name := ''
-					mut exp_type := table.Type(0)
-					got_type := (cond.right as ast.Type).typ
-					if left is ast.SelectorExpr {
+					mut exp_type := ast.Type(0)
+					got_type := (cond.right as ast.TypeNode).typ
+					// Handle `$if x is Interface {`
+					// mut matches_interface := 'false'
+					if left is ast.TypeNode && cond.right is ast.TypeNode
+						&& g.table.get_type_symbol(got_type).kind == .interface_ {
+						// `$if Foo is Interface {`
+						interface_sym := g.table.get_type_symbol(got_type)
+						if interface_sym.info is ast.Interface {
+							// q := g.table.get_type_symbol(interface_sym.info.types[0])
+							checked_type := g.unwrap_generic(left.typ)
+							// TODO PERF this check is run twice (also in the checker)
+							// store the result in a field
+							is_true := g.table.type_implements_interface(checked_type,
+								got_type)
+							// true // exp_type in interface_sym.info.types
+							if cond.op == .key_is {
+								if is_true {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_true
+							} else if cond.op == .not_is {
+								if is_true {
+									g.write('0')
+								} else {
+									g.write('1')
+								}
+								return !is_true
+							}
+							// matches_interface = '/*iface:$got_type $exp_type*/ true'
+							//}
+						}
+					} else if left is ast.SelectorExpr {
 						name = '${left.expr}.$left.field_name'
 						exp_type = g.comptime_var_type_map[name]
-					} else if left is ast.Type {
+					} else if left is ast.TypeNode {
 						name = left.str()
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
@@ -272,7 +362,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 						g.write('$exp_type == $got_type')
 						return exp_type == got_type
 					} else {
-						g.write('$exp_type !=$got_type')
+						g.write('$exp_type != $got_type')
 						return exp_type != got_type
 					}
 				}
@@ -301,8 +391,9 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
-	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
+	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
+	g.indent++
+	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = _SLIT("");')
 	if node.kind == .methods {
@@ -310,16 +401,16 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 		if methods.len > 0 {
-			g.writeln('\tFunctionData $node.val_var = {0};')
+			g.writeln('FunctionData $node.val_var = {0};')
 		}
 		for method in methods { // sym.methods {
 			/*
-			if method.return_type != vweb_result_type { // table.void_type {
+			if method.return_type != vweb_result_type { // ast.void_type {
 				continue
 			}
 			*/
 			g.comp_for_method = method.name
-			g.writeln('\t// method $i')
+			g.writeln('/* method $i */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("$method.name");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -327,7 +418,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				attrs := cgen_attrs(method.attrs)
 				g.writeln(
 					'\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-					attrs.join(', ') + '}));')
+					attrs.join(', ') + '}));\n')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
@@ -338,13 +429,13 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
-					g.write(typ.str())
+					g.write('{$typ.str(), _SLIT("$arg.name")}')
 					if j < len - 1 {
 						g.write(', ')
 					}
 					g.comptime_var_type_map['${node.val_var}.args[$j].typ'] = typ
 				}
-				g.writeln('}));')
+				g.writeln('}));\n')
 			}
 			mut sig := 'anon_fn_'
 			// skip the first (receiver) arg
@@ -369,16 +460,21 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp
 			g.stmts(node.stmts)
 			i++
-			g.writeln('')
+			g.writeln('}')
+			//
+			mut delete_keys := []string{}
 			for key, _ in g.comptime_var_type_map {
 				if key.starts_with(node.val_var) {
-					g.comptime_var_type_map.delete(key)
+					delete_keys << key
 				}
+			}
+			for key in delete_keys {
+				g.comptime_var_type_map.delete(key)
 			}
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		if sym.info is table.Struct {
+		if sym.info is ast.Struct {
 			mut fields := sym.info.fields.filter(it.attrs.len == 0)
 			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
@@ -388,7 +484,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			for field in fields {
 				g.comp_for_field_var = node.val_var
 				g.comp_for_field_value = field
-				g.writeln('\t// field $i')
+				g.writeln('/* field $i */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -396,7 +492,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					attrs := cgen_attrs(field.attrs)
 					g.writeln(
 						'\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-						attrs.join(', ') + '}));')
+						attrs.join(', ') + '}));\n')
 				}
 				// field_sym := g.table.get_type_symbol(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
@@ -404,15 +500,33 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.typ = $styp;')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
+				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
-				g.writeln('')
+				g.writeln('}')
 			}
 			g.comptime_var_type_map.delete(node.val_var)
 		}
+	} else if node.kind == .attributes {
+		if sym.info is ast.Struct {
+			if sym.info.attrs.len > 0 {
+				g.writeln('\tStructAttribute $node.val_var = {0};')
+			}
+			for attr in sym.info.attrs {
+				g.writeln('/* attribute $i */ {')
+
+				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
+				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
+				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
+				g.writeln('\t${node.val_var}.kind = AttributeKind_$attr.kind;')
+
+				g.writeln('}')
+			}
+		}
 	}
-	g.writeln('} // } comptime for')
+	g.indent--
+	g.writeln('}// \$for')
 }
 
 fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
@@ -469,9 +583,6 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'haiku' {
 			return '__haiku__'
 		}
-		'linux_or_macos' {
-			return ''
-		}
 		//
 		'js' {
 			return '_VJS'
@@ -496,8 +607,17 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 			return '__cplusplus'
 		}
 		// other:
+		'threads' {
+			return '__VTHREADS__'
+		}
+		'gcboehm' {
+			return '_VGCBOEHM'
+		}
 		'debug' {
 			return '_VDEBUG'
+		}
+		'prod' {
+			return '_VPROD'
 		}
 		'test' {
 			return '_VTEST'
@@ -511,12 +631,15 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'no_bounds_checking' {
 			return 'CUSTOM_DEFINE_no_bounds_checking'
 		}
+		'freestanding' {
+			return '_VFREESTANDING'
+		}
 		// architectures:
 		'amd64' {
 			return '__V_amd64'
 		}
-		'aarch64' {
-			return '__V_aarch64'
+		'aarch64', 'arm64' {
+			return '__V_arm64'
 		}
 		// bitness:
 		'x64' {

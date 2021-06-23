@@ -3,18 +3,18 @@ import strings
 type MyInt = int
 
 fn test_sb() {
-	mut sb := strings.Builder{}
-	sb.write('hi')
-	sb.write('!')
-	sb.write('hello')
+	mut sb := strings.new_builder(100)
+	sb.write_string('hi')
+	sb.write_string('!')
+	sb.write_string('hello')
 	assert sb.len == 8
 	sb_end := sb.str()
 	assert sb_end == 'hi!hello'
 	assert sb.len == 0
 	///
 	sb = strings.new_builder(10)
-	sb.write('a')
-	sb.write('b')
+	sb.write_string('a')
+	sb.write_string('b')
 	assert sb.len == 2
 	assert sb.str() == 'ab'
 	// Test interpolation optimization
@@ -28,17 +28,16 @@ fn test_sb() {
 	assert res.trim_space() == 'x = 10 y = 20'
 	//
 	sb = strings.new_builder(10)
-	sb.write('x = $x y = $y')
+	sb.write_string('x = $x y = $y')
 	assert sb.str() == 'x = 10 y = 20'
-	$if !windows {
-		// TODO msvc bug
-		sb = strings.new_builder(10)
-		sb.write('123456')
-		last_2 := sb.cut_last(2)
-		assert last_2 == '56'
-		final_sb := sb.str()
-		assert final_sb == '1234'
-	}
+	//$if !windows {
+	sb = strings.new_builder(10)
+	sb.write_string('123456')
+	last_2 := sb.cut_last(2)
+	assert last_2 == '56'
+	final_sb := sb.str()
+	assert final_sb == '1234'
+	//}
 }
 
 const (
@@ -50,7 +49,7 @@ fn test_big_sb() {
 	mut sb2 := strings.new_builder(10000)
 	for i in 0 .. maxn {
 		sb.writeln(i.str())
-		sb2.write('+')
+		sb2.write_string('+')
 	}
 	s := sb.str()
 	lines := s.split_into_lines()
@@ -74,4 +73,24 @@ fn test_byte_write() {
 	}
 	sb_final := sb.str()
 	assert sb_final == temp_str
+}
+
+fn test_strings_builder_reuse() {
+	mut sb := strings.new_builder(256)
+	sb.write_string('world')
+	assert sb.str() == 'world'
+	sb.write_string('hello')
+	assert sb.str() == 'hello'
+}
+
+fn test_cut_to() {
+	mut sb := strings.new_builder(16)
+	sb.write_string('hello')
+	assert sb.cut_to(3) == 'lo'
+	assert sb.len == 3
+	assert sb.cut_to(3) == ''
+	assert sb.len == 3
+	assert sb.cut_to(0) == 'hel'
+	assert sb.cut_to(32) == ''
+	assert sb.len == 0
 }

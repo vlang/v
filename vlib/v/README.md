@@ -25,9 +25,9 @@ or `Preferences.compile_defines_all` **if any file is defined**.
 ## Parsing files
 To parse something a new template is created as the first step:
 ```v
-import v.table
+import v.ast
 
-table := table.new_table()
+table := ast.new_table()
 ```
 
 a new preference is created:

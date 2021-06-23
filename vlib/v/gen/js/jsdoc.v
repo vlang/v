@@ -4,7 +4,7 @@ import v.ast
 
 struct JsDoc {
 mut:
-	gen        &JsGen
+	gen &JsGen
 }
 
 fn new_jsdoc(gen &JsGen) &JsDoc {
@@ -14,12 +14,16 @@ fn new_jsdoc(gen &JsGen) &JsDoc {
 }
 
 fn (mut d JsDoc) write(s string) {
-	if !d.gen.enable_doc { return }
+	if !d.gen.enable_doc {
+		return
+	}
 	d.gen.write(s)
 }
 
 fn (mut d JsDoc) writeln(s string) {
-	if !d.gen.enable_doc { return }
+	if !d.gen.enable_doc {
+		return
+	}
 	d.gen.writeln(s)
 }
 
@@ -45,7 +49,9 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
 		d.write('$field.name?: ${d.gen.typ(field.typ)}')
-		if i < fields.len - 1 { d.write(', ') }
+		if i < fields.len - 1 {
+			d.write(', ')
+		}
 	}
 	d.writeln('}} init')
 	d.writeln('*/')

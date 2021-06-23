@@ -9,9 +9,10 @@ import time
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <signal.h>
-fn C.tcgetattr()
 
-fn C.tcsetattr()
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
@@ -45,6 +46,10 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state_signal(_ os.Signal) {
+	restore_terminal_state()
+}
+
 fn restore_terminal_state() {
 	termios_reset()
 	mut c := ctx_ptr
@@ -59,7 +64,8 @@ fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
-	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
+	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0
+		&& os.is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
 	}
 
@@ -76,7 +82,8 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.hide_cursor {
-		print('\x1b[?25l')
+		ctx.hide_cursor()
+		ctx.flush()
 	}
 
 	if ctx.cfg.window_title != '' {
@@ -120,8 +127,8 @@ fn (mut ctx Context) termios_setup() ? {
 
 	// Reset console on exit
 	C.atexit(restore_terminal_state)
-	os.signal(C.SIGTSTP, restore_terminal_state)
-	os.signal(C.SIGCONT, fn () {
+	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
+	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr
 		if c != 0 {
 			c.termios_setup() or { panic(err) }
@@ -134,18 +141,18 @@ fn (mut ctx Context) termios_setup() ? {
 			c.paused = false
 			c.event(event)
 		}
-	})
+	}) or {}
 	for code in ctx.cfg.reset {
-		os.signal(code, fn () {
+		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ctx_ptr
 			if c != 0 {
 				c.cleanup()
 			}
 			exit(0)
-		})
+		}) or {}
 	}
 
-	os.signal(C.SIGWINCH, fn () {
+	os.signal_opt(.winch, fn (_ os.Signal) {
 		mut c := ctx_ptr
 		if c != 0 {
 			c.window_height, c.window_width = get_terminal_size()
@@ -157,7 +164,7 @@ fn (mut ctx Context) termios_setup() ? {
 			}
 			c.event(event)
 		}
-	})
+	}) or {}
 
 	os.flush()
 }
@@ -166,7 +173,7 @@ fn get_cursor_position() (int, int) {
 	print('\033[6n')
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
@@ -189,12 +196,12 @@ fn supports_truecolor() bool {
 	print('\x1bP\$qm\x1b\\')
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
 	}
-	return '1:2:3' in s
+	return s.contains('1:2:3')
 }
 
 fn termios_reset() {
@@ -222,13 +229,13 @@ fn (mut ctx Context) termios_loop() {
 		}
 		// println('SLEEPING: $sleep_len')
 		if sleep_len > 0 {
-			time.usleep(sleep_len)
+			time.sleep(sleep_len * time.microsecond)
 		}
 		if !ctx.paused {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
 				unsafe {
-					len := C.read(C.STDIN_FILENO, byteptr(ctx.read_buf.data) + ctx.read_buf.len,
+					len := C.read(C.STDIN_FILENO, &byte(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
 					ctx.resize_arr(ctx.read_buf.len + len)
 				}
@@ -283,24 +290,28 @@ fn single_char(buf string) &Event {
 	match ch {
 		// special handling for `ctrl + letter`
 		// TODO: Fix assoc in V and remove this workaround :/
-		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: ctrl  } }
-		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: shift } }
+		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: .ctrl  } }
+		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: .shift } }
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
 		// don't treat tab, enter as ctrl+i, ctrl+j
-		1...8, 11...26 { event = &Event{
+		1...8, 11...26 {
+			event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
 				code: KeyCode(96 | ch)
-				modifiers: ctrl
-			} }
-		65...90 { event = &Event{
+				modifiers: .ctrl
+			}
+		}
+		65...90 {
+			event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
 				code: KeyCode(32 | ch)
-				modifiers: shift
-			} }
+				modifiers: .shift
+			}
+		}
 		else {}
 	}
 
@@ -351,13 +362,14 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf.len == 1 {
 		c := single_char(buf)
-
+		mut modifiers := c.modifiers
+		modifiers.set(.alt)
 		return &Event{
 			typ: c.typ
 			ascii: c.ascii
 			code: c.code
 			utf8: single
-			modifiers: c.modifiers | alt
+			modifiers: modifiers
 		}, 2
 	}
 	// ----------------
@@ -374,15 +386,15 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		lo := typ & 0b00011
 		hi := typ & 0b11100
 
-		mut modifiers := u32(0)
+		mut modifiers := Modifiers{}
 		if hi & 4 != 0 {
-			modifiers |= shift
+			modifiers.set(.shift)
 		}
 		if hi & 8 != 0 {
-			modifiers |= alt
+			modifiers.set(.alt)
 		}
 		if hi & 16 != 0 {
-			modifiers |= ctrl
+			modifiers.set(.ctrl)
 		}
 
 		match typ {
@@ -444,7 +456,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	// ----------------------------
 
 	mut code := KeyCode.null
-	mut modifiers := u32(0)
+	mut modifiers := Modifiers{}
 	match buf {
 		'[A', 'OA' { code = .up }
 		'[B', 'OB' { code = .down }
@@ -473,35 +485,34 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf == '[Z' {
 		code = .tab
-		modifiers |= shift
+		modifiers.set(.shift)
 	}
 
 	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {
-		// code = KeyCode(buf[4] + 197)
-		modifiers = match buf[3] {
-			`2` { shift }
-			`3` { alt }
-			`4` { shift | alt }
-			`5` { ctrl }
-			`6` { ctrl | shift }
-			`7` { ctrl | alt }
-			`8` { ctrl | alt | shift }
-			else { modifiers } // probably unreachable? idk, terminal events are strange
+		match buf[3] {
+			`2` { modifiers = .shift }
+			`3` { modifiers = .alt }
+			`4` { modifiers = .shift | .alt }
+			`5` { modifiers = .ctrl }
+			`6` { modifiers = .ctrl | .shift }
+			`7` { modifiers = .ctrl | .alt }
+			`8` { modifiers = .ctrl | .alt | .shift }
+			else {}
 		}
 
 		if buf[1] == `1` {
-			code = match buf[4] {
-				`A` { KeyCode.up }
-				`B` { KeyCode.down }
-				`C` { KeyCode.right }
-				`D` { KeyCode.left }
-				`F` { KeyCode.end }
-				`H` { KeyCode.home }
-				`P` { KeyCode.f1 }
-				`Q` { KeyCode.f2 }
-				`R` { KeyCode.f3 }
-				`S` { KeyCode.f4 }
-				else { code }
+			match buf[4] {
+				`A` { code = KeyCode.up }
+				`B` { code = KeyCode.down }
+				`C` { code = KeyCode.right }
+				`D` { code = KeyCode.left }
+				`F` { code = KeyCode.end }
+				`H` { code = KeyCode.home }
+				`P` { code = KeyCode.f1 }
+				`Q` { code = KeyCode.f2 }
+				`R` { code = KeyCode.f3 }
+				`S` { code = KeyCode.f4 }
+				else {}
 			}
 		} else if buf[1] == `5` {
 			code = KeyCode.page_up

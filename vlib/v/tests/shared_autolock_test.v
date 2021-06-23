@@ -23,7 +23,12 @@ fn inc_map_elem(shared b map[string]int, k string) {
 }
 
 fn test_autolock_map() {
-	shared m := &{'xy': 1, 'qwe': 2, 'asd': 7, 'iop': 5}
+	shared m := &map{
+		'xy':  1
+		'qwe': 2
+		'asd': 7
+		'iop': 5
+	}
 	t := go inc_map_elem(shared m, 'asd')
 	for _ in 0 .. iterations {
 		m['asd']++
@@ -31,4 +36,3 @@ fn test_autolock_map() {
 	t.wait()
 	assert m['asd'] == 2 * iterations + 7
 }
-

@@ -29,7 +29,7 @@ fn (mut n Neuron) populate(nb int) {
 }
 
 struct Layer {
-	id      int
+	id int
 mut:
 	neurons []Neuron
 }
@@ -50,7 +50,7 @@ mut:
 fn (mut n Network) populate(network []int) {
 	assert network.len >= 2
 	input := network[0]
-	hiddens := network[1..network.len-1]
+	hiddens := network[1..network.len - 1]
 	output := network[network.len - 1]
 	mut index := 0
 	mut previous_neurons := 0
@@ -232,8 +232,8 @@ fn (g Generation) next(population int) []Save {
 
 pub struct Generations {
 pub:
-	population  int
-	network     []int
+	population int
+	network    []int
 mut:
 	generations []Generation
 }

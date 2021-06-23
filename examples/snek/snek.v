@@ -1,3 +1,4 @@
+import os
 import gg
 import gx
 // import sokol.sapp
@@ -12,6 +13,8 @@ const (
 	tile_size    = canvas_size / game_size
 	tick_rate_ms = 100
 )
+
+const high_score_file_path = os.join_path(os.cache_dir(), 'v', 'examples', 'snek')
 
 // types
 struct Pos {
@@ -34,10 +37,22 @@ enum Direction {
 	right
 }
 
+type HighScore = int
+
+fn (mut h HighScore) save() {
+	os.mkdir_all(os.dir(high_score_file_path)) or { return }
+	os.write_file(high_score_file_path, (*h).str()) or { return }
+}
+
+fn (mut h HighScore) load() {
+	h = (os.read_file(high_score_file_path) or { '' }).int()
+}
+
 struct App {
 mut:
 	gg         &gg.Context
 	score      int
+	best       HighScore
 	snake      []Pos
 	dir        Direction
 	food       Pos
@@ -129,6 +144,10 @@ fn on_frame(mut app App) {
 		if app.snake[0] == app.food {
 			app.move_food()
 			app.score++
+			if app.score > app.best {
+				app.best = app.score
+				app.best.save()
+			}
 			app.snake << app.snake.last() + app.snake.last() - app.snake[app.snake.len - 2]
 		}
 	}
@@ -144,11 +163,17 @@ fn on_frame(mut app App) {
 
 	// drawing top
 	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(canvas_size / 2, top_height / 2, app.score.str(), gx.TextCfg{
+	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle
-		size: 75
+		size: 65
+	})
+	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: $app.best', gx.TextCfg{
+		color: gx.white
+		align: .center
+		vertical_align: .middle
+		size: 65
 	})
 
 	// checking if snake bit itself
@@ -172,6 +197,7 @@ fn main() {
 		gg: 0
 	}
 	app.reset_game()
+	app.best.load()
 
 	mut font_copy := font
 	font_bytes := unsafe {

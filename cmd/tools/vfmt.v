@@ -11,8 +11,8 @@ import v.ast
 import v.pref
 import v.fmt
 import v.util
+import v.util.diff
 import v.parser
-import v.table
 import vhelp
 
 struct FormatOptions {
@@ -77,24 +77,11 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
-	mut files := []string{}
-	for file in possible_files {
-		if os.is_dir(file) {
-			files << os.walk_ext(file, '.v')
-			files << os.walk_ext(file, '.vsh')
-			continue
-		}
-		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
-			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
-			continue
-		}
-		if !os.exists(file) {
-			verror('"$file" does not exist')
-			continue
-		}
-		files << file
+	files := util.find_all_v_files(possible_files) or {
+		verror(err.msg)
+		return
 	}
-	if is_atty(0) == 0 && files.len == 0 {
+	if os.is_atty(0) == 0 && files.len == 0 {
 		foptions.format_pipe()
 		exit(0)
 	}
@@ -117,15 +104,12 @@ fn main() {
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')
 		}
-		worker_result := os.exec(worker_cmd) or {
-			errors++
-			continue
-		}
+		worker_result := os.execute(worker_cmd)
 		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
-				eprintln('vfmt error while formatting file: $file .')
+				eprintln('Internal vfmt error while formatting file: ${file}.')
 			}
 			errors++
 			continue
@@ -165,7 +149,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
-	table := table.new_table()
+	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
@@ -189,7 +173,7 @@ fn (foptions &FormatOptions) format_pipe() {
 		eprintln('vfmt2 running fmt.fmt over stdin')
 	}
 	input_text := os.get_raw_lines_joined()
-	table := table.new_table()
+	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
@@ -220,22 +204,25 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	if foptions.is_diff {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
 		if foptions.is_verbose {
 			eprintln('Using diff command: $diff_cmd')
 		}
-		println(util.color_compare_files(diff_cmd, file, formatted_file_path))
+		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
+		if diff.len > 0 {
+			println(diff)
+		}
 		return
 	}
 	if foptions.is_verify {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
-		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		x := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
 			return error('')
@@ -277,7 +264,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 
+	return
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'

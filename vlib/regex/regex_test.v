@@ -1,4 +1,5 @@
 import regex
+import rand
 
 /******************************************************************************
 *
@@ -14,6 +15,14 @@ struct TestItem {
 
 const(
 match_test_suite = [
+	// minus in CC
+	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
+	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,13},
+	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
+	TestItem{"ab-cd-efGHK",r"[a-f\-g]+\A+",0,11},
+
 	// base OR
 	TestItem{"a",r"a|b",0,1},
 	TestItem{"a",r"b|a",0,1},
@@ -167,7 +176,41 @@ match_test_suite_replace = [
 		r"[Tt]o\w+",
 		"CIAO",
 		"CIAO is a good day and CIAO will be for sure."
-	}
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0] ",
+		"Tod[ay] is a good d[ay] and tomorrow will be for sure."
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0_\0] ",
+		"Tod[ay_ay] is a good d[ay_ay] and tomorrow will be for sure."
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0\1] ",
+		"Tod[ay] is a good d[ay] and tomorrow will be for sure."
+	},
+]
+
+match_test_suite_replace_simple = [
+	// replace tests
+	TestItemRe{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		"CIAO",
+		"oggi CIAO è andato a casa di CIAO ed ha trovato CIAO"
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		"CIAO",
+		"CIAO is a good day and CIAO will be for sure."
+	},
 ]
 )
 
@@ -288,7 +331,7 @@ find_all_test_suite = [
 )
 
 const (
-	debug = false // true for debug println 
+	debug = true // true for debug println 
 )
 
 fn test_regex(){
@@ -416,6 +459,25 @@ fn test_regex(){
 		}
 	}
 
+	// check replace simple
+	for c,to in match_test_suite_replace_simple{
+		// debug print
+		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
+
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
+			assert false
+			continue
+		}
+
+		res := re.replace_simple(to.src,to.rep)
+		if res != to.r {
+			eprintln("ERROR: replace.")
+			assert false
+			continue
+		}
+	}
+
 	// check match and find
 	for c,to in match_test_suite {
 		// debug print
@@ -479,7 +541,53 @@ fn test_regex(){
 		}
 
 	}
-	if debug { println("DONE!") }
 
+	if debug { println("DONE!") }
 }
 
+// test regex_base function
+fn test_regex_func(){
+	query    := r"\d\dabcd"
+	test_str := "78abcd" 
+	mut re, re_err, err_pos := regex.regex_base(query)
+	if re_err == regex.compile_ok {
+		start, end := re.match_string(test_str)
+		assert (start == 0) && (end == 6)
+	} else {
+		eprintln("Error in query string in pos ${err_pos}")
+		eprintln("Error: ${re.get_parse_error_string(re_err)}")
+		assert false
+	}
+}
+
+fn my_repl(re regex.RE, in_txt string, start int, end int) string {
+	s0 := re.get_group_by_id(in_txt,0)[0..1] + "X"
+	s1 := re.get_group_by_id(in_txt,1)[0..1] + "X"
+	s2 := re.get_group_by_id(in_txt,2)[0..1] + "X"
+	return "${s0}${s1}${s2}"
+}
+
+
+// test regex replace function
+fn test_regex_func_replace(){
+	filler := "E il primo dei tre regni dell'Oltretomba cristiano visitato da Dante nel corso del viaggio, con la guida di Virgilio."
+	txt    := r'"content": "They dont necessarily flag "you will be buying these shares on margin!"", "channel_id"'
+	query := r'"(content":\s+")(.*)(, "channel_id")'
+	mut re := regex.regex_opt(query) or { panic(err) }
+	
+	mut txt1 := ""
+	mut txt2 := ""
+	
+	for _ in 0..3 {
+		rnd := int(10+rand.u32() % 20)
+		txt1 += txt      + filler[0..rnd] + "\n"
+		txt2 += "cXTX,X" + filler[0..rnd] + "\n"
+	}
+
+	result := re.replace_by_fn(txt1, my_repl)
+	if debug {
+		eprintln(result)
+		eprintln(txt2)
+	}
+	assert result == txt2
+}

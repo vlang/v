@@ -60,7 +60,7 @@ fn test_shared_receiver_lock() {
 	t1.wait()
 	t2.wait()
 	t3.wait()
-	rlock x, y, z{
+	rlock x, y, z {
 		assert x.a == 7
 		assert y.a == 1
 		assert z.a == 5

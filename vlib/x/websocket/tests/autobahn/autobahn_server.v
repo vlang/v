@@ -4,7 +4,7 @@ module main
 import x.websocket
 
 fn main() {
-	mut s := websocket.new_server(9002, '/')
+	mut s := websocket.new_server(.ip6, 9002, '/')
 	s.on_message(on_message)
 	s.listen() or { panic(err) }
 }

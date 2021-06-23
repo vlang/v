@@ -1,3 +1,6 @@
+#if defined(SOKOL_IMPL) && !defined(SOKOL_FONTSTASH_IMPL)
+#define SOKOL_FONTSTASH_IMPL
+#endif
 #ifndef SOKOL_FONTSTASH_INCLUDED
 /*
     sokol_fontstash.h -- renderer for https://github.com/memononen/fontstash
@@ -6,7 +9,7 @@
     Project URL: https://github.com/floooh/sokol
 
     Do this:
-
+        #define SOKOL_IMPL or
         #define SOKOL_FONTSTASH_IMPL
 
     before you include this file in *one* C or C++ file to create the
@@ -27,7 +30,8 @@
     SOKOL_ASSERT(c)     - your own assert macro (default: assert(c))
     SOKOL_MALLOC(s)     - your own malloc function (default: malloc(s))
     SOKOL_FREE(p)       - your own free function (default: free(p))
-    SOKOL_API_DECL      - public function declaration prefix (default: extern)
+    SOKOL_FONTSTASH_API_DECL    - public function declaration prefix (default: extern)
+    SOKOL_API_DECL      - same as SOKOL_FONTSTASH_API_DECL
     SOKOL_API_IMPL      - public function implementation prefix (default: -)
     SOKOL_LOG(msg)      - your own logging function (default: puts(msg))
     SOKOL_UNREACHABLE() - a guard macro for unreachable code (default: assert(false))
@@ -159,23 +163,26 @@
 #error "Please include sokol_gfx.h before sokol_fontstash.h"
 #endif
 
-#ifndef SOKOL_API_DECL
-#if defined(_WIN32) && defined(SOKOL_DLL) && defined(SOKOL_IMPL)
-#define SOKOL_API_DECL __declspec(dllexport)
+#if defined(SOKOL_API_DECL) && !defined(SOKOL_FONTSTASH_API_DECL)
+#define SOKOL_FONTSTASH_API_DECL SOKOL_API_DECL
+#endif
+#ifndef SOKOL_FONTSTASH_API_DECL
+#if defined(_WIN32) && defined(SOKOL_DLL) && defined(SOKOL_FONTSTASH_IMPL)
+#define SOKOL_FONTSTASH_API_DECL __declspec(dllexport)
 #elif defined(_WIN32) && defined(SOKOL_DLL)
-#define SOKOL_API_DECL __declspec(dllimport)
+#define SOKOL_FONTSTASH_API_DECL __declspec(dllimport)
 #else
-#define SOKOL_API_DECL extern
+#define SOKOL_FONTSTASH_API_DECL extern
 #endif
 #endif
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-SOKOL_API_DECL FONScontext* sfons_create(int width, int height, int flags);
-SOKOL_API_DECL void sfons_destroy(FONScontext* ctx);
-SOKOL_API_DECL void sfons_flush(FONScontext* ctx);
-SOKOL_API_DECL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+SOKOL_FONTSTASH_API_DECL FONScontext* sfons_create(int width, int height, int flags);
+SOKOL_FONTSTASH_API_DECL void sfons_destroy(FONScontext* ctx);
+SOKOL_FONTSTASH_API_DECL void sfons_flush(FONScontext* ctx);
+SOKOL_FONTSTASH_API_DECL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -1603,7 +1610,7 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
         ub->uniforms[0].type = SG_UNIFORMTYPE_FLOAT4;
         ub->uniforms[0].array_count = 8;
         shd_desc.fs.images[0].name = "tex";
-        shd_desc.fs.images[0].type = SG_IMAGETYPE_2D;
+        shd_desc.fs.images[0].image_type = SG_IMAGETYPE_2D;
         shd_desc.fs.images[0].sampler_type = SG_SAMPLERTYPE_FLOAT;
         shd_desc.label = "sokol-fontstash-shader";
         #if defined(SOKOL_GLCORE33)
@@ -1617,16 +1624,12 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
             shd_desc.fs.entry = "main0";
             switch (sg_query_backend()) {
                 case SG_BACKEND_METAL_MACOS:
-                    shd_desc.vs.byte_code = _sfons_vs_bytecode_metal_macos;
-                    shd_desc.vs.byte_code_size = sizeof(_sfons_vs_bytecode_metal_macos);
-                    shd_desc.fs.byte_code = _sfons_fs_bytecode_metal_macos;
-                    shd_desc.fs.byte_code_size = sizeof(_sfons_fs_bytecode_metal_macos);
+                    shd_desc.vs.bytecode = SG_RANGE(_sfons_vs_bytecode_metal_macos);
+                    shd_desc.fs.bytecode = SG_RANGE(_sfons_fs_bytecode_metal_macos);
                     break;
                 case SG_BACKEND_METAL_IOS:
-                    shd_desc.vs.byte_code = _sfons_vs_bytecode_metal_ios;
-                    shd_desc.vs.byte_code_size = sizeof(_sfons_vs_bytecode_metal_ios);
-                    shd_desc.fs.byte_code = _sfons_fs_bytecode_metal_ios;
-                    shd_desc.fs.byte_code_size = sizeof(_sfons_fs_bytecode_metal_ios);
+                    shd_desc.vs.bytecode = SG_RANGE(_sfons_vs_bytecode_metal_ios);
+                    shd_desc.fs.bytecode = SG_RANGE(_sfons_fs_bytecode_metal_ios);
                     break;
                 default:
                     shd_desc.vs.source = _sfons_vs_source_metal_sim;
@@ -1634,10 +1637,8 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
                     break;
             }
         #elif defined(SOKOL_D3D11)
-            shd_desc.vs.byte_code = _sfons_vs_bytecode_hlsl4;
-            shd_desc.vs.byte_code_size = sizeof(_sfons_vs_bytecode_hlsl4);
-            shd_desc.fs.byte_code = _sfons_fs_bytecode_hlsl4;
-            shd_desc.fs.byte_code_size = sizeof(_sfons_fs_bytecode_hlsl4);
+            shd_desc.vs.bytecode = SG_RANGE(_sfons_vs_bytecode_hlsl4);
+            shd_desc.fs.bytecode = SG_RANGE(_sfons_fs_bytecode_hlsl4);
         #elif defined(SOKOL_WGPU)
             shd_desc.vs.byte_code = _sfons_vs_bytecode_wgpu;
             shd_desc.vs.byte_code_size = sizeof(_sfons_vs_bytecode_wgpu);
@@ -1656,9 +1657,9 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
         sg_pipeline_desc pip_desc;
         memset(&pip_desc, 0, sizeof(pip_desc));
         pip_desc.shader = sfons->shd;
-        pip_desc.blend.enabled = true;
-        pip_desc.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        pip_desc.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        pip_desc.colors[0].blend.enabled = true;
+        pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
         sfons->pip = sgl_make_pipeline(&pip_desc);
     }
 
@@ -1769,16 +1770,16 @@ SOKOL_API_IMPL void sfons_flush(FONScontext* ctx) {
     _sfons_t* sfons = (_sfons_t*) ctx->params.userPtr;
     if (sfons->img_dirty) {
         sfons->img_dirty = false;
-        sg_image_content content;
-        memset(&content, 0, sizeof(content));
-        content.subimage[0][0].ptr = ctx->texData;
-        content.subimage[0][0].size = sfons->width * sfons->height;
-        sg_update_image(sfons->img, &content);
+        sg_image_data data;
+        memset(&data, 0, sizeof(data));
+        data.subimage[0][0].ptr = ctx->texData;
+        data.subimage[0][0].size = (size_t) (sfons->width * sfons->height);
+        sg_update_image(sfons->img, &data);
     }
 }
 
 SOKOL_API_IMPL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-    return (r) | (g<<8) | (b<<16) | (a<<24);
+    return ((uint32_t)r) | ((uint32_t)g<<8) | ((uint32_t)b<<16) | ((uint32_t)a<<24);
 }
 
 #endif /* SOKOL_FONTSTASH_IMPL */

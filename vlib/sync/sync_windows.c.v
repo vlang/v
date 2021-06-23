@@ -6,7 +6,9 @@ module sync
 import time
 
 #include <synchapi.h>
+#include <time.h>
 
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
@@ -16,6 +18,7 @@ fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
 
 // Mutex HANDLE
 type MHANDLE = voidptr
+
 // Semaphore HANDLE
 type SHANDLE = voidptr
 
@@ -25,18 +28,18 @@ type SHANDLE = voidptr
 [heap]
 pub struct Mutex {
 mut:
-	mx C.SRWLOCK    // mutex handle
+	mx C.SRWLOCK // mutex handle
 }
 
 [heap]
 pub struct RwMutex {
 mut:
-	mx C.SRWLOCK    // mutex handle
+	mx C.SRWLOCK // mutex handle
 }
 
 [heap]
 struct Semaphore {
-	mtx C.SRWLOCK
+	mtx  C.SRWLOCK
 	cond C.CONDITION_VARIABLE
 mut:
 	count u32
@@ -113,7 +116,9 @@ pub fn (mut sem Semaphore) init(n u32) {
 pub fn (mut sem Semaphore) post() {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 1 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c+1) { return }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c + 1) {
+			return
+		}
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	c = C.atomic_fetch_add_u32(&sem.count, 1)
@@ -126,18 +131,20 @@ pub fn (mut sem Semaphore) post() {
 pub fn (mut sem Semaphore) wait() {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return
+		}
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
-outer:
-	for {
+
+	outer: for {
 		if c == 0 {
 			C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, C.INFINITE, 0)
 			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
-			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
@@ -151,7 +158,9 @@ outer:
 pub fn (mut sem Semaphore) try_wait() bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
 	}
 	return false
 }
@@ -159,14 +168,20 @@ pub fn (mut sem Semaphore) try_wait() bool {
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
 	}
+	mut ft_start := C._FILETIME{}
+	C.GetSystemTimeAsFileTime(&ft_start)
+	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
+		u64(timeout / (100 * time.nanosecond))
+	mut t_ms := timeout.sys_milliseconds()
 	C.AcquireSRWLockExclusive(&sem.mtx)
-	t_ms := u32(timeout / time.millisecond)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
-outer:
-	for {
+
+	outer: for {
 		if c == 0 {
 			res = C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
 			if res == 0 {
@@ -175,18 +190,23 @@ outer:
 			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
-			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
 				break outer
 			}
 		}
+		C.GetSystemTimeAsFileTime(&ft_start)
+		time_now := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) // in 100ns
+		if time_now > time_end {
+			break outer // timeout exceeded
+		}
+		t_ms = u32((time_end - time_now) / 10000)
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return res != 0
 }
 
-pub fn (s Semaphore) destroy() bool {
-	return true
+pub fn (s Semaphore) destroy() {
 }

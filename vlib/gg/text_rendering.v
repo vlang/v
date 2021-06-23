@@ -68,13 +68,13 @@ fn new_ft(c FTConfig) ?&FT {
 
 			return &FT{
 				fons: fons
-				font_normal: C.fonsAddFontMem(fons, 'sans', bytes_normal.data, bytes_normal.len,
+				font_normal: C.fonsAddFontMem(fons, c'sans', bytes_normal.data, bytes_normal.len,
 					false)
-				font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len,
+				font_bold: C.fonsAddFontMem(fons, c'sans', bytes_bold.data, bytes_bold.len,
 					false)
-				font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len,
+				font_mono: C.fonsAddFontMem(fons, c'sans', bytes_mono.data, bytes_mono.len,
 					false)
-				font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len,
+				font_italic: C.fonsAddFontMem(fons, c'sans', bytes_italic.data, bytes_italic.len,
 					false)
 				scale: c.scale
 			}
@@ -107,8 +107,11 @@ fn new_ft(c FTConfig) ?&FT {
 			return none
 		}
 	}
-	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path,
-			.bold) }
+	bold_path := if c.custom_bold_font_path != '' {
+		c.custom_bold_font_path
+	} else {
+		get_font_path_variant(c.font_path, .bold)
+	}
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bytes
@@ -126,16 +129,16 @@ fn new_ft(c FTConfig) ?&FT {
 	fons := sfons.create(512, 512, 1)
 	return &FT{
 		fons: fons
-		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
-		font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len, false)
-		font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len, false)
-		font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len,
+		font_normal: C.fonsAddFontMem(fons, c'sans', bytes.data, bytes.len, false)
+		font_bold: C.fonsAddFontMem(fons, c'sans', bytes_bold.data, bytes_bold.len, false)
+		font_mono: C.fonsAddFontMem(fons, c'sans', bytes_mono.data, bytes_mono.len, false)
+		font_italic: C.fonsAddFontMem(fons, c'sans', bytes_italic.data, bytes_italic.len,
 			false)
 		scale: c.scale
 	}
 }
 
-fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
+pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
@@ -186,7 +189,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	// }
 	ctx.set_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text_.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, &char(text_.str), 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
@@ -212,7 +215,7 @@ pub fn (ctx &Context) text_width(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
 			ctx.text_width('i') // TODO fix this in fontstash?
@@ -233,7 +236,7 @@ pub fn (ctx &Context) text_height(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -243,7 +246,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 		return 0, 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -258,7 +261,9 @@ pub fn system_font_path() string {
 	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
 		'FreeSans.ttf', 'DejaVuSans.ttf']
 	$if macos {
-		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf', '/Library/Fonts/Arial.ttf']
+		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
+			'/Library/Fonts/Arial.ttf',
+		]
 		for font in fonts {
 			if os.is_file(font) {
 				return font
@@ -266,8 +271,10 @@ pub fn system_font_path() string {
 		}
 	}
 	$if android {
-		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml', '/etc/system_fonts.xml',
-			'/etc/fonts.xml', '/data/fonts/fonts.xml', '/etc/fallback_fonts.xml']
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
+			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
+			'/etc/fallback_fonts.xml',
+		]
 		font_locations := ['/system/fonts', '/data/fonts']
 		for xml_file in xml_files {
 			if os.is_file(xml_file) && os.is_readable(xml_file) {
@@ -290,7 +297,10 @@ pub fn system_font_path() string {
 			}
 		}
 	}
-	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
+	s := os.execute('fc-list')
+	if s.exit_code != 0 {
+		panic('failed to fetch system fonts')
+	}
 	system_fonts := s.output.split('\n')
 	for line in system_fonts {
 		for font in fonts {
@@ -307,47 +317,50 @@ pub fn system_font_path() string {
 fn get_font_path_variant(font_path string, variant FontVariant) string {
 	// TODO: find some way to make this shorter and more eye-pleasant
 	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
-	mut fpath := font_path.replace('.ttf', '')
+	mut file := os.file_name(font_path)
+	mut fpath := font_path.replace(file, '')
+	file = file.replace('.ttf', '')
+
 	match variant {
 		.normal {}
 		.bold {
 			if fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', '-Bold')
-			} else if fpath.starts_with('DejaVuSans') {
-				fpath += '-Bold'
-			} else if fpath.to_lower().starts_with('arial') {
-				fpath += 'bd'
+				file = file.replace('-Regular', '-Bold')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Bold'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'bd'
 			} else {
-				fpath += '-bold'
+				file += '-bold'
 			}
 			$if macos {
 				if os.exists('SFNS-bold') {
-					fpath = 'SFNS-bold'
+					file = 'SFNS-bold'
 				}
 			}
 		}
 		.italic {
-			if fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', '-Italic')
-			} else if fpath.starts_with('DejaVuSans') {
-				fpath += '-Oblique'
-			} else if fpath.to_lower().starts_with('arial') {
-				fpath += 'i'
+			if file.ends_with('-Regular') {
+				file = file.replace('-Regular', '-Italic')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Oblique'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'i'
 			} else {
-				fpath += 'Italic'
+				file += 'Italic'
 			}
 		}
 		.mono {
-			if !fpath.ends_with('Mono-Regular') && fpath.ends_with('-Regular') {
-				fpath = fpath.replace('-Regular', 'Mono-Regular')
-			} else if fpath.to_lower().starts_with('arial') {
+			if !file.ends_with('Mono-Regular') && file.ends_with('-Regular') {
+				file = file.replace('-Regular', 'Mono-Regular')
+			} else if file.to_lower().starts_with('arial') {
 				// Arial has no mono variant
 			} else {
-				fpath += 'Mono'
+				file += 'Mono'
 			}
 		}
 	}
-	return fpath + '.ttf'
+	return fpath + file + '.ttf'
 }
 
 fn debug_font_println(s string) {

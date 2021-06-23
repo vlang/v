@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module ast
 
-import v.table
 import v.util
 import strings
 
@@ -19,10 +18,10 @@ pub fn (node &FnDecl) modname() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
-		f.write('pub ')
+		f.write_string('pub ')
 	}
 	mut receiver := ''
 	if node.is_method {
@@ -33,6 +32,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)
+		if node.params[0].is_auto_rec {
+			styp = styp.trim('&')
+		}
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
@@ -56,22 +58,34 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	// 		name = 'JS.$name'
 	// 	}
 	// }
-	f.write('fn $receiver$name')
+	f.write_string('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
-		f.write(' ')
+		f.write_string(' ')
 	}
-	if node.generic_params.len > 0 {
-		f.write('<')
-		for i, param in node.generic_params {
-			is_last := i == node.generic_params.len - 1
-			f.write(param.name)
-			if !is_last {
-				f.write(', ')
+	mut add_para_types := true
+	if node.generic_names.len > 0 {
+		if node.is_method {
+			sym := t.get_type_symbol(node.params[0].typ)
+			if sym.info is Struct {
+				generic_names := sym.info.generic_types.map(t.get_type_symbol(it).name)
+				if generic_names == node.generic_names {
+					add_para_types = false
+				}
 			}
 		}
-		f.write('>')
+		if add_para_types {
+			f.write_string('<')
+			for i, gname in node.generic_names {
+				is_last := i == node.generic_names.len - 1
+				f.write_string(gname)
+				if !is_last {
+					f.write_string(', ')
+				}
+			}
+			f.write_string('>')
+		}
 	}
-	f.write('(')
+	f.write_string('(')
 	for i, arg in node.params {
 		// skip receiver
 		// if (node.is_method || node.is_interface) && i == 0 {
@@ -86,12 +100,12 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		should_add_type := true // is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
 		// (node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
-			f.write(arg.typ.share().str() + ' ')
+			f.write_string(arg.typ.share().str() + ' ')
 		}
-		f.write(arg.name)
+		f.write_string(arg.name)
 		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
-			// f.write(' mut')
+			// f.write_string(' mut')
 			if s.starts_with('&') {
 				s = s[1..]
 			}
@@ -102,24 +116,24 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		}
 		if should_add_type {
 			if !is_type_only {
-				f.write(' ')
+				f.write_string(' ')
 			}
 			if node.is_variadic && is_last_arg {
-				f.write('...')
+				f.write_string('...')
 			}
-			f.write(s)
+			f.write_string(s)
 		}
 		if !is_last_arg {
-			f.write(', ')
+			f.write_string(', ')
 		}
 	}
-	f.write(')')
-	if node.return_type != table.void_type {
+	f.write_string(')')
+	if node.return_type != void_type {
 		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		for mod, alias in m2a {
 			rs = rs.replace(mod, alias)
 		}
-		f.write(' ' + rs)
+		f.write_string(' ' + rs)
 	}
 	return f.str()
 }
@@ -138,6 +152,10 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
 		|| lit.precisions[i] != 987698
 	mut needs_braces := needs_fspec
+	sx := lit.exprs[i].str()
+	if sx.contains(r'"') || sx.contains(r"'") {
+		needs_braces = true
+	}
 	if !needs_braces {
 		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
 			next_char := lit.vals[i + 1][0]
@@ -162,6 +180,8 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
 						continue
+					} else if sub_expr.left is CastExpr || sub_expr.left is IndexExpr {
+						needs_braces = true
 					}
 					break
 				}
@@ -204,6 +224,12 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		AnonFn {
+			return 'anon_fn'
+		}
+		DumpExpr {
+			return 'dump($x.expr.str())'
+		}
 		ArrayInit {
 			mut fields := []string{}
 			if x.has_len {
@@ -221,6 +247,12 @@ pub fn (x Expr) str() string {
 				return x.exprs.str()
 			}
 		}
+		AsCast {
+			return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
+		}
+		AtExpr {
+			return '$x.val'
+		}
 		CTempVar {
 			return x.orig.str()
 		}
@@ -229,9 +261,6 @@ pub fn (x Expr) str() string {
 		}
 		CastExpr {
 			return '${x.typname}($x.expr.str())'
-		}
-		AtExpr {
-			return '$x.val'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -255,11 +284,14 @@ pub fn (x Expr) str() string {
 				return '/* $lines.len lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '// $text'
+				return '´// $text´'
 			}
 		}
 		ComptimeSelector {
 			return '${x.left}.$$x.field_expr'
+		}
+		ConcatExpr {
+			return x.vals.map(it.str()).join(',')
 		}
 		EnumVal {
 			return '.$x.val'
@@ -267,8 +299,28 @@ pub fn (x Expr) str() string {
 		FloatLiteral, IntegerLiteral {
 			return x.val
 		}
+		GoExpr {
+			return 'go $x.call_expr'
+		}
 		Ident {
 			return x.name
+		}
+		IfExpr {
+			mut parts := []string{}
+			dollar := if x.is_comptime { '$' } else { '' }
+			for i, branch in x.branches {
+				if i != 0 {
+					parts << ' } ${dollar}else '
+				}
+				if i < x.branches.len - 1 || !x.has_else {
+					parts << ' ${dollar}if ' + branch.cond.str() + ' { '
+				}
+				for stmt in branch.stmts {
+					parts << stmt.str()
+				}
+			}
+			parts << ' }'
+			return parts.join('')
 		}
 		IndexExpr {
 			return '$x.left.str()[$x.index.str()]'
@@ -287,6 +339,12 @@ pub fn (x Expr) str() string {
 		ParExpr {
 			return '($x.expr)'
 		}
+		PostfixExpr {
+			if x.op == .question {
+				return '$x.expr ?'
+			}
+			return '$x.expr$x.op'
+		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
 		}
@@ -304,38 +362,41 @@ pub fn (x Expr) str() string {
 			return '${x.expr.str()}.$x.field_name'
 		}
 		SizeOf {
+			if x.is_type {
+				return 'sizeof(${global_table.type_to_str(x.typ)})'
+			}
 			return 'sizeof($x.expr)'
 		}
 		OffsetOf {
-			return '__offsetof($x.struct_type, $x.field)'
+			return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
 		}
 		StringInterLiteral {
-			mut res := []string{}
-			res << "'"
+			mut res := strings.new_builder(50)
+			res.write_string("'")
 			for i, val in x.vals {
-				res << val
+				res.write_string(val)
 				if i >= x.exprs.len {
 					break
 				}
-				res << '$'
+				res.write_string('$')
 				fspec_str, needs_braces := x.get_fspec_braces(i)
 				if needs_braces {
-					res << '{'
-					res << x.exprs[i].str()
-					res << fspec_str
-					res << '}'
+					res.write_string('{')
+					res.write_string(x.exprs[i].str())
+					res.write_string(fspec_str)
+					res.write_string('}')
 				} else {
-					res << x.exprs[i].str()
+					res.write_string(x.exprs[i].str())
 				}
 			}
-			res << "'"
-			return res.join('')
+			res.write_string("'")
+			return res.str()
 		}
 		StringLiteral {
 			return "'$x.val'"
 		}
-		Type {
-			return 'Type($x.typ)'
+		TypeNode {
+			return 'TypeNode($x.typ)'
 		}
 		TypeOf {
 			return 'typeof($x.expr.str())'
@@ -345,6 +406,9 @@ pub fn (x Expr) str() string {
 		}
 		UnsafeExpr {
 			return 'unsafe { $x.expr }'
+		}
+		None {
+			return 'none'
 		}
 		else {}
 	}
@@ -406,9 +470,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(fn (f ConstField) string {
-				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
-			})
+			fields := node.fields.map(field_to_string)
 			return 'const (${fields.join(' ')})'
 		}
 		ExprStmt {
@@ -439,9 +501,15 @@ pub fn (node Stmt) str() string {
 	}
 }
 
+fn field_to_string(f ConstField) string {
+	x := f.name.trim_prefix(f.mod + '.')
+	return '$x = $f.expr'
+}
+
 pub fn (e CompForKind) str() string {
 	match e {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
+		.attributes { return 'attributes' }
 	}
 }

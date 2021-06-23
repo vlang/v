@@ -15,7 +15,7 @@ pub const (
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'strings', 'builtin']
 	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
 )
 
@@ -25,13 +25,33 @@ pub const (
 	}
 )
 
+const (
+	const_tabs = [
+		'',
+		'\t',
+		'\t\t',
+		'\t\t\t',
+		'\t\t\t\t',
+		'\t\t\t\t\t',
+		'\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t\t',
+	]
+)
+
+pub fn tabs(n int) string {
+	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+}
+
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
-		C.snprintf(charptr(&buf[0]), 50, '%s', C.V_COMMIT_HASH)
-		return tos_clone(buf)
+		bp := &buf[0]
+		C.snprintf(&char(bp), 50, c'%s', C.V_COMMIT_HASH)
+		return tos_clone(bp)
 	}
 }
 
@@ -98,8 +118,9 @@ pub fn githash(should_get_from_filesystem bool) string {
 	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
-		C.snprintf(charptr(&buf[0]), 50, '%s', C.V_CURRENT_COMMIT_HASH)
-		return tos_clone(buf)
+		bp := &buf[0]
+		C.snprintf(&char(bp), 50, c'%s', C.V_CURRENT_COMMIT_HASH)
+		return tos_clone(bp)
 	}
 }
 
@@ -113,15 +134,15 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
-pub fn resolve_vroot(str string, dir string) ?string {
+pub fn resolve_vmodroot(str string, dir string) ?string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		return error('To use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+		return error('To use @VMODROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
-	return str.replace('@VROOT', os.real_path(vmod_path))
+	return str.replace('@VMODROOT', os.real_path(vmod_path))
 }
 
 // resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
@@ -194,13 +215,12 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_exe = path_of_executable(tool_basename)
 		tool_source = tool_basename + '.v'
 	}
-	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
 		println('launch_tool vroot       : $vroot')
-		println('launch_tool tool_args   : $tool_args')
 		println('launch_tool tool_source : $tool_source')
-		println('launch_tool tool_command: $tool_command')
+		println('launch_tool tool_exe    : $tool_exe')
+		println('launch_tool tool_args   : $tool_args')
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
@@ -227,16 +247,17 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.exec(compilation_command) or { panic(err) }
+		tool_compilation := os.execute_or_panic(compilation_command)
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
 			exit(1)
 		}
 	}
-	if is_verbose {
-		println('launch_tool running tool command: $tool_command ...')
+	$if windows {
+		exit(os.system('"$tool_exe" $tool_args'))
+	} $else {
+		os.execvp(tool_exe, args) or { panic(err) }
 	}
-	exit(os.system(tool_command))
 }
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
@@ -351,36 +372,17 @@ pub fn skip_bom(file_content string) string {
 	return raw_text
 }
 
-[inline]
-pub fn imin(a int, b int) int {
-	return if a < b { a } else { b }
-}
-
-[inline]
-pub fn imax(a int, b int) int {
-	return if a > b { a } else { b }
-}
-
 pub fn replace_op(s string) string {
-	if s.len == 1 {
-		last_char := s[s.len - 1]
-		suffix := match last_char {
-			`+` { '_plus' }
-			`-` { '_minus' }
-			`*` { '_mult' }
-			`/` { '_div' }
-			`%` { '_mod' }
-			`<` { '_lt' }
-			`>` { '_gt' }
-			else { '' }
-		}
-		return s[..s.len - 1] + suffix
-	} else {
-		suffix := match s {
-			'==' { '_eq' }
-			else { '' }
-		}
-		return s[..s.len - 2] + suffix
+	return match s {
+		'+' { '_plus' }
+		'-' { '_minus' }
+		'*' { '_mult' }
+		'/' { '_div' }
+		'%' { '_mod' }
+		'<' { '_lt' }
+		'>' { '_gt' }
+		'==' { '_eq' }
+		else { '' }
 	}
 }
 
@@ -399,7 +401,7 @@ pub fn join_env_vflags_and_os_args() []string {
 		}
 		return non_empty(args)
 	}
-	return non_empty(os.args)
+	return os.args
 }
 
 fn non_empty(arg []string) []string {
@@ -421,8 +423,9 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 		if is_verbose {
 			eprintln('check_module_is_installed: updating with $update_cmd ...')
 		}
-		update_res := os.exec(update_cmd) or {
-			return error('can not start $update_cmd, error: $err')
+		update_res := os.execute(update_cmd)
+		if update_res.exit_code < 0 {
+			return error('can not start $update_cmd, error: $update_res.output')
 		}
 		if update_res.exit_code != 0 {
 			eprintln('Warning: `$modulename` exists, but is not updated.
@@ -439,11 +442,12 @@ and the existing module `$modulename` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from $murl ...')
 	}
-	cloning_res := os.exec('git clone $murl $mpath') or {
-		return error('git is not installed, error: $err')
+	cloning_res := os.execute('git clone $murl $mpath')
+	if cloning_res.exit_code < 0 {
+		return error_with_code('git is not installed, error: $cloning_res.output', cloning_res.exit_code)
 	}
 	if cloning_res.exit_code != 0 {
-		return error('cloning failed, details: $cloning_res.output')
+		return error_with_code('cloning failed, details: $cloning_res.output', cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
 		return error('even after cloning, $mod_v_file is still missing')
@@ -509,7 +513,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }
@@ -542,4 +546,26 @@ pub fn get_vtmp_folder() string {
 pub fn should_bundle_module(mod string) bool {
 	return mod in util.bundle_modules
 		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
+}
+
+// find_all_v_files - given a list of files/folders, finds all .v/.vsh files
+// if some of the files/folders on the list does not exist, or a file is not
+// a .v or .vsh file, returns an error instead.
+pub fn find_all_v_files(roots []string) ?[]string {
+	mut files := []string{}
+	for file in roots {
+		if os.is_dir(file) {
+			files << os.walk_ext(file, '.v')
+			files << os.walk_ext(file, '.vsh')
+			continue
+		}
+		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
+			return error('v fmt can only be used on .v files.\nOffending file: "$file"')
+		}
+		if !os.exists(file) {
+			return error('"$file" does not exist')
+		}
+		files << file
+	}
+	return files
 }

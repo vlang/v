@@ -32,7 +32,7 @@ pub:
 // it supports windows for regular files but it doesn't matter if you use owner, group or others when checking permissions on windows
 pub fn inode(path string) FileMode {
 	mut attr := C.stat{}
-	unsafe { C.stat(charptr(path.str), &attr) }
+	unsafe { C.stat(&char(path.str), &attr) }
 	mut typ := FileType.regular
 	if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFDIR) {
 		typ = .directory

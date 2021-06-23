@@ -2,4 +2,7 @@ fn main() {
 	a := b
 	b := c
 	c := a
+	_ = a
+	_ = b
+	_ = c
 }

@@ -7,7 +7,8 @@ Usage:
 	Note: You can also combine files and directories.
 
 Flags:
-	-hide-warnings    Do not print warnings, only errors.
+	-silent               Do not show a progress bar.
+	-w, -hide-warnings    Do not print warnings, only errors.
 
 NB: There are several special keywords, which you can put after the code fences for v.
 These are:

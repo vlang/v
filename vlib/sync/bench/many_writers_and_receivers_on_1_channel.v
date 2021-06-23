@@ -27,8 +27,8 @@ mut:
 	n_readers int
 	n_writers int
 	//
-	pops_wg   &sync.WaitGroup
-	pops      []Event
+	pops_wg &sync.WaitGroup
+	pops    []Event
 	//
 	pushes_wg &sync.WaitGroup
 	pushes    []Event

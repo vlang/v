@@ -6,11 +6,21 @@ mut:
 fn test_array_sort_by_references() {
 	mut a := []&Container{}
 
-	a << &Container{ name: 'a' }
-	a << &Container{ name: 'b' }
-	a << &Container{ name: 'c' }
-	a << &Container{ name: 'd' }
-	a << &Container{ name: 'e' }
+	a << &Container{
+		name: 'a'
+	}
+	a << &Container{
+		name: 'b'
+	}
+	a << &Container{
+		name: 'c'
+	}
+	a << &Container{
+		name: 'd'
+	}
+	a << &Container{
+		name: 'e'
+	}
 
 	a.sort(a.name > b.name)
 	println(a)

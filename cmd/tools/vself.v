@@ -27,12 +27,12 @@ fn main() {
 		// The user just wants an independent copy of v, and so we are done.
 		return
 	}
-	backup_old_version_and_rename_newer() or { panic(err) }
+	backup_old_version_and_rename_newer() or { panic(err.msg) }
 	println('V built successfully!')
 }
 
 fn compile(vroot string, cmd string) {
-	result := os.exec(cmd) or { panic(err) }
+	result := os.execute_or_panic(cmd)
 	if result.exit_code != 0 {
 		eprintln('cannot compile to `$vroot`: \n$result.output')
 		exit(1)
@@ -67,16 +67,18 @@ fn backup_old_version_and_rename_newer() ?bool {
 	bak_file := os.real_path(short_bak_file)
 
 	list_folder('before:', 'removing $bak_file ...')
-	os.rm(bak_file) or { errors << 'failed removing $bak_file: $err' }
+	if os.exists(bak_file) {
+		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
+	}
 
 	list_folder('', 'moving $v_file to $bak_file ...')
-	os.mv(v_file, bak_file) or { errors << err }
+	os.mv(v_file, bak_file) or { errors << err.msg }
 
 	list_folder('', 'removing $v_file ...')
-	os.rm(v_file) or { }
+	os.rm(v_file) or {}
 
 	list_folder('', 'moving $v2_file to $v_file ...')
-	os.mv_by_cp(v2_file, v_file) or { panic(err) }
+	os.mv_by_cp(v2_file, v_file) or { panic(err.msg) }
 
 	list_folder('after:', '')
 

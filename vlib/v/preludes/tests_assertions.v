@@ -86,3 +86,21 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 	println('$final_funcname ($final_filepath)')
 	*/
 }
+
+fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+	filepath := if use_relative_paths { file } else { os.real_path(file) }
+	mut final_filepath := filepath + ':$line_nr:'
+	if use_color {
+		final_filepath = term.gray(final_filepath)
+	}
+	mut final_funcname := 'fn ' + fn_name.replace('main.', '').replace('__', '.')
+	if use_color {
+		final_funcname = term.red('✗ ' + final_funcname)
+	}
+	final_msg := if use_color { term.dim(errmsg) } else { errmsg }
+	eprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
+	if os.is_file(file) {
+		source_lines := os.read_lines(file) or { []string{len: line_nr + 1} }
+		eprintln('${line_nr:5} | ${source_lines[line_nr - 1]}')
+	}
+}

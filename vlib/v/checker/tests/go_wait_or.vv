@@ -1,0 +1,41 @@
+fn d(n int) f64 { return f64(n) }
+fn e(n int) { }
+fn f(n int) ?f64 { return f64(n) }
+fn g(n int) ? { }
+
+fn main() {
+	tg := [
+		go d(0)
+		go d(1)
+	]
+	r := tg.wait() ?
+	println(r)
+	s := tg[0].wait() or { panic('problem') }
+	println(s)
+	tg2 := [
+		go e(0)
+		go e(1)
+	]
+	tg2.wait() or { panic('problem') }
+	tg2[0].wait() ?
+	tg3 := [
+		go f(0)
+		go f(1)
+	]
+	tg3.wait() or { panic('problem') }
+	for t in tg3 {
+		a := t.wait()
+		println(a)
+	}
+	for i, _ in tg3 {
+		a := tg3[i].wait()
+		println(a)
+	}
+	tg4 := [
+		go g(0)
+		go g(1)
+	]
+	tg4.wait()
+	tg4[0].wait()
+	go g(3) or { panic('problem') }
+}

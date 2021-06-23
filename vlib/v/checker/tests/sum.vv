@@ -10,4 +10,5 @@ fn sum() {
 	_ := Var(`J`)
 	mut s2 := Var('')
 	s2 = true
+	_ = s2
 }

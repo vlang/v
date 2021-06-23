@@ -1,0 +1,6 @@
+vlib/v/parser/tests/sql_no_db_expr_a.vv:3:6: error: invalid expression: unexpected token `:=`, expecting database
+    1 | fn x() {
+    2 |     // SqlStmt
+    3 |     sql :=
+      |         ~~
+    4 | }

@@ -3,4 +3,5 @@ vlib/v/checker/tests/assign_sumtype_err.vv:13:9: error: cannot assign to `decl`:
    12 |     mut decl := Decl{}
    13 |     decl = stmt
       |            ~~~~
-   14 | }
+   14 |     _ = decl
+   15 | }

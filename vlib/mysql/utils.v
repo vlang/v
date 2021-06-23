@@ -11,7 +11,7 @@ fn get_errno(conn &C.MYSQL) int {
 }
 
 // resolve_nil_str - returns an empty string if passed value is a nil pointer.
-fn resolve_nil_str(ptr byteptr) string {
+fn resolve_nil_str(ptr &byte) string {
 	if isnil(ptr) {
 		return ''
 	}
@@ -19,7 +19,7 @@ fn resolve_nil_str(ptr byteptr) string {
 }
 
 [inline]
-fn mystring(b byteptr) string {
+fn mystring(b &byte) string {
 	unsafe {
 		return b.vstring()
 	}

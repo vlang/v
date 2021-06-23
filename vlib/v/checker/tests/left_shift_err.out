@@ -1,6 +1,0 @@
-vlib/v/checker/tests/left_shift_err.vv:3:7: error: cannot append `string` to `[]int`
-    1 | fn main() {
-    2 |     mut l := []int{}
-    3 |     l << 'test'
-      |          ~~~~~~
-    4 | }

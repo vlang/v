@@ -17,7 +17,7 @@ fn check_cache_entry_fpath_invariants(x string, extension string) {
 fn testsuite_begin() {
 	os.setenv('VCACHE', vcache_folder, true)
 	// eprintln('testsuite_begin, vcache_folder = $vcache_folder')
-	os.rmdir_all(vcache_folder) or { }
+	os.rmdir_all(vcache_folder) or {}
 	vcache.new_cache_manager([])
 	assert os.is_dir(vcache_folder)
 }
@@ -96,6 +96,6 @@ fn test_readme_exists_and_is_readable() {
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(vcache_folder) or { }
+	os.rmdir_all(vcache_folder) or {}
 	assert !os.is_dir(vcache_folder)
 }

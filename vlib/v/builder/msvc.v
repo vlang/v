@@ -39,14 +39,14 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
 		unsafe {
 			for version in versions {
-				required_bytes := 0 // TODO mut
+				required_bytes := u32(0) // TODO mut
 				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
 				length := required_bytes / 2
 				if result != 0 {
 					continue
 				}
 				alloc_length := (required_bytes + 2)
-				mut value := &u16(malloc(alloc_length))
+				mut value := &u16(malloc_noscan(int(alloc_length)))
 				if isnil(value) {
 					continue
 				}
@@ -81,14 +81,27 @@ struct WindowsKit {
 // Try and find the root key for installed windows kits
 fn find_windows_kit_root(target_arch string) ?WindowsKit {
 	$if windows {
+		wkroot := find_windows_kit_root_by_reg(target_arch) or {
+			if wkroot := find_windows_kit_root_by_env(target_arch) {
+				return wkroot
+			}
+			return err
+		}
+
+		return wkroot
+	} $else {
+		return error('Host OS does not support finding a windows kit')
+	}
+}
+
+// Try to find the root key for installed windows kits from registry
+fn find_windows_kit_root_by_reg(target_arch string) ?WindowsKit {
+	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
 		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
 			&root_key)
-		// TODO: Fix defer inside ifs
-		// defer {
-		// C.RegCloseKey(root_key)
-		// }
+
 		if rc != 0 {
 			return error('Unable to open root key')
 		}
@@ -97,30 +110,43 @@ fn find_windows_kit_root(target_arch string) ?WindowsKit {
 			C.RegCloseKey(root_key)
 			return error('Unable to find a windows kit')
 		}
-		kit_lib := kit_root + 'Lib'
-		files := os.ls(kit_lib) ?
-		mut highest_path := ''
-		mut highest_int := 0
-		for f in files {
-			no_dot := f.replace('.', '')
-			v_int := no_dot.int()
-			if v_int > highest_int {
-				highest_int = v_int
-				highest_path = f
-			}
-		}
-		kit_lib_highest := kit_lib + '\\$highest_path'
-		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
 		C.RegCloseKey(root_key)
-		return WindowsKit{
-			um_lib_path: kit_lib_highest + '\\um\\$target_arch'
-			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$target_arch'
-			um_include_path: kit_include_highest + '\\um'
-			ucrt_include_path: kit_include_highest + '\\ucrt'
-			shared_include_path: kit_include_highest + '\\shared'
+		return new_windows_kit(kit_root, target_arch)
+	} $else {
+		return error('Host OS does not support finding a windows kit')
+	}
+}
+
+fn new_windows_kit(kit_root string, target_arch string) ?WindowsKit {
+	kit_lib := kit_root + 'Lib'
+	files := os.ls(kit_lib) ?
+	mut highest_path := ''
+	mut highest_int := 0
+	for f in files {
+		no_dot := f.replace('.', '')
+		v_int := no_dot.int()
+		if v_int > highest_int {
+			highest_int = v_int
+			highest_path = f
 		}
 	}
-	return error('Host OS does not support finding a windows kit')
+	kit_lib_highest := kit_lib + '\\$highest_path'
+	kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
+	return WindowsKit{
+		um_lib_path: kit_lib_highest + '\\um\\$target_arch'
+		ucrt_lib_path: kit_lib_highest + '\\ucrt\\$target_arch'
+		um_include_path: kit_include_highest + '\\um'
+		ucrt_include_path: kit_include_highest + '\\ucrt'
+		shared_include_path: kit_include_highest + '\\shared'
+	}
+}
+
+fn find_windows_kit_root_by_env(target_arch string) ?WindowsKit {
+	kit_root := os.getenv('WindowsSdkDir')
+	if kit_root == '' {
+		return error('empty WindowsSdkDir')
+	}
+	return new_windows_kit(kit_root, target_arch)
 }
 
 struct VsInstallation {
@@ -130,36 +156,76 @@ struct VsInstallation {
 }
 
 fn find_vs(vswhere_dir string, host_arch string, target_arch string) ?VsInstallation {
-	$if !windows {
+	$if windows {
+		vsinst := find_vs_by_reg(vswhere_dir, host_arch, target_arch) or {
+			if vsinst := find_vs_by_env(host_arch, target_arch) {
+				return vsinst
+			}
+			return err
+		}
+		return vsinst
+	} $else {
 		return error('Host OS does not support finding a Visual Studio installation')
 	}
-	// Emily:
-	// VSWhere is guaranteed to be installed at this location now
-	// If its not there then end user needs to update their visual studio
-	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
-	res_output := res.output.trim_right('\r\n')
-	// println('res: "$res"')
-	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
-		// println('Unable to find msvc version')
-		return error('Unable to find vs installation')
-	}
-	version2 := version // TODO remove. cgen option bug if expr
-	// println('version: $version')
-	v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
-	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
-	if os.exists('$lib_path\\vcruntime.lib') {
-		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
-		// println('$lib_path $include_path')
-		return VsInstallation{
-			exe_path: p
-			lib_path: lib_path
-			include_path: include_path
+}
+
+fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsInstallation {
+	$if windows {
+		// Emily:
+		// VSWhere is guaranteed to be installed at this location now
+		// If its not there then end user needs to update their visual studio
+		// installation!
+		res := os.execute('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+		if res.exit_code != 0 {
+			return error_with_code(res.output, res.exit_code)
 		}
+		res_output := res.output.trim_right('\r\n')
+		// println('res: "$res"')
+		version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+			// println('Unable to find msvc version')
+			return error('Unable to find vs installation')
+		}
+		version2 := version // TODO remove. cgen option bug if expr
+		// println('version: $version')
+		v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
+		lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
+		include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
+		if os.exists('$lib_path\\vcruntime.lib') {
+			p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
+			// println('$lib_path $include_path')
+			return VsInstallation{
+				exe_path: p
+				lib_path: lib_path
+				include_path: include_path
+			}
+		}
+		println('Unable to find vs installation (attempted to use lib path "$lib_path")')
+		return error('Unable to find vs exe folder')
+	} $else {
+		return error('Host OS does not support finding a Visual Studio installation')
 	}
-	println('Unable to find vs installation (attempted to use lib path "$lib_path")')
-	return error('Unable to find vs exe folder')
+}
+
+fn find_vs_by_env(host_arch string, target_arch string) ?VsInstallation {
+	vs_dir := os.getenv('VSINSTALLDIR')
+	if vs_dir == '' {
+		return error('empty VSINSTALLDIR')
+	}
+
+	vc_tools_dir := os.getenv('VCToolsInstallDir')
+	if vc_tools_dir == '' {
+		return error('empty VCToolsInstallDir')
+	}
+
+	bin_dir := '${vc_tools_dir}bin\\Host$host_arch\\$target_arch'
+	lib_path := '${vc_tools_dir}lib\\$target_arch'
+	include_path := '${vc_tools_dir}include'
+
+	return VsInstallation{
+		exe_path: bin_dir
+		lib_path: lib_path
+		include_path: include_path
+	}
 }
 
 fn find_msvc(m64_target bool) ?MsvcResult {
@@ -257,7 +323,7 @@ pub fn (mut v Builder) cc_msvc() {
 			println('`builtin.obj` not found')
 			exit(1)
 		}
-		for imp in v.table.imports {
+		for imp in v.ast.imports {
 			if imp == 'webview' {
 				continue
 			}
@@ -315,8 +381,9 @@ pub fn (mut v Builder) cc_msvc() {
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
 	util.timing_start('C msvc')
-	res := os.exec(cmd) or {
-		println(err)
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		eprintln(res.output)
 		verror('msvc error')
 		return
 	}
@@ -367,11 +434,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
 	}
-	res := os.exec(cmd) or {
-		println('msvc: failed to execute msvc compiler (to build a thirdparty object); cmd: $cmd')
-		verror(err)
-		return
-	}
+	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		println('msvc: failed to build a thirdparty object; cmd: $cmd')
 		verror(res.output)

@@ -3,6 +3,7 @@
 // Don't use this editor for any serious work.
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
+import math.mathutil as mu
 import os
 import term.ui as tui
 
@@ -300,7 +301,7 @@ fn (mut b Buffer) free() {
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN)
 	}
 	for line in b.lines {
-		unsafe {line.free()}
+		unsafe { line.free() }
 	}
 	unsafe { b.lines.free() }
 }
@@ -329,11 +330,11 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			}
 		}
 		.page_up {
-			dlines := imin(b.cursor.pos_y, amount)
+			dlines := mu.min(b.cursor.pos_y, amount)
 			b.move_updown(-dlines)
 		}
 		.page_down {
-			dlines := imin(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			dlines := mu.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
 			b.move_updown(dlines)
 		}
 		.left {
@@ -374,12 +375,12 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 	}
 	// first, move past all non-`a-zA-Z0-9_` characters
 	for x + a >= 0 && x + a < line.len && !(line[x + a].is_letter()
-		|| line[x + a].is_digit()|| line[x + a] == `_`) {
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
 		x += a
 	}
 	// then, move past all the letters and numbers
 	for x + a >= 0 && x + a < line.len && (line[x + a].is_letter()
-		|| line[x + a].is_digit()|| line[x + a] == `_`) {
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
 		x += a
 	}
 	// if the cursor is out of bounds, move it to the next/previous line
@@ -390,22 +391,6 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 		x = 0
 	}
 	b.cursor.set(x, y)
-}
-
-fn imax(x int, y int) int {
-	return if x < y {
-		y
-	} else {
-		x
-	}
-}
-
-fn imin(x int, y int) int {
-	return if x < y {
-		x
-	} else {
-		y
-	}
 }
 
 struct Cursor {
@@ -515,17 +500,17 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.del(1)
 			}
 			.left {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.left)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .left)
 				}
 				a.magnet_x = buffer.cursor.pos_x
 			}
 			.right {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.right)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .right)
 				}
 				a.magnet_x = buffer.cursor.pos_x
@@ -551,16 +536,16 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.move_cursor(1, .end)
 			}
 			48...57, 97...122 { // 0-9a-zA-Z
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					if e.code == .s {
 						a.save()
 					}
-				} else if e.modifiers in [tui.shift, 0] && e.code != .null {
+				} else if !(e.modifiers.has(.ctrl | .alt) || e.code == .null) {
 					buffer.put(e.ascii.ascii_str())
 				}
 			}
 			else {
-				if e.modifiers == tui.alt {
+				if e.modifiers == .alt {
 					if e.code == .comma {
 						a.visit_prev_file()
 						return

@@ -1,5 +1,5 @@
 import flag
-import field_publicity
+import v.tests.field_publicity
 
 struct Foo {
 	x int
@@ -19,12 +19,16 @@ fn test_embed() {
 }
 
 fn test_embed_direct_access() {
-	b := Bar{Foo: Foo{}}
+	b := Bar{
+		Foo: Foo{}
+	}
 	assert b.Foo.y == 5
 }
 
 fn test_default_value() {
-	b := Bar{Foo: Foo{}}
+	b := Bar{
+		Foo: Foo{}
+	}
 	assert b.y == 5
 }
 
@@ -32,7 +36,9 @@ fn test_default_value_without_init() {
 	b := Bar{}
 	assert b.y == 5
 }
-/* TODO
+
+/*
+TODO
 fn test_initialize() {
 	b := Bar{x: 1, y: 2}
 	assert b.x == 1
@@ -57,9 +63,11 @@ struct BarGeneric<T> {
 pub:
 	foo T
 }
+
 struct BarGenericContainer {
 	BarGeneric<int>
 }
+
 fn test_generic_embed() {
 	b := BarGenericContainer{}
 	assert b.BarGeneric.foo == 0
@@ -83,7 +91,7 @@ fn test_assign() {
 
 fn test_embed_is_public() {
 	a := field_publicity.App{}
-	assert a.Context.name == ''  
+	assert a.Context.name == ''
 }
 
 struct Eggs {

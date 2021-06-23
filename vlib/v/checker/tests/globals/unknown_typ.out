@@ -1,0 +1,11 @@
+vlib/v/checker/tests/globals/unknown_typ.vv:1:12: error: unknown type `foo`
+    1 | __global x foo
+      |            ~~~
+    2 | __global (
+    3 |     y = float(5.0)
+vlib/v/checker/tests/globals/unknown_typ.vv:3:6: error: unknown type `float`
+    1 | __global x foo
+    2 | __global (
+    3 |     y = float(5.0)
+      |         ~~~~~
+    4 | )

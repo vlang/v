@@ -89,7 +89,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	mut read_buf := [1]byte{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
-		len := ws.socket_read_ptr(byteptr(&read_buf), 1) ?
+		len := ws.socket_read_ptr(&read_buf[0], 1) ?
 		if len != 1 {
 			return error('expected read all message, got zero')
 		}
@@ -148,7 +148,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
 				ws.logger.error('UTF8 validation error: $err, len of payload($frame_payload.len)')
 				ws.send_error_event('UTF8 validation error: $err, len of payload($frame_payload.len)')
-				return error(err)
+				return err
 			}
 			msg := Message{
 				opcode: OPCode(frame.opcode)
@@ -263,14 +263,14 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			frame.header_len += 8
 			// these shift operators needs 64 bit on clang with -prod flag
 			mut payload_len := u64(0)
-			payload_len |= buffer[2] << 56
-			payload_len |= buffer[3] << 48
-			payload_len |= buffer[4] << 40
-			payload_len |= buffer[5] << 32
-			payload_len |= buffer[6] << 24
-			payload_len |= buffer[7] << 16
-			payload_len |= buffer[8] << 8
-			payload_len |= buffer[9]
+			payload_len |= u64(buffer[2]) << 56
+			payload_len |= u64(buffer[3]) << 48
+			payload_len |= u64(buffer[4]) << 40
+			payload_len |= u64(buffer[5]) << 32
+			payload_len |= u64(buffer[6]) << 24
+			payload_len |= u64(buffer[7]) << 16
+			payload_len |= u64(buffer[8]) << 8
+			payload_len |= u64(buffer[9])
 			frame.payload_len = int(payload_len)
 			if !frame.has_mask {
 				break

@@ -35,7 +35,7 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 
 pub fn (mut g Gen) gen_vprint_profile_stats() {
 	g.pcs_declarations.writeln('void vprint_profile_stats(){')
-	fstring := '"%14lu %14.3fms %14.0fns %s \\n"'
+	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
 	if g.pref.profile_file == '-' {
 		for pc_meta in g.pcs {
 			g.pcs_declarations.writeln('\tif ($pc_meta.vpc_calls) printf($fstring, $pc_meta.vpc_calls, $pc_meta.vpc_name/1000000.0, $pc_meta.vpc_name/$pc_meta.vpc_calls, "$pc_meta.fn_name" );')

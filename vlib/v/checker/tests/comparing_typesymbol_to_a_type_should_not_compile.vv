@@ -1,17 +1,17 @@
-import v.table
+import v.ast
 
 fn main() {
-	t := table.new_table()
-	ityp := table.int_type
+	t := ast.new_table()
+	ityp := ast.int_type
 	isym := t.get_type_symbol(ityp)
 	println(ityp.debug())
 	println(isym)
 	println(isym.debug())
-	x := ityp == table.string_type
+	x := ityp == ast.string_type
 	// the next line should produce at least a warning, or even an error, without an explicit cast:
-	z := isym == table.string_type
+	z := isym == ast.string_type
 	println(typeof(isym).name)
-	println(typeof(table.string_type).name)
+	println(typeof(ast.string_type).name)
 	println(x)
 	println(z)
 }

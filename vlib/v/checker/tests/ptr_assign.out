@@ -3,3 +3,4 @@ vlib/v/checker/tests/ptr_assign.vv:3:5: error: cannot assign to `p`: expected `&
     2 | mut p := &v
     3 | p = 4
       |     ^
+    4 | _ = p

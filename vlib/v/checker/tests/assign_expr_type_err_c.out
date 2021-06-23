@@ -3,4 +3,5 @@ vlib/v/checker/tests/assign_expr_type_err_c.vv:3:2: error: operator *= not defin
     2 |     mut foo := 'hello'
     3 |     foo *= 10
       |     ~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

@@ -1,0 +1,20 @@
+vlib/v/checker/tests/sum_type_common_fields_alias_error.vv:35:14: error: field `name` does not exist or have the same type in all sumtype variants
+   33 |     }
+   34 |     println(m)
+   35 |     assert m[0].name == 'abc'
+      |                 ~~~~
+   36 |     assert m[1].name == 'def'
+   37 |     assert m[2].name == 'xyz'
+vlib/v/checker/tests/sum_type_common_fields_alias_error.vv:36:14: error: field `name` does not exist or have the same type in all sumtype variants
+   34 |     println(m)
+   35 |     assert m[0].name == 'abc'
+   36 |     assert m[1].name == 'def'
+      |                 ~~~~
+   37 |     assert m[2].name == 'xyz'
+   38 | }
+vlib/v/checker/tests/sum_type_common_fields_alias_error.vv:37:14: error: field `name` does not exist or have the same type in all sumtype variants
+   35 |     assert m[0].name == 'abc'
+   36 |     assert m[1].name == 'def'
+   37 |     assert m[2].name == 'xyz'
+      |                 ~~~~
+   38 | }

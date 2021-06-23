@@ -21,8 +21,8 @@ pub mut:
 	disable_help    bool
 	disable_version bool
 	disable_flags   bool
-	sort_flags      bool     = true
-	sort_commands   bool     = true
+	sort_flags      bool
+	sort_commands   bool
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
@@ -94,7 +94,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 		println('Command with the name `$subcmd.name` already exists')
 		exit(1)
 	}
-	subcmd.parent = cmd
+	subcmd.parent = unsafe { cmd }
 	cmd.commands << subcmd
 }
 
@@ -102,7 +102,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 // is linked as a chain.
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
-		subcmd.parent = cmd
+		subcmd.parent = unsafe { cmd }
 		subcmd.setup()
 	}
 }
@@ -210,7 +210,7 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-	if cmd.is_root() && int(cmd.execute) == 0 {
+	if cmd.is_root() && isnil(cmd.execute) {
 		if !cmd.disable_help {
 			cmd.execute_help()
 			return
@@ -224,19 +224,19 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	cmd.check_required_flags()
-	if int(cmd.pre_execute) > 0 {
+	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
 			eprintln('cli preexecution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.execute) > 0 {
+	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
 			eprintln('cli execution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.post_execute) > 0 {
+	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
 			eprintln('cli postexecution error: $err')
 			exit(1)

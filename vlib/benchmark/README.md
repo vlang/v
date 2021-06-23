@@ -31,10 +31,10 @@ import benchmark
 
 mut b := benchmark.start()
 // your code section 1 ...
-time.sleep_ms(1500)
+time.sleep(1500 * time.millisecond)
 b.measure('code_1')
 // your code section 2 ...
-time.sleep_ms(500)
+time.sleep(500 * time.millisecond)
 b.measure('code_2')
 ```
 

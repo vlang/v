@@ -10,9 +10,7 @@ fn t(options TOptions) bool {
 }
 
 fn test_short_struct_as_parameter() {
-	if t({
-		a: 1
-	}) {
+	if t(a: 1) {
 		assert true
 		return
 	}

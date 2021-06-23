@@ -1,8 +1,7 @@
-module main
-
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-//
+module main
+
 // This module follows a similar convention to Rust: `init` makes the
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
@@ -13,20 +12,45 @@ struct Create {
 mut:
 	name        string
 	description string
+	version     string
+	license     string
 }
 
 fn cerror(e string) {
 	eprintln('\nerror: $e')
 }
 
-fn vmod_content(name string, desc string) string {
+fn check_name(name string) string {
+	if name.trim_space().len == 0 {
+		cerror('project name cannot be empty')
+		exit(1)
+	}
+	if name.is_title() {
+		mut cname := name.to_lower()
+		if cname.contains(' ') {
+			cname = cname.replace(' ', '_')
+		}
+		eprintln('warning: the project name cannot be capitalized, the name will be changed to `$cname`')
+		return cname
+	}
+	if name.contains(' ') {
+		cname := name.replace(' ', '_')
+		eprintln('warning: the project name cannot contain spaces, the name will be changed to `$cname`')
+		return cname
+	}
+	return name
+}
+
+fn vmod_content(c Create) string {
 	return [
 		'Module {',
-		"	name: '$name'",
-		"	description: '$desc'",
-		"	version: '0.0.0'",
+		"	name: '$c.name'",
+		"	description: '$c.description'",
+		"	version: '$c.version'",
+		"	license: '$c.license'",
 		'	dependencies: []',
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -36,6 +60,7 @@ fn main_content() string {
 		'fn main() {',
 		"	println('Hello World!')",
 		'}',
+		'',
 	].join('\n')
 }
 
@@ -49,16 +74,17 @@ fn gen_gitignore(name string) string {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'',
 	].join('\n')
 }
 
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
 	mut vmod := os.create(vmod_path) or {
-		cerror(err)
+		cerror(err.msg)
 		exit(1)
 	}
-	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err) }
+	vmod.write_string(vmod_content(c)) or { panic(err) }
 	vmod.close()
 }
 
@@ -68,34 +94,35 @@ fn (c &Create) write_main(new bool) {
 	}
 	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
 	mut mainfile := os.create(main_path) or {
-		cerror(err)
+		cerror(err.msg)
 		exit(2)
 	}
-	mainfile.write_str(main_content()) or { panic(err) }
+	mainfile.write_string(main_content()) or { panic(err) }
 	mainfile.close()
 }
 
 fn (c &Create) create_git_repo(dir string) {
 	// Create Git Repo and .gitignore file
 	if !os.is_dir('$dir/.git') {
-		os.exec('git init $dir') or {
+		res := os.execute('git init $dir')
+		if res.exit_code != 0 {
 			cerror('Unable to create git repo')
 			exit(4)
 		}
-		if !os.exists('$dir/.gitignore') {
-			mut fl := os.create('$dir/.gitignore') or {
-				// We don't really need a .gitignore, it's just a nice-to-have
-				return
-			}
-			fl.write_str(gen_gitignore(c.name)) or { panic(err) }
-			fl.close()
+	}
+	if !os.exists('$dir/.gitignore') {
+		mut fl := os.create('$dir/.gitignore') or {
+			// We don't really need a .gitignore, it's just a nice-to-have
+			return
 		}
+		fl.write_string(gen_gitignore(c.name)) or { panic(err) }
+		fl.close()
 	}
 }
 
-fn create() {
+fn create(args []string) {
 	mut c := Create{}
-	c.name = os.input('Input your project name: ')
+	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
 	if c.name == '' {
 		cerror('project name cannot be empty')
 		exit(1)
@@ -108,7 +135,17 @@ fn create() {
 		cerror('$c.name folder already exists')
 		exit(3)
 	}
-	c.description = os.input('Input your project description: ')
+	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
+	default_version := '0.0.0'
+	c.version = os.input('Input your project version: ($default_version) ')
+	if c.version == '' {
+		c.version = default_version
+	}
+	default_license := 'MIT'
+	c.license = os.input('Input your project license: ($default_license) ')
+	if c.license == '' {
+		c.license = default_license
+	}
 	println('Initialising ...')
 	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
@@ -122,22 +159,28 @@ fn init_project() {
 		exit(3)
 	}
 	mut c := Create{}
-	c.name = os.file_name(os.getwd())
+	c.name = check_name(os.file_name(os.getwd()))
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
-	c.create_git_repo('')
+	c.create_git_repo('.')
+
 	println("Change your module's description in `v.mod`")
 }
 
 fn main() {
-	if os.args[1] == 'new' {
-		create()
-	} else if os.args[1] == 'init' {
-		init_project()
-	} else {
-		cerror('Unknown command: ${os.args[1]}')
-		exit(1)
+	cmd := os.args[1]
+	match cmd {
+		'new' {
+			create(os.args[2..])
+		}
+		'init' {
+			init_project()
+		}
+		else {
+			cerror('unknown command: $cmd')
+			exit(1)
+		}
 	}
 	println('Complete!')
 }

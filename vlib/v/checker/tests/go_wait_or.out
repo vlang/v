@@ -1,0 +1,69 @@
+vlib/v/checker/tests/go_wait_or.vv:11:17: error: unexpected `?`, the function `wait` does not return an optional
+    9 |         go d(1)
+   10 |     ]
+   11 |     r := tg.wait() ?
+      |                    ^
+   12 |     println(r)
+   13 |     s := tg[0].wait() or { panic('problem') }
+vlib/v/checker/tests/go_wait_or.vv:13:20: error: unexpected `or` block, the function `wait` does not return an optional
+   11 |     r := tg.wait() ?
+   12 |     println(r)
+   13 |     s := tg[0].wait() or { panic('problem') }
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~
+   14 |     println(s)
+   15 |     tg2 := [
+vlib/v/checker/tests/go_wait_or.vv:19:13: error: unexpected `or` block, the function `wait` does not return an optional
+   17 |         go e(1)
+   18 |     ]
+   19 |     tg2.wait() or { panic('problem') }
+      |                ~~~~~~~~~~~~~~~~~~~~~~~
+   20 |     tg2[0].wait() ?
+   21 |     tg3 := [
+vlib/v/checker/tests/go_wait_or.vv:20:16: error: unexpected `?`, the function `wait` does not return an optional
+   18 |     ]
+   19 |     tg2.wait() or { panic('problem') }
+   20 |     tg2[0].wait() ?
+      |                   ^
+   21 |     tg3 := [
+   22 |         go f(0)
+vlib/v/checker/tests/go_wait_or.vv:25:6: error: `.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.
+   23 |         go f(1)
+   24 |     ]
+   25 |     tg3.wait() or { panic('problem') }
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 |     for t in tg3 {
+   27 |         a := t.wait()
+vlib/v/checker/tests/go_wait_or.vv:27:10: error: wait() returns an option, so it should have either an `or {}` block, or `?` at the end
+   25 |     tg3.wait() or { panic('problem') }
+   26 |     for t in tg3 {
+   27 |         a := t.wait()
+      |                ~~~~~~
+   28 |         println(a)
+   29 |     }
+vlib/v/checker/tests/go_wait_or.vv:31:15: error: wait() returns an option, so it should have either an `or {}` block, or `?` at the end
+   29 |     }
+   30 |     for i, _ in tg3 {
+   31 |         a := tg3[i].wait()
+      |                     ~~~~~~
+   32 |         println(a)
+   33 |     }
+vlib/v/checker/tests/go_wait_or.vv:38:6: error: `.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.
+   36 |         go g(1)
+   37 |     ]
+   38 |     tg4.wait()
+      |         ~~~~~~
+   39 |     tg4[0].wait()
+   40 |     go g(3) or { panic('problem') }
+vlib/v/checker/tests/go_wait_or.vv:39:9: error: wait() returns an option, so it should have either an `or {}` block, or `?` at the end
+   37 |     ]
+   38 |     tg4.wait()
+   39 |     tg4[0].wait()
+      |            ~~~~~~
+   40 |     go g(3) or { panic('problem') }
+   41 | }
+vlib/v/checker/tests/go_wait_or.vv:40:10: error: optional handling cannot be done in `go` call. Do it when calling `.wait()`
+   38 |     tg4.wait()
+   39 |     tg4[0].wait()
+   40 |     go g(3) or { panic('problem') }
+      |             ~~~~~~~~~~~~~~~~~~~~~~~
+   41 | }

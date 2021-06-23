@@ -46,25 +46,24 @@ vlib/v/checker/tests/method_op_err.vv:34:13: error: mismatched types `User` and 
    34 |     println(User{3, 4} < Foo{3, 4})
       |             ~~~~~~~~~~~~~~~~~~~~~~
    35 |     mut u := User{3, 4}
-   36 |     u += 12
-vlib/v/checker/tests/method_op_err.vv:36:10: error: cannot assign to `u`: expected `User`, not `int literal`
-   34 |     println(User{3, 4} < Foo{3, 4})
+   36 |    _ = u
+vlib/v/checker/tests/method_op_err.vv:37:10: error: cannot assign to `u`: expected `User`, not `int literal`
    35 |     mut u := User{3, 4}
-   36 |     u += 12
+   36 |    _ = u
+   37 |     u += 12
       |          ~~
-   37 |     u %= User{1, 3}
-   38 |     u += User{2, 3}
-vlib/v/checker/tests/method_op_err.vv:37:5: error: operator %= not defined on left operand type `User`
-   35 |     mut u := User{3, 4}
-   36 |     u += 12
-   37 |     u %= User{1, 3}
+   38 |     u %= User{1, 3}
+   39 |     u += User{2, 3}
+vlib/v/checker/tests/method_op_err.vv:38:5: error: operator %= not defined on left operand type `User`
+   36 |    _ = u
+   37 |     u += 12
+   38 |     u %= User{1, 3}
       |     ^
-   38 |     u += User{2, 3} 
-   39 | }
-vlib/v/checker/tests/method_op_err.vv:38:7: error: operator `+` must return `User` to be used as an assignment operator
-   36 |     u += 12
-   37 |     u %= User{1, 3}
-   38 |     u += User{2, 3} 
+   39 |     u += User{2, 3}
+   40 | }
+vlib/v/checker/tests/method_op_err.vv:39:7: error: operator `+` must return `User` to be used as an assignment operator
+   37 |     u += 12
+   38 |     u %= User{1, 3}
+   39 |     u += User{2, 3}
       |       ~~
-   39 | }
-
+   40 | }

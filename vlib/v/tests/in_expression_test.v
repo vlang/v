@@ -1,5 +1,8 @@
 enum Colors {
-	red green blue yellow
+	red
+	green
+	blue
+	yellow
 }
 
 fn test_in_expression() {
@@ -104,10 +107,27 @@ fn test_in_expression_with_string() {
 	assert a == false
 }
 
+type MapAlias = map[string]int
+type ArrayAlias = []int
+
+fn test_in_expression_in_alias() {
+	arr := ArrayAlias([0, 1])
+	assert 0 in arr
+	assert 100 !in arr
+
+	m := MapAlias(map{
+		'one':   1
+		'two':   2
+		'three': 3
+	})
+	assert 'one' in m
+	assert 'four' !in m
+}
+
 fn test_in_expression_in_map() {
-	m := {
-		'one': 1
-		'two': 2
+	m := map{
+		'one':   1
+		'two':   2
 		'three': 3
 	}
 	assert 'one' in m

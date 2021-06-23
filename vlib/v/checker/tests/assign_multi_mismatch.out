@@ -12,42 +12,42 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:6:3: error: assignment mismatch: 1
       |   ~~
     7 | _, _ := f()
     8 | _, _ := 0, f()
-vlib/v/checker/tests/assign_multi_mismatch.vv:8:12: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:8:12: error: cannot use multi-value (int, int) in single-value context
     6 | _ := f()
     7 | _, _ := f()
     8 | _, _ := 0, f()
       |            ~~~
     9 | _, _ := f(), 0
    10 | _, _, _ := 0, f()
-vlib/v/checker/tests/assign_multi_mismatch.vv:9:9: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:9:9: error: cannot use multi-value (int, int) in single-value context
     7 | _, _ := f()
     8 | _, _ := 0, f()
     9 | _, _ := f(), 0
       |         ~~~
    10 | _, _, _ := 0, f()
    11 | _, _, _ := f(), 0
-vlib/v/checker/tests/assign_multi_mismatch.vv:10:15: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:10:15: error: cannot use multi-value (int, int) in single-value context
     8 | _, _ := 0, f()
     9 | _, _ := f(), 0
    10 | _, _, _ := 0, f()
       |               ~~~
    11 | _, _, _ := f(), 0
    12 | _, _ := f(), f()
-vlib/v/checker/tests/assign_multi_mismatch.vv:11:12: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:11:12: error: cannot use multi-value (int, int) in single-value context
     9 | _, _ := f(), 0
    10 | _, _, _ := 0, f()
    11 | _, _, _ := f(), 0
       |            ~~~
    12 | _, _ := f(), f()
    13 | _, _, _, _ := f(), f()
-vlib/v/checker/tests/assign_multi_mismatch.vv:12:9: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:12:9: error: cannot use multi-value (int, int) in single-value context
    10 | _, _, _ := 0, f()
    11 | _, _, _ := f(), 0
    12 | _, _ := f(), f()
       |         ~~~
    13 | _, _, _, _ := f(), f()
    14 |
-vlib/v/checker/tests/assign_multi_mismatch.vv:13:15: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:13:15: error: cannot use multi-value (int, int) in single-value context
    11 | _, _, _ := f(), 0
    12 | _, _ := f(), f()
    13 | _, _, _, _ := f(), f()
@@ -61,7 +61,7 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:19:3: error: assignment mismatch: 
       |   ~~
    20 |     1 { f() }
    21 |     else { f() }
-vlib/v/checker/tests/assign_multi_mismatch.vv:23:12: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:23:12: error: cannot use multi-value (int, int) in single-value context
    21 |     else { f() }
    22 | }
    23 | _, _ := 0, match 4 {
@@ -74,7 +74,7 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:29:3: error: assignment mismatch: 
    29 | _ := if true { f() } else { f() }
       |   ~~
    30 | _, _ := 0, if true { f() } else { f() }
-vlib/v/checker/tests/assign_multi_mismatch.vv:30:12: error: cannot use multi-value (int, int) in signle-value context
+vlib/v/checker/tests/assign_multi_mismatch.vv:30:12: error: cannot use multi-value (int, int) in single-value context
    28 | _, _ := 0, if true { 0 } else { 1 }
    29 | _ := if true { f() } else { f() }
    30 | _, _ := 0, if true { f() } else { f() }

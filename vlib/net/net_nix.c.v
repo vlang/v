@@ -1,15 +1,13 @@
 module net
 
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/un.h>
 #include <sys/select.h>
+// inet.h is needed for inet_ntop on macos
 #include <arpa/inet.h>
-#include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+
 #flag solaris -lsocket
 
 fn error_code() int {

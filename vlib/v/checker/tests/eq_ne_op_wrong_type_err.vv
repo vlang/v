@@ -6,6 +6,8 @@ type AAaa = Aaa
 
 type Arr = []int
 
+type ArrAaa = Aaa | Arr
+
 fn main() {
 	println(Aaa{} == 10)
 	println(10 == Aaa{})
@@ -22,4 +24,15 @@ fn main() {
 	println([1] == arr)
 	println(arr != [0])
 	println([1] != arr)
+
+	arr_aaa := ArrAaa(arr)
+	println(arr_aaa == arr)
+	println(arr == arr_aaa)
+	println(arr_aaa != arr)
+	println(arr != arr_aaa)
+
+	println(arr_aaa == [0])
+	println([1] == arr_aaa)
+	println(arr_aaa != [0])
+	println([1] != arr_aaa)
 }

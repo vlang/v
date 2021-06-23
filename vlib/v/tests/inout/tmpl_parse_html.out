@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<style>
+h1 {
+color: green;
+}
+
+@keyframes mymove {
+from {top: 0px;}
+to {top: 200px;}
+}
+</style>
+<style media="print">
+h1 {
+color: red;
+}
+</style>
+<script type="application/ld+json">
+<!-- JSON-LD -->
+</script>
+<script>
+document.getElementById("demo").innerHTML = "Hello JavaScript!";
+
+const classes = `header ${ isLargeScreen() ? '' :
+`icon-${item.isCollapsed ? 'expander' : 'collapser'}` }`;
+</script>
+</head>
+
+<body>
+<header>
+<h1>TEST</h1>
+</header>
+</body>
+
+</html>

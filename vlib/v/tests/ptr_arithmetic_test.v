@@ -9,31 +9,31 @@ fn test_ptr_arithmetic() {
 		p++
 		p += 2
 		p = p - 1
-		assert p == &v + 2
+		assert ptr_str(p) == ptr_str(&v + 2)
 		p = p + 1
-		assert p == &v + 3
+		assert ptr_str(p) == ptr_str(&v + 3)
 		r := p++
-		assert r == &v + 3
-		assert p == &v + 4
+		assert ptr_str(r) == ptr_str(&v + 3)
+		assert ptr_str(p) == ptr_str(&v + 4)
 	}
 }
 
 fn test_ptr_arithmetic_over_byteptr() {
 	// byteptr, voidptr, charptr are handled differently
-	mut q := byteptr(10)
+	mut q := &byte(10)
 	unsafe {
 		q -= 2
 		q = q + 1
 	}
-	assert q == byteptr(9)
+	assert u64(q) == u64(&byte(9))
 	s := unsafe { q - 1 }
-	assert s == byteptr(8)
+	assert u64(s) == u64(&byte(8))
 	unsafe {
 		q++
 		q++
 		q--
 	}
-	assert q == byteptr(10)
+	assert u64(q) == u64(&byte(10))
 }
 
 struct Abc {
@@ -48,8 +48,8 @@ fn test_ptr_arithmetic_over_struct() {
 	a[0].x = 10
 	a[1].x = 100
 	a[2].x = 1000
-	mut pa := &a[0]
-	assert pa == &a[0]
+	mut pa := unsafe { &a[0] }
+	assert pa == unsafe { &a[0] }
 	unsafe {
 		assert pa.x == 10
 		pa++
@@ -66,5 +66,5 @@ fn test_ptr_arithmetic_over_struct() {
 		assert pa.x == 1000
 		pa -= 2
 	}
-	assert pa == &a[0]
+	assert pa == unsafe { &a[0] }
 }

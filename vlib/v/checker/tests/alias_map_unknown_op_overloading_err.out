@@ -1,0 +1,13 @@
+vlib/v/checker/tests/alias_map_unknown_op_overloading_err.vv:19:10: error: undefined operation `Map` - `Map`
+   17 |     mut a := new_map()
+   18 |     b := new_map()
+   19 |     println(a - b)
+      |             ~~~~~
+   20 |     a -= b
+   21 | }
+vlib/v/checker/tests/alias_map_unknown_op_overloading_err.vv:20:7: error: undefined operation `Map` - `Map`
+   18 |     b := new_map()
+   19 |     println(a - b)
+   20 |     a -= b
+      |       ~~
+   21 | }

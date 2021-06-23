@@ -12,6 +12,21 @@ The V `rand` module provides two main ways in which users can generate pseudoran
    - `rng.seed(seed_data)` - optionally seed it with an array of `u32` values.
    - Use `rng.int()`, `rng.u32n(max)`, etc.
 
+You can change the default generator to a different one. The only requirement is that
+the generator must implement the `PRNG` interface. See `get_current_rng()` and `set_rng()`.
+
+For non-uniform distributions, refer to the `rand.dist` module which defined functions for
+sampling from non-uniform distributions. These functions make use of the global RNG.
+
+**Note:** The global PRNG is not thread safe. It is recommended to use separate generators for
+separate threads in multi-threaded applications. If you need to use non-uniform sampling functions,
+it is recommended to generate them before use in a multi-threaded context.
+
+For sampling functions and generating random strings, see `string_from_set()` and other related
+functions defined in this top-level module.
+
+For arrays, see `rand.util`.
+
 # General Background
 
 A PRNG is a Pseudo Random Number Generator. 
@@ -38,10 +53,14 @@ as well as the individual PRNGs.
     `i64_in_range(min, max)`, `f32_in_range(min, max)`, `f64_in_range(min, max)`
 - `int31()`, `int63()`
 
-# Utility Functions
+There are several additional functions defined in the top-level module that rely
+on the global RNG. If you want to make use of those functions with a different
+PRNG, you can can change the global RNG to do so.
+
+# Seeding Functions
 
 All the generators are time-seeded. 
-The helper functions publicly available in `rand.util` module are:
+The helper functions publicly available in `rand.seed` module are:
 
 1. `time_seed_array()` - returns a `[]u32` that can be directly plugged into the `seed()` functions.
 2. `time_seed_32()` and `time_seed_64()` - 32-bit and 64-bit values respectively

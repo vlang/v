@@ -10,7 +10,7 @@ fn test_array_cast() {
 }
 
 fn test_int() {
-	mut arr := [2.3,3]
+	mut arr := [2.3, 3]
 	unsafe {
 		vp := voidptr(&arr)
 		p := &[]f64(vp)

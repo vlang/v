@@ -39,7 +39,7 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) C.sg_image {
+fn create_texture(w int, h int, buf &u8) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -54,9 +54,9 @@ fn create_texture(w int, h int, buf byteptr) C.sg_image {
 		d3d11_texture: 0
 	}
 	// commen if .dynamic is enabled
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: sz
+		size: size_t(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -68,12 +68,12 @@ fn destroy_texture(sg_img C.sg_image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf byteptr) {
+fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	sz := w * h * 4
-	mut tmp_sbc := C.sg_image_content{}
-	tmp_sbc.subimage[0][0] = C.sg_subimage_content{
+	mut tmp_sbc := C.sg_image_data{}
+	tmp_sbc.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: sz
+		size: size_t(sz)
 	}
 	C.sg_update_image(sg_img, &tmp_sbc)
 }
@@ -268,7 +268,7 @@ fn cube_field(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	ratio := f32(ws.width) / ws.height
 	dw := ws.width
 	dh := ws.height
@@ -323,16 +323,21 @@ fn my_init(mut app App) {
 	// 3d pipeline
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
-	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
-	pipdesc.depth_stencil = C.sg_depth_stencil_state{
-		depth_write_enabled: true
-		depth_compare_func: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+
+	color_state := C.sg_color_state{
+		blend: C.sg_blend_state{
+			enabled: true
+			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+		}
 	}
-	pipdesc.rasterizer = C.sg_rasterizer_state{
-		cull_mode: .back
+	pipdesc.colors[0] = color_state
+
+	pipdesc.depth = C.sg_depth_state{
+		write_enabled: true
+		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
 	}
+	pipdesc.cull_mode = .back
 	app.pip_3d = sgl.make_pipeline(&pipdesc)
 
 	// create chessboard texture 256*256 RGBA
@@ -402,7 +407,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-[console] // is needed for easier diagnostics on windows
+// is needed for easier diagnostics on windows
+[console]
 fn main() {
 	// App init
 	mut app := &App{

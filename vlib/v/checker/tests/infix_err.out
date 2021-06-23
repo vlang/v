@@ -61,22 +61,21 @@ vlib/v/checker/tests/infix_err.vv:18:13: error: right operand for `||` is not a 
       |             ^
    19 | 
    20 | // boolean expressions
-vlib/v/checker/tests/infix_err.vv:21:22: error: use `()` to make the boolean expression clear
+vlib/v/checker/tests/infix_err.vv:21:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
    19 | 
    20 | // boolean expressions
    21 | _ = 1 == 1 && 2 == 2 || 3 == 3
       |                      ~~
    22 | _ = 1 == 1
    23 |     && 2 == 2 || 3 == 3
-vlib/v/checker/tests/infix_err.vv:23:12: error: use `()` to make the boolean expression clear
+vlib/v/checker/tests/infix_err.vv:23:12: error: ambiguous boolean expression. use `()` to ensure correct order of operations
    21 | _ = 1 == 1 && 2 == 2 || 3 == 3
    22 | _ = 1 == 1
    23 |     && 2 == 2 || 3 == 3
       |               ~~
    24 |     && 4 == 4
-vlib/v/checker/tests/infix_err.vv:24:2: error: use `()` to make the boolean expression clear
+vlib/v/checker/tests/infix_err.vv:24:2: error: ambiguous boolean expression. use `()` to ensure correct order of operations
    22 | _ = 1 == 1
    23 |     && 2 == 2 || 3 == 3
    24 |     && 4 == 4
       |     ~~
-

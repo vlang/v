@@ -15,6 +15,9 @@ mut:
 fn event(e &tui.Event, x voidptr) {
 	mut app := &App(x)
 	println(e)
+	if e.typ == .key_down && e.code == .escape {
+		exit(0)
+	}
 }
 
 fn frame(x voidptr) {
@@ -76,11 +79,6 @@ In the case of the various callbacks, they will not be fired if a handler has no
 
 
 #### FAQ
-
-Q: Why does this module not work on Windows?
-A: As with many other things, Windows has a completely different and incompatible way of handling
-input parsing and drawing primitives, and support has not been implemented yet.
-Contributions are definitely welcome though.
 
 Q: My terminal (doesn't receive events / doesn't print anything / prints gibberish characters),
 what's up with that?

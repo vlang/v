@@ -1,7 +1,7 @@
 module builtin
 
 // ChanState describes the result of an attempted channel transaction.
-enum ChanState {
+pub enum ChanState {
 	success
 	not_ready // push()/pop() would have to wait, but no_block was requested
 	closed

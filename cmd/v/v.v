@@ -11,32 +11,32 @@ import v.builder
 
 const (
 	external_tools                      = [
-		'fmt',
-		'up',
-		'vet',
-		'self',
-		'tracev',
-		'symlink',
 		'bin2v',
+		'bug',
+		'build-examples',
+		'build-tools',
+		'build-vbinaries',
+		'check-md',
+		'complete',
+		'doc',
+		'doctor',
+		'fmt',
+		'repl',
+		'self',
+		'setup-freetype',
+		'symlink',
 		'test',
 		'test-all', /* runs most of the tests and other checking tools, that will be run by the CI */
+		'test-cleancode',
 		'test-fmt',
 		'test-parser',
 		'test-self',
-		'test-fixed', /* deprecated by test-self */
-		'test-compiler', /* deprecated by test-self */
-		'test-compiler-full', /* deprecated by test-self */
-		'test-cleancode',
-		'check-md',
-		'repl',
-		'complete',
-		'build-tools',
-		'build-examples',
-		'build-vbinaries',
-		'setup-freetype',
+		'tracev',
+		'up',
+		'vet',
 		'wipe-cache',
-		'doc',
-		'doctor',
+		'watch',
+		'ast',
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
@@ -53,12 +53,13 @@ fn main() {
 	}
 	timers.start('v start')
 	timers.show('v start')
+	timers.start('parse_CLI_args')
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
 		if args.len == 0 {
-			if is_atty(0) != 0 {
+			if os.is_atty(0) != 0 {
 				println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
@@ -71,28 +72,11 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
-	if prefs.is_verbose {
-		// println('args= ')
-		// println(args) // QTODO
-		// println('prefs= ')
-		// println(prefs) // QTODO
-	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
 	}
-	if command in ['test-fixed', 'test-compiler-full'] {
-		eprintln('Please use `v test-self` instead.')
-		exit(1)
-	}
-	if command == 'test-compiler' {
-		eprintln('Please use either `v test-all`, `v test-self`, `v build-examples`, `v build-tools` or `v build-vbinaries` instead.')
-		exit(1)
-	}
-	if command == 'test-vet' {
-		println('Please use `v test-cleancode` instead.')
-		return
-	}
+	timers.show('parse_CLI_args')
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
@@ -109,10 +93,10 @@ fn main() {
 			return
 		}
 		'translate' {
-			println('Translating C to V will be available in V 0.3')
-			return
+			eprintln('Translating C to V will be available in V 0.3')
+			exit(1)
 		}
-		'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove' {
+		'install', 'list', 'outdated', 'remove', 'search', 'show', 'update', 'upgrade' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
@@ -120,7 +104,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'get' {
-			println('V Error: Use `v install` to install modules from vpm.vlang.io')
+			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
 		}
 		'version' {
@@ -135,6 +119,9 @@ fn main() {
 		builder.compile(command, prefs)
 		return
 	}
+	if prefs.is_help {
+		invoke_help_and_exit(args)
+	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)
 }
@@ -145,7 +132,7 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1]) }
 		else {}
 	}
-	println('V Error: Expected only one help topic to be provided.')
+	println('`v help`: provide only one help topic.')
 	println('For usage information, use `v help`.')
 	exit(1)
 }

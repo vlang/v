@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license file distributed with this software package
 module particle
 
-import vec2
+import particle.vec2
 import sokol.sgl
 
 const (
@@ -16,9 +16,9 @@ pub fn new(location vec2.Vec2) &Particle {
 		location: location
 		velocity: vec2.Vec2{0, 0}
 		acceleration: vec2.Vec2{0, 0}
-		color: default_v_color
-		life_time: default_life_time
-		life_time_init: default_life_time
+		color: particle.default_v_color
+		life_time: particle.default_life_time
+		life_time_init: particle.default_life_time
 	}
 	return p
 }
@@ -75,7 +75,7 @@ pub fn (mut p Particle) reset() {
 	p.acceleration.zero()
 	p.velocity.zero()
 	// p.color = Color{93, 136, 193, 255}
-	p.color = default_v_color
-	p.life_time = default_life_time
+	p.color = particle.default_v_color
+	p.life_time = particle.default_life_time
 	p.life_time_init = p.life_time
 }

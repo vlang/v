@@ -1,42 +1,62 @@
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:3:13: error: mismatched types `Aaa` and `int literal`
-    1 | struct Aaa{}
-    2 | fn main() {
-    3 |     println(Aaa{} - 10)
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:10:10: error: mismatched types `Aaa` and `int literal`
+    8 |
+    9 | fn main() {
+   10 |     println(Aaa{} - 10)
       |             ~~~~~~~~~~
-    4 |     println(10 - Aaa{})
-    5 |     println([1,2,3] - 10)
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:4:13: error: mismatched types `int literal` and `Aaa`
-    2 | fn main() {
-    3 |     println(Aaa{} - 10)
-    4 |     println(10 - Aaa{})
+   11 |     println(10 - Aaa{})
+   12 |     println([1, 2, 3] - 10)
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:11:10: error: mismatched types `int literal` and `Aaa`
+    9 | fn main() {
+   10 |     println(Aaa{} - 10)
+   11 |     println(10 - Aaa{})
       |             ~~~~~~~~~~
-    5 |     println([1,2,3] - 10)
-    6 |     println(10 - [1,2,3])
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:5:13: error: mismatched types `[]int` and `int literal`
-    3 |     println(Aaa{} - 10)
-    4 |     println(10 - Aaa{})
-    5 |     println([1,2,3] - 10)
-      |             ~~~~~~~~~~~~
-    6 |     println(10 - [1,2,3])
-    7 |     a := map[string]int
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:6:13: error: mismatched types `int literal` and `[]int`
-    4 |     println(10 - Aaa{})
-    5 |     println([1,2,3] - 10)
-    6 |     println(10 - [1,2,3])
-      |             ~~~~~~~~~~~~
-    7 |     a := map[string]int
-    8 |     println(a - 10)
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:8:13: error: mismatched types `map[string]int` and `int literal`
-    6 |     println(10 - [1,2,3])
-    7 |     a := map[string]int
-    8 |     println(a - 10)
+   12 |     println([1, 2, 3] - 10)
+   13 |     println(10 - [1, 2, 3])
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:12:10: error: mismatched types `[]int` and `int literal`
+   10 |     println(Aaa{} - 10)
+   11 |     println(10 - Aaa{})
+   12 |     println([1, 2, 3] - 10)
+      |             ~~~~~~~~~~~~~~
+   13 |     println(10 - [1, 2, 3])
+   14 |     a := map[string]int{}
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:13:10: error: mismatched types `int literal` and `[]int`
+   11 |     println(10 - Aaa{})
+   12 |     println([1, 2, 3] - 10)
+   13 |     println(10 - [1, 2, 3])
+      |             ~~~~~~~~~~~~~~
+   14 |     a := map[string]int{}
+   15 |     println(a - 10)
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:15:10: error: mismatched types `map[string]int` and `int literal`
+   13 |     println(10 - [1, 2, 3])
+   14 |     a := map[string]int{}
+   15 |     println(a - 10)
       |             ~~~~~~
-    9 |     println(10 - a)
-   10 | }
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:9:13: error: mismatched types `int literal` and `map[string]int`
-    7 |     a := map[string]int
-    8 |     println(a - 10)
-    9 |     println(10 - a)
+   16 |     println(10 - a)
+   17 |     println(-Aaa{})
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:16:10: error: mismatched types `int literal` and `map[string]int`
+   14 |     a := map[string]int{}
+   15 |     println(a - 10)
+   16 |     println(10 - a)
       |             ~~~~~~
-   10 | }
-
+   17 |     println(-Aaa{})
+   18 |     println(-a)
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:17:10: error: - operator can only be used with numeric types
+   15 |     println(a - 10)
+   16 |     println(10 - a)
+   17 |     println(-Aaa{})
+      |             ^
+   18 |     println(-a)
+   19 |     println(-Color.red)
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:18:10: error: - operator can only be used with numeric types
+   16 |     println(10 - a)
+   17 |     println(-Aaa{})
+   18 |     println(-a)
+      |             ^
+   19 |     println(-Color.red)
+   20 | }
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:19:10: error: - operator can only be used with numeric types
+   17 |     println(-Aaa{})
+   18 |     println(-a)
+   19 |     println(-Color.red)
+      |             ^
+   20 | }

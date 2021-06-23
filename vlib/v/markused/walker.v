@@ -5,17 +5,15 @@ module markused
 // Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
-import v.table
 
 pub struct Walker {
 pub mut:
-	table       &table.Table
+	table       &ast.Table
 	used_fns    map[string]bool // used_fns['println'] == true
 	used_consts map[string]bool // used_consts['os.args'] == true
-	n_maps      int
 	n_asserts   int
 mut:
-	files      []ast.File
+	files      []&ast.File
 	all_fns    map[string]ast.FnDecl
 	all_consts map[string]ast.ConstField
 }
@@ -47,11 +45,26 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	}
 }
 
+pub fn (mut w Walker) mark_exported_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_exported {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
+		ast.EmptyStmt {}
+		ast.AsmStmt {
+			w.asm_io(node.output)
+			w.asm_io(node.input)
+		}
 		ast.AssertStmt {
-			w.expr(node.expr)
-			w.n_asserts++
+			if node.is_used {
+				w.expr(node.expr)
+				w.n_asserts++
+			}
 		}
 		ast.AssignStmt {
 			w.exprs(node.left)
@@ -81,21 +94,23 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.expr(node.cond)
 			w.expr(node.high)
 			w.stmts(node.stmts)
+			if node.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.ForStmt {
 			w.expr(node.cond)
 			w.stmts(node.stmts)
-		}
-		ast.GoStmt {
-			w.expr(node.call_expr)
 		}
 		ast.Return {
 			w.exprs(node.exprs)
 		}
 		ast.SqlStmt {
 			w.expr(node.db_expr)
-			w.expr(node.where_expr)
-			w.exprs(node.update_exprs)
+			for line in node.lines {
+				w.expr(line.where_expr)
+				w.exprs(line.update_exprs)
+			}
 		}
 		ast.StructDecl {
 			w.struct_fields(node.fields)
@@ -119,6 +134,13 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {}
 		ast.Module {}
 		ast.TypeDecl {}
+		ast.NodeError {}
+	}
+}
+
+fn (mut w Walker) asm_io(ios []ast.AsmIO) {
+	for io in ios {
+		w.expr(io.expr)
 	}
 }
 
@@ -142,16 +164,20 @@ fn (mut w Walker) exprs(exprs []ast.Expr) {
 
 fn (mut w Walker) expr(node ast.Expr) {
 	match mut node {
+		ast.EmptyExpr {
+			// TODO make sure this doesn't happen
+			// panic('Walker: EmptyExpr')
+		}
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)
-		}
-		ast.Assoc {
-			w.exprs(node.exprs)
 		}
 		ast.ArrayInit {
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.default_expr)
+			w.exprs(node.exprs)
+		}
+		ast.Assoc {
 			w.exprs(node.exprs)
 		}
 		ast.ArrayDecompose {
@@ -180,18 +206,40 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.stmts(node.vweb_tmpl.stmts)
 			}
 		}
+		ast.DumpExpr {
+			w.expr(node.expr)
+			w.fn_by_name('eprint')
+			w.fn_by_name('eprintln')
+		}
 		ast.GoExpr {
-			w.expr(node.go_stmt.call_expr)
+			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
 			w.or_block(node.or_expr)
+			sym := w.table.get_final_type_symbol(node.left_type)
+			if sym.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
 			w.expr(node.right)
 			w.or_block(node.or_block)
+			if node.left_type == 0 {
+				return
+			}
+			sym := w.table.get_type_symbol(node.left_type)
+			if sym.kind == .struct_ {
+				if opmethod := sym.find_method(node.op.str()) {
+					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+				}
+			}
+			right_sym := w.table.get_type_symbol(node.right_type)
+			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
@@ -223,7 +271,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
-			w.n_maps++
+			w.table.used_maps++
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)
@@ -232,9 +280,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.stmts(b.stmts)
 			}
 		}
-		ast.None {
-			w.mark_fn_as_used('opt_none')
-		}
+		ast.None {}
 		ast.ParExpr {
 			w.expr(node.expr)
 		}
@@ -252,7 +298,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.expr(node.high)
 			}
 		}
-		ast.SizeOf {
+		ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {
@@ -271,11 +317,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.StructInit {
 			sym := w.table.get_type_symbol(node.typ)
 			if sym.kind == .struct_ {
-				info := sym.info as table.Struct
+				info := sym.info as ast.Struct
 				for ifield in info.fields {
 					if ifield.has_default_expr {
-						defex := ast.fe2ex(ifield.default_expr)
-						w.expr(defex)
+						w.expr(ifield.default_expr)
 					}
 				}
 			}
@@ -320,10 +365,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.stmts(branch.stmts)
 			}
 		}
-		ast.Type {}
+		ast.TypeNode {}
 		ast.UnsafeExpr {
 			w.expr(node.expr)
 		}
+		ast.NodeError {}
 	}
 }
 

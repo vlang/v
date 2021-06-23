@@ -4,10 +4,17 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
+	mut defer_vars := p.defer_vars
+	p.defer_vars = []ast.Ident{}
+
 	exprs, comments := p.expr_list()
+
+	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+		defer_vars << p.defer_vars
+	}
+	p.defer_vars = defer_vars
 	return p.partial_assign_stmt(exprs, comments)
 }
 
@@ -102,16 +109,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	comments << p.eat_comments({})
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
-	if p.tok.kind == .key_go {
-		stmt := p.stmt(false)
-		go_stmt := stmt as ast.GoStmt
-		right << ast.GoExpr{
-			go_stmt: go_stmt
-			pos: go_stmt.pos
-		}
-	} else {
-		right, right_comments = p.expr_list()
-	}
+	right, right_comments = p.expr_list()
 	comments << right_comments
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
@@ -119,8 +117,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		// a, b := a + 1, b
 		for r in right {
 			p.check_undefined_variables(left, r) or {
-				p.error('check_undefined_variables failed')
-				return ast.Stmt{}
+				return p.error('check_undefined_variables failed')
 			}
 		}
 	} else if left.len > 1 {
@@ -128,8 +125,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error_with_pos('unexpected $op.str(), expecting := or = or comma', pos)
-				return ast.Stmt{}
+				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
+					pos)
 			}
 			if has_cross_var {
 				break
@@ -142,18 +139,16 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
-						return ast.Stmt{}
+						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
-					mut share := table.ShareType(0)
+					mut share := ast.ShareType(0)
 					if lx.info is ast.IdentVar {
 						iv := lx.info as ast.IdentVar
 						share = iv.share
 						if iv.is_static {
-							if !p.pref.translated {
-								p.error_with_pos('static variables are supported only in -translated mode',
+							if !p.pref.translated && !p.pref.is_fmt && !p.inside_unsafe_fn {
+								return p.error_with_pos('static variables are supported only in -translated mode or in [unsafe] fn',
 									lx.pos)
-								return ast.Stmt{}
 							}
 							is_static = true
 						}
@@ -161,10 +156,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.Expr{} }
+						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
+						is_stack_obj: p.inside_for
 					}
 					if p.pref.autofree {
 						if r0 is ast.CallExpr {
@@ -184,9 +180,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					return p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
 						lx.pos)
-					return ast.Stmt{}
 				}
 				lx.is_setter = true
 			}
@@ -194,9 +189,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					p.error_with_pos('struct fields can only be declared during the initialization',
+					return p.error_with_pos('struct fields can only be declared during the initialization',
 						lx.pos)
-					return ast.Stmt{}
 				}
 			}
 			else {

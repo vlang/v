@@ -11,13 +11,20 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
 		}
-		if file.ends_with('_test.v') {
+		if file.ends_with('_test.v')
+			|| file.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			continue
 		}
 		if prefs.backend == .c && !prefs.should_compile_c(file) {
 			continue
 		}
 		if prefs.backend == .js && !prefs.should_compile_js(file) {
+			continue
+		}
+		if prefs.backend != .js && !prefs.should_compile_asm(file) {
+			continue
+		}
+		if file.starts_with('.#') {
 			continue
 		}
 		if file.contains('_d_') {
@@ -29,6 +36,19 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 				file_postfix := '_d_${cdefine}.v'
 				if file.ends_with(file_postfix) {
 					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+		if file.contains('_notd_') {
+			mut allowed := true
+			for cdefine in prefs.compile_defines {
+				file_postfix := '_notd_${cdefine}.v'
+				if file.ends_with(file_postfix) {
+					allowed = false
 					break
 				}
 			}
@@ -92,51 +112,81 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'solaris.c.v',
 		'_',
-		'x64.v',
+		'native.v',
 		'_',
 	])
 	return res
 }
 
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
-	if !file.ends_with('.c.v') && file.split('.').len > 2 {
+	if file.ends_with('.js.v') {
 		// Probably something like `a.js.v`.
 		return false
 	}
-	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
+	if prefs.is_bare && file.ends_with('.freestanding.v') {
+		return true
+	}
+	if prefs.os == .all {
+		return true
+	}
+	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
-	if (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) && prefs.os != .linux {
+	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
-	if (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) && prefs.os != .macos {
+	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
-	if (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) && prefs.os != .macos {
+	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
+		return false
+	}
+	if (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) && prefs.os != .ios {
 		return false
 	}
 	if file.ends_with('_nix.c.v') && prefs.os == .windows {
 		return false
 	}
-	if file.ends_with('_android.c.v') && prefs.os != .android {
+	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	if file.ends_with('_freebsd.c.v') && prefs.os != .freebsd {
+	if prefs.os == .windows && file.ends_with('_nix.c.v') {
 		return false
 	}
-	if file.ends_with('_openbsd.c.v') && prefs.os != .openbsd {
+	if prefs.os != .android && file.ends_with('_android.c.v') {
 		return false
 	}
-	if file.ends_with('_netbsd.c.v') && prefs.os != .netbsd {
+	if prefs.os != .freebsd && file.ends_with('_freebsd.c.v') {
 		return false
 	}
-	if file.ends_with('_dragonfly.c.v') && prefs.os != .dragonfly {
+	if prefs.os != .openbsd && file.ends_with('_openbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {
+	if prefs.os != .netbsd && file.ends_with('_netbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_x64.v') && prefs.backend != .x64 {
+	if prefs.os != .dragonfly && file.ends_with('_dragonfly.c.v') {
+		return false
+	}
+	if prefs.os != .solaris && file.ends_with('_solaris.c.v') {
+		return false
+	}
+	return true
+}
+
+pub fn (prefs &Preferences) should_compile_asm(path string) bool {
+	if path.count('.') != 2 || path.ends_with('c.v') || path.ends_with('js.v') {
+		return true
+	}
+	file := path.all_before_last('.v')
+	arch := arch_from_string(file.all_after_last('.')) or { Arch._auto }
+
+	if arch != prefs.arch && prefs.arch != ._auto && arch != ._auto {
+		return false
+	}
+	os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
+
+	if os != prefs.os && prefs.os != ._auto && os != ._auto {
 		return false
 	}
 	return true

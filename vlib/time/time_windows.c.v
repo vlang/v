@@ -16,6 +16,8 @@ struct C.tm {
 }
 
 struct C._FILETIME {
+	dwLowDateTime  u32
+	dwHighDateTime u32
 }
 
 struct SystemTime {
@@ -29,11 +31,11 @@ struct SystemTime {
 	millisecond u16
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
-fn C.FileTimeToSystemTime()
+fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
-fn C.SystemTimeToTzSpecificLocalTime()
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime, lpLocalTime &SystemTime)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
@@ -114,8 +116,8 @@ pub fn (t Time) local() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second // These are the same
-		microsecond: t.microsecond
-		unix: t.unix
+		microsecond: st_local.millisecond * 1000
+		unix: u64(st_local.unix_time())
 	}
 	return t_local
 }
@@ -211,4 +213,27 @@ pub fn solaris_utc() Time {
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+[deprecated: 'call time.sleep(n * time.second)']
+pub fn wait(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// some Windows system functions (e.g. `C.WaitForSingleObject()`) accept an `u32`
+// value as *timeout in milliseconds* with the special value `u32(-1)` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() u32 {
+	if d >= u32(-1) * millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
+		return u32(-1)
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return u32(d / millisecond)
+	}
 }

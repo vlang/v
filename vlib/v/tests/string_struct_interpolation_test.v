@@ -10,7 +10,7 @@ fn (f Foo) baz() string {
 
 fn test_string_method_interpolation() {
 	foo := Foo{}
-	s := 'baz=${foo.baz()}'
+	s := 'baz=$foo.baz()'
 	assert s == 'baz=baz'
 }
 

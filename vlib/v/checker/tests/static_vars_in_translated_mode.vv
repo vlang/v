@@ -5,8 +5,8 @@ fn counter() int {
 }
 
 fn main() {
-	println(counter())
-	println(counter())
-	println(counter())
-	println(counter())
+	println(unsafe { counter() })
+	println(unsafe { counter() })
+	println(unsafe { counter() })
+	println(unsafe { counter() })
 }

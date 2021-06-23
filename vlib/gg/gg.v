@@ -21,18 +21,19 @@ pub type FNKeyDown = fn (c KeyCode, m Modifier, x voidptr)
 
 pub type FNMove = fn (x f32, y f32, z voidptr)
 
+pub type FNClick = fn (x f32, y f32, button MouseButton, z voidptr)
+
 pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Event {
-pub:
-	frame_count u64
-	typ         sapp.EventType
-	key_code    KeyCode
-	char_code   u32
-	key_repeat  bool
-	modifiers   u32
 pub mut:
-	mouse_button       sapp.MouseButton
+	frame_count        u64
+	typ                sapp.EventType
+	key_code           KeyCode
+	char_code          u32
+	key_repeat         bool
+	modifiers          u32
+	mouse_button       MouseButton
 	mouse_x            f32
 	mouse_y            f32
 	mouse_dx           f32
@@ -81,13 +82,13 @@ pub:
 	// special case of event_fn
 	move_fn FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn FNMove = voidptr(0)
+	click_fn FNClick = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen   bool
 	scale        f32 = 1.0
 	sample_count int
-	// vid needs this
+	// ved needs this
 	// init_text bool
 	font_path             string
 	custom_bold_font_path string
@@ -100,14 +101,27 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
+pub enum PenLineType {
+	solid
+	dashed
+	dotted
+}
+
+pub struct PenConfig {
+	color     gx.Color
+	line_type PenLineType = .solid
+	thickness int = 1
+}
+
+[heap]
 pub struct Context {
-	render_text bool
 mut:
+	render_text bool = true
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache   []Image
 	needs_refresh bool = true
-	ticks         int
+	ticks         int // for ui mode only
 pub:
 	native_rendering bool
 pub mut:
@@ -148,12 +162,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
-	g.scale = sapp.dpi_scale()
-	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
-	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
-	if g.scale < 0.1 {
-		g.scale = 1.0
-	}
+	g.scale = dpi_scale()
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -161,44 +170,56 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// if g.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(g.config.font_path) } $else { true }
-	if g.config.font_path != '' && exists {
+	if g.config.font_path != '' && !exists {
+		g.render_text = false
+	} else if g.config.font_path != '' && exists {
 		// t := time.ticks()
 		g.ft = new_ft(
 			font_path: g.config.font_path
 			custom_bold_font_path: g.config.custom_bold_font_path
-			scale: sapp.dpi_scale()
+			scale: dpi_scale()
 		) or { panic(err) }
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	} else {
-		if !exists {
-			if g.config.font_bytes_normal.len > 0 {
-				g.ft = new_ft(
-					bytes_normal: g.config.font_bytes_normal
-					bytes_bold: g.config.font_bytes_bold
-					bytes_mono: g.config.font_bytes_mono
-					bytes_italic: g.config.font_bytes_italic
-					scale: sapp.dpi_scale()
-				) or { panic(err) }
-				g.font_inited = true
-			} else {
-				sfont := system_font_path()
-				eprintln('font file "$g.config.font_path" does not exist, the system font was used instead.')
-				g.ft = new_ft(
-					font_path: sfont
-					custom_bold_font_path: g.config.custom_bold_font_path
-					scale: sapp.dpi_scale()
-				) or { panic(err) }
-				g.font_inited = true
+		if g.config.font_bytes_normal.len > 0 {
+			g.ft = new_ft(
+				bytes_normal: g.config.font_bytes_normal
+				bytes_bold: g.config.font_bytes_bold
+				bytes_mono: g.config.font_bytes_mono
+				bytes_italic: g.config.font_bytes_italic
+				scale: sapp.dpi_scale()
+			) or { panic(err) }
+			g.font_inited = true
+		} else {
+			sfont := system_font_path()
+			if g.config.font_path != '' {
+				eprintln('font file "$g.config.font_path" does not exist, the system font ($sfont) was used instead.')
 			}
+
+			g.ft = new_ft(
+				font_path: sfont
+				custom_bold_font_path: g.config.custom_bold_font_path
+				scale: sapp.dpi_scale()
+			) or { panic(err) }
+			g.font_inited = true
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := C.sg_pipeline_desc{
+		label: c'alpha_image'
+	}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
-	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+
+	color_state := C.sg_color_state{
+		blend: C.sg_blend_state{
+			enabled: true
+			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+		}
+	}
+	pipdesc.colors[0] = color_state
+
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
@@ -208,6 +229,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	if g.native_rendering {
 		return
 	}
+
 	for i in 0 .. g.image_cache.len {
 		g.image_cache[i].init_sokol_image()
 	}
@@ -221,6 +243,7 @@ fn gg_frame_fn(user_data voidptr) {
 	if ctx.native_rendering {
 		// return
 	}
+
 	if ctx.ui_mode && !ctx.needs_refresh {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
@@ -241,6 +264,9 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
 	mut e := unsafe { &Event(ce) }
 	mut g := unsafe { &Context(user_data) }
+	if g.ui_mode {
+		g.refresh_ui()
+	}
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
 		g.mbtn_mask |= byte(1 << bitplace)
@@ -285,7 +311,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.mouse_down {
 			if g.config.click_fn != voidptr(0) {
 				cfn := g.config.click_fn
-				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
+				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, e.mouse_button, g.config.user_data)
 			}
 		}
 		else {}
@@ -299,7 +325,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 	}
 }
 
-fn gg_fail_fn(msg charptr, user_data voidptr) {
+fn gg_fail_fn(msg &char, user_data voidptr) {
 	mut g := unsafe { &Context(user_data) }
 	vmsg := unsafe { tos3(msg) }
 	if g.config.fail_fn != voidptr(0) {
@@ -315,7 +341,6 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		render_text: cfg.font_path != '' || cfg.font_bytes_normal.len > 0
 		ft: 0
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
@@ -329,14 +354,14 @@ pub fn new_context(cfg Config) &Context {
 		event_userdata_cb: gg_event_fn
 		fail_userdata_cb: gg_fail_fn
 		cleanup_userdata_cb: gg_cleanup_fn
-		window_title: cfg.window_title.str
-		html5_canvas_name: cfg.window_title.str
+		window_title: &char(cfg.window_title.str)
+		html5_canvas_name: &char(cfg.window_title.str)
 		width: cfg.width
 		height: cfg.height
 		sample_count: cfg.sample_count
 		high_dpi: true
 		fullscreen: cfg.fullscreen
-		native_render: cfg.native_rendering
+		__v_native_render: cfg.native_rendering
 	}
 	if cfg.use_ortho {
 	} else {
@@ -347,6 +372,11 @@ pub fn new_context(cfg Config) &Context {
 
 pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
+}
+
+// quit closes the context window and exits the event loop for it
+pub fn (ctx &Context) quit() {
+	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
 }
 
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
@@ -402,19 +432,11 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
-	if ctx.scale == 1 {
-		sgl.v2f(x, y)
-		sgl.v2f(x + w, y)
-		sgl.v2f(x + w, y + h)
-		sgl.v2f(x, y + h)
-		sgl.v2f(x, y)
-	} else {
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-		sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
-	}
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.end()
 }
 
@@ -424,36 +446,34 @@ pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	mut theta := f32(0)
-	mut xx := f32(0)
-	mut yy := f32(0)
-	sgl.begin_line_strip()
-	for i := 0; i < segments + 1; i++ {
-		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
-		xx = r * math.cosf(theta)
-		yy = r * math.sinf(theta)
-		sgl.v2f(xx + x, yy + y)
-	}
-	sgl.end()
-}
-
-pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
 			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
 			return
 		}
 	}
-	if ctx.scale == 1 {
-		ctx.draw_circle_with_segments(x, y, r, 10, c)
-	} else {
-		ctx.draw_circle_with_segments(x * f32(ctx.scale), y * f32(ctx.scale), r * ctx.scale,
-			10, c)
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
 	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := r * ctx.scale
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	sgl.begin_line_strip()
+	for i := 0; i < segments + 1; i++ {
+		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
+		xx = nr * math.cosf(theta)
+		yy = nr * math.sinf(theta)
+		sgl.v2f(xx + nx, yy + ny)
+	}
+	sgl.end()
+}
+
+pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
+	ctx.draw_circle_with_segments(x, y, r, 10, c)
 }
 
 pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
@@ -461,16 +481,19 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := r * ctx.scale
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
 		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
-		xx = r * math.cosf(theta)
-		yy = r * math.sinf(theta)
-		sgl.v2f(xx + x, yy + y)
-		sgl.v2f(x, y)
+		xx = nr * math.cosf(theta)
+		yy = nr * math.sinf(theta)
+		sgl.v2f(xx + nx, yy + ny)
+		sgl.v2f(nx, ny)
 	}
 	sgl.end()
 }
@@ -483,11 +506,13 @@ pub fn (ctx &Context) draw_arc_line(x f32, y f32, r int, start_angle f32, arc_an
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
 	mut xx := f32(r * math.cosf(start_angle))
 	mut yy := f32(r * math.sinf(start_angle))
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + x, yy + y)
+		sgl.v2f(xx + nx, yy + ny)
 		tx := -yy
 		ty := xx
 		xx += tx * tan_factor
@@ -503,6 +528,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
@@ -510,8 +537,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 	mut yy := f32(r * math.sinf(start_angle))
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + x, yy + y)
-		sgl.v2f(x, y)
+		sgl.v2f(xx + nx, yy + ny)
+		sgl.v2f(nx, ny)
 		tx := -yy
 		ty := xx
 		xx += tx * tan_factor
@@ -544,39 +571,74 @@ pub fn (gg &Context) end() {
 	*/
 }
 
-fn abs(a f32) f32 {
-	if a >= 0 {
-		return a
-	}
-	return -a
-}
-
+// resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
 }
 
+// draw_line draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-	if ctx.scale > 1 {
-		// Make the line more clear on hi dpi screens: draw a rectangle
-		mut width := abs(x2 - x)
-		mut height := abs(y2 - y)
-		if width == 0 {
-			width = 1
-		} else if height == 0 {
-			height = 1
-		}
-		ctx.draw_rect(x, y, width, height, c)
-		return
-	}
+
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()
+}
+
+// draw_line_with_config draws a line between the points provided with the PenConfig
+pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
+	if config.color.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	if config.thickness <= 0 {
+		return
+	}
+
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nx2 := x2 * ctx.scale
+	ny2 := y2 * ctx.scale
+
+	dx := nx2 - nx
+	dy := ny2 - ny
+	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
+	theta := f32(math.atan2(dy, dx))
+
+	sgl.push_matrix()
+
+	sgl.translate(nx, ny, 0)
+	sgl.rotate(theta, 0, 0, 1)
+	sgl.translate(-nx, -ny, 0)
+
+	if config.line_type == .solid {
+		ctx.draw_rect(x, y, length, config.thickness, config.color)
+	} else {
+		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
+		space := if size == 1 { 2 } else { size }
+
+		mut available := length
+		mut start_x := x
+
+		for i := 0; available > 0; i++ {
+			if i % 2 == 0 {
+				ctx.draw_rect(start_x, y, size, config.thickness, config.color)
+				available -= size
+				start_x += size
+				continue
+			}
+
+			available -= space
+			start_x += space
+		}
+	}
+
+	sgl.pop_matrix()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
@@ -585,11 +647,11 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	r := radius * f32(ctx.scale)
-	nx := x * f32(ctx.scale)
-	ny := y * f32(ctx.scale)
-	width := w * f32(ctx.scale)
-	height := h * f32(ctx.scale)
+	r := radius * ctx.scale
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
 	segments := 2 * math.pi * r
 	segdiv := segments / 4
 	rb := 0
@@ -607,7 +669,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 		sgl.v2f(lx, ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -618,7 +680,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -628,7 +690,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -651,11 +713,11 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	r := radius * f32(ctx.scale)
-	nx := x * f32(ctx.scale)
-	ny := y * f32(ctx.scale)
-	width := w * f32(ctx.scale)
-	height := h * f32(ctx.scale)
+	r := radius * ctx.scale
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
 	segments := 2 * math.pi * r
 	segdiv := segments / 4
 	rb := 0
@@ -674,7 +736,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 		sgl.v2f(xx + lx, yy + ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -684,7 +746,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -693,7 +755,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -761,12 +823,26 @@ pub fn screen_size() Size {
 
 // window_size returns the `Size` of the active window
 pub fn window_size() Size {
-	s := sapp.dpi_scale()
+	s := dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
 
+// window_size_real_pixels returns the `Size` of the active window without scale
+pub fn window_size_real_pixels() Size {
+	return Size{sapp.width(), sapp.height()}
+}
+
 pub fn dpi_scale() f32 {
-	return sapp.dpi_scale()
+	mut s := sapp.dpi_scale()
+	$if android {
+		s *= android_dpi_scale()
+	}
+	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
+	if s < 0.1 {
+		s = 1.
+	}
+	return s
 }
 
 pub fn high_dpi() bool {

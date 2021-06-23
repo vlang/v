@@ -66,7 +66,7 @@ pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
 }
 
 pub fn (mut cm CacheManager) key2cpath(key string) string {
-	mut cpath := cm.k2cpath[key]
+	mut cpath := cm.k2cpath[key] or { '' }
 	if cpath == '' {
 		hk := cm.vopts + key
 		a := hash.sum64_string(hk, 5).hex_full()
@@ -90,7 +90,9 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 }
 
 pub fn (mut cm CacheManager) postfix_with_key2cpath(postfix string, key string) string {
-	return cm.key2cpath(key) + postfix
+	prefix := cm.key2cpath(key)
+	res := prefix + postfix
+	return res
 }
 
 pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {

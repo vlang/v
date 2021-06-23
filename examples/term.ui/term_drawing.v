@@ -174,8 +174,8 @@ fn event(event &ui.Event, x voidptr) {
 				y: event.y
 			}
 			d := event.direction == .down
-			if event.modifiers & ui.ctrl != 0 {
-				p := event.modifiers & ui.shift == 0
+			if event.modifiers.has(.ctrl) {
+				p := !event.modifiers.has(.shift)
 				c := if d {
 					if p { app.primary_color_idx - 1 } else { app.secondary_color_idx - 1 }
 				} else {
@@ -212,43 +212,53 @@ fn event(event &ui.Event, x voidptr) {
 					}
 					app.paint(nevent)
 				}
-				.space {
+				.space, .enter {
 					oevent := *event
 					nevent := ui.Event{
 						...oevent
-						button: ui.MouseButton.middle
+						button: .left
+						x: app.mouse_pos.x
+						y: app.mouse_pos.y
+					}
+					app.paint(nevent)
+				}
+				.delete, .backspace {
+					oevent := *event
+					nevent := ui.Event{
+						...oevent
+						button: .middle
 						x: app.mouse_pos.x
 						y: app.mouse_pos.y
 					}
 					app.paint(nevent)
 				}
 				.j, .down {
-					if event.modifiers & ui.shift != 0 {
+					if event.modifiers.has(.shift) {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.y++
 				}
 				.k, .up {
-					if event.modifiers & ui.shift != 0 {
+					if event.modifiers.has(.shift) {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.y--
 				}
 				.h, .left {
-					if event.modifiers & ui.shift != 0 {
+					if event.modifiers.has(.shift) {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.x -= 2
 				}
 				.l, .right {
-					if event.modifiers & ui.shift != 0 {
+					if event.modifiers.has(.shift) {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.x += 2
 				}
 				.t {
-					p := event.modifiers & ui.alt == 0
-					c := if event.modifiers & ui.shift != 0 {
+					p := !event.modifiers.has(.alt)
+					c := if event.modifiers.has(.shift) {
 						if p { app.primary_color_idx - 19 } else { app.secondary_color_idx - 19 }
 					} else {
 						if p { app.primary_color_idx + 19 } else { app.secondary_color_idx + 19 }
@@ -256,8 +266,8 @@ fn event(event &ui.Event, x voidptr) {
 					app.select_color(p, c)
 				}
 				.r {
-					p := event.modifiers & ui.alt == 0
-					c := if event.modifiers & ui.shift != 0 {
+					p := !event.modifiers.has(.alt)
+					c := if event.modifiers.has(.shift) {
 						if p { app.primary_color_idx - 1 } else { app.secondary_color_idx - 1 }
 					} else {
 						if p { app.primary_color_idx + 1 } else { app.secondary_color_idx + 1 }

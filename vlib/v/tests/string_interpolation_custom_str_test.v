@@ -3,16 +3,16 @@ struct Foo {
 }
 
 fn (f &Foo) str() string {
-	return '${f.bar}'
+	return '$f.bar'
 }
 
-struct Bar  {
+struct Bar {
 	foo &Foo
 }
 
 fn test_interpolation_with_custom_ref_str() {
 	foo := Foo{}
-	bar := Bar { &foo }
+	bar := Bar{&foo}
 	println(bar)
 	assert '$bar'.contains('Bar{')
 	assert '$bar'.contains('foo: &0')

@@ -83,7 +83,7 @@ pub fn (mut m Main) run() ?string {
 	for arg in opt.args {
 		mut pcdep := load(arg, options) or {
 			if !opt.exists {
-				return error(err)
+				return err
 			}
 			continue
 		}

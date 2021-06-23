@@ -14,8 +14,8 @@ fn nr_next(prev u32) u32 {
 // time_seed_array returns the required number of u32s generated from system time.
 [inline]
 pub fn time_seed_array(count int) []u32 {
-	ctime := time.now()
-	mut seed := u32(ctime.unix_time() ^ ctime.microsecond)
+	ctime := time.sys_mono_now()
+	mut seed := u32(ctime >> 32 ^ (ctime & 0x0000_0000_FFFF_FFFF))
 	mut seed_data := []u32{cap: count}
 	for _ in 0 .. count {
 		seed = nr_next(seed)

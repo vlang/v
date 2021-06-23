@@ -17,9 +17,9 @@ fn test_array_map_ref() {
 	mut m := map[string]int{}
 	mut m_ref := &map[string]f64{}
 	mut a := []int{len: 10}
-	mut a_ref := &[]f64{cap: 12, len: 2}
+	mut a_ref := &[]f64{len: 2, cap: 12}
 	shared m_shared := &map[string]f64{}
-	shared a_shared := &[]f64{cap: 12, len: 9}
+	shared a_shared := &[]f64{len: 9, cap: 12}
 	// test usage
 	m['a'] = 3
 	unsafe {

@@ -1,0 +1,8 @@
+fn abc() string {
+	title := 'TEST'
+	return $tmpl('file.html')
+}
+
+fn main() {
+	print(abc())
+}

@@ -1,0 +1,4 @@
+fn x() {
+	// SqlStmt
+	sql :=
+}

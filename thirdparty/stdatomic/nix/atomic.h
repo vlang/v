@@ -102,20 +102,20 @@ extern unsigned char __atomic_fetch_xor_1(unsigned char* x, unsigned char y, int
 #define memory_order_acq_rel 4
 #define memory_order_seq_cst 5
 
-static inline uintptr_t atomic_load(uintptr_t* x) {
-	return atomic_load_explicit(x, memory_order_seq_cst);
+static inline void** atomic_load(void** x) {
+	return (void**)atomic_load_explicit((unsigned long long*)x, memory_order_seq_cst);
 }
-static inline void atomic_store(uintptr_t* x, uintptr_t y) {
-	atomic_store_explicit(x, y, memory_order_seq_cst);
+static inline void atomic_store(void** x, void* y) {
+	atomic_store_explicit((unsigned long long*)x, (uintptr_t)y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak(uintptr_t* x, uintptr_t* expected, uintptr_t y) {
-	return (int)atomic_compare_exchange_weak_explicit(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_weak(void** x, void** expected, void* y) {
+	return (int)atomic_compare_exchange_weak_explicit((unsigned long long*)x, (unsigned long long*)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong(uintptr_t* x, uintptr_t* expected, uintptr_t y) {
-	return (int)atomic_compare_exchange_strong_explicit(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_strong(void** x,  void** expected, void* y) {
+	return (int)atomic_compare_exchange_strong_explicit((unsigned long long*)x, (unsigned long long*)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline uintptr_t atomic_exchange(uintptr_t* x, uintptr_t y) {
-	return atomic_exchange_explicit(x, y, memory_order_seq_cst);
+static inline uintptr_t atomic_exchange(void** x, void* y) {
+	return atomic_exchange_explicit((unsigned long long*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline uintptr_t atomic_fetch_add(uintptr_t* x, uintptr_t y) {
 	return atomic_fetch_add_explicit(x, y, memory_order_seq_cst);
@@ -211,10 +211,10 @@ static inline unsigned atomic_fetch_xor_u32(unsigned* x, unsigned y) {
 static inline unsigned short atomic_load_u16(unsigned short* x) {
 	return __atomic_load_2(x, memory_order_seq_cst);
 }
-static inline void atomic_store_u16(unsigned short* x, unsigned short y) {
+static inline void atomic_store_u16(void* x, unsigned short y) {
 	__atomic_store_2(x, y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+static inline int atomic_compare_exchange_weak_u16(void* x, unsigned short* expected, unsigned short y) {
 	return (int)__atomic_compare_exchange_2(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline int atomic_compare_exchange_strong_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
@@ -307,34 +307,34 @@ static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, uns
 
 
 static inline void* atomic_load_ptr(void** x) {
-	return atomic_load_explicit((_Atomic uintptr_t*)x, memory_order_seq_cst);
+	return (void*)atomic_load_explicit((_Atomic uintptr_t*)x, memory_order_seq_cst);
 }
 static inline void atomic_store_ptr(void** x, void* y) {
-	atomic_store_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	atomic_store_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, void* y) {
-	return (int)atomic_compare_exchange_weak_explicit((_Atomic uintptr_t*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+	return (int)atomic_compare_exchange_weak_explicit((_Atomic uintptr_t*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, void* y) {
-	return (int)atomic_compare_exchange_strong_explicit((_Atomic uintptr_t*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+	return (int)atomic_compare_exchange_strong_explicit((_Atomic uintptr_t*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline void* atomic_exchange_ptr(void** x, void* y) {
-	return atomic_exchange_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_exchange_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline void* atomic_fetch_add_ptr(void** x, void* y) {
-	return atomic_fetch_add_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_fetch_add_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline void* atomic_fetch_sub_ptr(void** x, void* y) {
-	return atomic_fetch_sub_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_fetch_sub_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline void* atomic_fetch_and_ptr(void** x, void* y) {
-	return atomic_fetch_and_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_fetch_and_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline void* atomic_fetch_or_ptr(void** x, void* y) {
-	return atomic_fetch_or_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_fetch_or_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 static inline void* atomic_fetch_xor_ptr(void** x, void* y) {
-	return atomic_fetch_xor_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+	return (void*)atomic_fetch_xor_explicit((_Atomic uintptr_t*)x, (uintptr_t)y, memory_order_seq_cst);
 }
 
 
@@ -372,10 +372,10 @@ static inline unsigned atomic_fetch_xor_u32(unsigned* x, unsigned y) {
 static inline unsigned short atomic_load_u16(unsigned short* x) {
 	return atomic_load_explicit((_Atomic unsigned short*)x, memory_order_seq_cst);
 }
-static inline void atomic_store_u16(unsigned short* x, unsigned short y) {
+static inline void atomic_store_u16(void* x, unsigned short y) {
 	atomic_store_explicit((_Atomic unsigned short*)x, y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+static inline int atomic_compare_exchange_weak_u16(void* x, unsigned short* expected, unsigned short y) {
 	return (int)atomic_compare_exchange_weak_explicit((_Atomic unsigned short*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline int atomic_compare_exchange_strong_u16(unsigned short* x, unsigned short* expected, unsigned short y) {

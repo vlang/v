@@ -11,11 +11,11 @@ const (
 // NB: if you want more control over the buffer, please use a buffered IO
 // reader instead: `io.new_buffered_reader({reader: io.make_reader(con)})`
 pub fn (mut con TcpConn) read_line() string {
-	mut buf := [max_read]byte{} // where C.recv will store the network data
+	mut buf := [net.max_read]byte{} // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
-		n := C.recv(con.sock.handle, buf, max_read - 1, msg_peek | msg_nosignal)
+		n := C.recv(con.sock.handle, &buf[0], net.max_read - 1, net.msg_peek | msg_nosignal)
 		if n == -1 {
 			return res
 		}
@@ -41,14 +41,14 @@ pub fn (mut con TcpConn) read_line() string {
 			// Ensure that the block till the first \n (including it)
 			// is removed from the socket's receive queue, so that it does
 			// not get read again.
-			C.recv(con.sock.handle, buf, eol_idx + 1, msg_nosignal)
+			C.recv(con.sock.handle, &buf[0], eol_idx + 1, msg_nosignal)
 			res += line
 			break
 		}
 		// recv returned a buffer without \n in it .
-		C.recv(con.sock.handle, buf, n, msg_nosignal)
+		C.recv(con.sock.handle, &buf[0], n, msg_nosignal)
 		res += line
-		res += crlf
+		res += net.crlf
 		break
 	}
 	return res

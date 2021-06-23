@@ -1,5 +1,5 @@
-import hello as hl
-import hello.hello1 as hl1
+import v.gen.js.tests.hello as hl
+import v.gen.js.tests.hello.hello1 as hl1
 
 const (
 	i_am_a_const = 21214
@@ -71,7 +71,7 @@ fn main() {
 	arr := [1, 2, 3, 4, 5]
 	for i in arr {
 	}
-	ma := {
+	ma := map{
 		'str': 'done'
 		'ddo': 'baba'
 	}
@@ -91,15 +91,14 @@ fn main() {
 	propagation() or { println(err) }
 }
 
-fn anon_consumer(greeting string, anon fn (message string)) {
+fn anon_consumer(greeting string, anon fn (string)) {
 	anon(greeting)
 }
 
 fn async(num int, def string) {
 }
 
-[inline]
-[deprecated]
+[deprecated; inline]
 fn hello(game_on int, dummy ...string) (int, int) {
 	defer {
 		do := 'not'
@@ -130,7 +129,9 @@ fn (it Companies) method() int {
 }
 
 fn error_if_even(num int) ?int {
-	if num % 2 == 0 { return error('number is even') }
+	if num % 2 == 0 {
+		return error('number is even')
+	}
 	return num
 }
 

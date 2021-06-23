@@ -16,7 +16,7 @@ fn get_val_from_chan(ch chan i64) ?i64 {
 fn get_val_from_chan2(ch chan i64) ?i64 {
 	r := <-ch or {
 		println('error')
-		return error(err)
+		return err
 	}
 	return r
 }

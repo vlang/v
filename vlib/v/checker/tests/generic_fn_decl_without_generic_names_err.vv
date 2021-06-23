@@ -1,0 +1,34 @@
+struct Generic<T> {
+	ch chan T
+}
+
+struct Concrete {
+	msg string
+}
+
+fn main() {
+	g := create_generic_t<Concrete>()
+	g.ch <- Concrete{
+		msg: 'hello'
+	}
+}
+
+fn create_generic_t<T>() Generic<T> {
+	g := Generic{
+		ch: chan T{}
+	}
+
+	go g_worker(g)
+
+	return g
+}
+
+fn g_worker(g Generic<T>) {
+	t := <-g.ch
+	handle(t)
+	// println("${t.msg}")
+}
+
+fn handle(t T) {
+	println("hi")
+}

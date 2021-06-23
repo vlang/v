@@ -19,15 +19,27 @@ pub enum Increment {
 	patch
 }
 
+struct EmptyInputError {
+	msg  string = 'Empty input'
+	code int
+}
+
+struct InvalidVersionFormatError {
+	msg  string
+	code int
+}
+
 // * Constructor.
 // from returns a `Version` structure parsed from `input` `string`.
 pub fn from(input string) ?Version {
 	if input.len == 0 {
-		return error('Empty input')
+		return IError(&EmptyInputError{})
 	}
 	raw_version := parse(input)
 	version := raw_version.validate() or {
-		return error('Invalid version format for input "$input"')
+		return IError(&InvalidVersionFormatError{
+			msg: 'Invalid version format for input "$input"'
+		})
 	}
 	return version
 }
@@ -88,8 +100,7 @@ v := semver.coerce('1.3-RC1-b2') or { semver.Version{} }
 assert v.satisfies('>1.0 <2.0') == true // 1.3.0
 */
 pub fn coerce(input string) ?Version {
-	ver := coerce_version(input) or { return error('Invalid version for input "$input"') }
-	return ver
+	return coerce_version(input)
 }
 
 // is_valid returns `true` if the `input` `string` can be converted to

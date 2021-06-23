@@ -6,7 +6,10 @@ module math
 // TODO : The commented out functions need either a native V implementation, a
 // JS specific implementation, or use some other JS math library, such as
 // https://github.com/josdejong/mathjs
-fn JS.Math.abs(x f64) f64 // Replaces C.fabs
+
+// Replaces C.fabs
+fn JS.Math.abs(x f64) f64
+
 fn JS.Math.acos(x f64) f64
 fn JS.Math.asin(x f64) f64
 fn JS.Math.atan(x f64) f64
@@ -15,23 +18,28 @@ fn JS.Math.cbrt(x f64) f64
 fn JS.Math.ceil(x f64) f64
 fn JS.Math.cos(x f64) f64
 fn JS.Math.cosh(x f64) f64
-//fn JS.Math.erf(x f64) f64 // Not in standard JS Math object
-//fn JS.Math.erfc(x f64) f64 // Not in standard JS Math object
+
+// fn JS.Math.erf(x f64) f64 // Not in standard JS Math object
+// fn JS.Math.erfc(x f64) f64 // Not in standard JS Math object
 fn JS.Math.exp(x f64) f64
-//fn JS.Math.exp2(x f64) f64 // Not in standard JS Math object
+
+// fn JS.Math.exp2(x f64) f64 // Not in standard JS Math object
 fn JS.Math.floor(x f64) f64
-//fn JS.Math.fmod(x f64, y f64) f64 // Not in standard JS Math object
-//fn JS.Math.hypot(x f64, y f64) f64 // Not in standard JS Math object
+
+// fn JS.Math.fmod(x f64, y f64) f64 // Not in standard JS Math object
+// fn JS.Math.hypot(x f64, y f64) f64 // Not in standard JS Math object
 fn JS.Math.log(x f64) f64
-//fn JS.Math.log2(x f64) f64 // Not in standard JS Math object
-//fn JS.Math.log10(x f64) f64 // Not in standard JS Math object
-//fn JS.Math.lgamma(x f64) f64 // Not in standard JS Math object
+
+// fn JS.Math.log2(x f64) f64 // Not in standard JS Math object
+// fn JS.Math.log10(x f64) f64 // Not in standard JS Math object
+// fn JS.Math.lgamma(x f64) f64 // Not in standard JS Math object
 fn JS.Math.pow(x f64, y f64) f64
 fn JS.Math.round(x f64) f64
 fn JS.Math.sin(x f64) f64
 fn JS.Math.sinh(x f64) f64
 fn JS.Math.sqrt(x f64) f64
-//fn JS.Math.tgamma(x f64) f64 // Not in standard JS Math object
+
+// fn JS.Math.tgamma(x f64) f64 // Not in standard JS Math object
 fn JS.Math.tan(x f64) f64
 fn JS.Math.tanh(x f64) f64
 fn JS.Math.trunc(x f64) f64
@@ -66,7 +74,7 @@ pub fn atan(a f64) f64 {
 
 // atan2 calculates inverse tangent with two arguments, returns the angle between the X axis and the point.
 [inline]
-pub fn atan2(a, b f64) f64 {
+pub fn atan2(a f64, b f64) f64 {
 	return JS.Math.atan2(a, b)
 }
 
@@ -132,7 +140,7 @@ pub fn floor(a f64) f64 {
 
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 [inline]
-pub fn fmod(a, b f64) f64 {
+pub fn fmod(a f64, b f64) f64 {
 	return JS.Math.fmod(a, b)
 }
 
@@ -144,7 +152,7 @@ pub fn gamma(a f64) f64 {
 
 // Returns hypotenuse of a right triangle.
 [inline]
-pub fn hypot(a, b f64) f64 {
+pub fn hypot(a f64, b f64) f64 {
 	return JS.Math.hypot(a, b)
 }
 
@@ -174,19 +182,19 @@ pub fn log_gamma(a f64) f64 {
 
 // log_n calculates base-N logarithm of the provided value.
 [inline]
-pub fn log_n(a, b f64) f64 {
+pub fn log_n(a f64, b f64) f64 {
 	return JS.Math.log(a) / JS.Math.log(b)
 }
 
 // pow returns base raised to the provided power.
 [inline]
-pub fn pow(a, b f64) f64 {
+pub fn pow(a f64, b f64) f64 {
 	return JS.Math.pow(a, b)
 }
 
 // powf returns base raised to the provided power. (float32)
 [inline]
-pub fn powf(a, b f32) f32 {
+pub fn powf(a f32, b f32) f32 {
 	return f32(JS.Math.pow(a, b))
 }
 

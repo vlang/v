@@ -3,6 +3,7 @@ module util
 import os
 import v.pref
 
+[if trace_mod_path_to_full_name ?]
 fn trace_mod_path_to_full_name(line string, mod string, file_path string, res string) {
 	eprintln('> $line ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: $res')
 }
@@ -14,32 +15,31 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 	for search_path in mod_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if os.is_dir(try_path) {
-			if m1 := mod_path_to_full_name(mod, try_path) {
-				$if trace_mod_path_to_full_name ? {
-					trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
-				}
+			if m1 := mod_path_to_full_name(pref, mod, try_path) {
+				trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
 				return m1
 			}
 		}
 	}
-	if m1 := mod_path_to_full_name(mod, file_path) {
-		$if trace_mod_path_to_full_name ? {
-			trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
-		}
+	if m1 := mod_path_to_full_name(pref, mod, file_path) {
+		trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
 		return m1
 	}
 	return mod
 }
 
-pub fn qualify_module(mod string, file_path string) string {
+pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) string {
 	if mod == 'main' {
 		return mod
 	}
-	clean_file_path := file_path.all_before_last('/')
-	if m1 := mod_path_to_full_name(mod, clean_file_path) {
-		$if trace_mod_path_to_full_name ? {
-			trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
-		}
+	clean_file_path := file_path.all_before_last(os.path_separator)
+	// relative module (relative to working directory)
+	// TODO: find most stable solution & test with -usecache
+	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
+		return mod
+	}
+	if m1 := mod_path_to_full_name(pref, mod, clean_file_path) {
+		trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
 		return m1
 	}
 	return mod
@@ -50,13 +50,18 @@ pub fn qualify_module(mod string, file_path string) string {
 // * if possible split this function in two, one which gets the
 // parent module path and another which turns it into the full name
 // * create shared logic between these fns and builder.find_module_path
-pub fn mod_path_to_full_name(mod string, path string) ?string {
+pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
-	vmod_folders := ['vlib', '.vmodules', 'modules']
+	mut vmod_folders := ['vlib', '.vmodules', 'modules']
+	for base in pref.lookup_path.map(os.base(it)) {
+		if !(base in vmod_folders) {
+			vmod_folders << base
+		}
+	}
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
-		if vmod_folder + os.path_separator in path {
+		if path.contains(vmod_folder + os.path_separator) {
 			in_vmod_path = true
 			break
 		}
@@ -103,6 +108,14 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 					return mod_full_name
 				}
 			}
+		}
+	}
+	if os.is_abs_path(pref.path) && os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		rel_mod_path := path.replace(pref.path.all_before_last(os.path_separator) +
+			os.path_separator, '')
+		if rel_mod_path != path {
+			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
+			return full_mod_name
 		}
 	}
 	return error('module not found')

@@ -17,26 +17,27 @@ fn main() {
 		return
 	}
 	for {
-		os.exec('git pull --rebase') or {
+		res_pull := os.execute('git pull --rebase')
+		if res_pull.exit_code != 0 {
 			println('failed to git pull. uncommitted changes?')
 			return
 		}
-		// println('running fast')
-		resp := os.exec('./fast') or {
-			println(err)
+		// println('running ./fast')
+		resp := os.execute('./fast')
+		if resp.exit_code < 0 {
+			println(resp.output)
 			return
 		}
 		if resp.exit_code != 0 {
 			println('resp != 0, skipping')
 		} else {
 			os.chdir('website')
-			os.exec('git checkout gh-pages') ?
+			os.execute_or_panic('git checkout gh-pages')
 			os.cp('../index.html', 'index.html') ?
 			os.system('git commit -am "update benchmark"')
 			os.system('git push origin gh-pages')
 			os.chdir('..')
 		}
-		// println('sleeping 60')
-		time.sleep(60)
+		time.sleep(180 * time.second)
 	}
 }

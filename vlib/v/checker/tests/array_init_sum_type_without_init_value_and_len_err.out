@@ -1,7 +1,14 @@
-vlib/v/checker/tests/array_init_sum_type_without_init_value_and_len_err.vv:4:9: error: cannot initalize sum type array without default value
+vlib/v/checker/tests/array_init_sum_type_without_init_value_and_len_err.vv:4:7: error: cannot initialize sum type array without default value
     2 | 
     3 | fn main() {
-    4 |     a := []Foo{len:10}
-      |            ~~~
+    4 |     a := []Foo{len: 10}
+      |          ~~~~~~
     5 |     println(a)
     6 |
+vlib/v/checker/tests/array_init_sum_type_without_init_value_and_len_err.vv:7:13: error: cannot initialize sum type array without default value
+    5 |     println(a)
+    6 | 
+    7 |     fixed_a := [10]Foo{}
+      |                ~~~~~~~~~
+    8 |     println(fixed_a)
+    9 | }

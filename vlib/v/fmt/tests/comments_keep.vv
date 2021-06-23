@@ -20,9 +20,6 @@ fn main() {
 	u := User{
 		name: 'Peter'
 	}
-	if true {
-	}
-	// some comment after an if without else
 	n := sizeof(User)
 	// else
 	// else {
@@ -40,6 +37,12 @@ fn main() {
 	//////
 	// /
 	// 123
+	match 0 {
+		0 {
+			0 // comment after an expression inside match
+		}
+		else {}
+	}
 }
 
 fn assign_comments() {
@@ -51,12 +54,48 @@ fn assign_comments() {
 	// at the end
 }
 
-fn linebreaks_in_block_comments() {
+fn linebreaks_in_ascii_art_block_comments() {
 	/*
-	block
+	+++
 	*/
 	/*****
-	Want a long line of stars?
-	no problem
+	+++
 	*****/
+	/****
+	+++
+	*/
+	/*
+	+++
+	****/
+}
+
+fn map_comments() {
+	mymap := map{
+		// pre
+		`:`: 1
+		`!`: 2 // after
+		// and between
+		`%`: 3
+		// between
+		// between second
+		`$`: 4
+		`&`: 5
+		// post
+	}
+}
+
+fn ifs_comments_and_empty_lines() {
+	if true {
+	}
+	// some comment direct after an if without else
+	if false {
+	} else {
+	}
+	// some comment direct after an else
+	if false {
+	}
+
+	// this is parsed as post_comment of the if but does not really belong there
+	// thereore keep the empty line
+	something_else()
 }

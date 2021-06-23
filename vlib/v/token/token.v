@@ -8,6 +8,7 @@ pub:
 	kind    Kind   // the token number/enum; for quick comparisons
 	lit     string // literal representation of the token
 	line_nr int    // the line number in the source where the token occured
+	col     int    // the column in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
 	pos  int // the position of the token in scanner text
 	len  int // length of the literal
@@ -110,6 +111,7 @@ pub enum Kind {
 	key_return
 	key_select
 	key_sizeof
+	key_isreftype
 	key_likely
 	key_unlikely
 	key_offsetof
@@ -117,6 +119,7 @@ pub enum Kind {
 	key_true
 	key_type
 	key_typeof
+	key_dump
 	key_orelse
 	key_union
 	key_pub
@@ -139,17 +142,24 @@ const (
 // @METHOD => will be substituted with ReceiverType.MethodName
 // @MOD => will be substituted with the name of the current V module
 // @STRUCT => will be substituted with the name of the current V struct
-// @VEXE => will be substituted with the path to the V compiler
 // @FILE => will be substituted with the path of the V source file
 // @LINE => will be substituted with the V line number where it appears (as a string).
 // @COLUMN => will be substituted with the column where it appears (as a string).
 // @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
 // @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
-// This allows things like this:
-// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
-// ... which is useful while debugging/tracing
+// @VMODROOT => will be substituted with the *folder* where the nearest v.mod file is (as a string).
+// @VEXE => will be substituted with the path to the V compiler
+// @VEXEROOT => will be substituted with the *folder* where the V executable is (as a string).
+// @VROOT => the old name for @VMODROOT; sometimes it was used as @VEXEROOT;
+//           NB: @VROOT is now deprecated, use either @VMODROOT or @VEXEROOT instead.
+// NB: @VEXEROOT & @VMODROOT are used for compilation options like this:
+//   #include "@VMODROOT/include/abc.h"
+//   #flag -L@VEXEROOT/thirdparty/libgc
 //
-// @VROOT is special and handled in places like '#include ...'
+// The @XYZ tokens allow for code like this:
+// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+// ... which is useful while debugging/tracing.
+//
 // @<type> is allowed for keyword variable names. E.g. 'type'
 pub enum AtKind {
 	unknown
@@ -163,11 +173,14 @@ pub enum AtKind {
 	column_nr
 	vhash
 	vmod_file
+	vmodroot_path
+	vroot_path // obsolete
+	vexeroot_path
 }
 
 pub const (
-	valid_at_tokens = ['@FN', '@METHOD', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN',
-		'@VHASH', '@VMOD_FILE']
+	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
 )
 
 // build_keys genereates a map with keywords' string values:
@@ -255,6 +268,7 @@ fn build_token_str() []string {
 	s[Kind.key_return] = 'return'
 	s[Kind.key_module] = 'module'
 	s[Kind.key_sizeof] = 'sizeof'
+	s[Kind.key_isreftype] = 'isreftype'
 	s[Kind.key_likely] = '_likely_'
 	s[Kind.key_unlikely] = '_unlikely_'
 	s[Kind.key_go] = 'go'
@@ -274,6 +288,7 @@ fn build_token_str() []string {
 	s[Kind.key_import] = 'import'
 	s[Kind.key_unsafe] = 'unsafe'
 	s[Kind.key_typeof] = 'typeof'
+	s[Kind.key_dump] = 'dump'
 	s[Kind.key_enum] = 'enum'
 	s[Kind.key_interface] = 'interface'
 	s[Kind.key_pub] = 'pub'
@@ -301,25 +316,25 @@ pub const (
 	keywords = build_keys()
 )
 
-pub fn key_to_token(key string) Kind {
-	return Kind(token.keywords[key])
-}
-
+[inline]
 pub fn is_key(key string) bool {
-	return int(key_to_token(key)) > 0
+	return int(token.keywords[key]) > 0
 }
 
+[inline]
 pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub,
 		.eof,
 	]
 }
 
+[inline]
 pub fn (t Kind) is_assign() bool {
 	return t in token.assign_tokens
 }
 
 // note: used for some code generation, so no quoting
+[inline]
 pub fn (t Kind) str() string {
 	return token.token_str[int(t)]
 }
@@ -421,41 +436,48 @@ const (
 )
 
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
+[inline]
 pub fn (tok Token) precedence() int {
 	return int(token.precedences[tok.kind])
 }
 
 // is_scalar returns true if the token is a scalar
+[inline]
 pub fn (tok Token) is_scalar() bool {
 	return tok.kind in [.number, .string]
 }
 
 // is_unary returns true if the token can be in a unary expression
+[inline]
 pub fn (tok Token) is_unary() bool {
 	// `+` | `-` | `!` | `~` | `*` | `&` | `<-`
 	return tok.kind in [.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
+[inline]
 pub fn (tok Kind) is_relational() bool {
 	// `<` | `<=` | `>` | `>=` | `==` | `!=`
 	return tok in [.lt, .le, .gt, .ge, .eq, .ne]
 }
 
+[inline]
 pub fn (k Kind) is_start_of_type() bool {
 	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared]
 }
 
+[inline]
 pub fn (kind Kind) is_prefix() bool {
 	return kind in [.minus, .amp, .mul, .not, .bit_not]
 }
 
+[inline]
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
 		.right_shift, .arrow]
 }
 
-// Pass table.builtin_type_names
+// Pass ast.builtin_type_names
 // Note: can't import table here due to circular module dependency
 pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
 	match tok.kind {

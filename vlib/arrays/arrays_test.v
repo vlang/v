@@ -1,7 +1,5 @@
 module arrays
 
-import rand
-
 fn test_min() {
 	a := [8, 2, 6, 4]
 	assert min<int>(a) == 2
@@ -74,4 +72,16 @@ fn test_fixed_array_assignment() {
 	for val in e {
 		assert val == 'vlang'
 	}
+}
+
+fn test_group() {
+	x := [4, 5, 6]
+	y := [2, 1, 3]
+
+	z := group<int>(x, y)
+	assert z == [[4, 2], [5, 1], [6, 3]]
+	x2 := [8, 9]
+	z2 := group<int>(x2, y)
+	assert z2 == [[8, 2], [9, 1]]
+	assert group<int>(x, []int{}) == [][]int{}
 }

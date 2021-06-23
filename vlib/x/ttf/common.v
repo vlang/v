@@ -10,7 +10,7 @@ module ttf
 *
 * Note:
 *
-* TODO: 
+* TODO:
 **********************************************************************/
 import os
 import math
@@ -62,7 +62,7 @@ fn (mut bmp BitMap) format_texture() {
 	b_a := byte(bmp.bg_color & 0xFF)
 
 	// trasform buffer in a texture
-	x := byteptr(bmp.buf)
+	x := bmp.buf
 	unsafe {
 		mut i := 0
 		for i < bmp.buf_size {
@@ -87,7 +87,7 @@ fn (mut bmp BitMap) format_texture() {
 // write out a .ppm file
 pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	tmp_buf := bmp.buf
-	mut buf := unsafe {malloc(bmp.buf_size)}
+	mut buf := unsafe { malloc_noscan(bmp.buf_size) }
 	unsafe { C.memcpy(buf, tmp_buf, bmp.buf_size) }
 	bmp.buf = buf
 
@@ -103,7 +103,7 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 			c_r := bmp.buf[pos]
 			c_g := bmp.buf[pos + 1]
 			c_b := bmp.buf[pos + 2]
-			f_out.write_str('$c_r $c_g $c_b ') or { panic(err) }
+			f_out.write_string('$c_r $c_g $c_b ') or { panic(err) }
 		}
 	}
 	f_out.close()
@@ -133,24 +133,6 @@ pub fn (mut bmp BitMap) save_raw_data(file_name string) {
 //
 // Math functions
 //
-[inline]
-fn abs(a int) int {
-	if a < 0 {
-		return -a
-	} else {
-		return a
-	}
-}
-
-[inline]
-fn fabs(a f32) f32 {
-	if a < 0 {
-		return -a
-	} else {
-		return a
-	}
-}
-
 // integer part of x
 [inline]
 fn ipart(x f32) f32 {

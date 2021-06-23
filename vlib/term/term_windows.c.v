@@ -39,25 +39,25 @@ mut:
 [typedef]
 struct C.CHAR_INFO {
 mut:
-	Char C.uChar
+	Char       C.uChar
 	Attributes u16
 }
 
 // ref - https://docs.microsoft.com/en-us/windows/console/getconsolescreenbufferinfo
-fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
+fn C.GetConsoleScreenBufferInfo(handle C.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/setconsoletitle
 fn C.SetConsoleTitle(title &u16) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/setconsolecursorposition
-fn C.SetConsoleCursorPosition(handle os.HANDLE, coord C.COORD) bool
+fn C.SetConsoleCursorPosition(handle C.HANDLE, coord C.COORD) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/scrollconsolescreenbuffer
-fn C.ScrollConsoleScreenBuffer(output os.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill C.CHAR_INFO) bool
+fn C.ScrollConsoleScreenBuffer(output C.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill &C.CHAR_INFO) bool
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
-	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
+	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			columns := int(info.srWindow.Right - info.srWindow.Left + 1)
@@ -71,7 +71,7 @@ pub fn get_terminal_size() (int, int) {
 // get_cursor_position returns a Coord containing the current cursor position
 pub fn get_cursor_position() Coord {
 	mut res := Coord{}
-	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
+	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			res.x = info.dwCursorPosition.X

@@ -4,10 +4,11 @@ vlib/v/checker/tests/struct_assigned_to_pointer_to_struct.vv:5:4: error: mismatc
     5 |     f = { x: 223344 }
       |       ^
     6 |     f = Foo{ x: 20 }
-    7 | }
+    7 |     _ = f
 vlib/v/checker/tests/struct_assigned_to_pointer_to_struct.vv:6:4: error: mismatched types `&Foo` and `Foo`
     4 |     mut f := &Foo{ 10 }
     5 |     f = { x: 223344 }
     6 |     f = Foo{ x: 20 }
       |       ^
-    7 | }
+    7 |     _ = f
+    8 | }

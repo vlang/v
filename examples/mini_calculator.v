@@ -113,7 +113,7 @@ fn is_num_string(str string) bool {
 
 fn main() {
 	println('Please enter the expression you want to calculate, e.g. 1e2+(3-2.5)*6/1.5 .')
-	println("Enter \'exit\' or \'EXIT\' to quit.")
+	println("Enter 'exit' or 'EXIT' to quit.")
 	mut expr_count := 0
 	for {
 		expr_count++

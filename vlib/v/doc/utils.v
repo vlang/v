@@ -2,10 +2,7 @@ module doc
 
 import strings
 import v.ast
-import v.util
 import v.token
-import v.table
-import os
 
 // merge_comments merges all the comment contents into a single text.
 pub fn merge_comments(comments []ast.Comment) string {
@@ -22,8 +19,8 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 	return DocComment{
 		text: text
 		is_multi: ast_node.is_multi
-		pos: DocPos{
-			line: ast_node.pos.line_nr - 1
+		pos: token.Position{
+			line_nr: ast_node.pos.line_nr
 			col: 0 // ast_node.pos.pos - ast_node.text.len
 			len: text.len
 		}
@@ -50,7 +47,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	mut last_comment_line_nr := 0
 	for i := comments.len - 1; i >= 0; i-- {
 		cmt := comments[i]
-		if last_comment_line_nr != 0 && cmt.pos.line < last_comment_line_nr - 1 {
+		if last_comment_line_nr != 0 && cmt.pos.line_nr + 1 < last_comment_line_nr - 1 {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
 			// break
@@ -82,24 +79,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 		// eprintln('cmt: $cmt')
 		cseparator := if cmt_content.starts_with('```') { '\n' } else { ' ' }
 		comment = cmt_content + cseparator + comment
-		last_comment_line_nr = cmt.pos.line
+		last_comment_line_nr = cmt.pos.line_nr + 1
 	}
 	return comment
-}
-
-// convert_pos converts the `token.Position` data into a `DocPos`.
-fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
-	if filename !in d.sources {
-		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or { '' }
-	}
-	source := d.sources[filename]
-	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
-	column := util.imax(0, pos.pos - p - 1)
-	return DocPos{
-		line: pos.line_nr + 1
-		col: util.imax(1, column + 1)
-		len: pos.len
-	}
 }
 
 // stmt_signature returns the signature of a given `ast.Stmt` node.
@@ -157,9 +139,9 @@ pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
 	}
 }
 
-// type_to_str is a wrapper function around `fmt.table.type_to_str`.
-pub fn (mut d Doc) type_to_str(typ table.Type) string {
-	// why is it the default behaviour of table.type_to_str
+// type_to_str is a wrapper function around `fmt.ast.type_to_str`.
+pub fn (mut d Doc) type_to_str(typ ast.Type) string {
+	// why is it the default behaviour of ast.type_to_str
 	// to convert math.bits.Type to bits.Type?
 	d.table.cmod_prefix = d.orig_mod_name + '.'
 	return d.fmt.table.type_to_str(typ).all_after('&')

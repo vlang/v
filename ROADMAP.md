@@ -1,0 +1,28 @@
+## [Version 0.3](https://github.com/vlang/v/projects/5)
+- [ ] [make `-autofree` the default](https://github.com/vlang/v/issues/6989)
+- [ ] [coroutines](https://github.com/vlang/v/issues/561)
+- [x] channels
+- [x] lock{}
+- [x] thread safe arrays
+- [ ] [thread safe maps](https://github.com/vlang/v/issues/6992)
+- [ ] [C2V translator](https://github.com/vlang/v/issues/6985)
+- [ ] doom.v
+- [x] rune type
+- [ ] replace `ustring` with `[]rune`
+- [x] fix `byte.str()`
+- [x] maps with non-string keys
+- [x] iOS/Android support
+- [ ] parallel parser (and maybe checker/gen?)
+- [ ] `recover()` from panics
+- [x] IO streams
+- [x] struct embedding
+- [ ] interface embedding
+- [x] interfaces: allow struct fields (not just methods)
+- [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
+- [ ] method expressions with an explicit receiver as the first argument
+- [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
+- [ ] fix all remaining generics issues
+- [ ] merge v.c and v_win.c
+- [ ] more advanced errors, not just `error('message')`
+- [ ] VLS for autocomplete, refactoring, go to definition etc
+- [ ] Recursive structs via optionals: `struct Node { next ?Node }`

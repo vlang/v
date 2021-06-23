@@ -8,7 +8,5 @@ fn test_methods_arg() {
 	s1 := S1{}
 	$for method in S1.methods {
 		s1.$method(wrong)
-		arg := 7
-		s1.$method(arg)
 	}
 }

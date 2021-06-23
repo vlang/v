@@ -1,0 +1,12 @@
+[unsafe]
+fn foo() int {
+	mut static x := 42
+	x++
+	return x
+}
+
+[unsafe]
+fn foo() int {
+	static x := 42 // a immutable static is not very useful, but vfmt should support that too
+	return x
+}

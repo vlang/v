@@ -3,4 +3,5 @@ vlib/v/checker/tests/assign_expr_type_err_g.vv:3:2: error: operator `+=` not def
     2 |     mut foo := true
     3 |     foo += false
       |     ~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

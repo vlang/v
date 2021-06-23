@@ -1,5 +1,5 @@
-fn test_fn(s1, s2 string) {
-	print(if s1 == s2 {'true'} else {'false'})
+fn test_fn(s1 string, s2 string) {
+	print(if s1 == s2 { 'true' } else { 'false' })
 	print('\t=> ')
 	println('"$s1", "$s2"')
 }
@@ -60,7 +60,7 @@ fn implicit_str() {
 	test_fn('int $i', 'int 42')
 	test_fn('$i', '42')
 	check := '$i' == '42'
-	//println(check)
+	// println(check)
 	text := '$i' + '42'
 	test_fn(text, '4242')
 }
@@ -89,9 +89,9 @@ fn interpolation_string_prefix_expr() {
 	r := 1
 	c := 2
 	js := 1
-	test_fn('>${3+r}<', '>4<')
+	test_fn('>${3 + r}<', '>4<')
 	test_fn('${r == js} $js', 'true 1')
-	test_fn('>${js+c} ${js+r==c}<', '>3 true<')
+	test_fn('>${js + c} ${js + r == c}<', '>3 true<')
 }
 
 /*
@@ -134,8 +134,8 @@ fn utf8_string_interpolation() {
 	test_fn('$a $st $m', 'à-côté Sträßle 10€')
 	zz := '>${a:10}< >${st:-8}< >${m:5}<-'
 	zz_expected := '>    à-côté< >Sträßle < >  10€<-'
-	//println('         zz: $zz')
-	//println('zz_expected: $zz_expected')
+	// println('         zz: $zz')
+	// println('zz_expected: $zz_expected')
 	test_fn(zz, zz_expected)
 	// e := '\u20AC' // Eurosign doesn' work with MSVC and tcc
 	e := '€'
@@ -153,7 +153,7 @@ struct Sss {
 }
 
 fn (s Sss) str() string {
-	return '[${s.v1}, ${s.v2:.3f}]'
+	return '[$s.v1, ${s.v2:.3f}]'
 }
 
 fn string_interpolation_str_evaluation() {

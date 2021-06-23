@@ -3,4 +3,5 @@ vlib/v/checker/tests/assign_expr_type_err_f.vv:3:9: error: invalid right operand
     2 |     mut foo := 10
     3 |     foo -= false
       |            ~~~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

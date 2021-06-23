@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module term
+
 // Sources for ANSI Control Sequences
 // https://github.com/RajeshPatkarInstitute/Panim
 // https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html
@@ -61,7 +62,7 @@ pub fn erase_tobeg() {
 
 // clears entire screen and returns cursor to top left-corner
 pub fn erase_clear() {
-	print("\033[H\033[J")
+	print('\033[H\033[J')
 }
 
 pub fn erase_del_clear() {
@@ -96,4 +97,12 @@ pub fn show_cursor() {
 // Will make cursor invisible
 pub fn hide_cursor() {
 	print('\x1b[?25l')
+}
+
+// clear_previous_line - useful for progressbars.
+// It moves the cursor to start of line, then 1 line above,
+// then erases the line. In effect the next println will overwrite
+// the previous content.
+pub fn clear_previous_line() {
+	print('\r\x1b[1A\x1b[2K')
 }

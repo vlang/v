@@ -10,20 +10,21 @@ pub struct Cookie {
 pub mut:
 	name        string
 	value       string
-	path        string // optional
-	domain      string // optional
+	path        string    // optional
+	domain      string    // optional
 	expires     time.Time // optional
-	raw_expires string // for reading cookies only. optional.
+	raw_expires string    // for reading cookies only. optional.
 	// max_age=0 means no 'Max-Age' attribute specified.
 	// max_age<0 means delete cookie now, equivalently 'Max-Age: 0'
 	// max_age>0 means Max-Age attribute present and given in seconds
-	max_age     int
-	secure      bool
-	http_only   bool
-	same_site   SameSite
-	raw         string
-	unparsed    []string // Raw text of unparsed attribute-value pairs
+	max_age   int
+	secure    bool
+	http_only bool
+	same_site SameSite
+	raw       string
+	unparsed  []string // Raw text of unparsed attribute-value pairs
 }
+
 // SameSite allows a server to define a cookie attribute making it impossible for
 // the browser to send this cookie along with cross-site requests. The main
 // goal is to mitigate the risk of cross-origin information leakage, and provide
@@ -61,12 +62,10 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 		if !is_cookie_name_valid(name) {
 			continue
 		}
-		value := parse_cookie_value(raw_value, true) or {
-			continue
-		}
-		mut c  := &Cookie{
-			name: name,
-			value: value,
+		value := parse_cookie_value(raw_value, true) or { continue }
+		mut c := &Cookie{
+			name: name
+			value: value
 			raw: line
 		}
 		for i, _ in parts {
@@ -182,10 +181,11 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			if filter != '' && filter != name {
 				continue
 			}
-			val = parse_cookie_value(val, true) or {
-				continue
+			val = parse_cookie_value(val, true) or { continue }
+			cookies << &Cookie{
+				name: name
+				value: val
 			}
-			cookies << &Cookie{name: name, value: val}
 		}
 	}
 	return cookies
@@ -203,13 +203,14 @@ pub fn (c &Cookie) str() string {
 	// extra_cookie_length derived from typical length of cookie attributes
 	// see RFC 6265 Sec 4.1.
 	extra_cookie_length := 110
-	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len + extra_cookie_length)
-	b.write(c.name)
-	b.write('=')
-	b.write(sanitize_cookie_value(c.value))
+	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len +
+		extra_cookie_length)
+	b.write_string(c.name)
+	b.write_string('=')
+	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write('; path=')
-		b.write(sanitize_cookie_path(c.path))
+		b.write_string('; path=')
+		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
 		if valid_cookie_domain(c.domain) {
@@ -221,52 +222,52 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write('; domain=')
-			b.write(d)
+			b.write_string('; domain=')
+			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
 		}
 	}
 	if c.expires.year > 1600 {
 		e := c.expires
-		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
-		b.write('; expires=')
-		b.write(time_str)
+		time_str := '$e.weekday_str(), $e.day.str() $e.smonth() $e.year $e.hhmmss() GMT'
+		b.write_string('; expires=')
+		b.write_string(time_str)
 	}
 	// TODO: Fix this. Techically a max age of 0 or less should be 0
 	// We need a way to not have a max age.
 	if c.max_age > 0 {
-		b.write('; Max-Age=')
-		b.write(c.max_age.str())
+		b.write_string('; Max-Age=')
+		b.write_string(c.max_age.str())
 	} else if c.max_age < 0 {
-		b.write('; Max-Age=0')
+		b.write_string('; Max-Age=0')
 	}
 	if c.http_only {
-		b.write('; HttpOnly')
+		b.write_string('; HttpOnly')
 	}
 	if c.secure {
-		b.write('; Secure')
+		b.write_string('; Secure')
 	}
 	match c.same_site {
 		.same_site_default_mode {
-			b.write('; SameSite')
+			b.write_string('; SameSite')
 		}
 		.same_site_none_mode {
-			b.write('; SameSite=None')
+			b.write_string('; SameSite=None')
 		}
 		.same_site_lax_mode {
-			b.write('; SameSite=Lax')
+			b.write_string('; SameSite=Lax')
 		}
 		.same_site_strict_mode {
-			b.write('; SameSite=Strict')
+			b.write_string('; SameSite=Strict')
 		}
 	}
 	return b.str()
 }
 
-fn sanitize(valid fn(byte) bool, v string) string {
+fn sanitize(valid fn (byte) bool, v string) string {
 	mut ok := true
-	for i in 0..v.len {
+	for i in 0 .. v.len {
 		if valid(v[i]) {
 			continue
 		}
@@ -277,15 +278,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 	if ok {
 		return v.clone()
 	}
-	// TODO: Use `filter` instead of this nonesense
-	buf := v.bytes()
-	mut bytes := v.bytes()
-	for i, _ in buf {
-		if !valid(buf[i]) {
-			bytes.delete(i)
-		}
-	}
-	return bytes.bytestr()
+	return v.bytes().filter(valid(it)).bytestr()
 }
 
 fn sanitize_cookie_name(name string) string {
@@ -378,7 +371,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 			}
 			part_len = 0
 		} else {
-			 return false
+			return false
 		}
 		last = c
 	}
@@ -394,7 +387,7 @@ fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
 	if allow_double_quote && raw.len > 1 && raw[0] == `"` && raw[raw.len - 1] == `"` {
 		raw = raw.substr(1, raw.len - 1)
 	}
-	for i in 0..raw.len {
+	for i in 0 .. raw.len {
 		if !valid_cookie_value_byte(raw[i]) {
 			return error('http.cookie: invalid cookie value')
 		}

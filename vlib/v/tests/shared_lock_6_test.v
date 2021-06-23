@@ -16,7 +16,7 @@ fn (shared x St) f(shared y St, shared z St) {
 
 fn (shared x St) g(shared y St, shared z St) {
 	for _ in 0 .. 10000 {
-		rlock x; lock y, z {
+		lock y, z; rlock x {
 			y.a += x.a
 			if y.a > 1000000 {
 				y.a /= 2

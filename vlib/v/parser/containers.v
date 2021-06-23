@@ -4,23 +4,23 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
 	mut last_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
-	mut array_type := table.void_type
-	mut elem_type := table.void_type
+	mut array_type := ast.void_type
+	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
 	mut ecmnts := [][]ast.Comment{}
+	mut pre_cmnts := []ast.Comment{}
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
-	mut default_expr := ast.Expr{}
+	mut default_expr := ast.empty_expr()
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.position()
 		// []typ => `[]` and `typ` must be on the same line
@@ -33,19 +33,28 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
 			idx := p.table.find_or_register_array(elem_type)
-			array_type = table.new_type(idx)
+			if elem_type.has_flag(.generic) {
+				array_type = ast.new_type(idx).set_flag(.generic)
+			} else {
+				array_type = ast.new_type(idx)
+			}
 			has_type = true
 		}
 		last_pos = p.tok.position()
 	} else {
 		// [1,2,3] or [const]byte
+		old_inside_array_lit := p.inside_array_lit
+		p.inside_array_lit = true
+		pre_cmnts = p.eat_comments({})
 		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
 			ecmnts << p.eat_comments({})
 			if p.tok.kind == .comma {
 				p.next()
 			}
+			ecmnts.last() << p.eat_comments({})
 		}
+		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
 		$if tinyc {
 			// NB: do not remove the next line without testing
@@ -100,9 +109,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	mut has_len := false
 	mut has_cap := false
-	mut len_expr := ast.Expr{}
-	mut cap_expr := ast.Expr{}
-	if p.tok.kind == .lcbr && exprs.len == 0 {
+	mut len_expr := ast.empty_expr()
+	mut cap_expr := ast.empty_expr()
+	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {
@@ -141,6 +150,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		typ: array_type
 		exprs: exprs
 		ecmnts: ecmnts
+		pre_cmnts: pre_cmnts
 		pos: pos
 		elem_type_pos: elem_type_pos
 		has_len: has_len
@@ -157,7 +167,9 @@ fn (mut p Parser) map_init() ast.MapInit {
 	first_pos := p.prev_tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
-	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+	mut comments := [][]ast.Comment{}
+	pre_cmnts := p.eat_comments({})
+	for p.tok.kind !in [.rcbr, .eof] {
 		key := p.expr(0)
 		keys << key
 		p.check(.colon)
@@ -166,10 +178,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
+		comments << p.eat_comments({})
 	}
 	return ast.MapInit{
 		keys: keys
 		vals: vals
 		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+		comments: comments
+		pre_cmnts: pre_cmnts
 	}
 }

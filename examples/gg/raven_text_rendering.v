@@ -12,7 +12,7 @@ const (
 )
 
 const (
-	text  = '
+	text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -81,6 +81,7 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		font_path: font_path // window_user_ptr: ctx
+		// native_rendering: true
 	)
 	app.gg.run()
 }

@@ -9,9 +9,9 @@ module ttf
 * that can be found in the LICENSE file.
 *
 * Note:
-* - inspired by: http://stevehanov.ca/blog/?id=143 
+* - inspired by: http://stevehanov.ca/blog/?id=143
 *
-* TODO: 
+* TODO:
 * - check for unicode > 0xFFFF if supported
 * - evaluate use a buffer for the points in the glyph
 **********************************************************************/
@@ -519,8 +519,8 @@ fn (mut tf TTF_File) get_fword() i16 {
 }
 
 fn (mut tf TTF_File) get_u32() u32 {
-	x := (u32(tf.buf[tf.pos]) << u32(24)) | (u32(tf.buf[tf.pos +
-		1]) << u32(16)) | (u32(tf.buf[tf.pos + 2]) << u32(8)) | u32(tf.buf[tf.pos + 3])
+	x := (u32(tf.buf[tf.pos]) << u32(24)) | (u32(tf.buf[tf.pos + 1]) << u32(16)) | (u32(tf.buf[
+		tf.pos + 2]) << u32(8)) | u32(tf.buf[tf.pos + 3])
 	tf.pos += 4
 	return x
 }
@@ -540,7 +540,7 @@ fn (mut tf TTF_File) get_fixed() f32 {
 fn (mut tf TTF_File) get_string(length int) string {
 	tmp_pos := u64(tf.pos)
 	tf.pos += u32(length)
-	return unsafe { tos(byteptr(u64(tf.buf.data) + tmp_pos), length) }
+	return unsafe { tos(&byte(u64(tf.buf.data) + tmp_pos), length) }
 }
 
 fn (mut tf TTF_File) get_unicode_string(length int) string {

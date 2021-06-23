@@ -3,14 +3,16 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global (
-	g_m2_buf byteptr
-	g_m2_ptr byteptr
-)
-
 // isnil returns true if an object is nil (only for C objects).
+[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
+}
+
+[deprecated: 'use os.is_atty(x) instead']
+pub fn is_atty(fd int) int {
+	panic('use os.is_atty(x) instead')
+	return 0
 }
 
 /*
@@ -21,12 +23,22 @@ fn on_panic(f fn(int)int) {
 
 // print_backtrace shows a backtrace of the current call stack on stdout
 pub fn print_backtrace() {
-	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// 1 frame for print_backtrace_skipping_top_frames
-	// 1 frame for print_backtrace itself
-	// ... print the rest of the backtrace frames ...
+	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// * print_backtrace_skipping_top_frames
+	// * print_backtrace itself
+	// * the rest of the backtrace frames
 	// => top 2 frames should be skipped, since they will not be informative to the developer
-	print_backtrace_skipping_top_frames(2)
+	$if !no_backtrace ? {
+		$if freestanding {
+			println(bare_backtrace())
+		} $else {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+			} $else {
+				print_backtrace_skipping_top_frames(2)
+			}
+		}
+	}
 }
 
 struct VCastTypeIndexName {
@@ -34,23 +46,19 @@ struct VCastTypeIndexName {
 	tname  string
 }
 
-__global (
-	total_m              = i64(0)
-	nr_mallocs           = int(0)
-	// will be filled in cgen
-	as_cast_type_indexes   []VCastTypeIndexName
-)
+// will be filled in cgen
+__global as_cast_type_indexes []VCastTypeIndexName
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
-		mut obj_name := as_cast_type_indexes[0].tname
-		mut expected_name := as_cast_type_indexes[0].tname
+		mut obj_name := as_cast_type_indexes[0].tname.clone()
+		mut expected_name := as_cast_type_indexes[0].tname.clone()
 		for x in as_cast_type_indexes {
 			if x.tindex == obj_type {
-				obj_name = x.tname
+				obj_name = x.tname.clone()
 			}
 			if x.tindex == expected_type {
-				expected_name = x.tname
+				expected_name = x.tname.clone()
 			}
 		}
 		panic('as cast: cannot cast `$obj_name` to `$expected_name`')
@@ -88,7 +96,8 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 // MethodArgs holds type information for function and/or method arguments.
 pub struct MethodArgs {
 pub:
-	typ int
+	typ  int
+	name string
 }
 
 // FunctionData holds information about a parsed function.
@@ -104,9 +113,25 @@ pub:
 // FieldData holds information about a field. Fields reside on structs.
 pub struct FieldData {
 pub:
-	name   string
-	attrs  []string
-	is_pub bool
-	is_mut bool
-	typ    int
+	name      string
+	attrs     []string
+	is_pub    bool
+	is_mut    bool
+	is_shared bool
+	typ       int
+}
+
+enum AttributeKind {
+	plain // [name]
+	string // ['name']
+	number // [123]
+	comptime_define // [if name]
+}
+
+pub struct StructAttribute {
+pub:
+	name    string
+	has_arg bool
+	arg     string
+	kind    AttributeKind
 }

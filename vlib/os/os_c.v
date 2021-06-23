@@ -9,25 +9,43 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink() int
+fn C.readlink(pathname &char, buf &char, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
 fn C.ftell(fp voidptr) int
 
-fn C.sigaction(int, voidptr, int)
+fn C.sigaction(int, voidptr, int) int
 
-fn C.open(charptr, int, ...int) int
+fn C.open(&char, int, ...int) int
 
-fn C.fdopen(int, string) voidptr
+fn C.fdopen(fd int, mode &char) &C.FILE
 
-fn C.CopyFile(&u32, &u32, int) int
+fn C.ferror(stream &C.FILE) int
 
-fn C.execvp(file charptr, argv &charptr) int
+fn C.feof(stream &C.FILE) int
+
+fn C.CopyFile(&u16, &u16, bool) int
+
+// fn C.lstat(charptr, voidptr) u64
+
+fn C._wstat64(&u16, voidptr) u64
+
+fn C.chown(&char, int, int) int
+
+fn C.ftruncate(voidptr, u64) int
+
+fn C._chsize_s(voidptr, u64) int
 
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
-	st_size  int
+	st_size  u64
+	st_mode  u32
+	st_mtime int
+}
+
+struct C.__stat64 {
+	st_size  u64
 	st_mode  u32
 	st_mtime int
 }
@@ -35,15 +53,18 @@ struct C.stat {
 struct C.DIR {
 }
 
+type FN_SA_Handler = fn (sig int)
+
 struct C.sigaction {
 mut:
 	sa_mask      int
 	sa_sigaction int
 	sa_flags     int
+	sa_handler   FN_SA_Handler
 }
 
 struct C.dirent {
-	d_name byteptr
+	d_name &byte
 }
 
 // read_bytes returns all bytes read from file in `path`.
@@ -65,9 +86,8 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('fread failed')
 	}
 	C.fclose(fp)
-	fres := res[0..nr_read_elements * fsize].clone()
-	unsafe { res.free() }
-	return fres
+	res.trim(nr_read_elements * fsize)
+	return res
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -88,33 +108,99 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
-		mut str := malloc(fsize + 1)
-		nelements := int(C.fread(str, fsize, 1, fp))
-		if nelements == 0 && fsize > 0 {
+		mut str := malloc_noscan(fsize + 1)
+		nelements := int(C.fread(str, 1, fsize, fp))
+		is_eof := int(C.feof(fp))
+		is_error := int(C.ferror(fp))
+		if is_eof == 0 && is_error != 0 {
 			free(str)
 			return error('fread failed')
 		}
-		str[fsize] = 0
-		return str.vstring_with_len(fsize)
+		str[nelements] = 0
+		if nelements == 0 {
+			// It is highly likely that the file was a virtual file from
+			// /sys or /proc, with information generated on the fly, so
+			// fsize was not reliably reported. Using vstring() here is
+			// slower (it calls strlen internally), but will return more
+			// consistent results.
+			// For example reading from /sys/class/sound/card0/id produces
+			// a `PCH\n` string, but fsize is 4096, and otherwise you would
+			// get a V string with .len = 4096 and .str = "PCH\n\\000".
+			return str.vstring()
+		}
+		return str.vstring_with_len(nelements)
 	}
 }
 
 // ***************************** OS ops ************************
-// file_size returns the size of the file located in `path`.
-pub fn file_size(path string) int {
-	mut s := C.stat{}
-	unsafe {
-		$if windows {
-			$if tinyc {
-				C.stat(charptr(path.str), &s)
-			} $else {
-				C._wstat(path.to_wide(), voidptr(&s))
-			}
-		} $else {
-			C.stat(charptr(path.str), &s)
+//
+// truncate changes the size of the file located in `path` to `len`.
+// Note that changing symbolic links on Windows only works as admin.
+pub fn truncate(path string, len u64) ? {
+	fp := C.open(&char(path.str), o_wronly | o_trunc)
+	defer {
+		C.close(fp)
+	}
+	if fp < 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+	$if windows {
+		if C._chsize_s(fp, len) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+	} $else {
+		if C.ftruncate(fp, len) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
 		}
 	}
-	return s.st_size
+}
+
+fn eprintln_unknown_file_size() {
+	eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
+}
+
+// file_size returns the size of the file located in `path`.
+// If an error occurs it returns 0.
+// Note that use of this on symbolic links on Windows returns always 0.
+pub fn file_size(path string) u64 {
+	mut s := C.stat{}
+	unsafe {
+		$if x64 {
+			$if windows {
+				mut swin := C.__stat64{}
+				if C._wstat64(path.to_wide(), voidptr(&swin)) != 0 {
+					eprintln_unknown_file_size()
+					return 0
+				}
+				return swin.st_size
+			} $else {
+				if C.stat(&char(path.str), &s) != 0 {
+					eprintln_unknown_file_size()
+					return 0
+				}
+				return u64(s.st_size)
+			}
+		}
+		$if x32 {
+			$if debug {
+				println('Using os.file_size() on 32bit systems may not work on big files.')
+			}
+			$if windows {
+				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
+					eprintln_unknown_file_size()
+					return 0
+				}
+				return u64(s.st_size)
+			} $else {
+				if C.stat(&char(path.str), &s) != 0 {
+					eprintln_unknown_file_size()
+					return 0
+				}
+				return u64(s.st_size)
+			}
+		}
+	}
+	return 0
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -131,7 +217,7 @@ pub fn mv(src string, dst string) ? {
 			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
 	} $else {
-		ret := C.rename(charptr(src.str), charptr(rdst.str))
+		ret := C.rename(&char(src.str), &char(rdst.str))
 		if ret != 0 {
 			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
@@ -148,32 +234,38 @@ pub fn cp(src string, dst string) ? {
 			return error_with_code('failed to copy $src to $dst', int(result))
 		}
 	} $else {
-		fp_from := C.open(charptr(src.str), C.O_RDONLY)
+		fp_from := C.open(&char(src.str), C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open $src', int(fp_from))
 		}
-		fp_to := C.open(charptr(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		fp_to := C.open(&char(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
 			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
 				int(fp_to))
 		}
+		// TODO use defer{} to close files in case of error or return.
+		// Currently there is a C-Error when building.
 		mut buf := [1024]byte{}
 		mut count := 0
 		for {
-			// FIXME: use sizeof, bug: 'os__buf' undeclared
-			// count = C.read(fp_from, buf, sizeof(buf))
-			count = C.read(fp_from, buf, 1024)
+			count = C.read(fp_from, &buf[0], sizeof(buf))
 			if count == 0 {
 				break
 			}
-			if C.write(fp_to, buf, count) < 0 {
+			if C.write(fp_to, &buf[0], count) < 0 {
+				C.close(fp_to)
+				C.close(fp_from)
 				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}
 		from_attr := C.stat{}
-		unsafe { C.stat(charptr(src.str), &from_attr) }
-		if C.chmod(charptr(dst.str), from_attr.st_mode) < 0 {
+		unsafe {
+			C.stat(&char(src.str), &from_attr)
+		}
+		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
+			C.close(fp_to)
+			C.close(fp_from)
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
 		C.close(fp_to)
@@ -192,7 +284,7 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		fp = C.fopen(charptr(path.str), charptr(mode.str))
+		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(fp) {
 		return error('failed to open file "$path"')
@@ -214,74 +306,6 @@ pub fn fileno(cfile voidptr) int {
 	}
 }
 
-// open_append opens `path` file for appending.
-pub fn open_append(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'ab'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'ab')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create(append) file "$path"')
-	}
-	file.is_opened = true
-	return file
-}
-
-// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
-pub fn open_file(path string, mode string, options ...int) ?File {
-	mut flags := 0
-	for m in mode {
-		match m {
-			`r` { flags |= o_rdonly }
-			`w` { flags |= o_create | o_trunc }
-			`b` { flags |= o_binary }
-			`a` { flags |= o_create | o_append }
-			`s` { flags |= o_sync }
-			`n` { flags |= o_nonblock }
-			`c` { flags |= o_noctty }
-			`+` { flags |= o_rdwr }
-			else {}
-		}
-	}
-	mut permission := 0o666
-	if options.len > 0 {
-		permission = options[0]
-	}
-	$if windows {
-		if permission < 0o600 {
-			permission = 0x0100
-		} else {
-			permission = 0x0100 | 0x0080
-		}
-	}
-	mut p := path
-	$if windows {
-		p = path.replace('/', '\\')
-	}
-	fd := C.open(charptr(p.str), flags, permission)
-	if fd == -1 {
-		return error(posix_get_error_msg(C.errno))
-	}
-	cfile := C.fdopen(fd, charptr(mode.str))
-	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
-	}
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
-	}
-}
-
 // vpopen system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
 	// *C.FILE {
@@ -291,7 +315,7 @@ fn vpopen(path string) voidptr {
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
 		cpath := path.str
-		return C.popen(charptr(cpath), 'r')
+		return C.popen(&char(cpath), c'r')
 	}
 }
 
@@ -348,9 +372,9 @@ pub fn system(cmd string) int {
 	} $else {
 		$if ios {
 			unsafe {
-				arg := [c'/bin/sh', c'-c', byteptr(cmd.str), 0]
+				arg := [c'/bin/sh', c'-c', &byte(cmd.str), 0]
 				pid := 0
-				ret = C.posix_spawn(&pid, '/bin/sh', 0, 0, arg.data, 0)
+				ret = C.posix_spawn(&pid, c'/bin/sh', 0, 0, arg.data, 0)
 				status := 0
 				ret = C.waitpid(pid, &status, 0)
 				if C.WIFEXITED(status) {
@@ -359,7 +383,7 @@ pub fn system(cmd string) int {
 			}
 		} $else {
 			unsafe {
-				ret = C.system(charptr(cmd.str))
+				ret = C.system(&char(cmd.str))
 			}
 		}
 	}
@@ -382,7 +406,7 @@ pub fn exists(path string) bool {
 		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), f_ok) != -1
 	} $else {
-		return C.access(charptr(path.str), f_ok) != -1
+		return C.access(&char(path.str), f_ok) != -1
 	}
 }
 
@@ -401,13 +425,13 @@ pub fn is_executable(path string) bool {
 	$if solaris {
 		statbuf := C.stat{}
 		unsafe {
-			if C.stat(charptr(path.str), &statbuf) != 0 {
+			if C.stat(&char(path.str), &statbuf) != 0 {
 				return false
 			}
 		}
 		return (int(statbuf.st_mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
-	return C.access(charptr(path.str), x_ok) != -1
+	return C.access(&char(path.str), x_ok) != -1
 }
 
 // is_writable returns `true` if `path` is writable.
@@ -416,7 +440,7 @@ pub fn is_writable(path string) bool {
 		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), w_ok) != -1
 	} $else {
-		return C.access(charptr(path.str), w_ok) != -1
+		return C.access(&char(path.str), w_ok) != -1
 	}
 }
 
@@ -426,7 +450,7 @@ pub fn is_readable(path string) bool {
 		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), r_ok) != -1
 	} $else {
-		return C.access(charptr(path.str), r_ok) != -1
+		return C.access(&char(path.str), r_ok) != -1
 	}
 }
 
@@ -436,7 +460,7 @@ pub fn rm(path string) ? {
 	$if windows {
 		rc = C._wremove(path.to_wide())
 	} $else {
-		rc = C.remove(charptr(path.str))
+		rc = C.remove(&char(path.str))
 	}
 	if rc == -1 {
 		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
@@ -450,10 +474,10 @@ pub fn rmdir(path string) ? {
 		rc := C.RemoveDirectory(path.to_wide())
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
-			return error('Failed to remove "$path"')
+			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
-		rc := C.rmdir(charptr(path.str))
+		rc := C.rmdir(&char(path.str))
 		if rc == -1 {
 			return error(posix_get_error_msg(C.errno))
 		}
@@ -463,7 +487,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := unsafe { tos_clone(byteptr(C.strerror(C.errno))) }
+	se := unsafe { tos_clone(&byte(C.strerror(e))) }
 	println('errno=$e err=$se')
 }
 
@@ -472,18 +496,23 @@ pub fn get_raw_line() string {
 	$if windows {
 		unsafe {
 			max_line_chars := 256
-			buf := malloc(max_line_chars * 2)
+			buf := malloc_noscan(max_line_chars * 2)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
-			mut bytes_read := 0
+			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
-				C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
-					0)
-				return string_from_wide2(&u16(buf), bytes_read)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+				if !x {
+					return tos(buf, 0)
+				}
+				return string_from_wide2(&u16(buf), int(bytes_read))
 			}
 			mut offset := 0
 			for {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				if !res && offset == 0 {
+					return tos(buf, 0)
+				}
 				if !res || bytes_read == 0 {
 					break
 				}
@@ -497,15 +526,9 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := size_t(0)
-		mut buf := charptr(0)
+		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
-		// defer { unsafe{ free(buf) } }
-		if nr_chars == 0 || nr_chars == -1 {
-			return ''
-		}
-		return unsafe { tos3(buf) }
-		// res := tos_clone(buf)
-		// return res
+		return unsafe { tos(&byte(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 	}
 }
 
@@ -514,7 +537,8 @@ pub fn get_raw_stdin() []byte {
 	$if windows {
 		unsafe {
 			block_bytes := 512
-			mut buf := malloc(block_bytes)
+			mut old_size := block_bytes
+			mut buf := malloc_noscan(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			mut offset := 0
@@ -525,9 +549,10 @@ pub fn get_raw_stdin() []byte {
 				if !res {
 					break
 				}
-				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
+				new_size := offset + block_bytes + (block_bytes - bytes_read)
+				buf = realloc_data(buf, old_size, new_size)
+				old_size = new_size
 			}
-			C.CloseHandle(h_input)
 			return array{
 				element_size: 1
 				data: voidptr(buf)
@@ -536,7 +561,15 @@ pub fn get_raw_stdin() []byte {
 			}
 		}
 	} $else {
-		panic('get_raw_stdin not implemented on this platform...')
+		max := size_t(0)
+		buf := &char(0)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
+		return array{
+			element_size: 1
+			data: voidptr(buf)
+			len: if nr_chars < 0 { 0 } else { nr_chars }
+			cap: int(max)
+		}
 	}
 }
 
@@ -545,20 +578,22 @@ pub fn read_file_array<T>(path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
-	mut fp := vfopen(path, 'rb') or { return array{} }
+	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := malloc(fsize)
-	C.fread(buf, fsize, 1, fp)
+	buf := unsafe { malloc_noscan(fsize) }
+	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
-	return array{
-		element_size: tsize
-		data: buf
-		len: len
-		cap: len
+	return unsafe {
+		array{
+			element_size: tsize
+			data: buf
+			len: int(nread)
+			cap: len
+		}
 	}
 }
 
@@ -567,7 +602,7 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
-		C.printf('TODO')
+		C.printf(c'TODO')
 		/*
 		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(C.sigaction_size))
@@ -584,20 +619,18 @@ pub fn on_segfault(f voidptr) {
 [manualfree]
 pub fn executable() string {
 	$if linux {
-		mut xresult := vcalloc(max_path_len)
-		count := C.readlink('/proc/self/exe', charptr(xresult), max_path_len)
+		mut xresult := vcalloc_noscan(max_path_len)
+		count := C.readlink(c'/proc/self/exe', &char(xresult), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { xresult.vstring() }.clone()
-		unsafe { free(xresult) }
-		return res
+		return unsafe { xresult.vstring() }
 	}
 	$if windows {
 		max := 512
 		size := max * 2 // max_path_len * sizeof(wchar_t)
-		mut result := &u16(vcalloc(size))
+		mut result := unsafe { &u16(vcalloc_noscan(size)) }
 		len := C.GetModuleFileName(0, result, max)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(result)
@@ -606,7 +639,7 @@ pub fn executable() string {
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
 			if file != voidptr(-1) {
-				final_path := &u16(vcalloc(size))
+				final_path := unsafe { &u16(vcalloc_noscan(size)) }
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {
@@ -622,7 +655,7 @@ pub fn executable() string {
 		return unsafe { string_from_wide2(result, len) }
 	}
 	$if macos {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, max_path_len)
 		if ret <= 0 {
@@ -632,7 +665,7 @@ pub fn executable() string {
 		return unsafe { result.vstring() }
 	}
 	$if freebsd {
-		mut result := vcalloc(max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
 		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
@@ -646,8 +679,8 @@ pub fn executable() string {
 	$if haiku {
 	}
 	$if netbsd {
-		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/exe', charptr(result), max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
+		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
@@ -655,8 +688,8 @@ pub fn executable() string {
 		return unsafe { result.vstring_with_len(count) }
 	}
 	$if dragonfly {
-		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/file', charptr(result), max_path_len)
+		mut result := vcalloc_noscan(max_path_len)
+		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
@@ -680,7 +713,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if unsafe { C.stat(charptr(path.str), &statbuf) } != 0 {
+		if unsafe { C.stat(&char(path.str), &statbuf) } != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -692,10 +725,12 @@ pub fn is_dir(path string) bool {
 // is_link returns a boolean indicating whether `path` is a link.
 pub fn is_link(path string) bool {
 	$if windows {
-		return false // TODO
+		path_ := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(path_.to_wide())
+		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(charptr(path.str), &statbuf) != 0 {
+		if C.lstat(&char(path.str), &statbuf) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
@@ -707,7 +742,7 @@ pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
 	} $else {
-		C.chdir(charptr(path.str))
+		_ = C.chdir(&char(path.str))
 	}
 }
 
@@ -716,7 +751,7 @@ pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
 		unsafe {
-			buf := &u16(vcalloc(max * 2))
+			buf := &u16(vcalloc_noscan(max * 2))
 			if C._wgetcwd(buf, max) == 0 {
 				free(buf)
 				return ''
@@ -724,15 +759,13 @@ pub fn getwd() string {
 			return string_from_wide(buf)
 		}
 	} $else {
-		buf := vcalloc(512)
+		buf := vcalloc_noscan(max_path_len)
 		unsafe {
-			if C.getcwd(charptr(buf), 512) == 0 {
+			if C.getcwd(&char(buf), max_path_len) == 0 {
 				free(buf)
 				return ''
 			}
-			res := buf.vstring().clone()
-			free(buf)
-			return res
+			return buf.vstring()
 		}
 	}
 }
@@ -744,44 +777,59 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := byteptr(0)
-	defer {
-		unsafe { free(fullpath) }
-	}
-
-	$if windows {
-		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
-		// TODO: check errors if path len is not enough
-		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
-		if ret == 0 {
-			return fpath
-		}
-	} $else {
-		fullpath = vcalloc(max_path_len)
-		ret := charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
-		if ret == 0 {
-			return fpath
-		}
-	}
-
 	mut res := ''
 	$if windows {
-		res = unsafe { string_from_wide(fullpath) }
+		size := max_path_len * 2
+		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
+		// try to open the file to get symbolic link path
+		file := C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
+		if file != voidptr(-1) {
+			mut fullpath := unsafe { &u16(vcalloc_noscan(size)) }
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
+			C.CloseHandle(file)
+			if final_len < size {
+				rt := unsafe { string_from_wide2(fullpath, final_len) }
+				res = rt[4..]
+			} else {
+				unsafe { free(fullpath) }
+				eprintln('os.real_path() saw that the file path was too long')
+				return fpath.clone()
+			}
+		} else {
+			// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
+			mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
+			// TODO: check errors if path len is not enough
+			ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
+			if ret == 0 {
+				unsafe { free(fullpath) }
+				return fpath.clone()
+			}
+			res = unsafe { string_from_wide(fullpath) }
+		}
 	} $else {
+		mut fullpath := vcalloc_noscan(max_path_len)
+		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
+		if ret == 0 {
+			unsafe { free(fullpath) }
+			return fpath.clone()
+		}
 		res = unsafe { fullpath.vstring() }
 	}
-	nres := normalize_drive_letter(res)
-	cres := nres.clone()
-	return cres
+	unsafe { normalize_drive_letter(res) }
+	return res
 }
 
-fn normalize_drive_letter(path string) string {
-	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
-	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
-	// Capital drive letters do work fine.
+[direct_array_access; manualfree; unsafe]
+fn normalize_drive_letter(path string) {
 	$if !windows {
-		return path
+		return
 	}
+	// normalize_drive_letter is needed, because
+	// a path like c:\nv\.bin (note the small `c`) in %PATH,
+	// is NOT recognized by cmd.exe (and probably other programs too)...
+	// Capital drive letters do work fine.
 	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:`
 		&& path[2] == path_separator[0] {
 		unsafe {
@@ -789,12 +837,6 @@ fn normalize_drive_letter(path string) string {
 			(*x) = *x - 32
 		}
 	}
-	return path
-}
-
-// signal will assign `handler` callback to be called when `signum` signal is recieved.
-pub fn signal(signum int, handler voidptr) {
-	unsafe { C.signal(signum, handler) }
 }
 
 // fork will fork the current system process and return the pid of the fork.
@@ -826,7 +868,7 @@ pub fn wait() int {
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
 	// # struct stat attr;
-	unsafe { C.stat(charptr(path.str), &attr) }
+	unsafe { C.stat(&char(path.str), &attr) }
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;
@@ -840,66 +882,42 @@ pub fn flush() {
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
-	C.chmod(charptr(path.str), mode)
-}
-
-// open tries to open a file for reading and returns back a read-only `File` object.
-pub fn open(path string) ?File {
-	/*
-	$if linux {
-		$if !android {
-			fd := C.syscall(sys_open, path.str, 511)
-			if fd == -1 {
-				return error('failed to open file "$path"')
-			}
-			return File{
-				fd: fd
-				is_opened: true
-			}
-		}
-	}
-	*/
-	cfile := vfopen(path, 'rb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
+	if C.chmod(&char(path.str), mode) != 0 {
+		panic('chmod failed: ' + posix_get_error_msg(C.errno))
 	}
 }
 
-// create creates or opens a file at a specified location and returns a write-only `File` object.
-pub fn create(path string) ?File {
-	/*
-	// NB: android/termux/bionic is also a kind of linux,
-	// but linux syscalls there sometimes fail,
-	// while the libc version should work.
-	$if linux {
-		$if !android {
-			//$if macos {
-			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			//}
-			//$if linux {
-			fd = C.syscall(sys_creat, path.str, 511)
-			//}
-			if fd == -1 {
-				return error('failed to create file "$path"')
-			}
-			file = File{
-				fd: fd
-				is_opened: true
-			}
-			return file
+// chown changes the owner and group attributes of `path` to `owner` and `group`.
+pub fn chown(path string, owner int, group int) ? {
+	$if windows {
+		return error('os.chown() not implemented for Windows')
+	} $else {
+		if C.chown(&char(path.str), owner, group) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
 		}
 	}
-	*/
-	cfile := vfopen(path, 'wb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
+}
+
+// open_append opens `path` file for appending.
+pub fn open_append(path string) ?File {
+	mut file := File{}
+	$if windows {
+		wpath := path.replace('/', '\\').to_wide()
+		mode := 'ab'
+		file = File{
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str
+		file = File{
+			cfile: C.fopen(&char(cpath), c'ab')
+		}
 	}
+	if isnil(file.cfile) {
+		return error('failed to create(append) file "$path"')
+	}
+	file.is_opened = true
+	return file
 }
 
 // execvp - loads and executes a new child process, *in place* of the current process.
@@ -908,16 +926,23 @@ pub fn create(path string) ?File {
 // NB: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, args []string) ? {
-	mut cargs := []charptr{}
-	cargs << charptr(cmdpath.str)
+	mut cargs := []&char{}
+	cargs << &char(cmdpath.str)
 	for i in 0 .. args.len {
-		cargs << charptr(args[i].str)
+		cargs << &char(args[i].str)
 	}
-	cargs << charptr(0)
-	res := C.execvp(charptr(cmdpath.str), cargs.data)
+	cargs << &char(0)
+	mut res := int(0)
+	$if windows {
+		res = C._execvp(&char(cmdpath.str), cargs.data)
+	} $else {
+		res = C.execvp(&char(cmdpath.str), cargs.data)
+	}
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
+	// just in case C._execvp returned ... that happens on windows ...
+	exit(res)
 }
 
 // execve - loads and executes a new child process, *in place* of the current process.
@@ -927,18 +952,23 @@ pub fn execvp(cmdpath string, args []string) ? {
 // NB: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execve(cmdpath string, args []string, envs []string) ? {
-	mut cargv := []charptr{}
-	mut cenvs := []charptr{}
-	cargv << charptr(cmdpath.str)
+	mut cargv := []&char{}
+	mut cenvs := []&char{}
+	cargv << &char(cmdpath.str)
 	for i in 0 .. args.len {
-		cargv << charptr(args[i].str)
+		cargv << &char(args[i].str)
 	}
 	for i in 0 .. envs.len {
-		cenvs << charptr(envs[i].str)
+		cenvs << &char(envs[i].str)
 	}
-	cargv << charptr(0)
-	cenvs << charptr(0)
-	res := C.execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	cargv << &char(0)
+	cenvs << &char(0)
+	mut res := int(0)
+	$if windows {
+		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
+	} $else {
+		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
+	}
 	// NB: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	if res == -1 {

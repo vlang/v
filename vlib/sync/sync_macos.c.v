@@ -49,11 +49,13 @@ struct CondAttr {
 	attr C.pthread_condattr_t
 }
 
-/* MacOSX has no unnamed semaphores and no `timed_wait()` at all
-   so we emulate the behaviour with other devices */
+/*
+MacOSX has no unnamed semaphores and no `timed_wait()` at all
+   so we emulate the behaviour with other devices
+*/
 [heap]
 struct Semaphore {
-	mtx C.pthread_mutex_t
+	mtx  C.pthread_mutex_t
 	cond C.pthread_cond_t
 mut:
 	count u32
@@ -136,7 +138,9 @@ pub fn (mut sem Semaphore) init(n u32) {
 pub fn (mut sem Semaphore) post() {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 1 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c+1) { return }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c + 1) {
+			return
+		}
 	}
 	C.pthread_mutex_lock(&sem.mtx)
 	c = C.atomic_fetch_add_u32(&sem.count, 1)
@@ -149,18 +153,20 @@ pub fn (mut sem Semaphore) post() {
 pub fn (mut sem Semaphore) wait() {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return
+		}
 	}
 	C.pthread_mutex_lock(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
-outer:
-	for {
+
+	outer: for {
 		if c == 0 {
 			C.pthread_cond_wait(&sem.cond, &sem.mtx)
 			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
-			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
@@ -174,7 +180,9 @@ outer:
 pub fn (mut sem Semaphore) try_wait() bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
 	}
 	return false
 }
@@ -182,14 +190,16 @@ pub fn (mut sem Semaphore) try_wait() bool {
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
-		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
 	}
 	C.pthread_mutex_lock(&sem.mtx)
 	t_spec := timeout.timespec()
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
-outer:
-	for {
+
+	outer: for {
 		if c == 0 {
 			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
 			if res == C.ETIMEDOUT {
@@ -198,7 +208,7 @@ outer:
 			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
-			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
@@ -210,7 +220,13 @@ outer:
 	return res == 0
 }
 
-pub fn (mut sem Semaphore) destroy() bool {
-	return C.pthread_cond_destroy(&sem.cond) == 0 &&
-		C.pthread_mutex_destroy(&sem.mtx) == 0
+pub fn (mut sem Semaphore) destroy() {
+	mut res := C.pthread_cond_destroy(&sem.cond)
+	if res == 0 {
+		res = C.pthread_mutex_destroy(&sem.mtx)
+		if res == 0 {
+			return
+		}
+	}
+	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
 }

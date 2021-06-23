@@ -256,6 +256,7 @@ fn (mut r Rat) randomize() {
 		r.app.height - block_size - buffer)
 }
 
+[heap]
 struct App {
 mut:
 	termui &termui.Context = 0
@@ -396,7 +397,7 @@ fn (a App) check_capture() bool {
 	snake_pos := a.snake.get_head().pos
 	rat_pos := a.rat.pos
 	return snake_pos.x <= rat_pos.x + block_size && snake_pos.x + block_size >= rat_pos.x
-		&& snake_pos.y <= rat_pos.y + block_size&& snake_pos.y + block_size >= rat_pos.y
+		&& snake_pos.y <= rat_pos.y + block_size && snake_pos.y + block_size >= rat_pos.y
 }
 
 fn (mut a App) draw_snake() {

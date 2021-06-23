@@ -12,7 +12,7 @@ vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:12:12: error: unkno
       |                     ~~
    13 |         }
    14 |     }
-vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:15:10: error: compile time field access can only be used when iterating over `T.fields`
+vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:15:10: error: undefined ident: `f`
    13 |         }
    14 |     }
    15 |     _ = t.$(f.name)

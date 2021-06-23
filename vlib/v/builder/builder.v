@@ -1,15 +1,15 @@
 module builder
 
 import os
-import v.ast
 import v.token
-import v.table
 import v.pref
 import v.util
+import v.ast
 import v.vmod
 import v.checker
 import v.parser
 import v.depgraph
+import v.markused
 
 pub struct Builder {
 pub:
@@ -17,23 +17,25 @@ pub:
 	module_path  string
 mut:
 	pref          &pref.Preferences
-	checker       checker.Checker
+	checker       &checker.Checker
 	global_scope  &ast.Scope
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
+	stats_lines   int // size of backend generated source code in lines
+	stats_bytes   int // size of backend generated source code in bytes
 pub mut:
 	module_search_paths []string
-	parsed_files        []ast.File
+	parsed_files        []&ast.File
 	cached_msvc         MsvcResult
-	table               &table.Table
+	table               &ast.Table
 	ccoptions           CcompilerOptions
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
-	mut table := table.new_table()
+	mut table := ast.new_table()
 	table.is_fmt = false
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
@@ -43,7 +45,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
-			verror('Cannot find MSVC on this OS')
+			// verror('Cannot find MSVC on this OS')
 		}
 		MsvcResult{
 			valid: false
@@ -62,6 +64,36 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
+}
+
+pub fn (mut b Builder) front_stages(v_files []string) ? {
+	util.timing_start('PARSE')
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.parse_imports()
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
+	if b.pref.only_check_syntax {
+		return error('stop_after_parser')
+	}
+}
+
+pub fn (mut b Builder) middle_stages() ? {
+	util.timing_start('CHECK')
+	b.table.generic_struct_insts_to_concrete()
+	b.checker.check_files(b.parsed_files)
+	util.timing_measure('CHECK')
+	b.print_warnings_and_errors()
+	//
+	b.table.complete_interface_check()
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+}
+
+pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
+	b.front_stages(v_files) ?
+	b.middle_stages() ?
 }
 
 // parse all deps from already parsed files
@@ -100,7 +132,7 @@ pub fn (mut b Builder) parse_imports() {
 				continue
 			}
 			import_path := b.find_module_path(mod, ast_file.path) or {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
 				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
 					imp.pos)
@@ -108,16 +140,20 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
 					ast_file.path, imp.pos)
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
-				if file.mod.name != mod {
+				mut name := file.mod.name
+				if name == '' {
+					name = file.mod.short_name
+				}
+				if name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`',
+					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
 						ast_file.path, imp.pos)
 				}
 			}
@@ -138,12 +174,12 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	cycles := deps_resolved.display_cycles()
 	if b.pref.is_verbose {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
 	}
+	cycles := deps_resolved.display_cycles()
 	if cycles.len > 1 {
 		verror('error: import cycle detected between the following modules: \n' + cycles)
 	}
@@ -156,7 +192,7 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []ast.File{}
+	mut reordered_parsed_files := []&ast.File{}
 	for m in mods {
 		for pf in b.parsed_files {
 			if m == pf.mod.name {
@@ -174,6 +210,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
+		// eprintln('p.path: $p.path')
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
@@ -191,6 +228,9 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << m.mod
 		}
 		graph.add(p.mod.name, deps)
+	}
+	$if trace_import_graph ? {
+		eprintln(graph.display())
 	}
 	return graph
 }
@@ -284,8 +324,14 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+		return
+	}
 	if b.pref.is_stats {
-		println('checker summary: ${util.bold(b.checker.nr_errors.str())} V errors, ${util.bold(b.checker.nr_warnings.str())} V warnings')
+		estring := util.bold(b.checker.nr_errors.str())
+		wstring := util.bold(b.checker.nr_warnings.str())
+		nstring := util.bold(b.checker.nr_notices.str())
+		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
 	}
 }
 
@@ -301,6 +347,26 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
+	}
+	if b.pref.is_verbose && b.checker.nr_notices > 1 {
+		println('$b.checker.nr_notices notices')
+	}
+	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
+		for i, err in b.checker.notices {
+			kind := if b.pref.is_verbose {
+				'$err.reporter notice #$b.checker.nr_notices:'
+			} else {
+				'notice:'
+			}
+			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+			eprintln(ferror)
+			if err.details.len > 0 {
+				eprintln('Details: $err.details')
+			}
+			if i > b.max_nr_errors {
+				return
+			}
+		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
@@ -366,7 +432,7 @@ fn (b &Builder) print_warnings_and_errors() {
 					}
 				}
 			}
-			if redefine_conflicts.len > 1 {
+			if redefines.len > 0 {
 				eprintln('redefinition of function `$fn_name`')
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,

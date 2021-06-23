@@ -4,3 +4,10 @@ vlib/v/checker/tests/for_in_index_type.vv:2:11: error: for in: cannot index `int
       |              ~~
     3 |         println(a)
     4 |     }
+vlib/v/checker/tests/for_in_index_type.vv:3:3: error: `println` can not print void expressions
+    1 | fn main() {
+    2 |     for a in 52 {
+    3 |         println(a)
+      |         ~~~~~~~~~~
+    4 |     }
+    5 | }

@@ -1,27 +1,12 @@
 module builder
 
 import os
-import v.parser
 import v.pref
 import v.util
 import v.gen.js
-import v.markused
 
 pub fn (mut b Builder) gen_js(v_files []string) string {
-	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
-	b.parse_imports()
-	util.timing_measure('PARSE')
-	//
-	util.timing_start('CHECK')
-	b.checker.check_files(b.parsed_files)
-	util.timing_measure('CHECK')
-	//
-	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
-	}
-	b.print_warnings_and_errors()
-	//
+	b.front_and_middle_stages(v_files) or { return '' }
 	util.timing_start('JS GEN')
 	res := js.gen(b.parsed_files, b.table, b.pref)
 	util.timing_measure('JS GEN')
@@ -34,6 +19,10 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 	output := b.gen_js(v_files)
 	mut f := os.create(out_file) or { panic(err) }
 	f.writeln(output) or { panic(err) }
+	if b.pref.is_stats {
+		b.stats_lines = output.count('\n') + 1
+		b.stats_bytes = output.len
+	}
 	f.close()
 }
 
@@ -54,9 +43,10 @@ pub fn (mut b Builder) compile_js() {
 
 fn (mut b Builder) run_js() {
 	cmd := 'node ' + b.pref.out_name + '.js'
-	res := os.exec(cmd) or {
-		println('JS compilation failed.')
-		verror(err)
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('JS compilation failed:')
+		verror(res.output)
 		return
 	}
 	println(res.output)

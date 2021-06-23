@@ -13,7 +13,7 @@ const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
@@ -25,7 +25,7 @@ fn testsuite_begin() {
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
@@ -34,11 +34,11 @@ fn test_open_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
-	file.write_str(hello) or { panic(err) }
+	file.write_string(hello) or { panic(err) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
@@ -50,12 +50,12 @@ fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
-	file.write_bytes(bytes.data, bytes.len)
+	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
@@ -87,7 +87,7 @@ fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	mut f := os.create(filename) or { panic(err) }
-	f.write_str(hello) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
 	f.close()
 	assert hello.len == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
@@ -144,7 +144,7 @@ fn test_write_and_read_bytes() {
 	}
 	// We use the standard write_bytes function to write the payload and
 	// compare the length of the array with the file size (have to match).
-	file_write.write_bytes(payload.data, 5)
+	unsafe { file_write.write_ptr(payload.data, 5) }
 	file_write.close()
 	assert payload.len == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
@@ -160,8 +160,13 @@ fn test_write_and_read_bytes() {
 	// check that trying to read data from EOF doesn't error and returns 0
 	mut a := []byte{len: 5}
 	nread := file_read.read_bytes_into(5, mut a) or {
-		eprintln(err)
-		int(-1)
+		n := if err is none {
+			int(0)
+		} else {
+			eprintln(err)
+			int(-1)
+		}
+		n
 	}
 	assert nread == 0
 	file_read.close()
@@ -201,7 +206,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+	os.cp(old_file_name, new_file_name) or { panic('$err') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file
@@ -228,26 +233,32 @@ fn test_mv() {
 	// Move file with no extension to dir
 	os.mv(tfile1, tdir1) or { panic(err) }
 	mut expected := os.join_path(tdir1, 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !os.is_dir(expected)
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'dir')
-	assert os.exists(expected) && is_dir(expected) == true
+	assert os.exists(expected)
+	assert os.is_dir(expected)
 	expected = os.join_path(tdir2, 'dir', 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !os.is_dir(expected)
 	// Move dir with contents to other dir (by renaming)
 	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
 	expected = tdir3
-	assert os.exists(expected) && is_dir(expected) == true
-	assert os.is_dir_empty(tdir2) == true
+	assert os.exists(expected)
+	assert os.is_dir(expected)
+	assert os.is_dir_empty(tdir2)
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'file.test')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !os.is_dir(expected)
 	// Move file to dir (by renaming)
 	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
 	expected = tfile3
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !os.is_dir(expected)
 }
 
 fn test_cp_all() {
@@ -269,10 +280,80 @@ fn test_cp_all() {
 	os.cp_all('ex', './', true) or { panic(err) }
 	// regression test for executive runs with overwrite := true
 	os.cp_all('ex', './', true) or { panic(err) }
+	os.cp_all('ex', 'nonexisting', true) or { panic(err) }
+	assert os.exists(os.join_path('nonexisting', 'ex1.txt'))
 }
 
-fn test_realpath() {
+fn test_realpath_of_empty_string_works() {
 	assert os.real_path('') == ''
+}
+
+fn test_realpath_non_existing() {
+	non_existing_path := 'sdyfuisd_non_existing_file'
+	rpath := os.real_path(non_existing_path)
+	$if windows {
+		// on windows, the workdir is prepended, so the result is absolute:
+		assert rpath.len > non_existing_path.len
+	}
+	$if !windows {
+		// on unix, the workdir is NOT prepended for now, so the result remains the same.
+		// TODO: the windows behaviour seems saner, think about normalising the unix case to do the same.
+		assert os.real_path(non_existing_path) == non_existing_path
+	}
+}
+
+fn test_realpath_existing() {
+	existing_file_name := 'existing_file.txt'
+	existing_file := os.join_path(os.temp_dir(), existing_file_name)
+	os.rm(existing_file) or {}
+	os.write_file(existing_file, 'abc') or {}
+	assert os.exists(existing_file)
+	rpath := os.real_path(existing_file)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(existing_file_name)
+	os.rm(existing_file) or {}
+}
+
+fn test_realpath_removes_dots() {
+	examples_folder := os.join_path(@VEXEROOT, 'vlib', 'v', '..', '..', 'cmd', '.', '..',
+		'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert real_path_of_examples_folder.len < examples_folder.len
+	assert !real_path_of_examples_folder.contains('..')
+}
+
+fn test_realpath_absolutizes_existing_relative_paths() {
+	old_wd := os.getwd()
+	defer {
+		os.chdir(old_wd)
+	}
+	os.chdir(@VEXEROOT)
+	examples_folder := os.join_path('vlib', 'v', '..', '..', 'cmd', '.', '..', 'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert os.is_abs_path(real_path_of_examples_folder)
+}
+
+// TODO: think much more about whether this is desirable:
+fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
+	relative_path := os.join_path('one', 'nonexisting_folder', '..', 'something')
+	$if !windows {
+		assert os.real_path(relative_path).contains('..')
+		assert os.real_path(relative_path) == relative_path
+	}
+}
+
+fn test_realpath_absolutepath_symlink() {
+	file_name := 'tolink_file.txt'
+	symlink_name := 'symlink.txt'
+	mut f := os.create(file_name) or { panic(err) }
+	f.close()
+	assert os.symlink(file_name, symlink_name) or { panic(err) }
+	rpath := os.real_path(symlink_name)
+	println(rpath)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(file_name)
+	os.rm(symlink_name) or {}
+	os.rm(file_name) or {}
 }
 
 fn test_tmpdir() {
@@ -280,7 +361,7 @@ fn test_tmpdir() {
 	assert t.len > 0
 	assert os.is_dir(t)
 	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or { } // just in case
+	os.rm(tfile) or {} // just in case
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content) or { panic(err) }
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
@@ -298,24 +379,58 @@ fn test_is_writable_folder() {
 }
 
 fn test_make_symlink_check_is_link_and_remove_symlink() {
-	$if windows {
-		// TODO
-		assert true
-		return
-	}
 	folder := 'tfolder'
 	symlink := 'tsymlink'
-	os.rm(symlink) or { }
-	os.rm(folder) or { }
+	// windows creates a directory symlink, so delete it with rmdir()
+	$if windows {
+		os.rmdir(symlink) or {}
+	} $else {
+		os.rm(symlink) or {}
+	}
+	os.rmdir(folder) or {}
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.system('ln -s $folder $symlink')
-	assert os.is_link(symlink) == true
-	os.rm(symlink) or { panic(err) }
-	os.rm(folder) or { panic(err) }
+	os.symlink(folder, symlink) or { panic(err) }
+	assert os.is_link(symlink)
+	$if windows {
+		os.rmdir(symlink) or { panic(err) }
+	} $else {
+		os.rm(symlink) or { panic(err) }
+	}
+	os.rmdir(folder) or { panic(err) }
 	folder_exists := os.is_dir(folder)
 	assert folder_exists == false
+	symlink_exists := os.is_link(symlink)
+	assert symlink_exists == false
+}
+
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
+	file := 'tfile'
+	symlink := 'tsymlink'
+	os.rm(symlink) or {}
+	os.rm(file) or {}
+	mut f := os.create(file) or { panic(err) }
+	f.close()
+	os.symlink(file, symlink) or { panic(err) }
+	assert os.is_link(symlink)
+	os.rm(symlink) or { panic(err) }
+	os.rm(file) or { panic(err) }
+	symlink_exists := os.is_link(symlink)
+	assert symlink_exists == false
+}
+
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
+	file := 'tfile'
+	symlink := 'tsymlink'
+	os.rm(symlink) or {}
+	os.rm(file) or {}
+	mut f := os.create(file) or { panic(err) }
+	f.close()
+	os.link(file, symlink) or { panic(err) }
+	assert os.exists(symlink)
+	os.rm(symlink) or { panic(err) }
+	os.rm(file) or { panic(err) }
 	symlink_exists := os.is_link(symlink)
 	assert symlink_exists == false
 }
@@ -342,15 +457,16 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 // }
 // }
 fn test_symlink() {
-	$if windows {
-		return
-	}
 	os.mkdir('symlink') or { panic(err) }
 	os.symlink('symlink', 'symlink2') or { panic(err) }
 	assert os.exists('symlink2')
 	// cleanup
-	os.rm('symlink') or { panic(err) }
-	os.rm('symlink2') or { panic(err) }
+	os.rmdir('symlink') or { panic(err) }
+	$if windows {
+		os.rmdir('symlink2') or { panic(err) }
+	} $else {
+		os.rm('symlink2') or { panic(err) }
+	}
 }
 
 fn test_is_executable_writable_readable() {
@@ -382,10 +498,10 @@ fn test_ext() {
 }
 
 fn test_is_abs() {
-	assert os.is_abs_path('/home/user') == true
+	assert os.is_abs_path('/home/user')
 	assert os.is_abs_path('v/vlib') == false
 	$if windows {
-		assert os.is_abs_path('C:\\Windows\\') == true
+		assert os.is_abs_path('C:\\Windows\\')
 	}
 }
 
@@ -395,6 +511,21 @@ fn test_join() {
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 	}
+}
+
+fn test_rmdir_all() {
+	mut dirs := ['some/dir', 'some/.hidden/directory']
+	$if windows {
+		for mut d in dirs {
+			d = d.replace('/', '\\')
+		}
+	}
+	for d in dirs {
+		os.mkdir_all(d) or { panic(err) }
+		assert os.is_dir(d)
+	}
+	os.rmdir_all('some') or { assert false }
+	assert !os.exists('some')
 }
 
 fn test_dir() {
@@ -497,47 +628,74 @@ fn test_posix_set_bit() {
 		assert true
 	} $else {
 		fpath := '/tmp/permtest'
-		create(fpath) or { panic("Couldn't create file") }
-		chmod(fpath, 0o7777)
-		c_fpath := charptr(fpath.str)
+		os.create(fpath) or { panic("Couldn't create file") }
+		os.chmod(fpath, 0o0777)
+		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		// Take the permissions part of the mode
-		mut mode := u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mut mode := u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
 		// `chmod u-r`
-		posix_set_permission_bit(fpath, os.s_irusr, false)
+		os.posix_set_permission_bit(fpath, os.s_irusr, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7377
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0377
 		// `chmod u+r`
-		posix_set_permission_bit(fpath, os.s_irusr, true)
+		os.posix_set_permission_bit(fpath, os.s_irusr, true)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
+		// NB: setting the sticky bit is platform dependend
 		// `chmod -s -g -t`
-		posix_set_permission_bit(fpath, os.s_isuid, false)
-		posix_set_permission_bit(fpath, os.s_isgid, false)
-		posix_set_permission_bit(fpath, os.s_isvtx, false)
+		os.posix_set_permission_bit(fpath, os.s_isuid, false)
+		os.posix_set_permission_bit(fpath, os.s_isgid, false)
+		os.posix_set_permission_bit(fpath, os.s_isvtx, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
+		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
 		// `chmod g-w o-w`
-		posix_set_permission_bit(fpath, os.s_iwgrp, false)
-		posix_set_permission_bit(fpath, os.s_iwoth, false)
+		os.posix_set_permission_bit(fpath, os.s_iwgrp, false)
+		os.posix_set_permission_bit(fpath, os.s_iwoth, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o0755
-		rm(fpath) or { }
+		os.rm(fpath) or {}
 	}
+}
+
+fn test_exists_in_system_path() {
+	assert os.exists_in_system_path('') == false
+	$if windows {
+		assert os.exists_in_system_path('cmd.exe')
+		return
+	}
+	assert os.exists_in_system_path('ls')
+}
+
+fn test_truncate() {
+	filename := './test_trunc.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
+	f.close()
+	assert hello.len == os.file_size(filename)
+	newlen := u64(40000)
+	os.truncate(filename, newlen) or { panic(err) }
+	assert newlen == os.file_size(filename)
+	os.rm(filename) or { panic(err) }
+}
+
+fn test_hostname() {
+	assert os.hostname().len > 2
 }

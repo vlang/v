@@ -59,8 +59,8 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	lines := contents.split('\n')
 	mut info := []UndocumentedFN{}
 	for i, line in lines {
-		if line.starts_with('pub fn') ||
-			(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
+		if line.starts_with('pub fn') || (line.starts_with('fn ') && !(line.starts_with('fn C.')
+			|| line.starts_with('fn main'))) {
 			// println('Match: $line')
 			if i > 0 && lines.len > 0 {
 				mut line_above := lines[i - 1]
@@ -89,7 +89,11 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	}
 	if info.len > 0 {
 		for undocumented_fn in info {
-			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 { '$undocumented_fn.tags' } else { '' }
+			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
+				'$undocumented_fn.tags'
+			} else {
+				''
+			}
 			if opt.deprecated {
 				println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
 			} else {

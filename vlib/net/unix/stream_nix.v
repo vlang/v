@@ -41,7 +41,7 @@ fn error_code() int {
 }
 
 fn new_stream_socket() ?StreamSocket {
-	sockfd := net.socket_error(C.socket(C.AF_UNIX, SocketType.stream, 0)) ?
+	sockfd := net.socket_error(C.socket(net.AddrFamily.unix, net.SocketType.tcp, 0)) ?
 	mut s := StreamSocket{
 		handle: sockfd
 	}
@@ -64,21 +64,20 @@ fn (mut s StreamSocket) connect(a string) ? {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(addr.sun_path, a.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], &char(a.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
-	sockaddr := unsafe { &C.sockaddr(&addr) }
-	res := C.connect(s.handle, sockaddr, size)
+	res := C.connect(s.handle, voidptr(&addr), size)
 	// if res != 1 {
 	// return none
 	//}
 	if res == 0 {
-		return none
+		return
 	}
 	_ := error_code()
 	write_result := s.@select(.write, unix.connect_timeout) ?
 	if write_result {
 		// succeeded
-		return none
+		return
 	}
 	except_result := s.@select(.except, unix.connect_timeout) ?
 	if except_result {
@@ -97,10 +96,9 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(addr.sun_path, sock.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
-	sockaddr := unsafe { &C.sockaddr(&addr) }
-	net.socket_error(C.bind(s.handle, sockaddr, size)) ?
+	net.socket_error(C.bind(s.handle, voidptr(&addr), size)) ?
 	net.socket_error(C.listen(s.handle, 128)) ?
 	return &StreamListener{
 		sock: s
@@ -123,7 +121,7 @@ pub fn (mut l StreamListener) accept() ?&StreamConn {
 		l.wait_for_accept() ?
 		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
-			return none
+			return error('accept failed')
 		}
 	}
 	new_sock := StreamSocket{
@@ -140,7 +138,7 @@ pub fn (c &StreamListener) accept_deadline() ?time.Time {
 	if c.accept_deadline.unix != 0 {
 		return c.accept_deadline
 	}
-	return none
+	return error('no deadline')
 }
 
 pub fn (mut c StreamListener) set_accept_deadline(deadline time.Time) {
@@ -161,23 +159,21 @@ pub fn (mut c StreamListener) wait_for_accept() ? {
 
 pub fn (mut c StreamListener) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 pub fn (mut c StreamConn) close() ? {
 	c.sock.close() ?
-	return none
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c StreamConn) write_ptr(b byteptr, len int) ? {
+pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
 	$if trace_unix ? {
 		eprintln(
 			'>>> StreamConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := byteptr(b)
+		mut ptr_base := &byte(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
@@ -194,22 +190,28 @@ pub fn (mut c StreamConn) write_ptr(b byteptr, len int) ? {
 			}
 			total_sent += sent
 		}
+		return total_sent
 	}
-	return none
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c StreamConn) write(bytes []byte) ? {
+pub fn (mut c StreamConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
 // write_str blocks and attempts to write all data
-pub fn (mut c StreamConn) write_str(s string) ? {
+[deprecated: 'use StreamConn.write_string() instead']
+pub fn (mut c StreamConn) write_str(s string) ?int {
+	return c.write_string(s)
+}
+
+// write_string blocks and attempts to write all data
+pub fn (mut c StreamConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c StreamConn) read_ptr(buf_ptr byteptr, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 	}
@@ -219,7 +221,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 		$if trace_unix ? {
 			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}
@@ -227,7 +229,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	} else {
 		net.wrap_error(code) ?
 	}
-	return none
+	return net.socket_error(code)
 }
 
 pub fn (mut c StreamConn) read(mut buf []byte) ?int {

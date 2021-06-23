@@ -1,4 +1,24 @@
-import os
+[deprecated]
+fn xyz() {
+	println('hi')
+}
+
+[deprecated: 'use foo2 instead']
+fn abc() {
+	println('hi')
+}
+
 fn main() {
-	os.cp_r('./aa', './bb', true)
+	xyz()
+	abc()
+}
+
+struct S1 {}
+
+[deprecated: 'use bar instead']
+fn (s S1) m() {}
+
+fn method() {
+	s := S1{}
+	s.m()
 }

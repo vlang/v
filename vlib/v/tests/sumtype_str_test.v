@@ -4,7 +4,7 @@ struct Abc {
 	str string
 }
 
-type ST = int | string | bool | Abc
+type ST = Abc | bool | int | string
 
 fn test_int_st_str() {
 	a := ST(0)
@@ -14,14 +14,14 @@ fn test_int_st_str() {
 
 fn test_string_st_str() {
 	a := ST('test')
-	assert '$a' == 'ST(\'test\')'
-	assert a.str() == 'ST(\'test\')'
+	assert '$a' == "ST('test')"
+	assert a.str() == "ST('test')"
 }
 
 fn test_struct_st_str() {
 	a := ST(Abc{})
-	assert '$a' == 'ST(Abc{\n    foo: 0\n    bar: false\n    str: \'\'\n})'
-	assert a.str() == 'ST(Abc{\n    foo: 0\n    bar: false\n    str: \'\'\n})'
+	assert '$a' == "ST(Abc{\n    foo: 0\n    bar: false\n    str: ''\n})"
+	assert a.str() == "ST(Abc{\n    foo: 0\n    bar: false\n    str: ''\n})"
 }
 
 fn test_bool_st_str() {
@@ -49,8 +49,8 @@ fn test_unknown_value() {
 fn test_nested_in_struct() {
 	abc := Abc{}
 	c := Container{ST(abc)}
-	assert '$c' == 'Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: \'\'\n    })\n}'
-	assert c.str() == 'Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: \'\'\n    })\n}'
+	assert '$c' == "Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: ''\n    })\n}"
+	assert c.str() == "Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: ''\n    })\n}"
 }
 
 fn test_pointer() {

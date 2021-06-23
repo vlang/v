@@ -19,9 +19,7 @@ fn test_push_propargate() {
 	go f(ch)
 	mut s := 1.0
 	for {
-		s = do_send(ch, s) or {
-			break
-		}
+		s = do_send(ch, s) or { break }
 	}
 	assert s == f64(n + 1)
 }

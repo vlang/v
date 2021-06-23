@@ -1,0 +1,48 @@
+vlib/v/checker/tests/import_symbol_private_err.vv:3:20: error: module `time` function `since()` is private
+    1 | import v.scanner
+    2 | import v.parser
+    3 | import time { now, since }
+      |                    ~~~~~
+    4 | import io { ReaderWriterImpl }
+    5 |
+vlib/v/checker/tests/import_symbol_private_err.vv:4:13: error: module `io` type `ReaderWriterImpl` is private
+    2 | import v.parser
+    3 | import time { now, since }
+    4 | import io { ReaderWriterImpl }
+      |             ~~~~~~~~~~~~~~~~
+    5 | 
+    6 | fn main() {
+vlib/v/checker/tests/import_symbol_private_err.vv:7:18: error: constant `v.scanner.single_quote` is private
+    5 | 
+    6 | fn main() {
+    7 |     println(scanner.single_quote)
+      |                     ~~~~~~~~~~~~
+    8 |     println(parser.State.html)
+    9 |     since(now())
+vlib/v/checker/tests/import_symbol_private_err.vv:8:17: error: enum `v.parser.State` is private
+    6 | fn main() {
+    7 |     println(scanner.single_quote)
+    8 |     println(parser.State.html)
+      |                    ~~~~~~~~~~
+    9 |     since(now())
+   10 |     _ = map{'h': 2}.exists('h')
+vlib/v/checker/tests/import_symbol_private_err.vv:9:2: error: function `time.since` is private
+    7 |     println(scanner.single_quote)
+    8 |     println(parser.State.html)
+    9 |     since(now())
+      |     ~~~~~~~~~~~~
+   10 |     _ = map{'h': 2}.exists('h')
+   11 |     _ = ReaderWriterImpl{}
+vlib/v/checker/tests/import_symbol_private_err.vv:10:18: error: method `map[string]int.exists` is private
+    8 |     println(parser.State.html)
+    9 |     since(now())
+   10 |     _ = map{'h': 2}.exists('h')
+      |                     ~~~~~~~~~~~
+   11 |     _ = ReaderWriterImpl{}
+   12 | }
+vlib/v/checker/tests/import_symbol_private_err.vv:11:6: error: type `io.ReaderWriterImpl` is private
+    9 |     since(now())
+   10 |     _ = map{'h': 2}.exists('h')
+   11 |     _ = ReaderWriterImpl{}
+      |         ~~~~~~~~~~~~~~~~~~
+   12 | }

@@ -233,6 +233,21 @@ fn test_repeat() {
 	}
 }
 
+fn test_deep_repeat() {
+	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+	r := a3.repeat(3)
+	a3[1][1][0] = 17
+	assert r == [
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+	]
+	assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5], [6, 6]]]
+}
+
 fn test_right() {
 	a := [1, 2, 3, 4]
 	c := a[1..a.len]
@@ -315,16 +330,13 @@ fn modify(mut numbers []int) {
 }
 
 fn test_mut_slice() {
-	/*
-	QTODO
 	mut n := [1, 2, 3]
-	//modify(mut n)
+	// modify(mut n)
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
-	*/
 }
 
 fn double_up(mut a []int) {
@@ -367,7 +379,7 @@ fn test_copy() {
 	assert b[2] == 3
 }
 */
-fn test_mutli_array_clone() {
+fn test_multi_array_clone() {
 	// 2d array_int
 	mut a2_1 := [[1, 2, 3], [4, 5, 6]]
 	mut a2_2 := a2_1.clone()
@@ -529,7 +541,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-/*
 fn test_reduce() {
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
@@ -544,7 +555,7 @@ fn test_reduce() {
 	assert f == -6
 	assert g == -7
 }
-*/
+
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
@@ -647,7 +658,7 @@ fn test_anon_fn_map() {
 	assert [1, 2, 3].map(add_num) == [2, 3, 4]
 }
 
-fn test_mutli_anon_fn_map() {
+fn test_multi_anon_fn_map() {
 	a := [1, 2, 3].map(fn (i int) int {
 		return i + 1
 	})
@@ -807,9 +818,36 @@ fn test_sort() {
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
+fn test_rune_sort() {
+	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
+	bs.sort()
+	println(bs)
+	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+
+	bs.sort(a > b)
+	println(bs)
+	assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+
+	bs.sort(a < b)
+	println(bs)
+	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+}
+
+fn test_sort_by_different_order_of_a_b() {
+	mut x := [1, 2, 3]
+	x.sort(a < b)
+	println(x)
+	assert x == [1, 2, 3]
+
+	mut y := [1, 2, 3]
+	y.sort(b < a)
+	println(y)
+	assert y == [3, 2, 1]
+}
+
 fn test_f32_sort() {
 	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f32)
+	f.sort()
 	assert f[0] == 0.0
 	assert f[1] == 1.0
 	assert f[6] == 79.0
@@ -817,7 +855,7 @@ fn test_f32_sort() {
 
 fn test_f64_sort() {
 	mut f := [50.0, 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f64)
+	f.sort()
 	assert f[0] == 0.0
 	assert f[1] == 1.0
 	assert f[6] == 79.0
@@ -825,7 +863,7 @@ fn test_f64_sort() {
 
 fn test_i64_sort() {
 	mut f := [i64(50), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_i64)
+	f.sort()
 	assert f[0] == 0
 	assert f[1] == 1
 	assert f[6] == 79
@@ -870,45 +908,6 @@ fn test_direct_modification() {
 	assert foo[0] == 14
 	assert foo[1] == 2
 	assert foo[2] == 3
-}
-
-fn test_shared_modification() {
-	shared foo := &[2, 0, 5]
-	lock foo {
-		unsafe {
-			foo[1] = 3
-			foo[0] *= 7
-			foo[1]--
-			foo[2] -= 2
-		}
-	}
-	rlock foo {
-		unsafe {
-			assert foo[0] == 14
-			assert foo[1] == 2
-			assert foo[2] == 3
-		}
-	}
-}
-
-[direct_array_access]
-fn test_shared_direct_modification() {
-	shared foo := &[2, 0, 5]
-	lock foo {
-		unsafe {
-			foo[1] = 3
-			foo[0] *= 7
-			foo[1]--
-			foo[2] -= 2
-		}
-	}
-	rlock foo {
-		unsafe {
-			assert foo[0] == 14
-			assert foo[1] == 2
-			assert foo[2] == 3
-		}
-	}
 }
 
 fn test_bools() {
@@ -999,7 +998,7 @@ fn test_array_with_cap() {
 	assert a5.cap == 10
 }
 
-fn test_mutli_array_index() {
+fn test_multi_array_index() {
 	mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 	a[0][0] = 1
 	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
@@ -1091,8 +1090,8 @@ fn test_array_int_pop() {
 	z := a.pop()
 	assert a.len == 3
 	assert z == 4
-	a.pop()
-	a.pop()
+	x1 := a.pop()
+	x2 := a.pop()
 	final := a.pop()
 	assert final == 1
 }

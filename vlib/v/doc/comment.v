@@ -1,5 +1,7 @@
 module doc
 
+import v.token
+
 const (
 	example_pattern = '\x01 Example: '
 )
@@ -8,7 +10,7 @@ pub struct DocComment {
 pub mut:
 	text     string // Raw text content of the comment, excluding the comment token chars ('//, /*, */')
 	is_multi bool   // Is a block / multi-line comment
-	pos      DocPos = DocPos{-1, -1, 0}
+	pos      token.Position
 }
 
 // is_example returns true if the contents of this comment is a doc example.

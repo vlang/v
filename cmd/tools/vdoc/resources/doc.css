@@ -593,7 +593,7 @@ pre {
 	.doc-content {
 		font-size: 0.95rem;
 		flex: 1;
-		padding: 1rem 2rem;
+		padding: 0rem 2rem 1rem 2rem;
 	}
 	.doc-toc {
 		position: relative;

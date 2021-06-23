@@ -1007,6 +1007,10 @@ int zip_extract(const char *zipname, const char *dir,
   return status;
 }
 
+int zip_extract_without_callback(const char *zipname, const char *dir) {
+  return zip_extract(zipname, dir, NULL, NULL);
+} // for simple V bind ¯\_(ツ)_/¯
+
 int zip_extract_stream(const char *stream, size_t size, const char *dir,
                        int (*on_extract)(const char *filename, void *arg),
                        void *arg) {

@@ -1,0 +1,23 @@
+struct St {
+mut:
+	a int
+}
+fn (shared s St) r(x St) {
+}
+fn (s St) m(shared x St) {
+}
+
+
+fn f(w int, shared x St) {
+}
+
+fn g() {
+	shared x := St{
+		a: 5
+	}
+	lock x {
+		x.r(x)
+		x.m(x)
+		f(0, x)
+	}
+}

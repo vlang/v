@@ -15,20 +15,20 @@ fn C.atomic_fetch_add_u32(voidptr, u32) u32
 // `wg.wait()` to wait for all jobs to have finished
 //
 // in each parallel job:
-// `wg.done()` when finished 
+// `wg.done()` when finished
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
 [heap]
 struct WaitGroup {
 mut:
-	task_count u32 // current task count - reading/writing should be atomic
+	task_count u32       // current task count - reading/writing should be atomic
 	sem        Semaphore // This blocks wait() until tast_countreleased by add()
 }
 
 pub fn new_waitgroup() &WaitGroup {
-	mut wg := &WaitGroup{}
+	mut wg := WaitGroup{}
 	wg.init()
-	return wg
+	return &wg
 }
 
 pub fn (mut wg WaitGroup) init() {

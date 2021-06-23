@@ -91,7 +91,7 @@ fn new_image(w int, h int) Image {
 	return Image{
 		width: w
 		height: h
-		data: &Vec(vcalloc(vecsize * w * h))
+		data: unsafe { &Vec(vcalloc(vecsize * w * h)) }
 	}
 }
 
@@ -106,7 +106,7 @@ fn (image Image) save_as_ppm(file_name string) {
 		c_r := to_int(unsafe { image.data[i] }.x)
 		c_g := to_int(unsafe { image.data[i] }.y)
 		c_b := to_int(unsafe { image.data[i] }.z)
-		f_out.write_str('$c_r $c_g $c_b ') or { panic(err) }
+		f_out.write_string('$c_r $c_g $c_b ') or { panic(err) }
 	}
 	f_out.close()
 }
@@ -474,8 +474,11 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	mut tmp := Vec{}
 	if depth > 2 {
 		// Russian roulette
-		tmp = if rand_f64() < pp { radiance(refl_ray, depth, scene_id).mult_s(rp) } else { radiance(Ray{x, tdir},
-				depth, scene_id).mult_s(tp) }
+		tmp = if rand_f64() < pp {
+			radiance(refl_ray, depth, scene_id).mult_s(rp)
+		} else {
+			radiance(Ray{x, tdir}, depth, scene_id).mult_s(tp)
+		}
 	} else {
 		tmp = (radiance(refl_ray, depth, scene_id).mult_s(re)) +
 			(radiance(Ray{x, tdir}, depth, scene_id).mult_s(tr))

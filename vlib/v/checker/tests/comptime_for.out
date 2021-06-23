@@ -1,0 +1,55 @@
+vlib/v/checker/tests/comptime_for.vv:2:12: error: unknown type `Huh`
+    1 | fn unknown() {
+    2 |     $for m in Huh.methods {}
+      |               ~~~
+    3 |     $for f in Huh.fields {}
+    4 |     $for f in T.fields {
+vlib/v/checker/tests/comptime_for.vv:3:12: error: unknown type `Huh`
+    1 | fn unknown() {
+    2 |     $for m in Huh.methods {}
+    3 |     $for f in Huh.fields {}
+      |               ~~~
+    4 |     $for f in T.fields {
+    5 |         $if f.typ is Huh {}
+vlib/v/checker/tests/comptime_for.vv:4:12: error: unknown type `T`
+    2 |     $for m in Huh.methods {}
+    3 |     $for f in Huh.fields {}
+    4 |     $for f in T.fields {
+      |               ^
+    5 |         $if f.typ is Huh {}
+    6 |         $if f.typ is T {}
+vlib/v/checker/tests/comptime_for.vv:5:16: error: unknown type `Huh`
+    3 |     $for f in Huh.fields {}
+    4 |     $for f in T.fields {
+    5 |         $if f.typ is Huh {}
+      |                      ~~~
+    6 |         $if f.typ is T {}
+    7 |     }
+vlib/v/checker/tests/comptime_for.vv:6:16: error: unknown type `T`
+    4 |     $for f in T.fields {
+    5 |         $if f.typ is Huh {}
+    6 |         $if f.typ is T {}
+      |                      ^
+    7 |     }
+    8 |     _ = m
+vlib/v/checker/tests/comptime_for.vv:8:6: error: undefined ident: `m`
+    6 |         $if f.typ is T {}
+    7 |     }
+    8 |     _ = m
+      |         ^
+    9 | }
+   10 |
+vlib/v/checker/tests/comptime_for.vv:14:16: error: unknown type `U`
+   12 |     $for f in T.fields {
+   13 |         $if f.typ is T {}
+   14 |         $if f.typ is U {}
+      |                      ^
+   15 |     }
+   16 |     _ = f
+vlib/v/checker/tests/comptime_for.vv:16:6: error: undefined ident: `f`
+   14 |         $if f.typ is U {}
+   15 |     }
+   16 |     _ = f
+      |         ^
+   17 | }
+   18 |

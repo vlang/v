@@ -1,0 +1,8 @@
+fn single_line_stmts() {
+	// Wouldn't be the or-block's stmt be single line, the block would be written as multi line
+	foo() or { assert false }
+	for {
+		foo() or { break }
+	}
+	foo() or { return }
+}

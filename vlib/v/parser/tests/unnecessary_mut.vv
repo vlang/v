@@ -3,4 +3,5 @@ fn main() {
 	if mut x == 0 {
 		println(true)
 	}
+	_ = x
 }

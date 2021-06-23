@@ -71,7 +71,9 @@ fn data_get() []SiteConfig {
 		cat: .web
 		alias: 'marketplace'
 		path_code: '/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_marketplace'
-		domains: ['now.threefold.io', 'marketplace.threefold.io', 'now.threefold.me', 'marketplace.threefold.me']
+		domains: ['now.threefold.io', 'marketplace.threefold.io', 'now.threefold.me',
+			'marketplace.threefold.me',
+		]
 		descr: 'apps for community builders, runs on top of evdc'
 	}, SiteConfig{
 		name: 'www_conscious_internet'
@@ -81,9 +83,8 @@ fn data_get() []SiteConfig {
 		cat: .web
 		alias: 'conscious_internet'
 		path_code: '/Users/despiegk/codewww/github/threefoldfoundation/www_conscious_internet'
-		domains: ['www.consciousinternet.org', 'eco.threefold.io', 'community.threefold.io', 'eco.threefold.me',
-			'community.threefold.me',
-		]
+		domains: ['www.consciousinternet.org', 'eco.threefold.io', 'community.threefold.io',
+			'eco.threefold.me', 'community.threefold.me']
 		descr: 'community around threefold, partners, friends, ...'
 	}, SiteConfig{
 		name: 'www_threefold_tech'
@@ -171,11 +172,11 @@ fn data_get() []SiteConfig {
 
 fn data_dump(data []SiteConfig) {
 	a := json.encode_pretty(data)
-	os.write_file('data.json', a) or { panic(err) }
+	os.write_file(os.resource_abs_path('data.json'), a) or { panic(err) }
 }
 
 fn data_load() []SiteConfig {
-	data := os.read_file('data.json') or { panic(err) }
+	data := os.read_file(os.resource_abs_path('data.json')) or { panic(err) }
 	a := json.decode([]SiteConfig, data) or { panic(err) }
 	return a
 }
@@ -192,5 +193,4 @@ fn main() {
 	// data_dump(data)
 	b := filled_in_template()
 	println(b)
-	os.write_file('result.md', b) or { panic(err) }
 }

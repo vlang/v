@@ -1,10 +1,10 @@
 import encoding.base64
 
-fn test_long_encoding(){
+fn test_long_encoding() {
 	repeats := 1000
 	input_size := 3000
 
-	s_original := 'a'.repeat(input_size)
+	s_original := []byte{len: input_size, init: `a`}
 	s_encoded := base64.encode(s_original)
 	s_decoded := base64.decode(s_encoded)
 
@@ -13,20 +13,20 @@ fn test_long_encoding(){
 
 	mut s := 0
 
-	ebuffer := malloc( s_encoded.len )
-	for _ in 0..repeats {
+	ebuffer := unsafe { malloc(s_encoded.len) }
+	for _ in 0 .. repeats {
 		resultsize := base64.encode_in_buffer(s_original, ebuffer)
 		s += resultsize
 		assert resultsize == s_encoded.len
 	}
 
-	dbuffer := malloc( s_decoded.len )
-	for _ in 0..repeats {
+	dbuffer := unsafe { malloc(s_decoded.len) }
+	for _ in 0 .. repeats {
 		resultsize := base64.decode_in_buffer(s_encoded, dbuffer)
 		s += resultsize
 		assert resultsize == s_decoded.len
 	}
 
-	println( 'Final s: $s' )
+	println('Final s: $s')
 	//	assert s == 39147008
 }

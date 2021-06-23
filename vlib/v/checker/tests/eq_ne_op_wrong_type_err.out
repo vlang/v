@@ -1,84 +1,139 @@
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:10:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
-    8 | 
-    9 | fn main() {
-   10 |     println(Aaa{} == 10)
-      |             ~~~~~~~~~~~
-   11 |     println(10 == Aaa{})
-   12 |     println(Aaa{} != 10)
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:11:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
-    9 | fn main() {
-   10 |     println(Aaa{} == 10)
-   11 |     println(10 == Aaa{})
-      |             ~~~~~~~~~~~
-   12 |     println(Aaa{} != 10)
-   13 |     println(10 != Aaa{})
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:12:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
-   10 |     println(Aaa{} == 10)
-   11 |     println(10 == Aaa{})
-   12 |     println(Aaa{} != 10)
+   10 | 
+   11 | fn main() {
+   12 |     println(Aaa{} == 10)
       |             ~~~~~~~~~~~
-   13 |     println(10 != Aaa{})
-   14 |
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:13:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
-   11 |     println(10 == Aaa{})
-   12 |     println(Aaa{} != 10)
-   13 |     println(10 != Aaa{})
+   11 | fn main() {
+   12 |     println(Aaa{} == 10)
+   13 |     println(10 == Aaa{})
       |             ~~~~~~~~~~~
-   14 | 
-   15 |     println(Aaa{0} == AAaa{0})
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:15:10: error: possible type mismatch of compared values of `==` operation
-   13 |     println(10 != Aaa{})
-   14 | 
-   15 |     println(Aaa{0} == AAaa{0})
+   14 |     println(Aaa{} != 10)
+   15 |     println(10 != Aaa{})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:14:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+   12 |     println(Aaa{} == 10)
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
+      |             ~~~~~~~~~~~
+   15 |     println(10 != Aaa{})
+   16 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:15:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
+   15 |     println(10 != Aaa{})
+      |             ~~~~~~~~~~~
+   16 | 
+   17 |     println(Aaa{0} == AAaa{0})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:17:10: error: possible type mismatch of compared values of `==` operation
+   15 |     println(10 != Aaa{})
+   16 | 
+   17 |     println(Aaa{0} == AAaa{0})
       |             ~~~~~~~~~~~~~~~~~
-   16 |     println(AAaa{0} == Aaa{0})
-   17 |     println(AAaa{1} != Aaa{1})
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:16:10: error: possible type mismatch of compared values of `==` operation
-   14 | 
-   15 |     println(Aaa{0} == AAaa{0})
-   16 |     println(AAaa{0} == Aaa{0})
+   18 |     println(AAaa{0} == Aaa{0})
+   19 |     println(AAaa{1} != Aaa{1})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:18:10: error: possible type mismatch of compared values of `==` operation
+   16 | 
+   17 |     println(Aaa{0} == AAaa{0})
+   18 |     println(AAaa{0} == Aaa{0})
       |             ~~~~~~~~~~~~~~~~~
-   17 |     println(AAaa{1} != Aaa{1})
-   18 |     println(Aaa{1} != AAaa{1})
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:17:10: error: possible type mismatch of compared values of `!=` operation
-   15 |     println(Aaa{0} == AAaa{0})
-   16 |     println(AAaa{0} == Aaa{0})
-   17 |     println(AAaa{1} != Aaa{1})
+   19 |     println(AAaa{1} != Aaa{1})
+   20 |     println(Aaa{1} != AAaa{1})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:19:10: error: possible type mismatch of compared values of `!=` operation
+   17 |     println(Aaa{0} == AAaa{0})
+   18 |     println(AAaa{0} == Aaa{0})
+   19 |     println(AAaa{1} != Aaa{1})
       |             ~~~~~~~~~~~~~~~~~
-   18 |     println(Aaa{1} != AAaa{1})
-   19 |
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:18:10: error: possible type mismatch of compared values of `!=` operation
-   16 |     println(AAaa{0} == Aaa{0})
-   17 |     println(AAaa{1} != Aaa{1})
-   18 |     println(Aaa{1} != AAaa{1})
+   20 |     println(Aaa{1} != AAaa{1})
+   21 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:20:10: error: possible type mismatch of compared values of `!=` operation
+   18 |     println(AAaa{0} == Aaa{0})
+   19 |     println(AAaa{1} != Aaa{1})
+   20 |     println(Aaa{1} != AAaa{1})
       |             ~~~~~~~~~~~~~~~~~
-   19 | 
-   20 |     arr := Arr([0])
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:21:10: error: possible type mismatch of compared values of `==` operation
-   19 | 
-   20 |     arr := Arr([0])
-   21 |     println(arr == [0])
+   21 | 
+   22 |     arr := Arr([0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:23:10: error: possible type mismatch of compared values of `==` operation
+   21 | 
+   22 |     arr := Arr([0])
+   23 |     println(arr == [0])
       |             ~~~~~~~~~~
-   22 |     println([1] == arr)
-   23 |     println(arr != [0])
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:22:10: error: possible type mismatch of compared values of `==` operation
-   20 |     arr := Arr([0])
-   21 |     println(arr == [0])
-   22 |     println([1] == arr)
+   24 |     println([1] == arr)
+   25 |     println(arr != [0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:24:10: error: possible type mismatch of compared values of `==` operation
+   22 |     arr := Arr([0])
+   23 |     println(arr == [0])
+   24 |     println([1] == arr)
       |             ~~~~~~~~~~
-   23 |     println(arr != [0])
-   24 |     println([1] != arr)
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:23:10: error: possible type mismatch of compared values of `!=` operation
-   21 |     println(arr == [0])
-   22 |     println([1] == arr)
-   23 |     println(arr != [0])
+   25 |     println(arr != [0])
+   26 |     println([1] != arr)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:25:10: error: possible type mismatch of compared values of `!=` operation
+   23 |     println(arr == [0])
+   24 |     println([1] == arr)
+   25 |     println(arr != [0])
       |             ~~~~~~~~~~
-   24 |     println([1] != arr)
-   25 | }
-vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:24:10: error: possible type mismatch of compared values of `!=` operation
-   22 |     println([1] == arr)
-   23 |     println(arr != [0])
-   24 |     println([1] != arr)
+   26 |     println([1] != arr)
+   27 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:26:10: error: possible type mismatch of compared values of `!=` operation
+   24 |     println([1] == arr)
+   25 |     println(arr != [0])
+   26 |     println([1] != arr)
       |             ~~~~~~~~~~
-   25 | }
-
+   27 | 
+   28 |     arr_aaa := ArrAaa(arr)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:29:10: error: possible type mismatch of compared values of `==` operation
+   27 | 
+   28 |     arr_aaa := ArrAaa(arr)
+   29 |     println(arr_aaa == arr)
+      |             ~~~~~~~~~~~~~~
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:30:10: error: possible type mismatch of compared values of `==` operation
+   28 |     arr_aaa := ArrAaa(arr)
+   29 |     println(arr_aaa == arr)
+   30 |     println(arr == arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   31 |     println(arr_aaa != arr)
+   32 |     println(arr != arr_aaa)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:31:10: error: possible type mismatch of compared values of `!=` operation
+   29 |     println(arr_aaa == arr)
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+      |             ~~~~~~~~~~~~~~
+   32 |     println(arr != arr_aaa)
+   33 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:32:10: error: possible type mismatch of compared values of `!=` operation
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+   32 |     println(arr != arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   33 | 
+   34 |     println(arr_aaa == [0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:34:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
+   32 |     println(arr != arr_aaa)
+   33 | 
+   34 |     println(arr_aaa == [0])
+      |             ~~~~~~~~~~~~~~
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:35:10: error: infix expr: cannot use `ArrAaa` (right expression) as `[]int`
+   33 | 
+   34 |     println(arr_aaa == [0])
+   35 |     println([1] == arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   36 |     println(arr_aaa != [0])
+   37 |     println([1] != arr_aaa)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:36:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
+   34 |     println(arr_aaa == [0])
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+      |             ~~~~~~~~~~~~~~
+   37 |     println([1] != arr_aaa)
+   38 | }
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:37:10: error: infix expr: cannot use `ArrAaa` (right expression) as `[]int`
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+   37 |     println([1] != arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   38 | }

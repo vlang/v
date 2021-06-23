@@ -1,6 +1,7 @@
 import os
+import rand
 import term
-import v.util
+import v.util.diff
 import v.util.vtest
 import time
 import sync
@@ -8,12 +9,12 @@ import runtime
 import benchmark
 
 const skip_files = [
-		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
-	]
+	'non_existing.vv' /* minimize commit diff churn, do not remove */,
+]
 
 const skip_on_ubuntu_musl = [
-		'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
-	]
+	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
+]
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
@@ -74,15 +75,9 @@ fn test_all() {
 	tasks.add('', parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
 	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
+	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
-	tasks.add('', checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],
-		false)
-	tasks.add('', checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'],
-		false)
-	tasks.add('', checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
-		false)
-	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
+	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.run()
@@ -118,6 +113,33 @@ fn test_all() {
 			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
+	mut ct_tasks := Tasks{
+		vexe: vexe
+		parallel_jobs: 1
+		label: 'comptime define tests'
+	}
+	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
+		'custom_comptime_define_error.vv',
+	])
+	ct_tasks.add_checked_run('-d mydebug run', '.mydebug.run.out', [
+		'custom_comptime_define_if_flag.vv',
+	])
+	ct_tasks.add_checked_run('-d nodebug run', '.nodebug.run.out', [
+		'custom_comptime_define_if_flag.vv',
+	])
+	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.run()
+}
+
+fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, tests []string) {
+	checker_dir := 'vlib/v/checker/tests'
+	tasks.add('', checker_dir, voptions, result_extension, tests, false)
 }
 
 fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
@@ -164,6 +186,13 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
+	$if msvc {
+		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
+		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
+		// TODO: investigate why MSVC regressed
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
 			tasks.all[i].is_skipped = true
@@ -174,6 +203,10 @@ fn (mut tasks Tasks) run() {
 	for _ in 0 .. vjobs {
 		go work_processor(mut work, mut results)
 	}
+	if github_job == '' {
+		println('')
+	}
+	mut line_can_be_erased := true
 	mut total_errors := 0
 	for _ in 0 .. tasks.all.len {
 		mut task := TaskDescription{}
@@ -182,6 +215,7 @@ fn (mut tasks Tasks) run() {
 		if task.is_skipped {
 			bench.skip()
 			eprintln(bstep_message(mut bench, benchmark.b_skip, task.path, task.took))
+			line_can_be_erased = false
 			continue
 		}
 		if task.is_error {
@@ -199,14 +233,22 @@ fn (mut tasks Tasks) run() {
 			println(task.found___)
 			println('============\n')
 			diff_content(task.expected, task.found___)
+			line_can_be_erased = false
 		} else {
 			bench.ok()
 			if tasks.show_cmd {
 				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
 					task.took))
 			} else {
-				eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+				if github_job == '' {
+					// local mode:
+					if line_can_be_erased {
+						term.clear_previous_line()
+					}
+					println(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+				}
 			}
+			line_can_be_erased = true
 		}
 	}
 	bench.stop()
@@ -239,7 +281,7 @@ fn (mut task TaskDescription) execute() {
 	}
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
-	res := os.exec(cli_cmd) or { panic(err) }
+	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
@@ -272,9 +314,9 @@ fn clean_line_endings(s string) string {
 }
 
 fn diff_content(s1 string, s2 string) {
-	diff_cmd := util.find_working_diff_command() or { return }
+	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(util.color_compare_strings(diff_cmd, s1, s2))
+	println(diff.color_compare_strings(diff_cmd, rand.ulid(), s1, s2))
 	println('============\n')
 }
 

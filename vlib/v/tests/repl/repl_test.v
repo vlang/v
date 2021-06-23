@@ -12,11 +12,14 @@ fn test_the_v_compiler_can_be_invoked() {
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.exec(vcmd) or { panic(err) }
-	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
+	r := os.execute_or_panic(vcmd)
 	assert r.exit_code == 0
+	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	vcmd_error := '"$vexec" nonexisting.v'
-	r_error := os.exec(vcmd_error) or { panic(err) }
+	r_error := os.execute(vcmd_error)
+	if r_error.exit_code < 0 {
+		panic(r_error.output)
+	}
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
 	actual_error := r_error.output.trim_space()
@@ -39,9 +42,7 @@ fn test_all_v_repl_files() {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := pool.new_pool_processor(
-		callback: worker_repl
-	)
+	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
 	pool_repl.set_shared_context(session)
 	$if windows {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
@@ -74,7 +75,7 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		session.bmark.fail()
 		tls_bench.fail()
 		os.rmdir_all(tfolder) or { panic(err) }
-		eprintln(tls_bench.step_message_fail(err))
+		eprintln(tls_bench.step_message_fail(err.msg))
 		assert false
 		return pool.no_result
 	}

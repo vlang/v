@@ -1,4 +1,5 @@
 import math
+import rand
 import rand.pcg32
 import rand.seed
 
@@ -141,13 +142,13 @@ fn test_pcg32_u64n() {
 }
 
 fn test_pcg32_u32_in_range() {
-	max := u64(484468466)
-	min := u64(316846)
+	max := u32(484468466)
+	min := u32(316846)
 	for seed in seeds {
 		mut rng := pcg32.PCG32RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u64(min), u64(max))
+			value := rng.u32_in_range(u32(min), u32(max))
 			assert value >= min
 			assert value < max
 		}
@@ -329,4 +330,8 @@ fn test_pcg32_f64_in_range() {
 			assert value < max
 		}
 	}
+}
+
+fn test_change_default_random_generator() {
+	rand.set_rng(pcg32.PCG32RNG{})
 }

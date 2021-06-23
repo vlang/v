@@ -35,10 +35,18 @@ fn a_val(a []int) int {
 }
 
 fn test_shared_as_value() {
-	shared s := St{ a: 5 }
+	shared s := St{
+		a: 5
+	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := {'qw': 12.75, 'yxcv': -3.125, 'poiu': 88.0625}
-	shared r := Qr{ a: 7 }
+	shared m := map{
+		'qw':   12.75
+		'yxcv': -3.125
+		'poiu': 88.0625
+	}
+	shared r := Qr{
+		a: 7
+	}
 	rlock s, r {
 		u := r.s_val(s)
 		assert u == 35
@@ -58,10 +66,18 @@ fn test_shared_as_value() {
 }
 
 fn test_shared_as_mut() {
-	shared s := St{ a: 5 }
+	shared s := St{
+		a: 5
+	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := {'qw': 12.75, 'yxcv': -3.125, 'poiu': 88.0625}
-	shared r := Qr{ a: 7 }
+	shared m := map{
+		'qw':   12.75
+		'yxcv': -3.125
+		'poiu': 88.0625
+	}
+	shared r := Qr{
+		a: 7
+	}
 	lock s, r {
 		r.s_mut(mut s)
 		x := r.a * s.a

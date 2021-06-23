@@ -17,6 +17,21 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum AssertFailureMode {
+	default
+	aborts
+	backtraces
+}
+
+pub enum GarbageCollectionMode {
+	no_gc
+	boehm_full // full garbage collection mode
+	boehm_incr // incremental garbage colletion mode
+	boehm_full_opt // full garbage collection mode
+	boehm_incr_opt // incremental garbage colletion mode
+	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
+}
+
 pub enum OutputMode {
 	stdout
 	silent
@@ -31,7 +46,7 @@ pub enum ColorOutput {
 pub enum Backend {
 	c // The (default) C backend
 	js // The JavaScript backend
-	x64 // The x64 backend
+	native // The Native backend
 }
 
 pub enum CompilerType {
@@ -43,9 +58,20 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum Arch {
+	_auto
+	amd64 // aka x86_64
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+	i386
+	_max
+}
+
 const (
 	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
-		'cflags', 'path']
+		'cflags', 'path', 'arch']
 )
 
 [heap]
@@ -54,29 +80,33 @@ pub mut:
 	os          OS // the OS to compile for
 	backend     Backend
 	build_mode  BuildMode
+	arch        Arch
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_test           bool   // `v test string_test.v`
-	is_script         bool   // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool   // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool   // main program that contains live/hot code
-	is_liveshared     bool   // a shared library, that will be used in a -live main program
-	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
-	is_prof           bool   // benchmark every function
-	profile_file      string // the profile results will be stored inside profile_file
-	profile_no_inline bool   // when true, [inline] functions would not be profiled
-	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod           bool   // use "-O2"
-	obfuscate         bool   // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl           bool
-	is_run            bool
-	sanitize          bool // use Clang's new "-fsanitize" option
-	is_debug          bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
-	show_cc           bool // -showcc, print cc command
-	show_c_output     bool // -show-c-output, print all cc output even if the code was compiled correctly
+	is_test                bool   // `v test string_test.v`
+	is_script              bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh                 bool   // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain            bool   // main program that contains live/hot code
+	is_liveshared          bool   // a shared library, that will be used in a -live main program
+	is_shared              bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_prof                bool   // benchmark every function
+	profile_file           string // the profile results will be stored inside profile_file
+	profile_no_inline      bool   // when true, [inline] functions would not be profiled
+	translated             bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod                bool   // use "-O2"
+	obfuscate              bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_repl                bool
+	is_run                 bool
+	sanitize               bool // use Clang's new "-fsanitize" option
+	is_debug               bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
+	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
+	sourcemap_src_included bool // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
+	is_vlines              bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
+	show_cc                bool // -showcc, print cc command
+	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
@@ -103,21 +133,20 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh    bool
-	enable_globals bool // allow __global for low level code
-	is_fmt         bool
-	is_vet         bool
-	is_bare        bool
-	no_preludes    bool   // Prevents V from generating preludes in resulting .c files
-	custom_prelude string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	lookup_path    []string
-	output_cross_c bool
-	prealloc       bool
-	vroot          string
-	out_name_c     string // full os.real_path to the generated .tmp.c file; set by builder.
-	out_name       string
-	display_name   string
-	bundle_id      string
-	path           string // Path to file/folder to compile
+	enable_globals   bool // allow __global for low level code
+	is_fmt           bool
+	is_vet           bool
+	is_bare          bool
+	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	lookup_path      []string
+	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
+	output_cross_c   bool
+	prealloc         bool
+	vroot            string
+	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name         string
+	path             string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
@@ -143,6 +172,12 @@ pub mut:
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
+	is_help             bool // -h, -help or --help was passed
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	is_cstrict          bool                  // turn on more C warnings; slightly slower
+	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	// checker settings:
+	checker_match_exhaustive_cutoff_limit int = 12
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -155,17 +190,49 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
-		current_args := args[i..]
+		current_args := args[i..].clone()
 		match arg {
 			'-apk' {
 				res.is_apk = true
 				res.build_options << arg
+			}
+			'-arch' {
+				target_arch := cmdline.option(current_args, '-arch', '')
+				i++
+				target_arch_kind := arch_from_string(target_arch) or {
+					eprintln('unknown architecture target `$target_arch`')
+					exit(1)
+				}
+				res.arch = target_arch_kind
+				res.build_options << '$arg $target_arch'
+			}
+			'-assert' {
+				assert_mode := cmdline.option(current_args, '-assert', '')
+				match assert_mode {
+					'aborts' {
+						res.assert_failure_mode = .aborts
+					}
+					'backtraces' {
+						res.assert_failure_mode = .backtraces
+					}
+					else {
+						eprintln('unknown assert mode `-gc $assert_mode`, supported modes are:`')
+						eprintln('  `-assert aborts`     .... calls abort() after assertion failure')
+						eprintln('  `-assert backtraces` .... calls print_backtrace() after assertion failure')
+						exit(1)
+					}
+				}
+				i++
 			}
 			'-show-timings' {
 				res.show_timings = true
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
+			}
+			'-h', '-help', '--help' {
+				// NB: help is *very important*, just respond to all variations:
+				res.is_help = true
 			}
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
@@ -188,6 +255,62 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-silent' {
 				res.output_mode = .silent
 			}
+			'-cstrict' {
+				res.is_cstrict = true
+			}
+			'-gc' {
+				gc_mode := cmdline.option(current_args, '-gc', '')
+				match gc_mode {
+					'', 'none' {
+						res.gc_mode = .no_gc
+					}
+					'boehm_full' {
+						res.gc_mode = .boehm_full
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+					}
+					'boehm_incr' {
+						res.gc_mode = .boehm_incr
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
+					}
+					'boehm_full_opt' {
+						res.gc_mode = .boehm_full_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm_incr_opt' {
+						res.gc_mode = .boehm_incr_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm' {
+						res.gc_mode = .boehm_full_opt // default mode
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm_leak' {
+						res.gc_mode = .boehm_leak
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_leak')
+					}
+					else {
+						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
+						eprintln('  `-gc boehm_full` ....... classic full collection')
+						eprintln('  `-gc boehm_incr` ....... incremental collection')
+						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
+						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
+						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						eprintln('  `-gc none` ............. no garbage collection')
+						exit(1)
+					}
+				}
+				i++
+			}
 			'-g' {
 				res.is_debug = true
 				res.is_vlines = true
@@ -197,6 +320,22 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg
+			}
+			'-debug-tcc' {
+				res.ccompiler = 'tcc'
+				res.build_options << '$arg "$res.ccompiler"'
+				res.retry_compilation = false
+				res.show_cc = true
+				res.show_c_output = true
+			}
+			'-sourcemap' {
+				res.sourcemap = true
+			}
+			'-sourcemap-src-included' {
+				res.sourcemap_src_included = true
+			}
+			'-sourcemap-inline' {
+				res.sourcemap_inline = true
 			}
 			'-repl' {
 				res.is_repl = true
@@ -211,7 +350,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals', '-enable-globals' {
+			'--enable-globals' {
+				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				res.enable_globals = true
+			}
+			'-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {
@@ -268,12 +411,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-translated' {
 				res.translated = true
 			}
-			'-color' {
-				res.use_color = .always
-			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
 				res.cflags += ' $arg'
+			}
+			'-color' {
+				res.use_color = .always
 			}
 			'-nocolor' {
 				res.use_color = .never
@@ -304,8 +447,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-parallel' {
 				res.is_parallel = true
 			}
-			'-x64' {
-				res.backend = .x64
+			'-native' {
+				res.backend = .native
 				res.build_options << arg
 			}
 			'-W' {
@@ -317,7 +460,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-watch' {
+				eprintln('The -watch option is deprecated. Please use the watch command `v watch file.v` instead.')
+				exit(1)
+			}
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
@@ -338,7 +485,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {
@@ -346,7 +493,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg "$res.cflags.trim_space()"'
 				i++
 			}
-			'-define', '-d' {
+			'-d', '-define' {
 				if current_args.len > 1 {
 					define := current_args[1]
 					parse_define(mut res, define)
@@ -358,8 +505,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg "$res.ccompiler"'
 				i++
 			}
-			'-o' {
-				res.out_name = cmdline.option(current_args, '-o', '')
+			'-checker-match-exhaustive-cutoff-limit' {
+				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
+					arg, '10').int()
+				i++
+			}
+			'-o', '-output' {
+				res.out_name = cmdline.option(current_args, arg, '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js
 				}
@@ -368,8 +520,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				i++
 			}
-			'-b' {
-				sbackend := cmdline.option(current_args, '-b', 'c')
+			'-b', '-backend' {
+				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
 				b := backend_from_string(sbackend) or { continue }
 				res.backend = b
@@ -381,6 +533,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
+			'-bare-builtin-dir' {
+				bare_builtin_dir := cmdline.option(current_args, arg, '')
+				res.build_options << '$arg "$bare_builtin_dir"'
+				res.bare_builtin_dir = bare_builtin_dir
+				i++
+			}
 			'-custom-prelude' {
 				path := cmdline.option(current_args, '-custom-prelude', '')
 				res.build_options << '$arg $path'
@@ -389,14 +547,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					exit(1)
 				}
 				res.custom_prelude = prelude
-				i++
-			}
-			'-name' {
-				res.display_name = cmdline.option(current_args, '-name', '')
-				i++
-			}
-			'-bundle' {
-				res.bundle_id = cmdline.option(current_args, '-bundle', '')
 				i++
 			}
 			else {
@@ -429,16 +579,20 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command != '' && command != 'build-module' {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
+				extension := if command.len == 0 { '' } else { ' for command `$command`' }
+				eprintln('Unknown argument `$arg`$extension')
 				exit(1)
 			}
 		}
 	}
+	if res.is_debug {
+		parse_define(mut res, 'debug')
+	}
+
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
@@ -478,7 +632,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path) or { }
+				os.rm(tmp_exe_file_path) or {}
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
 			os.rm(tmp_v_file_path) or { panic(err) }
@@ -491,8 +645,15 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			res.path += '.v'
 		}
 	}
+	if !res.is_bare && res.bare_builtin_dir != '' {
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
+		if command_pos + 1 >= args.len {
+			eprintln('v build-module: no module specified')
+			exit(1)
+		}
 		res.path = args[command_pos + 1]
 	}
 	// keep only the unique res.build_options:
@@ -512,6 +673,41 @@ pub fn (pref &Preferences) vrun_elog(s string) {
 	}
 }
 
+pub fn arch_from_string(arch_str string) ?Arch {
+	match arch_str {
+		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
+
+			return Arch.amd64
+		}
+		'aarch64', 'arm64' { // arm64 recommended
+
+			return Arch.arm64
+		}
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
+
+			return Arch.arm32
+		}
+		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
+
+			return Arch.rv64
+		}
+		'rv32', 'riscv32' { // rv32 recommended
+
+			return Arch.rv32
+		}
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
+
+			return Arch.i386
+		}
+		'' {
+			return ._auto
+		}
+		else {
+			return error('invalid arch: $arch_str')
+		}
+	}
+}
+
 fn must_exist(path string) {
 	if !os.exists(path) {
 		eprintln('v expects that `$path` exists, but it does not')
@@ -528,7 +724,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js }
-		'x64' { return .x64 }
+		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}
 }
@@ -539,26 +735,39 @@ pub fn cc_from_string(cc_str string) CompilerType {
 		return .gcc
 	}
 	// TODO
-	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
-	if '++' in cc {
+	normalized_cc := cc_str.replace('\\', '/')
+	normalized_cc_array := normalized_cc.split('/')
+	last_elem := normalized_cc_array.last()
+	cc := last_elem.all_before('.')
+	if cc.contains('++') {
 		return .cplusplus
 	}
-	if 'tcc' in cc {
+	if cc.contains('tcc') || cc.contains('tinyc') {
 		return .tinyc
 	}
-	if 'tinyc' in cc {
-		return .tinyc
-	}
-	if 'clang' in cc {
+	if cc.contains('clang') {
 		return .clang
 	}
-	if 'mingw' in cc {
+	if cc.contains('mingw') {
 		return .mingw
 	}
-	if 'msvc' in cc {
+	if cc.contains('msvc') {
 		return .msvc
 	}
 	return .gcc
+}
+
+pub fn get_host_arch() Arch {
+	// NB: we can not use `$if arch` here, because V skips cgen for the non
+	// current comptime branches by default, so there is a bootstrapping
+	// problem => the __V_architecture macro is used to resolve it.
+	// TODO: think about how to solve it for non C backends, perhaps we
+	// need a comptime `$if native {` too, and/or a mechanism to always
+	// generate all branches for specific functions?
+	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
+		return Arch.amd64
+	}
+	return Arch(C.__V_architecture)
 }
 
 fn parse_define(mut prefs Preferences, define string) {

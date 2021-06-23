@@ -35,7 +35,9 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+		'Sunday',
+	]
 )
 
 // Time contains various time units for a point in time.
@@ -70,9 +72,11 @@ pub enum FormatDate {
 	mmddyyyy
 	mmmd
 	mmmdd
+	mmmddyy
 	mmmddyyyy
 	no_date
 	yyyymmdd
+	yymmdd
 }
 
 // FormatDelimiter contains different time/date delimiters.
@@ -112,7 +116,7 @@ pub fn now() Time {
 	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
-	return convert_ctime(now, 0)
+	return convert_ctime(*now, 0)
 }
 
 // utc returns the current UTC time.
@@ -324,32 +328,24 @@ pub fn ticks() i64 {
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
+/*
 // sleep makes the calling thread sleep for a given number of seconds.
+[deprecated: 'call time.sleep(n * time.second)']
 pub fn sleep(seconds int) {
-	$if windows {
-		C.Sleep(seconds * 1000)
-	} $else {
-		C.sleep(seconds)
-	}
+	wait(seconds * time.second)
 }
+*/
 
 // sleep_ms makes the calling thread sleep for a given number of milliseconds.
+[deprecated: 'call time.sleep(n * time.millisecond)']
 pub fn sleep_ms(milliseconds int) {
-	$if windows {
-		C.Sleep(milliseconds)
-	} $else {
-		C.usleep(milliseconds * 1000)
-	}
+	wait(milliseconds * time.millisecond)
 }
 
 // usleep makes the calling thread sleep for a given number of microseconds.
+[deprecated: 'call time.sleep(n * time.microsecond)']
 pub fn usleep(microseconds int) {
-	$if windows {
-		milliseconds := microseconds / 1000
-		C.Sleep(milliseconds)
-	} $else {
-		C.usleep(microseconds)
-	}
+	wait(microseconds * time.microsecond)
 }
 
 // is_leap_year checks if a given a year is a leap year.
@@ -398,7 +394,7 @@ pub const (
 	second      = Duration(1000 * millisecond)
 	minute      = Duration(60 * second)
 	hour        = Duration(60 * minute)
-	infinite    = Duration(-1)
+	infinite    = Duration(C.INT64_MAX)
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.

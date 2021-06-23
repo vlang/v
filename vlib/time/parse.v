@@ -36,8 +36,8 @@ pub fn parse_rfc2822(s string) ?Time {
 	pos := months_string.index(fields[2]) or { return error('Invalid time format: $s') }
 	mm := pos / 3 + 1
 	unsafe {
-		tmstr := malloc(s.len * 2)
-		count := C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str,
+		tmstr := malloc_noscan(s.len * 2)
+		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str,
 			mm, fields[1].str, fields[4].str)
 		return parse(tos(tmstr, count))
 	}
@@ -45,14 +45,14 @@ pub fn parse_rfc2822(s string) ?Time {
 
 // ----- iso8601 -----
 const (
-	err_invalid_8601 = error('Invalid 8601 Format')
+	err_invalid_8601 = 'Invalid 8601 Format'
 )
 
 fn parse_iso8601_date(s string) ?(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, byte(0)
-	count := unsafe { C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
+	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
-		return time.err_invalid_8601
+		return error(time.err_invalid_8601)
 	}
 	return year, month, day
 }
@@ -66,24 +66,24 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	offset_hour := 0
 	offset_minute := 0
 	mut count := unsafe {
-		C.sscanf(charptr(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
-			&microsecond_, charptr(&plus_min_z), &offset_hour, &offset_minute)
+		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+			&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
 	}
 	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
 	if count < 4 {
 		count = unsafe {
-			C.sscanf(charptr(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
-				charptr(&plus_min_z), &offset_hour, &offset_minute)
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
+				&char(&plus_min_z), &offset_hour, &offset_minute)
 		}
 		count++ // Increment count because skipped microsecond
 	}
 	if count < 4 {
-		return time.err_invalid_8601
+		return error(time.err_invalid_8601)
 	}
 	is_local_time := plus_min_z == `a` && count == 4
 	is_utc := plus_min_z == `Z` && count == 5
 	if !(count == 7 || is_local_time || is_utc) {
-		return time.err_invalid_8601
+		return error(time.err_invalid_8601)
 	}
 	if plus_min_z != `+` && plus_min_z != `-` && !is_utc && !is_local_time {
 		return error('Invalid 8601 format, expected `Z` or `+` or `-` as time separator')
@@ -110,7 +110,7 @@ pub fn parse_iso8601(s string) ?Time {
 	t_i := s.index('T') or { -1 }
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
-		return time.err_invalid_8601
+		return error(time.err_invalid_8601)
 	}
 	year, month, day := parse_iso8601_date(parts[0]) ?
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true

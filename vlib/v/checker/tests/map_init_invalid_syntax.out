@@ -1,0 +1,6 @@
+vlib/v/checker/tests/map_init_invalid_syntax.vv:2:10: error: invalid empty map initilization syntax, use e.g. map[string]int{} instead
+    1 | fn main() {
+    2 |     a := map{}
+      |             ~~
+    3 |     println(a)
+    4 | }

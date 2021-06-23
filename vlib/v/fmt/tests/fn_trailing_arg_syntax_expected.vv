@@ -6,6 +6,7 @@ struct Bar {
 
 struct Baz {
 	x int
+	y int
 }
 
 fn main() {
@@ -18,7 +19,16 @@ fn main() {
 		x: 'some string'
 		b: Baz{
 			x: 0
+			y: 0
 		}
+	)
+	bar2_func({}, {})
+	bar2_func({ x: 's' },
+		x: 's'
+	)
+	baz_func('foo', 'bar',
+		x: 0
+		y: 0
 	)
 	ui.row(
 		// stretch: true
@@ -33,3 +43,8 @@ fn main() {
 
 fn bar_func(bar Bar) {
 }
+
+fn bar2_func(bar1 Bar, bar2 Bar) {
+}
+
+fn baz_func(a string, b string, baz Baz) {}

@@ -3,7 +3,6 @@ module parser
 // import v.eval
 import v.ast
 import v.gen.c
-import v.table
 import v.checker
 import v.pref
 import term
@@ -34,7 +33,7 @@ fn test_eval() {
 	'20',
 	//
 	]
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	mut scope := &ast.Scope{
 		start_pos: 0
@@ -44,7 +43,7 @@ fn test_eval() {
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
 	}
-	file := ast.File{
+	file := &ast.File{
 		stmts: stmts
 		scope: scope
 	}
@@ -75,7 +74,9 @@ x := 10
 5+7
 8+4
 '
-	table := &table.Table{}
+	table := &ast.Table{
+		cur_fn: 0
+	}
 	vpref := &pref.Preferences{}
 	gscope := &ast.Scope{
 		parent: 0
@@ -94,7 +95,7 @@ fn test_one() {
 	println('\n\ntest_one()')
 	input := ['a := 10', 'b := -a', 'c := 20']
 	expected := 'int a = 10;int b = -a;int c = 20;'
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	scope := &ast.Scope{
 		start_pos: 0
@@ -104,7 +105,7 @@ fn test_one() {
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
@@ -129,12 +130,13 @@ fn test_parse_expr() {
 		'bo := 2 + 3 == 5', '2 + 1', 'q := 1', 'q + 777', '2 + 3', '2+2*4', 'x := 10', 'mut aa := 12',
 		'ab := 10 + 3 * 9', 's := "hi"', 'x = 11', 'a += 10', '1.2 + 3.4', '4 + 4', '1 + 2 * 5',
 		'-a+1', '2+2']
-	expecting := ['1 == 1;', '234234;', '2 * 8 + 3;', 'int a = 3;', 'a++;', 'int b = 4 + 2;', 'int neg = -a;',
-		'a + a;', 'bool bo = 2 + 3 == 5;', '2 + 1;', 'int q = 1;', 'q + 777;', '2 + 3;', '2 + 2 * 4;',
-		'int x = 10;', 'int aa = 12;', 'int ab = 10 + 3 * 9;', 'string s = tos3("hi");', 'x = 11;',
-		'a += 10;', '1.2 + 3.4;', '4 + 4;', '1 + 2 * 5;', '-a + 1;', '2 + 2;']
+	expecting := ['1 == 1;', '234234;', '2 * 8 + 3;', 'int a = 3;', 'a++;', 'int b = 4 + 2;',
+		'int neg = -a;', 'a + a;', 'bool bo = 2 + 3 == 5;', '2 + 1;', 'int q = 1;', 'q + 777;',
+		'2 + 3;', '2 + 2 * 4;', 'int x = 10;', 'int aa = 12;', 'int ab = 10 + 3 * 9;',
+		'string s = tos3("hi");', 'x = 11;', 'a += 10;', '1.2 + 3.4;', '4 + 4;', '1 + 2 * 5;',
+		'-a + 1;', '2 + 2;']
 	mut e := []ast.Stmt{}
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	mut checker := checker.new_checker(table, vpref)
 	scope := &ast.Scope{
@@ -145,7 +147,7 @@ fn test_parse_expr() {
 		println('\n\nst="$s"')
 		e << parse_stmt(s, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
@@ -182,7 +184,7 @@ fn test_num_literals() {
 		'c := -12.',
 		'd := -a',
 	]
-	table := table.new_table()
+	table := ast.new_table()
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
@@ -209,7 +211,7 @@ fn test_num_literals() {
 }
 
 /*
-table := &table.Table{}
+table := &ast.Table{}
 for s in text_expr {
 	// print using str method
 	x := parse_expr(s, table)
@@ -218,3 +220,49 @@ for s in text_expr {
 	println('===================')
 }
 */
+
+fn test_fn_is_html_open_tag() {
+	mut s := '<style>'
+	mut b := is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style    media="print"    custom-attr    >'
+	b = is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style/>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'styl'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<<style>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style>>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<stylex>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<html>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<sript>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+}

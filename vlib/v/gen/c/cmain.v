@@ -1,6 +1,7 @@
 module c
 
 import v.util
+import v.ast
 
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
@@ -11,7 +12,10 @@ pub fn (mut g Gen) gen_c_main() {
 	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
-	if g.pref.os == .android && g.pref.is_apk {
+
+	is_sokol := 'sokol' in g.table.imports
+
+	if (g.pref.os == .android && g.pref.is_apk) || (g.pref.os == .ios && is_sokol) {
 		g.gen_c_android_sokol_main()
 	} else {
 		g.gen_c_main_header()
@@ -66,6 +70,17 @@ fn (mut g Gen) gen_c_main_function_header() {
 
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
+		g.writeln('\tGC_INIT();')
+		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+			g.writeln('\tGC_enable_incremental();')
+		}
+		g.writeln('#endif')
+	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	if g.pref.is_prof {
 		g.writeln('')
@@ -135,21 +150,53 @@ pub fn (mut g Gen) write_tests_definitions() {
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 }
 
+pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr, cvar_name string) {
+	// in test_() functions, an `opt()?` call is sugar for
+	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
+	// and the test is considered failed
+	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
+	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	g.writeln('\tg_test_fails++;')
+	g.writeln('\tlongjmp(g_jump_buffer, 1);')
+}
+
+pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, cvar_name string) {
+	// in test_() functions, a `return error('something')` is sugar for
+	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
+	// and the test is considered failed
+	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
+	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	g.writeln('\tg_test_fails++;')
+	g.writeln('\tlongjmp(g_jump_buffer, 1);')
+}
+
 pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
 	g.gen_c_main_function_header()
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
+		g.writeln('\tGC_INIT();')
+		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+			g.writeln('\tGC_enable_incremental();')
+		}
+		g.writeln('#endif')
+	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
 	}
 	g.writeln('')
-	for t in all_tfuncs {
+	for tname in all_tfuncs {
+		tcname := util.no_dots(tname)
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$t"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
 		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) ${tcname}();')
 		if g.pref.is_stats {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}

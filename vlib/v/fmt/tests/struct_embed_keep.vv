@@ -5,13 +5,14 @@ struct Foo {
 struct Test {}
 
 struct Bar {
-	Foo
-	Test
+	Foo // comment for Foo
+	Test // comment for Test
+	// another comment for Test
 	y int
 	z string
 }
 
 struct Baz {
-	Foo
+	Foo // Another comment for Foo
 	Test
 }

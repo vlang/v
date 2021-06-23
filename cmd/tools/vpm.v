@@ -11,21 +11,21 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls      = ['https://vpm.vlang.io']
-	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove']
-	excluded_dirs                = ['cache', 'vlib']
-	supported_vcs_systems        = ['git', 'hg']
-	supported_vcs_folders        = ['.git', '.hg']
-	supported_vcs_update_cmds    = {
+	default_vpm_server_urls   = ['https://vpm.vlang.io']
+	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
+		'list', 'remove', 'show']
+	excluded_dirs             = ['cache', 'vlib']
+	supported_vcs_systems     = ['git', 'hg']
+	supported_vcs_folders     = ['.git', '.hg']
+	supported_vcs_update_cmds = map{
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds   = {
+	supported_vcs_install_cmds = map{
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
-	supported_vcs_outdated_steps = {
+	supported_vcs_outdated_steps = map{
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
@@ -91,6 +91,9 @@ fn main() {
 		'remove' {
 			vpm_remove(module_names)
 		}
+		'show' {
+			vpm_show(module_names)
+		}
 		else {
 			println('Error: you tried to run "v $vpm_command"')
 			println('... but the v package management tool vpm only knows about these commands:')
@@ -109,7 +112,7 @@ fn vpm_search(keywords []string) {
 		exit(0)
 	}
 	if search_keys.len == 0 {
-		println('  v search requires *at least one* keyword')
+		println('´v search´ requires *at least one* keyword.')
 		exit(2)
 	}
 	modules := get_all_modules()
@@ -162,7 +165,7 @@ fn vpm_install(module_names []string) {
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v install requires *at least one* module name')
+		println('´v install´ requires *at least one* module name.')
 		exit(2)
 	}
 	mut errors := 0
@@ -193,13 +196,7 @@ fn vpm_install(module_names []string) {
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
 		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
 		verbose_println('      command: $cmd')
-		cmdres := os.exec(cmd) or {
-			errors++
-			println('Could not install module "$name" to "$final_module_path" .')
-			verbose_println('Error command: $cmd')
-			verbose_println('Error details: $err')
-			continue
-		}
+		cmdres := os.execute(cmd)
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$name" to "$final_module_path" .')
@@ -232,13 +229,7 @@ fn vpm_update(m []string) {
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
 		verbose_println('    command: $vcs_cmd')
-		vcs_res := os.exec('$vcs_cmd') or {
-			errors++
-			println('Could not update module "$name".')
-			verbose_println('Error command: $vcs_cmd')
-			verbose_println('Error details:\n$err')
-			continue
-		}
+		vcs_res := os.execute('$vcs_cmd')
 		if vcs_res.exit_code != 0 {
 			errors++
 			println('Failed updating module "$name".')
@@ -265,9 +256,10 @@ fn get_outdated() ?[]string {
 		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
-			res := os.exec(step) or {
+			res := os.execute(step)
+			if res.exit_code < 0 {
 				verbose_println('Error command: $step')
-				verbose_println('Error details:\n$err')
+				verbose_println('Error details:\n$res.output')
 				return error('Error while checking latest commits for "$name".')
 			}
 			if vcs[0] == 'hg' {
@@ -324,20 +316,27 @@ fn vpm_remove(module_names []string) {
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v update requires *at least one* module name')
+		println('´v remove´ requires *at least one* module name.')
 		exit(2)
 	}
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Removing module "$name"...')
 		verbose_println('removing folder $final_module_path')
-		os.rmdir_all(final_module_path) or { panic(err) }
+		os.rmdir_all(final_module_path) or {
+			verbose_println('error while removing "$final_module_path": $err.msg')
+		}
 		// delete author directory if it is empty
 		author := name.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
+		if !os.exists(author_dir) {
+			continue
+		}
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
-			os.rmdir(author_dir) or { panic(err) }
+			os.rmdir(author_dir) or {
+				verbose_println('error while removing "$author_dir": $err.msg')
+			}
 		}
 	}
 }
@@ -468,7 +467,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
-	mut m := {
+	mut m := map{
 		'name':    ''
 		'version': ''
 		'deps':    ''
@@ -545,7 +544,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 || r.text.contains('404') {
+		if r.status_code == 404 || r.text.trim_space() == '404' {
 			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
@@ -570,4 +569,33 @@ fn get_module_meta_info(name string) ?Mod {
 		return mod
 	}
 	return error(errors.join_lines())
+}
+
+fn vpm_show(module_names []string) {
+	installed_modules := get_installed_modules()
+	for module_name in module_names {
+		if module_name !in installed_modules {
+			module_meta_info := get_module_meta_info(module_name) or { continue }
+			print('
+Name: $module_meta_info.name
+Homepage: $module_meta_info.url
+Downloads: $module_meta_info.nr_downloads
+Installed: False
+--------
+')
+			continue
+		}
+		path := os.join_path(os.vmodules_dir(), module_name)
+		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
+		print('Name: $mod.name
+Version: $mod.version
+Description: $mod.description
+Homepage: $mod.repo_url
+Author: $mod.author
+License: $mod.license
+Location: $path
+Requires: ${mod.dependencies.join(', ')}
+--------
+')
+	}
 }

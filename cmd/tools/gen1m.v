@@ -1,6 +1,4 @@
 fn main() {
-	println('fn print(a int) {}')
-	// println('fn println(a string) {}')
 	for i in 0 .. 100000 {
 		println('
 fn foo${i}() {

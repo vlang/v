@@ -5,7 +5,6 @@ module eval
 
 import v.ast
 import v.checker
-import v.table
 import v.pref
 
 pub type Object = int | string
@@ -14,14 +13,14 @@ pub struct Eval {
 mut:
 	checker checker.Checker
 	vars    map[string]Var
-	table   &table.Table
+	table   &ast.Table
 }
 
 pub struct Var {
 	value Object
 }
 
-pub fn (mut e Eval) eval(file ast.File, table &table.Table) string {
+pub fn (mut e Eval) eval(file ast.File, table &ast.Table) string {
 	vpref := &pref.Preferences{}
 	e.table = table
 	mut res := ''

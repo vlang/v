@@ -38,11 +38,11 @@ fn test_nested_if_smartcast() {
 	}
 }
 
-type Bar = string | Test
+type Bar = Test | string
 type Xya = int | string
 
 struct Test {
-	x string
+	x   string
 	xya Xya
 }
 
@@ -69,10 +69,12 @@ fn test_nested_selector_smartcast() {
 }
 
 type Inner = int | string
+
 struct InnerStruct {
 	x Inner
 }
-type Outer = string | InnerStruct
+
+type Outer = InnerStruct | string
 
 fn test_nested_if_is() {
 	b := Outer(InnerStruct{Inner(0)})
@@ -168,11 +170,13 @@ fn test_mutability() {
 	}
 }
 
-type Expr = CallExpr | CTempVarExpr
+type Expr = CTempVarExpr | CallExpr
+
 struct ExprWrapper {
 mut:
 	expr Expr
 }
+
 struct CallExpr {
 	y int
 	x string
@@ -196,21 +200,21 @@ fn test_reassign_from_function_with_parameter_selector() {
 type Node = Expr | string
 
 fn test_nested_sumtype() {
-	c := Node(Expr(CallExpr{y: 1}))
+	c := Node(Expr(CallExpr{
+		y: 1
+	}))
 	if c is Expr {
 		if c is CallExpr {
 			assert c.y == 1
-		}
-		else {
+		} else {
 			assert false
 		}
-	}
-	else {
+	} else {
 		assert false
 	}
 }
 
-type Food = Milk | Eggs
+type Food = Eggs | Milk
 
 struct FoodWrapper {
 mut:
@@ -240,16 +244,16 @@ struct NodeWrapper {
 }
 
 fn test_nested_sumtype_selector() {
-	c := NodeWrapper{Node(Expr(CallExpr{y: 1}))}
+	c := NodeWrapper{Node(Expr(CallExpr{
+		y: 1
+	}))}
 	if c.node is Expr {
 		if c.node is CallExpr {
 			assert c.node.y == 1
-		}
-		else {
+		} else {
 			assert false
 		}
-	}
-	else {
+	} else {
 		assert false
 	}
 }
@@ -279,13 +283,17 @@ type SumAll = Sum1 | Sum2
 struct All_in_one {
 pub mut:
 	ptrs []&SumAll
-	ptr &SumAll
+	ptr  &SumAll
 }
 
 fn test_nested_pointer_smartcast() {
 	mut s := All_in_one{
-		ptr: &Sum1(Foo1{a: 1})
-		ptrs: [&SumAll(Sum2(Bar1{a: 3}))]
+		ptr: &Sum1(Foo1{
+			a: 1
+		})
+		ptrs: [&SumAll(Sum2(Bar1{
+			a: 3
+		}))]
 	}
 
 	if mut s.ptr is Sum1 {
@@ -296,7 +304,7 @@ fn test_nested_pointer_smartcast() {
 
 	a := s.ptrs[0]
 	if a is Sum1 {
-		if a is Foo1{
+		if a is Foo1 {
 			assert a.a == 3
 		}
 	}

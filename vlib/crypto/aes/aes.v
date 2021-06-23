@@ -40,20 +40,20 @@ pub fn new_cipher(key []byte) AesCipher {
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (c &AesCipher) block_size() int {
-	return block_size
+	return aes.block_size
 }
 
 // encrypt encrypts the blocks in `src` to `dst`.
 // Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
-	if src.len < block_size {
+	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < aes.block_size {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap((*dst)[..block_size], (*src)[..block_size]) {
+	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -63,13 +63,13 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 // decrypt decrypts the blocks in `src` to `dst`.
 // Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
-	if src.len < block_size {
+	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < aes.block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap((*dst)[..block_size], (*src)[..block_size]) {
+	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
