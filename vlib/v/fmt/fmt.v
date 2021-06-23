@@ -730,7 +730,7 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
-	if stmt.is_basic {
+	if f.indent == 0 {
 		f.writeln('')
 	}
 }
