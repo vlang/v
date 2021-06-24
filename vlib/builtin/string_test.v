@@ -80,12 +80,12 @@ fn test_compare_strings() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-	assert compare_strings(a, b) == 0
-	assert compare_strings(b, c) == -1
-	assert compare_strings(c, d) == -1
-	assert compare_strings(d, e) == 1
-	assert compare_strings(a, e) == -1
-	assert compare_strings(e, a) == 1
+	assert int(compare_strings(a, b)) == 0
+	assert int(compare_strings(b, c)) == -1
+	assert int(compare_strings(c, d)) == -1
+	assert int(compare_strings(d, e)) == 1
+	assert int(compare_strings(a, e)) == -1
+	assert int(compare_strings(e, a)) == 1
 }
 
 fn test_sort() {
@@ -906,7 +906,7 @@ fn test_sorter() {
 		},
 	]
 	cmp := fn (a &Ka, b &Ka) int {
-		return compare_strings(a.s, b.s)
+		return int(compare_strings(a.s, b.s))
 	}
 	arr.sort_with_compare(cmp)
 	assert arr[0].s == 'aaa'
