@@ -1599,6 +1599,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		ast.StructInit {
 			return '', pos
 		}
+		ast.InfixExpr {
+			return '', pos
+		}
 		else {
 			if !expr.is_lit() {
 				c.error('unexpected expression `$expr.type_name()`', expr.position())
