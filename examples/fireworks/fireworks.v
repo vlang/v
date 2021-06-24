@@ -109,7 +109,6 @@ fn main() {
 		height: app.ui.height
 		window_title: 'Fireworks!'
 		bg_color: gx.black
-		use_ortho: true
 		user_data: app
 		frame_fn: on_frame
 		event_fn: on_event

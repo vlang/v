@@ -1,7 +1,7 @@
 # TTF font utility
 ## introduction
 This module is designed to perform two main task
-- Load the font file 
+- Load the font file
 - Render text using a TTF font
 
 The render system can be single or multiple, for example it is possible to have a bitmap
@@ -18,7 +18,7 @@ ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }
 ttf_font.init()
 ```
 *Note: the font must be passed to the `TTF_file` as RAM buffer.*
-At this point the font "arial" is loaded and parsed and if it is a valid TTF font it is 
+At this point the font "arial" is loaded and parsed and if it is a valid TTF font it is
 ready for the rendering.
 We can get some quick info on the font as string using the `get_info_string` function:
 
@@ -53,7 +53,7 @@ In this modue it is possible to have different renders running at the same time.
 At the present time all the rendering are made on the CPU, sokol is used only to draw the
 rendered text to the screen.
 Let's start with a simple snippet of code:
-```v ignore
+```v oksyntax
 import os
 import x.ttf
 [console]
@@ -70,7 +70,7 @@ This simple code load a TTF font and display its basic informations.
 ### draw_text
 The draw text function draw simple strings without indentation or other imagination tasks.
 At this point we can render a simple text:
-```v ignore
+```v oksyntax
 import os
 import x.ttf
 
@@ -81,7 +81,7 @@ fn main(){
 	ttf_font.init()
 	// print font info
 	println(ttf_font.get_info_string())
-	
+
 	bmp_width  := 200
 	bmp_heigth := 64
 	bmp_layers := 4    // number of planes for an RGBA buffer
@@ -122,7 +122,7 @@ Using the low level rendering you need to manage all the amenities like allocate
 memory and other tasks like calc the character dimensions.
 
 You can specify the style for the text rendering in the `BitMap` struct::
-```v ignore
+```v
 enum Style {
 	outline
 	outline_aliased
@@ -134,7 +134,7 @@ Use this level only if you want achieve particular result on text rendering.
 
 ### draw_text_block
 Draw text block draw a justified and indented block of multiline text in the bitmap.
-```v ignore
+```v oksyntax
 import os
 import x.ttf
 
@@ -145,7 +145,7 @@ fn main(){
 	ttf_font.init()
 	// print font info
 	println(ttf_font.get_info_string())
-	
+
 	bmp_width  := 200
 	bmp_heigth := 200
 	bmp_layers := 4    // number of planes for an RGBA buffer
@@ -186,7 +186,7 @@ But Vwill prevail for sure, V is the way!!
 ```
 This is the low level render that draw text block on the bitmap.
 A text block is defined from a `Text_block` struct:
-```v ignore
+```v
 struct Text_block {
 	x int // x postion of the left high corner
 	y int // y postion of the left high corner
@@ -196,7 +196,7 @@ struct Text_block {
 }
 ```
 and use the following bitmap fields:
-```v ignore
+```v oksyntax
 	style              Style      = .filled // default syle
 	align              Text_align = .left   // default text align
 	justify            bool				    // justify text flag, default deactivated
@@ -211,7 +211,7 @@ the text to the screen.
 It is mor esimpel to use in a `gg app` that the raw bitmap render.
 Each single text rendered need its own reder to be declared, after you can modify it.
 Here a simple example of the usage:
-```v ignore
+```v oksyntax
 import gg
 import gx
 import sokol.sapp
@@ -235,7 +235,7 @@ pub mut:
 	sg_img    C.sg_image
 	init_flag bool
 	frame_c   int
-	
+
 	tf              []ttf.TTF_File
 	ttf_render      []ttf.TTF_render_Sokol
 }
@@ -246,7 +246,7 @@ fn my_init(mut app App_data) {
 
 fn draw_frame(mut app &App_data) {
 	cframe_txt := "Current Frame: $app.frame_c"
-	
+
 	app.gg.begin()
 
 	sgl.defaults()
@@ -267,7 +267,7 @@ fn draw_frame(mut app &App_data) {
 }
 
 [console]
-fn main(){   
+fn main(){
 	mut app := &App_data{
 		gg: 0
 	}
@@ -275,7 +275,6 @@ fn main(){
 	app.gg = gg.new_context({
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'Test TTF module'
 		user_data: app
@@ -293,7 +292,7 @@ fn main(){
 		println(tf.get_info_string())
 		app.tf << tf
 	}
-	
+
 	// TTF render 0 Frame counter
 	app.ttf_render << &ttf.TTF_render_Sokol {
 		bmp: &ttf.BitMap{
@@ -304,7 +303,7 @@ fn main(){
 			//style: .raw
 		}
 	}
-	
+
 	app.gg.run()
 }
 ```

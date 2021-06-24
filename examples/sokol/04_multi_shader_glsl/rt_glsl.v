@@ -619,7 +619,6 @@ fn main() {
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: '3D Dual shader Cube - click and rotate with the mouse'
 		user_data: app

@@ -37,7 +37,6 @@ fn main() {
 		width: window_width
 		height: window_height
 		font_size: 20
-		use_ortho: true
 		user_data: game
 		window_title: 'Hot code reloading demo'
 		create_window: true
