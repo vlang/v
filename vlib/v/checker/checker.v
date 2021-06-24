@@ -898,7 +898,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							// TODO: generate a warning for some time, then remove
 							mut auto_deref_allow_for_now := false
 							if field.expr is ast.Ident {
-								scope_obj := field.expr.obj
+								scope_obj := (field.expr as ast.Ident).obj // this should not be necessary
 								if scope_obj is ast.Var {
 									auto_deref_allow_for_now = scope_obj.is_auto_deref
 								}
@@ -3151,11 +3151,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
+			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
 			// temporary workaround to allow compiling existing code
 			// TODO: generate a warning for some time, then remove
 			mut auto_deref_allow_for_now := false
-			ret_expr := return_stmt.exprs[i]
+			ret_expr := node.exprs[i]
 			if ret_expr is ast.Ident {
 				scope_obj := ret_expr.obj
 				if scope_obj is ast.Var {
@@ -3164,8 +3164,8 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 			if !auto_deref_allow_for_now {
 				// end of temporary workaround
-				pos := return_stmt.exprs[i].position()
-				c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos := node.exprs[i].position()
+				c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 					pos)
 			}
 			// && (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
@@ -3624,10 +3624,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						rtype = rtype.deref()
 					}
 					right_name := c.table.type_to_str(rtype)
-					c.error('mismatched types `$left_name` annd `$right_name`', assign_stmt.pos)
+					c.error('mismatched types `$left_name` annd `$right_name`', node.pos)
 				}
-				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
 			}
 		}
 		// Single side check
@@ -4438,7 +4436,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		// This should be forbidden or require `unsafe`
 		mut allow_mut_passed_fn_arg := false
 		if node.call_expr.left is ast.Ident {
-			scope_obj := node.call_expr.left.obj
+			scope_obj := (node.call_expr.left as ast.Ident).obj
 			if scope_obj is ast.Var {
 				allow_mut_passed_fn_arg = scope_obj.is_auto_deref
 			}
@@ -6645,7 +6643,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			// TODO: generate a warning for some time, then remove
 			mut auto_deref_allow_for_now := false
 			if node.right is ast.Ident {
-				scope_obj := node.right.obj
+				scope_obj := (node.right as ast.Ident).obj
 				if scope_obj is ast.Var {
 					auto_deref_allow_for_now = scope_obj.is_auto_deref
 				}

@@ -902,7 +902,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		for i, param in func.params {
 			g.type_definitions.write_string(g.typ(param.typ))
 			if param.is_mut {
-				g.type_definitions.write('*')
+				g.type_definitions.write_string('*')
 			}
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
@@ -3308,11 +3308,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// TODO: generate a warning for some time, then remove
 				mut auto_deref_allow_for_now := false
 				if node.op == .mul {
-					if node.right is ast.Ident {
-						scope_obj := node.right.obj
-						if scope_obj is ast.Var {
-							auto_deref_allow_for_now = scope_obj.is_auto_deref
+					match node.right {
+						ast.Ident {
+							node_right := node.right as ast.Ident // this should be done by smart casts
+							match node_right.obj {
+								ast.Var {
+									auto_deref_allow_for_now = node_right.obj.is_auto_deref
+								}
+								else {}
+							}
 						}
+						else {}
 					}
 				}
 				if !auto_deref_allow_for_now {
@@ -4742,13 +4748,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('&')
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		if free {
-			expr := node.exprs[0]
-			if expr is ast.Ident {
-				g.returned_var_name = expr.name
-			}
-			if tmp != '' {
-				g.writeln('; // free tmp exprs + all vars before return')
+		// if free {
+		// 	expr := node.exprs[0]
+		// 	if expr is ast.Ident {
+		// 		g.returned_var_name = expr.name
+		// 	}
+		// 	if tmp != '' {
+		// 		g.writeln('; // free tmp exprs + all vars before return')
 		// if expr0.is_auto_deref_var() {
 		// 	if g.fn_decl.return_type.is_ptr() {
 		// 		var_str := g.expr_string(expr0)
@@ -4756,10 +4762,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		// 	} else {
 		// 		g.write('*')
 		// 		g.expr(expr0)
-			}
-		} else {
+		//	}
+		//} else {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		}
+		//}
 		if use_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
