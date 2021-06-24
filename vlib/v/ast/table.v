@@ -535,37 +535,43 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 [inline]
 pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
-	existing_idx := t.type_idxs[typ.name]
-	if existing_idx > 0 {
-		ex_type := t.type_symbols[existing_idx]
-		match ex_type.kind {
-			.placeholder {
-				// override placeholder
-				// println('overriding type placeholder `$typ.name`')
-				t.type_symbols[existing_idx] = {
-					...typ
-					methods: ex_type.methods
-				}
-				return existing_idx
-			}
-			else {
-				// builtin
-				// this will override the already registered builtin types
-				// with the actual v struct declaration in the source
-				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
-					|| existing_idx == error_type_idx {
-					if existing_idx == string_type_idx {
-						// existing_type := t.type_symbols[existing_idx]
-						t.type_symbols[existing_idx] = TypeSymbol{
-							...typ
-							kind: ex_type.kind
-						}
-					} else {
-						t.type_symbols[existing_idx] = typ
+	mut typ_names := [typ.name]
+	if typ.name.starts_with('main.') {
+		typ_names << typ.name.trim_prefix('main.')
+	}
+	for typ_name in typ_names {
+		existing_idx := t.type_idxs[typ_name]
+		if existing_idx > 0 {
+			ex_type := t.type_symbols[existing_idx]
+			match ex_type.kind {
+				.placeholder {
+					// override placeholder
+					// println('overriding type placeholder `$typ.name`')
+					t.type_symbols[existing_idx] = {
+						...typ
+						methods: ex_type.methods
 					}
 					return existing_idx
 				}
-				return -1
+				else {
+					// builtin
+					// this will override the already registered builtin types
+					// with the actual v struct declaration in the source
+					if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
+						|| existing_idx == error_type_idx {
+						if existing_idx == string_type_idx {
+							// existing_type := t.type_symbols[existing_idx]
+							t.type_symbols[existing_idx] = TypeSymbol{
+								...typ
+								kind: ex_type.kind
+							}
+						} else {
+							t.type_symbols[existing_idx] = typ
+						}
+						return existing_idx
+					}
+					return -1
+				}
 			}
 		}
 	}
