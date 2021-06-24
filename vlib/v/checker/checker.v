@@ -637,7 +637,7 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 			mut c_nrt := '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
 				if ct := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
-					generic_names, concrete_types, false)
+					generic_names, concrete_types)
 				{
 					gts := c.table.get_type_symbol(ct)
 					nrt += gts.name
@@ -657,7 +657,7 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 				mut fields := ts.info.fields.clone()
 				for i in 0 .. fields.len {
 					if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ, generic_names,
-						concrete_types, true)
+						concrete_types)
 					{
 						fields[i].typ = t_typ
 					}
@@ -666,7 +666,7 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 				mut info_concrete_types := []ast.Type{}
 				for i in 0 .. ts.info.generic_types.len {
 					if t_typ := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
-						generic_names, concrete_types, true)
+						generic_names, concrete_types)
 					{
 						info_concrete_types << t_typ
 					}
@@ -2057,7 +2057,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
-				concrete_types, false)
+				concrete_types)
 			{
 				call_expr.return_type = typ
 				return typ
@@ -2613,7 +2613,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if param.typ.has_flag(.generic)
 				&& func.generic_names.len == call_expr.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
-					concrete_types, false)
+					concrete_types)
 				{
 					c.check_expected_call_arg(c.unwrap_generic(typ), unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
@@ -2631,7 +2631,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			concrete_types, false)
+			concrete_types)
 		{
 			call_expr.return_type = typ
 			return typ
@@ -3033,13 +3033,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
-	if expected_type.has_flag(.generic) && c.table.get_type_symbol(expected_type).kind == .struct_ {
-		if t_typ := c.table.resolve_generic_to_concrete(expected_type, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types, true)
-		{
-			expected_type = t_typ
-		}
-	}
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].position())
@@ -4669,7 +4662,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types, false)
+			c.table.cur_concrete_types)
 		{
 			return t_typ
 		}
