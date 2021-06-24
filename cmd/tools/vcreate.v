@@ -165,7 +165,7 @@ fn init_project() {
 	c.write_main(false)
 	c.create_git_repo('.')
 
-	println("Change your module's description in `v.mod`")
+	println('Change the description of your project in `v.mod`')
 }
 
 fn main() {
