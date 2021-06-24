@@ -1,5 +1,6 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
+
 module gg
 
 import os
@@ -10,20 +11,23 @@ import sokol.sgl
 import sokol.gfx
 import math
 
-// import time
-pub type FNCb = fn (x voidptr)
+pub type FNCb = fn (data voidptr)
 
-pub type FNEvent = fn (e &Event, x voidptr)
+pub type FNEvent = fn (e &Event, data voidptr)
 
-pub type FNFail = fn (msg string, x voidptr)
+pub type FNFail = fn (msg string, data voidptr)
 
-pub type FNKeyDown = fn (c KeyCode, m Modifier, x voidptr)
+pub type FNKeyDown = fn (c KeyCode, m Modifier, data voidptr)
 
-pub type FNMove = fn (x f32, y f32, z voidptr)
+pub type FNKeyUp = fn (c KeyCode, m Modifier, data voidptr)
 
-pub type FNClick = fn (x f32, y f32, button MouseButton, z voidptr)
+pub type FNMove = fn (x f32, y f32, data voidptr)
 
-pub type FNChar = fn (c u32, x voidptr)
+pub type FNClick = fn (x f32, y f32, button MouseButton, data voidptr)
+
+pub type FNUnClick = fn (x f32, y f32, button MouseButton, data voidptr)
+
+pub type FNChar = fn (c u32, data voidptr)
 
 pub struct Event {
 pub mut:
@@ -48,18 +52,11 @@ pub mut:
 	framebuffer_height int
 }
 
-pub enum Modifier {
-	shift = 1 //(1<<0)
-	ctrl = 2 //(1<<1)
-	alt = 4 //(1<<2)
-	super = 8 //(1<<3)
-}
-
 pub struct Config {
 pub:
 	width         int
 	height        int
-	use_ortho     bool
+	use_ortho     bool // unused, still here just for backwards compatibility
 	retina        bool
 	resizable     bool
 	user_data     voidptr
@@ -70,20 +67,26 @@ pub:
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
-	init_fn           FNCb      = voidptr(0)
-	frame_fn          FNCb      = voidptr(0)
-	native_frame_fn   FNCb      = voidptr(0)
-	cleanup_fn        FNCb      = voidptr(0)
-	fail_fn           FNFail    = voidptr(0)
-	event_fn          FNEvent   = voidptr(0)
-	keydown_fn        FNKeyDown = voidptr(0)
-	// special case of event_fn
-	char_fn FNChar = voidptr(0)
-	// special case of event_fn
-	move_fn FNMove = voidptr(0)
-	// special case of event_fn
-	click_fn FNClick = voidptr(0)
-	// special case of event_fn
+	init_fn           FNCb   = voidptr(0)
+	frame_fn          FNCb   = voidptr(0)
+	native_frame_fn   FNCb   = voidptr(0)
+	cleanup_fn        FNCb   = voidptr(0)
+	fail_fn           FNFail = voidptr(0)
+	//
+	event_fn FNEvent = voidptr(0)
+	quit_fn  FNEvent = voidptr(0)
+	//
+	keydown_fn FNKeyDown = voidptr(0)
+	keyup_fn   FNKeyUp   = voidptr(0)
+	char_fn    FNChar    = voidptr(0)
+	//
+	move_fn    FNMove    = voidptr(0)
+	click_fn   FNClick   = voidptr(0)
+	unclick_fn FNUnClick = voidptr(0)
+	leave_fn   FNEvent   = voidptr(0)
+	enter_fn   FNEvent   = voidptr(0)
+	resized_fn FNEvent   = voidptr(0)
+	scroll_fn  FNEvent   = voidptr(0)
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen   bool
 	scale        f32 = 1.0
@@ -99,12 +102,6 @@ pub:
 	font_bytes_mono   []byte
 	font_bytes_italic []byte
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
-}
-
-pub enum PenLineType {
-	solid
-	dashed
-	dotted
 }
 
 pub struct PenConfig {
@@ -136,7 +133,20 @@ pub mut:
 	ft          &FT
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
-	mbtn_mask   byte
+	frame       u64  // the current frame counted from the start of the application; always increasing
+	//
+	mbtn_mask     byte
+	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
+	mouse_pos_x   int
+	mouse_pos_y   int
+	mouse_dx      int
+	mouse_dy      int
+	scroll_x      int
+	scroll_y      int
+	//
+	key_modifiers Modifier
+	key_repeat    bool
+	pressed_keys  [key_code_max]bool
 }
 
 pub struct Size {
@@ -237,6 +247,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 
 fn gg_frame_fn(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
+	ctx.frame++
 	if ctx.config.frame_fn == voidptr(0) {
 		return
 	}
@@ -270,10 +281,12 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
 		g.mbtn_mask |= byte(1 << bitplace)
+		g.mouse_buttons = MouseButtons(g.mbtn_mask)
 	}
 	if e.typ == .mouse_up {
 		bitplace := int(e.mouse_button)
 		g.mbtn_mask &= ~(byte(1 << bitplace))
+		g.mouse_buttons = MouseButtons(g.mbtn_mask)
 	}
 	if e.typ == .mouse_move && e.mouse_button == .invalid {
 		if g.mbtn_mask & 0x01 > 0 {
@@ -286,35 +299,82 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 			e.mouse_button = .middle
 		}
 	}
+	g.mouse_pos_x = int(e.mouse_x / g.scale)
+	g.mouse_pos_y = int(e.mouse_y / g.scale)
+	g.mouse_dx = int(e.mouse_dx / g.scale)
+	g.mouse_dy = int(e.mouse_dy / g.scale)
+	g.scroll_x = int(e.scroll_x / g.scale)
+	g.scroll_y = int(e.scroll_y / g.scale)
+	g.key_modifiers = Modifier(e.modifiers)
+	g.key_repeat = e.key_repeat
+	if e.typ in [.key_down, .key_up] {
+		key_idx := int(e.key_code) % key_code_max
+		g.pressed_keys[key_idx] = e.typ == .key_down
+	}
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
 	match e.typ {
-		.key_down {
-			if g.config.keydown_fn != voidptr(0) {
-				kdfn := g.config.keydown_fn
-				kdfn(e.key_code, Modifier(e.modifiers), g.config.user_data)
-			}
-		}
-		.char {
-			if g.config.char_fn != voidptr(0) {
-				cfn := g.config.char_fn
-				cfn(e.char_code, g.config.user_data)
-			}
-		}
 		.mouse_move {
 			if g.config.move_fn != voidptr(0) {
-				cfn := g.config.move_fn
-				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
+				g.config.move_fn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
 			}
 		}
 		.mouse_down {
 			if g.config.click_fn != voidptr(0) {
-				cfn := g.config.click_fn
-				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, e.mouse_button, g.config.user_data)
+				g.config.click_fn(e.mouse_x / g.scale, e.mouse_y / g.scale, e.mouse_button,
+					g.config.user_data)
 			}
 		}
-		else {}
+		.mouse_up {
+			if g.config.unclick_fn != voidptr(0) {
+				g.config.unclick_fn(e.mouse_x / g.scale, e.mouse_y / g.scale, e.mouse_button,
+					g.config.user_data)
+			}
+		}
+		.mouse_leave {
+			if g.config.leave_fn != voidptr(0) {
+				g.config.leave_fn(e, g.config.user_data)
+			}
+		}
+		.mouse_enter {
+			if g.config.enter_fn != voidptr(0) {
+				g.config.enter_fn(e, g.config.user_data)
+			}
+		}
+		.mouse_scroll {
+			if g.config.scroll_fn != voidptr(0) {
+				g.config.scroll_fn(e, g.config.user_data)
+			}
+		}
+		.key_down {
+			if g.config.keydown_fn != voidptr(0) {
+				g.config.keydown_fn(e.key_code, Modifier(e.modifiers), g.config.user_data)
+			}
+		}
+		.key_up {
+			if g.config.keyup_fn != voidptr(0) {
+				g.config.keyup_fn(e.key_code, Modifier(e.modifiers), g.config.user_data)
+			}
+		}
+		.char {
+			if g.config.char_fn != voidptr(0) {
+				g.config.char_fn(e.char_code, g.config.user_data)
+			}
+		}
+		.resized {
+			if g.config.resized_fn != voidptr(0) {
+				g.config.resized_fn(e, g.config.user_data)
+			}
+		}
+		.quit_requested {
+			if g.config.quit_fn != voidptr(0) {
+				g.config.quit_fn(e, g.config.user_data)
+			}
+		}
+		else {
+			// dump(e)
+		}
 	}
 }
 
@@ -362,9 +422,6 @@ pub fn new_context(cfg Config) &Context {
 		high_dpi: true
 		fullscreen: cfg.fullscreen
 		__v_native_render: cfg.native_rendering
-	}
-	if cfg.use_ortho {
-	} else {
 	}
 	g.window = window
 	return g
