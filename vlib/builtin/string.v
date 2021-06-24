@@ -1192,37 +1192,43 @@ pub fn (s string) trim_suffix(str string) string {
 	return s.clone()
 }
 
-// compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
+pub enum Ordering {
+	lt = -1
+	eq = 0
+	gt = 1
+}
+
+// compare_strings returns `Ordering.lt` if `a < b`, `Ordering.gt` if `a > b` else `Ordering.eq`.
 pub fn compare_strings(a &string, b &string) int {
 	if a < b {
-		return -1
+		return .lt
+	} else if a > b {
+		return .gt
+	} else {
+		return .eq
 	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
-// compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
+// compare_strings_reverse returns `Ordering.gt` if `a < b`, `Ordering.lt` if `a > b` else `Ordering.eq`.
 fn compare_strings_reverse(a &string, b &string) int {
 	if a < b {
-		return 1
+		return .gt
+	} else if a > b {
+		return .lt
+	} else {
+		return .eq
 	}
-	if a > b {
-		return -1
-	}
-	return 0
 }
 
-// compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
+// compare_strings_by_len returns `Ordering.lt` if `a.len < b.len`, `Ordering.gt` if `a.len > b.len` else `Ordering.eq`.
 fn compare_strings_by_len(a &string, b &string) int {
 	if a.len < b.len {
-		return -1
+		return .lt
+	} else if a.len > b.len {
+		return .gt
+	} else {
+		return .eq
 	}
-	if a.len > b.len {
-		return 1
-	}
-	return 0
 }
 
 // compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.
