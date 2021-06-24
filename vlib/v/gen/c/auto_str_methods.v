@@ -335,41 +335,25 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 }
 
 fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_name string) {
-	mut gen_fn_names := map[string]string{}
-	for typ in info.types {
-		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') {
-			field_styp := g.typ(typ)
-			field_fn_name := g.gen_str_for_type(typ)
-			gen_fn_names[field_styp] = field_fn_name
-		}
-	}
+	// _str() functions should have a single argument, the indenting ones take 2:
+	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	mut fn_builder := strings.new_builder(512)
 	mut clean_interface_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
 		clean_interface_v_type_name = '&' + clean_interface_v_type_name.replace('*', '')
 	}
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
-
-	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
+	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
-		typ_str := g.typ(typ)
 		subtype := g.table.get_type_symbol(typ)
-
-		mut func_name := if typ_str in gen_fn_names {
-			gen_fn_names[typ_str]
-		} else {
-			g.gen_str_for_type(typ)
-		}
-
+		mut func_name := g.gen_str_for_type(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
 
-		//------------------------------------------
 		// str_intp
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if typ == ast.string_type {
@@ -382,8 +366,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return $res;')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string(' return $res;')
 		} else {
 			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
@@ -394,42 +378,31 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return $res;\n')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string(' return $res;\n')
 		}
 	}
-	g.auto_str_funcs.writeln('\treturn _SLIT("unknown interface value");')
-	g.auto_str_funcs.writeln('}')
+	fn_builder.writeln('\treturn _SLIT("unknown interface value");')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
 }
 
 fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_name string) {
-	mut gen_fn_names := map[string]string{}
-	for typ in info.variants {
-		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') {
-			field_styp := g.typ(typ)
-			field_fn_name := g.gen_str_for_type(typ)
-			gen_fn_names[field_styp] = field_fn_name
-		}
-	}
 	// _str() functions should have a single argument, the indenting ones take 2:
 	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_sum_type_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
 		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
 	}
 	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
-	g.auto_str_funcs.writeln('\tswitch(x._typ) {')
+	fn_builder.writeln('\tswitch(x._typ) {')
 	for typ in info.variants {
 		typ_str := g.typ(typ)
-		mut func_name := if typ_str in gen_fn_names {
-			gen_fn_names[typ_str]
-		} else {
-			g.gen_str_for_type(typ)
-		}
+		mut func_name := g.gen_str_for_type(typ)
 		sym := g.table.get_type_symbol(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
@@ -437,7 +410,6 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 			func_name = 'indent_$func_name'
 		}
 
-		//------------------------------------------
 		// str_intp
 		if typ == ast.string_type {
 			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
@@ -449,7 +421,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				{_SLIT("${clean_sum_type_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
+			fn_builder.write_string('\t\tcase $typ: return $res;')
 		} else {
 			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
 			if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -460,12 +432,13 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				{_SLIT("${clean_sum_type_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			g.auto_str_funcs.write_string('\t\tcase $typ: return $res;')
+			fn_builder.write_string('\t\tcase $typ: return $res;')
 		}
 	}
-	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
-	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('}')
+	fn_builder.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
 }
 
 fn (mut g Gen) fn_decl_str(info ast.FnType) string {
@@ -811,7 +784,6 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	if info.fields.len == 0 {
 		fn_builder.writeln('\treturn _SLIT("$clean_struct_v_type_name{}");')
 		fn_builder.writeln('}')
-		fn_builder.writeln('')
 		return
 	}
 

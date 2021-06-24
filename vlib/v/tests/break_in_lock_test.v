@@ -6,8 +6,8 @@ mut:
 }
 
 const (
-	run_time   = time.millisecond * 200 // must be big enough to ensure threads have started
-	sleep_time = time.millisecond * 250 // some tolerance added
+	run_time   = time.millisecond * 500 // must be big enough to ensure threads have started
+	sleep_time = time.millisecond * 2000 // some tolerance added
 )
 
 fn test_return_lock() {
@@ -18,6 +18,7 @@ fn test_return_lock() {
 		for {
 			reader(shared s)
 			if time.now() - start > run_time {
+				eprintln('> ${@FN} exited')
 				exit(0)
 			}
 		}
@@ -32,6 +33,7 @@ fn printer(shared s AA, start time.Time) {
 			assert s.b in ['0', '1', '2', '3', '4', '5']
 		}
 		if time.now() - start > run_time {
+			eprintln('> ${@FN} exited')
 			exit(0)
 		}
 	}

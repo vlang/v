@@ -135,6 +135,11 @@ fn bare_eprint(buf &byte, len u64) {
 	sys_write(2, buf, len)
 }
 
+pub fn write(fd i64, buf &byte, count u64) i64 {
+	x, _ := sys_write(fd, buf, count)
+	return x
+}
+
 fn bare_panic(msg string) {
 	println('V panic' + msg)
 	exit(1)

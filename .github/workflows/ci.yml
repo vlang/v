@@ -326,6 +326,15 @@ jobs:
           ../v -autofree .
           cd ..
 
+#      - name: Test c2v
+#        run: |
+#          git clone --depth 1 https://github.com/vlang/c2v
+#          cd c2v && ../v -o c2v .
+#          ../v .
+#          ../v run tests/run_tests.vsh
+#          ../v -experimental -w c2v_test.v
+#          cd ..
+
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui

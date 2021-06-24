@@ -297,6 +297,7 @@ interface DbInterface {
 }
 
 // run_app
+[manualfree]
 pub fn run<T>(global_app &T, port int) {
 	// x := global_app.clone()
 	// mut global_app := &T{}
@@ -348,6 +349,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or {}
+		unsafe {
+			free(app)
+		}
 	}
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {

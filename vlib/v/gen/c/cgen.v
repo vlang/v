@@ -1335,6 +1335,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
+			for method in node.methods {
+				if method.return_type.has_flag(.optional) {
+					// Register an optional if it's not registered yet
+					g.register_optional(method.return_type)
+				}
+			}
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
@@ -1958,6 +1964,11 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 
 		for i, arg in template.args {
+			if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
+				&& arg is ast.AsmRegister {
+				g.write('*') // indirect branching
+			}
+
 			g.asm_arg(arg, stmt)
 			if i + 1 < template.args.len {
 				g.write(', ')
@@ -1969,6 +1980,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 		g.writeln('"')
 	}
+
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
 		g.write(': ')
 	}
@@ -2010,7 +2022,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmAlias {
 			name := arg.name
 			if name in stmt.local_labels || name in stmt.global_labels
-				|| name in g.file.global_labels || stmt.is_top_level
+				|| name in g.file.global_labels || stmt.is_basic
 				|| (name !in stmt.input.map(it.alias) && name !in stmt.output.map(it.alias)) {
 				asm_formatted_name := if name in stmt.global_labels { '%l[$name]' } else { name }
 				g.write(asm_formatted_name)
@@ -2028,8 +2040,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$$arg.val.str()')
 		}
 		ast.AsmRegister {
-			if !stmt.is_top_level {
-				g.write('%') // escape percent in extended assembly
+			if !stmt.is_basic {
+				g.write('%') // escape percent with percent in extended assembly
 			}
 			g.write('%$arg.name')
 		}
@@ -2096,25 +2108,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			}
 		}
 		ast.AsmDisp {
-			if arg.val.len >= 2 && arg.val[0] in [`b`, `f`] {
-				mut is_digit := true
-				for c in arg.val[1..] {
-					if !c.is_digit() {
-						is_digit = false
-						break
-					}
-				}
-				if is_digit {
-					g.write(arg.val[1..] + rune(arg.val[0]).str())
-				} else {
-					g.write(arg.val)
-				}
-			} else {
-				g.write(arg.val)
-			}
+			g.write(arg.val)
 		}
 		string {
-			g.write('$arg')
+			g.write(arg)
 		}
 	}
 }
