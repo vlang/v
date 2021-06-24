@@ -1199,7 +1199,7 @@ pub enum Ordering {
 }
 
 // compare_strings returns `Ordering.lt` if `a < b`, `Ordering.gt` if `a > b` else `Ordering.eq`.
-pub fn compare_strings(a &string, b &string) int {
+pub fn compare_strings(a &string, b &string) Ordering {
 	if a < b {
 		return .lt
 	} else if a > b {
@@ -1210,7 +1210,7 @@ pub fn compare_strings(a &string, b &string) int {
 }
 
 // compare_strings_reverse returns `Ordering.gt` if `a < b`, `Ordering.lt` if `a > b` else `Ordering.eq`.
-fn compare_strings_reverse(a &string, b &string) int {
+fn compare_strings_reverse(a &string, b &string) Ordering {
 	if a < b {
 		return .gt
 	} else if a > b {
@@ -1221,7 +1221,7 @@ fn compare_strings_reverse(a &string, b &string) int {
 }
 
 // compare_strings_by_len returns `Ordering.lt` if `a.len < b.len`, `Ordering.gt` if `a.len > b.len` else `Ordering.eq`.
-fn compare_strings_by_len(a &string, b &string) int {
+fn compare_strings_by_len(a &string, b &string) Ordering {
 	if a.len < b.len {
 		return .lt
 	} else if a.len > b.len {
@@ -1232,7 +1232,7 @@ fn compare_strings_by_len(a &string, b &string) int {
 }
 
 // compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.
-fn compare_lower_strings(a &string, b &string) int {
+fn compare_lower_strings(a &string, b &string) Ordering {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(&aa, &bb)
