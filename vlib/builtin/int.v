@@ -16,6 +16,10 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+pub fn (x size_t) str() string {
+	return u64(x).str()
+}
+
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }

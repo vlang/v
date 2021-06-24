@@ -241,7 +241,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 
 	for i in 0 .. g.image_cache.len {
-		g.image_cache[i].init_sokol_image()
+		if g.image_cache[i].simg.id == 0 {
+			g.image_cache[i].init_sokol_image()
+		}
 	}
 }
 
