@@ -1142,99 +1142,121 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		}
 		typ := concrete_types[index]
 		return typ.derive(generic_type).clear_flag(.generic)
-	} else if sym.kind == .array {
-		mut elem_type := (sym.info as Array).elem_type
-		mut elem_sym := t.get_type_symbol(elem_type)
-		mut dims := 1
-		for mut elem_sym.info is Array {
-			elem_type = elem_sym.info.elem_type
-			elem_sym = t.get_type_symbol(elem_type)
-			dims++
-		}
-		if typ := t.resolve_generic_to_concrete(elem_type, generic_names, concrete_types) {
-			idx := t.find_or_register_array_with_dims(typ, dims)
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
-		}
-	} else if sym.kind == .array_fixed {
-		info := sym.info as ArrayFixed
-		if typ := t.resolve_generic_to_concrete(info.elem_type, generic_names, concrete_types) {
-			idx := t.find_or_register_array_fixed(typ, info.size, None{})
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
-		}
-	} else if mut sym.info is Chan {
-		if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names, concrete_types) {
-			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
-		}
-	} else if mut sym.info is MultiReturn {
-		mut types := []Type{}
-		mut type_changed := false
-		for ret_type in sym.info.types {
-			if typ := t.resolve_generic_to_concrete(ret_type, generic_names, concrete_types) {
-				types << typ
-				type_changed = true
-			} else {
-				types << ret_type
+	}
+	match mut sym.info {
+		Array {
+			mut elem_type := sym.info.elem_type
+			mut elem_sym := t.get_type_symbol(elem_type)
+			mut dims := 1
+			for mut elem_sym.info is Array {
+				info := elem_sym.info as Array
+				elem_type = info.elem_type
+				elem_sym = t.get_type_symbol(elem_type)
+				dims++
+			}
+			if typ := t.resolve_generic_to_concrete(elem_type, generic_names, concrete_types) {
+				idx := t.find_or_register_array_with_dims(typ, dims)
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
 			}
 		}
-		if type_changed {
-			idx := t.find_or_register_multi_return(types)
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
+		ArrayFixed {
+			if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names,
+				concrete_types)
+			{
+				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{})
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
+			}
 		}
-	} else if mut sym.info is Map {
-		mut type_changed := false
-		mut unwrapped_key_type := sym.info.key_type
-		mut unwrapped_value_type := sym.info.value_type
-		if typ := t.resolve_generic_to_concrete(sym.info.key_type, generic_names, concrete_types) {
-			unwrapped_key_type = typ
-			type_changed = true
+		Chan {
+			if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names,
+				concrete_types)
+			{
+				idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
+			}
 		}
-		if typ := t.resolve_generic_to_concrete(sym.info.value_type, generic_names, concrete_types) {
-			unwrapped_value_type = typ
-			type_changed = true
-		}
-		if type_changed {
-			idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
-		}
-	} else if mut sym.info is Struct {
-		if sym.info.is_generic {
-			mut nrt := '$sym.name<'
-			for i in 0 .. sym.info.generic_types.len {
-				if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i], generic_names,
+		FnType {
+			mut func := sym.info.func
+			if func.return_type.has_flag(.generic) {
+				if typ := t.resolve_generic_to_concrete(func.return_type, generic_names,
 					concrete_types)
 				{
-					gts := t.get_type_symbol(ct)
-					nrt += gts.name
-					if i != sym.info.generic_types.len - 1 {
-						nrt += ','
+					func.return_type = typ
+				}
+			}
+			func.params = func.params.clone()
+			for mut param in func.params {
+				if param.typ.has_flag(.generic) {
+					if typ := t.resolve_generic_to_concrete(param.typ, generic_names,
+						concrete_types)
+					{
+						param.typ = typ
 					}
 				}
 			}
-			nrt += '>'
-			mut idx := t.type_idxs[nrt]
-			if idx == 0 {
-				idx = t.add_placeholder_type(nrt, .v)
-			}
+			idx := t.find_or_register_fn_type('', func, true, false)
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
-	} else if mut sym.info is FnType {
-		mut func := sym.info.func
-		if func.return_type.has_flag(.generic) {
-			if typ := t.resolve_generic_to_concrete(func.return_type, generic_names, concrete_types) {
-				func.return_type = typ
-			}
-		}
-		func.params = func.params.clone()
-		for mut param in func.params {
-			if param.typ.has_flag(.generic) {
-				if typ := t.resolve_generic_to_concrete(param.typ, generic_names, concrete_types) {
-					param.typ = typ
+		MultiReturn {
+			mut types := []Type{}
+			mut type_changed := false
+			for ret_type in sym.info.types {
+				if typ := t.resolve_generic_to_concrete(ret_type, generic_names, concrete_types) {
+					types << typ
+					type_changed = true
+				} else {
+					types << ret_type
 				}
 			}
+			if type_changed {
+				idx := t.find_or_register_multi_return(types)
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
+			}
 		}
-		idx := t.find_or_register_fn_type('', func, true, false)
-		return new_type(idx).derive(generic_type).clear_flag(.generic)
+		Map {
+			mut type_changed := false
+			mut unwrapped_key_type := sym.info.key_type
+			mut unwrapped_value_type := sym.info.value_type
+			if typ := t.resolve_generic_to_concrete(sym.info.key_type, generic_names,
+				concrete_types)
+			{
+				unwrapped_key_type = typ
+				type_changed = true
+			}
+			if typ := t.resolve_generic_to_concrete(sym.info.value_type, generic_names,
+				concrete_types)
+			{
+				unwrapped_value_type = typ
+				type_changed = true
+			}
+			if type_changed {
+				idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
+			}
+		}
+		Struct {
+			if sym.info.is_generic {
+				mut nrt := '$sym.name<'
+				for i in 0 .. sym.info.generic_types.len {
+					if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i],
+						generic_names, concrete_types)
+					{
+						gts := t.get_type_symbol(ct)
+						nrt += gts.name
+						if i != sym.info.generic_types.len - 1 {
+							nrt += ','
+						}
+					}
+				}
+				nrt += '>'
+				mut idx := t.type_idxs[nrt]
+				if idx == 0 {
+					idx = t.add_placeholder_type(nrt, .v)
+				}
+				return new_type(idx).derive(generic_type).clear_flag(.generic)
+			}
+		}
+		else {}
 	}
 	return none
 }
