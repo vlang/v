@@ -535,6 +535,9 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
+	if decl.name.ends_with('.Option') {
+		c.error('`Option` is reserved and cannot be used as a struct name', decl.pos)
+	}
 	mut struct_sym := c.table.find_type(decl.name) or { ast.TypeSymbol{} }
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
