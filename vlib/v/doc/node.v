@@ -35,7 +35,7 @@ fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
 fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 	al := a.name.to_lower()
 	bl := b.name.to_lower()
-	return compare_strings(al, bl)
+	return int(compare_strings(al, bl))
 }
 
 // arr() converts the map into an array of `DocNode`.
