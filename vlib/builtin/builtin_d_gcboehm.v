@@ -3,8 +3,8 @@ module builtin
 #flag -DGC_THREADS=1
 #flag -I@VEXEROOT/thirdparty/libgc
 
-$if windows && tinyc {
-	// TODO: windows-tcc cannot compile boehm from source yet
+$if tinyc {
+	// wip: tcc cannot compile boehm from source correctly yet
 	#flag -L@VEXEROOT/thirdparty/libgc
 	#flag -lgc
 } $else {
