@@ -4,7 +4,7 @@ module gg
 
 // import gx
 // import sokol.sapp
-// import sokol.gfx
+import sokol.gfx
 import os
 import sokol
 import sokol.sgl
@@ -153,6 +153,17 @@ pub fn (mut ctx Context) create_image_from_byte_array(b []byte) Image {
 	return ctx.create_image_from_memory(b.data, b.len)
 }
 
+pub fn (mut ctx Context) cache_image(img Image) int {
+	ctx.image_cache << img
+	image_idx := ctx.image_cache.len - 1
+	ctx.image_cache[image_idx].id = image_idx
+	return image_idx
+}
+
+pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
+	return &ctx.image_cache[image_idx]
+}
+
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := C.sg_image_desc{
@@ -161,7 +172,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		num_mipmaps: 0
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &char(0)
+		label: img.path.str
 		d3d11_texture: 0
 	}
 	img_desc.data.subimage[0][0] = C.sg_range{
@@ -172,6 +183,53 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	img.simg_ok = true
 	img.ok = true
 	return img
+}
+
+// new_streaming_image returns a cached `image_idx` of a special image, that
+// can be updated *each frame* by calling:  gg.update_pixel_data(image_idx, buf)
+// ... where buf is a pointer to the actual pixel data for the image.
+// NB: you still need to call app.gg.draw_image after that, to actually draw it.
+pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int) int {
+	mut img := Image{}
+	img.width = w
+	img.height = h
+	img.nr_channels = channels // 4 bytes per pixel for .rgba8, see pixel_format
+	mut img_desc := C.sg_image_desc{
+		width: img.width
+		height: img.height
+		pixel_format: .rgba8
+		num_slices: 1
+		num_mipmaps: 1
+		usage: .stream
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+		min_filter: .linear
+		mag_filter: .linear
+		label: img.path.str
+	}
+	// Sokol requires that streamed images have NO .ptr/.size initially:
+	img_desc.data.subimage[0][0] = C.sg_range{
+		ptr: 0
+		size: size_t(0)
+	}
+	img.simg = C.sg_make_image(&img_desc)
+	img.simg_ok = true
+	img.ok = true
+	img_idx := ctx.cache_image(img)
+	return img_idx
+}
+
+// update_pixel_data is a helper for working with image streams (i.e. images,
+// that are updated dynamically by the CPU on each frame)
+pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
+	ctx.get_cached_image_by_idx(cached_image_idx).update_pixel_data(buf)
+}
+
+pub fn (mut img Image) update_pixel_data(buf &byte) {
+	mut data := C.sg_image_data{}
+	data.subimage[0][0].ptr = buf
+	data.subimage[0][0].size = size_t(img.width * img.height * img.nr_channels)
+	gfx.update_image(img.simg, &data)
 }
 
 // draw_image_with_config takes in a config that details how the

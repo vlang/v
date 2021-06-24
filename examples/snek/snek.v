@@ -211,7 +211,6 @@ fn main() {
 		user_data: &app
 		width: canvas_size
 		height: top_height + canvas_size
-		use_ortho: true
 		create_window: true
 		resizable: false
 		window_title: 'snek'

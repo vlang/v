@@ -396,10 +396,13 @@ pub fn (i C.sg_image) free() {
 	C.sg_destroy_image(i)
 }
 
+pub const sg_cubeface_num = 6
+
+pub const sg_max_mipmaps = 16
+
 pub struct C.sg_image_data {
 pub mut:
-	// subimage [C.SG_CUBEFACE_NUM][C.SG_MAX_MIPMAPS]C.sg_range
-	subimage [6][16]C.sg_range
+	subimage [sg_cubeface_num][sg_max_mipmaps]C.sg_range
 }
 
 pub struct C.sg_features {
