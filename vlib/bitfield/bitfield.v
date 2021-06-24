@@ -405,7 +405,7 @@ pub fn (haystack BitField) pos(needle BitField) int {
 	}
 	for i := 0; i <= diff; i++ {
 		needle_candidate := haystack.slice(i, needle_size + i)
-		if needle_candidate.cmp(needle) {
+		if needle_candidate == needle {
 			// needle matches a sub-array of haystack; return starting position of the sub-array
 			return i
 		}
