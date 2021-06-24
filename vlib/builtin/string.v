@@ -342,14 +342,14 @@ struct RepIndex {
 }
 
 // compare_rep_index returns the result of comparing RepIndex `a` and `b`.
-fn compare_rep_index(a &RepIndex, b &RepIndex) int {
+fn compare_rep_index(a &RepIndex, b &RepIndex) Ordering {
 	if a.idx < b.idx {
-		return -1
+		return .lt
+	} else if a.idx > b.idx {
+		return .gt
+	} else {
+		return .eq
 	}
-	if a.idx > b.idx {
-		return 1
-	}
-	return 0
 }
 
 // sort2 sorts the RepIndex array using `compare_rep_index`.
