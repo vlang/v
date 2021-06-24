@@ -124,3 +124,22 @@ fn test_generics_return_generic_struct_from_fn() {
 	println(it.next() or { -1 })
 	assert '$it.next()' == 'Option(1)'
 }
+
+struct ListNode<T> {
+pub mut:
+	val  T
+	next &ListNode<T> = 0
+}
+
+fn (mut node ListNode<T>) test() &ListNode<T> {
+	return node.next
+}
+
+fn test_generics_return_generic_struct_field() {
+	mut node1 := &ListNode<int>{100, 0}
+	mut node2 := &ListNode<int>{200, 0}
+	node1.next = node2
+	ret := node1.test()
+	println(ret)
+	assert ret.val == 200
+}
