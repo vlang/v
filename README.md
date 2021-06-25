@@ -1,16 +1,14 @@
-<div align="center">
-<p>
-    <img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true">
-</p>
-<h1>The V Programming Language</h1>
-
+<img type="image/svg" width="80" align="center"
+	src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"
+	alt="logo"
+/>
+# The V Programming Language
 [vlang.io](https://vlang.io) |
 [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) |
 [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
 [Speed](https://fast.vlang.io/) |
 [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
-</div>
 <div align="center">
 
 <!--
@@ -24,7 +22,6 @@
 </div>
 
 ## Key Features of V
-
 - Simplicity: the language can be learned in less than an hour
 - Fast compilation: ≈110k loc/s with a Clang backend,
     ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
@@ -43,7 +40,6 @@
 - C and JavaScript backends
 
 ## Stability guarantee and future changes
-
 Despite being at an early development stage, the V language is relatively stable and has
 backwards compatibility guarantee, meaning that the code you write today is guaranteed
 to work a month, a year, or five years from now.
@@ -60,10 +56,9 @@ being introduced and old features modified. It is always going to be a small and
 language, very similar to the way it is right now.
 
 ## Installing V from source
+<h3>Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian</h3>
 
-### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
-
-```bash
+```sh
 git clone https://github.com/vlang/v
 cd v
 make
@@ -78,19 +73,16 @@ Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is constantly being updated. To update V, simply run:
 
-```bash
+```sh
 v up
 ```
 
 ### C compiler
-
 It's recommended to use Clang, GCC, or Visual Studio.
 If you are doing development, you most likely already have one of those installed.
 
 Otherwise, follow these instructions:
-
 - [Installing a C compiler on Linux and macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS)
-
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 However, if none is found when running `make` on Linux or Windows,
@@ -98,7 +90,6 @@ TCC is downloaded as the default C backend.
 It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
-
 NB: it is *highly recommended*, that you put V on your PATH. That saves
 you the effort to type in the full path to your v executable every time.
 V provides a convenience `v symlink` command to do that more easily.
@@ -106,7 +97,7 @@ V provides a convenience `v symlink` command to do that more easily.
 On Unix systems, it creates a `/usr/local/bin/v` symlink to your
 executable. To do that, run:
 
-```bash
+```sh
 sudo ./v symlink
 ```
 
@@ -129,10 +120,9 @@ You only need to run it again, if you decide to move the V repo
 folder somewhere else.
 
 ### Docker
-
 <details><summary>Expand Docker instructions</summary>
 
-```bash
+```sh
 git clone https://github.com/vlang/v
 cd v
 docker build -t vlang .
@@ -140,8 +130,7 @@ docker run --rm -it vlang:latest
 ```
 
 ### Docker with Alpine/musl
-
-```bash
+```sh
 git clone https://github.com/vlang/v
 cd v
 docker build -t vlang --file=Dockerfile.alpine .
@@ -151,24 +140,20 @@ docker run --rm -it vlang:latest
 </details>
 
 ### Testing and running the examples
-
 Make sure V can compile itself:
-
-```bash
+```sh
 v self
 ```
-
-```bash
+**And:**
+```sh
 $ v
-V 0.2.x
-Use Ctrl-C or `exit` to exit
-
+# V 0.2.x
+# Use Ctrl-C or `exit` to exit
 >>> println('hello world')
-hello world
->>>
+$ hello world
 ```
 
-```bash
+```sh
 cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
@@ -178,32 +163,32 @@ v run news_fetcher.v
 v run tetris/tetris.v
 ```
 
-<img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
+<img type="image/png" width=300 src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png'/>
 
 NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
 on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
-```bash
-macOS:
-brew install openssl
 
-Debian/Ubuntu:
-sudo apt install libssl-dev
+##### macOS:
+- `brew install openssl`
 
-Arch/Manjaro:
-openssl is installed by default
+##### Debian/Ubuntu:
+- `sudo apt install libssl-dev`
 
-Fedora:
-sudo dnf install openssl-devel
-```
+##### Arch/Manjaro:
+- `openssl is installed by default`
+
+##### Fedora:
+- `sudo dnf install openssl-devel`
+
 
 ## V sync
 V's `sync` module and channel implementation uses libatomic.
 It is most likely already installed on your system, but if not,
 you can install it, by doing the following:
-```bash
+```sh
 MacOS: already installed
 
 Debian/Ubuntu:
@@ -214,12 +199,11 @@ sudo dnf install libatomic-static
 ```
 
 ## V UI
-
 <a href="https://github.com/vlang/ui">
-<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png' width=712>
+	<img type="image/png" width=712 src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png'/>
 </a>
 
-https://github.com/vlang/ui
+<https://github.com/vlang/ui>
 
 <!---
 ## JavaScript backend
@@ -243,28 +227,24 @@ Hello from V.js
 -->
 
 ## Android graphical apps
-
 With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
-
 ```
 ./vab /path/to/v/examples/2048
 ```
 
 [https://github.com/vlang/vab](https://github.com/vlang/vab).
 
-<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
+<img type="image/png" src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png"/>
 
 ## Developing web applications
-
 Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
-https://github.com/vlang/gitly
+<https://github.com/vlang/gitly>
 
-<img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
+<img type="image/png" src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png"/>
 
 ## Troubleshooting
-
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
