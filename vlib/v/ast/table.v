@@ -542,44 +542,61 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
-[inline]
-pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
-	// println('register_type_symbol( $typ.name )')
-	existing_idx := t.type_idxs[typ.name]
-	if existing_idx > 0 {
-		ex_type := t.type_symbols[existing_idx]
-		match ex_type.kind {
-			.placeholder {
-				// override placeholder
-				// println('overriding type placeholder `$typ.name`')
-				t.type_symbols[existing_idx] = {
-					...typ
-					methods: ex_type.methods
+fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_idx int) int {
+	ex_type := t.type_symbols[existing_idx]
+	match ex_type.kind {
+		.placeholder {
+			// override placeholder
+			// println('overriding type placeholder `$typ.name`')
+			t.type_symbols[existing_idx] = {
+				...typ
+				methods: ex_type.methods
+			}
+			return existing_idx
+		}
+		else {
+			// builtin
+			// this will override the already registered builtin types
+			// with the actual v struct declaration in the source
+			if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
+				|| existing_idx == error_type_idx {
+				if existing_idx == string_type_idx {
+					// existing_type := t.type_symbols[existing_idx]
+					t.type_symbols[existing_idx] = TypeSymbol{
+						...typ
+						kind: ex_type.kind
+					}
+				} else {
+					t.type_symbols[existing_idx] = typ
 				}
 				return existing_idx
 			}
-			else {
-				// builtin
-				// this will override the already registered builtin types
-				// with the actual v struct declaration in the source
-				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
-					|| existing_idx == error_type_idx {
-					if existing_idx == string_type_idx {
-						// existing_type := t.type_symbols[existing_idx]
-						t.type_symbols[existing_idx] = TypeSymbol{
-							...typ
-							kind: ex_type.kind
-						}
-					} else {
-						t.type_symbols[existing_idx] = typ
-					}
-					return existing_idx
-				}
-				return -1
+			return -1
+		}
+	}
+	return -2
+}
+
+[inline]
+pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
+	mut typ_idx := -2
+	mut existing_idx := t.type_idxs[typ.name]
+	if existing_idx > 0 {
+		typ_idx = t.check_for_already_registered_symbol(typ, existing_idx)
+		if typ_idx != -2 {
+			return typ_idx
+		}
+	}
+	if typ.mod == 'main' {
+		existing_idx = t.type_idxs[typ.name.trim_prefix('main.')]
+		if existing_idx > 0 {
+			typ_idx = t.check_for_already_registered_symbol(typ, existing_idx)
+			if typ_idx != -2 {
+				return typ_idx
 			}
 		}
 	}
-	typ_idx := t.type_symbols.len
+	typ_idx = t.type_symbols.len
 	t.type_symbols << typ
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
