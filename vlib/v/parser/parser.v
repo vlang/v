@@ -2818,6 +2818,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.error('unexpected eof, expecting an expression')
 			return ast.ConstDecl{}
 		}
+		if p.mod == 'main' && full_name.trim_left('main.') in p.imported_symbols {
+			p.error('duplicate of imported const `$full_name`')
+			return ast.ConstDecl{}
+		}
 		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
