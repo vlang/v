@@ -2407,6 +2407,15 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 		}
 	}
+	// global fn?
+	if !found {
+		if obj := c.file.global_scope.find(fn_name) {
+			sym := c.table.get_type_symbol(obj.typ)
+			if sym.kind == .function {
+				found = true
+			}
+		}
+	}
 	if !found {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return ast.void_type
