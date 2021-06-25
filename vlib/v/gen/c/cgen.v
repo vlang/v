@@ -1537,7 +1537,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('; ++$i) {')
 	} else if node.kind == .array {
 		// `for num in nums {`
-		g.writeln('// FOR IN array')
+		// g.writeln('// FOR IN array')
 		styp := g.typ(node.val_type)
 		val_sym := g.table.get_type_symbol(node.val_type)
 		mut cond_var := ''
@@ -1635,7 +1635,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 	} else if node.kind == .map {
 		// `for key, val in map {
-		g.writeln('// FOR IN map')
+		// g.writeln('// FOR IN map')
 		mut cond_var := ''
 		if node.cond is ast.Ident {
 			cond_var = g.expr_string(node.cond)
