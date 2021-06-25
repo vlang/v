@@ -101,7 +101,7 @@ pub fn glob(patterns string) ?[]string {
 	patterns_ := patterns.replace('/', '\\')
 
 	$if debug {
-		println('os.glob() does not have all the features on Windows as it has on Unix operating systems')
+		eprintln('os.glob() does not have all the features on Windows as it has on Unix operating systems')
 	}
 
 	// FindFirstFile() and FindNextFile() both have a globbing function.
