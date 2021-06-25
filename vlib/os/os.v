@@ -340,14 +340,14 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write_string(text) ?
+	unsafe { f.write_full_buffer(text.str, size_t(text.len)) ? }
 	f.close()
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	unsafe { f.write_ptr_at(buffer.data, (buffer.len * buffer.element_size), 0) }
+	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
 	f.close()
 }
 
@@ -616,15 +616,6 @@ pub mut:
 	release  string
 	version  string
 	machine  string
-}
-
-[deprecated: 'use os.execute or os.execute_or_panic instead']
-pub fn exec(cmd string) ?Result {
-	res := execute(cmd)
-	if res.exit_code < 0 {
-		return error_with_code(res.output, -1)
-	}
-	return res
 }
 
 pub fn execute_or_panic(cmd string) Result {
