@@ -1,0 +1,13 @@
+struct Num {
+	value int
+}
+
+fn (a Num) < (b Num) bool {
+	return a.value < b.value
+}
+
+mut arr := []Num{}
+arr << { value: 10}
+arr << { value: 5 }
+arr.sort()
+println(arr)
