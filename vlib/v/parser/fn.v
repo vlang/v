@@ -274,6 +274,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
+		// cannot redefine imported function
+		if name in p.imported_symbols {
+			p.error_with_pos('cannot redefine imported function `$name`', name_pos)
+			return ast.FnDecl{
+				scope: 0
+			}
+		}
 	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec.typ == ast.void_type {
