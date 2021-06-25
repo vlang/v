@@ -2674,6 +2674,62 @@ fn main() {
 }
 ```
 
+Enums as a structs also can have methods
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	match c {
+		.one {
+			println('one')
+			c = c.next()
+		}
+		.two {
+			println('two')
+			c = c.next()
+		}
+		.three {
+			println('three')
+			c = c.next()
+		}
+	}
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
+```
+
 #### Dynamic casts
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
