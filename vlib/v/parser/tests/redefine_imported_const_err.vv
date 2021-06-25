@@ -1,3 +1,3 @@
-import time { second } 
+import time { second }
 
 const second = 10
