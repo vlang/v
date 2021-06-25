@@ -519,7 +519,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
 				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
 				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
-				g.writeln('\t${node.val_var}.kind = AttributeKind_$attr.kind;')
+				g.writeln('\t${node.val_var}.kind = AttributeKind__$attr.kind;')
 
 				g.writeln('}')
 			}
