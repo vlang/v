@@ -127,7 +127,7 @@ fn (mut ctx Context) termios_setup() ? {
 
 	// Reset console on exit
 	C.atexit(restore_terminal_state)
-	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
+	os.signal_opt(.stop, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr
 		if c != 0 {
