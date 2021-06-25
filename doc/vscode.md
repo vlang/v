@@ -1,16 +1,14 @@
 # Visual Studio Code Setup
 
 ## Table of Contents
-
 * [V language support](#v-language-support)
 * [Visual Debugging](#visual-debugging)
 
 ## V language support
-
 The [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
 provides V language support for Visual Studio Code.
 
-![Screenshot Code with activated extention](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)
+[![Screenshot Code with activated extention](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)](#)
 
 **Features:**
 * Syntax Highlighting.
@@ -24,12 +22,10 @@ provides V language support for Visual Studio Code.
 on your operating system.
 
 ### Setup Extention
-
 Install [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang).
 
 ## Visual Debugging
-
-![screenshot visual debugger](https://github.com/vlang/v/blob/master/doc/img/vscode-debugger.png?raw=true)
+[![screenshot visual debugger](https://github.com/vlang/v/blob/master/doc/img/vscode-debugger.png?raw=true)](#)
 
 The [C/C++ Extention](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 for Visual Studio Code provides visual conditional debugging.
@@ -46,7 +42,6 @@ for Visual Studio Code provides visual conditional debugging.
 edit the variable.
 
 ### Setup Debugging
-
 1. Install the [C/C++ Extention](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 2. Open `RUN AND DEBUG` panel (Debug Icon in left panel).
 3. Click on `Show` all automatic debug configurations.
@@ -85,7 +80,6 @@ or create the file `.vscode/launch.json`:
 any current open source file with an existing binary with the same name but without any extension.
 
 ### Usage
-
 To allow your compiled application to be debugged.
 The application needs to include additional debugging information
 ([DWARF](https://en.wikipedia.org/wiki/DWARF)).

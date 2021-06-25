@@ -1,11 +1,9 @@
 # V Work In Progress
-
 ***This document describes features that are not implemented, yet.
 Please refer to [docs.md](https://github.com/vlang/v/blob/master/doc/docs.md)
 for the current state of V***
 
 ## Table of Contents
-
 * [Concurrency](#concurrency)
     * [Variable Declarations](#variable-declarations)
 	* [Strengths](#strengths)
@@ -17,7 +15,6 @@ for the current state of V***
 ## Concurrency
 
 ### Variable Declarations
-
 Objects that are supposed to be used to exchange data between
 coroutines have to be declared with special care. Exactly one of the following
 4 kinds of declaration has to be chosen:

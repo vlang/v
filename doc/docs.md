@@ -1,7 +1,6 @@
 # V Documentation
 
 ## Introduction
-
 V is a statically typed compiled programming language designed for building maintainable software.
 
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
@@ -21,7 +20,7 @@ It is __easy__, and it usually takes __only a few seconds__.
 
 ### Linux, macOS, FreeBSD, etc:
 You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
-```bash
+```sh
 git clone https://github.com/vlang/v
 cd v
 make
@@ -29,7 +28,7 @@ make
 
 ### Windows:
 You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
-```bash
+```sh
 git clone https://github.com/vlang/v
 cd v
 make.bat -tcc
@@ -49,7 +48,7 @@ V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
   1. Install dependencies (see [vab](https://github.com/vlang/vab))
   2. Connect your Android device
   3. Run:
-  ```bash
+  ```sh
   git clone https://github.com/vlang/vab && cd vab && v vab.v
   ./vab --device auto run /path/to/v/examples/sokol/particles
   ```
@@ -481,7 +480,7 @@ s[0] = `H` // not allowed
 Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
 to bytes in the string, not Unicode code points.
 
-Character literals have type `rune`. To denote them, use `
+<p>Character literals have type `rune`. To denote them, use `</p>
 
 ```v
 rocket := `🚀`
@@ -506,7 +505,6 @@ n := s.int() // 42
 ```
 
 ### String interpolation
-
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
 The variable will be converted to a string and embedded into the literal:
 ```v
@@ -529,7 +527,6 @@ println('[${int(x):010}]') // pad with zeros on the left => [0000000123]
 ```
 
 ### String operators
-
 ```v
 name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
@@ -563,7 +560,6 @@ println('age = $age')
 ```
 
 ### Numbers
-
 ```v
 a := 123
 ```
@@ -751,7 +747,6 @@ object_list: [ObjectSumType(Point{
 ```
 
 #### Multidimensional Arrays
-
 Arrays can have more than one dimension.
 
 2d array example:
@@ -796,7 +791,6 @@ println('Alex' in names) // "false"
 
 
 #### Array methods
-
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
 
@@ -2386,7 +2380,7 @@ Modules are up to date.
 	```sh
 	git init
 	git add .
-	git commit -m "INIT"
+	git commit -m "Initial commit"
 	````
 
 3. Create a public repository on github.com.
@@ -4512,17 +4506,16 @@ fn main() {
 
 To generate a wrapper on top of a C library use this command:
 
-```bash
+```sh
 v wrapper c_code/libsodium/src/libsodium
 ```
 
 This will generate a directory `libsodium` with a V module.
 
 Example of a C2V generated libsodium wrapper:
+<https://github.com/medvednikov/libsodium>
 
-https://github.com/medvednikov/libsodium
-
-<br>
+<br/>
 
 When should you translate C code and when should you simply call C code from V?
 
@@ -4590,7 +4583,6 @@ You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
 
 ## Cross-platform shell scripts in V
-
 V can be used as an alternative to Bash to write deployment scripts, build scripts, etc.
 
 The advantage of using V for this is the simplicity and predictability of the language, and
