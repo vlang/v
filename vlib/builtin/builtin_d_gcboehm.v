@@ -1,13 +1,12 @@
 module builtin
 
 #flag -DGC_THREADS=1
-#flag -I@VEXEROOT/thirdparty/libgc
 
 $if tinyc {
 	// wip: tcc cannot compile boehm from source correctly yet
-	#flag -L@VEXEROOT/thirdparty/libgc
 	#flag -lgc
 } $else {
+	#flag -DGC_BUILTIN_ATOMIC
 	$if windows {
 		#flag -DGC_NOT_DLL=1
 	}
@@ -15,6 +14,7 @@ $if tinyc {
 		#flag -DIGNORE_DYNAMIC_LOADING
 	}
 	// we statically link libgc
+	#flag -I@VEXEROOT/thirdparty/libgc
 	#flag @VEXEROOT/thirdparty/libgc/gc.o
 }
 
