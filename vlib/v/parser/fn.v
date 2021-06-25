@@ -267,11 +267,18 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 		}
-		// cannot redefine buildin function
-		if !is_method && !p.builtin_mod && name in builtin_functions {
-			p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
-			return ast.FnDecl{
-				scope: 0
+		if !p.pref.is_fmt {
+			if !is_method && !p.builtin_mod && name in builtin_functions {
+				p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
+				return ast.FnDecl{
+					scope: 0
+				}
+			}
+			if name in p.imported_symbols {
+				p.error_with_pos('cannot redefine imported function `$name`', name_pos)
+				return ast.FnDecl{
+					scope: 0
+				}
 			}
 		}
 	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
