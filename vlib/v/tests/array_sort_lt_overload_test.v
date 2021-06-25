@@ -8,9 +8,15 @@ fn (a Num) < (b Num) bool {
 
 fn test_sort_lt_overloaded_struct_array() {
 	mut arr := []Num{}
-	arr << { value: 10}
-	arr << { value: 5 }
-	arr << { value: 7 }
+	arr << {
+		value: 10
+	}
+	arr << {
+		value: 5
+	}
+	arr << {
+		value: 7
+	}
 	arr.sort()
 	assert arr[0].value == 5
 }
