@@ -4,8 +4,7 @@
 	<title>V Blog</title>
 </head>
 <body>
-	<header>
-	    user id = @app.user_id <br/>
+	user id = @app.user_id <br/>
 		@for article in articles
 			<div>
 				<b>@article.title</b> <br/>
@@ -13,7 +12,6 @@
 			</div>
 			<br/>
 		@end
-		<a href='/new'>New article</a>
-	</header>
+	<a href='/new'>New article</a>
 </body>
 </html>
