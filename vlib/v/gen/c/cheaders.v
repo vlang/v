@@ -273,6 +273,10 @@ void _vcleanup();
 
 void v_free(voidptr ptr);
 voidptr memdup(voidptr src, int sz);
+static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+	v_free(ptr); // heloe
+	return memdup(src, sz);
+}
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -467,6 +471,10 @@ void _vcleanup();
 
 void v_free(voidptr ptr);
 voidptr memdup(voidptr src, int sz);
+static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+	v_free(ptr); // heloe
+	return memdup(src, sz);
+}
 
 '
 
