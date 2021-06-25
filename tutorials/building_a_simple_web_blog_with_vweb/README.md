@@ -1,5 +1,4 @@
 ## Building a 150 KB web blog in V with 0 dependencies
-
 Hello,
 
 In this guide, we'll build a simple web blog in V.
@@ -21,8 +20,7 @@ The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/
 
 
 ### Installing V
-
-```
+```sh
 wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
 unzip v_linux.zip
 cd v
@@ -38,23 +36,19 @@ https://github.com/vlang/v#installing-v-from-source
 
 
 ### Install SQLite development dependency
-
 If you don't have it already installed, look at the
 [`sqlite` README](../../vlib/sqlite/README.md) for instructions.
 
 
 ### Creating a new Vweb project
-
 V projects can be created anywhere and don't need to have a certain structure:
-
-```bash
+```sh
 mkdir blog
 cd blog
 touch blog.v
 ```
 
 First, let's create a simple hello world website:
-
 ```v
 // blog.v
 module main
@@ -76,7 +70,7 @@ pub fn (mut app App) index() vweb.Result {
 
 Run it with
 
-```bash
+```sh
 v run blog.v
 ```
 
@@ -85,8 +79,9 @@ Running a Vweb app on http://localhost:8081 ...
 ```
 
 Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
-
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello.png?raw=true">
+<img type="image/png" width=662
+	src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello.png?raw=true"
+/>
 
 The `App` struct is an entry point of our web application. If you have experience
 with an MVC web framework, you can think of it as a controller. (Vweb is
@@ -107,10 +102,11 @@ fn (mut app App) time() vweb.Result {
 }
 ```
 
+<img type="image/png" width=662
+	src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true"
+/>
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
-
->You have to rebuild and restart the website every time you change the code.
+> You have to rebuild and restart the website every time you change the code.
 In the future, Vweb will detect changes and recompile the website in the background
 while it's running.
 
@@ -119,18 +115,18 @@ text, which isn't frequently used in websites.
 
 
 ### HTML View
-
 Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
+<!DOCTYPE html>
 <html>
 <head>
 	<title>V Blog</title>
 </head>
 <body>
 	<b>@message</b>
-	<br>
-	<img src='https://vlang.io/img/v-logo.png' width=100>
+	<br/>
+	<img type="image/png" width=100 src='https://vlang.io/img/v-logo.png'/>
 </body>
 </html>
 ```
@@ -144,7 +140,9 @@ pub fn (mut app App) index() vweb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello_html.png?raw=true">
+<img type="image/png" width=662
+	src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello_html.png?raw=true"
+/>
 
 Good, now we have an actual HTML page.
 
@@ -177,7 +175,6 @@ into a single binary file together with the web application itself.
 
 
 ### Fetching data with V ORM
-
 Now let's display some articles!
 
 We'll be using V's builtin ORM and a SQLite database.
@@ -273,7 +270,7 @@ Finally, let's update our view:
 <body>
 	@for article in articles
 		<div>
-			<b>@article.title</b> <br>
+			<b>@article.title</b> <br/>
 			@article.text
 		</div>
 	@end
@@ -284,7 +281,9 @@ Finally, let's update our view:
 v run .
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles1.png?raw=true">
+<img type="image/png" width=662
+	src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles1.png?raw=true"
+/>
 
 That was very simple, wasn't it?
 
@@ -319,19 +318,19 @@ article := app.retrieve_article(10) or {
 
 
 ### Adding new articles
-
 Create `new.html`:
 
 ```html
+<!DOCTYPE html>
 <html>
 <head>
 	<title>V Blog</title>
 </head>
 <body>
 	<form action='/new_article' method='post'>
-		<input type='text' placeholder='Title' name='title'> <br>
+		<input type='text' placeholder='Title' name='title'/> <br/>
 		<textarea placeholder='Text' name='text'></textarea>
-		<input type='submit'>
+		<input type='submit'/>
 	</form>
 </body>
 </html>
@@ -370,7 +369,6 @@ We need to update `index.html` to add a link to the "new article" page:
 
 
 ### JSON endpoints
-
 This tutorial used the traditional server-side rendering. If you prefer
 to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
@@ -385,10 +383,10 @@ pub fn (mut app App) articles() vweb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
-
-
+<img type="image/png" width=662
+	src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true"
+/>
 
 To be continued...
 
-For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
+For an example of a more sophisticated web app written in V, check out Vorum: <https://github.com/vlang/vorum>
