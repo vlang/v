@@ -1,14 +1,17 @@
-<img type="image/svg" width="80" align="center"
-	src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"
-	alt="logo"
-/>
-# The V Programming Language
+<div align="center">
+	<img type="image/svg" width="80" align="center"
+		src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"
+		alt="logo"
+	/>
+<h1>The V Programming Language</h1>
+
 [vlang.io](https://vlang.io) |
 [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) |
 [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
 [Speed](https://fast.vlang.io/) |
 [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
+</div>
 <div align="center">
 
 <!--
@@ -142,15 +145,17 @@ docker run --rm -it vlang:latest
 ### Testing and running the examples
 Make sure V can compile itself:
 ```sh
-v self
-```
-**And:**
-```sh
+$ v self
 $ v
 # V 0.2.x
 # Use Ctrl-C or `exit` to exit
+```
+
+And:
+
+```sh
 >>> println('hello world')
-$ hello world
+>>> hello world
 ```
 
 ```sh
@@ -170,19 +175,19 @@ on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
+```
+macOS:
+brew install openssl
 
-##### macOS:
-- `brew install openssl`
+Debian/Ubuntu:
+sudo apt install libssl-dev
 
-##### Debian/Ubuntu:
-- `sudo apt install libssl-dev`
+Arch/Manjaro:
+openssl is installed by default
 
-##### Arch/Manjaro:
-- `openssl is installed by default`
-
-##### Fedora:
-- `sudo dnf install openssl-devel`
-
+Fedora:
+sudo dnf install openssl-devel
+```
 
 ## V sync
 V's `sync` module and channel implementation uses libatomic.
