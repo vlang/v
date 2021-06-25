@@ -2699,6 +2699,7 @@ fn (c Cycle) next() Cycle {
 
 mut c := Cycle.one
 for _ in 0 .. 10 {
+	println(c)
 	c = c.next()
 }
 ```
