@@ -2045,9 +2045,9 @@ For example, a generic tree structure definition would look like this:
 
 ```v
 struct Node<T> {
-    val   T
-    left  &Node<T>
-    right &Node<T>
+	val   T
+	left  &Node<T>
+	right &Node<T>
 }
 ```
 
