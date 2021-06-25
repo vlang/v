@@ -1,0 +1,5 @@
+vlib/v/parser/tests/redefine_imported_const_err.vv:3:16: error: duplicate of imported const `second`
+    1 | import time { second } 
+    2 | 
+    3 | const second = 10
+      |                ~~
