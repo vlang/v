@@ -80,10 +80,8 @@ CJSON_PUBLIC(const char *) cJSON_GetErrorPtr(void)
 }
 
 CJSON_PUBLIC(char *) cJSON_GetStringValue(cJSON *item) {
-    if (!cJSON_IsString(item)) {
+    if (!cJSON_IsString(item))
         return NULL;
-    }
-
     return item->valuestring;
 }
 
@@ -552,7 +550,7 @@ static unsigned parse_hex4(const unsigned char * const input)
     unsigned int h = 0;
     size_t i = 0;
 
-    for (i = 0; i < 4; i++)
+    for (; i < 4; i++)
     {
         /* parse digit */
         if ((input[i] >= '0') && (input[i] <= '9'))
