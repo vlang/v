@@ -2413,6 +2413,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			sym := c.table.get_type_symbol(obj.typ)
 			if sym.kind == .function {
 				found = true
+				func = (sym.info as ast.FnType).func
 			}
 		}
 	}
