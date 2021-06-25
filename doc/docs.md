@@ -2674,7 +2674,7 @@ fn main() {
 }
 ```
 
-Enums as a structs also can have methods
+Enums can have methods, just like structs
 
 ```v
 enum Cycle {
@@ -2699,20 +2699,7 @@ fn (c Cycle) next() Cycle {
 
 mut c := Cycle.one
 for _ in 0 .. 10 {
-	match c {
-		.one {
-			println('one')
-			c = c.next()
-		}
-		.two {
-			println('two')
-			c = c.next()
-		}
-		.three {
-			println('three')
-			c = c.next()
-		}
-	}
+	c = c.next()
 }
 ```
 
