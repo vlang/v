@@ -460,7 +460,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.check(.lcbr)
 	pre_comments := p.eat_comments({})
 	if modless_name in p.imported_symbols {
-		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported', name_pos)
+		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported',
+			name_pos)
 		return ast.InterfaceDecl{}
 	}
 	// Declare the type
