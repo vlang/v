@@ -149,6 +149,11 @@ fn (mut p Parser) decode_value() ?Any {
 
 fn (mut p Parser) decode_array() ?Any {
 	mut items := []Any{}
+	defer {
+		if p.n_level != 0 {
+			p.n_level--
+		}
+	}
 	p.next_with_err() ?
 	for p.tok.kind != .rsbr {
 		item := p.decode_value() ?
@@ -174,6 +179,11 @@ fn (mut p Parser) decode_array() ?Any {
 
 fn (mut p Parser) decode_object() ?Any {
 	mut fields := map[string]Any{}
+	defer {
+		if p.n_level != 0 {
+			p.n_level--
+		}
+	}
 	p.next_with_err() ?
 	for p.tok.kind != .rcbr {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
