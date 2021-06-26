@@ -5,6 +5,7 @@ v
 !*.*
 *.exe
 *.o
+*.out
 *.so
 .*.c
 *.tmp.c
