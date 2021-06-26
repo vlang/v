@@ -3063,7 +3063,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.FnTypeDecl{}
 	}
 	if name in p.imported_symbols {
-		p.error_with_pos('cannot register alias `$name`, this type was already imported', decl_pos.extend(p.tok.position()))
+		p.error_with_pos('cannot register alias `$name`, this type was already imported', end_pos)
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
