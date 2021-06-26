@@ -120,7 +120,8 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		for sym in ast_import.syms {
 			full_name := ast_import.mod + '.' + sym.name
 			if full_name in c.const_names {
-				c.error('cannot selectively import constant `$sym.name` from `$ast_import.mod`, import `$ast_import.mod` and use `$full_name` instead', sym.pos)
+				c.error('cannot selectively import constant `$sym.name` from `$ast_import.mod`, import `$ast_import.mod` and use `$full_name` instead',
+					sym.pos)
 			}
 		}
 		for j in 0 .. i {
