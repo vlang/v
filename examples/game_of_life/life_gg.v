@@ -48,7 +48,6 @@ fn main() {
 		user_data: &app
 		width: screen_width
 		height: screen_height
-		use_ortho: true
 		create_window: true
 		resizable: false
 		window_title: 'v life (with gg, gx)'

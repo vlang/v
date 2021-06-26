@@ -28,12 +28,14 @@ pub fn (s &Scope) free() {
 	}
 }
 
+/*
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	return &Scope{
 		parent: parent
 		start_pos: start_pos
 	}
 }
+*/
 
 fn (s &Scope) dont_lookup_parent() bool {
 	return isnil(s.parent) || s.detached_from_parent

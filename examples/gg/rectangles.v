@@ -23,7 +23,6 @@ fn main() {
 		bg_color: gx.white
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'Rectangles'
 		frame_fn: frame

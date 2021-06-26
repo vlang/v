@@ -1,0 +1,20 @@
+__global (
+	cpu_get_id fn () u64
+)
+fn current() u64 {
+	return cpu_get_id()
+}
+
+fn abc() u64 {
+	return 123
+}
+
+fn main() {
+	cpu_get_id = abc
+	dump(voidptr(abc) == voidptr(cpu_get_id))
+	dump(cpu_get_id())
+	dump(abc())
+	dump(abc() == cpu_get_id())
+	assert abc() == cpu_get_id()
+	assert voidptr(abc) == voidptr(cpu_get_id)
+}

@@ -710,7 +710,7 @@ An array can be of these types:
 
 **Example Code:**
 
-This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array
 which can handle different types (e.g. Points, Lines) of data elements.
 
 ```v
@@ -2043,11 +2043,11 @@ fn (foo &Foo) bar() {
 In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
-```v wip
+```v
 struct Node<T> {
-    val   T
-    left  &Node
-    right &Node
+	val   T
+	left  &Node<T>
+	right &Node<T>
 }
 ```
 
@@ -2344,13 +2344,13 @@ Modules are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` or `v init` you already have a v.mod file). 
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
 
 	```sh
 	v new mymodule
 	Input your project description: My nice module.
 	Input your project version: (0.0.0) 0.0.1
-	Input your project license: (MIT) 
+	Input your project license: (MIT)
 	Initialising ...
 	Complete!
 	```
@@ -2381,7 +2381,7 @@ Modules are up to date.
 	}
 	```
 
-2. Create a git repository in the folder with the `v.mod` file 
+2. Create a git repository in the folder with the `v.mod` file
 	(this is not required if you used `v new` or `v init`):
 	```sh
 	git init
@@ -2397,10 +2397,10 @@ Modules are up to date.
 	You will have to login with your Github account to register the module.
 	**Warning:** _Currently it is not possibility to edit your entry after submiting.
 	Check your module name and github url twice as this cannot be changed by you later._
-6. The final module name is a combination of your github account and 
+6. The final module name is a combination of your github account and
 	the module name you provided e.g. `mygithubname.mymodule`.
 
-**Optional:** tag your V module with `vlang` and `vlang-module` on github.com 
+**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
 to allow a better search experiance.
 
 ## Type Declarations
@@ -2508,7 +2508,7 @@ example:
 type Filter = fn (string) string
 ```
 
-This works like any other type - for example, a function can accept an 
+This works like any other type - for example, a function can accept an
 argument of a function type:
 
 ```v
@@ -2519,7 +2519,7 @@ fn filter(s string, f Filter) string {
 }
 ```
 
-V has duck-typing, so functions don't need to declare compatibility with 
+V has duck-typing, so functions don't need to declare compatibility with
 a function type - they just have to be compatible:
 
 ```v
@@ -2564,7 +2564,7 @@ println(filter('Hello world', fn (s string) string {
 }))
 ```
 
-You can see the complete 
+You can see the complete
 [example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
 
 ### Enums
@@ -3436,8 +3436,8 @@ option to see more details about the individual tests run.
 You can put additional test data, including .v source files in a folder, named
 `testdata`, right next to your _test.v files. V's test framework will *ignore*
 such folders, while scanning for tests to run. This is usefull, if you want to
-put .v files with invalid V source code, or other tests, including known 
-failing ones, that should be run in a specific way/options by a parent _test.v 
+put .v files with invalid V source code, or other tests, including known
+failing ones, that should be run in a specific way/options by a parent _test.v
 file.
 
 NB: the path to the V compiler, is available through @VEXE, so a _test.v
@@ -4041,7 +4041,7 @@ a parallel code structure.
 
 ## Debugging
 
-### C Backend binaries (Default) 
+### C Backend binaries (Default)
 
 To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
@@ -4075,7 +4075,7 @@ for example `main`, you can use: `-printfn main -o file.c`.
 
 To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
 
-You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed, 
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed,
 so that the executable is not deleted, after it was created and ran.
 
 To see a detailed list of all flags that V supports,

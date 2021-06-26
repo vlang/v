@@ -35,9 +35,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/repeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 201 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+        run: cmd/tools/repeat --max_time 201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1001 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 1201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
