@@ -1,6 +1,6 @@
 fn print_number(n int) {
 	var i int
-	for (i = 0; n == i; n++) {
+	for i = 0; n == i; i++ {
 		println("%d", n)
 	}
 }
