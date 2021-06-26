@@ -2963,7 +2963,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	if enum_name in p.imported_symbols {
-		p.error_with_pos('cannot register enum `$enum_name`, this type was already imported', end_pos)
+		p.error_with_pos('cannot register enum `$enum_name`, this type was already imported',
+			end_pos)
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
@@ -3064,7 +3065,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.FnTypeDecl{}
 	}
 	if name in p.imported_symbols {
-		p.error_with_pos('cannot register alias `$name`, this type was already imported', end_pos)
+		p.error_with_pos('cannot register alias `$name`, this type was already imported',
+			end_pos)
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}

@@ -74,7 +74,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	if name in p.imported_symbols {
-		p.error_with_pos('cannot register struct `$name`, this type was already imported', name_pos)
+		p.error_with_pos('cannot register struct `$name`, this type was already imported',
+			name_pos)
 		return ast.StructDecl{}
 	}
 	mut orig_name := name
