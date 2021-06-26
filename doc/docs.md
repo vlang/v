@@ -1061,7 +1061,8 @@ fn main() {
 	println('Hello, $name!')
 }
 ```
-Note: This is not allowed for constants - they must always be prefixed.
+Note: This will import the module as well. Also, this is not allowed for
+constants - they must always be prefixed.
 
 You can import several specific symbols at once:
 
