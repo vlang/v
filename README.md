@@ -1,5 +1,5 @@
 <div align="center">
-	<img type="image/svg" width="80" align="center"
+	<img type="image/svg" width="80"
 		src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"
 		alt="logo"
 	/>
@@ -64,7 +64,16 @@ language, very similar to the way it is right now.
 ```sh
 git clone https://github.com/vlang/v
 cd v
+```
+
+And:
+
+```sh
+On Unix based systems:
 make
+
+On Windows:
+make.bat
 ```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
