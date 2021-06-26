@@ -13,7 +13,9 @@ pub mut:
 }
 
 fn main() {
-	vweb.run(&App{}, 8081)
+	mut app := App{}
+	app.init_server()
+	vweb.run(app, 8081)
 }
 
 /*
@@ -34,7 +36,7 @@ pub fn (app &App) index() vweb.Result {
 
 pub fn (mut app App) init_server() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('article', [
+	app.db.create_table('Article', [
 		'id integer primary key',
 		"title text default ''",
 		"text text default ''",
@@ -69,10 +71,10 @@ pub fn (mut app App) new_article() vweb.Result {
 	return app.redirect('/')
 }
 
-pub fn (mut app App) articles() {
+['/articles'; get]
+pub fn(mut app App) list_articles_json() vweb.Result {
 	articles := app.find_all_articles()
-	x := json.encode(articles)
-	app.json(x)
+	return app.json(json.encode(articles))
 }
 
 fn (mut app App) time() {

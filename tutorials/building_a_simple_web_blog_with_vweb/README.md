@@ -49,8 +49,7 @@ V projects can be created anywhere and don't need to have a certain structure:
 
 ```bash
 mkdir blog
-cd blog
-touch blog.v
+v init
 ```
 
 First, let's create a simple hello world website:
@@ -66,7 +65,8 @@ struct App {
 }
 
 fn main() {
-	vweb.run(&App{}, 8081)
+	app := App {}
+	vweb.run(app, 8081)
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -209,7 +209,6 @@ insert into Article (title, text) values (
 
 Run the file with `sqlite3 blog.db < blog.sqlite`.
 
-
 Add a SQLite handle to `App`:
 
 ```v oksyntax
@@ -219,7 +218,7 @@ import vweb
 
 struct App {
 	vweb.Context
-mut:
+pub mut:
 	db sqlite.DB
 }
 ```
@@ -240,7 +239,19 @@ pub fn (mut app App) init_server() {
 ```
 
 Code in the `init_server()` function is run only once during app's startup, so we are going
-to have one DB connection for all requests.
+to have one DB connection for all requests. Modify the main method to call the `init_server()`
+function before adding it to the vweb system:
+
+```v
+fn main() {
+	mut app := App {}
+	app.init_server()
+	vweb.run(app, 8081)
+}
+```
+
+Because `init_server()` modifies properties of the app struct we now have to make it mutable
+with the `mut` keyword.
 
 Create a new file `article.v`:
 
@@ -250,7 +261,7 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-	id    int
+	id    int [primary; sql: serial]
 	title string
 	text  string
 }
@@ -262,6 +273,10 @@ pub fn (app &App) find_all_articles() []Article {
 }
 ```
 
+Notice that the `Article` structure conforms to the same structure and naming as 
+the database table in the creation SQL statement. Also we need to add ORM decorators
+to our primary key to let it know that it is the primary key and it should auto-increment
+
 Let's fetch the articles in the `index()` action:
 
 ```v ignore
@@ -271,7 +286,6 @@ pub fn (app &App) index() vweb.Result {
 	return $vweb.html()
 }
 ```
-
 
 Finally, let's update our view:
 
@@ -350,7 +364,7 @@ Create `new.html`:
 ```v oksyntax
 // article.v
 import vweb
-
+['/new_article'; post]
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
@@ -372,12 +386,24 @@ pub fn (mut app App) new_article() vweb.Result {
 > Untyped `form['key']` is temporary. Very soon Vweb will accept query and form
 parameters via function arguments: `new_article(title, text string) {`.
 
+The decorator on our function tells vweb the path to our endpoint, `/new_article`,
+and that it is an HTTP POST type operation.
+
 We need to update `index.html` to add a link to the "new article" page:
 
 ```html
 <a href='/new'>New article</a>
 ```
 
+Next we need to add the HTML endpoint to our code like we did with `index.html`:
+
+```v
+pub fn(mut app App) new() vweb.Result {
+	return $vweb.html()
+}
+```
+
+Re-running this code will now allow us to add new posts to our blog endpoint
 
 
 ### JSON endpoints
@@ -391,14 +417,35 @@ in V is very simple:
 import vweb
 import json
 
+['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(json.encode(articles))
 }
 ```
 
+
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
 
+### Persistent data
+If one wants to persist data they need to use a file instead of memory SQLite Database.
+Replace the `init_server()` function with this instead:
+
+```v
+pub fn (mut app App) init_server() {
+	app.db = sqlite.connect('blog.db') or { panic(err) }
+	app.db.create_table('Article', [
+		'id integer primary key',
+		"title text default ''",
+		"text text default ''",
+	])
+}
+```
+
+As we can see it attempts to connect to a file in the active pathcalled `blog.db`. 
+If the database file doesn't exist it will create it. The second command will 
+create the table `Article` if none exists already. Now every time the 
+app is run you will see the articles created from the previous executions
 
 
 To be continued...
