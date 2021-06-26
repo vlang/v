@@ -260,11 +260,18 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			continue
 		}
-		import_text := 'import ${f.imp_stmt_str(imp)}'
+		mut import_text := 'import ${f.imp_stmt_str(imp)}'
 		if already_imported[import_text] {
 			continue
 		}
 		already_imported[import_text] = true
+		if imp.syms.len > 0 {
+			import_text += ' { '
+			for sym in imp.syms {
+				import_text += sym.name + ' '
+			}
+			import_text += '}'
+		} 
 		f.out_imports.writeln(import_text)
 		f.import_comments(imp.comments, inline: true)
 		f.import_comments(imp.next_comments, {})
