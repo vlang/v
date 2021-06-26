@@ -266,11 +266,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		}
 		already_imported[import_text] = true
 		if imp.syms.len > 0 {
-			import_text += ' { '
-			for sym in imp.syms {
-				import_text += sym.name + ' '
-			}
-			import_text += '}'
+			import_text += ' { ' + imp.syms.map(it.name).join(', ') + ' }'
 		} 
 		f.out_imports.writeln(import_text)
 		f.import_comments(imp.comments, inline: true)
