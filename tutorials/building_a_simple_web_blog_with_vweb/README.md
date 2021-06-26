@@ -1,4 +1,4 @@
-## Building a 150 KB web blog in V with 0 dependencies
+## Building a 240 KB web blog in V with 0 dependencies
 Hello,
 
 In this guide, we'll build a simple web blog in V.
