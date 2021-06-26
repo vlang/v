@@ -3170,16 +3170,9 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 					pos)
 			}
-			// && (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
-			// pos := node.exprs[i].position()
-			// if node.exprs[i].is_auto_deref_var() {
-			// 	continue
-			// }
-			// c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
-			// 	pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &node.exprs[i]
+			mut r_expr := unsafe { &node.exprs[i] }
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
@@ -7443,7 +7436,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// needed for proper error reporting during vweb route checking
 		if node.method_idx < sym.methods.len {
-			sym.methods[node.method_idx].source_fn = voidptr(node)
+			sym.methods[node.method_idx].source_fn = voidptr(unsafe { &node })
 		} else {
 			c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
 				node.pos)
@@ -7536,7 +7529,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.table.cur_fn = unsafe { node }
+	c.table.cur_fn = unsafe { &node }
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)

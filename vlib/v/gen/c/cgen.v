@@ -1889,7 +1889,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void
-		&& exp_sym.kind !in [.interface_, .placeholder] {
+		&& exp_sym.kind !in [.interface_, .placeholder] && expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -3130,7 +3130,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// }
 				g.strs_to_free0 = []
 			}
-			*/
+			'*/
 		}
 		ast.CastExpr {
 			g.cast_expr(node)
@@ -3322,10 +3322,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 					// end of temporary workaround
 					g.write(node.op.str())
 				}
-				// g.write('/*pref*/')
-				// if !(g.is_amp && node.right.is_auto_deref_var()) {
-				//     g.write(node.op.str())
-				// }
 				// g.write('(')
 				g.expr(node.right)
 			}
@@ -4197,7 +4193,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
 			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
-			if is_auto_heap {
+			if is_auto_heap || v.is_auto_deref {
 				g.write('(*(')
 			}
 			if v.smartcasts.len > 0 {
@@ -4233,10 +4229,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 					return
 				}
 			}
-			if v.is_auto_deref {
-				g.write('(*$name)')
-				return
-			}
+			// if v.is_auto_deref {
+			// 	g.write('(*$name)')
+			// 	return
+			// }
 		}
 	} else if node_info is ast.IdentFn {
 		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {

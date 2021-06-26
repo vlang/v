@@ -428,7 +428,8 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 				}
 			}
 			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
-			s := '$arg_type_name $var_name_prefix$caname'
+			mut_ref := if arg.is_mut { '*' } else { '' }
+			s := '$arg_type_name$mut_ref $var_name_prefix$caname'
 			g.write(s)
 			g.definitions.write_string(s)
 			fargs << caname
