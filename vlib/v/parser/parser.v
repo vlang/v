@@ -2964,6 +2964,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	if enum_name in p.imported_symbols {
 		p.error_with_pos('cannot register enum `$enum_name`, this type was already imported', end_pos)
+		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
