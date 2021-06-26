@@ -73,6 +73,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
 	}
+	if name in p.imported_symbols {
+		p.error_with_pos('cannot register struct `$name`, this type was already imported', name_pos)
+		return ast.StructDecl{}
+	}
 	mut orig_name := name
 	if language == .c {
 		name = 'C.$name'
