@@ -2486,7 +2486,6 @@ fn (c Cat) speak() string {
 
 interface Adoptable {
 	breed string
-	speak() string
 }
 
 fn (a Adoptable) speak() string {
