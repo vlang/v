@@ -5556,7 +5556,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 			}
 		}
-		
+
 		first_iteration = false
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
