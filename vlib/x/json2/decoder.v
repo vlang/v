@@ -92,7 +92,7 @@ fn (mut p Parser) decode() ?Any {
 }
 
 fn (mut p Parser) decode_value() ?Any {
-	if p.n_level == 500 {
+	if p.n_level + 1 == 500 {
 		return error(p.emit_error('reached maximum nesting level of 500'))
 	}
 	match p.tok.kind {
