@@ -229,14 +229,13 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.check(.comma)
 			}
 		}
-		branch_last_pos := p.prev_tok.position()
 		// p.warn('match block')
 		p.inside_match_body = true
 		stmts := p.parse_block_no_scope(false)
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
-		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
+		pos := branch_first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
 		post_comments := p.eat_comments({})
 		branches << ast.MatchBranch{
 			exprs: exprs
