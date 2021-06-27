@@ -320,6 +320,14 @@ article := app.retrieve_article(10) or {
 
 ### Adding new articles
 
+Setup a route for the `new.html` page.
+
+```v oksyntax
+pub fn (app &App) new() vweb.Result {
+	return $vweb.html()
+}
+```
+
 Create `new.html`:
 
 ```html
