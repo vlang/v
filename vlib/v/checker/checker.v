@@ -5502,14 +5502,20 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_without_return := 0
 	for branch in node.branches {
 		c.stmts(branch.stmts)
-		if node.is_expr && branch.stmts.len > 0 {
-			// ignore last statement - workaround
-			// currently the last statement in a match branch does not have an
-			// expected value set, so e.g. IfExpr.is_expr is not set.
-			// probably any mismatch will be caught by not producing a value instead
-			for st in branch.stmts[0..branch.stmts.len - 1] {
-				// must not contain C statements
-				st.check_c_expr() or { c.error('`match` expression branch has $err.msg', st.pos) }
+		if node.is_expr {
+			if branch.stmts.len > 0 {
+				// ignore last statement - workaround
+				// currently the last statement in a match branch does not have an
+				// expected value set, so e.g. IfExpr.is_expr is not set.
+				// probably any mismatch will be caught by not producing a value instead
+				for st in branch.stmts[0..branch.stmts.len - 1] {
+					// must not contain C statements
+					st.check_c_expr() or {
+						c.error('`match` expression branch has $err.msg', st.pos)
+					}
+				}
+			} else {
+				c.error('empty branch in `match` expression', branch.pos)
 			}
 		}
 		// If the last statement is an expression, return its type
