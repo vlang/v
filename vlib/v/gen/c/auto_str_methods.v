@@ -326,7 +326,7 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 			} else if info.is_multi_allowed {
 				seen << val
 			}
-			g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return _SLIT("$val");')
+			g.auto_str_funcs.writeln('\t\tcase ${s}__$val: return _SLIT("$val");')
 		}
 		g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown enum value");')
 		g.auto_str_funcs.writeln('\t}')
