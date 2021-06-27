@@ -5497,6 +5497,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
+	mut first_iteration := true
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
@@ -5514,7 +5515,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.error('`match` expression branch has $err.msg', st.pos)
 					}
 				}
-			} else if ret_type != ast.void_type { 
+			} else if ret_type != ast.void_type {
 				c.error('missing branch in `match` expression', branch.pos)
 			}
 		}
@@ -5527,7 +5528,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.expected_type = node.expected_type
 					}
 					expr_type := c.expr(stmt.expr)
-					if ret_type == ast.void_type {
+					if first_iteration {
 						if node.is_expr && !node.expected_type.has_flag(.optional)
 							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
 							ret_type = node.expected_type
@@ -5554,7 +5555,9 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					// return typ
 				}
 			}
-		} 
+		}
+		
+		first_iteration = false
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				nbranches_with_return++
