@@ -2449,7 +2449,10 @@ There is no explicit declaration of intent, no "implements" keyword.
 
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-interface Something {}
+interface Something {
+	breed string
+	speak() string
+}
 
 fn announce(s Something) {
 	if s is Dog {
@@ -2473,13 +2476,18 @@ with the same name as one implemented by this struct, only the method
 implemented on the interface is called.
 
 ```v
-struct Cat {}
+struct Cat {
+	breed string
+}
 
 fn (c Cat) speak() string {
 	return 'meow!'
 }
 
-interface Adoptable {}
+interface Adoptable {
+	breed string
+	speak() string
+}
 
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
