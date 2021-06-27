@@ -215,7 +215,7 @@ import vweb
 
 struct App {
 	vweb.Context
-mut:
+pub mut:
 	db sqlite.DB
 }
 ```
