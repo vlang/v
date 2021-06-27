@@ -5514,8 +5514,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.error('`match` expression branch has $err.msg', st.pos)
 					}
 				}
-			} else {
-				c.error('empty branch in `match` expression', branch.pos)
+			} else if ret_type != ast.void_type { 
+				c.error('missing branch in `match` expression', branch.pos)
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -5554,7 +5554,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					// return typ
 				}
 			}
-		}
+		} 
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				nbranches_with_return++
