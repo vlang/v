@@ -1,4 +1,6 @@
-interface Abc {}
+interface Abc {
+	tt()
+}
 
 // duplicate normal method definitions on interface
 fn (a Abc) foo() {}

@@ -24,11 +24,17 @@ fn test_variadic_multiple_args() {
 	assert a[0].method(0.0, 1.0) == '[0, 1]'
 }
 
-interface Animal {}
+interface Animal {
+	typ int
+}
 
-struct Cat {}
+struct Cat {
+	typ int
+}
 
-struct Dog {}
+struct Dog {
+	typ int
+}
 
 fn test_variadic_interface_fn_arg() {
 	c := Cat{}

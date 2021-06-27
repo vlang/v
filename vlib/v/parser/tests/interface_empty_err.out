@@ -1,0 +1,7 @@
+vlib/v/parser/tests/interface_empty_err.vv:6:11: error: disallow the use of empty interfaces
+    4 | }
+    5 |
+    6 | interface Inter {
+      |           ~~~~~
+    7 | }
+    8 |

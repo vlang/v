@@ -8,9 +8,8 @@ struct Bar {}
 struct Bar2 {
 }
 
-interface Spam {}
-
 interface Spam2 {
+	t int
 }
 
 enum Baz {}

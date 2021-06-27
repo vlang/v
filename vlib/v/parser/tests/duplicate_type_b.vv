@@ -1,3 +1,5 @@
-interface Foo {}
+interface Foo {
+	tt()
+}
 
 struct Foo {}

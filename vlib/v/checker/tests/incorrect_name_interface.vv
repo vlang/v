@@ -1,1 +1,3 @@
-interface _MyInterface {}
+interface _MyInterface {
+	tt()
+}

@@ -600,6 +600,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
+	// check empty interface
+	if fields.len == 0 && methods.len == 0 && ifaces.len == 0 {
+		p.error_with_pos('disallow the use of empty interfaces', name_pos)
+		return ast.InterfaceDecl{}
+	}
 	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
 	res := ast.InterfaceDecl{
 		name: interface_name

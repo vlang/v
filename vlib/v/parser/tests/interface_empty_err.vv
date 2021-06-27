@@ -1,0 +1,15 @@
+fn main() {
+	stru := Stru{}
+	fnc1(stru)
+}
+
+interface Inter {
+}
+
+struct Stru {
+	bruh int
+}
+
+fn fnc1(inter Inter) {
+	println(inter)
+}

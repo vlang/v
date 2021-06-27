@@ -3,6 +3,7 @@ struct Cat {
 }
 
 interface Adoptable {
+	x int
 }
 
 fn test_casting_to_interface() {
