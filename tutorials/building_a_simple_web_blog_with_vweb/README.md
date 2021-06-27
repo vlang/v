@@ -340,6 +340,7 @@ Create `new.html`:
 ```v oksyntax
 import vweb
 
+['post']
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
