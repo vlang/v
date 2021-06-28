@@ -648,7 +648,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut return_type_pos := p.tok.position()
 	// lpar: multiple return types
 	if same_line {
-		if p.tok.kind.is_start_of_type() {
+		if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
+			|| (same_line && p.tok.kind == .key_fn) {
 			return_type = p.parse_type()
 			return_type_pos = return_type_pos.extend(p.tok.position())
 		} else if p.tok.kind != .lcbr {
