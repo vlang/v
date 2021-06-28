@@ -536,22 +536,23 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 		g.type_definitions.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v); // auto')
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v) {')
-		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+		fn_builder.writeln('\t$elem_type_str* pelem = a.data;')
+		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (fast_string_eq(( *pelem, v))) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_array_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq( *pelem, v)) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
+			fn_builder.writeln('\t\tif ( pelem == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_map_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(( *pelem, v))) {')
 		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_struct_equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq( *pelem, v)) {')
 		} else {
-			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
+			fn_builder.writeln('\t\tif (*pelem == v) {')
 		}
 		fn_builder.writeln('\t\t\treturn i;')
 		fn_builder.writeln('\t\t}')

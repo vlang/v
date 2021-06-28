@@ -568,6 +568,7 @@ pub fn (mut a []int) sort() {
 
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.
+[direct_array_access]
 pub fn (a []string) index(v string) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
