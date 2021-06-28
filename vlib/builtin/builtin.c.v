@@ -142,7 +142,8 @@ pub fn eprint(s string) {
 pub fn print(s string) {
 	$if android {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str) // logcat
-	} // no else if for android termux support
+	}
+	// no else if for android termux support
 	$if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
@@ -163,9 +164,10 @@ pub fn println(s string) {
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str) // logcat
 		return
-	} // no else if for android termux support
+	}
+	// no else if for android termux support
 	$if ios {
-		C.WrappedNSLog(s.str)
+		C.WrappedNSLog(s.str)
 		return
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
