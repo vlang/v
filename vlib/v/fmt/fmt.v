@@ -1720,6 +1720,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
+	f.mark_types_import_as_used(node.typ)
 	f.expr(node.expr)
 	if node.has_arg {
 		f.write(', ')
