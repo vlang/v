@@ -728,12 +728,12 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	if typ == ast.char_type_idx {
 		return .si_c
 	}
-	if typ == ast.voidptr_type_idx || typ in ast.byteptr_types {
+	if typ in ast.voidptr_types || typ in ast.byteptr_types {
 		return .si_p
 	}
 	if typ in ast.charptr_types {
-		return .si_s
 		// return '%C\\000' // a C string
+		return .si_s
 	}
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
@@ -831,10 +831,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		}
 
 		mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
-
-		// manage reference types can be "nil"
-		if field.typ.is_ptr() && !(field.typ in ast.charptr_types
-			|| field.typ in ast.byteptr_types || field.typ == ast.voidptr_type_idx) {
+		if field.typ in ast.cptr_types {
+			func = '(voidptr) it.$field.name'
+		} else if field.typ.is_ptr() {
+			// reference types can be "nil"
 			fn_builder.write_string('isnil(it.${c_name(field.name)})')
 			fn_builder.write_string(' ? _SLIT("nil") : ')
 			// struct, floats and ints have a special case through the _str function
