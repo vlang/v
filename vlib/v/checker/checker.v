@@ -5516,7 +5516,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				}
 			} else if ret_type != ast.void_type {
-				c.error('missing branch in `match` expression', branch.pos)
+				c.error('`match` expression requires an expression as the last statement of every branch',
+					branch.pos)
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -5548,7 +5549,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 				else {
 					if node.is_expr && ret_type != ast.void_type {
-						c.error('statement cannot be used as return type `${c.table.get_type_symbol(ret_type).name}` in `match` expression',
+						c.error('`match` expression requires an expression as the last statement of every branch',
 							stmt.pos)
 					}
 				}
