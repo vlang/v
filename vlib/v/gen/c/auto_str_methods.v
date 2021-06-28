@@ -221,12 +221,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 }
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
-	sym := g.table.get_type_symbol(info.parent_type)
-	sym_has_str_method, _, _ := sym.str_method_info()
-	mut parent_str_fn_name := styp_to_str_fn_name(sym.name.replace('.', '__'))
-	if !sym_has_str_method {
-		parent_str_fn_name = g.gen_str_for_type(info.parent_type)
-	}
+	parent_str_fn_name := g.gen_str_for_type(info.parent_type)
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
 	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
