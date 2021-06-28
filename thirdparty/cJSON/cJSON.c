@@ -550,7 +550,7 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
 static unsigned parse_hex4(const unsigned char * const input)
 {
     unsigned int h = 0;
-    size_t i = 0;
+    size_t i;
 
     for (i = 0; i < 4; i++)
     {
