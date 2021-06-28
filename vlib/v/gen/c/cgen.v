@@ -5942,10 +5942,34 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.write_string(', ')
 			}
 		}
-		for i in 0 .. expr.args.len {
-			g.gowrappers.write_string('arg->arg${i + 1}')
-			if i < expr.args.len - 1 {
-				g.gowrappers.write_string(', ')
+		if expr.args.len > 0 {
+			mut has_cast := false
+			for i in 0 .. expr.args.len {
+				if g.table.get_type_symbol(expr.expected_arg_types[i]).kind == .interface_
+					&& g.table.get_type_symbol(expr.args[i].typ).kind != .interface_ {
+					has_cast = true
+					break
+				}
+			}
+			if has_cast {
+				pos := g.out.len
+				g.call_args(expr)
+				mut call_args_str := g.out.after(pos)
+				g.out.go_back(call_args_str.len)
+				mut rep_group := []string{cap: 2 * expr.args.len}
+				for i in 0 .. expr.args.len {
+					rep_group << g.expr_string(expr.args[i].expr)
+					rep_group << 'arg->arg${i + 1}'
+				}
+				call_args_str = call_args_str.replace_each(rep_group)
+				g.gowrappers.write_string(call_args_str)
+			} else {
+				for i in 0 .. expr.args.len {
+					g.gowrappers.write_string('arg->arg${i + 1}')
+					if i != expr.args.len - 1 {
+						g.gowrappers.write_string(', ')
+					}
+				}
 			}
 		}
 		g.gowrappers.writeln(');')
