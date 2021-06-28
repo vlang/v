@@ -1,5 +1,5 @@
-fn make_squarer() fn(int) int {
-	return fn(n int) int {
+fn make_squarer() fn (int) int {
+	return fn (n int) int {
 		return n * n
 	}
 }
@@ -10,8 +10,8 @@ fn test_fn_return_fn() {
 }
 
 fn test_anon_fn_return_fn() {
-	make_doubler := fn() fn(int) int {
-		return fn(n int) int {
+	make_doubler := fn () fn (int) int {
+		return fn (n int) int {
 			return n + n
 		}
 	}
