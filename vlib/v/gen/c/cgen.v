@@ -5938,10 +5938,10 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if expr.is_method {
 			unwrapped_rec_type := g.unwrap_generic(expr.receiver_type)
 			typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
-			rec_cc_type := g.cc_type(unwrapped_rec_type, false)
-			receiver_type_name := util.no_dots(rec_cc_type)
 			if typ_sym.kind == .interface_
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
+				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
+				receiver_type_name := util.no_dots(rec_cc_type)
 				g.gowrappers.write_string('${c_name(receiver_type_name)}_name_table[')
 				g.gowrappers.write_string('arg->arg0')
 				dot := if expr.left_type.is_ptr() { '->' } else { '.' }
