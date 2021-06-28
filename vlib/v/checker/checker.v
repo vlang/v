@@ -5547,16 +5547,13 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				}
 				else {
-					// TODO: ask alex about this
-					// typ := c.expr(stmt.expr)
-					// type_sym := c.table.get_type_symbol(typ)
-					// p.warn('match expr ret $type_sym.name')
-					// node.typ = typ
-					// return typ
+					if node.is_expr && ret_type != ast.void_type {
+						c.error('statement cannot be used as return type `${c.table.get_type_symbol(ret_type).name}` in `match` expression',
+							stmt.pos)
+					}
 				}
 			}
 		}
-
 		first_iteration = false
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
