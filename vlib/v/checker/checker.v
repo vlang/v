@@ -1825,6 +1825,13 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
+	} else if c.table.get_final_type_symbol(left_type).kind == .array
+		&& method_name in ['first', 'last', 'pop'] {
+		info := c.table.get_final_type_symbol(left_type).info
+		if info is ast.Array {
+			call_expr.return_type = info.elem_type
+			return info.elem_type
+		}
 	} else if left_type_sym.kind == .thread && method_name == 'wait' {
 		info := left_type_sym.info as ast.Thread
 		if call_expr.args.len > 0 {

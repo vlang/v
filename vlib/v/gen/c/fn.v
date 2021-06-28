@@ -558,6 +558,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	left_sym := g.table.get_type_symbol(node.left_type)
+	final_left_sym := g.table.get_final_type_symbol(node.left_type)
 	if left_sym.kind == .array {
 		match node.name {
 			'filter' {
@@ -646,7 +647,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'map'
 	}
 	// TODO performance, detect `array` method differently
-	if left_sym.kind == .array
+	if final_left_sym.kind == .array
 		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
