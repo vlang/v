@@ -1,7 +1,7 @@
 fn print_number(n int) {
 	for i := 0; n == i; i++ {
 		println('$n')
-		if (n >= 10 && i >= 10) {
+		if n >= 10 && i >= 10 {
 			break
 		}
 	}
