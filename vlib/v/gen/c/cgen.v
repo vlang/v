@@ -2842,7 +2842,7 @@ fn (mut g Gen) trace_autofree(line string) {
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if isnil(scope) {
+	if scope == 0 {
 		return
 	}
 	for _, obj in scope.objects {
