@@ -773,7 +773,8 @@ pub:
 	stmts         []Stmt      // right side
 	pos           token.Position
 	is_else       bool
-	post_comments []Comment // comments below ´... }´
+	post_comments []Comment      // comments below ´... }´
+	branch_pos    token.Position // for checker errors about invalid branches
 pub mut:
 	exprs []Expr // left side
 	scope &Scope

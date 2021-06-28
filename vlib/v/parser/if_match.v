@@ -237,12 +237,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.close_scope()
 		p.inside_match_body = false
 		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
+		branch_pos := branch_first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
 		post_comments := p.eat_comments({})
 		branches << ast.MatchBranch{
 			exprs: exprs
 			ecmnts: ecmnts
 			stmts: stmts
 			pos: pos
+			branch_pos: branch_pos
 			is_else: is_else
 			post_comments: post_comments
 			scope: branch_scope
