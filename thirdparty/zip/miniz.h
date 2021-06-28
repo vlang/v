@@ -4401,7 +4401,7 @@ static MZ_FORCEINLINE mz_bool mz_zip_array_push_back(mz_zip_archive *pZip,
                                                      mz_zip_array *pArray,
                                                      const void *pElements,
                                                      size_t n) {
-  if (0 == n)
+  if (n == 0)
     return MZ_TRUE;
   if (!pElements)
     return MZ_FALSE;
@@ -4586,7 +4586,8 @@ mz_zip_reader_sort_central_dir_offsets_by_filename(mz_zip_archive *pZip) {
 
   end = size - 1;
   while (end > 0) {
-    int child, root = 0;
+    int child = 0;
+    int root = 0;
     MZ_SWAP_UINT32(pIndices[end], pIndices[0]);
     for (;;) {
       if ((child = (root << 1) + 1) >= end)
