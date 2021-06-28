@@ -92,12 +92,8 @@ fn (mut p Parser) decode() ?Any {
 }
 
 fn (mut p Parser) decode_value() ?Any {
-	if p.n_level == 500 {
+	if p.n_level + 1 == 500 {
 		return error(p.emit_error('reached maximum nesting level of 500'))
-	}
-	if (p.tok.kind == .lsbr && p.n_tok.kind == .lcbr)
-		|| (p.p_tok.kind == p.tok.kind && p.tok.kind == .lsbr) {
-		p.n_level++
 	}
 	match p.tok.kind {
 		.lsbr {
@@ -150,6 +146,7 @@ fn (mut p Parser) decode_value() ?Any {
 fn (mut p Parser) decode_array() ?Any {
 	mut items := []Any{}
 	p.next_with_err() ?
+	p.n_level++
 	for p.tok.kind != .rsbr {
 		item := p.decode_value() ?
 		items << item
@@ -169,12 +166,14 @@ fn (mut p Parser) decode_array() ?Any {
 		}
 	}
 	p.next_with_err() ?
+	p.n_level--
 	return Any(items)
 }
 
 fn (mut p Parser) decode_object() ?Any {
 	mut fields := map[string]Any{}
 	p.next_with_err() ?
+	p.n_level++
 	for p.tok.kind != .rcbr {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
 		if !is_key {
@@ -196,5 +195,6 @@ fn (mut p Parser) decode_object() ?Any {
 		}
 	}
 	p.next_with_err() ?
+	p.n_level--
 	return Any(fields)
 }
