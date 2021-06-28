@@ -1201,7 +1201,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
 			for i, field in node.fields {
-				g.enum_typedefs.write_string('\t${enum_name}_$field.name')
+				g.enum_typedefs.write_string('\t${enum_name}__$field.name')
 				if field.has_expr {
 					g.enum_typedefs.write_string(' = ')
 					expr_str := g.expr_string(field.expr)
@@ -3176,7 +3176,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
 			// g.enum_expr(node)
 			styp := g.typ(node.typ)
-			g.write('${styp}_$node.val')
+			g.write('${styp}__$node.val')
 		}
 		ast.FloatLiteral {
 			g.write(node.val)
@@ -4071,9 +4071,9 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			g.write(', ')
 		}
 		if is_push[i] {
-			g.write('sync__Direction_push')
+			g.write('sync__Direction__push')
 		} else {
-			g.write('sync__Direction_pop')
+			g.write('sync__Direction__pop')
 		}
 	}
 	g.writeln('}));\n')

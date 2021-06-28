@@ -117,6 +117,13 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 pub fn (mut c Checker) check(ast_file &ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
+		for sym in ast_import.syms {
+			full_name := ast_import.mod + '.' + sym.name
+			if full_name in c.const_names {
+				c.error('cannot selectively import constant `$sym.name` from `$ast_import.mod`, import `$ast_import.mod` and use `$full_name` instead',
+					sym.pos)
+			}
+		}
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
 				c.error('`$ast_import.mod` was already imported on line ${
@@ -2189,6 +2196,10 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
 					'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
 			}
+		} else if !(c.table.get_type_symbol(elem_typ).has_method('<')
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.to_ptr(), ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type, ast.size_t_type_idx]) {
+			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
+				call_expr.pos)
 		}
 	} else if method_name == 'wait' {
 		elem_sym := c.table.get_type_symbol(elem_typ)

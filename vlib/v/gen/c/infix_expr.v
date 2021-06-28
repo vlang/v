@@ -487,6 +487,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if needs_clone {
 				g.write('string_clone(')
 			}
+			if right.unaliased_sym.kind == .interface_ && node.right.is_auto_deref_var() {
+				g.write('*')
+			}
 			g.expr_with_cast(node.right, node.right_type, array_info.elem_type)
 			if needs_clone {
 				g.write(')')
