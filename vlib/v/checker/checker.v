@@ -5517,7 +5517,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 			} else if ret_type != ast.void_type {
 				c.error('`match` expression requires an expression as the last statement of every branch',
-					branch.pos)
+					branch.branch_pos)
 			}
 		}
 		// If the last statement is an expression, return its type
