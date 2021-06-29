@@ -69,7 +69,7 @@ pub fn vstrlen(s &byte) int {
 }
 
 pub fn (s string) runes() []rune {
-	mut runes := []rune{}
+	mut runes := []rune{cap: s.len}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(unsafe { s.str[i] })
 		if char_len > 1 {
