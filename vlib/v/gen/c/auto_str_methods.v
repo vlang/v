@@ -192,10 +192,8 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	parent_type := typ.clear_flag(.optional)
 	sym := g.table.get_type_symbol(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
-	mut parent_str_fn_name := styp_to_str_fn_name(sym.cname)
-	if !sym_has_str_method {
-		parent_str_fn_name = g.gen_str_for_type(parent_type)
-	}
+	parent_str_fn_name := g.gen_str_for_type(parent_type)
+
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
 	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
@@ -241,60 +239,47 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 }
 
 fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_fn_name string) {
-	for typ in info.types {
-		sym := g.table.get_type_symbol(typ)
-		if !sym.has_method('str') {
-			g.gen_str_for_type(typ)
-		}
-	}
 	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) {')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("("));')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static string ${str_fn_name}($styp a) {')
+	fn_builder.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
+	fn_builder.writeln('\tstrings__Builder_write_string(&sb, _SLIT("("));')
 	for i, typ in info.types {
 		sym := g.table.get_type_symbol(typ)
-		field_styp := g.typ(typ)
 		is_arg_ptr := typ.is_ptr()
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-		mut arg_str_fn_name := ''
-		if sym_has_str_method {
-			arg_str_fn_name = if is_arg_ptr {
-				field_styp.replace('*', '') + '_str'
-			} else {
-				field_styp + '_str'
-			}
-		} else {
-			arg_str_fn_name = styp_to_str_fn_name(field_styp)
-		}
+		arg_str_fn_name := g.gen_str_for_type(typ)
+
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(a.arg$i));')
+			fn_builder.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(a.arg$i));')
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
 				tmp_val := str_intp_g32('a.arg$i')
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
+				fn_builder.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
 			} else {
 				tmp_val := str_intp_g64('a.arg$i')
-				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
+				fn_builder.writeln('\tstrings__Builder_write_string(&sb, $tmp_val);')
 			}
 		} else if sym.kind == .string {
 			tmp_str := str_intp_sq('a.arg$i')
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, $tmp_str);')
+			fn_builder.writeln('\tstrings__Builder_write_string(&sb, $tmp_str);')
 		} else if sym.kind == .function {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
+			fn_builder.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
 		} else {
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_arg_ptr, typ)
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}( $deref a.arg$i));')
+			fn_builder.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
+			fn_builder.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}( $deref a.arg$i));')
 		}
 		if i != info.types.len - 1 {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT(", "));')
+			fn_builder.writeln('\tstrings__Builder_write_string(&sb, _SLIT(", "));')
 		}
 	}
-	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT(")"));')
-	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
-	g.auto_str_funcs.writeln('\treturn res;')
-	g.auto_str_funcs.writeln('}')
+	fn_builder.writeln('\tstrings__Builder_write_string(&sb, _SLIT(")"));')
+	fn_builder.writeln('\tstring res = strings__Builder_str(&sb);')
+	fn_builder.writeln('\tstrings__Builder_free(&sb);')
+	fn_builder.writeln('\treturn res;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
 }
 
 fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) {
@@ -492,22 +477,11 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	mut elem_str_fn_name := ''
-	if sym_has_str_method {
-		elem_str_fn_name = if is_elem_ptr {
-			field_styp.replace('*', '') + '_str'
-		} else {
-			field_styp + '_str'
-		}
-		if sym.kind == .byte {
-			elem_str_fn_name = elem_str_fn_name + '_escaped'
-		}
-	} else {
-		elem_str_fn_name = styp_to_str_fn_name(field_styp)
+	mut elem_str_fn_name := g.gen_str_for_type(typ)
+	if sym.kind == .byte {
+		elem_str_fn_name = elem_str_fn_name + '_escaped'
 	}
-	if !sym_has_str_method {
-		g.gen_str_for_type(typ)
-	}
+
 	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
@@ -573,22 +547,10 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		typ = sym.info.parent_type
 		sym = g.table.get_type_symbol(typ)
 	}
-	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	mut elem_str_fn_name := ''
-	if sym_has_str_method {
-		elem_str_fn_name = if is_elem_ptr {
-			field_styp.replace('*', '') + '_str'
-		} else {
-			field_styp + '_str'
-		}
-	} else {
-		elem_str_fn_name = styp_to_str_fn_name(field_styp)
-	}
-	if !sym.has_method('str') {
-		elem_str_fn_name = g.gen_str_for_type(typ)
-	}
+	elem_str_fn_name := g.gen_str_for_type(typ)
+
 	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
