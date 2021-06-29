@@ -1,8 +1,8 @@
 import os
 
-fn test_glob_can_find_v_files_3_levels_deep() ? {
+fn deep_glob() ? {
 	os.chdir(@VMODROOT)
-	matches := os.glob('vlib/v/*/*.v') ?
+	matches := os.glob('vlib/v/*/*.v') or { panic(err) }
 	assert matches.len > 10
 	assert 'vlib/v/ast/ast.v' in matches
 	assert 'vlib/v/ast/table.v' in matches
@@ -15,13 +15,20 @@ fn test_glob_can_find_v_files_3_levels_deep() ? {
 	}
 }
 
+fn test_glob_can_find_v_files_3_levels_deep() ? {
+	$if !windows {
+		deep_glob() ?
+	}
+	assert true
+}	
+
 fn test_glob_can_find_files_in_current_folder() ? {
 	os.chdir(@VMODROOT)
 	matches := os.glob('*') ?
 	assert 'README.md' in matches
 	assert 'v.mod' in matches
-	assert 'cmd' + os.path_separator in matches
-	assert 'vlib' + os.path_separator in matches
+	assert 'cmd/' in matches
+	assert 'vlib/' in matches
 	for f in matches {
 		assert !f.ends_with('.v')
 	}
