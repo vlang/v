@@ -156,7 +156,10 @@ fn json_string(s string) string {
 		} else {
 			slice := s[i..i + char_len]
 			hex_code := slice.utf32_code().hex()
-			if hex_code.len == 4 {
+			if hex_code.len < 4 {
+				// an utf8 codepoint
+				sb.write_string(slice)
+			} else if hex_code.len == 4 {
 				sb.write_string('\\u$hex_code')
 			} else {
 				// TODO: still figuring out what
