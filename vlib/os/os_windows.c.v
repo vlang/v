@@ -95,11 +95,11 @@ fn init_os_args_wide(argc int, argv &&byte) []string {
 }
 
 pub fn glob(patterns ...string) ?[]string {
-	mut mtchd := []string{}
+	mut matches := []string{}
 	for pattern in patterns {
-		windows_glob_pattern(pattern, mut mtchd) ?
+		windows_glob_pattern(pattern, mut matches) ?
 	}
-	return mtchd
+	return matches
 }
 
 fn windows_glob_pattern(pattern string, mut matches []string) ? {
