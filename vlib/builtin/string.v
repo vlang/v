@@ -244,7 +244,6 @@ fn (a string) clone_static() string {
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
 	if a.len == 0 {
-		// TODO perf? an extra check in each clone() is not nice.
 		return ''
 	}
 	mut b := string{
@@ -1514,74 +1513,88 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
-// before returns the contents before `dot` in the string.
-// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) before(dot string) string {
-	pos := s.index_(dot)
+// before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.before('.') == '23:34:45'
+// Example: assert 'abcd'.before('.') == 'abcd'
+// TODO: deprecate and remove either .before or .all_before
+pub fn (s string) before(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before returns the contents before `dot` in the string.
+// all_before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) all_before(dot string) string {
+// Example: assert 'abcd'.all_before('.') == 'abcd'
+pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(dot)
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before_last returns the contents before the last occurence of `dot` in the string.
+// all_before_last returns the contents before the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
-pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_before_last('.') == 'abcd'
+pub fn (s string) all_before_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_after returns the contents after `dot` in the string.
+// all_after returns the contents after `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after('.') == '234'
-pub fn (s string) all_after(dot string) string {
-	pos := s.index_(dot)
+// Example: assert 'abcd'.all_after('z') == ''
+pub fn (s string) all_after(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// all_after_last returns the contents after the last occurence of `dot` in the string.
+// all_after_last returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
-pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_after_last('z') == 'abcd'
+pub fn (s string) all_after_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// after returns the contents after the last occurence of `dot` in the string.
+// after returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns an empty string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
-pub fn (s string) after(dot string) string {
-	return s.all_after_last(dot)
+// Example: assert 'abcd'.after('z') == 'abcd'
+// TODO: deprecate either .all_after_last or .after
+pub fn (s string) after(sub string) string {
+	return s.all_after_last(sub)
 }
 
-// after_char returns the contents after the first occurence of `dot` character in the string.
+// after_char returns the contents after the first occurence of `sub` character in the string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
-pub fn (s string) after_char(dot byte) string {
-	mut pos := 0
+pub fn (s string) after_char(sub byte) string {
+	mut pos := -1
 	for i, c in s {
-		if c == dot {
+		if c == sub {
 			pos = i
 			break
 		}
 	}
-	if pos == 0 {
+	if pos == -1 {
 		return s.clone()
 	}
 	return s[pos + 1..]
