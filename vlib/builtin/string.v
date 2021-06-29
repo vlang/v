@@ -1303,7 +1303,7 @@ pub fn (s string) ustring_tmp() ustring {
 	res.runes.len = s.len
 	mut j := 0
 	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
+		char_len := utf8_string_len(unsafe { s.str[i] })
 		res.runes[j] = i
 		j++
 		i += char_len - 1
