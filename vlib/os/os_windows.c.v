@@ -124,7 +124,7 @@ fn windows_glob_pattern(pattern string, mut matches []string) ? {
 			continue
 		}
 		mut fpath := filename.replace('\\', '/')
-		if is_dir(fpath) {
+		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
 			fpath += '/'
 		}
 		matches << fpath
