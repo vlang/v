@@ -1840,7 +1840,8 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		call_expr.return_type = info.return_type
 		return info.return_type
 	} else if left_type_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
-		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead', call_expr.left.position().extend(call_expr.pos))
+		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
+			call_expr.left.position().extend(call_expr.pos))
 		return ast.void_type
 	}
 	mut method := ast.Fn{}
@@ -2500,7 +2501,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		if arg.typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
 		} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
-			c.error('`$fn_name` cannot print type `char` directly, print its address or cast it to an integer instead', call_expr.pos)
+			c.error('`$fn_name` cannot print type `char` directly, print its address or cast it to an integer instead',
+				call_expr.pos)
 		}
 		c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 		c.inside_println_arg = false
