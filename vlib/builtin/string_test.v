@@ -950,3 +950,13 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	cccq := 'Replacing "$cc" with "$tt"'
 	assert cccq == 'Replacing "abc" with "xyz"'
 }
+
+fn test_emoji_to_runes() {
+	x := '👋'
+	assert x.runes()[0] == `👋`
+}
+
+fn test_string_to_rune() {
+	x := 'Hello World 👋'
+	assert x.runes().len == 13
+}
