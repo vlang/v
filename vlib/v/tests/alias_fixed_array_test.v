@@ -4,7 +4,7 @@ fn test_alias_fixed_array() {
 	a := [8]byte{init: 22}
 	ret := get(Block(a))
 	println(ret)
-	assert ret == 'Block([22, 22, 22, 22, 22, 22, 22, 22])'
+	assert ret == 'Block([0x16, 0x16, 0x16, 0x16, 0x16, 0x16, 0x16, 0x16])'
 }
 
 fn get(b Block) string {
