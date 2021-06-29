@@ -185,9 +185,6 @@ fn (mut g Gen) gen_str_for_type(typ ast.Type) string {
 		}
 		return str_fn_name
 	}
-	if sym.kind == .byte {
-		return str_fn_name + '_escaped'
-	}
 	return str_fn_name
 }
 
@@ -480,7 +477,10 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	elem_str_fn_name := g.gen_str_for_type(typ)
+	mut elem_str_fn_name := g.gen_str_for_type(typ)
+	if sym.kind == .byte {
+		elem_str_fn_name = elem_str_fn_name + '_escaped'
+	}
 
 	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
