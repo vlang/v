@@ -558,6 +558,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	left_sym := g.table.get_type_symbol(node.left_type)
+	final_left_sym := g.table.get_final_type_symbol(node.left_type)
 	if left_sym.kind == .array {
 		match node.name {
 			'filter' {
@@ -645,16 +646,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
-	// TODO performance, detect `array` method differently
-	if left_sym.kind == .array
+	if final_left_sym.kind == .array
 		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		// && rec_sym.name == 'array' {
-		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
-		// `array_byte_clone` => `array_clone`
-		receiver_type_name = 'array'
-		if false && node.name == 'free' && typ_sym.has_method(node.name) {
-			// TODO: allow for more specific overrides of array .free() like `pub fn (x []string) free() {`
-			receiver_type_name = g.typ(unwrapped_rec_type).trim('*')
+		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+			// `array_Xyz_clone` => `array_clone`
+			receiver_type_name = 'array'
 		}
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
