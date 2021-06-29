@@ -1074,16 +1074,6 @@ pub fn (s string) find_between(start string, end string) string {
 	return val[..end_pos]
 }
 
-// is_space returns `true` if the byte is a white space character.
-// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: assert byte(` `).is_space() == true
-[inline]
-pub fn (c byte) is_space() bool {
-	// 0x85 is NEXT LINE (NEL)
-	// 0xa0 is NO-BREAK SPACE
-	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
-}
-
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
 // Example: assert ' Hello V '.trim_space() == 'Hello V'
 pub fn (s string) trim_space() string {
@@ -1458,32 +1448,47 @@ fn (u &ustring) free() {
 	}
 }
 
+// is_space returns `true` if the byte is a white space character.
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// Example: assert byte(` `).is_space() == true
+[inline]
+pub fn (c byte) is_space() bool {
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
+}
+
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
 // Example: assert byte(`9`) == true
+[inline]
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
 // Example: assert byte(`F`) == true
+[inline]
 pub fn (c byte) is_hex_digit() bool {
 	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
 // Example: assert byte(`7`) == true
+[inline]
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
 // Example: assert byte(`0`) == true
+[inline]
 pub fn (c byte) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
 // Example: assert byte(`V`) == true
+[inline]
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
@@ -1554,7 +1559,7 @@ pub fn (s string) all_before_last(sub string) string {
 // all_after returns the contents after `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after('.') == '234'
-// Example: assert 'abcd'.all_after('z') == ''
+// Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
 	pos := s.index_(sub)
 	if pos == -1 {
@@ -1564,7 +1569,7 @@ pub fn (s string) all_after(sub string) string {
 }
 
 // all_after_last returns the contents after the last occurence of `sub` in the string.
-// If the substring is not found, it returns the full string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
@@ -1576,7 +1581,7 @@ pub fn (s string) all_after_last(sub string) string {
 }
 
 // after returns the contents after the last occurence of `sub` in the string.
-// If the substring is not found, it returns an empty string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
 // Example: assert 'abcd'.after('z') == 'abcd'
 // TODO: deprecate either .all_after_last or .after
@@ -1585,7 +1590,9 @@ pub fn (s string) after(sub string) string {
 }
 
 // after_char returns the contents after the first occurence of `sub` character in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
+// Example: assert 'abcd'.after_char(`:`) == 'abcd'
 pub fn (s string) after_char(sub byte) string {
 	mut pos := -1
 	for i, c in s {
