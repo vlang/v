@@ -94,35 +94,41 @@ fn init_os_args_wide(argc int, argv &&byte) []string {
 	return args_
 }
 
-pub fn glob(patterns string) ?[]string {
-	mut find_file_data := Win32finddata{}
+pub fn glob(patterns ...string) ?[]string {
 	mut mtchd := []string{}
+	for pattern in patterns {
+		windows_glob_pattern(pattern, mut mtchd) ?
+	}
+	return mtchd
+}
 
-	patterns_ := patterns.replace('/', '\\')
-
+fn windows_glob_pattern(pattern string, mut matches []string) ? {
 	$if debug {
+		// FindFirstFile() and FindNextFile() both have a globbing function.
+		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
 		eprintln('os.glob() does not have all the features on Windows as it has on Unix operating systems')
 	}
-
-	// FindFirstFile() and FindNextFile() both have a globbing function.
-	// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
-	h_find_files := C.FindFirstFile(patterns_.to_wide(), voidptr(&find_file_data))
+	mut find_file_data := Win32finddata{}
+	wpattern := pattern.replace('/', '\\').to_wide()
+	h_find_files := C.FindFirstFile(wpattern, voidptr(&find_file_data))
+	defer {
+		C.FindClose(h_find_files)
+	}
 	if h_find_files == C.INVALID_HANDLE_VALUE {
 		return error('os.glob(): Could not get a file handle: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
-	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
-	if first_filename != '.' && first_filename != '..' {
-		mtchd << first_filename
-	}
-	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
+	for i := 0; C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0; i++ {
 		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
-		if filename != '.' && filename != '..' {
-			mtchd << real_path(filename.clone())
+		if filename in ['.', '..'] {
+			continue
 		}
+		mut fpath := filename.replace('\\', '/')
+		if is_dir(fpath) {
+			fpath += '/'
+		}
+		matches << fpath
 	}
-	C.FindClose(h_find_files)
-	return mtchd
 }
 
 pub fn ls(path string) ?[]string {
