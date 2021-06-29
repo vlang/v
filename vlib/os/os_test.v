@@ -714,7 +714,6 @@ fn test_glob() {
 		}
 	}
 	files := os.glob('test_dir/t*') or { panic(err) }
-	println(files)
 	assert files.len == 5
 	assert os.base(files[0]) == 'test'
 
