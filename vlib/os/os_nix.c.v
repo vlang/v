@@ -73,7 +73,7 @@ fn C.getgid() int
 
 fn C.getegid() int
 
-fn C.glob(&char, int, int, voidptr) int
+fn C.glob(&char, int, voidptr, voidptr) int
 
 fn C.globfree(voidptr)
 
