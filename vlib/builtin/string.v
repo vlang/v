@@ -73,7 +73,7 @@ pub fn (s string) runes() []rune {
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(unsafe { s.str[i] })
 		if char_len > 1 {
-			mut r := unsafe { s[i .. i + char_len] }
+			mut r := unsafe { s[i..i + char_len] }
 			runes << r.utf32_code()
 			i += char_len - 1
 		} else {
