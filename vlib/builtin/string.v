@@ -49,19 +49,6 @@ mut:
 	is_lit int
 }
 
-// NB string.is_lit is an enumeration of the following:
-// .is_lit == 0 => a fresh string, should be freed by autofree
-// .is_lit == 1 => a literal string from .rodata, should NOT be freed
-// .is_lit == -98761234 => already freed string, protects against double frees.
-// ---------> ^^^^^^^^^ calling free on these is a bug.
-// Any other value means that the string has been corrupted.
-pub struct ustring {
-pub mut:
-	s     string
-	runes []int
-	len   int
-}
-
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 [unsafe]
 pub fn vstrlen(s &byte) int {
@@ -1257,177 +1244,6 @@ pub fn (s string) str() string {
 	return s.clone()
 }
 
-// str returns the string itself.
-pub fn (s ustring) str() string {
-	return s.s
-}
-
-// ustring converts the string to a unicode string.
-pub fn (s string) ustring() ustring {
-	mut res := ustring{
-		s: s // runes will have at least s.len elements, save reallocations
-		// TODO use VLA for small strings?
-	}
-	$if gcboehm_opt ? {
-		res.runes = __new_array_noscan(0, s.len, int(sizeof(int)))
-	} $else {
-		res.runes = __new_array(0, s.len, int(sizeof(int)))
-	}
-	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
-		res.runes << i
-		i += char_len - 1
-		res.len++
-	}
-	return res
-}
-
-// A hack that allows to create ustring without allocations.
-// It's called from functions like draw_text() where we know that the string is going to be freed
-// right away. Uses global buffer for storing runes []int array.
-__global (
-	g_ustring_runes []int
-)
-
-pub fn (s string) ustring_tmp() ustring {
-	if g_ustring_runes.len == 0 {
-		$if gcboehm_opt ? {
-			g_ustring_runes = __new_array_noscan(0, 128, int(sizeof(int)))
-		} $else {
-			g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
-		}
-	}
-	mut res := ustring{
-		s: s
-	}
-	res.runes = g_ustring_runes
-	res.runes.len = s.len
-	mut j := 0
-	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
-		res.runes[j] = i
-		j++
-		i += char_len - 1
-		res.len++
-	}
-	return res
-}
-
-fn (u ustring) == (a ustring) bool {
-	return u.s == a.s
-}
-
-fn (u ustring) < (a ustring) bool {
-	return u.s < a.s
-}
-
-fn (u ustring) + (a ustring) ustring {
-	mut res := ustring{
-		s: u.s + a.s
-	}
-	$if gcboehm_opt ? {
-		res.runes = __new_array_noscan(0, u.s.len + a.s.len, int(sizeof(int)))
-	} $else {
-		res.runes = __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
-	}
-	mut j := 0
-	for i := 0; i < u.s.len; i++ {
-		char_len := utf8_char_len(unsafe { u.s.str[i] })
-		res.runes << j
-		i += char_len - 1
-		j += char_len
-		res.len++
-	}
-	for i := 0; i < a.s.len; i++ {
-		char_len := utf8_char_len(unsafe { a.s.str[i] })
-		res.runes << j
-		i += char_len - 1
-		j += char_len
-		res.len++
-	}
-	return res
-}
-
-// index_after returns the position of the input string, starting search from `start` position.
-pub fn (u ustring) index_after(p ustring, start int) int {
-	if p.len > u.len {
-		return -1
-	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start > u.len {
-		return -1
-	}
-	mut i := strt
-	for i < u.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && u.at(ii) == p.at(j) {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return -1
-}
-
-// count returns the number of occurrences of `substr` in the string.
-// count returns -1 if no `substr` could be found.
-pub fn (u ustring) count(substr ustring) int {
-	if u.len == 0 || substr.len == 0 {
-		return 0
-	}
-	if substr.len > u.len {
-		return 0
-	}
-	mut n := 0
-	mut i := 0
-	for {
-		i = u.index_after(substr, i)
-		if i == -1 {
-			return n
-		}
-		i += substr.len
-		n++
-	}
-	return 0 // TODO can never get here - v doesn't know that
-}
-
-// substr returns the string between index positions `_start` and `_end`.
-// Example: assert 'ABCD'.substr(1,3) == 'BC'
-pub fn (u ustring) substr(_start int, _end int) string {
-	$if !no_bounds_checking ? {
-		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
-			panic('substr($_start, $_end) out of bounds (len=$u.len)')
-		}
-	}
-	end := if _end >= u.len { u.s.len } else { u.runes[_end] }
-	return u.s.substr(u.runes[_start], end)
-}
-
-// left returns the `n`th leftmost characters of the ustring.
-// Example: assert 'hello'.left(2) == 'he'
-pub fn (u ustring) left(pos int) string {
-	if pos >= u.len {
-		return u.s
-	}
-	return u.substr(0, pos)
-}
-
-// right returns the `n`th rightmost characters of the ustring.
-// Example: assert 'hello'.right(2) == 'lo'
-pub fn (u ustring) right(pos int) string {
-	if pos >= u.len {
-		return ''
-	}
-	return u.substr(pos, u.len)
-}
-
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == byte(`B`)
 fn (s string) at(idx int) byte {
@@ -1438,29 +1254,6 @@ fn (s string) at(idx int) byte {
 	}
 	unsafe {
 		return s.str[idx]
-	}
-}
-
-// at returns the string at index `idx`.
-// Example: assert 'ABC'.at(1) == 'B'
-pub fn (u ustring) at(idx int) string {
-	$if !no_bounds_checking ? {
-		if idx < 0 || idx >= u.len {
-			panic('string index out of range: $idx / $u.runes.len')
-		}
-	}
-	return u.substr(idx, idx + 1)
-}
-
-// free allows for manually freeing the memory occupied by the unicode string.
-[unsafe]
-fn (u &ustring) free() {
-	$if prealloc {
-		return
-	}
-	unsafe {
-		u.runes.free()
-		u.s.free()
 	}
 }
 
@@ -1689,11 +1482,11 @@ pub fn (s string) reverse() string {
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
-	u := s.ustring()
+	u := s.runes()
 	if u.len <= max {
 		return s.clone()
 	}
-	return u.substr(0, max)
+	return u[0..max].string()
 }
 
 // hash returns an integer hash of the string.
