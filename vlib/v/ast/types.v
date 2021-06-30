@@ -411,7 +411,17 @@ pub const (
 	error_type         = new_type(error_type_idx)
 	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
 	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
+	voidptr_types      = [voidptr_type, new_type(voidptr_type_idx).set_nr_muls(1)]
+	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 )
+
+pub fn merge_types(params ...[]Type) []Type {
+	mut res := []Type{}
+	for types in params {
+		res << types
+	}
+	return res
+}
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',

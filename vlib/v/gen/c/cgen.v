@@ -866,7 +866,9 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
-	g.type_definitions.writeln('typedef struct {')
+	struct_name := c_name(sym.name)
+	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+	g.type_definitions.writeln('struct $struct_name {')
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
 	for variant in info.types {
@@ -880,7 +882,7 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		cname := c_name(field.name)
 		g.type_definitions.writeln('\t$styp* $cname;')
 	}
-	g.type_definitions.writeln('} ${c_name(sym.name)};')
+	g.type_definitions.writeln('};')
 }
 
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
@@ -1204,7 +1206,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
 			for i, field in node.fields {
-				g.enum_typedefs.write_string('\t${enum_name}_$field.name')
+				g.enum_typedefs.write_string('\t${enum_name}__$field.name')
 				if field.has_expr {
 					g.enum_typedefs.write_string(' = ')
 					expr_str := g.expr_string(field.expr)
@@ -2847,7 +2849,7 @@ fn (mut g Gen) trace_autofree(line string) {
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if isnil(scope) {
+	if scope == 0 {
 		return
 	}
 	for _, obj in scope.objects {
@@ -3152,8 +3154,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
+				// TODO: optimize use L-char instead of u32 when possible
 				if utf8_str_len(node.val) < node.val.len {
-					g.write("L'$node.val'")
+					g.write('((u32)0x$node.val.utf32_code().hex())')
 				} else {
 					g.write("'$node.val'")
 				}
@@ -3183,7 +3186,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
 			// g.enum_expr(node)
 			styp := g.typ(node.typ)
-			g.write('${styp}_$node.val')
+			g.write('${styp}__$node.val')
 		}
 		ast.FloatLiteral {
 			g.write(node.val)
@@ -4095,9 +4098,9 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			g.write(', ')
 		}
 		if is_push[i] {
-			g.write('sync__Direction_push')
+			g.write('sync__Direction__push')
 		} else {
-			g.write('sync__Direction_pop')
+			g.write('sync__Direction__pop')
 		}
 	}
 	g.writeln('}));\n')
@@ -5960,17 +5963,58 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			g.gowrappers.write_string('\t')
 		}
-		g.gowrappers.write_string('${name}(')
 		if expr.is_method {
-			g.gowrappers.write_string('arg->arg0')
+			unwrapped_rec_type := g.unwrap_generic(expr.receiver_type)
+			typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+			if typ_sym.kind == .interface_
+				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
+				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
+				receiver_type_name := util.no_dots(rec_cc_type)
+				g.gowrappers.write_string('${c_name(receiver_type_name)}_name_table[')
+				g.gowrappers.write_string('arg->arg0')
+				dot := if expr.left_type.is_ptr() { '->' } else { '.' }
+				mname := c_name(expr.name)
+				g.gowrappers.write_string('${dot}_typ]._method_${mname}(')
+				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string('${dot}_object')
+			} else {
+				g.gowrappers.write_string('${name}(')
+				g.gowrappers.write_string('arg->arg0')
+			}
 			if expr.args.len > 0 {
 				g.gowrappers.write_string(', ')
 			}
+		} else {
+			g.gowrappers.write_string('${name}(')
 		}
-		for i in 0 .. expr.args.len {
-			g.gowrappers.write_string('arg->arg${i + 1}')
-			if i < expr.args.len - 1 {
-				g.gowrappers.write_string(', ')
+		if expr.args.len > 0 {
+			mut has_cast := false
+			for i in 0 .. expr.args.len {
+				if g.table.get_type_symbol(expr.expected_arg_types[i]).kind == .interface_
+					&& g.table.get_type_symbol(expr.args[i].typ).kind != .interface_ {
+					has_cast = true
+					break
+				}
+			}
+			if has_cast {
+				pos := g.out.len
+				g.call_args(expr)
+				mut call_args_str := g.out.after(pos)
+				g.out.go_back(call_args_str.len)
+				mut rep_group := []string{cap: 2 * expr.args.len}
+				for i in 0 .. expr.args.len {
+					rep_group << g.expr_string(expr.args[i].expr)
+					rep_group << 'arg->arg${i + 1}'
+				}
+				call_args_str = call_args_str.replace_each(rep_group)
+				g.gowrappers.write_string(call_args_str)
+			} else {
+				for i in 0 .. expr.args.len {
+					g.gowrappers.write_string('arg->arg${i + 1}')
+					if i != expr.args.len - 1 {
+						g.gowrappers.write_string(', ')
+					}
+				}
 			}
 		}
 		g.gowrappers.writeln(');')

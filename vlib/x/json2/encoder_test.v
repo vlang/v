@@ -19,3 +19,11 @@ fn test_json_string_non_ascii() {
 	text := json2.Any('ひらがな')
 	assert text.json_str() == r'\u3072\u3089\u304c\u306a'
 }
+
+fn test_utf8_strings_are_not_modified() ? {
+	original := '{"s":"Schilddrüsenerkrankungen"}'
+	// dump(original)
+	deresult := json2.raw_decode(original) ?
+	// dump(deresult)
+	assert deresult.str() == original
+}

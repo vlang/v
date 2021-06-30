@@ -117,6 +117,13 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 pub fn (mut c Checker) check(ast_file &ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
+		for sym in ast_import.syms {
+			full_name := ast_import.mod + '.' + sym.name
+			if full_name in c.const_names {
+				c.error('cannot selectively import constant `$sym.name` from `$ast_import.mod`, import `$ast_import.mod` and use `$full_name` instead',
+					sym.pos)
+			}
+		}
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
 				c.error('`$ast_import.mod` was already imported on line ${
@@ -1830,6 +1837,13 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
+	} else if c.table.get_final_type_symbol(left_type).kind == .array
+		&& method_name in ['first', 'last', 'pop'] {
+		info := c.table.get_final_type_symbol(left_type).info
+		if info is ast.Array {
+			call_expr.return_type = info.elem_type
+			return info.elem_type
+		}
 	} else if left_type_sym.kind == .thread && method_name == 'wait' {
 		info := left_type_sym.info as ast.Thread
 		if call_expr.args.len > 0 {
@@ -1837,6 +1851,10 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		call_expr.return_type = info.return_type
 		return info.return_type
+	} else if left_type_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
+		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
+			call_expr.left.position().extend(call_expr.pos))
+		return ast.void_type
 	}
 	mut method := ast.Fn{}
 	mut has_method := false
@@ -2202,6 +2220,10 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
 					'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
 			}
+		} else if !(c.table.get_type_symbol(elem_typ).has_method('<')
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.to_ptr(), ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type, ast.size_t_type_idx]) {
+			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
+				call_expr.pos)
 		}
 	} else if method_name == 'wait' {
 		elem_sym := c.table.get_type_symbol(elem_typ)
@@ -2487,11 +2509,15 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.inside_println_arg = true
 		c.expected_type = ast.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
-		_ := c.check_expr_opt_call(call_expr.args[0].expr, call_expr.args[0].typ)
-		if call_expr.args[0].typ.is_void() {
+		arg := call_expr.args[0]
+		_ := c.check_expr_opt_call(arg.expr, arg.typ)
+		if arg.typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
+		} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
+			c.error('`$fn_name` cannot print type `char` directly, print its address or cast it to an integer instead',
+				call_expr.pos)
 		}
-		c.fail_if_unreadable(call_expr.args[0].expr, call_expr.args[0].typ, 'argument to print')
+		c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 		c.inside_println_arg = false
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
@@ -5540,19 +5566,27 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
+	mut first_iteration := true
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
 	for branch in node.branches {
 		c.stmts(branch.stmts)
-		if node.is_expr && branch.stmts.len > 0 {
-			// ignore last statement - workaround
-			// currently the last statement in a match branch does not have an
-			// expected value set, so e.g. IfExpr.is_expr is not set.
-			// probably any mismatch will be caught by not producing a value instead
-			for st in branch.stmts[0..branch.stmts.len - 1] {
-				// must not contain C statements
-				st.check_c_expr() or { c.error('`match` expression branch has $err.msg', st.pos) }
+		if node.is_expr {
+			if branch.stmts.len > 0 {
+				// ignore last statement - workaround
+				// currently the last statement in a match branch does not have an
+				// expected value set, so e.g. IfExpr.is_expr is not set.
+				// probably any mismatch will be caught by not producing a value instead
+				for st in branch.stmts[0..branch.stmts.len - 1] {
+					// must not contain C statements
+					st.check_c_expr() or {
+						c.error('`match` expression branch has $err.msg', st.pos)
+					}
+				}
+			} else if ret_type != ast.void_type {
+				c.error('`match` expression requires an expression as the last statement of every branch',
+					branch.branch_pos)
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -5564,7 +5598,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.expected_type = node.expected_type
 					}
 					expr_type := c.expr(stmt.expr)
-					if ret_type == ast.void_type {
+					if first_iteration {
 						if node.is_expr && !node.expected_type.has_flag(.optional)
 							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
 							ret_type = node.expected_type
@@ -5583,15 +5617,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				}
 				else {
-					// TODO: ask alex about this
-					// typ := c.expr(stmt.expr)
-					// type_sym := c.table.get_type_symbol(typ)
-					// p.warn('match expr ret $type_sym.name')
-					// node.typ = typ
-					// return typ
+					if node.is_expr && ret_type != ast.void_type {
+						c.error('`match` expression requires an expression as the last statement of every branch',
+							stmt.pos)
+					}
 				}
 			}
 		}
+		first_iteration = false
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				nbranches_with_return++
@@ -6191,7 +6224,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-					continue
 				}
 				if c.expected_type.has_flag(.generic) {
 					if node.typ == ast.void_type {

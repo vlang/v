@@ -6,6 +6,10 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <sys/types.h>
+#include <sys/ptrace.h>
+#include <glob.h>
+#include <utime.h>
 
 pub const (
 	path_separator = '/'
@@ -38,6 +42,14 @@ pub const (
 	s_ixoth = 0o0001 // Execute by others
 )
 
+[typedef]
+struct C.glob_t {
+mut:
+	gl_pathc size_t // number of matched paths
+	gl_pathv &&char // list of matched pathnames
+	gl_offs  size_t // slots to reserve in gl_pathv
+}
+
 struct C.utsname {
 mut:
 	sysname  &char
@@ -46,6 +58,13 @@ mut:
 	version  &char
 	machine  &char
 }
+
+struct C.utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C.utime(&char, voidptr) int
 
 fn C.uname(name voidptr) int
 
@@ -63,6 +82,46 @@ fn C.getppid() int
 fn C.getgid() int
 
 fn C.getegid() int
+
+fn C.ptrace(u32, u32, voidptr, int) u64
+fn C.glob(&char, int, voidptr, voidptr) int
+
+fn C.globfree(voidptr)
+
+pub fn glob(patterns ...string) ?[]string {
+	mut matches := []string{}
+	if patterns.len == 0 {
+		return matches
+	}
+	mut globdata := C.glob_t{
+		gl_pathv: 0
+	}
+	mut flags := int(C.GLOB_DOOFFS | C.GLOB_MARK)
+	for i, pattern in patterns {
+		if i > 0 {
+			flags |= C.GLOB_APPEND
+		}
+		unsafe {
+			if C.glob(&char(pattern.str), flags, C.NULL, &globdata) != 0 {
+				return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			}
+		}
+	}
+	for i := 0; i < int(globdata.gl_pathc); i++ {
+		unsafe {
+			matches << cstring_to_vstring(globdata.gl_pathv[i])
+		}
+	}
+	C.globfree(&globdata)
+	return matches
+}
+
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C.utimbuf{actime, modtime}
+	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+}
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -317,7 +376,15 @@ pub fn (mut f File) close() {
 	C.fclose(f.cfile)
 }
 
+[inline]
 pub fn debugger_present() bool {
+	// check if the parent could trace its process,
+	// if not a debugger must be present
+	$if linux {
+		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
+	} $else $if macos {
+		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
+	}
 	return false
 }
 

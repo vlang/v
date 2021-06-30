@@ -133,3 +133,14 @@ fn test_enum_instance() {
 	s := 'x $filetype z'
 	assert s == 'x unknown z'
 }
+
+enum Bar {
+	baz
+}
+
+fn (_ Bar) baz() {}
+
+fn test_enum_variant_and_method_name_clash() {
+	x := Bar.baz
+	println(x)
+}

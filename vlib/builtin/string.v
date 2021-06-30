@@ -68,6 +68,21 @@ pub fn vstrlen(s &byte) int {
 	return unsafe { C.strlen(&char(s)) }
 }
 
+pub fn (s string) runes() []rune {
+	mut runes := []rune{cap: s.len}
+	for i := 0; i < s.len; i++ {
+		char_len := utf8_char_len(unsafe { s.str[i] })
+		if char_len > 1 {
+			mut r := unsafe { s[i..i + char_len] }
+			runes << r.utf32_code()
+			i += char_len - 1
+		} else {
+			runes << unsafe { s.str[i] }
+		}
+	}
+	return runes
+}
+
 // tos converts a C string to a V string.
 // String data is reused, not copied.
 [unsafe]
@@ -244,7 +259,6 @@ fn (a string) clone_static() string {
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
 	if a.len == 0 {
-		// TODO perf? an extra check in each clone() is not nice.
 		return ''
 	}
 	mut b := string{
@@ -1075,16 +1089,6 @@ pub fn (s string) find_between(start string, end string) string {
 	return val[..end_pos]
 }
 
-// is_space returns `true` if the byte is a white space character.
-// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: assert byte(` `).is_space() == true
-[inline]
-pub fn (c byte) is_space() bool {
-	// 0x85 is NEXT LINE (NEL)
-	// 0xa0 is NO-BREAK SPACE
-	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
-}
-
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
 // Example: assert ' Hello V '.trim_space() == 'Hello V'
 pub fn (s string) trim_space() string {
@@ -1459,32 +1463,47 @@ fn (u &ustring) free() {
 	}
 }
 
+// is_space returns `true` if the byte is a white space character.
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// Example: assert byte(` `).is_space() == true
+[inline]
+pub fn (c byte) is_space() bool {
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
+}
+
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
 // Example: assert byte(`9`) == true
+[inline]
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
 // Example: assert byte(`F`) == true
+[inline]
 pub fn (c byte) is_hex_digit() bool {
 	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
 // Example: assert byte(`7`) == true
+[inline]
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
 // Example: assert byte(`0`) == true
+[inline]
 pub fn (c byte) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
 // Example: assert byte(`V`) == true
+[inline]
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
@@ -1514,74 +1533,90 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
-// before returns the contents before `dot` in the string.
-// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) before(dot string) string {
-	pos := s.index_(dot)
+// before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.before('.') == '23:34:45'
+// Example: assert 'abcd'.before('.') == 'abcd'
+// TODO: deprecate and remove either .before or .all_before
+pub fn (s string) before(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before returns the contents before `dot` in the string.
+// all_before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) all_before(dot string) string {
+// Example: assert 'abcd'.all_before('.') == 'abcd'
+pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(dot)
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before_last returns the contents before the last occurence of `dot` in the string.
+// all_before_last returns the contents before the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
-pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_before_last('.') == 'abcd'
+pub fn (s string) all_before_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_after returns the contents after `dot` in the string.
+// all_after returns the contents after `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after('.') == '234'
-pub fn (s string) all_after(dot string) string {
-	pos := s.index_(dot)
+// Example: assert 'abcd'.all_after('z') == 'abcd'
+pub fn (s string) all_after(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// all_after_last returns the contents after the last occurence of `dot` in the string.
+// all_after_last returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
-pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_after_last('z') == 'abcd'
+pub fn (s string) all_after_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// after returns the contents after the last occurence of `dot` in the string.
+// after returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
-pub fn (s string) after(dot string) string {
-	return s.all_after_last(dot)
+// Example: assert 'abcd'.after('z') == 'abcd'
+// TODO: deprecate either .all_after_last or .after
+pub fn (s string) after(sub string) string {
+	return s.all_after_last(sub)
 }
 
-// after_char returns the contents after the first occurence of `dot` character in the string.
+// after_char returns the contents after the first occurence of `sub` character in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
-pub fn (s string) after_char(dot byte) string {
-	mut pos := 0
+// Example: assert 'abcd'.after_char(`:`) == 'abcd'
+pub fn (s string) after_char(sub byte) string {
+	mut pos := -1
 	for i, c in s {
-		if c == dot {
+		if c == sub {
 			pos = i
 			break
 		}
 	}
-	if pos == 0 {
+	if pos == -1 {
 		return s.clone()
 	}
 	return s[pos + 1..]

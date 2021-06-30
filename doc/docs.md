@@ -1061,7 +1061,8 @@ fn main() {
 	println('Hello, $name!')
 }
 ```
-Note: This is not allowed for constants - they must always be prefixed.
+Note: This will import the module as well. Also, this is not allowed for
+constants - they must always be prefixed.
 
 You can import several specific symbols at once:
 
@@ -2672,6 +2673,50 @@ fn main() {
 	tree := Node{0.5, left, right}
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
+```
+
+Enums can have methods, just like structs
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	println(c)
+	c = c.next()
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
 ```
 
 #### Dynamic casts

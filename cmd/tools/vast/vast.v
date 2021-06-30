@@ -430,6 +430,7 @@ fn (t Tree) import_symbol(node ast.ImportSymbol) &Node {
 fn (t Tree) position(p token.Position) &Node {
 	mut obj := new_object()
 	obj.add('line_nr', t.number_node(p.line_nr))
+	obj.add('last_line', t.number_node(p.last_line))
 	obj.add('pos', t.number_node(p.pos))
 	obj.add('len', t.number_node(p.len))
 	return obj

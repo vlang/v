@@ -99,6 +99,7 @@ Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v oksyntax
+// blog.v
 import vweb
 import time
 
@@ -138,6 +139,7 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v ignore
+// blog.v
 pub fn (mut app App) index() vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
@@ -185,6 +187,7 @@ We'll be using V's builtin ORM and a SQLite database.
 
 Create a SQLite file with the schema:
 ```sql
+-- blog.sqlite
 drop table if exists Article;
 
 create table Article (
@@ -210,6 +213,7 @@ Run the file with `sqlite3 blog.db < blog.sqlite`.
 Add a SQLite handle to `App`:
 
 ```v oksyntax
+// blog.v
 import sqlite
 import vweb
 
@@ -225,6 +229,7 @@ mut:
 Add the `init_server()` method where we'll connect to a database:
 
 ```v oksyntax
+// blog.v
 pub fn (mut app App) init_server() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
@@ -260,6 +265,7 @@ pub fn (app &App) find_all_articles() []Article {
 Let's fetch the articles in the `index()` action:
 
 ```v ignore
+// blog.v
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
@@ -292,6 +298,8 @@ The built-in V ORM uses a syntax very similar to SQL. The queries are built with
 For example, if we only wanted to find articles with ids between 100 and 200, we'd do:
 
 ```v oksyntax
+// article.v
+
 return sql app.db {
 	select from Article where id >= 100 && id <= 200
 }
@@ -300,6 +308,7 @@ return sql app.db {
 Retrieving a single article is very simple:
 
 ```v oksyntax
+// article.v
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
@@ -311,6 +320,7 @@ V ORM uses V's optionals for single values, which is very useful, since
 bad queries will always be handled by the developer:
 
 ```v oksyntax
+// article.v
 article := app.retrieve_article(10) or {
 	app.text('Article not found')
 	return
@@ -338,6 +348,7 @@ Create `new.html`:
 ```
 
 ```v oksyntax
+// article.v
 import vweb
 
 pub fn (mut app App) new_article() vweb.Result {
@@ -376,6 +387,7 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v oksyntax
+// article.v
 import vweb
 import json
 

@@ -752,6 +752,23 @@ fn (mut v Builder) cc() {
 	// }
 }
 
+fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
+	crossrepo_url := 'https://github.com/spytheman/vlinuxroot'
+	sysroot_git_config_path := os.join_path(sysroot, '.git', 'config')
+	if os.is_dir(sysroot) && !os.exists(sysroot_git_config_path) {
+		// remove existing obsolete unarchived .zip file content
+		os.rmdir_all(sysroot) or {}
+	}
+	if !os.is_dir(sysroot) {
+		println('Downloading files for Linux cross compilation (~22MB) ...')
+		os.system('git clone $crossrepo_url $sysroot')
+		if !os.exists(sysroot_git_config_path) {
+			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
+		}
+		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755)
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
@@ -761,19 +778,7 @@ fn (mut b Builder) cc_linux_cross() {
 		os.mkdir(parent_dir) or { panic(err) }
 	}
 	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
-	if !os.is_dir(sysroot) {
-		println('Downloading files for Linux cross compilation (~18 MB)...')
-		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
-		zip_file := sysroot + '.zip'
-		os.system('curl -L -o $zip_file $zip_url')
-		if !os.exists(zip_file) {
-			verror('Failed to download `$zip_url` as $zip_file')
-		}
-		os.system('tar -C $parent_dir -xf $zip_file')
-		if !os.is_dir(sysroot) {
-			verror('Failed to unzip $zip_file to $parent_dir')
-		}
-	}
+	b.ensure_linuxroot_exists(sysroot)
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()

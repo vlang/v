@@ -73,6 +73,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
 	}
+	if name in p.imported_symbols {
+		p.error_with_pos('cannot register struct `$name`, this type was already imported',
+			name_pos)
+		return ast.StructDecl{}
+	}
 	mut orig_name := name
 	if language == .c {
 		name = 'C.$name'
@@ -449,10 +454,16 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	name_pos := p.tok.position()
 	p.check_for_impure_v(language, name_pos)
-	interface_name := p.prepend_mod(p.check_name()).clone()
+	modless_name := p.check_name()
+	interface_name := p.prepend_mod(modless_name).clone()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments({})
+	if modless_name in p.imported_symbols {
+		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(
 		is_public: is_pub

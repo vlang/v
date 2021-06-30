@@ -43,3 +43,27 @@ fn test_fn_mut_args_of_array_last() {
 	m.ar << 99
 	assert pass_array_mut(mut m.ar) == 99
 }
+
+interface ChildInterface {
+	data int
+}
+
+struct Child {
+	data int
+}
+
+struct Parent {
+mut:
+	children []ChildInterface
+}
+
+fn (mut p Parent) add(mut x ChildInterface) {
+	p.children << x
+}
+
+fn test_fn_mut_args_of_interface() {
+	mut x := Parent{}
+	x.add(mut Child{ data: 123 })
+	println(x.children[0].data)
+	assert x.children[0].data == 123
+}
