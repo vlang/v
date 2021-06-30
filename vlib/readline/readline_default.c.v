@@ -39,7 +39,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 	}
 	r.previous_lines[0] = []rune{}
 	r.search_index = 0
-	if r.current.s == '' {
+	if r.current.len == 0 {
 		return error('empty line')
 	}
 	return r.current
