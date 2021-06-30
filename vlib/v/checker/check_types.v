@@ -304,6 +304,15 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.to_ptr() {
 		return true
 	}
+	if expected.has_flag(.optional) {
+		sym := c.table.get_type_symbol(got)
+		if (sym.kind == .interface_ && sym.name == 'IError')
+			|| got in [ast.none_type, ast.error_type] {
+			return true
+		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+			return false
+		}
+	}
 	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false
 	}

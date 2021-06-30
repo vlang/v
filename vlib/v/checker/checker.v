@@ -6170,7 +6170,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-					continue
 				}
 				if c.expected_type.has_flag(.generic) {
 					if node.typ == ast.void_type {
