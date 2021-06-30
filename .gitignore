@@ -1,6 +1,11 @@
 # ignore sub-level build binaries and v binary
 */**/*
 v
+v.exe
+v2
+v2.exe
+vdbg
+vdbg.exe
 !*/
 !*.*
 *.exe
