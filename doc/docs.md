@@ -1331,6 +1331,44 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
+##### Custom iterators
+
+```v
+struct SquareIterator {
+  arr []int
+mut:
+  idx int
+}
+
+fn (mut iter SquareIterator) next() ?int {
+	if iter.idx >= iter.arr.len {
+		return error('')
+	}
+
+	item := iter.arr[iter.idx]
+	iter.idx++
+	return item * item
+} 
+
+nums := [1, 2, 3, 4, 5]
+iter := SquareIterator {
+	arr: nums
+}
+for squared in iter {
+	println(squared)
+}
+```
+
+Types that implement a `next` method returning an `Option` can be iterated
+with a `for` loop. The above code prints:
+```
+1
+4
+9
+16
+25
+```
+
 ##### Map `for`
 
 ```v
