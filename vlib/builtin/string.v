@@ -68,6 +68,21 @@ pub fn vstrlen(s &byte) int {
 	return unsafe { C.strlen(&char(s)) }
 }
 
+pub fn (s string) runes() []rune {
+	mut runes := []rune{cap: s.len}
+	for i := 0; i < s.len; i++ {
+		char_len := utf8_char_len(unsafe { s.str[i] })
+		if char_len > 1 {
+			mut r := unsafe { s[i..i + char_len] }
+			runes << r.utf32_code()
+			i += char_len - 1
+		} else {
+			runes << unsafe { s.str[i] }
+		}
+	}
+	return runes
+}
+
 // tos converts a C string to a V string.
 // String data is reused, not copied.
 [unsafe]

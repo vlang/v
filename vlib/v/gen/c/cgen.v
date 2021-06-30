@@ -3147,8 +3147,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
+				// TODO: optimize use L-char instead of u32 when possible
 				if utf8_str_len(node.val) < node.val.len {
-					g.write("L'$node.val'")
+					g.write('((u32)0x$node.val.utf32_code().hex())')
 				} else {
 					g.write("'$node.val'")
 				}
