@@ -1332,6 +1332,8 @@ println(numbers) // [1, 2, 3]
 When an identifier is just a single underscore, it is ignored.
 
 ##### Custom iterators
+Types that implement a `next` method returning an `Option` can be iterated
+with a `for` loop. 
 
 ```v
 struct SquareIterator {
@@ -1360,8 +1362,7 @@ for squared in iter {
 
 ```
 
-Types that implement a `next` method returning an `Option` can be iterated
-with a `for` loop. The above code prints:
+The above code prints:
 ```
 1
 4
