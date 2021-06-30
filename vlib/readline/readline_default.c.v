@@ -22,22 +22,22 @@ import os
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
-	r.current = ''.runes()
+	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
 	r.search_index = 0
 	if r.previous_lines.len <= 1 {
-		r.previous_lines << ''.runes()
-		r.previous_lines << ''.runes()
+		r.previous_lines << []rune{}
+		r.previous_lines << []rune{}
 	} else {
-		r.previous_lines[0] = ''.runes()
+		r.previous_lines[0] = []rune{}
 	}
 	print(r.prompt)
 	line := os.get_raw_line()
 	if line.len >= 0 {
 		r.current = line.runes()
 	}
-	r.previous_lines[0] = ''.runes()
+	r.previous_lines[0] = []rune{}
 	r.search_index = 0
 	if r.current.s == '' {
 		return error('empty line')

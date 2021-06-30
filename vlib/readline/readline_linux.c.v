@@ -106,16 +106,16 @@ pub fn (r Readline) read_char() int {
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
-	r.current = ''.runes()
+	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
 	r.search_index = 0
 	r.prompt_offset = get_prompt_offset(prompt)
 	if r.previous_lines.len <= 1 {
-		r.previous_lines << ''.runes()
-		r.previous_lines << ''.runes()
+		r.previous_lines << []rune{}
+		r.previous_lines << []rune{}
 	} else {
-		r.previous_lines[0] = ''.runes()
+		r.previous_lines[0] = []rune{}
 	}
 	if !r.is_raw {
 		r.enable_raw_mode()
@@ -129,7 +129,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 			break
 		}
 	}
-	r.previous_lines[0] = ''.runes()
+	r.previous_lines[0] = []rune{}
 	r.search_index = 0
 	r.disable_raw_mode()
 	if r.current.len == 0 {
@@ -400,12 +400,12 @@ fn (mut r Readline) eof() bool {
 
 // insert_character inserts the character `c` at current cursor position.
 fn (mut r Readline) insert_character(c int) {
-	mut current := r.current[.. r.cursor]
+	mut current := r.current[..r.cursor]
 	current << rune(c)
 	if !r.overwrite || r.cursor == r.current.len {
-		current << r.current[r.current.len - r.cursor ..]
+		current << r.current[r.current.len - r.cursor..]
 	} else {
-		current << r.current[r.current.len - r.cursor + 1 ..]
+		current << r.current[r.current.len - r.cursor + 1..]
 	}
 	r.current = current
 	r.cursor++
@@ -421,8 +421,8 @@ fn (mut r Readline) delete_character() {
 		return
 	}
 	r.cursor--
-	mut current := r.current[.. r.cursor]
-	current << r.current[r.current.len - r.cursor + 1 ..]
+	mut current := r.current[..r.cursor]
+	current << r.current[r.current.len - r.cursor + 1..]
 	r.current = current
 	r.refresh_line()
 }
@@ -432,8 +432,8 @@ fn (mut r Readline) suppr_character() {
 	if r.cursor > r.current.len {
 		return
 	}
-	mut current := r.current[.. r.cursor]
-	current << r.current[r.current.len - r.cursor + 1 ..]
+	mut current := r.current[..r.cursor]
+	current << r.current[r.current.len - r.cursor + 1..]
 	r.current = current
 	r.refresh_line()
 }
