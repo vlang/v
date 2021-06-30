@@ -1,6 +1,5 @@
 import os
 import os.notify
-import time
 
 // make a pipe and return the (read, write) file descriptors
 fn make_pipe() ?(int, int) {

@@ -505,6 +505,18 @@ s := '42'
 n := s.int() // 42
 ```
 
+### Runes
+A `rune` represents a unicode character and is an alias for `u32`. Runes can be created like this:
+```v
+x := `🚀`
+```
+
+A string can be converted to runes by the `.runes()` method.
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.

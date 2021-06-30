@@ -1270,7 +1270,7 @@ fn (mut s Scanner) ident_char() string {
 	len--
 	c := s.text[start + 1..s.pos]
 	if len != 1 {
-		u := c.ustring()
+		u := c.runes()
 		if u.len != 1 {
 			s.error('invalid character literal (more than one character)\n' +
 				'use quotes for strings, backticks for characters')
