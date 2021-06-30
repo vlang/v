@@ -11,8 +11,6 @@ fn get_keys_and_values<T>(mut keys []string, mut values []string, mut data T) ([
 		$if field.typ is string {
 			keys << field.name
 			values << data.$(field.name)
-		} $else {
-			keys, values, _ = get_keys_and_values(mut keys, mut values, mut data)
 		}
 	}
 	return keys, values, data
@@ -25,11 +23,13 @@ fn awesome<T>(mut data T) {
 	println(keys)
 	assert keys == ['lang', 'page', 'var_one', 'var_two']
 	println(values)
-	assert values == ['', '', 'variable one', 'variable two']
+	assert values == ['vlang', 'one', 'variable one', 'variable two']
 }
 
 fn test_generic_fn_infer_multi_paras() {
 	mut page := Page{
+		lang: 'vlang'
+		page: 'one'
 		var_one: 'variable one'
 		var_two: 'variable two'
 	}
