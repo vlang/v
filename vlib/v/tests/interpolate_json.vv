@@ -1,4 +1,0 @@
-import json
-
-data := map {'foo': 'bar'}
-println('data: ${json.encode(data)}')
