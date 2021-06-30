@@ -159,48 +159,48 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	return ptr_styp
 }
 
-fn (mut g Gen) gen_array_equality_fn(left ast.Type) string {
-	ptr_typ := g.typ(left).trim('*')
-	if ptr_typ in g.array_fn_definitions {
-		return ptr_typ
+fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
+	left := g.unwrap(left_type)
+	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	if ptr_styp in g.array_fn_definitions {
+		return ptr_styp
 	}
-	g.array_fn_definitions << ptr_typ
-	left_sym := g.table.get_type_symbol(left)
-	elem_typ := left_sym.array_info().elem_type
-	ptr_elem_typ := g.typ(elem_typ)
-	elem_sym := g.table.get_type_symbol(elem_typ)
-	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b); // auto')
+	g.array_fn_definitions << ptr_styp
+	elem := g.unwrap(left.sym.array_info().elem_type)
+	ptr_elem_styp := g.typ(elem.typ)
+	g.type_definitions.writeln('static bool ${ptr_styp}_arr_eq($ptr_styp a, $ptr_styp b); // auto')
+
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b) {')
+	fn_builder.writeln('static bool ${ptr_styp}_arr_eq($ptr_styp a, $ptr_styp b) {')
 	fn_builder.writeln('\tif (a.len != b.len) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
-	if elem_sym.kind == .string {
-		fn_builder.writeln('\t\tif (!string__eq(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
-	} else if elem_sym.kind == .sum_type && !elem_typ.is_ptr() {
-		eq_fn := g.gen_sumtype_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .struct_ && !elem_typ.is_ptr() {
-		eq_fn := g.gen_struct_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .array && !elem_typ.is_ptr() {
-		eq_fn := g.gen_array_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .array_fixed && !elem_typ.is_ptr() {
-		eq_fn := g.gen_fixed_array_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .map && !elem_typ.is_ptr() {
-		eq_fn := g.gen_map_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .alias && !elem_typ.is_ptr() {
-		eq_fn := g.gen_alias_equality_fn(elem_typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-	} else if elem_sym.kind == .function {
+	if elem.sym.kind == .string {
+		fn_builder.writeln('\t\tif (!string__eq(*(($ptr_elem_styp*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_styp*)((byte*)b.data+(i*b.element_size))))) {')
+	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
+		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
+		eq_fn := g.gen_struct_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
+		eq_fn := g.gen_array_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .array_fixed && !elem.typ.is_ptr() {
+		eq_fn := g.gen_fixed_array_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .map && !elem.typ.is_ptr() {
+		eq_fn := g.gen_map_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .alias && !elem.typ.is_ptr() {
+		eq_fn := g.gen_alias_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .function {
 		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
 	} else {
-		fn_builder.writeln('\t\tif (*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size)))) {')
+		fn_builder.writeln('\t\tif (*(($ptr_elem_styp*)((byte*)a.data+(i*a.element_size))) != *(($ptr_elem_styp*)((byte*)b.data+(i*b.element_size)))) {')
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
@@ -208,7 +208,7 @@ fn (mut g Gen) gen_array_equality_fn(left ast.Type) string {
 	fn_builder.writeln('\treturn true;')
 	fn_builder.writeln('}')
 	g.auto_fn_definitions << fn_builder.str()
-	return ptr_typ
+	return ptr_styp
 }
 
 fn (mut g Gen) gen_fixed_array_equality_fn(left ast.Type) string {
