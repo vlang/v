@@ -1,4 +1,5 @@
 import os
+import time
 
 const (
 	// tfolder will contain all the temporary files/subfolders made by
@@ -723,4 +724,19 @@ fn test_glob() {
 	os.rm('test_dir/test0_another') or { panic(err) }
 	os.rm('test_dir/test') or { panic(err) }
 	os.rmdir_all('test_dir') or { panic(err) }
+}
+
+fn test_utime() {
+	filename := './test_utime.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err) }
+	defer {
+		f.close()
+		os.rm(filename) or { panic(err) }
+	}
+	f.write_string(hello) or { panic(err) }
+	atime := time.now().add_days(2).unix_time()
+	mtime := time.now().add_days(4).unix_time()
+	os.utime(filename, atime, mtime) or { panic(err) }
+	assert os.file_last_mod_unix(filename) == mtime
 }

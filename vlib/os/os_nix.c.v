@@ -9,6 +9,7 @@ import strings
 #include <sys/types.h>
 #include <sys/ptrace.h>
 #include <glob.h>
+#include <utime.h>
 
 pub const (
 	path_separator = '/'
@@ -41,6 +42,14 @@ pub const (
 	s_ixoth = 0o0001 // Execute by others
 )
 
+[typedef]
+struct C.glob_t {
+mut:
+	gl_pathc size_t // number of matched paths
+	gl_pathv &&char // list of matched pathnames
+	gl_offs  size_t // slots to reserve in gl_pathv
+}
+
 struct C.utsname {
 mut:
 	sysname  &char
@@ -50,13 +59,12 @@ mut:
 	machine  &char
 }
 
-[typedef]
-struct C.glob_t {
-mut:
-	gl_pathc size_t // number of matched paths
-	gl_pathv &&char // list of matched pathnames
-	gl_offs  size_t // slots to reserve in gl_pathv
+struct C.utimbuf {
+	actime  int
+	modtime int
 }
+
+fn C.utime(&char, voidptr) int
 
 fn C.uname(name voidptr) int
 
@@ -106,6 +114,13 @@ pub fn glob(patterns ...string) ?[]string {
 	}
 	C.globfree(&globdata)
 	return matches
+}
+
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C.utimbuf{actime, modtime}
+	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
 }
 
 pub fn uname() Uname {
