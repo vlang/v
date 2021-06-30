@@ -4741,24 +4741,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('&')
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		// if free {
-		// 	expr := node.exprs[0]
-		// 	if expr is ast.Ident {
-		// 		g.returned_var_name = expr.name
-		// 	}
-		// 	if tmp != '' {
-		// 		g.writeln('; // free tmp exprs + all vars before return')
-		// if expr0.is_auto_deref_var() {
-		// 	if g.fn_decl.return_type.is_ptr() {
-		// 		var_str := g.expr_string(expr0)
-		// 		g.write(var_str.trim('&'))
-		// 	} else {
-		// 		g.write('*')
-		// 		g.expr(expr0)
-		//	}
-		//} else {
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		//}
 		if use_tmp_var {
 			g.writeln(';')
 			has_semicolon = true

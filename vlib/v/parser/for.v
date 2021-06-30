@@ -159,7 +159,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				name: val_var_name
 				pos: val_var_pos
 				is_mut: val_is_mut
-				is_auto_deref: val_is_mut
+				is_auto_heap: val_is_mut
 				is_tmp: true
 				is_stack_obj: true
 			})

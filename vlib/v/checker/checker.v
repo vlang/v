@@ -3454,7 +3454,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if c.fn_scope != voidptr(0) {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
-					if obj.is_stack_obj && !c.inside_unsafe {
+					if obj.is_stack_obj && !obj.is_auto_heap && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {

@@ -365,7 +365,7 @@ fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_
 }
 
 pub fn (mut m map) move() map {
-	r := *m
+	r := m
 	unsafe {
 		C.memset(&m, 0, sizeof(map))
 	}

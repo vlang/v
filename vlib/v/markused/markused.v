@@ -280,7 +280,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	//
 
 	mut walker := Walker{
-		table: table
+		table: &table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
