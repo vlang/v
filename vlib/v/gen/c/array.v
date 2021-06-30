@@ -6,8 +6,9 @@ import strings
 import v.ast
 
 fn (mut g Gen) array_init(node ast.ArrayInit) {
-	type_sym := g.table.get_type_symbol(node.typ)
-	styp := g.typ(node.typ)
+	array_type := g.unwrap(node.typ)
+	mut array_styp := ''
+	elem_type := g.unwrap(node.elem_type)
 	mut shared_styp := '' // only needed for shared &[]{...}
 	is_amp := g.is_amp
 	g.is_amp = false
@@ -15,13 +16,13 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	if g.is_shared {
-		mut shared_typ := node.typ.set_flag(.shared_f)
-		shared_styp = g.typ(shared_typ)
+		shared_styp = g.typ(array_type.typ.set_flag(.shared_f))
 		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
 	} else if is_amp {
-		g.write('HEAP($styp, ')
+		array_styp = g.typ(array_type.typ)
+		g.write('HEAP($array_styp, ')
 	}
-	if type_sym.kind == .array_fixed {
+	if array_type.unaliased_sym.kind == .array_fixed {
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
@@ -35,7 +36,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			}
 		} else if node.has_default {
 			g.expr(node.default_expr)
-			info := type_sym.info as ast.ArrayFixed
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			for _ in 1 .. info.size {
 				g.write(', ')
 				g.expr(node.default_expr)
@@ -46,11 +47,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('}')
 		return
 	}
-	elem_type_str := g.typ(node.elem_type)
-	noscan := g.check_noscan(node.elem_type)
+	elem_styp := g.typ(elem_type.typ)
+	noscan := g.check_noscan(elem_type.typ)
 	if node.exprs.len == 0 {
-		elem_sym := g.table.get_type_symbol(node.elem_type)
-		is_default_array := elem_sym.kind == .array && node.has_default
+		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else {
@@ -68,25 +68,25 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		} else {
 			g.write('0, ')
 		}
-		if elem_sym.kind == .function {
+		if elem_type.unaliased_sym.kind == .function {
 			g.write('sizeof(voidptr), ')
 		} else {
-			g.write('sizeof($elem_type_str), ')
+			g.write('sizeof($elem_styp), ')
 		}
 		if is_default_array {
-			g.write('($elem_type_str[]){')
+			g.write('($elem_styp[]){')
 			g.expr(node.default_expr)
 			g.write('}[0])')
 		} else if node.has_default {
-			g.write('&($elem_type_str[]){')
+			g.write('&($elem_styp[]){')
 			g.expr(node.default_expr)
 			g.write('})')
 		} else if node.has_len && node.elem_type == ast.string_type {
-			g.write('&($elem_type_str[]){')
+			g.write('&($elem_styp[]){')
 			g.write('_SLIT("")')
 			g.write('})')
-		} else if node.has_len && elem_sym.kind in [.array, .map] {
-			g.write('(voidptr)&($elem_type_str[]){')
+		} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
+			g.write('(voidptr)&($elem_styp[]){')
 			g.write(g.type_default(node.elem_type))
 			g.write('}[0])')
 		} else {
@@ -100,11 +100,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		return
 	}
 	len := node.exprs.len
-	elem_sym := g.table.get_type_symbol(node.elem_type)
-	if elem_sym.kind == .function {
+	if elem_type.unaliased_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
-		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_styp), _MOV(($elem_styp[$len]){')
 	}
 	if len > 8 {
 		g.writeln('')
@@ -125,7 +124,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
-		g.write('), sizeof($styp))')
+		g.write('), sizeof($array_styp))')
 	}
 }
 
