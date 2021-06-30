@@ -1362,7 +1362,7 @@ for squared in iter {
 
 ```
 
-The above code prints:
+The code above prints:
 ```
 1
 4
