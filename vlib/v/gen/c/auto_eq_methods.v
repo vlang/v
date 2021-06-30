@@ -55,61 +55,67 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	return ptr_styp
 }
 
-fn (mut g Gen) gen_struct_equality_fn(left ast.Type) string {
-	ptr_typ := g.typ(left).trim('*')
-	if ptr_typ in g.struct_fn_definitions {
-		return ptr_typ
+fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
+	left := g.unwrap(left_type)
+	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	if ptr_styp in g.struct_fn_definitions {
+		return ptr_styp
 	}
-	g.struct_fn_definitions << ptr_typ
-	left_sym := g.table.get_type_symbol(left)
-	info := left_sym.struct_info()
-	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b); // auto')
+	g.struct_fn_definitions << ptr_styp
+	info := left.sym.struct_info()
+	g.type_definitions.writeln('static bool ${ptr_styp}_struct_eq($ptr_styp a, $ptr_styp b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
+	fn_builder.writeln('static bool ${ptr_styp}_struct_eq($ptr_styp a, $ptr_styp b) {')
 
 	// overloaded
-	if left_sym.has_method('==') {
-		fn_builder.writeln('\treturn ${ptr_typ}__eq(a, b);')
+	if left.sym.has_method('==') {
+		fn_builder.writeln('\treturn ${ptr_styp}__eq(a, b);')
 		fn_builder.writeln('}')
-		return ptr_typ
+		return ptr_styp
 	}
 
-	for field in info.fields {
-		sym := g.table.get_type_symbol(field.typ)
-		if sym.kind == .string {
-			fn_builder.writeln('\tif (!string__eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .sum_type && !field.typ.is_ptr() {
-			eq_fn := g.gen_sumtype_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_sumtype_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .struct_ && !field.typ.is_ptr() {
-			eq_fn := g.gen_struct_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .array && !field.typ.is_ptr() {
-			eq_fn := g.gen_array_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .array_fixed && !field.typ.is_ptr() {
-			eq_fn := g.gen_fixed_array_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .map && !field.typ.is_ptr() {
-			eq_fn := g.gen_map_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .alias && !field.typ.is_ptr() {
-			eq_fn := g.gen_alias_equality_fn(field.typ)
-			fn_builder.writeln('\tif (!${eq_fn}_alias_eq(a.$field.name, b.$field.name)) {')
-		} else if sym.kind == .function {
-			fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
-		} else {
-			fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
+	fn_builder.write_string('\treturn ')
+	if info.fields.len > 0 {
+		for i, field in info.fields {
+			if i > 0 {
+				fn_builder.write_string('\n\t\t&& ')
+			}
+			field_type := g.unwrap(field.typ)
+			if field_type.sym.kind == .string {
+				fn_builder.write_string('string__eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
+				eq_fn := g.gen_sumtype_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_sumtype_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
+				eq_fn := g.gen_struct_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_struct_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
+				eq_fn := g.gen_array_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_arr_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .array_fixed && !field.typ.is_ptr() {
+				eq_fn := g.gen_fixed_array_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_arr_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .map && !field.typ.is_ptr() {
+				eq_fn := g.gen_map_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_map_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .alias && !field.typ.is_ptr() {
+				eq_fn := g.gen_alias_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_alias_eq(a.$field.name, b.$field.name)')
+			} else if field_type.sym.kind == .function {
+				fn_builder.write_string('*((voidptr*)(a.$field.name)) == *((voidptr*)(b.$field.name))')
+			} else {
+				fn_builder.write_string('a.$field.name == b.$field.name')
+			}
 		}
-		fn_builder.writeln('\t\treturn false;')
-		fn_builder.writeln('\t}')
+	} else {
+		fn_builder.write_string('true')
 	}
-	fn_builder.writeln('\treturn true;')
+	fn_builder.writeln(';')
 	fn_builder.writeln('}')
-	return ptr_typ
+	return ptr_styp
 }
 
 fn (mut g Gen) gen_alias_equality_fn(left ast.Type) string {
