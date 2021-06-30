@@ -373,14 +373,14 @@ fn (mut r Readline) refresh_line() {
 	mut end_of_input := [0, 0]
 	end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len,
 		end_of_input)
-	end_of_input[1] += r.current.filter(it == rune(`\n`)).len
+	end_of_input[1] += r.current.filter(it == `\n`).len
 	mut cursor_pos := [0, 0]
 	cursor_pos = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor,
 		cursor_pos)
 	shift_cursor(0, -r.cursor_row_offset)
 	term.erase_toend()
 	print(r.prompt)
-	print(r.current)
+	print(r.current.string())
 	if end_of_input[0] == 0 && end_of_input[1] > 0 {
 		print('\n')
 	}
@@ -400,14 +400,11 @@ fn (mut r Readline) eof() bool {
 
 // insert_character inserts the character `c` at current cursor position.
 fn (mut r Readline) insert_character(c int) {
-	mut current := r.current[..r.cursor]
-	current << rune(c)
 	if !r.overwrite || r.cursor == r.current.len {
-		current << r.current[r.current.len - r.cursor..]
+		r.current.insert(r.cursor, c)
 	} else {
-		current << r.current[r.current.len - r.cursor + 1..]
+		r.current[r.cursor] = rune(c)
 	}
-	r.current = current
 	r.cursor++
 	// Refresh the line to add the new character
 	if r.is_tty {
@@ -421,9 +418,7 @@ fn (mut r Readline) delete_character() {
 		return
 	}
 	r.cursor--
-	mut current := r.current[..r.cursor]
-	current << r.current[r.current.len - r.cursor + 1..]
-	r.current = current
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
@@ -432,17 +427,14 @@ fn (mut r Readline) suppr_character() {
 	if r.cursor > r.current.len {
 		return
 	}
-	mut current := r.current[..r.cursor]
-	current << r.current[r.current.len - r.cursor + 1..]
-	r.current = current
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
 // commit_line adds a line break and then stops the main loop.
 fn (mut r Readline) commit_line() bool {
 	r.previous_lines.insert(1, r.current)
-	a := '\n'.runes()
-	r.current << a
+	r.current << `\n`
 	r.cursor = r.current.len
 	if r.is_tty {
 		r.refresh_line()
