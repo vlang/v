@@ -28,6 +28,15 @@ pub fn (c rune) str() string {
 	*/
 }
 
+// str converts a rune array to a string
+pub fn (ra []rune) str() string {
+	mut res := ''
+	for r in ra {
+		res += r.str()
+	}
+	return res
+}
+
 // Define this on byte as well, so that we can do `s[0].is_capital()`
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
@@ -42,7 +51,7 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
-// TODO remove this once runes are implemented
+// TODO: remove this once runes are implemented
 pub fn (b []byte) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)

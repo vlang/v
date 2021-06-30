@@ -17,27 +17,27 @@ import os
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
-pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
-	r.current = ''.ustring()
+pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
+	r.current = ''.runes()
 	r.cursor = 0
 	r.prompt = prompt
 	r.search_index = 0
 	if r.previous_lines.len <= 1 {
-		r.previous_lines << ''.ustring()
-		r.previous_lines << ''.ustring()
+		r.previous_lines << ''.runes()
+		r.previous_lines << ''.runes()
 	} else {
-		r.previous_lines[0] = ''.ustring()
+		r.previous_lines[0] = ''.runes()
 	}
 	print(r.prompt)
 	line := os.get_raw_line()
 	if line.len >= 0 {
-		r.current = line.ustring()
+		r.current = line.runes()
 	}
-	r.previous_lines[0] = ''.ustring()
+	r.previous_lines[0] = ''.runes()
 	r.search_index = 0
 	if r.current.s == '' {
 		return error('empty line')
@@ -46,29 +46,29 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` returned by `read_line_utf8`).
+// (As opposed to `[]rune` returned by `read_line_utf8`).
 pub fn (mut r Readline) read_line(prompt string) ?string {
 	s := r.read_line_utf8(prompt) ?
-	return s.s
+	return s.str()
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 // NOTE that this version of `read_line_utf8` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line_utf8(prompt string) ?ustring {
+pub fn read_line_utf8(prompt string) ?[]rune {
 	mut r := Readline{}
 	s := r.read_line_utf8(prompt) ?
 	return s
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` as returned by `read_line_utf8`).
+// (As opposed to `[]rune` as returned by `read_line_utf8`).
 // NOTE that this version of `read_line` is a standalone function without
 // persistent functionalities (e.g. history).
 pub fn read_line(prompt string) ?string {

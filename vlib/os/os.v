@@ -90,18 +90,6 @@ pub fn read_lines(path string) ?[]string {
 	return res
 }
 
-// read_ulines reads the file in `path` into an array of ustring lines.
-fn read_ulines(path string) ?[]ustring {
-	lines := read_lines(path) ?
-	// mut ulines := new_array(0, lines.len, sizeof(ustring))
-	mut ulines := []ustring{}
-	for myline in lines {
-		// ulines[i] = ustr
-		ulines << myline.ustring()
-	}
-	return ulines
-}
-
 // sigint_to_signal_name will translate `si` signal integer code to it's string code representation.
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:
