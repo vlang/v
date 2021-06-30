@@ -508,11 +508,14 @@ n := s.int() // 42
 ### Runes
 A `rune` represents a unicode character and are an alias for `u32`. Runes can be created like this:
 ```v
-x := rune(`🚀`)
+x := `🚀`
 ```
-which converts a char literal to a rune.
 
 A string can be converted to a runes list by the `.runes()` method.
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
+```
 
 ### String interpolation
 
