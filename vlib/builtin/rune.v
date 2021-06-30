@@ -28,8 +28,8 @@ pub fn (c rune) str() string {
 	*/
 }
 
-// str converts a rune array to a string
-pub fn (ra []rune) str() string {
+// string converts a rune array to a string
+pub fn (ra []rune) string() string {
 	mut res := ''
 	for r in ra {
 		res += r.str()

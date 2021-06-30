@@ -45,7 +45,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 // (As opposed to `[]rune` returned by `read_line_utf8`).
 pub fn (mut r Readline) read_line(prompt string) ?string {
 	s := r.read_line_utf8(prompt) ?
-	return s.str()
+	return s.string()
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input

@@ -1,4 +1,4 @@
-type Str = string | rune
+type Str = rune | string
 
 struct Foo {
 	v int
