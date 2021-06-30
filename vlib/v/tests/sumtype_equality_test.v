@@ -13,8 +13,8 @@ type FooBar = Bar | Foo
 fn test_sumtype_equality() {
 	s1 := Str('s')
 	s2 := Str('s2')
-	u1 := Str(rune(`A`))
-	u2 := Str(rune(`B`))
+	u1 := Str(`A`)
+	u2 := Str(`B`)
 	assert s1 == s1
 	assert u1 == u1
 	assert s1 != s2
