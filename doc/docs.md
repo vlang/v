@@ -1359,7 +1359,6 @@ iter := SquareIterator{
 for squared in iter {
 	println(squared)
 }
-
 ```
 
 The code above prints:
