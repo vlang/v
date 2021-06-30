@@ -1335,9 +1335,9 @@ When an identifier is just a single underscore, it is ignored.
 
 ```v
 struct SquareIterator {
-  arr []int
+	arr []int
 mut:
-  idx int
+	idx int
 }
 
 fn (mut iter SquareIterator) next() ?int {
@@ -1348,15 +1348,16 @@ fn (mut iter SquareIterator) next() ?int {
 	item := iter.arr[iter.idx]
 	iter.idx++
 	return item * item
-} 
+}
 
 nums := [1, 2, 3, 4, 5]
-iter := SquareIterator {
+iter := SquareIterator{
 	arr: nums
 }
 for squared in iter {
 	println(squared)
 }
+
 ```
 
 Types that implement a `next` method returning an `Option` can be iterated
