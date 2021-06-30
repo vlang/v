@@ -699,3 +699,28 @@ fn test_truncate() {
 fn test_hostname() {
 	assert os.hostname().len > 2
 }
+
+fn test_glob() {
+	os.mkdir('test_dir') or { panic(err) }
+	for i in 0 .. 4 {
+		if i == 3 {
+			mut f := os.create('test_dir/test0_another') or { panic(err) }
+			f.close()
+			mut f1 := os.create('test_dir/test') or { panic(err) }
+			f1.close()
+		} else {
+			mut f := os.create('test_dir/test' + i.str()) or { panic(err) }
+			f.close()
+		}
+	}
+	files := os.glob('test_dir/t*') or { panic(err) }
+	assert files.len == 5
+	assert os.base(files[0]) == 'test'
+
+	for i in 0 .. 3 {
+		os.rm('test_dir/test' + i.str()) or { panic(err) }
+	}
+	os.rm('test_dir/test0_another') or { panic(err) }
+	os.rm('test_dir/test') or { panic(err) }
+	os.rmdir_all('test_dir') or { panic(err) }
+}

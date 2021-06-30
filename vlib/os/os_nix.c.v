@@ -8,6 +8,7 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/ptrace.h>
+#include <glob.h>
 
 pub const (
 	path_separator = '/'
@@ -49,6 +50,14 @@ mut:
 	machine  &char
 }
 
+[typedef]
+struct C.glob_t {
+mut:
+	gl_pathc size_t // number of matched paths
+	gl_pathv &&char // list of matched pathnames
+	gl_offs  size_t // slots to reserve in gl_pathv
+}
+
 fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
@@ -67,6 +76,37 @@ fn C.getgid() int
 fn C.getegid() int
 
 fn C.ptrace(u32, u32, voidptr, int) u64
+fn C.glob(&char, int, voidptr, voidptr) int
+
+fn C.globfree(voidptr)
+
+pub fn glob(patterns ...string) ?[]string {
+	mut matches := []string{}
+	if patterns.len == 0 {
+		return matches
+	}
+	mut globdata := C.glob_t{
+		gl_pathv: 0
+	}
+	mut flags := int(C.GLOB_DOOFFS | C.GLOB_MARK)
+	for i, pattern in patterns {
+		if i > 0 {
+			flags |= C.GLOB_APPEND
+		}
+		unsafe {
+			if C.glob(&char(pattern.str), flags, C.NULL, &globdata) != 0 {
+				return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			}
+		}
+	}
+	for i := 0; i < int(globdata.gl_pathc); i++ {
+		unsafe {
+			matches << cstring_to_vstring(globdata.gl_pathv[i])
+		}
+	}
+	C.globfree(&globdata)
+	return matches
+}
 
 pub fn uname() Uname {
 	mut u := Uname{}
