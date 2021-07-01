@@ -376,7 +376,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		}
 		return arr
 	} else {
-		if a.data != 0 {
+		if !isnil(a.data) {
 			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
@@ -409,7 +409,7 @@ fn (mut a array) push(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
-	if a3.data == val && val != 0 {
+	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
@@ -419,7 +419,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 		}
 	} else {
 		a3.ensure_cap(a3.len + size)
-		if a3.data != 0 && val != 0 {
+		if !isnil(a3.data) && !isnil(val) {
 			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
