@@ -7559,15 +7559,16 @@ fn has_top_return(stmts []ast.Stmt) bool {
 
 fn (mut c Checker) verify_vweb_params_for_method(m ast.Fn) (bool, int, int) {
 	margs := m.params.len - 1 // first arg is the receiver/this
-	if m.attrs.len == 0 {
-		// allow non custom routed methods, with 1:1 mapping
-		return true, -1, margs
-	}
+	mut has_route_attr := false
 	mut route_attributes := 0
 	for a in m.attrs {
 		if a.name.starts_with('/') {
+			has_route_attr = true
 			route_attributes += a.name.count(':')
 		}
+	}
+	if !has_route_attr {
+		return true, route_attributes, margs
 	}
 	return route_attributes == margs, route_attributes, margs
 }
