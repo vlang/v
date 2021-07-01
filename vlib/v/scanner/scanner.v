@@ -1221,7 +1221,7 @@ fn decode_u_escapes(s string, start int, escapes_pos []int) string {
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 6 // "\uXXXX".len == 6
-		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32)))
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32) or { 0 }))
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
