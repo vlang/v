@@ -10,6 +10,7 @@ import net.http
 import net.urllib
 import strings
 import time
+import v.ast
 
 pub const (
 	methods_with_form       = [http.Method.post, .put, .patch]
@@ -419,6 +420,11 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 	$for method in T.methods {
 		$if method.return_type is Result {
+			for arg in method.args {
+				if arg.typ != ast.string_type {
+					panic('invalid type for argument `$arg.name` in method `$method.name`, expected type `string`')
+				}
+			}
 			mut method_args := []string{}
 			// TODO: move to server start
 			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
