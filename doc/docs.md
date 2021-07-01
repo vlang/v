@@ -1346,10 +1346,10 @@ fn (mut iter SquareIterator) next() ?int {
 	if iter.idx >= iter.arr.len {
 		return error('')
 	}
-
-	item := iter.arr[iter.idx]
-	iter.idx++
-	return item * item
+	defer {
+		iter.idx++
+	}
+	return iter.arr[iter.idx] * iter.arr[iter.idx]
 }
 
 nums := [1, 2, 3, 4, 5]
