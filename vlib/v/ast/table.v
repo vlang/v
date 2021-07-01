@@ -1119,35 +1119,31 @@ fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
 		return false
 	}
-	// do not check the same type more than once
+
 	if mut inter_sym.info is Interface {
+		// do not check the same type more than once
 		for t in inter_sym.info.types {
 			if t.idx() == utyp.idx() {
 				return true
 			}
 		}
-	}
-	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as Interface).methods
-	} else {
-		inter_sym.methods
-	}
-	for imethod in imethods {
-		if method := typ_sym.find_method(imethod.name) {
-			msg := table.is_same_method(imethod, method)
-			if msg.len > 0 {
-				return false
-			}
-			continue
-		}
-		return false
-	}
-	if mut inter_sym.info is Interface {
+		// check fields
 		for ifield in inter_sym.info.fields {
 			if field := table.find_field_with_embeds(typ_sym, ifield.name) {
 				if ifield.typ != field.typ {
 					return false
 				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					return false
+				}
+				continue
+			}
+			return false
+		}
+		// check methods
+		for imethod in inter_sym.info.methods {
+			if method := typ_sym.find_method(imethod.name) {
+				msg := table.is_same_method(imethod, method)
+				if msg.len > 0 {
 					return false
 				}
 				continue
