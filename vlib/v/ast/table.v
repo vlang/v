@@ -1054,8 +1054,9 @@ pub fn (mut t Table) complete_interface_check() {
 			if idecl.fields.len > info.fields.len {
 				continue
 			}
-			// only generate type cast of the module in which the interface declaration resides
-			if tsym.mod != t.get_type_symbol(idecl.typ).mod {
+			// empty interface only generate type cast functions of the current module
+			if idecl.methods.len == 0 && idecl.fields.len == 0
+				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
 				continue
 			}
 			t.does_type_implement_interface(tk, idecl.typ)
