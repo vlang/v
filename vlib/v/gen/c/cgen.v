@@ -1705,13 +1705,13 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			node.cond
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		g.write('for (int $i = 0; $i < ')
+		rune_tmp_var := g.new_tmp_var()
+		g.write('Array_rune $rune_tmp_var = string_runes(')
 		g.expr(cond)
-		g.writeln('.len; ++$i) {')
+		g.writeln(');')
+		g.writeln('for (int $i = 0; $i < ${rune_tmp_var}.len; ++$i) {')
 		if node.val_var != '_' {
-			g.write('\tbyte ${c_name(node.val_var)} = ')
-			g.expr(cond)
-			g.writeln('.str[$i];')
+			g.write('\trune ${c_name(node.val_var)} = (*(rune*)array_get($rune_tmp_var, $i));')
 		}
 	} else if node.kind == .struct_ {
 		cond_type_sym := g.table.get_type_symbol(node.cond_type)

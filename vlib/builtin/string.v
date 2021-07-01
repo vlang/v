@@ -73,7 +73,7 @@ pub fn (s string) runes() []rune {
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(unsafe { s.str[i] })
 		if char_len > 1 {
-			end := if s.len - 1 >= i + char_len { i + char_len } else { s.len }
+			end := if s.len > i + char_len { i + char_len } else { s.len }
 			mut r := unsafe { s[i..end] }
 			runes << r.utf32_code()
 			i += char_len - 1
@@ -591,7 +591,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 					res << s[i..]
 					break
 				}
-				res << ch.ascii_str()
+				res << byte(ch).ascii_str()
 				i++
 			}
 			return res
@@ -776,7 +776,7 @@ fn (s string) index_kmp(p string) int {
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
 	for c in chars {
-		idx := s.index_(c.ascii_str())
+		idx := s.index_(byte(c).ascii_str())
 		if idx == -1 {
 			continue
 		}
@@ -913,7 +913,7 @@ pub fn (s string) contains(substr string) bool {
 // contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
-		if s.contains(c.ascii_str()) {
+		if s.contains(c.str()) {
 			return true
 		}
 	}
@@ -1751,7 +1751,7 @@ pub fn (s string) fields() []string {
 	mut is_in_word := false
 	mut is_space := false
 	for i, c in s {
-		is_space = c in [32, 9, 10]
+		is_space = c in [` `, `\b`, `\n`]
 		if !is_space {
 			word_len++
 		}

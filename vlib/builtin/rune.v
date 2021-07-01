@@ -60,3 +60,50 @@ pub fn (b []byte) bytestr() string {
 		return tos(buf, b.len)
 	}
 }
+
+
+// is_space returns `true` if the byte is a white space character.
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// Example: assert byte(` `).is_space() == true
+[inline]
+pub fn (c rune) is_space() bool {
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
+}
+
+// is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
+// Example: assert byte(`9`) == true
+[inline]
+pub fn (c rune) is_digit() bool {
+	return c >= `0` && c <= `9`
+}
+
+// is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
+// Example: assert byte(`F`) == true
+[inline]
+pub fn (c rune) is_hex_digit() bool {
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+}
+
+// is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
+// Example: assert byte(`7`) == true
+[inline]
+pub fn (c rune) is_oct_digit() bool {
+	return c >= `0` && c <= `7`
+}
+
+// is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
+// Example: assert byte(`0`) == true
+[inline]
+pub fn (c rune) is_bin_digit() bool {
+	return c == `0` || c == `1`
+}
+
+// is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
+// Example: assert byte(`V`) == true
+[inline]
+pub fn (c rune) is_letter() bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+}
+

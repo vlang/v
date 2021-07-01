@@ -64,6 +64,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'18.substr',
 		'18.at',
 		'18.index_kmp',
+		'18.runes',
 		// string. ==, !=, etc...
 		'18.eq',
 		'18.ne',

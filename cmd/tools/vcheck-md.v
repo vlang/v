@@ -358,10 +358,10 @@ fn create_ref_link(s string) string {
 	for c in s.trim_space() {
 		result += match c {
 			`a`...`z`, `0`...`9` {
-				c.ascii_str()
+				byte(c).ascii_str()
 			}
 			`A`...`Z` {
-				c.ascii_str().to_lower()
+				byte(c).ascii_str().to_lower()
 			}
 			` `, `-` {
 				'-'
@@ -370,7 +370,7 @@ fn create_ref_link(s string) string {
 				'_'
 			}
 			else {
-				if c > 127 { c.ascii_str() } else { '' }
+				if c > 127 { byte(c).ascii_str() } else { '' }
 			}
 		}
 	}

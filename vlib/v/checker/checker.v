@@ -4313,6 +4313,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 			}
 			mut value_type := c.table.value_type(typ)
+			typ_sym := c.table.get_final_type_symbol(typ)
+			if typ_sym.kind == .string && value_type == ast.byte_type {
+				value_type = ast.rune_type
+			}
 			if value_type == ast.void_type || typ.has_flag(.optional) {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.position())

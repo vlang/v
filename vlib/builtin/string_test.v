@@ -960,3 +960,9 @@ fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
 }
+
+fn test_for_rune_in_string() {
+	for r in 'test👋' {
+		assert typeof(r).name == 'rune'
+	}
+}
