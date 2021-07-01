@@ -1037,24 +1037,29 @@ pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 
 // complete_interface_check does a MxN check for all M interfaces vs all N types, to determine what types implement what interfaces.
 // It short circuits most checks when an interface can not possibly be implemented by a type.
-pub fn (mut table Table) complete_interface_check() {
+pub fn (mut t Table) complete_interface_check() {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	for tk, mut tsym in table.type_symbols {
+	for tk, mut tsym in t.type_symbols {
 		if tsym.kind != .struct_ {
 			continue
 		}
 		info := tsym.info as Struct
-		for _, mut idecl in table.interfaces {
+		for _, mut idecl in t.interfaces {
 			if idecl.methods.len > tsym.methods.len {
 				continue
 			}
 			if idecl.fields.len > info.fields.len {
 				continue
 			}
-			table.does_type_implement_interface(tk, idecl.typ)
+			// empty interface only generate type cast functions of the current module
+			if idecl.methods.len == 0 && idecl.fields.len == 0
+				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
+				continue
+			}
+			t.does_type_implement_interface(tk, idecl.typ)
 		}
 	}
 }
