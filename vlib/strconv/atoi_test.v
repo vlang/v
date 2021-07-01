@@ -1,21 +1,11 @@
 import strconv
 
-fn test_atoi() {
-	if x := strconv.atoi('16') {
-		assert x == 16
-	} else {
-		assert false
-	}
-	if x := strconv.atoi('+16') {
-		assert x == 16
-	} else {
-		assert false
-	}
-	if x := strconv.atoi('-16') {
-		assert x == -16
-	} else {
-		assert false
-	}
+fn test_atoi() ? {
+	assert strconv.atoi('16') ? == 16
+	assert strconv.atoi('+16') ? == 16
+	assert strconv.atoi('-16') ? == -16
+
+	// invalid strings
 	if x := strconv.atoi('str') {
 		println(x)
 		assert false
