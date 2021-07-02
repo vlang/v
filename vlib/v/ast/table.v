@@ -198,7 +198,8 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	}
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.get_type_symbol(f.return_type)
-		sig += '__$sym.kind'
+		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
+		sig += '__$opt$sym.kind'
 	}
 	return sig
 }
@@ -225,7 +226,11 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		sig += ' ?'
 	} else if f.return_type != void_type {
 		return_type_sym := t.get_type_symbol(f.return_type)
-		sig += ' $return_type_sym.name'
+		if f.return_type.has_flag(.optional) {
+			sig += ' ?$return_type_sym.name'
+		} else {
+			sig += ' $return_type_sym.name'
+		}
 	}
 	return sig
 }
