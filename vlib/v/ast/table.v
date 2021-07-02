@@ -512,8 +512,8 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
 	if idx > 0 {
 		current_type := t.type_symbols[idx]
-		if current_type.info is Alias {
-			idx = current_type.info.parent_type.idx()
+		if current_type.kind == .alias {
+			idx = (current_type.info as Alias).parent_type.idx()
 		}
 		return unsafe { &t.type_symbols[idx] }
 	}
