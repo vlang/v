@@ -17,6 +17,7 @@ pub enum Kind {
 	unknown
 	eof
 	bare // user
+	boolean // true or false
 	number // 123
 	quoted // 'foo', "foo", """foo""" or '''foo'''
 	plus // +

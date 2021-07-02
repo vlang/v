@@ -54,12 +54,25 @@ fn (mut p Parser) next() {
 	p.peek_tok = p.scanner.scan()
 }
 
-fn (mut p Parser) expect(expected_token token.Kind) {
-	if p.tok.kind == expected_token {
+fn (mut p Parser) check(check_token token.Kind) {
+	if p.tok.kind == check_token {
 		p.next()
 	} else {
 		panic(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected token "$expected_token" but found "$p.peek_tok.kind"')
+			' expected token "$check_token" but found "$p.tok.kind"')
+	}
+}
+
+fn (mut p Parser) is_at(expected_token token.Kind) bool {
+	return p.tok.kind == expected_token
+}
+
+fn (mut p Parser) expect(expected_token token.Kind) {
+	if p.tok.kind == expected_token {
+		return
+	} else {
+		panic(@MOD + '.' + @STRUCT + '.' + @FN +
+			' expected token "$expected_token" but found "$p.tok.kind"')
 	}
 }
 
@@ -118,7 +131,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 pub fn (mut p Parser) key() ast.Key {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key...')
 
-	p.expect(.lsbr) // '[' bracket
+	p.check(.lsbr) // '[' bracket
 	key := match p.tok.kind {
 		.bare {
 			bare := p.bare()
@@ -135,7 +148,7 @@ pub fn (mut p Parser) key() ast.Key {
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
 	p.next()
-	// p.expect(.rsbr) // ']' bracket
+	p.expect(.rsbr) // ']' bracket
 	return key
 
 	/*
@@ -163,7 +176,7 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 		}
 	}
 	p.next()
-	p.expect(.assign) // Assignment operator
+	p.check(.assign) // Assignment operator
 
 	// mut value := ast.Value{}
 	value := match p.tok.kind {
@@ -173,12 +186,12 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 		.quoted {
 			ast.Value(p.quoted())
 		}
-		.bare {
+		.boolean {
 			ast.Value(p.boolean())
 		}
 		else {
 			panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				' value expected .bare, .quoted or .number got "$p.tok.kind"')
+				' value expected .boolean, .quoted or .number got "$p.tok.kind"')
 			ast.Value(ast.Quoted{}) // TODO workaround bug
 		}
 	}
@@ -222,40 +235,72 @@ pub fn (mut p Parser) number() ast.Value {
 	mut lit := p.tok.lit
 	pos := p.tok.position()
 	if p.peek_tok.kind == .minus {
-		p.expect(.number)
-		lit += p.tok.lit
-		p.expect(.minus)
-		lit += p.tok.lit
-		p.expect(.number)
-		lit += p.tok.lit
-		p.expect(.minus)
-		lit += p.tok.lit
-		p.expect(.number)
-		// TODO Offset Date-Time
-		// TODO Local Date-Time
-		date := ast.Date{
-			text: lit
-			pos: pos
-		}
-		return ast.Value(date)
+		return ast.Value(p.date())
 	} else if p.peek_tok.kind == .colon {
-		p.expect(.number)
-		p.expect(.colon)
-		p.expect(.number)
-		p.expect(.colon)
-		p.expect(.number)
-		// TODO Milliseconds
-		time := ast.Time{
-			text: lit
-			pos: pos
-		}
-		return ast.Value(time)
+		return ast.Value(p.time())
 	}
 	num := ast.Number{
 		text: lit
 		pos: pos
 	}
 	return ast.Value(num)
+}
+
+pub fn (mut p Parser) date() ast.Date {
+	// Date
+	mut lit := p.tok.lit
+	pos := p.tok.position()
+
+	p.check(.number)
+	lit += p.tok.lit
+	p.check(.minus)
+	lit += p.tok.lit
+	p.check(.number)
+	lit += p.tok.lit
+	p.check(.minus)
+	lit += p.tok.lit
+	p.expect(.number)
+	// Look for any THH:MM:SS
+	if p.peek_tok.kind == .bare && p.peek_tok.lit.starts_with('T') {
+		p.next() // Advance to token with Txx
+		time := p.time()
+		// Parse offset TODO
+		if p.peek_tok.kind == .minus {
+		}
+	}
+	// TODO Offset Date-Time
+	// TODO Local Date-Time
+	return ast.Date{
+		text: lit
+		pos: pos
+	}
+}
+
+pub fn (mut p Parser) time() ast.Time {
+	// Time
+	mut lit := p.tok.lit
+	pos := p.tok.position()
+
+	if p.is_at(.bare) && lit.starts_with('T') {
+		lit = lit.all_after('T')
+		p.next()
+	} else {
+		p.check(.number)
+	}
+	lit += p.tok.lit
+	p.check(.colon)
+	lit += p.tok.lit
+	p.check(.number)
+	lit += p.tok.lit
+	p.check(.colon)
+	lit += p.tok.lit
+	p.expect(.number)
+
+	// TODO Milliseconds
+	return ast.Time{
+		text: lit
+		pos: pos
+	}
 }
 
 pub fn (mut p Parser) quoted() ast.Quoted {

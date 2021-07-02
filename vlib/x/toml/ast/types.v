@@ -100,13 +100,15 @@ pub fn (d Date) str() string {
 
 pub struct Time {
 pub:
-	text string
-	pos  token.Position
+	text   string
+	offset int
+	pos    token.Position
 }
 
 pub fn (t Time) str() string {
 	mut str := typeof(t).name + '{\n'
 	str += '  text:  \'$t.text\'\n'
+	str += '  offset:  \'$t.offset\'\n'
 	str += '  pos:  $t.pos\n'
 	str += '}'
 	return str
@@ -114,13 +116,15 @@ pub fn (t Time) str() string {
 
 pub struct DateTime {
 pub:
-	text string
+	date Date
+	time Time
 	pos  token.Position
 }
 
 pub fn (dt DateTime) str() string {
 	mut str := typeof(dt).name + '{\n'
-	str += '  text:  \'$dt.text\'\n'
+	str += '  date:  \'$dt.date\'\n'
+	str += '  time:  \'$dt.time\'\n'
 	str += '  pos:  $dt.pos\n'
 	str += '}'
 	return str

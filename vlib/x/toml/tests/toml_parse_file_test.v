@@ -12,7 +12,7 @@ title = "TOML Example"
 
 [owner]
 name = "Tom Preston-Werner"
-dob = 1979-05-27 #TODO T07:32:00-08:00 # First class dates
+dob = 1979-05-27T07:32:00#-08:00 # First class dates
 
 [database]
 server = "192.168.1.1"

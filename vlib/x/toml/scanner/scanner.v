@@ -77,6 +77,10 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		if util.is_key_char(byte(c)) {
 			key := ascii + s.identify_key()
+			if key in ['true', 'false'] {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a boolean "$key" ($key.len)')
+				return s.new_token(.boolean, key, key.len)
+			}
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a bare key "$key" ($key.len)')
 			return s.new_token(.bare, key, key.len)
 		}
@@ -133,6 +137,10 @@ pub fn (mut s Scanner) scan() token.Token {
 			`]` {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified right square bracket "$ascii" ($ascii.len)')
 				return s.new_token(.rsbr, ascii, ascii.len)
+			}
+			`:` {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified colon "$ascii" ($ascii.len)')
+				return s.new_token(.colon, ascii, ascii.len)
 			}
 			else {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
