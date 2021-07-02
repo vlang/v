@@ -38,7 +38,7 @@ fn test_for_char_in_string() {
 	s := 'abcd'
 	mut sum := 0
 	for char in s {
-		sum += char
+		sum += int(char)
 	}
 	assert sum == 394 // ascii codes of `a` + `b` + `c` + `d`
 }
