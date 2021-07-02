@@ -251,7 +251,7 @@ fn is_dtp_message_valid(msg string) bool {
 fn get_host_ip_from_dtp_message(msg string) (string, int) {
 	mut par_start_idx := -1
 	mut par_end_idx := -1
-	for i, c in msg {
+	for i, c in msg.bytes() {
 		if c == `(` {
 			par_start_idx = i + 1
 		} else if c == `)` {

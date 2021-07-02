@@ -346,7 +346,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 	mut last := `.`
 	mut ok := false
 	mut part_len := 0
-	for i, _ in s {
+	for i, _ in s.bytes() {
 		c := s[i]
 		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
 			// No '_' allowed here (in contrast to package net).
@@ -399,7 +399,7 @@ fn is_cookie_name_valid(name string) bool {
 	if name == '' {
 		return false
 	}
-	for b in name {
+	for b in name.bytes() {
 		if b < 33 || b > 126 {
 			return false
 		}

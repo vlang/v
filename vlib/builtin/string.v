@@ -586,7 +586,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	match delim.len {
 		0 {
 			i = 1
-			for ch in s {
+			for ch in s.bytes() {
 				if nth > 0 && i >= nth {
 					res << s[i..]
 					break
@@ -775,7 +775,7 @@ fn (s string) index_kmp(p string) int {
 
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
-	for c in chars {
+	for c in chars.bytes() {
 		idx := s.index_(c.ascii_str())
 		if idx == -1 {
 			continue
@@ -878,7 +878,7 @@ pub fn (s string) count(substr string) int {
 	if substr.len == 1 {
 		target := substr[0]
 
-		for letter in s {
+		for letter in s.bytes() {
 			if letter == target {
 				n++
 			}
@@ -912,7 +912,7 @@ pub fn (s string) contains(substr string) bool {
 
 // contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
-	for c in chars {
+	for c in chars.bytes() {
 		if s.contains(c.ascii_str()) {
 			return true
 		}
@@ -1108,14 +1108,14 @@ pub fn (s string) trim(cutset string) string {
 	mut cs_match := true
 	for pos_left <= s.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		for cs in cutset {
+		for cs in cutset.bytes() {
 			if s[pos_left] == cs {
 				pos_left++
 				cs_match = true
 				break
 			}
 		}
-		for cs in cutset {
+		for cs in cutset.bytes() {
 			if s[pos_right] == cs {
 				pos_right--
 				cs_match = true
@@ -1139,7 +1139,7 @@ pub fn (s string) trim_left(cutset string) string {
 	mut pos := 0
 	for pos < s.len {
 		mut found := false
-		for cs in cutset {
+		for cs in cutset.bytes() {
 			if s[pos] == cs {
 				found = true
 				break
@@ -1163,7 +1163,7 @@ pub fn (s string) trim_right(cutset string) string {
 	mut pos := s.len - 1
 	for pos >= 0 {
 		mut found := false
-		for cs in cutset {
+		for cs in cutset.bytes() {
 			if s[pos] == cs {
 				found = true
 			}
@@ -1611,7 +1611,7 @@ pub fn (s string) after(sub string) string {
 // Example: assert 'abcd'.after_char(`:`) == 'abcd'
 pub fn (s string) after_char(sub byte) string {
 	mut pos := -1
-	for i, c in s {
+	for i, c in s.bytes() {
 		if c == sub {
 			pos = i
 			break
@@ -1700,7 +1700,7 @@ pub fn (s string) limit(max int) string {
 pub fn (s string) hash() int {
 	mut h := u32(0)
 	if h == 0 && s.len > 0 {
-		for c in s {
+		for c in s.bytes() {
 			h = h * 31 + u32(c)
 		}
 	}
@@ -1750,7 +1750,7 @@ pub fn (s string) fields() []string {
 	mut word_len := 0
 	mut is_in_word := false
 	mut is_space := false
-	for i, c in s {
+	for i, c in s.bytes() {
 		is_space = c in [32, 9, 10]
 		if !is_space {
 			word_len++

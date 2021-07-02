@@ -8,11 +8,11 @@ pub fn levenshtein_distance(a string, b string) int {
 	for j in 0 .. f.len {
 		f[j] = j
 	}
-	for ca in a {
+	for ca in a.bytes() {
 		mut j := 1
 		mut fj1 := f[0]
 		f[0]++
-		for cb in b {
+		for cb in b.bytes() {
 			mut mn := if f[j] + 1 <= f[j - 1] + 1 { f[j] + 1 } else { f[j - 1] + 1 }
 			if cb != ca {
 				mn = if mn <= fj1 + 1 { mn } else { fj1 + 1 }

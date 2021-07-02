@@ -60,7 +60,7 @@ fn main() {
 	_ = hl1.nested()
 	for i := 0; i < 10; i++ {
 	}
-	for i, x in 'hello' {
+	for i, x in 'hello'.bytes() {
 	}
 	mut evens := []int{}
 	for x in 1 .. 10 {

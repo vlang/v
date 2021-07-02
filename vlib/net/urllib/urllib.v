@@ -699,7 +699,7 @@ fn valid_optional_port(port string) bool {
 	if port[0] != `:` {
 		return false
 	}
-	for b in port[1..] {
+	for b in port[1..].bytes() {
 		if b < `0` || b > `9` {
 			return false
 		}
@@ -1038,7 +1038,7 @@ fn split_host_port(hostport string) (string, string) {
 //
 // It doesn't validate pct-encoded. The caller does that via fn unescape.
 pub fn valid_userinfo(s string) bool {
-	for r in s {
+	for r in s.bytes() {
 		if `A` <= r && r <= `Z` {
 			continue
 		}

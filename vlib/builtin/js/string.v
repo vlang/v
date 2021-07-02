@@ -109,7 +109,7 @@ pub fn (s string) free() {}
 pub fn (s string) hash() int {
 	mut h := u32(0)
 	if h == 0 && s.len > 0 {
-		for c in s {
+		for c in s.bytes() {
 			h = h * 31 + u32(c)
 		}
 	}

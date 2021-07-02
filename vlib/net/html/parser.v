@@ -71,7 +71,7 @@ fn (mut parser Parser) verify_end_comment(remove bool) bool {
 
 fn blank_string(data string) bool {
 	mut count := 0
-	for chr in data {
+	for chr in data.bytes() {
 		if chr == 9 || chr == 32 {
 			count++
 		}
@@ -109,7 +109,7 @@ fn (mut parser Parser) generate_tag() {
 // split_parse parses the HTML fragment
 pub fn (mut parser Parser) split_parse(data string) {
 	parser.init()
-	for chr in data {
+	for chr in data.bytes() {
 		// returns true if byte is a " or '
 		is_quote := chr == `"` || chr == `\'`
 		string_code := match chr {

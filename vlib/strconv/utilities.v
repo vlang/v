@@ -284,7 +284,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 	mut exp_sgn := 1
 
 	// get sign and decimal parts
-	for c in s {
+	for c in s.bytes() {
 		if c == `-` {
 			sgn = -1
 			i++
@@ -407,7 +407,7 @@ pub fn fxx_to_str_l_parse_no_dot(s string) string {
 	mut exp_sgn := 1
 
 	// get sign and decimal parts
-	for c in s {
+	for c in s.bytes() {
 		if c == `-` {
 			sgn = -1
 			i++

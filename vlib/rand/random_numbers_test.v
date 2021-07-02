@@ -207,7 +207,7 @@ fn test_rand_string_from_set() {
 			len := rand.intn(rnd_count)
 			str := rand.string_from_set(charset, len)
 			assert str.len == len
-			for character in str {
+			for character in str.bytes() {
 				position := charset.index(character.ascii_str()) or { -1 }
 				assert position > -1
 			}
@@ -285,7 +285,7 @@ fn ensure_same_output(mut rng rand.PRNG) {
 fn test_new_global_rng() {
 	old := rand.get_current_rng()
 
-	// MuslRNG	
+	// MuslRNG
 	mut rng1a := musl.MuslRNG{}
 	mut rng1b := musl.MuslRNG{}
 	seed1 := [u32(1234)]

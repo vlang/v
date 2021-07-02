@@ -37,7 +37,7 @@ fn increment_version(ver Version, typ Increment) Version {
 }
 
 fn is_valid_string(input string) bool {
-	for c in input {
+	for c in input.bytes() {
 		if !(c.is_letter() || c.is_digit() || c == `.` || c == `-`) {
 			return false
 		}
@@ -46,7 +46,7 @@ fn is_valid_string(input string) bool {
 }
 
 fn is_valid_number(input string) bool {
-	for c in input {
+	for c in input.bytes() {
 		if !c.is_digit() {
 			return false
 		}

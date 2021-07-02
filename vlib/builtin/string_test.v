@@ -650,7 +650,7 @@ fn test_for_loop() {
 	mut i := 0
 	s := 'abcd'
 
-	for c in s {
+	for c in s.bytes() {
 		assert c == s[i]
 		i++
 	}
@@ -659,7 +659,7 @@ fn test_for_loop() {
 fn test_for_loop_two() {
 	s := 'abcd'
 
-	for i, c in s {
+	for i, c in s.bytes() {
 		assert c == s[i]
 	}
 }

@@ -66,7 +66,7 @@ fn test_byte_write() {
 	mut sb := strings.new_builder(100)
 	temp_str := 'byte testing'
 	mut count := 0
-	for word in temp_str {
+	for word in temp_str.bytes() {
 		sb.write_b(word)
 		count++
 		assert count == sb.len

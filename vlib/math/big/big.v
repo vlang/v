@@ -111,7 +111,7 @@ pub fn from_hex_string(input string) Number {
 // from_string converts a decimal string to big.Number
 pub fn from_string(input string) Number {
 	mut n := from_int(0)
-	for _, c in input {
+	for _, c in input.bytes() {
 		d := from_int(int(c - `0`))
 		n = (n * big.ten) + d
 	}

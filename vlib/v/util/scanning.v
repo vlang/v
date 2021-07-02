@@ -11,7 +11,7 @@ pub fn is_func_char(c byte) bool {
 }
 
 pub fn contains_capital(s string) bool {
-	for c in s {
+	for c in s.bytes() {
 		if c >= `A` && c <= `Z` {
 			return true
 		}

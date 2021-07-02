@@ -242,58 +242,58 @@ fn test_for_in_variadic_args() {
 }
 
 fn test_for_in_string_simple() {
-	for _ in 'abcd' {
+	for _ in 'abcd'.bytes() {
 		assert true
 	}
 }
 
 fn test_for_in_string_key() {
-	for _, v in 'a' {
+	for _, v in 'a'.bytes() {
 		assert v == `a`
 	}
 }
 
 fn test_for_in_string_val() {
-	for i, _ in 'a' {
+	for i, _ in 'a'.bytes() {
 		assert i == 0
 	}
 }
 
 fn test_for_in_string_both() {
-	for _, _ in 'abcd' {
+	for _, _ in 'abcd'.bytes() {
 		assert true
 	}
 }
 
 fn test_nested_for_in_string_simple() {
-	for _ in 'abcd' {
-		for _ in 'abcd' {
+	for _ in 'abcd'.bytes() {
+		for _ in 'abcd'.bytes() {
 			assert true
 		}
 	}
 }
 
 fn test_nested_for_in_string_key() {
-	for _, v in 'a' {
+	for _, v in 'a'.bytes() {
 		assert v == `a`
-		for _, w in 'a' {
+		for _, w in 'a'.bytes() {
 			assert w == `a`
 		}
 	}
 }
 
 fn test_nested_for_in_string_val() {
-	for i, _ in 'a' {
+	for i, _ in 'a'.bytes() {
 		assert i == 0
-		for j, _ in 'a' {
+		for j, _ in 'a'.bytes() {
 			assert j == 0
 		}
 	}
 }
 
 fn test_nested_for_in_string_both() {
-	for _, _ in 'abcd' {
-		for _, _ in 'abcd' {
+	for _, _ in 'abcd'.bytes() {
+		for _, _ in 'abcd'.bytes() {
 			assert true
 		}
 	}

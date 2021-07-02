@@ -156,7 +156,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		mut dot_res_sp := -1
 
 		// get sign and deciaml parts
-		for c in s {
+		for c in s.bytes() {
 			if c == `-` {
 				sgn = -1
 				i++

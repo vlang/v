@@ -355,7 +355,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 // https://github.com/aheissenberger/vlang-markdown-module/blob/master/test.md
 fn create_ref_link(s string) string {
 	mut result := ''
-	for c in s.trim_space() {
+	for c in s.trim_space().bytes() {
 		result += match c {
 			`a`...`z`, `0`...`9` {
 				c.ascii_str()

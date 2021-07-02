@@ -203,14 +203,14 @@ fn (mut g Gen) write32_at(at i64, n int) {
 }
 
 fn (mut g Gen) write_string(s string) {
-	for c in s {
+	for c in s.bytes() {
 		g.write8(int(c))
 	}
 	// g.write8(0) // null terminated strings
 }
 
 fn (mut g Gen) write_string_with_padding(s string, max int) {
-	for c in s {
+	for c in s.bytes() {
 		g.write8(int(c))
 	}
 	for _ in 0 .. max - s.len {

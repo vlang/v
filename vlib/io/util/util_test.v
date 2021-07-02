@@ -50,7 +50,7 @@ fn test_temp_file() {
 	mut filename := os.file_name(path)
 	assert filename.contains('_test.file')
 	// Check for 9 digits where the wildcard is placed in the pattern
-	for i, c in filename {
+	for i, c in filename.bytes() {
 		if i > 4 && i <= 4 + 9 {
 			assert c.is_digit()
 		}
@@ -69,7 +69,7 @@ fn test_temp_file() {
 	assert path.contains(tfolder)
 	assert f.is_opened
 	filename = os.file_name(path)
-	for c in filename {
+	for c in filename.bytes() {
 		assert c.is_digit()
 	}
 }
@@ -99,7 +99,7 @@ fn test_temp_dir() {
 	mut filename := os.file_name(path)
 	assert filename.contains('_test_dir')
 	// Check for 9 digits where the wildcard is placed in the pattern
-	for i, c in filename {
+	for i, c in filename.bytes() {
 		if i > 4 && i <= 4 + 9 {
 			assert c.is_digit()
 		}
@@ -121,7 +121,7 @@ fn test_temp_dir() {
 	assert writable
 	assert path.contains(tfolder)
 	filename = os.file_name(path)
-	for c in filename {
+	for c in filename.bytes() {
 		assert c.is_digit()
 	}
 }

@@ -586,7 +586,7 @@ struct HeaderKeyError {
 
 // Checks if the header token is valid
 fn is_valid(header string) ? {
-	for _, c in header {
+	for _, c in header.bytes() {
 		if int(c) >= 128 || !is_token(c) {
 			return IError(HeaderKeyError{
 				msg: "Invalid header key: '$header'"
