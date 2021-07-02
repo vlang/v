@@ -419,7 +419,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 	$for method in T.methods {
 		$if method.return_type is Result {
-			if method.attrs.filter(it.starts_with('/')).len == 0 {
+			if !method.attrs.any(it.starts_with('/')) {
 				send_string(mut conn, vweb.http_404) or {}
 				return
 			}
