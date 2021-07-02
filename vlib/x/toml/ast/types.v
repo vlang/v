@@ -12,26 +12,7 @@ pub fn (k Key) str() string {
 	return k.text
 }
 
-// pub type Table = map[string]Value
-// pub type Array = []Value
 pub type Value = Date | DateTime | Number | Quoted | Time | []Value | map[string]Value
-
-/*
-pub fn (v Value) str() string {
-	return match v {
-		Quoted, Date {
-			v.text
-		}
-		[]Value {
-			'<array>'
-		}
-		map[string]Value {
-			'<table>'
-		}
-	}
-}
-*/
-// pub type Node = Root | Comment | KeyValue
 
 pub struct Comment {
 pub:
