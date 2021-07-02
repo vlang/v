@@ -1,4 +1,6 @@
-struct Response {}
+struct Response {
+	ret int
+}
 
 pub struct Route {
 	handler     fn (mut App) Response
