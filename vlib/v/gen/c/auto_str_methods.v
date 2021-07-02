@@ -433,9 +433,15 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		fn_str += util.strip_main_name(g.table.get_type_name(g.unwrap_generic(arg.typ)))
 	}
 	fn_str += ')'
-	if info.func.return_type != ast.void_type {
+	if info.func.return_type == ast.ovoid_type {
+		fn_str += ' ?'
+	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
-		fn_str += ' $x'
+		if info.func.return_type.has_flag(.optional) {
+			fn_str += ' ?$x'
+		} else {
+			fn_str += ' $x'
+		}
 	}
 	return fn_str
 }
