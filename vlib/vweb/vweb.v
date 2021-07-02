@@ -419,9 +419,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 	$for method in T.methods {
 		$if method.return_type is Result {
+			mut has_explicit_route := false
 			if !method.attrs.any(it.starts_with('/')) {
-				send_string(mut conn, vweb.http_404) or {}
-				return
+				has_explicit_route = true
 			}
 			mut method_args := []string{}
 			// TODO: move to server start
@@ -435,16 +435,15 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 			// Skip if the HTTP request method does not match the attributes
 			if app.req.method in http_methods {
+				if !has_explicit_route {
+					send_string(mut conn, vweb.http_404) or {}
+					return
+				}
 				// Route immediate matches first
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
 				if !route_path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method()
-					return
-				}
-
-				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 					app.$method()
 					return
 				}
