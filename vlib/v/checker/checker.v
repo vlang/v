@@ -296,7 +296,8 @@ fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos token.Position) {
-	if !c.pref.is_vweb && name.len > 0 && (name[0] == `_` || name.contains('._')) {
+	if !c.pref.is_vweb && !c.pref.translated && name.len > 0
+		&& (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if !c.pref.experimental && !c.pref.translated && util.contains_capital(name) {
@@ -3874,6 +3875,13 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if array_init.has_len {
+			if array_init.has_len && !array_init.has_default {
+				elem_type_sym := c.table.get_type_symbol(array_init.elem_type)
+				if elem_type_sym.kind == .interface_ {
+					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
+						array_init.len_expr.position())
+				}
+			}
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
 		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
@@ -6169,7 +6177,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						&& sym.kind == .interface_ {
 						// is interface
 						checked_type := c.unwrap_generic(left.typ)
-						should_skip = !c.table.type_implements_interface(checked_type,
+						should_skip = !c.table.does_type_implement_interface(checked_type,
 							got_type)
 					} else if left is ast.TypeNode {
 						is_comptime_type_is_expr = true

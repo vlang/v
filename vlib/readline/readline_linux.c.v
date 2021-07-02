@@ -101,21 +101,21 @@ pub fn (r Readline) read_char() int {
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
-pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
-	r.current = ''.ustring()
+pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
+	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
 	r.search_index = 0
 	r.prompt_offset = get_prompt_offset(prompt)
 	if r.previous_lines.len <= 1 {
-		r.previous_lines << ''.ustring()
-		r.previous_lines << ''.ustring()
+		r.previous_lines << []rune{}
+		r.previous_lines << []rune{}
 	} else {
-		r.previous_lines[0] = ''.ustring()
+		r.previous_lines[0] = []rune{}
 	}
 	if !r.is_raw {
 		r.enable_raw_mode()
@@ -129,39 +129,39 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
 			break
 		}
 	}
-	r.previous_lines[0] = ''.ustring()
+	r.previous_lines[0] = []rune{}
 	r.search_index = 0
 	r.disable_raw_mode()
-	if r.current.s == '' {
+	if r.current.len == 0 {
 		return error('empty line')
 	}
 	return r.current
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` returned by `read_line_utf8`).
+// (As opposed to `[]rune` returned by `read_line_utf8`).
 pub fn (mut r Readline) read_line(prompt string) ?string {
 	s := r.read_line_utf8(prompt) ?
-	return s.s
+	return s.string()
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 // NOTE that this version of `read_line_utf8` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line_utf8(prompt string) ?ustring {
+pub fn read_line_utf8(prompt string) ?[]rune {
 	mut r := Readline{}
 	s := r.read_line_utf8(prompt) ?
 	return s
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` as returned by `read_line_utf8`).
+// (As opposed to `[]rune` as returned by `read_line_utf8`).
 // NOTE that this version of `read_line` is a standalone function without
 // persistent functionalities (e.g. history).
 pub fn read_line(prompt string) ?string {
@@ -373,14 +373,14 @@ fn (mut r Readline) refresh_line() {
 	mut end_of_input := [0, 0]
 	end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len,
 		end_of_input)
-	end_of_input[1] += r.current.count('\n'.ustring())
+	end_of_input[1] += r.current.filter(it == `\n`).len
 	mut cursor_pos := [0, 0]
 	cursor_pos = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor,
 		cursor_pos)
 	shift_cursor(0, -r.cursor_row_offset)
 	term.erase_toend()
 	print(r.prompt)
-	print(r.current)
+	print(r.current.string())
 	if end_of_input[0] == 0 && end_of_input[1] > 0 {
 		print('\n')
 	}
@@ -401,11 +401,9 @@ fn (mut r Readline) eof() bool {
 // insert_character inserts the character `c` at current cursor position.
 fn (mut r Readline) insert_character(c int) {
 	if !r.overwrite || r.cursor == r.current.len {
-		r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() +
-			r.current.right(r.cursor).ustring()
+		r.current.insert(r.cursor, c)
 	} else {
-		r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() +
-			r.current.right(r.cursor + 1).ustring()
+		r.current[r.cursor] = rune(c)
 	}
 	r.cursor++
 	// Refresh the line to add the new character
@@ -420,7 +418,7 @@ fn (mut r Readline) delete_character() {
 		return
 	}
 	r.cursor--
-	r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
@@ -429,15 +427,14 @@ fn (mut r Readline) suppr_character() {
 	if r.cursor > r.current.len {
 		return
 	}
-	r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
 // commit_line adds a line break and then stops the main loop.
 fn (mut r Readline) commit_line() bool {
 	r.previous_lines.insert(1, r.current)
-	a := '\n'.ustring()
-	r.current += a
+	r.current << `\n`
 	r.cursor = r.current.len
 	if r.is_tty {
 		r.refresh_line()
@@ -483,9 +480,9 @@ fn (r Readline) is_break_character(c string) bool {
 // move_cursor_word_left moves the cursor relative one word length worth to the left.
 fn (mut r Readline) move_cursor_word_left() {
 	if r.cursor > 0 {
-		for ; r.cursor > 0 && r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {
+		for ; r.cursor > 0 && r.is_break_character(r.current[r.cursor - 1].str()); r.cursor-- {
 		}
-		for ; r.cursor > 0 && !r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {
+		for ; r.cursor > 0 && !r.is_break_character(r.current[r.cursor - 1].str()); r.cursor-- {
 		}
 		r.refresh_line()
 	}
@@ -494,9 +491,9 @@ fn (mut r Readline) move_cursor_word_left() {
 // move_cursor_word_right moves the cursor relative one word length worth to the right.
 fn (mut r Readline) move_cursor_word_right() {
 	if r.cursor < r.current.len {
-		for ; r.cursor < r.current.len && r.is_break_character(r.current.at(r.cursor)); r.cursor++ {
+		for ; r.cursor < r.current.len && r.is_break_character(r.current[r.cursor].str()); r.cursor++ {
 		}
-		for ; r.cursor < r.current.len && !r.is_break_character(r.current.at(r.cursor)); r.cursor++ {
+		for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor].str()); r.cursor++ {
 		}
 		r.refresh_line()
 	}

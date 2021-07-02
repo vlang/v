@@ -505,6 +505,18 @@ s := '42'
 n := s.int() // 42
 ```
 
+### Runes
+A `rune` represents a unicode character and is an alias for `u32`. Runes can be created like this:
+```v
+x := `🚀`
+```
+
+A string can be converted to runes by the `.runes()` method.
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
@@ -1318,6 +1330,45 @@ for mut num in numbers {
 println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
+
+##### Custom iterators
+Types that implement a `next` method returning an `Option` can be iterated
+with a `for` loop. 
+
+```v
+struct SquareIterator {
+	arr []int
+mut:
+	idx int
+}
+
+fn (mut iter SquareIterator) next() ?int {
+	if iter.idx >= iter.arr.len {
+		return error('')
+	}
+	defer {
+		iter.idx++
+	}
+	return iter.arr[iter.idx] * iter.arr[iter.idx]
+}
+
+nums := [1, 2, 3, 4, 5]
+iter := SquareIterator{
+	arr: nums
+}
+for squared in iter {
+	println(squared)
+}
+```
+
+The code above prints:
+```
+1
+4
+9
+16
+25
+```
 
 ##### Map `for`
 

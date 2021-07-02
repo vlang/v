@@ -2849,7 +2849,7 @@ fn (mut g Gen) trace_autofree(line string) {
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if scope == 0 {
+	if isnil(scope) {
 		return
 	}
 	for _, obj in scope.objects {
@@ -3156,7 +3156,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else {
 				// TODO: optimize use L-char instead of u32 when possible
 				if utf8_str_len(node.val) < node.val.len {
-					g.write('((u32)0x$node.val.utf32_code().hex())')
+					g.write('((rune)0x$node.val.utf32_code().hex() /* `$node.val` */)')
 				} else {
 					g.write("'$node.val'")
 				}

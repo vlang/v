@@ -3,6 +3,8 @@ import net.urllib
 import os
 import readline
 
+const vroot = @VMODROOT
+
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
 	vexe := os.getenv('VEXE')
@@ -18,15 +20,20 @@ fn get_vdoctor_output(is_verbose bool) string {
 // get ouput from `v -g -o vdbg cmd/v && vdbg file.v`
 fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := os.getenv('VEXE')
-	v_dir := os.dir(vexe)
+	// prepare a V compiler with -g to have better backtraces if possible
+	wd := os.getwd()
+	os.chdir(vroot)
 	verbose_flag := if is_verbose { '-v' } else { '' }
-	vdbg_path := $if windows { '$v_dir/vdbg.exe' } $else { '$v_dir/vdbg' }
-	vdbg_result := os.execute('"$vexe" $verbose_flag -g -o "$vdbg_path" $v_dir/cmd/v')
+	vdbg_path := $if windows { '$vroot/vdbg.exe' } $else { '$vroot/vdbg' }
+	vdbg_compilation_cmd := '"$vexe" $verbose_flag -g -o "$vdbg_path" cmd/v'
+	vdbg_result := os.execute(vdbg_compilation_cmd)
+	os.chdir(wd)
 	if vdbg_result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
-		eprintln('unable to compile V in debug mode: $vdbg_result.output')
+		eprintln('unable to compile V in debug mode: $vdbg_result.output\ncommand: $vdbg_compilation_cmd\n')
 	}
+	//
 	mut result := os.execute('"$vexe" $verbose_flag "$file_path"')
 	defer {
 		os.rm(vdbg_path) or {

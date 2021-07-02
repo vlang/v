@@ -1,0 +1,16 @@
+interface MObject {
+	give_string() string
+}
+
+struct LeStruct {
+	le_string string
+}
+
+fn (a LeStruct) give_string() string {
+	return 'V'
+}
+
+fn main() {
+	mut parsed_lines := []MObject{len: 9}
+	println(parsed_lines)
+}
