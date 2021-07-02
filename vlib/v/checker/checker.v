@@ -5043,7 +5043,11 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	}
 	if node.expr_type == ast.byte_type && to_type_sym.kind == .string {
-		c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
+		c.error('cannot cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
+			node.pos)
+	}
+	if node.expr_type == ast.rune_type && to_type_sym.kind == .string {
+		c.error('cannot cast type `rune` to string, use `${node.expr.str()}.str()` instead.',
 			node.pos)
 	}
 	if to_type_sym.kind == .sum_type {

@@ -1751,7 +1751,7 @@ pub fn (s string) fields() []string {
 	mut is_in_word := false
 	mut is_space := false
 	for i, c in s {
-		is_space = c in [` `, `\b`, `\n`]
+		is_space = c in [` `, `\t`, `\n`]
 		if !is_space {
 			word_len++
 		}

@@ -61,7 +61,6 @@ pub fn (b []byte) bytestr() string {
 	}
 }
 
-
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true
@@ -106,4 +105,3 @@ pub fn (c rune) is_bin_digit() bool {
 pub fn (c rune) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
-
