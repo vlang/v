@@ -2,7 +2,7 @@ module main
 
 import time
 import os
-import x.websocket
+import net.websocket
 
 fn main() {
 	println('press enter to quit...\n')

@@ -27,25 +27,25 @@ jobs:
       - name: v doctor
         run: ./v doctor
       - name: Run websockets tests
-        run: ./v -g test vlib/x/websocket/
+        run: ./v -g test vlib/net/websocket/
 
   ## Autobahn integrations tests
       - name: Run autobahn services
-        run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
+        run: docker-compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
 
       - name: Wait for the service to start
         run: sleep 10s
 
       - name: Build client test
-        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client.v"
+        run: docker exec autobahn_client "/src/v" "/src/vlib/net/websocket/tests/autobahn/autobahn_client.v"
       - name: Run client test
-        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client"
+        run: docker exec autobahn_client "/src/vlib/net/websocket/tests/autobahn/autobahn_client"
 
       - name: Build client wss test
-        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss.v"
+        run: docker exec autobahn_client "/src/v" "/src/vlib/net/websocket/tests/autobahn/autobahn_client_wss.v"
 
       - name: Run client wss test
-        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss"
+        run: docker exec autobahn_client "/src/vlib/net/websocket/tests/autobahn/autobahn_client_wss"
       - name: Run server test
         run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
 
