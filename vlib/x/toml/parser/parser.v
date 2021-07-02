@@ -68,6 +68,7 @@ pub fn (mut p Parser) table() ast.Value {
 	mut table := map[string]ast.Value{}
 	for p.tok.kind != .eof {
 		p.next()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 		match p.tok.kind {
 			.hash {
 				// TODO table.comments << p.comment()
@@ -172,8 +173,12 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 		.quoted {
 			ast.Value(p.quoted())
 		}
+		.bare {
+			ast.Value(p.boolean())
+		}
 		else {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' value expected .quoted got "$p.tok.kind"')
+			panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				' value expected .bare, .quoted or .number got "$p.tok.kind"')
 			ast.Value(ast.Quoted{}) // TODO workaround bug
 		}
 	}
@@ -192,6 +197,18 @@ pub fn (mut p Parser) bare() ast.Bare {
 	}
 }
 
+pub fn (mut p Parser) boolean() ast.Bool {
+	boolean := ast.Bool{
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
+	if boolean.text !in ['true', 'false'] {
+		panic(@MOD + '.' + @STRUCT + '.' + @FN +
+			' expected literal to be either `true` or `false` got "$p.tok.kind"')
+	}
+	return boolean
+}
+
 /*
 pub fn (mut p Parser) assign() ast.Assign {
 	return &ast.Assign {
@@ -205,8 +222,8 @@ pub fn (mut p Parser) number() ast.Value {
 	// Date/Time
 	mut lit := p.tok.lit
 	pos := p.tok.position()
-	p.expect(.number)
-	if p.tok.kind == .minus {
+	if p.peek_tok.kind == .minus {
+		p.expect(.number)
 		lit += p.tok.lit
 		p.expect(.minus)
 		lit += p.tok.lit
@@ -222,7 +239,8 @@ pub fn (mut p Parser) number() ast.Value {
 			pos: pos
 		}
 		return ast.Value(date)
-	} else if p.tok.kind == .colon {
+	} else if p.peek_tok.kind == .colon {
+		p.expect(.number)
 		p.expect(.colon)
 		p.expect(.number)
 		p.expect(.colon)

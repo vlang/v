@@ -12,7 +12,7 @@ pub fn (k Key) str() string {
 	return k.text
 }
 
-pub type Value = Date | DateTime | Number | Quoted | Time | []Value | map[string]Value
+pub type Value = Bool | Date | DateTime | Number | Quoted | Time | []Value | map[string]Value
 
 pub struct Comment {
 pub:
@@ -49,6 +49,20 @@ pub:
 }
 
 pub fn (b Bare) str() string {
+	mut str := typeof(b).name + '{\n'
+	str += '  text:  \'$b.text\'\n'
+	str += '  pos:  $b.pos\n'
+	str += '}'
+	return str
+}
+
+pub struct Bool {
+pub:
+	text string
+	pos  token.Position
+}
+
+pub fn (b Bool) str() string {
 	mut str := typeof(b).name + '{\n'
 	str += '  text:  \'$b.text\'\n'
 	str += '  pos:  $b.pos\n'
