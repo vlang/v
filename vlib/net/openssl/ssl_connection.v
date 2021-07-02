@@ -1,8 +1,32 @@
 module openssl
 
 import net
-import net.openssl as nssl
 import time
+
+// SSLConn is the current connection
+pub struct SSLConn {
+mut:
+	sslctx   &C.SSL_CTX
+	ssl      &C.SSL
+	handle   int
+	duration time.Duration
+}
+
+// new_ssl_conn instance an new SSLCon struct
+pub fn new_ssl_conn() &SSLConn {
+	return &SSLConn{
+		sslctx: 0
+		ssl: 0
+		handle: 0
+	}
+}
+
+// Select operation
+enum Select {
+	read
+	write
+	except
+}
 
 // shutdown closes the ssl connection and do clean up
 pub fn (mut s SSLConn) shutdown() ? {
@@ -11,7 +35,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 		for {
 			res = C.SSL_shutdown(voidptr(s.ssl))
 			if res < 0 {
-				err_res := nssl.ssl_error(res, s.ssl) or {
+				err_res := ssl_error(res, s.ssl) or {
 					break // We break to free rest of resources
 				}
 				if err_res == .ssl_error_want_read {
@@ -99,7 +123,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	for {
 		res = C.SSL_connect(voidptr(s.ssl))
 		if res != 1 {
-			err_res := nssl.ssl_error(res, s.ssl) ?
+			err_res := ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
 					ready := @select(s.handle, .read, s.duration) ?
@@ -128,7 +152,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res < 0 {
-			err_res := nssl.ssl_error(res, s.ssl) ?
+			err_res := ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
 					ready := @select(s.handle, .read, s.duration) ?
@@ -170,7 +194,7 @@ pub fn (mut s SSLConn) write(bytes []byte) ?int {
 			remaining := bytes.len - total_sent
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
-				err_res := nssl.ssl_error(sent, s.ssl) ?
+				err_res := ssl_error(sent, s.ssl) ?
 				if err_res == .ssl_error_want_read {
 					for {
 						ready := @select(s.handle, .read, s.duration) ?
@@ -202,9 +226,9 @@ This is basically a copy of Emily socket implementation of select.
 	This have to be consolidated into common net lib features
 	when merging this to V
 */
-[typedef]
-pub struct C.fd_set {
-}
+// [typedef]
+// pub struct C.fd_set {
+// }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) ?bool {
