@@ -198,15 +198,14 @@ pub fn (mut p Parser) bare() ast.Bare {
 }
 
 pub fn (mut p Parser) boolean() ast.Bool {
-	boolean := ast.Bool{
-		text: p.tok.lit
-		pos: p.tok.position()
-	}
-	if boolean.text !in ['true', 'false'] {
+	if p.tok.lit !in ['true', 'false'] {
 		panic(@MOD + '.' + @STRUCT + '.' + @FN +
 			' expected literal to be either `true` or `false` got "$p.tok.kind"')
 	}
-	return boolean
+	return ast.Bool{
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
 }
 
 /*
