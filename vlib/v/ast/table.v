@@ -1099,9 +1099,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	}
 }
 
-fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
-	// TODO: merge with c.type_implements, which also does error reporting in addition
-	// to checking.
+pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	utyp := typ
 	if utyp.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
@@ -1111,40 +1109,44 @@ fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 		// `none` "implements" the Error interface
 		return true
 	}
-	typ_sym := table.get_type_symbol(utyp)
+	typ_sym := t.get_type_symbol(utyp)
 	if typ_sym.language != .v {
 		return false
 	}
-	mut inter_sym := table.get_type_symbol(inter_typ)
+	mut inter_sym := t.get_type_symbol(inter_typ)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
 		return false
 	}
-	// do not check the same type more than once
 	if mut inter_sym.info is Interface {
-		for t in inter_sym.info.types {
-			if t.idx() == utyp.idx() {
+		// do not check the same type more than once
+		for tt in inter_sym.info.types {
+			if tt.idx() == utyp.idx() {
 				return true
 			}
 		}
-	}
-	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as Interface).methods
-	} else {
-		inter_sym.methods
-	}
-	for imethod in imethods {
-		if method := typ_sym.find_method(imethod.name) {
-			msg := table.is_same_method(imethod, method)
-			if msg.len > 0 {
-				return false
+		// verify methods
+		for imethod in inter_sym.info.methods {
+			if method := typ_sym.find_method(imethod.name) {
+				msg := t.is_same_method(imethod, method)
+				if msg.len > 0 {
+					return false
+				}
+				continue
 			}
-			continue
+			return false
 		}
-		return false
-	}
-	if mut inter_sym.info is Interface {
+		// verify fields
 		for ifield in inter_sym.info.fields {
-			if field := table.find_field_with_embeds(typ_sym, ifield.name) {
+			if ifield.typ == voidptr_type {
+				// Allow `voidptr` fields in interfaces for now. (for example
+				// to enable .db check in vweb)
+				if t.struct_has_field(typ_sym, ifield.name) {
+					continue
+				} else {
+					return false
+				}
+			}
+			if field := t.find_field_with_embeds(typ_sym, ifield.name) {
 				if ifield.typ != field.typ {
 					return false
 				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
@@ -1158,8 +1160,9 @@ fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}
+		return true
 	}
-	return true
+	return false
 }
 
 // resolve_generic_to_concrete resolves generics to real types T => int.
@@ -1324,89 +1327,4 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 			}
 		}
 	}
-}
-
-pub fn (mut table Table) type_implements_interface(utyp Type, interface_type Type) bool {
-	$if debug_interface_type_implements ? {
-		eprintln('> Table.type_implements_inteface typ: $utyp.debug() | interface_typ: $interface_type.debug()')
-	}
-	// utyp := c.unwrap_generic(typ)
-	typ_sym := table.get_type_symbol(utyp)
-	mut inter_sym := table.get_type_symbol(interface_type)
-	// do not check the same type more than once
-	if mut inter_sym.info is Interface {
-		for t in inter_sym.info.types {
-			if t.idx() == utyp.idx() {
-				return true
-			}
-		}
-	}
-	// styp := table.type_to_str(utyp)
-	if utyp.idx() == interface_type.idx() {
-		// same type -> already casted to the interface
-		return true
-	}
-	if interface_type.idx() == error_type_idx && utyp.idx() == none_type_idx {
-		// `none` "implements" the Error interface
-		return true
-	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
-		return false
-		// error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
-		// pos)
-	}
-	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as Interface).methods
-	} else {
-		inter_sym.methods
-	}
-	// Verify methods
-	for imethod in imethods {
-		if method := typ_sym.find_method(imethod.name) {
-			msg := table.is_same_method(imethod, method)
-			if msg.len > 0 {
-				// sig := table.fn_signature(imethod, skip_receiver: true)
-				// add_error_detail('$inter_sym.name has `$sig`')
-				// c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
-				// pos)
-				return false
-			}
-			continue
-		}
-		// c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
-		// pos)
-		return false
-	}
-	// Verify fields
-	if mut inter_sym.info is Interface {
-		for ifield in inter_sym.info.fields {
-			if ifield.typ == voidptr_type {
-				// Allow `voidptr` fields in interfaces for now. (for example
-				// to enable .db check in vweb)
-				if table.struct_has_field(typ_sym, ifield.name) {
-					continue
-				} else {
-					return false
-				}
-			}
-			if field := table.find_field_with_embeds(typ_sym, ifield.name) {
-				if ifield.typ != field.typ {
-					// exp := table.type_to_str(ifield.typ)
-					// got := table.type_to_str(field.typ)
-					// c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
-					// pos)
-					return false
-				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
-					// c.error('`$styp` incorrectly implements interface `$inter_sym.name`, field `$ifield.name` must be mutable',
-					// pos)
-					return false
-				}
-				continue
-			}
-			// c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-			// pos)
-		}
-		inter_sym.info.types << utyp
-	}
-	return true
 }

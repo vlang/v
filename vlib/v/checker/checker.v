@@ -6123,7 +6123,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						&& sym.kind == .interface_ {
 						// is interface
 						checked_type := c.unwrap_generic(left.typ)
-						should_skip = !c.table.type_implements_interface(checked_type,
+						should_skip = !c.table.does_type_implement_interface(checked_type,
 							got_type)
 					} else if left is ast.TypeNode {
 						is_comptime_type_is_expr = true

@@ -328,7 +328,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 							checked_type := g.unwrap_generic(left.typ)
 							// TODO PERF this check is run twice (also in the checker)
 							// store the result in a field
-							is_true := g.table.type_implements_interface(checked_type,
+							is_true := g.table.does_type_implement_interface(checked_type,
 								got_type)
 							// true // exp_type in interface_sym.info.types
 							if cond.op == .key_is {
