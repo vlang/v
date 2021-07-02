@@ -51,19 +51,23 @@ fn main() {
 // pub fn (mut app App) init_server() {
 //}
 
+['/']
 pub fn (mut app App) index() vweb.Result {
 	assert app.global_config.max_ping == 50
 	return app.text('Welcome to VWeb')
 }
 
+['/simple']
 pub fn (mut app App) simple() vweb.Result {
 	return app.text('A simple result')
 }
 
+['/html_page']
 pub fn (mut app App) html_page() vweb.Result {
 	return app.html('<h1>ok</h1>')
 }
 
+['/chunk']
 pub fn (mut app App) chunk() vweb.Result {
 	app.enable_chunked_transfer(20)
 	return app.html('Lorem ipsum dolor sit amet, consetetur sadipscing')
@@ -99,14 +103,14 @@ pub fn (mut app App) form_echo() vweb.Result {
 	return app.ok(app.form['foo'])
 }
 
-// Make sure [post] works without the path
-[post]
+['/json'; post]
 pub fn (mut app App) json() vweb.Result {
 	// eprintln('>>>>> received http request at /json is: $app.req')
 	app.set_content_type(app.req.header.get(.content_type) or { '' })
 	return app.ok(app.req.data)
 }
 
+['/shutdown']
 pub fn (mut app App) shutdown() vweb.Result {
 	session_key := app.get_cookie('skey') or { return app.not_found() }
 	if session_key != 'superman' {
