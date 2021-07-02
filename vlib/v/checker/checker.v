@@ -3840,6 +3840,13 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if array_init.has_len {
+			if array_init.has_len && !array_init.has_default {
+				elem_type_sym := c.table.get_type_symbol(array_init.elem_type)
+				if elem_type_sym.kind == .interface_ {
+					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
+						array_init.len_expr.position())
+				}
+			}
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
 		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
