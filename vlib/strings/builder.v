@@ -63,7 +63,7 @@ pub fn (mut b Builder) go_back(n int) {
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
-	// TODO: simplify after #8802 is merged an `v.c` is regenerated
+	// TODO: simplify after #8802 is merged and `v.c` is regenerated
 	c := unsafe { &b }
 	x := unsafe { (&[]byte(c))[cut_pos..] }
 	res := x.bytestr()
