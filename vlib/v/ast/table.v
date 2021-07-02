@@ -496,7 +496,6 @@ pub const invalid_type_symbol = &TypeSymbol{
 
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
-	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
 		return unsafe { &t.type_symbols[idx] }
@@ -510,12 +509,11 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 // get_final_type_symbol follows aliases until it gets to a "real" Type
 [inline]
 pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
-	idx := typ.idx()
+	mut idx := typ.idx()
 	if idx > 0 {
 		current_type := t.type_symbols[idx]
 		if current_type.kind == .alias {
-			alias_info := current_type.info as Alias
-			return t.get_final_type_symbol(alias_info.parent_type)
+			idx = (current_type.info as Alias).parent_type.idx()
 		}
 		return unsafe { &t.type_symbols[idx] }
 	}
