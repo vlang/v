@@ -1852,7 +1852,8 @@ fn (p &Parser) is_typename(t token.Token) bool {
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
 // 5. `f<mod.Foo>` is same as case 3
 // 6. `f<mod.Foo,` is same as case 4
-// 7. otherwise, it's not generic
+// 7. if there is a &, ignore the & and see if it is a type
+// 10. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
@@ -1863,11 +1864,21 @@ fn (p &Parser) is_generic_call() bool {
 	if lit0_is_capital || p.peek_tok.kind != .lt {
 		return false
 	}
-	tok2 := p.peek_token(2)
-	tok3 := p.peek_token(3)
-	tok4 := p.peek_token(4)
-	tok5 := p.peek_token(5)
-	kind2, kind3, kind4, kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
+	mut tok2 := p.peek_token(2)
+	mut tok3 := p.peek_token(3)
+	mut tok4 := p.peek_token(4)
+	mut tok5 := p.peek_token(5)
+	mut kind2, mut kind3, mut kind4, mut kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
+	if kind2 == .amp { // if there is a & in front, shift everything left
+		tok2 = tok3
+		kind2 = kind3
+		tok3 = tok4
+		kind3 = kind4
+		tok4 = tok5
+		kind4 = kind5
+		tok5 = p.peek_token(6)
+		kind5 = tok5.kind
+	}
 
 	if kind2 == .lsbr {
 		// case 1

@@ -582,6 +582,23 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	return styp
 }
 
+fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+	if types.len == 0 {
+		return before
+	}
+	// Using _T_ to differentiate between get<string> and get_string
+	// `foo<int>()` => `foo_T_int()`
+	mut name := before + '_T'
+	for typ in types {
+		nr_muls := typ.nr_muls()
+		if is_decl && nr_muls > 0 {
+			name = strings.repeat(`*`, nr_muls) + name
+		}
+		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+	}
+	return name
+}
+
 fn (mut g Gen) expr_string(expr ast.Expr) string {
 	pos := g.out.len
 	g.expr(expr)
