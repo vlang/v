@@ -69,6 +69,7 @@ fn main() {
 	vweb.run(app, 8081)
 }
 
+['/index']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
@@ -398,6 +399,7 @@ We need to update `index.html` to add a link to the "new article" page:
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
+['/new']
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
@@ -442,7 +444,7 @@ pub fn (mut app App) init_server() {
 }
 ```
 
-As we can see it attempts to connect to a file in the active pathcalled `blog.db`. 
+As we can see it attempts to connect to a file in the active path named `blog.db`. 
 If the database file doesn't exist it will create it. The second command will 
 create the table `Article` if none exists already. Now every time the 
 app is run you will see the articles created from the previous executions
