@@ -54,7 +54,7 @@ v init
 
 First, let's create a simple hello world website:
 
-```v
+```v oksyntax
 // blog.v
 module main
 
@@ -65,7 +65,7 @@ struct App {
 }
 
 fn main() {
-	app := App {}
+	app := App{}
 	vweb.run(app, 8081)
 }
 
@@ -242,9 +242,9 @@ Code in the `init_server()` function is run only once during app's startup, so w
 to have one DB connection for all requests. Modify the main method to call the `init_server()`
 function before adding it to the vweb system:
 
-```v
+```v oksyntax
 fn main() {
-	mut app := App {}
+	mut app := App{}
 	app.init_server()
 	vweb.run(app, 8081)
 }
@@ -261,7 +261,7 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-	id    int [primary; sql: serial]
+	id    int    [primary; sql: serial]
 	title string
 	text  string
 }
@@ -333,7 +333,7 @@ pub fn (app &App) retrieve_article() ?Article {
 V ORM uses V's optionals for single values, which is very useful, since
 bad queries will always be handled by the developer:
 
-```v oksyntax
+```v ignore
 // article.v
 article := app.retrieve_article(10) or {
 	app.text('Article not found')
@@ -361,7 +361,7 @@ Create `new.html`:
 </html>
 ```
 
-```v oksyntax
+```v ignore
 // article.v
 import vweb
 ['/new_article'; post]
@@ -397,8 +397,8 @@ We need to update `index.html` to add a link to the "new article" page:
 
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
-```v
-pub fn(mut app App) new() vweb.Result {
+```v ignore
+pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 ```
@@ -431,7 +431,7 @@ pub fn (mut app App) articles() vweb.Result {
 If one wants to persist data they need to use a file instead of memory SQLite Database.
 Replace the `init_server()` function with this instead:
 
-```v
+```v oksyntax
 pub fn (mut app App) init_server() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
 	app.db.create_table('Article', [

@@ -72,7 +72,7 @@ pub fn (mut app App) new_article() vweb.Result {
 }
 
 ['/articles'; get]
-pub fn(mut app App) list_articles_json() vweb.Result {
+pub fn (mut app App) list_articles_json() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(json.encode(articles))
 }
