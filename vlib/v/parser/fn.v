@@ -185,8 +185,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_exported := false
 	mut is_unsafe := false
 	mut is_trusted := false
+	mut is_noreturn := false
 	for fna in p.attrs {
 		match fna.name {
+			'noreturn' { is_noreturn = true }
 			'manualfree' { is_manualfree = true }
 			'deprecated' { is_deprecated = true }
 			'direct_array_access' { is_direct_arr = true }
@@ -408,6 +410,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
+			is_noreturn: is_noreturn
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
@@ -449,6 +452,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type: return_type
 		return_type_pos: return_type_pos
 		params: params
+		is_noreturn: is_noreturn
 		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
 		is_exported: is_exported

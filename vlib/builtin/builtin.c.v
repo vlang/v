@@ -4,9 +4,16 @@ type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
 
+[noreturn]
+fn vhalt() {
+	for {}
+}
+
 // exit terminates execution immediately and returns exit `code` to the shell.
+[noreturn]
 pub fn exit(code int) {
 	C.exit(code)
+	vhalt()
 }
 
 fn vcommithash() string {
@@ -17,6 +24,7 @@ fn vcommithash() string {
 // recent versions of tcc print nicer backtraces automatically
 // NB: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
+[noreturn]
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
@@ -52,14 +60,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			C.exit(1)
 		}
 	}
+	vhalt()
 }
 
+[noreturn]
 pub fn panic_optional_not_set(s string) {
 	panic('optional not set ($s)')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
+[noreturn]
 pub fn panic(s string) {
 	$if freestanding {
 		bare_panic(s)
@@ -87,6 +98,7 @@ pub fn panic(s string) {
 			C.exit(1)
 		}
 	}
+	vhalt()
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.

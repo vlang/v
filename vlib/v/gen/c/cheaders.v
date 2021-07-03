@@ -165,9 +165,23 @@ const c_common_macros = '
 	#define _MOV
 #endif
 
-#if defined(__TINYC__) && defined(__has_include)
 // tcc does not support has_include properly yet, turn it off completely
+#if defined(__TINYC__) && defined(__has_include)
 #undef __has_include
+#endif
+
+#if !defined(noreturn)
+	#if defined(__TINYC__)
+		#include <stdnoreturn.h>
+	#endif
+	#if defined(__has_include)	        
+		#if __has_include(<stdnoreturn.h>)
+			#include <stdnoreturn.h>
+		#endif
+	#endif
+	#ifndef noreturn
+		#define noreturn
+	#endif
 #endif
 
 //likely and unlikely macros

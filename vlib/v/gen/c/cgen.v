@@ -5158,10 +5158,12 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 }
 
+[noreturn]
 fn verror(s string) {
 	util.verror('cgen error', s)
 }
 
+[noreturn]
 fn (g &Gen) error(s string, pos token.Position) {
 	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
 	eprintln(ferror)
