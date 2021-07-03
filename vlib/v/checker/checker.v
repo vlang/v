@@ -664,10 +664,18 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 				// fields type translate to concrete type
 				mut fields := ts.info.fields.clone()
 				for i in 0 .. fields.len {
-					if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ, generic_names,
-						concrete_types)
-					{
-						fields[i].typ = t_typ
+					if fields[i].typ.has_flag(.generic) {
+						sym := c.table.get_type_symbol(fields[i].typ)
+						if sym.kind == .struct_ && fields[i].typ.idx() != struct_type.idx() {
+							fields[i].typ = c.unwrap_generic_struct(fields[i].typ, generic_names,
+								concrete_types)
+						} else {
+							if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
+								generic_names, concrete_types)
+							{
+								fields[i].typ = t_typ
+							}
+						}
 					}
 				}
 				// update concrete types
