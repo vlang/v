@@ -4638,7 +4638,6 @@ Translating it to V gives you several advantages:
 module main
 
 import time
-import os
 
 [live]
 fn print_message() {
