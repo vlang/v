@@ -1,0 +1,7 @@
+fn main() {
+	x := 'ab'.runes()[..1]
+	foo_str(1, x)
+}
+
+fn foo_str<T>(b T, a string) {
+}
