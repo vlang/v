@@ -694,7 +694,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
+		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return _tmp;
 }')
@@ -708,7 +708,7 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
+		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return (Option_void){0};
 }')
@@ -4482,7 +4482,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .state=2, .err=')
 	g.expr(expr)
-	g.write(', .data={0} }')
+	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
@@ -5054,7 +5054,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if field.typ.has_flag(.optional) {
 				field_name := c_name(field.name)
-				g.write('.$field_name = {0},')
+				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
 				initialized = true
 				continue
 			}
