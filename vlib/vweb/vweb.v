@@ -419,17 +419,15 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 	$for method in T.methods {
 		$if method.return_type is Result {
-			mut has_explicit_route := false
-			if !method.attrs.any(it.starts_with('/')) {
-				has_explicit_route = true
-			}
 			mut method_args := []string{}
 			// TODO: move to server start
 			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
 				eprintln('error parsing method attributes: $err')
 				return
 			}
-
+			if route_path == '' {
+				continue
+			]
 			// Used for route matching
 			route_words := route_path.split('/').filter(it != '')
 
@@ -537,9 +535,6 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	}
 	if methods.len == 0 {
 		methods = [http.Method.get]
-	}
-	if path == '' {
-		path = '/$name'
 	}
 	// Make path lowercase for case-insensitive comparisons
 	return methods, path.to_lower()
