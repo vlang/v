@@ -8,7 +8,7 @@
 - [ ] [C2V translator](https://github.com/vlang/v/issues/6985)
 - [ ] doom.v
 - [x] rune type
-- [ ] replace `ustring` with `[]rune`
+- [x] replace `ustring` with `[]rune`
 - [x] fix `byte.str()`
 - [x] maps with non-string keys
 - [x] iOS/Android support

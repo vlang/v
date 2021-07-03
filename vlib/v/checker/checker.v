@@ -6658,9 +6658,9 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
-	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
+	if typ_sym.kind in [.array, .array_fixed, .string] {
 		if !(index_type.is_int() || index_type_sym.kind == .enum_) {
-			type_str := if typ_sym.kind in [.string, .ustring] {
+			type_str := if typ_sym.kind == .string {
 				'non-integer string index `$index_type_sym.name`'
 			} else {
 				'non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)'
@@ -6679,7 +6679,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 		}
 		if index_type.has_flag(.optional) {
-			type_str := if typ_sym.kind in [.string, .ustring] {
+			type_str := if typ_sym.kind == .string {
 				'(type `$typ_sym.name`)'
 			} else {
 				'(array type `$typ_sym.name`)'
