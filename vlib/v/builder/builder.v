@@ -80,7 +80,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 
 pub fn (mut b Builder) middle_stages() ? {
 	util.timing_start('CHECK')
-	b.table.generic_struct_insts_to_concrete()
+	b.checker.generic_struct_insts_to_concrete()
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
