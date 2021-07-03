@@ -3512,7 +3512,7 @@ You can also define special test functions in a test file:
 
 If a test function has an error return type, any propagated errors will fail the test:
 
-```
+```v
 import strconv
 
 fn test_atoi() ? {
