@@ -10,10 +10,10 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 		return
 	}
 	if uses_return_stmt(node.stmts) {
-		c.error('[noreturn] functions can not use return statements', node.pos)
+		c.error('[noreturn] functions cannot use return statements', node.pos)
 	}
 	if node.return_type != ast.void_type {
-		c.error('[noreturn] functions can not have return types', node.pos)
+		c.error('[noreturn] functions cannot have return types', node.pos)
 	} else {
 		if node.stmts.len != 0 {
 			mut is_valid_end_of_noreturn_fn := false
@@ -22,7 +22,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 				ast.ExprStmt {
 					if last_stmt.expr is ast.CallExpr {
 						if last_stmt.expr.should_be_skipped {
-							c.error('[noreturn] functions can not end with a skippable `[if ..]` call',
+							c.error('[noreturn] functions cannot end with a skippable `[if ..]` call',
 								last_stmt.pos)
 						}
 						if last_stmt.expr.is_noreturn {

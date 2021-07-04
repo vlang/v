@@ -1,4 +1,4 @@
-vlib/v/checker/tests/noreturn_with_return.vv:2:1: error: [noreturn] functions can not use return statements
+vlib/v/checker/tests/noreturn_with_return.vv:2:1: error: [noreturn] functions cannot use return statements
     1 | [noreturn]
     2 | fn another() {
       | ~~~~~~~~~~~~
