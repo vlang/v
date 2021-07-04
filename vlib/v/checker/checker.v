@@ -1936,6 +1936,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_method {
+		call_expr.is_noreturn = method.is_noreturn
 		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
@@ -2439,10 +2440,13 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.table.fns[fn_name].usages++
 		}
 	}
+	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
 		if fn_name in native.builtins {
 			c.table.fns[fn_name].usages++
-			return ast.void_type
+			found = true
+			func = c.table.fns[fn_name]
+			is_native_builtin = true
 		}
 	}
 	if !found && c.pref.is_vsh {
@@ -2456,6 +2460,9 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			func = f
 			c.table.fns[os_name].usages++
 		}
+	}
+	if is_native_builtin {
+		return ast.void_type
 	}
 	// check for arg (var) of fn type
 	if !found {
@@ -2493,6 +2500,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.error('unknown function: $fn_name', call_expr.pos)
 		return ast.void_type
 	}
+	call_expr.is_noreturn = func.is_noreturn
 	if !found_in_args {
 		if _ := call_expr.scope.find_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
@@ -2906,13 +2914,13 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 				c.expected_or_type = ast.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type)
 					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
-				is_panic_or_exit := is_expr_panic_or_exit(last_stmt.expr)
-				if type_fits || is_panic_or_exit {
+				is_noreturn := is_noreturn_callexpr(last_stmt.expr)
+				if type_fits || is_noreturn {
 					return
 				}
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				if last_stmt.typ == ast.void_type {
-					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/exit/continue/break/panic',
+					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						last_stmt.pos)
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)
@@ -2942,7 +2950,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 				if last_stmt.typ == ast.void_type {
 					return
 				}
-				if is_expr_panic_or_exit(last_stmt.expr) {
+				if is_noreturn_callexpr(last_stmt.expr) {
 					return
 				}
 				if c.check_types(last_stmt.typ, expr_return_type) {
@@ -2959,11 +2967,11 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 	}
 }
 
-fn is_expr_panic_or_exit(expr ast.Expr) bool {
-	match expr {
-		ast.CallExpr { return !expr.is_method && expr.name in ['panic', 'exit'] }
-		else { return false }
+fn is_noreturn_callexpr(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		return expr.is_noreturn
 	}
+	return false
 }
 
 pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
@@ -7572,9 +7580,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-	node.has_return = c.returns || has_top_return(node.stmts)
+	node_has_top_return := has_top_return(node.stmts)
+	node.has_return = c.returns || node_has_top_return
+	c.check_noreturn_fn_decl(mut node)
 	if node.language == .v && !node.no_body && node.return_type != ast.void_type && !node.has_return
-		&& (node.is_method || node.name !in ['panic', 'exit']) {
+		&& !node.is_noreturn {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else if !node.attrs.contains('_naked') {
@@ -7594,20 +7604,27 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	node.source_file = c.file
 }
 
+// NB: has_top_return/1 should be called on *already checked* stmts,
+// which do have their stmt.expr.is_noreturn set properly:
 fn has_top_return(stmts []ast.Stmt) bool {
 	for stmt in stmts {
-		if stmt is ast.Return {
-			return true
-		} else if stmt is ast.Block {
-			if has_top_return(stmt.stmts) {
+		match stmt {
+			ast.Return {
 				return true
 			}
-		} else if stmt is ast.ExprStmt {
-			if stmt.expr is ast.CallExpr {
-				if !stmt.expr.is_method && stmt.expr.name in ['panic', 'exit'] {
+			ast.Block {
+				if has_top_return(stmt.stmts) {
 					return true
 				}
 			}
+			ast.ExprStmt {
+				if stmt.expr is ast.CallExpr {
+					if stmt.expr.is_noreturn {
+						return true
+					}
+				}
+			}
+			else {}
 		}
 	}
 	return false

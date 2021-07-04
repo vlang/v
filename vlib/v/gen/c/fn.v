@@ -333,6 +333,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
 	g.stmts(node.stmts)
+	if node.is_noreturn {
+		g.writeln('\twhile(1);')
+	}
 	// clear g.fn_mut_arg_names
 
 	if !node.has_return {
@@ -1315,9 +1318,22 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'inline' {
 				g.write('inline ')
 			}
-			'no_inline' {
+			'noinline' {
 				// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 				g.write('__NOINLINE ')
+			}
+			'noreturn' {
+				// a `[noreturn]` tag tells the compiler, that a function
+				// *DOES NOT RETURN* to its callsites.
+				// See: https://en.cppreference.com/w/c/language/_Noreturn
+				// Such functions should have no return type. They can be used
+				// in places where `panic(err)` or `exit(0)` can be used.
+				// panic/1 and exit/0 themselves will also be marked as
+				// `[noreturn]` soon.
+				// These functions should have busy `for{}` loops injected
+				// at their end, when they do not end by calling other fns
+				// marked by `[noreturn]`.
+				g.write('VNORETURN ')
 			}
 			'irq_handler' {
 				g.write('__IRQHANDLER ')

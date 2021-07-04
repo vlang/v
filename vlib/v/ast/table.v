@@ -73,6 +73,7 @@ pub:
 	generic_names   []string
 	is_pub          bool
 	is_deprecated   bool // `[deprecated] fn abc(){}`
+	is_noreturn     bool // `[noreturn] fn abc(){}`
 	is_unsafe       bool // `[unsafe] fn abc(){}`
 	is_placeholder  bool
 	is_main         bool // `fn main(){}`
