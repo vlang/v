@@ -185,6 +185,23 @@ const c_common_macros = '
 	#endif
 #endif
 
+#if !defined(VUNREACHABLE)
+	#if defined(__GNUC__) && !defined(__clang__)
+		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
+		#if (V_GCC_VERSION >= 40500L)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif		
+	#if defined(__clang__) && defined(__has_builtin)
+		#if __has_builtin(__builtin_unreachable)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif
+	#ifndef VUNREACHABLE
+		#define VUNREACHABLE() do { } while (0)
+	#endif		
+#endif
+
 //likely and unlikely macros
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
 	#define _likely_(x)  __builtin_expect(x,1)

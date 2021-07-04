@@ -527,6 +527,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('\n $cur_line $tmp_opt')
 		}
 	}
+	if node.is_noreturn {
+		g.writeln(';')
+		g.write('VUNREACHABLE()')
+	}
 }
 
 fn (mut g Gen) method_call(node ast.CallExpr) {
