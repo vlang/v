@@ -7570,6 +7570,16 @@ fn (mut c Checker) verify_vweb_params_for_method(m ast.Fn) (bool, int, int) {
 		// allow non custom routed methods, with 1:1 mapping
 		return true, -1, margs
 	}
+	if m.params.len > 1 {
+		for param in m.params[1..] {
+			param_sym := c.table.get_final_type_symbol(param.typ)
+			if !(param_sym.is_string() || param_sym.is_number() || param_sym.is_float()
+				|| param_sym.kind == .bool) {
+				c.error('invalid type `$param_sym.name` for parameter `$param.name` in vweb app method `$m.name`',
+					param.pos)
+			}
+		}
+	}
 	mut route_attributes := 0
 	for a in m.attrs {
 		if a.name.starts_with('/') {
