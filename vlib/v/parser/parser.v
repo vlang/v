@@ -2031,6 +2031,31 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	is_optional := p.tok.kind == .question
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
+
+	mut is_generic_struct_ptr_cast := false
+	if p.peek_tok.kind == .lt {
+		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
+		if mod.len > 0 {
+			name = '${mod}.$name'
+		}
+		name_w_mod := p.prepend_mod(name)
+		is_struct := name in p.table.type_idxs || name_w_mod in p.table.type_idxs
+
+		if is_struct {
+			mut i := 0
+			mut tok := token.Token{}
+			for {
+				tok = p.peek_token(i)
+				if tok.kind == .lpar {
+					is_generic_struct_ptr_cast = true
+				} else if tok.kind == .lcbr || tok.kind == .eof {
+					break
+				}
+				i++
+			}
+		}
+	}
+
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
@@ -2043,7 +2068,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar
-		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
+		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call()
+		|| is_generic_struct_ptr_cast {
 		// foo(), foo<int>() or type() cast
 		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
