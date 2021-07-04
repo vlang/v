@@ -2280,6 +2280,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.write('*')
 					}
 				}
+				if lx.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(lx)
 				noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 				if is_opt {
@@ -4622,6 +4625,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg$arg_idx=')
+			if expr.is_auto_deref_var() {
+				g.write('*')
+			}
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
