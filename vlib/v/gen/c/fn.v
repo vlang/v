@@ -1330,7 +1330,7 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				// These functions should have busy `for{}` loops injected
 				// at their end, when they do not end by calling other fns
 				// marked by `[noreturn]`.
-				g.write('noreturn ')
+				g.write('VNORETURN ')
 			}
 			'irq_handler' {
 				g.write('__IRQHANDLER ')
