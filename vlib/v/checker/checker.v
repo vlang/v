@@ -908,7 +908,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							if field.expr is ast.Ident {
 								scope_obj := (field.expr as ast.Ident).obj // this should not be necessary
 								if scope_obj is ast.Var {
-									auto_deref_allow_for_now = scope_obj.is_auto_deref
+									auto_deref_allow_for_now = scope_obj.is_stack_obj && scope_obj.is_mut
 								}
 							}
 							if !auto_deref_allow_for_now {
@@ -1202,22 +1202,6 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
-				deref_left_type := if node.left.is_auto_deref_var() {
-					left_type.deref()
-				} else {
-					left_type
-				}
-				deref_right_type := if node.right.is_auto_deref_var() {
-					right_type.deref()
-				} else {
-					right_type
-				}
-				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
-				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
-				if left_name != right_name {
-					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
-				}
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
 				if promoted_type.idx() == ast.void_type_idx {
@@ -1424,7 +1408,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -2156,11 +2140,7 @@ fn (mut c Checker) map_builtin_method_call(mut call_expr ast.CallExpr, left_type
 			if method_name[0] == `m` {
 				c.fail_if_immutable(call_expr.left)
 			}
-			if call_expr.left.is_auto_deref_var() {
-				ret_type = left_type.deref()
-			} else {
-				ret_type = left_type
-			}
+			ret_type = left_type
 		}
 		'keys' {
 			info := left_type_sym.info as ast.Map
@@ -2267,11 +2247,7 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
 		call_expr.receiver_type = left_type.to_ptr()
-		if call_expr.left.is_auto_deref_var() {
-			call_expr.return_type = left_type.deref()
-		} else {
-			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
-		}
+		call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
 	} else if method_name == 'sort' {
 		call_expr.return_type = ast.void_type
 	} else if method_name == 'contains' {
@@ -3161,9 +3137,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
 					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
@@ -3179,9 +3152,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
 			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
 			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
@@ -3194,7 +3164,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if ret_expr is ast.Ident {
 				scope_obj := ret_expr.obj
 				if scope_obj is ast.Var {
-					auto_deref_allow_for_now = scope_obj.is_auto_deref
+					auto_deref_allow_for_now = scope_obj.is_stack_obj && scope_obj.is_mut
 				}
 			}
 			if !auto_deref_allow_for_now {
@@ -3451,11 +3421,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					right_type = right.typ
 				}
 			}
-			if right.is_auto_deref_var() {
-				left_type = c.table.mktyp(right_type.deref())
-			} else {
-				left_type = c.table.mktyp(right_type)
-			}
+			left_type = c.table.mktyp(right_type)
 			if left_type == ast.int_type {
 				if right is ast.IntegerLiteral {
 					mut is_large := right.val.len > 13
@@ -3533,12 +3499,15 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						match mut left.obj {
 							ast.Var {
 								left.obj.typ = left_type
-								if left.obj.is_auto_deref {
-									left.obj.is_used = true
-								}
-								if !left_type.is_ptr() {
-									if c.table.get_type_symbol(left_type).is_heap() {
-										left.obj.is_auto_heap = true
+								if is_decl {
+									if !left_type.is_ptr() {
+										if c.table.get_type_symbol(left_type).is_heap() {
+											left.obj.is_auto_heap = true
+										}
+									}
+								} else {
+									if left.obj.is_auto_heap {
+										left.obj.is_used = true
 									}
 								}
 							}
@@ -7499,6 +7468,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					if info.is_heap { // set auto_heap to promote value parameter
 						mut v := node.scope.find_var(arg.name) or { continue }
 						v.is_auto_heap = true
+						v.is_stack_obj = false
 					}
 				}
 			}
