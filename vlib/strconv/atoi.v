@@ -17,12 +17,16 @@ pub fn byte_to_lower(c byte) byte {
 }
 
 // common_parse_uint is called by parse_uint and allows the parsing
-// to stop on non or invalid digit characters and return the result so far
-pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) u64 {
-	result, error := common_parse_uint2(s, _base, _bit_size)
-	if error != 0 {
-		if error > 0 && (error_on_non_digit || error_on_high_digit) {
-			return u64(0)
+// to stop on non or invalid digit characters and return with an error
+pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) ?u64 {
+	result, err := common_parse_uint2(s, _base, _bit_size)
+	// TODO: error_on_non_digit and error_on_high_digit have no difference
+	if err != 0 && (error_on_non_digit || error_on_high_digit) {
+		match err {
+			-1 { return error('common_parse_uint: wrong base $_base for $s') }
+			-2 { return error('common_parse_uint: wrong bit size $_bit_size for $s') }
+			-3 { return error('common_parse_uint: integer overflow $s') }
+			else { return error('common_parse_uint: syntax error $s') }
 		}
 	}
 	return result
@@ -114,13 +118,13 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 }
 
 // parse_uint is like parse_int but for unsigned numbers.
-pub fn parse_uint(s string, _base int, _bit_size int) u64 {
+pub fn parse_uint(s string, _base int, _bit_size int) ?u64 {
 	return common_parse_uint(s, _base, _bit_size, true, true)
 }
 
 // common_parse_int is called by parse int and allows the parsing
-// to stop on non or invalid digit characters and return the result so far
-pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) i64 {
+// to stop on non or invalid digit characters and return with an error
+pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) ?i64 {
 	mut s := _s
 	mut bit_size := _bit_size
 	if s.len < 1 {
@@ -139,7 +143,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// un := parse_uint(s, base, bit_size) or {
 	// return i64(0)
 	// }
-	un := common_parse_uint(s, base, bit_size, error_on_non_digit, error_on_high_digit)
+	un := common_parse_uint(s, base, bit_size, error_on_non_digit, error_on_high_digit) ?
 	if un == 0 {
 		return i64(0)
 	}
@@ -171,7 +175,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // that the result must fit into. Bit sizes 0, 8, 16, 32, and 64
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
-pub fn parse_int(_s string, base int, _bit_size int) i64 {
+pub fn parse_int(_s string, base int, _bit_size int) ?i64 {
 	return common_parse_int(_s, base, _bit_size, true, true)
 }
 
@@ -203,7 +207,7 @@ pub fn atoi(s string) ?int {
 		return if s[0] == `-` { -n } else { n }
 	}
 	// Slow path for invalid, big, or underscored integers.
-	int64 := parse_int(s, 10, 0)
+	int64 := parse_int(s, 10, 0) ?
 	return int(int64)
 }
 

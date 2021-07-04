@@ -2487,7 +2487,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.expected_type = ast.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		arg := call_expr.args[0]
-		_ := c.check_expr_opt_call(arg.expr, arg.typ)
+		c.check_expr_opt_call(arg.expr, arg.typ)
 		if arg.typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
 		} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
@@ -6693,9 +6693,9 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
-	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
+	if typ_sym.kind in [.array, .array_fixed, .string] {
 		if !(index_type.is_int() || index_type_sym.kind == .enum_) {
-			type_str := if typ_sym.kind in [.string, .ustring] {
+			type_str := if typ_sym.kind == .string {
 				'non-integer string index `$index_type_sym.name`'
 			} else {
 				'non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)'
@@ -6714,7 +6714,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 		}
 		if index_type.has_flag(.optional) {
-			type_str := if typ_sym.kind in [.string, .ustring] {
+			type_str := if typ_sym.kind == .string {
 				'(type `$typ_sym.name`)'
 			} else {
 				'(array type `$typ_sym.name`)'

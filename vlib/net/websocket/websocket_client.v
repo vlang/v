@@ -1,7 +1,5 @@
 // websocket module implements websocket client and a websocket server
 // attribution: @thecoderr the author of original websocket client
-// advice that the implementation is deprecated and moved to the net.websocket module!
-// it will be removed in later versions
 [manualfree]
 module websocket
 
@@ -76,7 +74,6 @@ pub enum OPCode {
 }
 
 // new_client instance a new websocket client
-[deprecated: 'use net.websocket module instead']
 pub fn new_client(address string) ?&Client {
 	uri := parse_uri(address) ?
 	return &Client{

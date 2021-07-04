@@ -638,10 +638,23 @@ pub fn (mut ctx Context) resize(width int, height int) {
 
 // draw_line draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			// Make the line more clear on hi dpi screens: draw a rectangle
+			mut width := math.abs(x2 - x)
+			mut height := math.abs(y2 - y)
+			if width == 0 {
+				width = 1
+			} else if height == 0 {
+				height = 1
+			}
+			ctx.draw_rect(x, y, f32(width), f32(height), c)
+			return
+		}
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)

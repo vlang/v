@@ -198,7 +198,8 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	}
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.get_type_symbol(f.return_type)
-		sig += '__$sym.kind'
+		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
+		sig += '__$opt$sym.kind'
 	}
 	return sig
 }
@@ -225,7 +226,11 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		sig += ' ?'
 	} else if f.return_type != void_type {
 		return_type_sym := t.get_type_symbol(f.return_type)
-		sig += ' $return_type_sym.name'
+		if f.return_type.has_flag(.optional) {
+			sig += ' ?$return_type_sym.name'
+		} else {
+			sig += ' $return_type_sym.name'
+		}
 	}
 	return sig
 }
@@ -496,7 +501,6 @@ pub const invalid_type_symbol = &TypeSymbol{
 
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
-	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
 		return unsafe { &t.type_symbols[idx] }
@@ -510,12 +514,11 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 // get_final_type_symbol follows aliases until it gets to a "real" Type
 [inline]
 pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
-	idx := typ.idx()
+	mut idx := typ.idx()
 	if idx > 0 {
 		current_type := t.type_symbols[idx]
 		if current_type.kind == .alias {
-			alias_info := current_type.info as Alias
-			return t.get_final_type_symbol(alias_info.parent_type)
+			idx = (current_type.info as Alias).parent_type.idx()
 		}
 		return unsafe { &t.type_symbols[idx] }
 	}
