@@ -1,9 +1,8 @@
-
 struct Name<T> {
 	v T
 }
 
-struct Point {	
+struct Point {
 }
 
 fn test_generic_ptr_cast() {
