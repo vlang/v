@@ -485,7 +485,7 @@ pub fn hostname() string {
 	size := u32(255)
 	res := C.GetComputerNameW(&hostname[0], &size)
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		return get_error_msg(int(C.GetLastError()))
 	}
 	return unsafe { string_from_wide(&hostname[0]) }
 }
@@ -495,7 +495,7 @@ pub fn loginname() string {
 	size := u32(255)
 	res := C.GetUserNameW(&loginname[0], &size)
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		return get_error_msg(int(C.GetLastError()))
 	}
 	return unsafe { string_from_wide(&loginname[0]) }
 }
