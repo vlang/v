@@ -2046,7 +2046,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mut tok := token.Token{}
 			for {
 				tok = p.peek_token(i)
-				if tok.kind == .lpar {
+				if tok.kind == .gt && p.peek_token(i + 1) == .lpar {
 					is_generic_struct_ptr_cast = true
 				} else if tok.kind == .lcbr || tok.kind == .eof {
 					break
