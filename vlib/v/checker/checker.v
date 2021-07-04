@@ -4745,6 +4745,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 		line_nr: -1
 	}
 	c.expected_type = ast.void_type
+	mut prev_stmt_was_noinline := false
 	for stmt in stmts {
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
@@ -4752,6 +4753,20 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(stmt)
+		match stmt {
+			ast.ExprStmt {
+				if stmt.expr is ast.CallExpr {
+					stmt_is_noinline := stmt.expr.is_noreturn
+					if stmt_is_noinline && prev_stmt_was_noinline {
+						unreachable = stmt.pos
+					}
+					prev_stmt_was_noinline = stmt.expr.is_noreturn
+				}
+			}
+			else {
+				prev_stmt_was_noinline = false
+			}
+		}
 	}
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)

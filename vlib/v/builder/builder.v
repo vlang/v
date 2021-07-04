@@ -461,6 +461,7 @@ fn error_with_pos(s string, fpath string, pos token.Position) {
 	exit(1)
 }
 
+[noreturn]
 fn verror(s string) {
 	util.verror('builder error', s)
 }
