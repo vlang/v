@@ -11,7 +11,7 @@ vlib/v/checker/tests/noreturn_with_return.vv:6:2: error: [noreturn] functions sh
       |     ~~~~~~
     7 | }
     8 |
-vlib/v/checker/tests/noreturn_with_return.vv:18:2: error: unreachable code
+vlib/v/checker/tests/noreturn_with_return.vv:18:2: error: unreachable code after a [noreturn] call
    16 |     eprintln('start')
    17 |     abc()
    18 |     eprintln('done')
