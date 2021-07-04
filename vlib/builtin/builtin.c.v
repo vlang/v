@@ -13,7 +13,6 @@ fn vhalt() {
 [noreturn]
 pub fn exit(code int) {
 	C.exit(code)
-	vhalt()
 }
 
 fn vcommithash() string {
