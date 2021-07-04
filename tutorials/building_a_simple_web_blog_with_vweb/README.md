@@ -444,7 +444,7 @@ pub fn (mut app App) init_server() {
 }
 ```
 
-As we can see it attempts to connect to a file in the active path named `blog.db`. 
+As we can see it attempts to open a file in the current directory named `blog.db`. 
 If the database file doesn't exist it will create it. The second command will 
 create the table `Article` if none exists already. Now every time the 
 app is run you will see the articles created from the previous executions
