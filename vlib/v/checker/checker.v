@@ -664,10 +664,18 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 				// fields type translate to concrete type
 				mut fields := ts.info.fields.clone()
 				for i in 0 .. fields.len {
-					if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ, generic_names,
-						concrete_types)
-					{
-						fields[i].typ = t_typ
+					if fields[i].typ.has_flag(.generic) {
+						sym := c.table.get_type_symbol(fields[i].typ)
+						if sym.kind == .struct_ && fields[i].typ.idx() != struct_type.idx() {
+							fields[i].typ = c.unwrap_generic_struct(fields[i].typ, generic_names,
+								concrete_types)
+						} else {
+							if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
+								generic_names, concrete_types)
+							{
+								fields[i].typ = t_typ
+							}
+						}
 					}
 				}
 				// update concrete types
@@ -696,6 +704,47 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 		}
 	}
 	return struct_type
+}
+
+// generic struct instantiations to concrete types
+pub fn (mut c Checker) generic_struct_insts_to_concrete() {
+	for mut typ in c.table.type_symbols {
+		if typ.kind == .generic_struct_inst {
+			info := typ.info as ast.GenericStructInst
+			parent := c.table.type_symbols[info.parent_idx]
+			if parent.kind == .placeholder {
+				typ.kind = .placeholder
+				continue
+			}
+			mut parent_info := parent.info as ast.Struct
+			mut fields := parent_info.fields.clone()
+			if parent_info.generic_types.len == info.concrete_types.len {
+				generic_names := parent_info.generic_types.map(c.table.get_type_symbol(it).name)
+				for i in 0 .. fields.len {
+					if fields[i].typ.has_flag(.generic) {
+						sym := c.table.get_type_symbol(fields[i].typ)
+						if sym.kind == .struct_ && fields[i].typ.idx() != info.parent_idx {
+							fields[i].typ = c.unwrap_generic_struct(fields[i].typ, generic_names,
+								info.concrete_types)
+						} else {
+							if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
+								generic_names, info.concrete_types)
+							{
+								fields[i].typ = t_typ
+							}
+						}
+					}
+				}
+				parent_info.is_generic = false
+				parent_info.concrete_types = info.concrete_types.clone()
+				parent_info.fields = fields
+				parent_info.parent_type = ast.new_type(info.parent_idx).set_flag(.generic)
+				typ.is_public = true
+				typ.kind = .struct_
+				typ.info = parent_info
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {

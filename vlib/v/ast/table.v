@@ -1298,36 +1298,3 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 	}
 	return none
 }
-
-// generic struct instantiations to concrete types
-pub fn (mut t Table) generic_struct_insts_to_concrete() {
-	for mut typ in t.type_symbols {
-		if typ.kind == .generic_struct_inst {
-			info := typ.info as GenericStructInst
-			parent := t.type_symbols[info.parent_idx]
-			if parent.kind == .placeholder {
-				typ.kind = .placeholder
-				continue
-			}
-			mut parent_info := parent.info as Struct
-			mut fields := parent_info.fields.clone()
-			if parent_info.generic_types.len == info.concrete_types.len {
-				generic_names := parent_info.generic_types.map(t.get_type_symbol(it).name)
-				for i in 0 .. fields.len {
-					if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
-						info.concrete_types)
-					{
-						fields[i].typ = t_typ
-					}
-				}
-				parent_info.is_generic = false
-				parent_info.concrete_types = info.concrete_types.clone()
-				parent_info.fields = fields
-				parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
-				typ.is_public = true
-				typ.kind = .struct_
-				typ.info = parent_info
-			}
-		}
-	}
-}
