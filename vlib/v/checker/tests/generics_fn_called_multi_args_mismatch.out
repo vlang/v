@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:3:13: error: cannot use `[]rune` as `string` in argument 2 to `foo_str`
+    1 | fn main() {
+    2 |     x := 'ab'.runes()[..1]
+    3 |     foo_str(1, x)
+      |                ^
+    4 | }
+    5 |

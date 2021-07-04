@@ -2658,7 +2658,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if typ_sym.kind == .void && param_typ_sym.kind == .string {
 				continue
 			}
-			if func.generic_names.len > 0 {
+			if param.typ.has_flag(.generic) {
 				continue
 			}
 			if c.pref.translated {

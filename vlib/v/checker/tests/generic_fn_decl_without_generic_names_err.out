@@ -12,13 +12,6 @@ vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:27:7: error: <
       |          ~~
    28 |     handle(t)
    29 |     // println("${t.msg}")
-vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:28:9: error: cannot use `void` as `T` in argument 1 to `handle`
-   26 | fn g_worker(g Generic<T>) {
-   27 |     t := <-g.ch
-   28 |     handle(t)
-      |            ^
-   29 |     // println("${t.msg}")
-   30 | }
 vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: generic function declaration must specify generic type names, e.g. foo<T>
    30 | }
    31 |

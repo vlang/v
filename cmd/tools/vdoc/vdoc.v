@@ -178,7 +178,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 
 fn (vd VDoc) render_parallel(out Output) {
 	vjobs := runtime.nr_jobs()
-	mut work := sync.new_channel<ParallelDoc>(vd.docs.len)
+	mut work := sync.new_channel<ParallelDoc>(u32(vd.docs.len))
 	mut wg := sync.new_waitgroup()
 	for i in 0 .. vd.docs.len {
 		p_doc := ParallelDoc{vd.docs[i], out}
