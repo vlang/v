@@ -4756,8 +4756,29 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)
 	}
+	c.find_unreachable_statements_after_noreturn_calls(stmts)
 	c.scope_returns = false
 	c.expected_type = ast.void_type
+}
+
+pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
+	mut prev_stmt_was_noreturn_call := false
+	for stmt in stmts {
+		match stmt {
+			ast.ExprStmt {
+				if stmt.expr is ast.CallExpr {
+					if prev_stmt_was_noreturn_call {
+						c.error('unreachable code after a [noreturn] call', stmt.pos)
+						return
+					}
+					prev_stmt_was_noreturn_call = stmt.expr.is_noreturn
+				}
+			}
+			else {
+				prev_stmt_was_noreturn_call = false
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {

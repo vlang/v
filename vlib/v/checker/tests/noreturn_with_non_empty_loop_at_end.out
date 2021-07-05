@@ -5,3 +5,9 @@ vlib/v/checker/tests/noreturn_with_non_empty_loop_at_end.vv:4:6: error: [noretur
       |         ^
     5 |         break
     6 |     }
+vlib/v/checker/tests/noreturn_with_non_empty_loop_at_end.vv:18:2: error: unreachable code after a [noreturn] call
+   16 |     eprintln('start')
+   17 |     abc()
+   18 |     eprintln('done')
+      |     ~~~~~~~~~~~~~~~~
+   19 | }

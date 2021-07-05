@@ -1399,6 +1399,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	s.vet_errors << ve
 }
 
+[noreturn]
 pub fn verror(s string) {
 	util.verror('scanner error', s)
 }

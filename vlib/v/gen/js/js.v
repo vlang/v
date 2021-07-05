@@ -300,7 +300,7 @@ pub fn (g JsGen) hashes() string {
 	return res
 }
 
-[inline]
+[noreturn]
 fn verror(msg string) {
 	eprintln('jsgen error: $msg')
 	exit(1)
