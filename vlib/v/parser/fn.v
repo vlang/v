@@ -186,6 +186,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_unsafe := false
 	mut is_trusted := false
 	mut is_noreturn := false
+	mut is_c2v_variadic := false
 	for fna in p.attrs {
 		match fna.name {
 			'noreturn' { is_noreturn = true }
@@ -196,6 +197,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'export' { is_exported = true }
 			'unsafe' { is_unsafe = true }
 			'trusted' { is_trusted = true }
+			'c2v_variadic' { is_c2v_variadic = true }
 			else {}
 		}
 	}
@@ -309,7 +311,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Args
-	args2, are_args_type_only, is_variadic := p.fn_args()
+	args2, are_args_type_only, mut is_variadic := p.fn_args()
+	if is_c2v_variadic {
+		is_variadic = true
+	}
 	params << args2
 	if !are_args_type_only {
 		for param in params {
