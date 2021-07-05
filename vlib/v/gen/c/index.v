@@ -25,11 +25,34 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(']')
 			} else {
-				g.write('string_at(')
-				g.expr(node.left)
-				g.write(', ')
-				g.expr(node.index)
-				g.write(')')
+				gen_or := node.or_expr.kind != .absent || node.is_option
+				if gen_or {
+					tmp_opt := g.new_tmp_var()
+					cur_line := g.go_before_stmt(0)
+					g.out.write_string(util.tabs(g.indent))
+					g.write('int ${tmp_opt}_raw = string_at_with_check(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.writeln(');')
+					opt_elem_type := g.typ(ast.byte_type.set_flag(.optional))
+					g.writeln('$opt_elem_type $tmp_opt = {0};')
+					g.writeln('if (${tmp_opt}_raw >= 0) {')
+					g.writeln('\t*((byte*)&${tmp_opt}.data) = (byte)${tmp_opt}_raw;')
+					g.writeln('} else {')
+					g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = v_error(_SLIT("string index out of range"));')
+					g.writeln('}')
+					if !node.is_option {
+						g.or_block(tmp_opt, node.or_expr, ast.byte_type)
+					}
+					g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
+				} else {
+					g.write('string_at(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(')')
+				}
 			}
 		} else {
 			g.expr(node.left)
