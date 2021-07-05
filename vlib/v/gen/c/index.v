@@ -25,11 +25,28 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(']')
 			} else {
-				g.write('string_at(')
-				g.expr(node.left)
-				g.write(', ')
-				g.expr(node.index)
-				g.write(')')
+				gen_or := node.or_expr.kind != .absent || node.is_option
+				if gen_or {
+					tmp_opt := g.new_tmp_var()
+					cur_line := g.go_before_stmt(0)
+					g.out.write_string(util.tabs(g.indent))
+					opt_elem_type := g.typ(ast.byte_type.set_flag(.optional))
+					g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.writeln(');')
+					if !node.is_option {
+						g.or_block(tmp_opt, node.or_expr, ast.byte_type)
+					}
+					g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
+				} else {
+					g.write('string_at(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.index)
+					g.write(')')
+				}
 			}
 		} else {
 			g.expr(node.left)
