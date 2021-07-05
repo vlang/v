@@ -532,7 +532,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.writeln(';')
 			g.write('VUNREACHABLE()')
 		} else {
-			g.write(', ({VUNREACHABLE();})')
+			$if msvc {
+				// MSVC has no support for the statement expressions used below
+			} $else {
+				g.write(', ({VUNREACHABLE();})')
+			}
 		}
 	}
 }
