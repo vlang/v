@@ -122,24 +122,27 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
-			'21.clone_static_to_depth_noscan',
-			'21.clone_to_depth_noscan',
-			'21.reverse_noscan',
-			'21.repeat_to_depth_noscan',
-			'65557.pop_noscan',
-			'65557.push_noscan',
-			'65557.push_many_noscan',
-			'65557.insert_noscan',
-			'65557.insert_many_noscan',
-			'65557.prepend_noscan',
-			'65557.prepend_many_noscan',
-			'65557.reverse_noscan',
-			'65557.grow_cap_noscan',
-			'65557.grow_len_noscan',
+			'20.clone_static_to_depth_noscan',
+			'20.clone_to_depth_noscan',
+			'20.reverse_noscan',
+			'20.repeat_to_depth_noscan',
+			'65556.pop_noscan',
+			'65556.push_noscan',
+			'65556.push_many_noscan',
+			'65556.insert_noscan',
+			'65556.insert_many_noscan',
+			'65556.prepend_noscan',
+			'65556.prepend_many_noscan',
+			'65556.reverse_noscan',
+			'65556.grow_cap_noscan',
+			'65556.grow_len_noscan',
 		]
 	}
 
 	for k, mut mfn in all_fns {
+		$if trace_skip_unused_all_fns ? {
+			println('k: $k | mfn: $mfn.name')
+		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
 			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
