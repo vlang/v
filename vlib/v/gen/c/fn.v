@@ -528,8 +528,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.is_noreturn {
-		g.writeln(';')
-		g.write('VUNREACHABLE()')
+		if g.inside_ternary == 0 {
+			g.writeln(';')
+			g.write('VUNREACHABLE()')
+		} else {
+			$if msvc {
+				// MSVC has no support for the statement expressions used below
+			} $else {
+				g.write(', ({VUNREACHABLE();})')
+			}
+		}
 	}
 }
 
