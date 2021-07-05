@@ -15,24 +15,36 @@ pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params() ?
 	}
-	mut rb := stmt.gen_result_buffer()
-	rb.bind_result_buffer() ?
-	stmt.execute() ?
+	mut status := stmt.execute() ?
 
-	for {
-		res := rb.fetch_row()
-		if res == mysql_no_data {
-			break
+	for status == 0 {
+		num_fields := stmt.get_field_count()
+
+		if num_fields > 0 {
+			metadata := stmt.gen_metadata()
+			fields := stmt.fetch_fields(metadata)
+			mut binds := stmt.gen_result_buffer(int(num_fields))
+
+			for i in 0..num_fields {
+				binds.buffer[i].buffer_type = unsafe { fields[i].@type }
+			}
+
+			for {
+				status = binds.fetch_row()
+
+				if status == 1 || status == 100 {
+					break
+				}
+
+				for bind in binds.buffer {
+					eprintln(bind.buffer_length)
+				}
+			}
+ 
+
 		}
-		if res != 0 {
-			return stmt.error(res)
-		}
-		mut row := []orm.Primitive{}
-		for rb.next() {
-			primitive := rb.mysql_select_column(config.types[rb.idx]) ?
-			row << primitive
-		}
-		ret << row
+
+		status = stmt.next() ?
 	}
 
 	stmt.close() ?

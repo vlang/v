@@ -5,15 +5,16 @@ struct C.MYSQL_STMT {}
 
 [typedef]
 struct C.MYSQL_BIND {
+mut:
 	buffer_type   int
 	buffer        voidptr
 	buffer_length u32
 }
 
 struct StmtResultBuffer {
-	buffer []C.MYSQL_BIND
 	stmt   &Stmt
 mut:
+	buffer []C.MYSQL_BIND
 	idx int
 }
 
@@ -56,10 +57,12 @@ fn C.mysql_stmt_execute(&C.MYSQL_STMT) int
 fn C.mysql_stmt_close(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_free_result(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_error(&C.MYSQL_STMT) &char
+fn C.mysql_stmt_result_metadata(&C.MYSQL_STMT) &C.MYSQL_RES
 
 fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
 fn C.mysql_stmt_bind_result(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
 fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
+fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
 
 struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(0)
@@ -84,18 +87,26 @@ pub fn (stmt Stmt) prepare() ? {
 }
 
 pub fn (stmt Stmt) bind_params() ? {
-	eprintln(stmt.binds)
 	res := C.mysql_stmt_bind_param(stmt.stmt, &C.MYSQL_BIND(stmt.binds.data))
 	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
 
-pub fn (stmt Stmt) execute() ? {
+pub fn (stmt Stmt) execute() ?int {
 	res := C.mysql_stmt_execute(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)
 	}
+	return res
+}
+
+pub fn (stmt Stmt) next() ?int {
+	res := C.mysql_stmt_next_result(stmt.stmt)
+	if res > 0 && stmt.get_error_msg() != '' {
+		return stmt.error(res)
+	}
+	return res
 }
 
 pub fn (srb StmtResultBuffer) bind_result_buffer() ? {
@@ -105,9 +116,17 @@ pub fn (srb StmtResultBuffer) bind_result_buffer() ? {
 	}
 }
 
-pub fn (stmt Stmt) gen_result_buffer() StmtResultBuffer {
+pub fn (stmt Stmt) gen_metadata() &C.MYSQL_RES {
+	return C.mysql_stmt_result_metadata(stmt.stmt)
+}
+
+pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
+	return C.mysql_fetch_fields(res)
+}
+
+pub fn (stmt Stmt) gen_result_buffer(len int) StmtResultBuffer {
 	return StmtResultBuffer{
-		buffer: []C.MYSQL_BIND{len: int(stmt.get_field_count())}
+		buffer: []C.MYSQL_BIND{len: len}
 		stmt: unsafe { &stmt }
 	}
 }
@@ -303,5 +322,5 @@ pub fn (mut res StmtResultBuffer) get_text() ?string {
 	if typ != mysql.mysql_type_double {
 		return error('Invalid mysql type for type `string`')
 	}
-	return unsafe { &char(buf).vstring() }
+	return unsafe { (&char(buf)).vstring() }
 }
