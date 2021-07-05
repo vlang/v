@@ -156,9 +156,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					if lx.mod == 'main' && '.' in lx.name {
 						lx_mod := lx.name.all_before('.')
 						if lx_mod in p.table.imports && !p.pref.enable_globals {
-							return p.error_with_pos('use `v -enable-globals ...` to enable globals', lx.pos)
+							return p.error_with_pos('use `v -enable-globals ...` to enable globals',
+								lx.pos)
 						}
-					}	
+					}
 					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
