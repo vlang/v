@@ -306,15 +306,15 @@ fn test_read_raw_at() ? {
 	f.write_raw(another_permission) ?
 	f.close()
 	f = os.open_file(tfile, 'r') ?
-	mut at := 3
+	mut at := u64(3)
 	p := f.read_raw_at<Point>(at) ?
-	at += int(sizeof(Point))
+	at += sizeof(Point)
 	b := f.read_raw_at<byte>(at) ?
-	at += int(sizeof(byte))
+	at += sizeof(byte)
 	c := f.read_raw_at<Color>(at) ?
-	at += int(sizeof(Color))
+	at += sizeof(Color)
 	x := f.read_raw_at<Permissions>(at) ?
-	at += int(sizeof(Permissions))
+	at += sizeof(Permissions)
 	f.close()
 
 	assert p == another_point
