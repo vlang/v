@@ -31,7 +31,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					cur_line := g.go_before_stmt(0)
 					g.out.write_string(util.tabs(g.indent))
 					opt_elem_type := g.typ(ast.byte_type.set_flag(.optional))
-					g.write('$opt_elem_type ${tmp_opt} = string_at_with_check(')
+					g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
