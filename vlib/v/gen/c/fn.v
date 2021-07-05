@@ -528,7 +528,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.is_noreturn {
-		g.writeln(';')
+		if g.inside_ternary == 0 {
+			g.writeln(';')
+		} else {
+			g.write(', ')
+		}
 		g.write('VUNREACHABLE()')
 	}
 }
