@@ -1263,6 +1263,8 @@ fn (s string) at(idx int) byte {
 	}
 }
 
+// version of `at()` that is used in `a[i] or {`
+// return `-1` when index is out of range
 fn (s string) at_with_check(idx int) int {
 	if idx < 0 || idx >= s.len {
 		return -1
