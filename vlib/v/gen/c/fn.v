@@ -530,10 +530,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.is_noreturn {
 		if g.inside_ternary == 0 {
 			g.writeln(';')
+			g.write('VUNREACHABLE()')
 		} else {
-			g.write(', ')
+			g.write(', ({VUNREACHABLE();})')
 		}
-		g.write('VUNREACHABLE()')
 	}
 }
 

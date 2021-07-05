@@ -1,4 +1,4 @@
-fn main() {
+fn test_inside_ternary() {
 	x := if false {
 		'foo'
 	} else if true {
