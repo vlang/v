@@ -1,0 +1,4 @@
+vlib/v/parser/tests/module_global.vv:2:4: error: use `v -enable-globals ...` to enable globals
+    1 | import os
+    2 | os.foo := 0
+      |    ~~~

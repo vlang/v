@@ -1,0 +1,2 @@
+import os
+os.foo := 0
