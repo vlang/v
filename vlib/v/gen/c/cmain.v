@@ -14,7 +14,6 @@ pub fn (mut g Gen) gen_c_main() {
 	main_fn_start_pos := g.out.len
 
 	is_sokol := 'sokol' in g.table.imports
-
 	if (g.pref.os == .android && g.pref.is_apk) || (g.pref.os == .ios && is_sokol) {
 		g.gen_c_android_sokol_main()
 	} else {
@@ -70,6 +69,7 @@ fn (mut g Gen) gen_c_main_function_header() {
 
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
+	g.writeln('signal(SIGSEGV, v_segmentation_fault_handler);')
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
 		if g.pref.gc_mode == .boehm_leak {
