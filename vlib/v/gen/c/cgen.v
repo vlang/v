@@ -77,6 +77,7 @@ mut:
 	is_sql                 bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared              bool     // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled      bool     // is it safe to generate #line directives when -g is passed
+	is_cast_in_heap        bool     // fn return struct_init to interface type (cannot use stack, should use heap)
 	arraymap_set_pos       int      // map or array set value position
 	vlines_path            string   // set to the proper path for generating #line directives
 	optionals              []string // to avoid duplicates TODO perf, use map
@@ -4726,7 +4727,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.expr(expr0)
 			}
 		} else {
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			rs := g.table.get_type_symbol(g.fn_decl.return_type)
+			if node.exprs[0] is ast.StructInit && rs.kind == .interface_ && !node.types[0].is_ptr() {
+				g.is_cast_in_heap = true
+				g.expr_with_cast(node.exprs[0], node.types[0].to_ptr(), g.fn_decl.return_type)
+				g.is_cast_in_heap = false
+			} else {
+				g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			}
 		}
 		if use_tmp_var {
 			g.writeln(';')
@@ -4914,7 +4922,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
-	} else if is_amp {
+	} else if is_amp || g.is_cast_in_heap {
 		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
@@ -5104,7 +5112,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof($shared_styp))')
-	} else if is_amp {
+	} else if is_amp || g.is_cast_in_heap {
 		g.write(', sizeof($styp))')
 	}
 }
