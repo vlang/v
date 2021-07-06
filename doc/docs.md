@@ -5225,7 +5225,7 @@ fn legacy_function() {}
 // will be compiler notices - you will see them, but the compilation
 // is not affected. After that date, calls will become warnings,
 // so ordinary compiling will still work, but compiling with -prod
-// will not (all warnings are treaded like errors with -prod).
+// will not (all warnings are treated like errors with -prod).
 // 6 months after the deprecation date, calls will be hard
 // compiler errors.
 [deprecated: 'use new_function2() instead']
