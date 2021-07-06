@@ -499,6 +499,19 @@ static void* g_live_info = NULL;
 #ifdef _VFREESTANDING
 #undef _VFREESTANDING
 #endif
+
+void v_segmentation_fault_handler(int sig) {
+  void *array[40];
+  size_t size;
+
+  // get void*\'s for all entries on the stack
+  size = backtrace(array, 40);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
 '
 
 const c_builtin_types = '
