@@ -332,6 +332,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// we could be in an anon fn so save outer fn defer stmts
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
+	ctmp := g.tmp_count
+	g.tmp_count = 0
+	defer {
+		g.tmp_count = ctmp
+	}
 	g.stmts(node.stmts)
 	if node.is_noreturn {
 		g.writeln('\twhile(1);')
@@ -409,7 +414,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 		g.write('void')
 	}
 	for i, arg in args {
-		mut caname := if arg.name == '_' { g.new_tmp_var() } else { c_name(arg.name) }
+		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
