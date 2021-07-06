@@ -165,9 +165,41 @@ const c_common_macros = '
 	#define _MOV
 #endif
 
-#if defined(__TINYC__) && defined(__has_include)
 // tcc does not support has_include properly yet, turn it off completely
+#if defined(__TINYC__) && defined(__has_include)
 #undef __has_include
+#endif
+
+#if !defined(VNORETURN)
+	#if defined(__TINYC__)
+		#include <stdnoreturn.h>
+		#define VNORETURN noreturn
+	#endif
+	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+	#  define VNORETURN _Noreturn
+	# elif defined(__GNUC__) && __GNUC__ >= 2
+	#  define VNORETURN __attribute__((noreturn))
+	# endif	
+	#ifndef VNORETURN
+		#define VNORETURN
+	#endif
+#endif
+
+#if !defined(VUNREACHABLE)
+	#if defined(__GNUC__) && !defined(__clang__)
+		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
+		#if (V_GCC_VERSION >= 40500L)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif		
+	#if defined(__clang__) && defined(__has_builtin)
+		#if __has_builtin(__builtin_unreachable)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif
+	#ifndef VUNREACHABLE
+		#define VUNREACHABLE() do { } while (0)
+	#endif		
 #endif
 
 //likely and unlikely macros

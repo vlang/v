@@ -428,7 +428,6 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	}
 }
 
-// not yet supported
 [noreturn]
 fn verror(s string) {
 	util.verror('native gen error', s)

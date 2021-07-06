@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import math.mathutil as mu
+import math.mathutil
 import os
 import strconv
 import v.token
@@ -106,7 +106,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		verror("$file_path doesn't exist")
 	}
 	raw_text := util.read_file(file_path) or {
-		verror(err)
+		verror(err.msg)
 		return voidptr(0)
 	}
 	mut s := &Scanner{
@@ -142,9 +142,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 }
 
 fn (mut s Scanner) init_scanner() {
-	util.get_timers().measure_pause('PARSE')
 	s.scan_all_tokens_in_buffer(s.comments_mode)
-	util.get_timers().measure_resume('PARSE')
 }
 
 [unsafe]
@@ -180,7 +178,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
-		col: mu.max(1, s.current_column() - len + 1)
+		col: mathutil.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -208,7 +206,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
-		col: mu.max(1, s.current_column() - len + 1)
+		col: mathutil.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -539,11 +537,11 @@ fn (mut s Scanner) end_of_file() token.Token {
 }
 
 pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
-	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
-	// in order to implement the .toplevel_comments mode.
+	util.get_timers().measure_pause('PARSE')
 	util.timing_start('SCAN')
 	defer {
 		util.timing_measure_cumulative('SCAN')
+		util.get_timers().measure_resume('PARSE')
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
@@ -1070,7 +1068,7 @@ fn (mut s Scanner) text_scan() token.Token {
 
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
-	end := mu.min(s.pos + len, s.text.len)
+	end := mathutil.min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')
 }
@@ -1221,7 +1219,7 @@ fn decode_u_escapes(s string, start int, escapes_pos []int) string {
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 6 // "\uXXXX".len == 6
-		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32)))
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32) or { 0 }))
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
@@ -1312,7 +1310,7 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = mu.min(s.text.len - 1, s.pos)
+	s.last_nl_pos = mathutil.min(s.text.len - 1, s.pos)
 	if s.is_crlf {
 		s.last_nl_pos++
 	}
@@ -1399,6 +1397,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	s.vet_errors << ve
 }
 
+[noreturn]
 pub fn verror(s string) {
 	util.verror('scanner error', s)
 }

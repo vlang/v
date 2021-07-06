@@ -140,6 +140,7 @@ pub fn write(fd i64, buf &byte, count u64) i64 {
 	return x
 }
 
+[noreturn]
 fn bare_panic(msg string) {
 	println('V panic' + msg)
 	exit(1)
@@ -150,6 +151,7 @@ fn bare_backtrace() string {
 }
 
 [export: 'exit']
+[noreturn]
 fn __exit(code int) {
 	sys_exit(code)
 }

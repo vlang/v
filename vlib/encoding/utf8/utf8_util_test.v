@@ -13,22 +13,11 @@ fn test_utf8_util() {
 	assert utf8.to_upper('абвёabc12｛') == 'АБВЁABC12｛'
 	assert utf8.to_lower('АБВЁABC12｛') == 'абвёabc12｛'
 
-	// ustring test
-	src1 := src.ustring()
-	upper1 := utf8.u_to_upper(src1)
-	lower1 := utf8.u_to_lower(src1)
-	assert upper1 == (src_upper.ustring())
-	assert lower1 == (src_lower.ustring())
-
 	// test len function
 	assert utf8.len('') == 0
 	assert utf8.len('pippo') == 5
 	assert utf8.len(src) == 15 // 29
 	assert src.len == 24 // 49
-	// test u_len function
-	assert utf8.u_len(''.ustring()) == 0
-	assert utf8.u_len(src1) == 15 // 29
-	assert utf8.u_len('pippo'.ustring()) == 5
 
 	// western punctuation
 	a := '.abc?abcòàè.'

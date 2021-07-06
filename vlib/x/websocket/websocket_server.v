@@ -1,7 +1,7 @@
 module websocket
 
 import net
-import x.openssl
+import net.openssl
 import log
 import time
 import rand
@@ -35,6 +35,7 @@ pub mut:
 }
 
 // new_server instance a new websocket server on provided port and route
+[deprecated: 'use net.websocket module instead']
 pub fn new_server(family net.AddrFamily, port int, route string) &Server {
 	return &Server{
 		ls: 0
