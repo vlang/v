@@ -425,9 +425,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				eprintln('error parsing method attributes: $err')
 				return
 			}
-			if route_path == '' {
-				continue
-			}
 			// Used for route matching
 			route_words := route_path.split('/').filter(it != '')
 
