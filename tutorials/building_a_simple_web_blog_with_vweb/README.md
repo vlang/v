@@ -69,6 +69,7 @@ fn main() {
 	vweb.run(&App{}, 8081)
 }
 
+['/']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
@@ -103,6 +104,7 @@ no routing rules either:
 import vweb
 import time
 
+['/time']
 fn (mut app App) time() vweb.Result {
 	return app.text(time.now().format())
 }
@@ -140,6 +142,7 @@ and update our `index()` action so that it returns the HTML view we just created
 
 ```v ignore
 // blog.v
+['/']
 pub fn (mut app App) index() vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
@@ -266,6 +269,7 @@ Let's fetch the articles in the `index()` action:
 
 ```v ignore
 // blog.v
+['/']
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
@@ -351,6 +355,7 @@ Create `new.html`:
 // article.v
 import vweb
 
+['/new_article']
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
@@ -391,6 +396,7 @@ in V is very simple:
 import vweb
 import json
 
+['/articles']
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(json.encode(articles))
