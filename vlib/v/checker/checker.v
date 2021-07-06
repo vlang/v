@@ -7662,9 +7662,9 @@ fn (mut c Checker) verify_vweb_params_for_method(m ast.Fn) (bool, int, int) {
 			}
 		}
 	}
-  margs := m.params.len - 1 // first arg is the receiver/this
+	margs := m.params.len - 1 // first arg is the receiver/this
 	mut route_attributes := 0
-  mut has_route_attr := false
+	mut has_route_attr := false
 	for a in m.attrs {
 		if a.name.starts_with('/') {
 			has_route_attr = true
