@@ -10,6 +10,8 @@ pub struct Timers {
 pub mut:
 	swatches     map[string]time.StopWatch
 	should_print bool
+	// already_shown records for which of the swatches .show() or .show_if_exists() had been called already
+	already_shown []string
 }
 
 pub fn new_timers(should_print bool) &Timers {
@@ -100,6 +102,7 @@ pub fn (mut t Timers) show(label string) {
 	if t.should_print {
 		println(formatted_message)
 	}
+	t.already_shown << label
 }
 
 pub fn (mut t Timers) show_if_exists(label string) {
@@ -107,6 +110,16 @@ pub fn (mut t Timers) show_if_exists(label string) {
 		return
 	}
 	t.show(label)
+	t.already_shown << label
+}
+
+pub fn (mut t Timers) show_remaining() {
+	for k, _ in t.swatches {
+		if k in t.already_shown {
+			continue
+		}
+		t.show(k)
+	}
 }
 
 pub fn (mut t Timers) dump_all() {

@@ -142,9 +142,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 }
 
 fn (mut s Scanner) init_scanner() {
-	util.get_timers().measure_pause('PARSE')
 	s.scan_all_tokens_in_buffer(s.comments_mode)
-	util.get_timers().measure_resume('PARSE')
 }
 
 [unsafe]
@@ -539,11 +537,11 @@ fn (mut s Scanner) end_of_file() token.Token {
 }
 
 pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
-	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
-	// in order to implement the .toplevel_comments mode.
+	util.get_timers().measure_pause('PARSE')
 	util.timing_start('SCAN')
 	defer {
 		util.timing_measure_cumulative('SCAN')
+		util.get_timers().measure_resume('PARSE')
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
