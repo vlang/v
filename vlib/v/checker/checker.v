@@ -3031,7 +3031,7 @@ fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, c
 		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
 			call_expr.pos)
 	} else {
-		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $after_time.ymmdd()',
+		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
 			deprecation_message), call_expr.pos)
 	}
 }
