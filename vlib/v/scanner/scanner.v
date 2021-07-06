@@ -106,7 +106,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		verror("$file_path doesn't exist")
 	}
 	raw_text := util.read_file(file_path) or {
-		verror(err)
+		verror(err.msg)
 		return voidptr(0)
 	}
 	mut s := &Scanner{
@@ -1399,6 +1399,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	s.vet_errors << ve
 }
 
+[noreturn]
 pub fn verror(s string) {
 	util.verror('scanner error', s)
 }

@@ -1263,6 +1263,17 @@ fn (s string) at(idx int) byte {
 	}
 }
 
+// version of `at()` that is used in `a[i] or {`
+// return an error when the index is out of range
+fn (s string) at_with_check(idx int) ?byte {
+	if idx < 0 || idx >= s.len {
+		return error('string index out of range')
+	}
+	unsafe {
+		return s.str[idx]
+	}
+}
+
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true

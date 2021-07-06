@@ -130,10 +130,6 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if got_sym.kind == .function && exp_sym.kind == .function {
 		return c.check_matching_function_symbols(got_sym, exp_sym)
 	}
-	// allow using Error as a string for now (avoid a breaking change)
-	if got == ast.error_type_idx && expected == ast.string_type_idx {
-		return true
-	}
 	// allow `return 0` in a function with `?int` return type
 	expected_nonflagged := expected.clear_flags()
 	if got == ast.int_literal_type && expected_nonflagged.is_int() {

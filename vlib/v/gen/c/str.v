@@ -138,6 +138,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
+		if expr.is_auto_deref_var() {
+			g.write('*')
+		}
 		if sym.kind != .function {
 			g.expr_with_cast(expr, typ, typ)
 		}

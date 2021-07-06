@@ -4638,7 +4638,6 @@ Translating it to V gives you several advantages:
 module main
 
 import time
-import os
 
 [live]
 fn print_message() {
@@ -4762,6 +4761,21 @@ fn legacy_function() {}
 // This function's calls will be inlined.
 [inline]
 fn inlined_function() {
+}
+
+// This function's calls will NOT be inlined.
+[noinline]
+fn function() {
+}
+
+// This function will NOT return to its callers.
+// Such functions can be used at the end of or blocks,
+// just like exit/1 or panic/1. Such functions can not
+// have return types, and should end either in for{}, or
+// by calling other `[noreturn]` functions.
+[noreturn]
+fn forever() {
+	for {}
 }
 
 // The following struct must be allocated on the heap. Therefore, it can only be used as a

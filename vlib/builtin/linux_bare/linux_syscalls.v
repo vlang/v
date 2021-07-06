@@ -303,8 +303,10 @@ fn sys_execve(filename &byte, argv []&byte, envp []&byte) int {
 }
 
 // 60 sys_exit
+[noreturn]
 fn sys_exit(ec int) {
 	sys_call1(60, u64(ec))
+	for {}
 }
 
 // 102 sys_getuid

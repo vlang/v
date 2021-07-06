@@ -77,6 +77,7 @@ mut:
 	is_sql                 bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared              bool     // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled      bool     // is it safe to generate #line directives when -g is passed
+	is_cast_in_heap        bool     // fn return struct_init to interface type (cannot use stack, should use heap)
 	arraymap_set_pos       int      // map or array set value position
 	vlines_path            string   // set to the proper path for generating #line directives
 	optionals              []string // to avoid duplicates TODO perf, use map
@@ -2282,6 +2283,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if is_auto_heap {
 						g.write('*')
 					}
+				}
+				if lx.is_auto_deref_var() {
+					g.write('*')
 				}
 				g.expr(lx)
 				noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
@@ -4650,6 +4654,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg$arg_idx=')
+			if expr.is_auto_deref_var() {
+				g.write('*')
+			}
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
@@ -4739,9 +4746,23 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
-		// temporary workaround for now
-		if g.fn_decl.return_type.is_ptr() && !node.types[0].is_ptr() && !node.types[0].is_pointer() && !node.types[0].is_number() {
-			g.write('&')
+		if expr0.is_auto_deref_var() {
+			if g.fn_decl.return_type.is_ptr() {
+				var_str := g.expr_string(expr0)
+				g.write(var_str.trim('&'))
+			} else {
+				g.write('*')
+				g.expr(expr0)
+			}
+		} else {
+			rs := g.table.get_type_symbol(g.fn_decl.return_type)
+			if node.exprs[0] is ast.StructInit && rs.kind == .interface_ && !node.types[0].is_ptr() {
+				g.is_cast_in_heap = true
+				g.expr_with_cast(node.exprs[0], node.types[0].to_ptr(), g.fn_decl.return_type)
+				g.is_cast_in_heap = false
+			} else {
+				g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			}
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if use_tmp_var {
@@ -4930,7 +4951,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
-	} else if is_amp {
+	} else if is_amp || g.is_cast_in_heap {
 		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
@@ -5119,7 +5140,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof($shared_styp))')
-	} else if is_amp {
+	} else if is_amp || g.is_cast_in_heap {
 		g.write(', sizeof($styp))')
 	}
 }
@@ -5179,10 +5200,12 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 }
 
+[noreturn]
 fn verror(s string) {
 	util.verror('cgen error', s)
 }
 
+[noreturn]
 fn (g &Gen) error(s string, pos token.Position) {
 	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
 	eprintln(ferror)

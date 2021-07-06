@@ -30,7 +30,6 @@ pub fn compile(command string, pref &pref.Preferences) {
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
 		verror(err.msg)
-		exit(1)
 	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
@@ -217,9 +216,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		}
 	}
 	// Panic. We couldn't find the folder.
-	verror('`builtin/` not included on module lookup path.
-Did you forget to add vlib to the path? (Use @vlib for default vlib)')
-	panic('Unreachable code reached.')
+	verror('`builtin/` not included on module lookup path.\nDid you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v &Builder) get_user_files() []string {
@@ -259,10 +256,7 @@ pub fn (v &Builder) get_user_files() []string {
 	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := os.read_file(dir) or {
-			verror('$dir does not exist')
-			exit(0)
-		}
+		tcontent := os.read_file(dir) or { verror('$dir does not exist') }
 		slines := tcontent.trim_space().split_into_lines()
 		for sline in slines {
 			line := sline.trim_space()
@@ -290,7 +284,6 @@ pub fn (v &Builder) get_user_files() []string {
 	does_exist := os.exists(dir)
 	if !does_exist {
 		verror("$dir doesn't exist")
-		exit(1)
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
 	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
