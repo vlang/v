@@ -141,6 +141,7 @@ pub fn source_context(kind string, source string, pos token.Position) []string {
 	return clines
 }
 
+[noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('$final_kind: $s')

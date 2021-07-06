@@ -802,10 +802,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						match node.left_types[i] {
 							7 { // ast.IndexExpr {
 								ie := node.left[i] as ast.IndexExpr
-								bracket := name.index('[') or {
-									verror('bracket expected')
-									exit(1)
-								}
+								bracket := name.index('[') or { verror('bracket expected') }
 								var_name := name[0..bracket]
 								mut dest := g.get_var_offset(var_name)
 								index := ie.index as ast.IntegerLiteral

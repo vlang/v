@@ -3218,6 +3218,7 @@ fn (p &Parser) new_true_expr() ast.Expr {
 	}
 }
 
+[noreturn]
 fn verror(s string) {
 	util.verror('parser error', s)
 }

@@ -1,7 +1,7 @@
 // use this test to test the websocket client in the autobahn test
 module main
 
-import x.websocket
+import net.websocket
 
 fn main() {
 	for i in 1 .. 304 {

@@ -332,7 +332,15 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// we could be in an anon fn so save outer fn defer stmts
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
+	ctmp := g.tmp_count
+	g.tmp_count = 0
+	defer {
+		g.tmp_count = ctmp
+	}
 	g.stmts(node.stmts)
+	if node.is_noreturn {
+		g.writeln('\twhile(1);')
+	}
 	// clear g.fn_mut_arg_names
 
 	if !node.has_return {
@@ -406,7 +414,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 		g.write('void')
 	}
 	for i, arg in args {
-		mut caname := if arg.name == '_' { g.new_tmp_var() } else { c_name(arg.name) }
+		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
@@ -522,6 +530,18 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('\n $cur_line')
 		} else {
 			g.write('\n $cur_line $tmp_opt')
+		}
+	}
+	if node.is_noreturn {
+		if g.inside_ternary == 0 {
+			g.writeln(';')
+			g.write('VUNREACHABLE()')
+		} else {
+			$if msvc {
+				// MSVC has no support for the statement expressions used below
+			} $else {
+				g.write(', ({VUNREACHABLE();})')
+			}
 		}
 	}
 }
@@ -1315,9 +1335,22 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'inline' {
 				g.write('inline ')
 			}
-			'no_inline' {
+			'noinline' {
 				// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 				g.write('__NOINLINE ')
+			}
+			'noreturn' {
+				// a `[noreturn]` tag tells the compiler, that a function
+				// *DOES NOT RETURN* to its callsites.
+				// See: https://en.cppreference.com/w/c/language/_Noreturn
+				// Such functions should have no return type. They can be used
+				// in places where `panic(err)` or `exit(0)` can be used.
+				// panic/1 and exit/0 themselves will also be marked as
+				// `[noreturn]` soon.
+				// These functions should have busy `for{}` loops injected
+				// at their end, when they do not end by calling other fns
+				// marked by `[noreturn]`.
+				g.write('VNORETURN ')
 			}
 			'irq_handler' {
 				g.write('__IRQHANDLER ')

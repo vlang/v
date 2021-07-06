@@ -44,11 +44,11 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
@@ -83,7 +83,7 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 	]
@@ -98,7 +98,7 @@ const (
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',

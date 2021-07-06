@@ -136,7 +136,7 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 		.none_ {
 			styp = 'undefined'
 		}
-		.string, .ustring, .char {
+		.string, .char {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		// 'array_array_int' => 'number[][]'

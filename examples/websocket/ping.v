@@ -2,7 +2,7 @@ module main
 
 import time
 import os
-import x.websocket
+import net.websocket
 
 fn main() {
 	println('press enter to quit...\n')
@@ -12,6 +12,8 @@ fn main() {
 	os.get_line()
 }
 
+// start_server starts the websocket server, it receives messages
+// and send it back to the client that sent it
 fn start_server() ? {
 	mut s := websocket.new_server(.ip6, 30000, '')
 	// Make that in execution test time give time to execute at least one time
@@ -36,6 +38,8 @@ fn start_server() ? {
 	}
 }
 
+// start_client starts the websocket client, it writes a message to
+// the server and prints all the messages received
 fn start_client() ? {
 	mut ws := websocket.new_client('ws://localhost:30000') ?
 	// mut ws := websocket.new_client('wss://echo.websocket.org:443')?

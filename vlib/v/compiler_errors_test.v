@@ -174,8 +174,8 @@ fn (mut tasks Tasks) run() {
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
-	mut work := sync.new_channel<TaskDescription>(tasks.all.len)
-	mut results := sync.new_channel<TaskDescription>(tasks.all.len)
+	mut work := sync.new_channel<TaskDescription>(u32(tasks.all.len))
+	mut results := sync.new_channel<TaskDescription>(u32(tasks.all.len))
 	mut m_skip_files := skip_files.clone()
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		m_skip_files << skip_on_ubuntu_musl

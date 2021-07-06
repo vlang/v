@@ -1,6 +1,6 @@
 import os
 import net
-import x.websocket
+import net.websocket
 import time
 import rand
 
