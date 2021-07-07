@@ -363,6 +363,16 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		}
 		g.nr_closures += tg.nr_closures
 		g.has_main = g.has_main || tg.has_main
+
+		g.threaded_fns << tg.threaded_fns
+		g.waiter_fns << tg.waiter_fns
+		g.array_fn_definitions << tg.array_fn_definitions
+		g.map_fn_definitions << tg.map_fn_definitions
+		g.struct_fn_definitions << tg.struct_fn_definitions
+		g.sumtype_fn_definitions << tg.sumtype_fn_definitions
+		g.alias_fn_definitions << tg.alias_fn_definitions
+		g.auto_fn_definitions << tg.auto_fn_definitions
+		g.anon_fn_definitions << tg.anon_fn_definitions
 	}
 
 	g.write_optionals()
