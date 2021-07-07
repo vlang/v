@@ -6497,6 +6497,19 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				return !(expr as ast.BoolLiteral).val
 			}
 		}
+		ast.SelectorExpr {
+			left := cond.expr as ast.Ident
+			pkg := cond.field_name
+			if left.name != 'pkgconfig' {
+				c.error('invalid `\$if` condition', cond.pos)
+			} else {
+				mut m := pkgconfig.main([pkg]) or {
+					c.error(err.msg, cond.pos)
+					return true
+				}
+				m.run() or { return true }
+			}
+		}
 		else {
 			c.error('invalid `\$if` condition', pos)
 		}
