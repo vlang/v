@@ -24,9 +24,7 @@ pub const (
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
-		'.html': 'text/html; charset=utf-8'
-		'.jpg':  'image/jpeg'
-		'.js':   'application/javascript'
+		'.html': 'text/html; charset=utf-8' '.jpg':  'image/jpeg' '.js':   'application/javascript'
 		'.json': 'application/json'
 		'.md':   'text/markdown; charset=utf-8'
 		'.pdf':  'application/pdf'
@@ -430,10 +428,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 			// Skip if the HTTP request method does not match the attributes
 			if app.req.method in http_methods {
-				if !has_explicit_route {
-					send_string(mut conn, vweb.http_404) or {}
-					return
-				}
 				// Route immediate matches first
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
