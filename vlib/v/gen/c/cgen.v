@@ -786,7 +786,11 @@ pub fn (mut g Gen) write_typedef_types() {
 		}
 		match typ.kind {
 			.array {
-				g.type_definitions.writeln('typedef array $typ.cname;')
+				info := typ.info as ast.Array
+				elem_sym := g.table.get_type_symbol(info.elem_type)
+				if elem_sym.kind != .placeholder {
+					g.type_definitions.writeln('typedef array $typ.cname;')
+				}
 			}
 			.array_fixed {
 				info := typ.info as ast.ArrayFixed
