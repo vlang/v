@@ -361,8 +361,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				g.str_types << str_type
 			}
 		}
-
 		g.nr_closures += tg.nr_closures
+		g.has_main = g.has_main || tg.has_main
 	}
 
 	g.write_optionals()
