@@ -556,7 +556,7 @@ pub enum Kind {
 	thread
 }
 
-pub fn (t &TypeSymbol) str() string {
+pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 
@@ -641,11 +641,6 @@ pub fn (t &TypeSymbol) is_heap() bool {
 	}
 }
 
-/*
-pub fn (t TypeSymbol) str() string {
-	return t.name
-}
-*/
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found

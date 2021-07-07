@@ -11,6 +11,7 @@ import v.token
 import v.util
 import v.util.version
 import v.depgraph
+import sync.pool
 
 const (
 	// NB: some of the words in c_reserved, are not reserved in C,
@@ -37,9 +38,10 @@ fn string_array_to_map(a []string) map[string]bool {
 }
 
 struct Gen {
-	pref            &pref.Preferences
-	module_built    string
-	field_data_type ast.Type // cache her to avoid map lookups
+	pref                &pref.Preferences
+	field_data_type     ast.Type // cache her to avoid map lookups
+	module_built        string
+	timers_should_print bool
 mut:
 	table                  &ast.Table
 	out                    strings.Builder
@@ -62,7 +64,6 @@ mut:
 	shared_types           strings.Builder // shared/lock types
 	shared_functions       strings.Builder // shared constructors
 	channel_definitions    strings.Builder // channel related code
-	options_typedefs       strings.Builder // Option typedefs
 	options                strings.Builder // `Option_xxxx` types
 	json_forward_decls     strings.Builder // json type forward decls
 	enum_typedefs          strings.Builder // enum types
@@ -70,22 +71,22 @@ mut:
 	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
-	tmp_count              int      // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count2             int      // a separate tmp var counter for autofree fn calls
-	tmp_count_declarations int      // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count       int      // like tmp_count but global and not resetted in each function
-	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
-	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
-	is_arraymap_set        bool     // map or array set value state
-	is_amp                 bool     // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                 bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared              bool     // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled      bool     // is it safe to generate #line directives when -g is passed
-	inside_cast_in_heap    int      // inside cast to interface type in heap (resolve recursive calls)
-	arraymap_set_pos       int      // map or array set value position
-	vlines_path            string   // set to the proper path for generating #line directives
-	optionals              []string // to avoid duplicates TODO perf, use map
+	tmp_count              int    // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count2             int    // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations int    // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count       int    // like tmp_count but global and not resetted in each function
+	is_assign_lhs          bool   // inside left part of assign expr (for array_set(), etc)
+	discard_or_result      bool   // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_void_expr_stmt      bool   // ExprStmt whos result is discarded
+	is_arraymap_set        bool   // map or array set value state
+	is_amp                 bool   // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                 bool   // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared              bool   // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled      bool   // is it safe to generate #line directives when -g is passed
+	inside_cast_in_heap    int    // inside cast to interface type in heap (resolve recursive calls)
+	arraymap_set_pos       int    // map or array set value position
+	vlines_path            string // set to the proper path for generating #line directives
+	optionals              map[string]string // to avoid duplicates
 	chan_pop_optionals     []string // types for `x := <-ch or {...}`
 	chan_push_optionals    []string // types for `ch <- x or {...}`
 	cur_lock               ast.LockExpr
@@ -112,7 +113,7 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
-	str_types              []string     // types that need automatic str() generation
+	str_types              []StrType    // types that need automatic str() generation
 	threaded_fns           []string     // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns             []string     // functions that wait for `go xxx()` to finish
 	array_fn_definitions   []string     // array equality functions that have been defined
@@ -182,6 +183,8 @@ mut:
 	anon_fn            bool
 	array_sort_fn      map[string]bool
 	nr_closures        int
+	tests_inited       bool
+	autofree_used      bool
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -200,7 +203,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	$if time_cgening ? {
 		timers_should_print = true
 	}
-	mut g := Gen{
+	mut glob := Gen{ // TODO: make shared
 		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
@@ -216,7 +219,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
-		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
@@ -230,56 +232,147 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		is_autofree: true
 		indent: -1
 		module_built: module_built
+		timers_should_print: timers_should_print
 		timers: util.new_timers(timers_should_print)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 	}
-	g.timers.start('cgen init')
-	for mod in g.table.modules {
-		g.inits[mod] = strings.new_builder(100)
-		g.global_inits[mod] = strings.new_builder(100)
-		g.cleanups[mod] = strings.new_builder(100)
+	// lock glob {
+	glob.timers.start('cgen init')
+	for mod in glob.table.modules {
+		glob.inits[mod] = strings.new_builder(100)
+		glob.global_inits[mod] = strings.new_builder(100)
+		glob.cleanups[mod] = strings.new_builder(100)
 	}
-	g.init()
-	g.timers.show('cgen init')
-	mut tests_inited := false
-	mut autofree_used := false
-	for file in files {
-		g.timers.start('cgen_file $file.path')
-		g.file = file
-		if g.pref.is_vlines {
-			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
-		}
-		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
-		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-		g.is_test = g.pref.is_test
-		if g.file.path == '' || !g.pref.autofree {
-			// cgen test or building V
-			// println('autofree=false')
-			g.is_autofree = false
-		} else {
-			g.is_autofree = true
-			autofree_used = true
-		}
-		// anon fn may include assert and thus this needs
-		// to be included before any test contents are written
-		if g.is_test && !tests_inited {
-			g.write_tests_definitions()
-			tests_inited = true
-		}
-		g.stmts(file.stmts)
-		// Transfer embedded files
-		if file.embedded_files.len > 0 {
-			for path in file.embedded_files {
-				if path !in g.embedded_files {
-					g.embedded_files << path
+	glob.init()
+	glob.timers.show('cgen init')
+	glob.tests_inited = false
+	glob.autofree_used = false
+	//	}
+	mut pp := pool.new_pool_processor(
+		callback: fn (p &pool.PoolProcessor, idx int, wid int) &Gen {
+			file := p.get_item<&ast.File>(idx)
+			mut glob := &Gen(p.get_shared_context())
+			glob.timers.start('cgen_file $file.path')
+			mut g := &Gen{
+				file: file
+				out: strings.new_builder(512000)
+				cheaders: strings.new_builder(15000)
+				includes: strings.new_builder(100)
+				typedefs: strings.new_builder(100)
+				typedefs2: strings.new_builder(100)
+				type_definitions: strings.new_builder(100)
+				definitions: strings.new_builder(100)
+				gowrappers: strings.new_builder(100)
+				stringliterals: strings.new_builder(100)
+				auto_str_funcs: strings.new_builder(100)
+				comptime_defines: strings.new_builder(100)
+				pcs_declarations: strings.new_builder(100)
+				hotcode_definitions: strings.new_builder(100)
+				embedded_data: strings.new_builder(1000)
+				options: strings.new_builder(100)
+				shared_types: strings.new_builder(100)
+				shared_functions: strings.new_builder(100)
+				channel_definitions: strings.new_builder(100)
+				json_forward_decls: strings.new_builder(100)
+				enum_typedefs: strings.new_builder(100)
+				sql_buf: strings.new_builder(100)
+				table: glob.table
+				pref: glob.pref
+				fn_decl: 0
+				is_autofree: true
+				indent: -1
+				module_built: glob.module_built
+				timers: util.new_timers(glob.timers_should_print)
+				inner_loop: &ast.EmptyStmt{}
+			}
+
+			if g.pref.is_vlines {
+				g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
+			}
+			// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
+			// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
+			g.is_test = g.pref.is_test
+			if g.file.path == '' || !g.pref.autofree {
+				// cgen test or building V
+				// println('autofree=false')
+				g.is_autofree = false
+			} else {
+				g.is_autofree = true
+				glob.autofree_used = true
+			}
+			// anon fn may include assert and thus this needs
+			// to be included before any test contents are written
+			if g.is_test && !glob.tests_inited {
+				g.write_tests_definitions()
+				glob.tests_inited = true
+			}
+			g.stmts(file.stmts)
+			// Transfer embedded files
+			if file.embedded_files.len > 0 {
+				for path in file.embedded_files {
+					if path !in g.embedded_files {
+						g.embedded_files << path
+					}
 				}
 			}
+			glob.timers.show('cgen_file $file.path')
+			return g
 		}
-		g.timers.show('cgen_file $file.path')
+	)
+	// lock glob {
+	pp.set_shared_context(glob) // TODO: make glob shared
+	//}
+	pp.work_on_items(files)
+	mut g := glob
+	g.timers.start('cgen unification')
+	for tg in pp.get_results<Gen>() {
+		g.out.write(tg.out) or { panic('') } // strings.Builder.write() never actually fails
+		g.cheaders.write(tg.cheaders) or { panic('') }
+		g.includes.write(tg.includes) or { panic('') }
+		g.typedefs.write(tg.typedefs) or { panic('') }
+		g.typedefs2.write(tg.typedefs2) or { panic('') }
+		g.type_definitions.write(tg.type_definitions) or { panic('') }
+		g.definitions.write(tg.definitions) or { panic('') }
+		for mod, init in tg.inits { // merge map
+			g.inits[mod].write(init) or { panic('') }
+		}
+		for mod, cleanup in tg.cleanups { // merge map
+			g.cleanups[mod].write(cleanup) or { panic('') }
+		}
+		g.gowrappers.write(tg.gowrappers) or { panic('') }
+		g.stringliterals.write(tg.stringliterals) or { panic('') }
+		g.auto_str_funcs.write(tg.auto_str_funcs) or { panic('') }
+		g.comptime_defines.write(tg.comptime_defines) or { panic('') }
+		g.pcs_declarations.write(tg.pcs_declarations) or { panic('') }
+		g.hotcode_definitions.write(tg.hotcode_definitions) or { panic('') }
+		g.embedded_data.write(tg.embedded_data) or { panic('') }
+		g.shared_types.write(tg.shared_types) or { panic('') }
+		g.shared_functions.write(tg.channel_definitions) or { panic('') }
+		for styp, base in tg.optionals { // merge map
+			g.optionals[styp] = base
+		}
+		g.json_forward_decls.write(tg.json_forward_decls) or { panic('') }
+		g.enum_typedefs.write(tg.enum_typedefs) or { panic('') }
+		g.channel_definitions.write(tg.channel_definitions) or { panic('') }
+		g.sql_buf.write(tg.sql_buf) or { panic('') }
+		for str_type in tg.str_types {
+			if str_type !in g.str_types {
+				g.str_types << str_type
+			}
+		}
+
+		g.nr_closures += tg.nr_closures
 	}
+
+	g.write_optionals()
+	g.dump_expr_definitions() // this uses gen_str_for_type, so it has to go before the below for loop
+	for str_type in g.str_types {
+		g.final_gen_str(str_type)
+	}
+	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
-	if autofree_used {
+	if glob.autofree_used {
 		g.is_autofree = true // so that void _vcleanup is generated
 	}
 	// to make sure type idx's are the same in cached mods
@@ -299,7 +392,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		}
 	}
 	//
-	g.dump_expr_definitions()
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {
@@ -353,10 +445,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	if g.embedded_data.len > 0 {
 		b.writeln('\n// V embedded data:')
 		b.write_string(g.embedded_data.str())
-	}
-	if g.options_typedefs.len > 0 {
-		b.writeln('\n// V option typedefs:')
-		b.write_string(g.options_typedefs.str())
 	}
 	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:')
@@ -610,20 +698,16 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C typecc
 fn (mut g Gen) typ(t ast.Type) string {
-	styp := g.base_type(t)
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
+	} else {
+		return g.base_type(t)
 	}
-	/*
-	if styp.starts_with('C__') {
-		return styp[3..]
-	}
-	*/
-	return styp
 }
 
-fn (mut g Gen) base_type(t ast.Type) string {
+fn (mut g Gen) base_type(_t ast.Type) string {
+	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
 		// todo compile time if for perf?
 		if t == ast.f32_type {
@@ -705,13 +789,15 @@ fn (g &Gen) optional_type_text(styp string, base string) string {
 
 fn (mut g Gen) register_optional(t ast.Type) string {
 	styp, base := g.optional_type_name(t)
-	if styp !in g.optionals {
-		g.typedefs2.writeln('typedef struct $styp $styp;')
-		g.options.write_string(g.optional_type_text(styp, base))
-		g.options.writeln(';\n')
-		g.optionals << styp.clone()
-	}
+	g.optionals[styp] = base
 	return styp
+}
+
+fn (mut g Gen) write_optionals() {
+	for styp, base in g.optionals {
+		g.typedefs2.writeln('typedef struct $styp $styp;')
+		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
+	}
 }
 
 fn (mut g Gen) find_or_register_shared(t ast.Type, base string) string {
@@ -5821,7 +5907,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 							styp, base := g.optional_type_name(field.typ)
 							if styp !in g.optionals {
 								last_text := g.type_definitions.cut_to(start_pos).clone()
-								g.optionals << styp
+								g.optionals[styp] = base
 								g.typedefs2.writeln('typedef struct $styp $styp;')
 								g.type_definitions.writeln('${g.optional_type_text(styp,
 									base)};')
