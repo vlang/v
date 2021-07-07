@@ -21,11 +21,13 @@ fn main() {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
-	println('Fetching updates...')
-	ret := os.system('$vdir/v up')
-	if ret != 0 {
-		println('failed to update V')
-		return
+	if !os.args.contains('-noupdate') {
+		println('Fetching updates...')
+		ret := os.system('$vdir/v up')
+		if ret != 0 {
+			println('failed to update V')
+			return
+		}
 	}
 	// Fetch the last commit's hash
 	commit := exec('git rev-parse HEAD')[..8]
