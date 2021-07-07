@@ -190,15 +190,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = c_name(name)
 	}
 	mut type_name := g.typ(node.return_type)
-	if g.table.cur_concrete_types.len > 0 {
-		// foo<T>() => foo_T_int(), foo_T_string() etc
-		// Using _T_ to differentiate between get<string> and get_string
-		name += '_T'
-		for concrete_type in g.table.cur_concrete_types {
-			gen_name := g.typ(concrete_type)
-			name += '_' + gen_name
-		}
-	}
+
+	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& name != 'main__main' && node.name != 'str' {
 		mut key := node.name
@@ -726,16 +720,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	for i, concrete_type in node.concrete_types {
-		if concrete_type != ast.void_type && concrete_type != 0 {
-			// Using _T_ to differentiate between get<string> and get_string
-			// `foo<int>()` => `foo_T_int()`
-			if i == 0 {
-				name += '_T'
-			}
-			name += '_' + g.typ(concrete_type)
-		}
-	}
+	name = g.generic_fn_name(node.concrete_types, name, false)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	//
@@ -923,14 +908,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
-	for i, concrete_type in node.concrete_types {
-		// Using _T_ to differentiate between get<string> and get_string
-		// `foo<int>()` => `foo_T_int()`
-		if i == 0 {
-			name += '_T'
-		}
-		name += '_' + g.typ(concrete_type)
-	}
+	name = g.generic_fn_name(node.concrete_types, name, false)
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
 	// g.generate_tmp_autofree_arg_vars(node, name)

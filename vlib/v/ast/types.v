@@ -252,6 +252,12 @@ pub fn (t Type) derive(t_from Type) Type {
 	return (0xffff0000 & t_from) | u16(t)
 }
 
+// copy flags from `t_from` to `t` and return `t`
+[inline]
+pub fn (t Type) derive_add_muls(t_from Type) Type {
+	return Type((0xff000000 & t_from) | u16(t)).set_nr_muls(t.nr_muls() + t_from.nr_muls())
+}
+
 // return new type with TypeSymbol idx set to `idx`
 [inline]
 pub fn new_type(idx int) Type {
