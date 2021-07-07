@@ -117,9 +117,24 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_method_for_type(typ ast.Type) string {
-	styp := g.typ(typ).replace('*', '')
-	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+struct StrType {
+	is_optional bool
+	typ         ast.Type
+	fn_name     string
+	styp        string
+}
+
+fn (mut g Gen) gen_str_for_type(typ ast.Type) string {
+	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0)
+	if g.pref.nofloat {
+		if typ == ast.f32_type {
+			unwrapped = ast.u32_type
+		} else if typ == ast.f64_type {
+			unwrapped = ast.u64_type
+		}
+	}
+	styp := g.typ(unwrapped)
+	mut sym := g.table.get_type_symbol(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
@@ -127,78 +142,75 @@ fn (mut g Gen) gen_str_method_for_type(typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
+	str_type := StrType{
+		is_optional: unwrapped.has_flag(.optional) || typ.has_flag(.optional)
+		typ: unwrapped
+		fn_name: str_fn_name
+		styp: styp
+	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
-	already_generated_key := '$styp:$str_fn_name'
-	if !sym_has_str_method && already_generated_key !in g.str_types && !typ.has_flag(.optional) {
+	if !sym_has_str_method && str_type !in g.str_types {
 		$if debugautostr ? {
 			eprintln('> gen_str_for_type: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
-		g.str_types << already_generated_key
-		if g.pref.nofloat {
-			if sym.name == 'f32' {
-				return g.gen_str_method_for_type(ast.u32_type)
-				// return ''
-			} else if sym.name == 'f64' {
-				return g.gen_str_method_for_type(ast.u64_type)
-				// return ''
-			}
-		}
-		match mut sym.info {
-			ast.Alias {
-				if sym.info.is_import {
-					g.gen_str_default(sym, styp, str_fn_name)
-				} else {
-					g.gen_str_for_alias(sym.info, styp, str_fn_name)
-				}
-			}
-			ast.Array {
-				g.gen_str_for_array(sym.info, styp, str_fn_name)
-			}
-			ast.ArrayFixed {
-				g.gen_str_for_array_fixed(sym.info, styp, str_fn_name)
-			}
-			ast.Enum {
-				g.gen_str_for_enum(sym.info, styp, str_fn_name)
-			}
-			ast.FnType {
-				g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
-			}
-			ast.Struct {
-				g.gen_str_for_struct(sym.info, styp, str_fn_name)
-			}
-			ast.Map {
-				g.gen_str_for_map(sym.info, styp, str_fn_name)
-			}
-			ast.MultiReturn {
-				g.gen_str_for_multi_return(sym.info, styp, str_fn_name)
-			}
-			ast.SumType {
-				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
-			}
-			ast.Interface {
-				g.gen_str_for_interface(sym.info, styp, str_fn_name)
-			}
-			ast.Chan {
-				g.gen_str_for_chan(sym.info, styp, str_fn_name)
-			}
-			ast.Thread {
-				g.gen_str_for_thread(sym.info, styp, str_fn_name)
-			}
-			else {
-				println(g.table.type_str(typ))
-				verror("1could not generate string method '$str_fn_name' for type '$styp'")
-			}
-		}
-	}
-	if typ.has_flag(.optional) {
-		option_already_generated_key := 'option_$already_generated_key'
-		if option_already_generated_key !in g.str_types {
-			g.gen_str_for_option(typ, styp, str_fn_name)
-			g.str_types << option_already_generated_key
-		}
-		return str_fn_name
+		g.str_types << str_type
 	}
 	return str_fn_name
+}
+
+fn (mut g Gen) final_gen_str(typ StrType) {
+	sym := g.table.get_type_symbol(typ.typ)
+	str_fn_name := typ.fn_name
+	styp := typ.styp
+	if typ.typ.has_flag(.optional) {
+		g.gen_str_for_option(typ.typ, styp, str_fn_name)
+		return
+	}
+	match mut sym.info {
+		ast.Alias {
+			if sym.info.is_import {
+				g.gen_str_default(sym, styp, str_fn_name)
+			} else {
+				g.gen_str_for_alias(sym.info, styp, str_fn_name)
+			}
+		}
+		ast.Array {
+			g.gen_str_for_array(sym.info, styp, str_fn_name)
+		}
+		ast.ArrayFixed {
+			g.gen_str_for_array_fixed(sym.info, styp, str_fn_name)
+		}
+		ast.Enum {
+			g.gen_str_for_enum(sym.info, styp, str_fn_name)
+		}
+		ast.FnType {
+			g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
+		}
+		ast.Struct {
+			g.gen_str_for_struct(sym.info, styp, str_fn_name)
+		}
+		ast.Map {
+			g.gen_str_for_map(sym.info, styp, str_fn_name)
+		}
+		ast.MultiReturn {
+			g.gen_str_for_multi_return(sym.info, styp, str_fn_name)
+		}
+		ast.SumType {
+			g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
+		}
+		ast.Interface {
+			g.gen_str_for_interface(sym.info, styp, str_fn_name)
+		}
+		ast.Chan {
+			g.gen_str_for_chan(sym.info, styp, str_fn_name)
+		}
+		ast.Thread {
+			g.gen_str_for_thread(sym.info, styp, str_fn_name)
+		}
+		else {
+			verror("could not generate string method $str_fn_name for type '$styp'")
+		}
+	}
 }
 
 fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string) {
