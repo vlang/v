@@ -7458,6 +7458,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
+		return_sym := c.table.get_type_symbol(node.return_type)
+		if return_sym.info is ast.MultiReturn {
+			for multi_type in return_sym.info.types {
+				if multi_type == ast.error_type {
+					c.error('type `IError` cannot be used in multi-return, return an option instead',
+						node.return_type_pos)
+				} else if multi_type.has_flag(.optional) {
+					c.error('option cannot be used in multi-return, return an option instead',
+						node.return_type_pos)
+				}
+			}
+		}
 	}
 	if node.return_type == ast.void_type {
 		for mut a in node.attrs {
