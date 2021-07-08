@@ -437,6 +437,12 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
+		if ftyp == ast.void_type {
+			c.error('expression does not return a value', expr.position())
+		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
+			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
+				expr.position())
+		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
