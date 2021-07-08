@@ -21,6 +21,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend == .js && !prefs.should_compile_js(file) {
 			continue
 		}
+		if prefs.backend == .native && !prefs.should_compile_native(file) {
+			continue
+		}
 		if prefs.backend != .js && !prefs.should_compile_asm(file) {
 			continue
 		}
@@ -83,6 +86,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		res << file
 	}
 	if prefs.is_verbose {
+		// println('>>> prefs: $prefs')
 		println('>>> should_compile_filtered_files: res: $res')
 	}
 	return res
@@ -116,6 +120,12 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 	])
 	return res
+}
+
+pub fn (prefs &Preferences) should_compile_native(file string) bool {
+	// allow custom filtering for native backends,
+	// but if there are no other rules, default to the c backend rules
+	return prefs.should_compile_c(file)
 }
 
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
