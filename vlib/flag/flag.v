@@ -66,6 +66,7 @@ pub mut:
 	min_free_args           int
 	args_description        string
 	allow_unknown_args      bool // whether passing undescribed arguments is allowed
+	dashdash_found          bool // ignore options after this
 }
 
 [unsafe]
@@ -170,6 +171,8 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 		}
 		if arg == '--' {
 			// End of input. We're done here.
+			to_delete << i
+			fs.dashdash_found = true
 			break
 		}
 		if arg[0] != `-` {
@@ -221,6 +224,8 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 		for i, arg in fs.args {
 			if arg == '--' {
 				// End of input. We're done.
+				fs.dashdash_found = true
+				fs.args.delete(i)
 				break
 			}
 			if arg.len == 0 {
@@ -504,7 +509,7 @@ pub fn (fs FlagParser) usage() string {
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
 pub fn (fs FlagParser) finalize() ?[]string {
-	if !fs.allow_unknown_args {
+	if !fs.allow_unknown_args && !fs.dashdash_found {
 		for a in fs.args {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return IError(&UnkownFlagError{
