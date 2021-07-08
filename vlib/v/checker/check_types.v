@@ -499,6 +499,8 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 		for i, digit in lit {
 			if digit > limit[i] {
 				c.error(message, node.pos)
+			} else {
+				break
 			}
 		}
 	}
