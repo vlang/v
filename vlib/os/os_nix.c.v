@@ -8,7 +8,6 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/ptrace.h>
-#include <glob.h>
 #include <utime.h>
 
 pub const (
@@ -41,14 +40,6 @@ pub const (
 	s_iwoth = 0o0002 // Write by others
 	s_ixoth = 0o0001 // Execute by others
 )
-
-[typedef]
-struct C.glob_t {
-mut:
-	gl_pathc size_t // number of matched paths
-	gl_pathv &&char // list of matched pathnames
-	gl_offs  size_t // slots to reserve in gl_pathv
-}
 
 struct C.utsname {
 mut:
@@ -84,45 +75,138 @@ fn C.getgid() int
 fn C.getegid() int
 
 fn C.ptrace(u32, u32, voidptr, int) u64
-fn C.glob(&char, int, voidptr, voidptr) int
 
-fn C.globfree(voidptr)
+enum GlobMatch {
+	exact
+	ends_with
+	starts_with
+	start_and_ends_with
+	contains
+	any
+}
 
-pub fn glob(patterns ...string) ?[]string {
-	$if android {
-		return error('os.glob() is not supported on android yet')
+fn glob_match(dir string, pattern string, next_pattern string, mut matches []string) []string {
+	mut subdirs := []string{}
+	if is_file(dir) {
+		return subdirs
 	}
-	mut matches := []string{}
-	if patterns.len == 0 {
-		return matches
-	}
-	mut globdata := C.glob_t{
-		gl_pathv: 0
-		gl_pathc: size_t(0)
-		gl_offs: size_t(0)
-	}
-	mut flags := int(C.GLOB_DOOFFS | C.GLOB_MARK)
-	for i, pattern in patterns {
-		if i > 0 {
-			flags |= C.GLOB_APPEND
-		}
-		unsafe {
-			$if !android {
-				if C.glob(&char(pattern.str), flags, C.NULL, &globdata) != 0 {
-					return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	mut files := ls(dir) or { return subdirs }
+	mut mode := GlobMatch.exact
+	mut pat := pattern
+	if pat == '*' {
+		mode = GlobMatch.any
+		if next_pattern != pattern && next_pattern != '' {
+			for file in files {
+				if is_dir('$dir/$file') {
+					subdirs << '$dir/$file'
 				}
+			}
+			return subdirs
+		}
+	}
+	if pat == '**' {
+		files = walk_ext(dir, '')
+		pat = next_pattern
+	}
+	if pat.starts_with('*') {
+		mode = .ends_with
+		pat = pat[1..]
+	}
+	if pat.ends_with('*') {
+		mode = if mode == .ends_with { GlobMatch.contains } else { GlobMatch.starts_with }
+		pat = pat[..pat.len - 1]
+	}
+	if pat.contains('*') {
+		mode = .start_and_ends_with
+	}
+	for file in files {
+		mut fpath := file
+		f := if file.contains(os.path_separator) {
+			pathwalk := file.split(os.path_separator)
+			pathwalk[pathwalk.len - 1]
+		} else {
+			fpath = if dir == '.' { file } else { '$dir/$file' }
+			file
+		}
+		if f in ['.', '..'] || f == '' {
+			continue
+		}
+		hit := match mode {
+			.any {
+				true
+			}
+			.exact {
+				f == pat
+			}
+			.starts_with {
+				f.starts_with(pat)
+			}
+			.ends_with {
+				f.ends_with(pat)
+			}
+			.start_and_ends_with {
+				p := pat.split('*')
+				f.starts_with(p[0]) && f.ends_with(p[1])
+			}
+			.contains {
+				f.contains(pat)
+			}
+		}
+		if hit {
+			if is_dir(fpath) {
+				subdirs << fpath
+				if next_pattern == pattern && next_pattern != '' {
+					matches << '$fpath$os.path_separator'
+				}
+			} else {
+				matches << fpath
 			}
 		}
 	}
-	for i := 0; i < int(globdata.gl_pathc); i++ {
-		unsafe {
-			matches << cstring_to_vstring(globdata.gl_pathv[i])
+	return subdirs
+}
+
+fn native_glob_pattern(pattern string, mut matches []string) ? {
+	steps := pattern.split(os.path_separator)
+	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
+	mut subdirs := [cwd]
+	for i := 0; i < steps.len; i++ {
+		step := steps[i]
+		step2 := if i + 1 == steps.len { step } else { steps[i + 1] }
+		if step == '' {
+			continue
 		}
+		if is_dir('$cwd$os.path_separator$step') {
+			dd := if cwd == '/' {
+				step
+			} else {
+				if cwd == '.' || cwd == '' {
+					step
+				} else {
+					if step == '.' || step == '/' { cwd } else { '$cwd/$step' }
+				}
+			}
+			if i + 1 != steps.len {
+				if dd !in subdirs {
+					subdirs << dd
+				}
+			}
+		}
+		mut subs := []string{}
+		for sd in subdirs {
+			d := if cwd == '/' {
+				sd
+			} else {
+				if cwd == '.' || cwd == '' {
+					sd
+				} else {
+					if sd == '.' || sd == '/' { cwd } else { '$cwd/$sd' }
+				}
+			}
+			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
+		}
+		subdirs = subs.clone()
 	}
-	$if !android {
-		C.globfree(&globdata)
-	}
-	return matches
 }
 
 pub fn utime(path string, actime int, modtime int) ? {
