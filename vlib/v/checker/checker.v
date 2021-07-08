@@ -3495,10 +3495,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(right)
 					right_type = right.typ
 				}
-			}
-			if right is ast.PrefixExpr {
+			} else if right is ast.PrefixExpr {
 				if right.op == .amp && right.right is ast.StructInit {
-					right_type = c.expr(node.right[i])
+					right_type = c.expr(right)
 				}
 			}
 			if right.is_auto_deref_var() {
