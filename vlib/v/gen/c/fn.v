@@ -412,6 +412,9 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
+		if arg.is_mut {
+			arg_type_name += '*'
+		}
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as ast.FnType
 			func := info.func
@@ -432,8 +435,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 				}
 			}
 			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
-			mut_ref := if arg.is_mut { '*' } else { '' }
-			s := '$arg_type_name$mut_ref $var_name_prefix$caname'
+			s := '$arg_type_name $var_name_prefix$caname'
 			g.write(s)
 			g.definitions.write_string(s)
 			fargs << caname
@@ -563,6 +565,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
+		if node.left_type.is_ptr() && !node.receiver_type.is_ptr() {
+			g.write('&')
+		}
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
@@ -741,7 +746,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	if (node.receiver_type.is_ptr() || node.receiver_is_mut) && (!node.left_type.is_ptr()
+	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
 		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
@@ -751,7 +756,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
-		if !node.left_type.has_flag(.shared_f) && !node.receiver_is_mut {
+		if !node.left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
 	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
@@ -1244,21 +1249,23 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
-	if arg.is_mut && !arg_is_ptr && exp_sym.kind != .array {
-		g.write('&/*mut $arg.typ $expected_type */')
-	} else if (arg_is_ptr && !expr_is_ptr) || (arg.is_mut && exp_sym.kind == .array) {
+	arg_has_address := arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable && exp_sym.kind != .interface_
+	if arg.is_mut && !arg_is_ptr {
+		if arg_has_address {
+			g.write('&(')
+		} else {
+			g.write('ADDR(/*mut*/$exp_sym.cname, ')
+		}
+	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable {
-					g.write('&/*arr*/')
-					g.expr(arg.expr)
+				if arg_has_address {
+					g.write('&/*arr*/(')
 				} else {
-					// Special case for mutable arrays. We can't `&` function
-					// results,	have to use `(array[]){ expr }[0]` hack.
-					g.write('&/*111*/(array[]){')
-					g.expr(arg.expr)
-					g.write('}[0]')
+					g.write('ADDR(array, ')
 				}
+				g.expr(arg.expr)
+				g.write(')')
 				return
 			}
 		}
@@ -1287,6 +1294,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
+	if arg.is_mut && !arg_is_ptr {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) is_gui_app() bool {

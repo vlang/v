@@ -1063,7 +1063,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		param := func.params[i]
 		mut typ := param.typ
 		if param.is_mut {
-			typ = typ.deref()
+			// typ = typ.deref()
 			sb.write_string('mut ')
 		}
 		if !opts.type_only {

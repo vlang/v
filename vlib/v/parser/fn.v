@@ -329,7 +329,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_heap: param.is_mut || param.is_auto_rec
+				is_auto_deref: param.is_mut || param.is_auto_rec
 				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true
@@ -541,14 +541,15 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		return error('invalid `mut f &Foo`')
 	}
 	if is_shared {
-		rec.typ = rec.typ.set_flag(.shared_f).set_nr_muls(1)
+		rec.typ = rec.typ.set_flag(.shared_f)
 	}
 	if is_atomic {
-		rec.typ = rec.typ.set_flag(.atomic_f).set_nr_muls(1)
+		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
 	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
-	type_sym := p.table.get_type_symbol(rec.typ)
+	// type_sym := p.table.get_type_symbol(rec.typ)
 	mut is_auto_rec := false
+	/*
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
 		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
@@ -556,7 +557,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 			is_auto_rec = true
 		}
 	}
-
+	*/
 	params << ast.Param{
 		pos: rec_start_pos
 		name: rec.name
@@ -646,6 +647,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
+			is_auto_deref: arg.is_mut
 			pos: arg.pos
 			is_used: true
 			is_arg: true
@@ -775,10 +777,12 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				// }
 				// arg_type = arg_type.to_ptr()
 				if is_shared {
-					arg_type = arg_type.set_flag(.shared_f).set_nr_muls(1)
+					arg_type = arg_type.set_flag(.shared_f)
+					arg_type = arg_type.set_nr_muls(1)
 				}
 				if is_atomic {
-					arg_type = arg_type.set_flag(.atomic_f).set_nr_muls(1)
+					arg_type = arg_type.set_flag(.atomic_f)
+					arg_type = arg_type.set_nr_muls(1)
 				}
 			}
 			if is_variadic {
@@ -870,10 +874,12 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					return []ast.Param{}, false, false
 				}
 				if is_shared {
-					typ = typ.set_flag(.shared_f).set_nr_muls(1)
+					typ = typ.set_flag(.shared_f)
+					typ = typ.set_nr_muls(1)
 				}
 				if is_atomic {
-					typ = typ.set_flag(.atomic_f).set_nr_muls(1)
+					typ = typ.set_flag(.atomic_f)
+					typ = typ.set_nr_muls(1)
 				}
 			}
 			if is_variadic {

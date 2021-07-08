@@ -238,7 +238,7 @@ pub fn (mut ts TestSession) test() {
 	}
 }
 
-fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(p &pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -247,7 +247,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if isnil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
-		p.set_thread_context(idx, tls_bench)
+		mut p2 := p
+		p2.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_item<string>(idx)

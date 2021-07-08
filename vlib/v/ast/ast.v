@@ -430,7 +430,6 @@ pub mut:
 	left               Expr // `user` in `user.register()`
 	left_type          Type // type of `user`
 	receiver_type      Type // User
-	receiver_is_mut    bool
 	return_type        Type
 	should_be_skipped  bool
 	concrete_types     []Type // concrete types, e.g. <int, string>
@@ -492,7 +491,6 @@ pub:
 	is_mut          bool
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
-	is_auto_deref   bool
 pub mut:
 	typ        Type
 	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
@@ -506,10 +504,11 @@ pub mut:
 	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
-	is_or        bool // `x := foo() or { ... }`
-	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_auto_heap bool // value whoes address goes out of scope
-	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
+	is_or         bool // `x := foo() or { ... }`
+	is_tmp        bool // for tmp for loop vars, so that autofree can skip them
+	is_auto_heap  bool // value whoes address goes out of scope
+	is_stack_obj  bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
+	is_auto_deref bool
 }
 
 // used for smartcasting only

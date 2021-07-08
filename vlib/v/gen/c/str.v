@@ -117,7 +117,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if !str_method_expects_ptr && is_ptr && !is_shared {
+		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
