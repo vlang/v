@@ -347,6 +347,11 @@ voidptr memdup(voidptr src, int sz);
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __serenity__
+	#include <sys/types.h>
+	#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 #ifdef __OpenBSD__
 	#include <sys/types.h>
 	#include <sys/resource.h>
