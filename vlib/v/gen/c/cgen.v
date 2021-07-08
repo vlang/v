@@ -2620,8 +2620,27 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if is_inside_ternary {
 						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
+					mut is_used_var_styp := false
 					if ident.name !in g.defer_vars {
-						g.write('$styp ')
+						val_sym := g.table.get_type_symbol(val_type)
+						if val_sym.info is ast.Struct {
+							if val_sym.info.generic_types.len > 0 {
+								if val is ast.StructInit {
+									var_styp := g.typ(val.typ)
+									g.write('$var_styp ')
+									is_used_var_styp = true
+								} else if val is ast.PrefixExpr {
+									if val.op == .amp && val.right is ast.StructInit {
+										var_styp := g.typ(val.right.typ.to_ptr())
+										g.write('$var_styp ')
+										is_used_var_styp = true
+									}
+								}
+							}
+						}
+						if !is_used_var_styp {
+							g.write('$styp ')
+						}
 						if is_auto_heap {
 							g.write('*')
 						}

@@ -3390,6 +3390,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.expected_type = ast.void_type
 	}
 	right_first := node.right[0]
+	node.left_types = []
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, right in node.right {
@@ -3477,12 +3478,26 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
+		if right is ast.Ident {
+			right_sym := c.table.get_type_symbol(right_type)
+			if right_sym.info is ast.Struct {
+				if right_sym.info.generic_types.len > 0 {
+					if obj := right.scope.find(right.name) {
+						right_type = obj.typ
+					}
+				}
+			}
+		}
 		if is_decl {
 			// check generic struct init and return unwrap generic struct type
 			if right is ast.StructInit {
 				if right.typ.has_flag(.generic) {
 					c.expr(right)
 					right_type = right.typ
+				}
+			} else if right is ast.PrefixExpr {
+				if right.op == .amp && right.right is ast.StructInit {
+					right_type = c.expr(right)
 				}
 			}
 			if right.is_auto_deref_var() {
