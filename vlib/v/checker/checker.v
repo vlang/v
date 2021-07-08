@@ -5005,7 +5005,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			return c.infix_expr(mut node)
 		}
 		ast.IntegerLiteral {
-			return ast.int_literal_type
+			return c.int_lit(mut node)
 		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
