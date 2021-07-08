@@ -5115,7 +5115,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	n_e_t_idx := node.expr_type.idx()
 	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
 	if node.expr_type == ast.void_type {
-		c.error('expression does not return a value so it cannot be casted', node.expr.position())
+		c.error('expression does not return a value so it cannot be cast', node.expr.position())
 	}
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
