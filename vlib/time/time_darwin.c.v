@@ -80,5 +80,5 @@ fn darwin_utc() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-	return unix2(int(tv.tv_sec), int(tv.tv_usec))
+	return unix2(i64(tv.tv_sec), int(tv.tv_usec))
 }

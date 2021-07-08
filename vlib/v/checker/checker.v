@@ -5137,6 +5137,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	n_e_t_idx := node.expr_type.idx()
 	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
+	if node.expr_type == ast.void_type {
+		c.error('expression does not return a value so it cannot be cast', node.expr.position())
+	}
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
 			c.warn('to convert a C string buffer pointer to a V string, use x.vstring_with_len(len) instead of string(x,len)',
@@ -7489,6 +7492,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
 					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						node.return_type_pos)
+				}
+			}
+		}
+		return_sym := c.table.get_type_symbol(node.return_type)
+		if return_sym.info is ast.MultiReturn {
+			for multi_type in return_sym.info.types {
+				if multi_type == ast.error_type {
+					c.error('type `IError` cannot be used in multi-return, return an option instead',
+						node.return_type_pos)
+				} else if multi_type.has_flag(.optional) {
+					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
 				}
 			}

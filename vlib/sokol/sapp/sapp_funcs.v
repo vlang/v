@@ -26,8 +26,14 @@ fn C.sapp_keyboard_shown() bool
 // show or hide the mouse cursor
 fn C.sapp_show_mouse(visible bool)
 
-// show or hide the mouse cursor
+// return true if the mouse cursor is shown
 fn C.sapp_mouse_shown() bool
+
+// lock or unlock the mouse cursor
+fn C.sapp_lock_mouse(locked bool)
+
+// return true if the mouse cursor is locked
+fn C.sapp_mouse_locked() bool
 
 // return the userdata pointer optionally provided in sapp_desc
 fn C.sapp_userdata() voidptr

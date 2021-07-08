@@ -89,12 +89,17 @@ fn C.glob(&char, int, voidptr, voidptr) int
 fn C.globfree(voidptr)
 
 pub fn glob(patterns ...string) ?[]string {
+	$if android {
+		return error('os.glob() is not supported on android yet')
+	}
 	mut matches := []string{}
 	if patterns.len == 0 {
 		return matches
 	}
 	mut globdata := C.glob_t{
 		gl_pathv: 0
+		gl_pathc: size_t(0)
+		gl_offs: size_t(0)
 	}
 	mut flags := int(C.GLOB_DOOFFS | C.GLOB_MARK)
 	for i, pattern in patterns {
@@ -102,8 +107,10 @@ pub fn glob(patterns ...string) ?[]string {
 			flags |= C.GLOB_APPEND
 		}
 		unsafe {
-			if C.glob(&char(pattern.str), flags, C.NULL, &globdata) != 0 {
-				return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			$if !android {
+				if C.glob(&char(pattern.str), flags, C.NULL, &globdata) != 0 {
+					return error_with_code(posix_get_error_msg(C.errno), C.errno)
+				}
 			}
 		}
 	}
@@ -112,7 +119,9 @@ pub fn glob(patterns ...string) ?[]string {
 			matches << cstring_to_vstring(globdata.gl_pathv[i])
 		}
 	}
-	C.globfree(&globdata)
+	$if !android {
+		C.globfree(&globdata)
+	}
 	return matches
 }
 

@@ -381,7 +381,7 @@ fn test_subtract() {
 		second: 3
 		microsecond: 100
 	})
-	t2 := unix2(int(t1.unix) + d_seconds, t1.microsecond + d_microseconds)
+	t2 := unix2(i64(t1.unix) + d_seconds, t1.microsecond + d_microseconds)
 	d1 := t2 - t1
 	d2 := t1 - t2
 	assert d1 > 0

@@ -86,6 +86,16 @@ pub fn mouse_shown() bool {
 	return C.sapp_mouse_shown()
 }
 
+[inline]
+pub fn lock_mouse(locked bool) {
+	C.sapp_lock_mouse(locked)
+}
+
+[inline]
+pub fn mouse_locked() bool {
+	return C.sapp_mouse_locked()
+}
+
 // return the userdata pointer optionally provided in sapp_desc
 [inline]
 pub fn userdata() voidptr {

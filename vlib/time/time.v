@@ -137,7 +137,7 @@ pub fn utc() Time {
 	// in this API call
 	t := C.time(0)
 	_ = C.time(&t)
-	return unix2(int(t), 0)
+	return unix2(i64(t), 0)
 }
 
 // smonth returns month name.
@@ -186,7 +186,7 @@ pub fn (t Time) add(d Duration) Time {
 	microseconds := i64(t.unix) * 1000 * 1000 + t.microsecond + d.microseconds()
 	unix := microseconds / (1000 * 1000)
 	micro := microseconds % (1000 * 1000)
-	return unix2(int(unix), int(micro))
+	return unix2(unix, int(micro))
 }
 
 // add_seconds returns a new time struct with an added number of seconds.

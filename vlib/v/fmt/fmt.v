@@ -1677,9 +1677,8 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			is_last := i == node.concrete_types.len - 1
-			f.write(f.table.type_to_str(concrete_type))
-			if !is_last {
+			f.write(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias))
+			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -1824,7 +1823,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// Force usage of full path to const in the same module:
 		// `println(minute)` => `println(time.minute)`
 		// This makes it clear that a module const is being used
-		// (since V's conts are no longer ALL_CAP).
+		// (since V's consts are no longer ALL_CAP).
 		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
 			mod := f.cur_mod
