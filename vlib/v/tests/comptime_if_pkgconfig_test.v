@@ -1,5 +1,5 @@
 fn test_comptime_pkgconfig() {
-	$if pkgconfig.mysqlclient {
+	$if [unhandled expr type unknown v.ast.Expr].$pkgconfig(mysqlclient) {
 		assert true
 		return
 	} $else {

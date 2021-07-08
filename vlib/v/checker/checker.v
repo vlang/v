@@ -6168,6 +6168,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
+				node.branches[i].pkg_exist = !should_skip
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
@@ -6497,13 +6498,9 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				return !(expr as ast.BoolLiteral).val
 			}
 		}
-		ast.SelectorExpr {
-			left := cond.expr as ast.Ident
-			pkg := cond.field_name
-			if left.name != 'pkgconfig' {
-				c.error('invalid `\$if` condition', cond.pos)
-			} else {
-				mut m := pkgconfig.main([pkg]) or {
+		ast.ComptimeCall {
+			if cond.is_pkgconfig {
+				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg, cond.pos)
 					return true
 				}
