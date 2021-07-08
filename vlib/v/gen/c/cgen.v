@@ -569,8 +569,7 @@ fn (mut g Gen) typ(t ast.Type) string {
 	return styp
 }
 
-fn (mut g Gen) base_type(_t ast.Type) string {
-	t := g.unwrap_generic(_t)
+fn (mut g Gen) base_type(t ast.Type) string {
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
