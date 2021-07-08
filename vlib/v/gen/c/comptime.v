@@ -6,6 +6,7 @@ module c
 import os
 import v.ast
 import v.util
+import v.pkgconfig
 import v.pref
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
@@ -381,12 +382,26 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 			g.write('defined($ifdef)')
 			return true
 		}
+		ast.SelectorExpr {
+			left := cond.expr as ast.Ident
+			pkg := cond.field_name
+			if left.name == 'pkgconfig' {
+				g.write('${check_pkgconfig(pkg)}')
+			}
+			return true
+		}
 		else {
 			// should be unreachable, but just in case
 			g.write('1')
 			return true
 		}
 	}
+}
+
+fn check_pkgconfig(pkg string) bool {
+	mut m := pkgconfig.main([pkg]) or { return false }
+	m.run() or { return false }
+	return true
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
