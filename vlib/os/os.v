@@ -633,5 +633,6 @@ pub fn glob(patterns ...string) ?[]string {
 	for pattern in patterns {
 		native_glob_pattern(pattern, mut matches) ?
 	}
+	matches.sort()
 	return matches
 }
