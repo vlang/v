@@ -8,6 +8,7 @@ import time
 pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
+	eprintln(query)
 	mut stmt := db.init_stmt(query)
 	stmt.prepare() ?
 	mysql_stmt_binder(mut stmt, where) ?
@@ -15,36 +16,36 @@ pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params() ?
 	}
-	mut status := stmt.execute() ?
 
-	for status == 0 {
-		num_fields := stmt.get_field_count()
+	num_fields := stmt.get_field_count()
 
-		if num_fields > 0 {
-			metadata := stmt.gen_metadata()
-			fields := stmt.fetch_fields(metadata)
-			mut binds := stmt.gen_result_buffer(int(num_fields))
+	metadata := stmt.gen_metadata()
 
-			for i in 0..num_fields {
-				binds.buffer[i].buffer_type = unsafe { fields[i].@type }
-			}
+	fields := stmt.fetch_fields(metadata)
 
-			for {
-				status = binds.fetch_row()
+	dataptr := []voidptr{len: int(num_fields)}
+	data_len_ptr := []&u32{len: int(num_fields)}
+	mut data_lens := []int{len: int(num_fields)}
 
-				if status == 1 || status == 100 {
-					break
-				}
-
-				for bind in binds.buffer {
-					eprintln(bind.buffer_length)
-				}
-			}
- 
-
+	for i, typ in config.types {
+		if typ == orm.string {
+			data_lens[i] = orm.string_max_len
 		}
+	}
 
-		status = stmt.next() ?
+	stmt.bind_res(fields, dataptr, data_lens, data_len_ptr, num_fields)
+	stmt.bind_result_buffer() ?
+
+	mut status := stmt.execute() ?
+	for {
+		status = stmt.fetch_stmt() ?
+
+		if status == 100 {
+			eprintln('no data anymore')
+			break
+		}
+		data_list := buffer_to_primitive(dataptr, config.types) ?
+		ret << data_list
 	}
 
 	stmt.close() ?
@@ -147,55 +148,59 @@ fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
 	}
 }
 
-fn (mut rb StmtResultBuffer) mysql_select_column(typ int) ?orm.Primitive {
-	mut primitive := orm.Primitive(0)
-	match typ {
-		5 {
-			primitive = rb.get_i8() ?
+fn buffer_to_primitive(data_list []voidptr, types []int) ?[]orm.Primitive {
+	mut res := []orm.Primitive{}
+	for i in 0 .. data_list.len {
+		data := data_list[i]
+		mut primitive := orm.Primitive(0)
+		match types[i] {
+			5 {
+				primitive = *(&i8(data))
+			}
+			6 {
+				primitive = *(&i16(data))
+			}
+			7, -1 {
+				primitive = *(&int(data))
+			}
+			8 {
+				primitive = *(&i64(data))
+			}
+			9 {
+				primitive = *(&byte(data))
+			}
+			10 {
+				primitive = *(&u16(data))
+			}
+			11 {
+				primitive = *(&u32(data))
+			}
+			12 {
+				primitive = *(&u64(data))
+			}
+			13 {
+				primitive = *(&f32(data))
+			}
+			14 {
+				primitive = *(&f64(data))
+			}
+			15 {
+				primitive = *(&bool(data))
+			}
+			orm.string {
+				primitive = cstring_to_vstring(&char(data))
+			}
+			orm.time {
+				timestamp := *(&int(data))
+				primitive = time.unix(timestamp)
+			}
+			else {
+				return error('Unknown type ${types[i]}')
+			}
 		}
-		6 {
-			primitive = rb.get_i16() ?
-		}
-		7, -1 {
-			primitive = rb.get_int() ?
-		}
-		8 {
-			primitive = rb.get_i64() ?
-		}
-		9 {
-			primitive = rb.get_byte() ?
-		}
-		10 {
-			primitive = rb.get_u16() ?
-		}
-		11 {
-			primitive = rb.get_u32() ?
-		}
-		12 {
-			primitive = rb.get_u64() ?
-		}
-		13 {
-			primitive = rb.get_f32() ?
-		}
-		14 {
-			primitive = rb.get_f64() ?
-		}
-		15 {
-			primitive = rb.get_bool() ?
-		}
-		orm.string {
-			primitive = rb.get_text() ?
-		}
-		orm.time {
-			timestamp := rb.get_int() ?
-			primitive = time.unix(timestamp)
-		}
-		else {
-			return error('Unknown type $typ')
-		}
+		res << primitive
 	}
-
-	return primitive
+	return res
 }
 
 fn mysql_type_from_v(typ int) ?string {

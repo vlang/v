@@ -22,6 +22,7 @@ pub const (
 		'bool':   16
 		'string': 18
 	}
+	string_max_len = 2048
 )
 
 pub type Primitive = bool | byte | f32 | f64 | i16 | i64 | i8 | int | string | time.Time |
