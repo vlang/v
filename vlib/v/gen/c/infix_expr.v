@@ -487,7 +487,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if needs_clone {
 				g.write('string_clone(')
 			}
-			if node.right.is_auto_deref_var() {
+			if right.unaliased_sym.kind != .interface_ && node.right.is_auto_deref_var() {
 				g.write('&')
 			}
 			g.expr_with_cast(node.right, node.right_type, array_info.elem_type)
@@ -507,9 +507,6 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
-		g.write('*')
-	}
 	g.expr(node.left)
 	g.write(' $node.op.str() ')
 	g.expr_with_cast(node.right, node.right_type, node.left_type)

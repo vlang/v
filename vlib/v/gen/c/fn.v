@@ -285,7 +285,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					g.defer_vars << var.name
 					mut deref := ''
 					if v := var.scope.find_var(var.name) {
-						if v.is_auto_heap {
+						if v.is_auto_heap || v.is_auto_deref {
 							deref = '*'
 						}
 					}
@@ -780,10 +780,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& node.name in ['first', 'last', 'repeat'] {
-			g.write('*')
-		}
 		g.expr(node.left)
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
@@ -1150,10 +1146,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
-				if node.concrete_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
-					&& !expected_types[i].is_ptr() {
-					g.write('*')
-				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
 			}
 		} else {
@@ -1243,7 +1235,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
+	arg_is_ptr := expected_type.is_ptr() || (expected_type.idx() in ast.pointer_type_idxs && !arg.is_mut)
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)

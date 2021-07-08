@@ -319,6 +319,13 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
 	left_is_ptr := node.left_type.is_ptr()
+	mut left_is_auto_ref := false
+	if node.left is ast.Ident {
+		obj := node.left.obj
+		if obj is ast.Var {
+			left_is_auto_ref = obj.is_auto_deref || obj.is_auto_heap
+		}
+	}
 	info := sym.info as ast.Map
 	key_type_str := g.typ(info.key_type)
 	elem_type := info.value_type
@@ -409,7 +416,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
-			g.write('ADDR(map, ')
+			if left_is_auto_ref {
+				g.write('&(')
+			} else {
+				g.write('ADDR(map, ')
+			}
 			g.expr(node.left)
 		} else {
 			g.write('(')
