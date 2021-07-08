@@ -329,7 +329,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_deref: param.is_mut || param.is_auto_rec
+				is_auto_deref: param.is_mut && !param.typ.has_flag(.shared_f) && !param.typ.is_ptr() /* || param.is_auto_rec */
 				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true
@@ -542,9 +542,11 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	}
 	if is_shared {
 		rec.typ = rec.typ.set_flag(.shared_f)
+		rec.typ = rec.typ.set_nr_muls(1)
 	}
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
+		rec.typ = rec.typ.set_nr_muls(1)
 	}
 	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
 	// type_sym := p.table.get_type_symbol(rec.typ)
@@ -647,7 +649,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
-			is_auto_deref: arg.is_mut
+			is_auto_deref: arg.is_mut && !arg.typ.has_flag(.shared_f) && !arg.typ.is_ptr()
 			pos: arg.pos
 			is_used: true
 			is_arg: true

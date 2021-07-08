@@ -4172,7 +4172,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut name := c_name(node.name)
 	// TODO: temporary, remove this
 	node_info := node.info
-	mut is_auto_heap := false
+	mut is_auto_ref := false
 	if node_info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
@@ -4190,8 +4190,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			is_auto_heap = (v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)) || v.is_auto_deref
-			if is_auto_heap {
+			is_auto_ref = (v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)) || v.is_auto_deref
+			if is_auto_ref {
 				g.write('(*(')
 			}
 			if v.smartcasts.len > 0 {
@@ -4199,7 +4199,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if !prevent_sum_type_unwrapping_once {
 					for _ in v.smartcasts {
 						g.write('(')
-						if v_sym.kind == .sum_type && !is_auto_heap && !v.is_auto_deref {
+						if v_sym.kind == .sum_type && !is_auto_ref && !v.is_auto_deref {
 							g.write('*')
 						}
 					}
@@ -4212,7 +4212,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								is_ptr = true
 							}
 						}
-						dot := if is_ptr || is_auto_heap { '->' } else { '.' }
+						dot := if is_ptr || is_auto_ref { '->' } else { '.' }
 						if mut cast_sym.info is ast.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')
@@ -4221,7 +4221,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						g.write(')')
 					}
-					if is_auto_heap {
+					if is_auto_ref {
 						g.write('))')
 					}
 					return
@@ -4238,7 +4238,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-	if is_auto_heap {
+	if is_auto_ref {
 		g.write('))')
 	}
 }
@@ -5934,7 +5934,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			for i, arg in expr.args {
 				mut styp := g.typ(arg.typ)
-				if arg.is_mut {
+				if arg.is_mut && !arg.typ.has_flag(.shared_f) {
 					styp += '*'
 				}
 				g.type_definitions.writeln('\t$styp arg${i + 1};')

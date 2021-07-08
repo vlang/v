@@ -412,7 +412,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		if arg.is_mut {
+		if arg.is_mut && !typ.has_flag(.shared_f) {
 			arg_type_name += '*'
 		}
 		if arg_type_sym.kind == .function {
