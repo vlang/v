@@ -72,8 +72,8 @@ struct C.dirent {
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb') ?
 	defer {
-    C.fclose(fp)
-  }
+		C.fclose(fp)
+	}
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
 		return error('fseek failed')
