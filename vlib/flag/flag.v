@@ -40,8 +40,9 @@ fn (mut f Flag) free() {
 }
 
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' + '            abbr: $f.abbr\n' +
-		'            usag: $f.usage\n' + '            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: $f.name\n' +
+		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
+		'            desc: $f.val_desc'
 }
 
 pub fn (af []Flag) str() string {
@@ -56,8 +57,12 @@ pub fn (af []Flag) str() string {
 
 //
 pub struct FlagParser {
+pub:
+	original_args      []string // the original arguments to be parsed
+	idx_dashdash       int      // the index of a `--`, -1 if there is not any
+	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
-	args                    []string // the arguments to be parsed
+	args                    []string // the current list of processed args
 	max_free_args           int
 	flags                   []Flag // registered flags
 	application_name        string
@@ -96,10 +101,22 @@ pub const (
 )
 
 // create a new flag set for parsing command line arguments
-// TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
+	original_args := args.clone()
+	idx_dashdash := args.index('--')
+	mut all_before_dashdash := args.clone()
+	mut all_after_dashdash := []string{}
+	if idx_dashdash >= 0 {
+		all_before_dashdash.trim(idx_dashdash)
+		if idx_dashdash < original_args.len {
+			all_after_dashdash = original_args[idx_dashdash + 1..]
+		}
+	}
 	return &FlagParser{
-		args: args.clone()
+		original_args: original_args
+		idx_dashdash: idx_dashdash
+		all_after_dashdash: all_after_dashdash
+		args: all_before_dashdash
 		max_free_args: flag.max_args_number
 	}
 }
@@ -168,10 +185,6 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 			should_skip_one = false
 			continue
 		}
-		if arg == '--' {
-			// End of input. We're done here.
-			break
-		}
 		if arg[0] != `-` {
 			continue
 		}
@@ -219,10 +232,6 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 	{
 		full := '--$longhand'
 		for i, arg in fs.args {
-			if arg == '--' {
-				// End of input. We're done.
-				break
-			}
 			if arg.len == 0 {
 				continue
 			}
@@ -504,8 +513,9 @@ pub fn (fs FlagParser) usage() string {
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
 pub fn (fs FlagParser) finalize() ?[]string {
+	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
-		for a in fs.args {
+		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return IError(&UnkownFlagError{
 					msg: 'Unknown flag `$a`'
@@ -513,20 +523,21 @@ pub fn (fs FlagParser) finalize() ?[]string {
 			}
 		}
 	}
-	if fs.args.len < fs.min_free_args && fs.min_free_args > 0 {
+	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
 		return IError(&MinimumArgsCountError{
-			msg: 'Expected at least $fs.min_free_args arguments, but given $fs.args.len'
+			msg: 'Expected at least $fs.min_free_args arguments, but given $remaining.len'
 		})
 	}
-	if fs.args.len > fs.max_free_args && fs.max_free_args > 0 {
+	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
 		return IError(&MaximumArgsCountError{
-			msg: 'Expected at most $fs.max_free_args arguments, but given $fs.args.len'
+			msg: 'Expected at most $fs.max_free_args arguments, but given $remaining.len'
 		})
 	}
-	if fs.args.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
+	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
 		return IError(&NoArgsExpectedError{
-			msg: 'Expected no arguments, but given $fs.args.len'
+			msg: 'Expected no arguments, but given $remaining.len'
 		})
 	}
-	return fs.args
+	remaining << fs.all_after_dashdash
+	return remaining
 }
