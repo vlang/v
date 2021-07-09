@@ -565,9 +565,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
-		if node.left_type.is_ptr() && !node.receiver_type.is_ptr() {
-			g.write('&')
-		}
+		//if node.left_type.is_ptr() && !node.receiver_type.is_ptr() {
+		//	g.write('&/*PPPP*/')
+		//}
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
@@ -1233,22 +1233,32 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
+fn (mut g Gen) arg_has_address(arg ast.CallArg) bool {
+	match arg.expr {
+		ast.Ident {
+			obj := arg.expr.obj
+			if obj is ast.Var {
+				return true //exp_sym.kind != .interface_
+			}
+		}
+		ast.SelectorExpr {
+			return true
+		}
+		else {}
+	}
+	return false
+}
+
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_is_ptr := expected_type.is_ptr() || (expected_type.idx() in ast.pointer_type_idxs)
+	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
 	mut no_deref := false
-	mut arg_has_address := false
-	if arg.expr is ast.Ident {
-		obj := arg.expr.obj
-		if obj is ast.Var {
-			arg_has_address = true //exp_sym.kind != .interface_
-		}
-	}
+	arg_has_address := g.arg_has_address(arg)
 	if arg.expr is ast.PrefixExpr {
 		if arg.expr.op == .amp {
 			no_deref = exp_sym.kind != .interface_
