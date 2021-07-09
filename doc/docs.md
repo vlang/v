@@ -637,11 +637,11 @@ println(nums) // `[1, 5, 3]`
 ```
 #### Array Properties
 There are two properties that control the "size" of an array:
-* `len`: *length* - the number of defined elements of the array
-* `cap`: *capacity* - the number of elements for which memory space has been reserved. The array can
-grow up to this size without being reallocated. Usually, V takes care of
-this property automatically but there are cases where the user may want to do manual
-optimizations (see [below](#array-initialization)).
+* `len`: *length* - the number of pre-allocated and initialized elements in the array
+* `cap`: *capacity* - the amount of memory space which has been reserved for elements,
+but not initialized or counted as elements. The array can grow up to this size without
+being reallocated. Usually, V takes care of this property automatically but there are
+cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -1333,7 +1333,7 @@ When an identifier is just a single underscore, it is ignored.
 
 ##### Custom iterators
 Types that implement a `next` method returning an `Option` can be iterated
-with a `for` loop. 
+with a `for` loop.
 
 ```v
 struct SquareIterator {
