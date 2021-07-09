@@ -62,6 +62,8 @@ pub:
 	idx_dashdash       int      // the index of a `--`, -1 if there is not any
 	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
+	default_help_label      string = 'display this help and exit'
+	default_version_label   string = 'output version information and exit'
 	args                    []string // the current list of processed args
 	max_free_args           int
 	flags                   []Flag // registered flags
@@ -507,12 +509,41 @@ pub fn (fs FlagParser) usage() string {
 	return use.join('\n').replace('- ,', '   ')
 }
 
+fn (mut fs FlagParser) find_existing_flag(fname string) ?Flag {
+	for f in fs.flags {
+		if f.name == fname {
+			return f
+		}
+	}
+	return error('no such flag')
+}
+
+fn (mut fs FlagParser) handle_builtin_options() {
+	mut show_version := false
+	mut show_help := false
+	fs.find_existing_flag('help') or {
+		show_help = fs.bool('help', `h`, false, fs.default_help_label)
+	}
+	fs.find_existing_flag('version') or {
+		show_version = fs.bool('version', 0, false, fs.default_version_label)
+	}
+	if show_help {
+		println(fs.usage())
+		exit(0)
+	}
+	if show_version {
+		println('$fs.application_name $fs.application_version')
+		exit(0)
+	}
+}
+
 // finalize - return all remaining arguments (non options).
 // Call .finalize() after all arguments are defined.
 // The remaining arguments are returned in the same order they are
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
-pub fn (fs FlagParser) finalize() ?[]string {
+pub fn (mut fs FlagParser) finalize() ?[]string {
+	fs.handle_builtin_options()
 	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
 		for a in remaining {
