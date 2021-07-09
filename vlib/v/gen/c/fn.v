@@ -1262,10 +1262,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		else {}
 	}
 	if arg.is_mut && !arg_is_ptr {
-		if arg_has_address || no_deref {
+		if (arg_has_address || no_deref) && !(exp_sym.kind == .interface_ && arg_sym.kind != .interface_) {
 			g.write('&(')
 		} else {
-			if exp_sym.kind != .interface_ {
+			if exp_sym.kind != .interface_ || (exp_sym.kind == .interface_ && arg_sym.kind != .interface_) {
 				g.write('ADDR(/*mut*/$exp_sym.cname, ')
 			} else {
 				g.write('(')
