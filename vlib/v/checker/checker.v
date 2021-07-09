@@ -6185,6 +6185,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
+				node.branches[i].pkg_exist = !should_skip
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
@@ -6512,6 +6513,15 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				// :)
 				// until `v.eval` is stable, I can't think of a better way to do this
 				return !(expr as ast.BoolLiteral).val
+			}
+		}
+		ast.ComptimeCall {
+			if cond.is_pkgconfig {
+				mut m := pkgconfig.main([cond.args_var]) or {
+					c.error(err.msg, cond.pos)
+					return true
+				}
+				m.run() or { return true }
 			}
 		}
 		else {
