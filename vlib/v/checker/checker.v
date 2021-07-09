@@ -21,8 +21,7 @@ const int_max = int(0x7FFFFFFF)
 const (
 	valid_comp_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku',
-	]
+		'haiku', 'serenity']
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
