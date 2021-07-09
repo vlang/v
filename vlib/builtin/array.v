@@ -150,7 +150,7 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		C.qsort(mut a.data, a.len, a.element_size, compare)
+		C.qsort(a.data, a.len, a.element_size, compare)
 	}
 }
 

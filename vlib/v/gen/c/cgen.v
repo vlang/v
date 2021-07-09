@@ -6204,7 +6204,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 				}
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_$method.name'
-				if !method.params[0].typ.is_ptr() {
+				if !method.params[0].typ.is_ptr() && !method.params[0].is_mut {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} $method_call${iwpostfix}(')

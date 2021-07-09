@@ -1235,18 +1235,32 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_is_ptr := expected_type.is_ptr() || (expected_type.idx() in ast.pointer_type_idxs && !arg.is_mut)
+	arg_is_ptr := expected_type.is_ptr() || (expected_type.idx() in ast.pointer_type_idxs)
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
-	arg_has_address := arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable && exp_sym.kind != .interface_
+	mut no_deref := false
+	mut arg_has_address := false
+	if arg.expr is ast.Ident {
+		obj := arg.expr.obj
+		if obj is ast.Var {
+			arg_has_address = true //exp_sym.kind != .interface_
+		}
+	}
+	if arg.expr is ast.PrefixExpr {
+		if arg.expr.op == .amp {
+			no_deref = exp_sym.kind != .interface_
+		}
+	}
 	if arg.is_mut && !arg_is_ptr {
-		if arg_has_address {
+		if arg_has_address || no_deref {
 			g.write('&(')
 		} else {
-			g.write('ADDR(/*mut*/$exp_sym.cname, ')
+			if exp_sym.kind != .interface_ {
+				g.write('ADDR(/*mut*/$exp_sym.cname, ')
+			}
 		}
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
@@ -1286,7 +1300,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
-	if arg.is_mut && !arg_is_ptr {
+	if arg.is_mut && !arg_is_ptr && !(!(arg_has_address || no_deref) && exp_sym.kind == .interface_) {
 		g.write(')')
 	}
 }
