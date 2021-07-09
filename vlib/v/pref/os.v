@@ -59,7 +59,7 @@ pub fn (o OS) str() string {
 		.js { return 'JavaScript' }
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
-		.serenity { return 'serenity' }
+		.serenity { return 'SerenityOS' }
 		.haiku { return 'Haiku' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
