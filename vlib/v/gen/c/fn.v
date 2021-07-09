@@ -1233,22 +1233,6 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
-fn (mut g Gen) arg_has_address(arg ast.CallArg) bool {
-	match arg.expr {
-		ast.Ident {
-			obj := arg.expr.obj
-			if obj is ast.Var {
-				return true //exp_sym.kind != .interface_
-			}
-		}
-		ast.SelectorExpr {
-			return true
-		}
-		else {}
-	}
-	return false
-}
-
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
@@ -1257,12 +1241,25 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
+	arg_sym := g.table.get_type_symbol(arg.typ)
 	mut no_deref := false
-	arg_has_address := g.arg_has_address(arg)
-	if arg.expr is ast.PrefixExpr {
-		if arg.expr.op == .amp {
-			no_deref = exp_sym.kind != .interface_
+	mut arg_has_address := false
+	match arg.expr {
+		ast.Ident {
+			obj := arg.expr.obj
+			if obj is ast.Var {
+				arg_has_address = true // !(exp_sym.kind == .interface_ && arg_sym.kind != .interface_)
+			}
 		}
+		ast.SelectorExpr {
+			arg_has_address = true
+		}
+		ast.PrefixExpr {
+			if arg.expr.op == .amp {
+				no_deref = exp_sym.kind != .interface_
+			}
+		}
+		else {}
 	}
 	if arg.is_mut && !arg_is_ptr {
 		if arg_has_address || no_deref {
@@ -1270,6 +1267,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		} else {
 			if exp_sym.kind != .interface_ {
 				g.write('ADDR(/*mut*/$exp_sym.cname, ')
+			} else {
+				g.write('(')
 			}
 		}
 	} else if arg_is_ptr && !expr_is_ptr {
@@ -1310,7 +1309,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
-	if arg.is_mut && !arg_is_ptr && !(!(arg_has_address || no_deref) && exp_sym.kind == .interface_) {
+	if arg.is_mut && !arg_is_ptr {
 		g.write(')')
 	}
 }
