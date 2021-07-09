@@ -1242,39 +1242,41 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
 	arg_sym := g.table.get_type_symbol(arg.typ)
-	mut no_deref := false
-	mut arg_has_address := false
+	mut is_amp := false
+	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
+	mut arg_is_lvalue := false
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
 			if obj is ast.Var {
-				arg_has_address = true // !(exp_sym.kind == .interface_ && arg_sym.kind != .interface_)
+				arg_is_lvalue = !needs_interface_promotion
 			}
 		}
 		ast.SelectorExpr {
-			arg_has_address = true
+			arg_is_lvalue = !needs_interface_promotion
 		}
 		ast.PrefixExpr {
 			if arg.expr.op == .amp {
-				no_deref = exp_sym.kind != .interface_
+				is_amp = exp_sym.kind != .interface_
 			}
 		}
 		else {}
 	}
+	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
-		if (arg_has_address || no_deref) && !(exp_sym.kind == .interface_ && arg_sym.kind != .interface_) {
+		if arg_is_lvalue || is_amp {
 			g.write('&(')
+			needs_closing_brace = true
 		} else {
-			if exp_sym.kind != .interface_ || (exp_sym.kind == .interface_ && arg_sym.kind != .interface_) {
+			if exp_sym.kind != .interface_ || needs_interface_promotion {
 				g.write('ADDR(/*mut*/$exp_sym.cname, ')
-			} else {
-				g.write('(')
+				needs_closing_brace = true
 			}
 		}
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if arg_has_address {
+				if arg_is_lvalue {
 					g.write('&/*arr*/(')
 				} else {
 					g.write('ADDR(array, ')
@@ -1309,7 +1311,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
-	if arg.is_mut && !arg_is_ptr {
+	if needs_closing_brace {
 		g.write(')')
 	}
 }
