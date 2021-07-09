@@ -488,6 +488,10 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 }
 
 pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
+	if node.val.len < 17 {
+		// can not be a too large number, no need for more expensive checks
+		return ast.int_literal_type
+	}
 	lit := node.val.replace('_', '').all_after('-')
 	is_neg := node.val.starts_with('-')
 	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
