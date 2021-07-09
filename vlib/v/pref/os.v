@@ -91,13 +91,9 @@ pub fn get_host_os() OS {
 	$if dragonfly {
 		return .dragonfly
 	}
-	/*
-	// TODO: uncomment after regenerating vc.c
 	$if serenity {
 		return .serenity
 	}
-	*/
-
 	$if solaris {
 		return .solaris
 	}
