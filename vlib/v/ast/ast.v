@@ -731,8 +731,9 @@ pub:
 	body_pos token.Position
 	comments []Comment
 pub mut:
-	stmts []Stmt
-	scope &Scope
+	pkg_exist bool
+	stmts     []Stmt
+	scope     &Scope
 }
 
 pub struct UnsafeExpr {
@@ -1439,6 +1440,8 @@ pub:
 	//
 	is_env  bool
 	env_pos token.Position
+	//
+	is_pkgconfig bool
 pub mut:
 	sym         TypeSymbol
 	result_type Type

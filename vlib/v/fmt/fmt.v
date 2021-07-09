@@ -1764,6 +1764,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$embed_file('$node.embed_file.rpath')")
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
+		} else if node.is_pkgconfig {
+			f.write("\$pkgconfig('$node.args_var')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
