@@ -1173,12 +1173,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
 			if fn_def := g.table.find_fn(node.name) {
-				varg_type_name := g.table.type_to_str(varg_type)
-				for i, fn_gen_name in fn_def.generic_names {
-					if fn_gen_name == varg_type_name {
-						arr_info.elem_type = node.concrete_types[i]
-						break
-					}
+				if utyp := g.table.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
+					node.concrete_types)
+				{
+					arr_info.elem_type = utyp
 				}
 			} else {
 				g.error('unable to find function $node.name', node.pos)
