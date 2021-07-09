@@ -102,15 +102,7 @@ fn init_os_args_wide(argc int, argv &&byte) []string {
 	return args_
 }
 
-pub fn glob(patterns ...string) ?[]string {
-	mut matches := []string{}
-	for pattern in patterns {
-		windows_glob_pattern(pattern, mut matches) ?
-	}
-	return matches
-}
-
-fn windows_glob_pattern(pattern string, mut matches []string) ? {
+fn native_glob_pattern(pattern string, mut matches []string) ? {
 	$if debug {
 		// FindFirstFile() and FindNextFile() both have a globbing function.
 		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality

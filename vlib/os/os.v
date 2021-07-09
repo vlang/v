@@ -627,3 +627,12 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
+
+pub fn glob(patterns ...string) ?[]string {
+	mut matches := []string{}
+	for pattern in patterns {
+		native_glob_pattern(pattern, mut matches) ?
+	}
+	matches.sort()
+	return matches
+}
