@@ -487,13 +487,6 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
-fn is_hex_char(c byte) bool {
-	return match c {
-		`a`...`f`, `A`...`F`, `0`...`9` { true }
-		else { false }
-	}
-}
-
 pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {
@@ -510,7 +503,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 					idx++
 					mut ch := node.val[idx] or { return ast.string_type }
 					mut hex_char_count := 0
-					for is_hex_char(ch) {
+					for ch.is_hex_digit() {
 						hex_char_count++
 						if hex_char_count > 4 {
 							end_pos := token.Position{
