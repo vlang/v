@@ -9,7 +9,7 @@ import v.pref
 import v.token
 
 const (
-	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file']
+	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig']
 )
 
 // // #include, #flag, #v
@@ -45,7 +45,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	p.check(.dollar)
 	start_pos := p.prev_tok.position()
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
@@ -62,9 +62,9 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
 	// $env('ENV_VAR_NAME')
+	p.check(.lpar)
+	spos := p.tok.position()
 	if n == 'env' {
-		p.check(.lpar)
-		spos := p.tok.position()
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
@@ -77,8 +77,19 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			pos: spos.extend(p.prev_tok.position())
 		}
 	}
-	p.check(.lpar)
-	spos := p.tok.position()
+	if n == 'pkgconfig' {
+		s := p.tok.lit
+		p.check(.string)
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope: 0
+			method_name: n
+			args_var: s
+			is_pkgconfig: true
+			env_pos: spos
+			pos: spos.extend(p.prev_tok.position())
+		}
+	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	if !is_html {
