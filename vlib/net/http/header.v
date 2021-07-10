@@ -353,6 +353,28 @@ pub fn new_header(kvs ...HeaderConfig) Header {
 	return h
 }
 
+// header_from_map creates a Header from key value pairs
+pub fn header_from_map(kvs map[CommonHeader]string) Header {
+	mut h := Header{
+		data: map[string][]string{}
+	}
+	for k, v in kvs {
+		h.add(k, v)
+	}
+	return h
+}
+
+// custom_header_from_map creates a Header from string key value pairs
+pub fn custom_header_from_map(kvs map[string]string) ?Header {
+	mut h := Header{
+		data: map[string][]string{}
+	}
+	for k, v in kvs {
+		h.add_custom(k.str(), v) ?
+	}
+	return h
+}
+
 // Append a value to the header key.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
@@ -554,6 +576,23 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 	res := sb.str()
 	unsafe { sb.free() }
 	return res
+}
+
+// join combines two Header structs into a new Header struct
+pub fn (h Header) join(other Header) Header {
+	mut combined := Header{
+		data: h.data.clone()
+		keys: h.keys.clone()
+	}
+	for k in other.keys() {
+		for v in other.custom_values(k, exact: true) {
+			combined.add_custom(k, v) or {
+				// panic because this should never fail
+				panic('unexpected error: $err')
+			}
+		}
+	}
+	return combined
 }
 
 // Canonicalize an HTTP header key

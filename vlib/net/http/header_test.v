@@ -274,3 +274,25 @@ fn test_str() ? {
 	assert h.str() == 'Accept: text/html,image/jpeg\r\nX-custom: Hello\r\n'
 		|| h.str() == 'X-custom: Hello\r\nAccept:text/html,image/jpeg\r\n'
 }
+
+fn test_header_from_map() ? {
+	h := header_from_map(map{
+		CommonHeader.accept:  'nothing'
+		CommonHeader.expires: 'yesterday'
+	})
+	assert h.contains(.accept)
+	assert h.contains(.expires)
+	assert h.get(.accept) or { '' } == 'nothing'
+	assert h.get(.expires) or { '' } == 'yesterday'
+}
+
+fn test_custom_header_from_map() ? {
+	h := custom_header_from_map(map{
+		'Server': 'VWeb'
+		'foo':    'bar'
+	}) ?
+	assert h.contains_custom('server')
+	assert h.contains_custom('foo')
+	assert h.get_custom('server') or { '' } == 'VWeb'
+	assert h.get_custom('foo') or { '' } == 'bar'
+}
