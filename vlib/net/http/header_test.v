@@ -274,3 +274,16 @@ fn test_str() ? {
 	assert h.str() == 'Accept: text/html,image/jpeg\r\nX-custom: Hello\r\n'
 		|| h.str() == 'X-custom: Hello\r\nAccept:text/html,image/jpeg\r\n'
 }
+
+fn test_chain() ? {
+	h := new_header().add(.accept, 'nothing').add(.expires, 'yesterday')
+	assert h.contains(.accept)
+	assert h.contains(.expires)
+	assert h.get(.accept) or { '' } == 'nothing'
+	assert h.get(.expires) or { '' } == 'yesterday'
+
+	mut h1 := new_header()
+	h2 := h1.add(.accept, 'text/html').add_custom('accept', 'foo')?.add(.host, 'host')
+
+	assert h1 == h2
+}

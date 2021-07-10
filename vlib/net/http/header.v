@@ -354,44 +354,49 @@ pub fn new_header(kvs ...HeaderConfig) Header {
 }
 
 // Append a value to the header key.
-pub fn (mut h Header) add(key CommonHeader, value string) {
+pub fn (mut h Header) add(key CommonHeader, value string) &Header {
 	k := key.str()
 	h.data[k] << value
 	h.add_key(k)
+	return unsafe { h }
 }
 
 // Append a value to a custom header key. This function will return an error
 // if the key contains invalid header characters.
-pub fn (mut h Header) add_custom(key string, value string) ? {
+pub fn (mut h Header) add_custom(key string, value string) ?&Header {
 	is_valid(key) ?
 	h.data[key] << value
 	h.add_key(key)
+	return unsafe { h }
 }
 
 // Sets the key-value pair. This function will clear any other values
 // that exist for the CommonHeader.
-pub fn (mut h Header) set(key CommonHeader, value string) {
+pub fn (mut h Header) set(key CommonHeader, value string) &Header {
 	k := key.str()
 	h.data[k] = [value]
 	h.add_key(k)
+	return unsafe { h }
 }
 
 // Sets the key-value pair for a custom header key. This function will
 // clear any other values that exist for the header. This function will
 // return an error if the key contains invalid header characters.
-pub fn (mut h Header) set_custom(key string, value string) ? {
+pub fn (mut h Header) set_custom(key string, value string) ?&Header {
 	is_valid(key) ?
 	h.data[key] = [value]
 	h.add_key(key)
+	return unsafe { h }
 }
 
 // Delete all values for a key.
-pub fn (mut h Header) delete(key CommonHeader) {
+pub fn (mut h Header) delete(key CommonHeader) &Header {
 	h.delete_custom(key.str())
+	return unsafe { h }
 }
 
 // Delete all values for a custom header key.
-pub fn (mut h Header) delete_custom(key string) {
+pub fn (mut h Header) delete_custom(key string) &Header {
 	h.data.delete(key)
 
 	// remove key from keys metadata
@@ -399,6 +404,7 @@ pub fn (mut h Header) delete_custom(key string) {
 	if kl in h.keys {
 		h.keys[kl] = h.keys[kl].filter(it != key)
 	}
+	return unsafe { h }
 }
 
 pub struct HeaderCoerceConfig {
@@ -406,7 +412,7 @@ pub struct HeaderCoerceConfig {
 }
 
 // Coerce data by joining keys that match case-insensitively into one entry
-pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
+pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) &Header {
 	canon := flags.any(it.canonicalize)
 
 	for kl, data_keys in h.keys {
@@ -426,6 +432,7 @@ pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
 		}
 		h.keys[kl] = [master_key]
 	}
+	return unsafe { h }
 }
 
 // Returns whether the header key exists in the map.

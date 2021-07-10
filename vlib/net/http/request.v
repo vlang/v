@@ -41,7 +41,7 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 // add_custom_header adds the key and value of an HTTP request header
 // This method may fail if the key contains characters that are not permitted
 pub fn (mut req Request) add_custom_header(key string, val string) ? {
-	return req.header.add_custom(key, val)
+	req.header.add_custom(key, val)?
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
