@@ -283,7 +283,7 @@ fn test_chain() ? {
 	assert h.get(.expires) or { '' } == 'yesterday'
 
 	mut h1 := new_header()
-	h2 := h1.add(.accept, 'text/html').add_custom('accept', 'foo')?.add(.host, 'host')
+	h2 := h1.add(.accept, 'text/html').add_custom('accept', 'foo') ?.add(.host, 'host')
 
 	assert h1 == h2
 }
