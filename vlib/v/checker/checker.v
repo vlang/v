@@ -3651,6 +3651,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
+
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
@@ -4812,7 +4813,8 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	defer {
 		c.expr_level--
 	}
-	if c.expr_level > 200 {
+	// c.expr_level set to 150 so that stack overflow does not occur on windows
+	if c.expr_level > 150 {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return ast.void_type
 	}
