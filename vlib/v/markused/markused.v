@@ -147,7 +147,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		if mfn.is_method {
 			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
 		}
-		if method_receiver_typename == '&wyrand.WyRandRNG' {
+		if method_receiver_typename == '&wyrand.WyRandRNG' || method_receiver_typename == 'wyrand.WyRandRNG' {
 			// WyRandRNG is the default rand pseudo random generator
 			all_fn_root_names << k
 			continue

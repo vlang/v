@@ -1244,15 +1244,24 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
 	mut arg_is_lvalue := false // can we get `&(arg)` without promotion
 	mut is_index_expr := false
+	mut is_auto_deref := false
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
 			if obj is ast.Var {
 				arg_is_lvalue = !needs_interface_promotion
+				is_auto_deref = obj.is_auto_deref
 			}
 		}
 		ast.SelectorExpr {
 			arg_is_lvalue = !needs_interface_promotion
+			left := arg.expr.expr
+			if left is ast.Ident {
+				obj := left.obj
+				if obj is ast.Var {
+					is_auto_deref = obj.is_auto_deref
+				}
+			}
 		}
 		ast.PrefixExpr {
 			if arg.expr.op == .amp {
@@ -1266,7 +1275,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
-		if (arg_is_lvalue || is_amp || is_index_expr) && !(exp_sym.kind == .array && is_index_expr) {
+		if (arg_is_lvalue || is_amp || is_index_expr) && !(exp_sym.kind == .array && (is_index_expr || is_auto_deref)) {
 			g.write('(voidptr)&(')
 			needs_closing_brace = true
 		} else {
@@ -1281,6 +1290,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if arg_is_lvalue {
 					g.write('&/*arr*/(')
 				} else {
+					// Special case for mutable arrays. We can't `&` function
+					// results,     have to use `(array[]){ expr }[0]` hack.
 					g.write('ADDR(/*arr*/array, ')
 				}
 				g.expr(arg.expr)
