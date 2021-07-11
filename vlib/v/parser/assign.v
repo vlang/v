@@ -130,12 +130,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			p.check_undefined_variables(left, r) or {
 				return p.error('check_undefined_variables failed')
 			}
-			if r is ast.Ident {
-				if r.name == 'main' {
-					p.error_with_pos('`main` cannot be used anywhere other than the main function',
-						r.pos)
-				}
-			}
 		}
 	} else if left.len > 1 {
 		// a, b = b, a

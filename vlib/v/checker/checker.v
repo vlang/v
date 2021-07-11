@@ -3393,6 +3393,16 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, right in node.right {
+		if right is ast.Ident {
+			if right.name == 'main' {
+				right_type := c.expr(right)
+				right_type_sym := c.table.get_type_symbol(right_type)
+				if right_type_sym.kind == .function {
+					c.error('`main` cannot be used anywhere other than the main function',
+						right.pos)
+				}
+			}
+		}
 		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
 			|| right is ast.MatchExpr {
 			right_type := c.expr(right)
