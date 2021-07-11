@@ -1245,11 +1245,13 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut needs_array_promotion := false
 	mut is_index_expr := false
 	mut is_auto_deref := false
+	mut is_heap := false
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
 			if obj is ast.Var {
 				is_auto_deref = obj.is_auto_deref
+				is_heap = obj.is_auto_heap
 			}
 		}
 		ast.SelectorExpr {
@@ -1278,7 +1280,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	if arg.is_mut && !arg_is_ptr {
 		if !(is_amp && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
 			if needs_interface_promotion || is_index_expr || (exp_sym.kind == .array && needs_array_promotion) {
-				g.write('ADDR(/*mut*/$exp_sym.cname, ')
+				if is_heap {
+					g.write('HEAP(/*mut*/$exp_sym.cname, ')
+				} else {
+					g.write('ADDR(/*mut*/$exp_sym.cname, ')
+				}
 				needs_closing_brace = true
 			} else {
 				g.write('&/*mut*/')
