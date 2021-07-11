@@ -23,7 +23,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if expr.name == val.name {
+					if expr.name == val.name && expr.kind != .blank_ident {
 						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 						return error('undefined variable: `$val.name`')
 					}
@@ -40,6 +40,9 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 			if val.has_default {
 				p.check_undefined_variables(exprs, val.default_expr) ?
 			}
+			for expr in val.exprs {
+				p.check_undefined_variables(exprs, expr) ?
+			}
 		}
 		ast.CallExpr {
 			p.check_undefined_variables(exprs, val.left) ?
@@ -50,6 +53,14 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		ast.InfixExpr {
 			p.check_undefined_variables(exprs, val.left) ?
 			p.check_undefined_variables(exprs, val.right) ?
+		}
+		ast.MapInit {
+			for key in val.keys {
+				p.check_undefined_variables(exprs, key) ?
+			}
+			for value in val.vals {
+				p.check_undefined_variables(exprs, value) ?
+			}
 		}
 		ast.ParExpr {
 			p.check_undefined_variables(exprs, val.expr) ?
