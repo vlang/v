@@ -1322,7 +1322,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
-	} else if arg_is_ptr && !arg.is_mut && !expr_is_ptr {
+	} else if arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function {
 		g.write('/*auto ptr*/&')
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
