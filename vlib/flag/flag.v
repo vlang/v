@@ -62,6 +62,10 @@ pub:
 	idx_dashdash       int      // the index of a `--`, -1 if there is not any
 	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
+	usage_examples []string // when set, --help will print:
+	// Usage: $appname $usage_examples[0]`
+	//    or: $appname $usage_examples[1]`
+	// etc
 	default_help_label      string = 'display this help and exit'
 	default_version_label   string = 'output version information and exit'
 	args                    []string // the current list of processed args
@@ -72,7 +76,8 @@ pub mut:
 	application_description string
 	min_free_args           int
 	args_description        string
-	allow_unknown_args      bool // whether passing undescribed arguments is allowed
+	allow_unknown_args      bool     // whether passing undescribed arguments is allowed
+	footers                 []string // when set, --help will display all the collected footers at the bottom.
 }
 
 [unsafe]
@@ -123,6 +128,21 @@ pub fn new_flag_parser(args []string) &FlagParser {
 	}
 }
 
+// usage_example - add an usage example
+// All examples will be listed in the help screen.
+// If you do not give any examples, then a default usage
+// will be shown, based on whether the application takes
+// options and expects additional parameters.
+pub fn (mut fs FlagParser) usage_example(example string) {
+	fs.usage_examples << example
+}
+
+// add_footer - add a footnote, that will be shown
+// at the bottom of the help screen.
+pub fn (mut fs FlagParser) footer(footer string) {
+	fs.footers << footer
+}
+
 // change the application name to be used in 'usage' output
 pub fn (mut fs FlagParser) application(name string) {
 	fs.application_name = name
@@ -133,9 +153,14 @@ pub fn (mut fs FlagParser) version(vers string) {
 	fs.application_version = vers
 }
 
-// change the application version to be used in 'usage' output
+// description appends to the application description lines, shown
+// in the help/usage screen
 pub fn (mut fs FlagParser) description(desc string) {
-	fs.application_description = desc
+	if fs.application_description.len == 0 {
+		fs.application_description = desc
+	} else {
+		fs.application_description += '\n$desc'
+	}
 }
 
 // in most cases you do not need the first argv for flag parsing
@@ -453,11 +478,20 @@ pub fn (fs FlagParser) usage() string {
 		use << '$fs.application_name $fs.application_version'
 		use << '$flag.underline'
 	}
-	use << 'Usage: $fs.application_name [options] $adesc'
+	if fs.usage_examples.len == 0 {
+		use << 'Usage: $fs.application_name [options] $adesc'
+	} else {
+		for i, example in fs.usage_examples {
+			if i == 0 {
+				use << 'Usage: $fs.application_name $example'
+			} else {
+				use << '   or: $fs.application_name $example'
+			}
+		}
+	}
 	use << ''
 	if fs.application_description != '' {
 		use << 'Description: $fs.application_description'
-		use << ''
 		use << ''
 	}
 	// show a message about the [ARGS]:
@@ -505,6 +539,9 @@ pub fn (fs FlagParser) usage() string {
 			fdesc := '$option_names$xspace$f.usage'
 			use << fdesc
 		}
+	}
+	for footer in fs.footers {
+		use << footer
 	}
 	return use.join('\n').replace('- ,', '   ')
 }
@@ -571,4 +608,17 @@ pub fn (mut fs FlagParser) finalize() ?[]string {
 	}
 	remaining << fs.all_after_dashdash
 	return remaining
+}
+
+// remaining_parameters will return all remaining parameters.
+// Call .remaining_parameters() *AFTER* you have defined all options
+// that your program needs. remaining_parameters will also print any
+// parsing errors and stop the program. Use .finalize() instead, if
+// you want more control over the error handling.
+pub fn (mut fs FlagParser) remaining_parameters() []string {
+	return fs.finalize() or {
+		eprintln(err.msg)
+		println(fs.usage())
+		exit(1)
+	}
 }
