@@ -1266,7 +1266,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
-		if arg_is_lvalue || is_amp || is_index_expr {
+		if (arg_is_lvalue || is_amp || is_index_expr) && !(exp_sym.kind == .array && is_index_expr) {
 			g.write('(voidptr)&(')
 			needs_closing_brace = true
 		} else {
