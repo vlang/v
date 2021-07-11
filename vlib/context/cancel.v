@@ -28,6 +28,7 @@ pub fn cancel(ctx Context) {
 
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
+[heap]
 pub struct CancelContext {
 	id string
 mut:
@@ -143,7 +144,7 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 	}
 
 	if p.err is none {
-		p.children[child.id] = *child
+		p.children[child.id] = child
 	} else {
 		// parent has already been canceled
 		child.cancel(false, p.err)

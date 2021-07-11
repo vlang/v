@@ -1285,7 +1285,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				}
 				needs_closing_brace = true
 			} else {
-				g.write('&/*mut*/')
+				if !(expr_is_ptr && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
+					g.write('&/*mut*/')
+				}
 			}
 		}
 	} else if arg_is_ptr && !(expr_is_ptr || is_auto_deref) {

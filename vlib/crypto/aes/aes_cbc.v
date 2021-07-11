@@ -48,7 +48,7 @@ pub fn (x &AesCbc) block_size() int {
 // Please note: `dst_` is mutable for performance reasons.
 pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
-		mut dst := *dst_
+		mut dst := dst_
 		mut src := src_
 		if src.len % x.block_size != 0 {
 			panic('crypto.cipher: input not full blocks')
@@ -87,7 +87,7 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	if dst.len < src.len {
 		panic('crypto.cipher: output smaller than input')
 	}
-	if subtle.inexact_overlap((*dst)[..src.len], src) {
+	if subtle.inexact_overlap(dst[..src.len], src) {
 		panic('crypto.cipher: invalid buffer overlap')
 	}
 	if src.len == 0 {
@@ -103,16 +103,16 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	// Loop over all but the first block.
 	for start > 0 {
 		mut src_chunk := src[start..end]
-		x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
-		cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], src[prev..start])
+		x.b.decrypt(mut dst[start..end], mut src_chunk)
+		cipher.xor_bytes(mut dst[start..end], dst[start..end], src[prev..start])
 		end = start
 		start = prev
 		prev -= x.block_size
 	}
 	// The first block is special because it uses the saved iv.
 	mut src_chunk := src[start..end]
-	x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
-	cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], x.iv)
+	x.b.decrypt(mut dst[start..end], mut src_chunk)
+	cipher.xor_bytes(mut dst[start..end], dst[start..end], x.iv)
 	// Set the new iv to the first block we copied earlier.
 	x.iv = x.tmp
 	x.tmp = x.iv

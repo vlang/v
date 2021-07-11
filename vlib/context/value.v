@@ -8,6 +8,7 @@ import time
 
 // A ValueContext carries a key-value pair. It implements Value for that key and
 // delegates all other calls to the embedded Context.
+[heap]
 pub struct ValueContext {
 	key   string
 	value voidptr
