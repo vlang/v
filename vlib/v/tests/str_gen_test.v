@@ -440,7 +440,7 @@ fn test_multi_return() {
 }
 
 fn test_fixed_array_of_function() {
-	a := [println]!
+	a := [println, println]!
 	println(a)
-	assert '$a' == '[fn (string)]'
+	assert '$a' == '[fn (string), fn (string)]'
 }
