@@ -1243,7 +1243,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut is_amp := false
 	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
 	mut needs_array_promotion := false
-	mut is_index_expr := false
+	mut is_non_ptr_index_expr := false
 	mut is_auto_deref := false
 	mut is_heap := false
 	match arg.expr {
@@ -1272,14 +1272,15 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			}
 		}
 		ast.IndexExpr {
-			is_index_expr = true
+			left_type_sym := g.table.get_type_symbol(arg.expr.left_type)
+			is_non_ptr_index_expr = left_type_sym.kind != .map && (expr_is_ptr || arg.expr.index is ast.RangeExpr)
 		}
 		else {}
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
 		if !(is_amp && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
-			if needs_interface_promotion || is_index_expr || (exp_sym.kind == .array && needs_array_promotion) {
+			if needs_interface_promotion || is_non_ptr_index_expr || (exp_sym.kind == .array && needs_array_promotion) {
 				if is_heap {
 					g.write('HEAP(/*mut*/$exp_sym.cname, ')
 				} else {
