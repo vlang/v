@@ -4,6 +4,7 @@
 module http
 
 import net.http.chunked
+import strings
 
 // Response represents the result of the request
 pub struct Response {
@@ -19,18 +20,58 @@ fn (mut resp Response) free() {
 	unsafe { resp.header.data.free() }
 }
 
+pub struct ResponseRenderConfig {
+	chunked    bool
+	chunk_size int = 20
+}
+
 // Formats resp to bytes suitable for HTTP response transmission
-pub fn (resp Response) bytes() []byte {
+pub fn (resp Response) bytes(conf ...ResponseRenderConfig) []byte {
 	// TODO: build []byte directly; this uses two allocations
-	return resp.bytestr().bytes()
+	return resp.bytestr(...conf).bytes()
 }
 
 // Formats resp to a string suitable for HTTP response transmission
-pub fn (resp Response) bytestr() string {
+pub fn (resp Response) bytestr(conf ...ResponseRenderConfig) string {
+	do_chunk := conf.any(it.chunked) && conf[0].chunk_size > 0
 	// TODO: cookies
-	return ('$resp.version $resp.status_code ${status_from_int(resp.status_code).str()}\r\n' + '${resp.header.render(
-		version: resp.version
-	)}\r\n' + '$resp.text')
+	headers := if do_chunk && !resp.header.values(.transfer_encoding).contains('chunked') {
+		mut h := resp.header
+		h.add(.transfer_encoding, 'chunked')
+		h.render(version: resp.version)
+	} else {
+		resp.header.render(version: resp.version)
+	}
+	status_msg := status_from_int(resp.status_code)
+	body := if do_chunk { chunk_encode(resp.text, conf[0].chunk_size) } else { resp.text }
+
+	return '$resp.version $resp.status_code $status_msg\r\n$headers\r\n$body'
+}
+
+// TODO: move to http.chunked?
+// chunk_encode encodes an HTTP body for chunked transfer
+[manualfree]
+fn chunk_encode(s string, max_len int) string {
+	mut sb := strings.new_builder(s.len + 64)
+	defer {
+		unsafe { sb.free() }
+	}
+	mut i := 0
+	for ; i < s.len - max_len; i += max_len {
+		sb.write_string(max_len.hex())
+		sb.write_string('\r\n')
+		sb.write_string(s[i..i + max_len])
+		sb.write_string('\r\n')
+	}
+	rest := s.len - i
+	sb.write_string(rest.hex())
+	sb.write_string('\r\n')
+	sb.write_string(s[i..])
+	sb.write_string('\r\n')
+	if rest > 0 {
+		sb.write_string('0\r\n\r\n')
+	}
+	return sb.str()
 }
 
 // Parse a raw HTTP response into a Response object
