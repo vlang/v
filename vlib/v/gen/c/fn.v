@@ -1242,19 +1242,16 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	arg_sym := g.table.get_type_symbol(arg.typ)
 	mut is_amp := false
 	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
-	mut arg_is_lvalue := false // can we get `&(arg)` without promotion
 	mut is_index_expr := false
 	mut is_auto_deref := false
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
 			if obj is ast.Var {
-				arg_is_lvalue = !needs_interface_promotion
 				is_auto_deref = obj.is_auto_deref
 			}
 		}
 		ast.SelectorExpr {
-			arg_is_lvalue = !needs_interface_promotion
 			left := arg.expr.expr
 			if left is ast.Ident {
 				obj := left.obj
@@ -1265,7 +1262,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		}
 		ast.PrefixExpr {
 			if arg.expr.op == .amp {
-				is_amp = exp_sym.kind != .interface_
+				is_amp = true
 			}
 		}
 		ast.IndexExpr {
@@ -1275,20 +1272,19 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
-		if (arg_is_lvalue || is_amp || is_index_expr) && !(exp_sym.kind == .array && (is_index_expr || is_auto_deref)) {
-			g.write('(voidptr)&(')
-			needs_closing_brace = true
-		} else {
-			if exp_sym.kind != .interface_ || needs_interface_promotion {
+		if !(is_amp && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
+			if needs_interface_promotion || is_index_expr {
 				g.write('ADDR(/*mut*/$exp_sym.cname, ')
 				needs_closing_brace = true
+			} else {
+				g.write('&/*mut*/')
 			}
 		}
-	} else if arg_is_ptr && !expr_is_ptr {
+	} else if arg_is_ptr && !(expr_is_ptr || is_auto_deref) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if arg_is_lvalue {
-					g.write('&/*arr*/(')
+				if arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable {
+					g.write('&(/*arr*/')
 				} else {
 					// Special case for mutable arrays. We can't `&` function
 					// results,     have to use `(array[]){ expr }[0]` hack.
@@ -1315,6 +1311,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
+	} else if arg_is_ptr && !arg.is_mut && !expr_is_ptr {
+		g.write('/*auto ptr*/&')
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
 			g.write('&')
