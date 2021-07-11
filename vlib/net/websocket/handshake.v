@@ -98,8 +98,8 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 	server_client := &ServerClient{
 		resource_name: get_tokens[1]
 		client_key: key
-		client: unsafe { c }
-		server: unsafe { s }
+		client: unsafe { &c }
+		server: unsafe { &s }
 	}
 	unsafe {
 		lines.free()

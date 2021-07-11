@@ -858,7 +858,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			encode_name := js_enc_name(json_type_str)
 			g.writeln('// json.encode')
 			g.write('cJSON* $json_obj = ${encode_name}(')
-			if node.args[0].typ.is_ptr() {
+			if node.args[0].typ.is_ptr() || node.args[0].expr.is_auto_deref_var() {
 				g.write('*')
 			}
 			g.call_args(node)

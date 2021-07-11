@@ -926,6 +926,9 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write_string(g.typ(param.typ))
+			if param.is_mut {
+				g.type_definitions.write_string('*')
+			}
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
 			}
