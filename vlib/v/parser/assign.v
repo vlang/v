@@ -30,6 +30,17 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 				}
 			}
 		}
+		ast.ArrayInit {
+			if val.has_cap {
+				p.check_undefined_variables(exprs, val.cap_expr) ?
+			}
+			if val.has_len {
+				p.check_undefined_variables(exprs, val.len_expr) ?
+			}
+			if val.has_default {
+				p.check_undefined_variables(exprs, val.default_expr) ?
+			}
+		}
 		ast.CallExpr {
 			p.check_undefined_variables(exprs, val.left) ?
 			for arg in val.args {
