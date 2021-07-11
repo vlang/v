@@ -37,11 +37,9 @@ pub fn (app &App) index() vweb.Result {
 
 pub fn (mut app App) init_server() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('Article', [
-		'id integer primary key',
-		"title text default ''",
-		"text text default ''",
-	])
+	sql app.db {
+		create table Article
+	}
 }
 
 pub fn (mut app App) before_request() {

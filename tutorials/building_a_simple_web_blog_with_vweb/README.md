@@ -186,29 +186,6 @@ Now let's display some articles!
 We'll be using V's builtin ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
 
-Create a SQLite file with the schema:
-```sql
--- blog.sqlite
-drop table if exists Article;
-
-create table Article (
-	id integer primary key,
-	title text default "",
-	text text default ""
-);
-
-insert into Article (title, text) values (
-	"Hello, world!",
-	"V is great."
-);
-
-insert into Article (title, text) values (
-	"Second post.",
-	"Hm... what should I write about?"
-);
-```
-
-Run the file with `sqlite3 blog.db < blog.sqlite`.
 
 Add a SQLite handle to `App`:
 
@@ -231,11 +208,25 @@ Add the `init_server()` method where we'll connect to a database:
 ```v oksyntax
 // blog.v
 pub fn (mut app App) init_server() {
-	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
-	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
-	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
-	app.db = db
+	app.db = sqlite.connect(':memory:') or { panic(err) }
+	sql app.db {
+		create table Article
+	}
+
+	first_article := Article{
+		title: 'Hello, world!'
+		text: 'V is great.'
+	}
+
+	second_article := Article{
+		title: 'Second post.'
+		text: 'Hm... what should I write about?'
+	}
+
+	sql app.db {
+		insert first_article into Article
+		insert second_article into Article
+	}
 }
 ```
 
@@ -282,11 +273,12 @@ Let's fetch the articles in the `index()` action:
 
 ```v ignore
 // blog.v
-pub fn (app &App) index() vweb.Result {
+pub fn (app App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
 ```
+
 
 Finally, let's update our view:
 
@@ -434,13 +426,12 @@ If one wants to persist data they need to use a file instead of memory SQLite Da
 Replace the `init_server()` function with this instead:
 
 ```v oksyntax
+// blog.v
 pub fn (mut app App) init_server() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('Article', [
-		'id integer primary key',
-		"title text default ''",
-		"text text default ''",
-	])
+	sql app.db {
+		create table Article
+	}
 }
 ```
 
