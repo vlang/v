@@ -1,4 +1,4 @@
-vlib/v/parser/tests/assign_main_fn_err.vv:2:9: error: `main` cannot be used anywhere other than the main function
+vlib/v/checker/tests/assign_main_fn_err.vv:2:9: error: `main` cannot be used anywhere other than the main function
     1 | fn main() {
     2 |     foo := main
       |            ~~~~
