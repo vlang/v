@@ -1804,6 +1804,7 @@ pub fn (mut f Fmt) dump_expr(node ast.DumpExpr) {
 pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 	name := f.short_module(node.enum_name)
 	f.write(name + '.' + node.val)
+	f.mark_import_as_used(name)
 }
 
 pub fn (mut f Fmt) ident(node ast.Ident) {

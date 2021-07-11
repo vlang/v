@@ -22,10 +22,15 @@ fn (mut resp Response) free() {
 // Formats resp to bytes suitable for HTTP response transmission
 pub fn (resp Response) bytes() []byte {
 	// TODO: build []byte directly; this uses two allocations
+	return resp.bytestr().bytes()
+}
+
+// Formats resp to a string suitable for HTTP response transmission
+pub fn (resp Response) bytestr() string {
 	// TODO: cookies
 	return ('$resp.version $resp.status_code ${status_from_int(resp.status_code).str()}\r\n' + '${resp.header.render(
 		version: resp.version
-	)}\r\n' + '$resp.text').bytes()
+	)}\r\n' + '$resp.text')
 }
 
 // Parse a raw HTTP response into a Response object
