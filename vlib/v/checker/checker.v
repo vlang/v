@@ -1089,7 +1089,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_pos := node.right.position()
 	left_right_pos := left_pos.extend(right_pos)
 	if (left_type.is_ptr() || left_sym.is_pointer()) && node.op in [.plus, .minus] {
-		if !c.inside_unsafe /* && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() */ {
+		if !c.inside_unsafe {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
 		}
 		if left_type == ast.voidptr_type {
@@ -1238,22 +1238,6 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			/* } else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
-				deref_left_type := if node.left.is_auto_deref_var() {
-					left_type.deref()
-				} else {
-					left_type
-				}
-				deref_right_type := if node.right.is_auto_deref_var() {
-					right_type.deref()
-				} else {
-					right_type
-				}
-				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
-				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
-				if left_name != right_name {
-					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
-				} */
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
 				if promoted_type.idx() == ast.void_type_idx {
@@ -1460,7 +1444,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated /* && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() */ {
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -3199,9 +3183,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := node.exprs[i].position()
-			/* if node.exprs[i].is_auto_deref_var() {
-				continue
-			} */
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
 					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
@@ -3217,18 +3198,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
 			pos := node.exprs[i].position()
-			/* if node.exprs[i].is_auto_deref_var() {
-				continue
-			} */
 			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
 			pos := node.exprs[i].position()
-			/* if node.exprs[i].is_auto_deref_var() {
-				continue
-			} */
 			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}

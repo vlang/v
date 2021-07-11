@@ -565,9 +565,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
-		//if node.left_type.is_ptr() && !node.receiver_type.is_ptr() {
-		//	g.write('&/*PPPP*/')
-		//}
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
