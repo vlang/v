@@ -7466,7 +7466,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				node.pos)
 		}
 	}
-	if node.language == .v && !c.is_builtin_mod {
+	if node.language == .v && !c.is_builtin_mod && !node.is_anon {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
 	if node.name == 'main.main' {
