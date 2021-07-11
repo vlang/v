@@ -3935,7 +3935,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			c.expected_type = c.expected_or_type
 		}
 		mut type_sym := c.table.get_type_symbol(c.expected_type)
-		if type_sym.kind != .array {
+		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)',
 				array_init.pos)
 			return ast.void_type
