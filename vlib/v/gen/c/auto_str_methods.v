@@ -565,6 +565,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, x);')
 	} else {
 		deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
 		g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
@@ -593,11 +594,11 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( $deref a[i]));')
 		}
+		g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT(", "));')
+		g.auto_str_funcs.writeln('\t\t}')
+		g.auto_str_funcs.writeln('\t}')
 	}
-	g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT(", "));')
-	g.auto_str_funcs.writeln('\t\t}')
-	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("]"));')
 	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
