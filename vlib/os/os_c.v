@@ -71,6 +71,9 @@ struct C.dirent {
 [manualfree]
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb') ?
+	defer {
+		C.fclose(fp)
+	}
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
 		return error('fseek failed')
@@ -85,7 +88,6 @@ pub fn read_bytes(path string) ?[]byte {
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	C.fclose(fp)
 	res.trim(nr_read_elements * fsize)
 	return res
 }

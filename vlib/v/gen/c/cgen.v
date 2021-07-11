@@ -67,8 +67,9 @@ mut:
 	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
-	tmp_count              int      // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count              int      // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count2             int      // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations int      // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
 	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
@@ -77,6 +78,7 @@ mut:
 	is_sql                 bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared              bool     // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled      bool     // is it safe to generate #line directives when -g is passed
+	inside_cast_in_heap    int      // inside cast to interface type in heap (resolve recursive calls)
 	arraymap_set_pos       int      // map or array set value position
 	vlines_path            string   // set to the proper path for generating #line directives
 	optionals              []string // to avoid duplicates TODO perf, use map
@@ -580,6 +582,23 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	return styp
 }
 
+fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+	if types.len == 0 {
+		return before
+	}
+	// Using _T_ to differentiate between get<string> and get_string
+	// `foo<int>()` => `foo_T_int()`
+	mut name := before + '_T'
+	for typ in types {
+		nr_muls := typ.nr_muls()
+		if is_decl && nr_muls > 0 {
+			name = strings.repeat(`*`, nr_muls) + name
+		}
+		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+	}
+	return name
+}
+
 fn (mut g Gen) expr_string(expr ast.Expr) string {
 	pos := g.out.len
 	g.expr(expr)
@@ -767,7 +786,11 @@ pub fn (mut g Gen) write_typedef_types() {
 		}
 		match typ.kind {
 			.array {
-				g.type_definitions.writeln('typedef array $typ.cname;')
+				info := typ.info as ast.Array
+				elem_sym := g.table.get_type_symbol(info.elem_type)
+				if elem_sym.kind != .placeholder {
+					g.type_definitions.writeln('typedef array $typ.cname;')
+				}
 			}
 			.array_fixed {
 				info := typ.info as ast.ArrayFixed
@@ -959,6 +982,11 @@ pub fn (mut g Gen) writeln(s string) {
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
 	return '_t$g.tmp_count'
+}
+
+pub fn (mut g Gen) new_tmp_declaration_name() string {
+	g.tmp_count_declarations++
+	return '_d$g.tmp_count_declarations'
 }
 
 pub fn (mut g Gen) current_tmp_var() string {
@@ -1826,11 +1854,21 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
-		got_styp := g.cc_type(got_type, true)
-		exp_styp := g.cc_type(expected_type, true)
-		fname := 'I_${got_styp}_to_Interface_$exp_styp'
-		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
-			got_styp)
+		if expr is ast.StructInit && !got_type.is_ptr() {
+			g.inside_cast_in_heap++
+			got_styp := g.cc_type(got_type.to_ptr(), true)
+			exp_styp := g.cc_type(expected_type, true)
+			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
+				got_styp)
+			g.inside_cast_in_heap--
+		} else {
+			got_styp := g.cc_type(got_type, true)
+			exp_styp := g.cc_type(expected_type, true)
+			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
+				got_styp)
+		}
 		return
 	}
 	// cast to sum type
@@ -2582,8 +2620,27 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if is_inside_ternary {
 						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
+					mut is_used_var_styp := false
 					if ident.name !in g.defer_vars {
-						g.write('$styp ')
+						val_sym := g.table.get_type_symbol(val_type)
+						if val_sym.info is ast.Struct {
+							if val_sym.info.generic_types.len > 0 {
+								if val is ast.StructInit {
+									var_styp := g.typ(val.typ)
+									g.write('$var_styp ')
+									is_used_var_styp = true
+								} else if val is ast.PrefixExpr {
+									if val.op == .amp && val.right is ast.StructInit {
+										var_styp := g.typ(val.right.typ.to_ptr())
+										g.write('$var_styp ')
+										is_used_var_styp = true
+									}
+								}
+							}
+						}
+						if !is_used_var_styp {
+							g.write('$styp ')
+						}
 						if is_auto_heap {
 							g.write('*')
 						}
@@ -4914,7 +4971,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
-	} else if is_amp {
+	} else if is_amp || g.inside_cast_in_heap > 0 {
 		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
@@ -5104,7 +5161,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof($shared_styp))')
-	} else if is_amp {
+	} else if is_amp || g.inside_cast_in_heap > 0 {
 		g.write(', sizeof($styp))')
 	}
 }

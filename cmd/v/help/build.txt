@@ -38,7 +38,7 @@ NB: the build flags are shared with the run command too:
       Current list of supported backends:
       * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
       * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
-      * `x64`               - V outputs Linux 64-bit executable directly (highly experimental!).
+      * `native`            - V outputs native executable (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
 
    -d <flag>[=<value>], -define <flag>[=<value>]
       Define the provided flag.

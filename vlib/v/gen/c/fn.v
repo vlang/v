@@ -190,15 +190,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = c_name(name)
 	}
 	mut type_name := g.typ(node.return_type)
-	if g.table.cur_concrete_types.len > 0 {
-		// foo<T>() => foo_T_int(), foo_T_string() etc
-		// Using _T_ to differentiate between get<string> and get_string
-		name += '_T'
-		for concrete_type in g.table.cur_concrete_types {
-			gen_name := g.typ(concrete_type)
-			name += '_' + gen_name
-		}
-	}
+
+	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& name != 'main__main' && node.name != 'str' {
 		mut key := node.name
@@ -332,6 +326,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// we could be in an anon fn so save outer fn defer stmts
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
+	ctmp := g.tmp_count
+	g.tmp_count = 0
+	defer {
+		g.tmp_count = ctmp
+	}
 	g.stmts(node.stmts)
 	if node.is_noreturn {
 		g.writeln('\twhile(1);')
@@ -409,7 +408,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 		g.write('void')
 	}
 	for i, arg in args {
-		mut caname := if arg.name == '_' { g.new_tmp_var() } else { c_name(arg.name) }
+		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
@@ -721,16 +720,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	for i, concrete_type in node.concrete_types {
-		if concrete_type != ast.void_type && concrete_type != 0 {
-			// Using _T_ to differentiate between get<string> and get_string
-			// `foo<int>()` => `foo_T_int()`
-			if i == 0 {
-				name += '_T'
-			}
-			name += '_' + g.typ(concrete_type)
-		}
-	}
+	name = g.generic_fn_name(node.concrete_types, name, false)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	//
@@ -918,14 +908,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
-	for i, concrete_type in node.concrete_types {
-		// Using _T_ to differentiate between get<string> and get_string
-		// `foo<int>()` => `foo_T_int()`
-		if i == 0 {
-			name += '_T'
-		}
-		name += '_' + g.typ(concrete_type)
-	}
+	name = g.generic_fn_name(node.concrete_types, name, false)
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
 	// g.generate_tmp_autofree_arg_vars(node, name)
@@ -1190,12 +1173,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
 			if fn_def := g.table.find_fn(node.name) {
-				varg_type_name := g.table.type_to_str(varg_type)
-				for i, fn_gen_name in fn_def.generic_names {
-					if fn_gen_name == varg_type_name {
-						arr_info.elem_type = node.concrete_types[i]
-						break
-					}
+				if utyp := g.table.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
+					node.concrete_types)
+				{
+					arr_info.elem_type = utyp
 				}
 			} else {
 				g.error('unable to find function $node.name', node.pos)

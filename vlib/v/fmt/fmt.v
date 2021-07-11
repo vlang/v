@@ -1677,9 +1677,8 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			is_last := i == node.concrete_types.len - 1
-			f.write(f.table.type_to_str(concrete_type))
-			if !is_last {
+			f.write(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias))
+			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -1765,6 +1764,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$embed_file('$node.embed_file.rpath')")
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
+		} else if node.is_pkgconfig {
+			f.write("\$pkgconfig('$node.args_var')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
@@ -1803,6 +1804,7 @@ pub fn (mut f Fmt) dump_expr(node ast.DumpExpr) {
 pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 	name := f.short_module(node.enum_name)
 	f.write(name + '.' + node.val)
+	f.mark_import_as_used(name)
 }
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
@@ -1824,7 +1826,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// Force usage of full path to const in the same module:
 		// `println(minute)` => `println(time.minute)`
 		// This makes it clear that a module const is being used
-		// (since V's conts are no longer ALL_CAP).
+		// (since V's consts are no longer ALL_CAP).
 		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
 			mod := f.cur_mod

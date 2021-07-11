@@ -86,7 +86,7 @@ fn linux_utc() Time {
 	// and use the nanoseconds part
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	return unix2(int(ts.tv_sec), int(ts.tv_nsec / 1000))
+	return unix2(i64(ts.tv_sec), int(ts.tv_nsec / 1000))
 }
 
 // dummy to compile with all compilers

@@ -21,8 +21,7 @@ const int_max = int(0x7FFFFFFF)
 const (
 	valid_comp_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku',
-	]
+		'haiku', 'serenity']
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
@@ -3390,6 +3389,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.expected_type = ast.void_type
 	}
 	right_first := node.right[0]
+	node.left_types = []
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, right in node.right {
@@ -3477,12 +3477,26 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
+		if right is ast.Ident {
+			right_sym := c.table.get_type_symbol(right_type)
+			if right_sym.info is ast.Struct {
+				if right_sym.info.generic_types.len > 0 {
+					if obj := right.scope.find(right.name) {
+						right_type = obj.typ
+					}
+				}
+			}
+		}
 		if is_decl {
 			// check generic struct init and return unwrap generic struct type
 			if right is ast.StructInit {
 				if right.typ.has_flag(.generic) {
 					c.expr(right)
 					right_type = right.typ
+				}
+			} else if right is ast.PrefixExpr {
+				if right.op == .amp && right.right is ast.StructInit {
+					right_type = c.expr(right)
 				}
 			}
 			if right.is_auto_deref_var() {
@@ -3637,6 +3651,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
+
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
@@ -3920,7 +3935,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			c.expected_type = c.expected_or_type
 		}
 		mut type_sym := c.table.get_type_symbol(c.expected_type)
-		if type_sym.kind != .array {
+		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)',
 				array_init.pos)
 			return ast.void_type
@@ -4798,7 +4813,8 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	defer {
 		c.expr_level--
 	}
-	if c.expr_level > 200 {
+	// c.expr_level set to 150 so that stack overflow does not occur on windows
+	if c.expr_level > 150 {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return ast.void_type
 	}
@@ -4990,7 +5006,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			return c.infix_expr(mut node)
 		}
 		ast.IntegerLiteral {
-			return ast.int_literal_type
+			return c.int_lit(mut node)
 		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
@@ -5114,6 +5130,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	n_e_t_idx := node.expr_type.idx()
 	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
+	if node.expr_type == ast.void_type {
+		c.error('expression does not return a value so it cannot be cast', node.expr.position())
+	}
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
 			c.warn('to convert a C string buffer pointer to a V string, use x.vstring_with_len(len) instead of string(x,len)',
@@ -6168,6 +6187,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
+				node.branches[i].pkg_exist = !should_skip
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
@@ -6495,6 +6515,15 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				// :)
 				// until `v.eval` is stable, I can't think of a better way to do this
 				return !(expr as ast.BoolLiteral).val
+			}
+		}
+		ast.ComptimeCall {
+			if cond.is_pkgconfig {
+				mut m := pkgconfig.main([cond.args_var]) or {
+					c.error(err.msg, cond.pos)
+					return true
+				}
+				m.run() or { return true }
 			}
 		}
 		else {
@@ -7437,7 +7466,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				node.pos)
 		}
 	}
-	if node.language == .v && !c.is_builtin_mod {
+	if node.language == .v && !c.is_builtin_mod && !node.is_anon {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
 	if node.name == 'main.main' {
@@ -7454,6 +7483,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
 					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						node.return_type_pos)
+				}
+			}
+		}
+		return_sym := c.table.get_type_symbol(node.return_type)
+		if return_sym.info is ast.MultiReturn {
+			for multi_type in return_sym.info.types {
+				if multi_type == ast.error_type {
+					c.error('type `IError` cannot be used in multi-return, return an option instead',
+						node.return_type_pos)
+				} else if multi_type.has_flag(.optional) {
+					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
 				}
 			}

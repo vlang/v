@@ -192,7 +192,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
 		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_'])
+			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', '>', ''])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -1180,7 +1180,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			return none
 		}
 		typ := concrete_types[index]
-		return typ.derive(generic_type).clear_flag(.generic)
+		return typ.derive_add_muls(generic_type).clear_flag(.generic)
 	}
 	match mut sym.info {
 		Array {
@@ -1195,7 +1195,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if typ := t.resolve_generic_to_concrete(elem_type, generic_names, concrete_types) {
 				idx := t.find_or_register_array_with_dims(typ, dims)
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		ArrayFixed {
@@ -1203,7 +1203,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{})
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		Chan {
@@ -1211,7 +1211,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		FnType {
@@ -1234,7 +1234,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 			idx := t.find_or_register_fn_type('', func, true, false)
-			return new_type(idx).derive(generic_type).clear_flag(.generic)
+			return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 		}
 		MultiReturn {
 			mut types := []Type{}
@@ -1249,7 +1249,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if type_changed {
 				idx := t.find_or_register_multi_return(types)
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		Map {
@@ -1270,7 +1270,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if type_changed {
 				idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		Struct {
@@ -1292,7 +1292,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				if idx == 0 {
 					idx = t.add_placeholder_type(nrt, .v)
 				}
-				return new_type(idx).derive(generic_type).clear_flag(.generic)
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
 		else {}

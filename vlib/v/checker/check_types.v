@@ -437,6 +437,12 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
+		if ftyp == ast.void_type {
+			c.error('expression does not return a value', expr.position())
+		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
+			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
+				expr.position())
+		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
@@ -485,6 +491,31 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	}
 	c.inside_println_arg = inside_println_arg_save
 	return ast.string_type
+}
+
+pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
+	if node.val.len < 17 {
+		// can not be a too large number, no need for more expensive checks
+		return ast.int_literal_type
+	}
+	lit := node.val.replace('_', '').all_after('-')
+	is_neg := node.val.starts_with('-')
+	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
+	message := 'integer literal $node.val overflows int'
+
+	if lit.len > limit.len {
+		c.error(message, node.pos)
+	} else if lit.len == limit.len {
+		for i, digit in lit {
+			if digit > limit[i] {
+				c.error(message, node.pos)
+			} else if digit < limit[i] {
+				break
+			}
+		}
+	}
+
+	return ast.int_literal_type
 }
 
 pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallExpr) {

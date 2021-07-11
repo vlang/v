@@ -40,7 +40,9 @@ pub enum Platform {
 	js // for interoperability in prefs.OS
 	android
 	solaris
+	serenity
 	haiku
+	raw
 	cross // TODO: add functionality for v doc -os cross whenever possible
 }
 
@@ -58,6 +60,7 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'dragonfly' { return .dragonfly }
 		'js' { return .js }
 		'solaris' { return .solaris }
+		'serenity' { return .serenity }
 		'android' { return .android }
 		'haiku' { return .haiku }
 		'nix' { return .linux }

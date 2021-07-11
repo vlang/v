@@ -11,7 +11,6 @@ module c
 
 import v.ast
 import v.util
-import strings
 
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
@@ -116,10 +115,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	return res, fmt_type.str()
 }
 
-fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) string {
-	tmp_out := g.out
-	g.out = strings.new_builder(8)
-
+fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 	expr := node.exprs[i]
 
 	typ := g.unwrap_generic(node.expr_types[i])
@@ -168,72 +164,43 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) string {
 		}
 		g.expr(expr)
 	}
-
-	/*
-	if node.fmts[i] in [`s`, `S`] && node.fwidths[i] != 0 {
-		g.write(', ${node.fwidths[i]}')
-	}
-	if i < node.exprs.len - 1 {
-		g.write(', ')
-	}
-	*/
-
-	tmp_res := g.out.str()
-	g.out = tmp_out
-
-	return tmp_res
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
-	mut data := []StrIntpCgenData{}
+	g.write(' str_intp($node.vals.len, ')
+	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		// mut escaped_val := val.replace_each(['%', '%%'])
-		// escaped_val = util.smart_quote(escaped_val, false)
 		escaped_val := util.smart_quote(val, false)
 
+		if escaped_val.len > 0 {
+			g.write('{_SLIT("$escaped_val"), ')
+		} else {
+			g.write('{_SLIT0, ')
+		}
+
 		if i >= node.exprs.len {
-			// last part of the string without data, manage it with .no_str
-			data << StrIntpCgenData{
-				str: escaped_val
-				fmt: '0' // no_str
-				d: '{ .d_c = 0 }'
-			}
+			// last part of the string
+			g.write('0, { .d_c = 0 }}')
 			break
 		}
 
 		ft_u64, ft_str := g.str_format(node, i)
-		ft_data := g.str_val(node, i)
+		g.write('0x$ft_u64.hex(), {.d_$ft_str = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {
-			data << StrIntpCgenData{
-				str: escaped_val
-				fmt: '0x' + ft_u64.hex()
-				d: '{.d_$ft_str = (void*)(${ft_data.trim(' ,')})}'
-			}
-			continue
-		}
-		data << StrIntpCgenData{
-			str: escaped_val
-			fmt: '0x' + ft_u64.hex()
-			d: '{.d_$ft_str = ${ft_data.trim(' ,')}}'
-		}
-	}
-
-	// write struct
-	g.write(' str_intp($data.len, ')
-	g.write('_MOV((StrIntpData[]){')
-	for i, item in data {
-		if item.str.len > 0 {
-			g.write('{_SLIT("$item.str"), $item.fmt, $item.d}')
+			g.write('(void*)(')
+			g.str_val(node, i)
+			g.write(')')
 		} else {
-			g.write('{_SLIT0, $item.fmt, $item.d}')
+			g.str_val(node, i)
 		}
 
-		if i < (data.len - 1) {
+		g.write('}}')
+		if i < (node.vals.len - 1) {
 			g.write(', ')
 		}
 	}
-	g.write('})) ')
+	g.write('}))')
 }
