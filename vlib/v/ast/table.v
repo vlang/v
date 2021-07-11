@@ -192,7 +192,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
 		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_'])
+			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', '>', ''])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
