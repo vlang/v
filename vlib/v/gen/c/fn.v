@@ -1242,7 +1242,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	arg_sym := g.table.get_type_symbol(arg.typ)
 	mut is_amp := false
 	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
-	mut arg_is_lvalue := false
+	mut arg_is_lvalue := false // can we get `&(arg)` without promotion
+	mut is_index_expr := false
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
@@ -1258,12 +1259,15 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				is_amp = exp_sym.kind != .interface_
 			}
 		}
+		ast.IndexExpr {
+			is_index_expr = true
+		}
 		else {}
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
-		if arg_is_lvalue || is_amp {
-			g.write('&(')
+		if arg_is_lvalue || is_amp || is_index_expr {
+			g.write('(voidptr)&(')
 			needs_closing_brace = true
 		} else {
 			if exp_sym.kind != .interface_ || needs_interface_promotion {
@@ -1277,7 +1281,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if arg_is_lvalue {
 					g.write('&/*arr*/(')
 				} else {
-					g.write('ADDR(array, ')
+					g.write('ADDR(/*arr*/array, ')
 				}
 				g.expr(arg.expr)
 				g.write(')')
