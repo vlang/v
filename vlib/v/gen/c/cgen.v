@@ -42,8 +42,8 @@ struct Gen {
 	field_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
+	table               &ast.Table
 mut:
-	table                  &ast.Table
 	out                    strings.Builder
 	cheaders               strings.Builder
 	includes               strings.Builder // all C #includes required by V modules
@@ -113,15 +113,11 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
-	str_types              []StrType    // types that need automatic str() generation
-	threaded_fns           []string     // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns             []string     // functions that wait for `go xxx()` to finish
-	array_fn_definitions   []string     // array equality functions that have been defined
-	map_fn_definitions     []string     // map equality functions that have been defined
-	struct_fn_definitions  []string     // struct equality functions that have been defined
-	sumtype_fn_definitions []string     // sumtype equality functions that have been defined
-	alias_fn_definitions   []string     // alias equality functions that have been defined
-	auto_fn_definitions    []string     // auto generated functions defination list
+	str_types              []StrType // types that need automatic str() generation
+	threaded_fns           []string  // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns             []string  // functions that wait for `go xxx()` to finish
+	auto_fn_definitions    []string  // auto generated functions defination list
+	sumtype_casting_fns    []SumtypeCastingFn
 	anon_fn_definitions    []string     // anon generated functions defination list
 	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	is_json_fn             bool     // inside json.encode()
@@ -178,13 +174,17 @@ mut:
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
 	// main_fn_decl_node  ast.FnDecl
-	expected_cast_type ast.Type // for match expr of sumtypes
-	defer_vars         []string
-	anon_fn            bool
-	array_sort_fn      map[string]bool
-	nr_closures        int
-	tests_inited       bool
-	autofree_used      bool
+	expected_cast_type  ast.Type // for match expr of sumtypes
+	defer_vars          []string
+	anon_fn             bool
+	array_sort_fn       map[string]bool
+	nr_closures         int
+	tests_inited        bool
+	autofree_used       bool
+	cur_concrete_types  []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
+	cur_fn              &ast.FnDecl = 0 // same here
+	needed_equality_fns []ast.Type
+	generated_eq_fns    []ast.Type
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -361,18 +361,20 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				g.str_types << str_type
 			}
 		}
+		for scf in tg.sumtype_casting_fns {
+			if scf !in g.sumtype_casting_fns {
+				g.sumtype_casting_fns << scf
+			}
+		}
+
 		g.nr_closures += tg.nr_closures
 		g.has_main = g.has_main || tg.has_main
 
 		g.threaded_fns << tg.threaded_fns
 		g.waiter_fns << tg.waiter_fns
-		g.array_fn_definitions << tg.array_fn_definitions
-		g.map_fn_definitions << tg.map_fn_definitions
-		g.struct_fn_definitions << tg.struct_fn_definitions
-		g.sumtype_fn_definitions << tg.sumtype_fn_definitions
-		g.alias_fn_definitions << tg.alias_fn_definitions
 		g.auto_fn_definitions << tg.auto_fn_definitions
 		g.anon_fn_definitions << tg.anon_fn_definitions
+		g.needed_equality_fns << tg.needed_equality_fns // duplicates are resolved later in gen_equality_fns
 	}
 
 	g.write_optionals()
@@ -380,6 +382,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	for str_type in g.str_types {
 		g.final_gen_str(str_type)
 	}
+	for sumtype_casting_fn in g.sumtype_casting_fns {
+		g.write_sumtype_casting_fn(sumtype_casting_fn)
+	}
+	g.gen_equality_fns()
 	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
 	if glob.autofree_used {
@@ -924,7 +930,7 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 		sym := g.table.get_type_symbol(t)
 		return '_v_type_idx_${sym.cname}()'
 	}
-	return '$t.idx()'
+	return t.idx().str()
 }
 
 //
@@ -2016,18 +2022,35 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	}
 }
 
-fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
+struct SumtypeCastingFn {
+	fn_name string
+	got     ast.Type
+	exp     ast.Type
+}
+
+fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
 	i := got | (exp << 16)
+	got_cname, exp_cname := g.table.get_type_symbol(got).cname, g.table.get_type_symbol(exp).cname
+	fn_name := '${got_cname}_to_sumtype_$exp_cname'
 	if got == exp || g.sumtype_definitions[i] {
-		return
+		return fn_name
 	}
 	g.sumtype_definitions[i] = true
-	got_sym := g.table.get_type_symbol(got)
-	exp_sym := g.table.get_type_symbol(exp)
-	mut sb := strings.new_builder(128)
+	g.sumtype_casting_fns << SumtypeCastingFn{
+		fn_name: fn_name
+		got: got
+		exp: exp
+	}
+	return fn_name
+}
+
+fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
+	got, exp := fun.got, fun.exp
+	got_sym, exp_sym := g.table.get_type_symbol(got), g.table.get_type_symbol(exp)
 	got_cname, exp_cname := got_sym.cname, exp_sym.cname
-	sb.writeln('static inline $exp_cname ${got_cname}_to_sumtype_${exp_cname}($got_cname* x) {')
+	mut sb := strings.new_builder(128)
+	sb.writeln('static inline $exp_cname ${fun.fn_name}($got_cname* x) {')
 	sb.writeln('\t$got_cname* ptr = memdup(x, sizeof($got_cname));')
 	for embed_hierarchy in g.table.get_embeds(got_sym) {
 		// last embed in the hierarchy
@@ -2096,7 +2119,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	exp_sym := g.table.get_type_symbol(expected_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
-	got_sym := g.table.get_type_symbol(got_type)
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon
 	if got_type == ast.error_type_idx && expected_type == ast.string_type_idx {
@@ -2169,8 +2191,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
+				//<<<<<<< HEAD
 				g.write_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 				fname := '${unwrapped_got_sym.cname}_to_sumtype_$unwrapped_exp_sym.cname'
+				//=======
+				//				fname := g.get_sumtype_casting_fn(got_type, expected_type)
+				//				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
+				//>>>>>>> f83bc5e55 (make table (mostly) immutable in cgen)
 				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
 					got_is_ptr, got_styp)
 			}
@@ -4279,19 +4306,19 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 				match type_sym.kind {
 					.array {
-						ptr_typ := g.gen_array_equality_fn(node.cond_type)
+						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_arr_eq($cond_var, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.array_fixed {
-						ptr_typ := g.gen_fixed_array_equality_fn(node.cond_type)
+						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_arr_eq($cond_var, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.map {
-						ptr_typ := g.gen_map_equality_fn(node.cond_type)
+						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_map_eq($cond_var, ')
 						g.expr(expr)
 						g.write(')')
@@ -4302,7 +4329,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
-						ptr_typ := g.gen_struct_equality_fn(node.cond_type)
+						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_struct_eq($cond_var, ')
 						g.expr(expr)
 						g.write(')')

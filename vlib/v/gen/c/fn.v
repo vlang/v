@@ -143,7 +143,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if node.generic_names.len > 0 && g.table.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
+	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
@@ -151,19 +151,19 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				the_type := syms.map(it.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
-			g.table.cur_concrete_types = concrete_types
+			g.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
-		g.table.cur_concrete_types = []
+		g.cur_concrete_types = []
 		return
 	}
-	cur_fn_save := g.table.cur_fn
+	cur_fn_save := g.cur_fn
 	defer {
-		g.table.cur_fn = cur_fn_save
+		g.cur_fn = cur_fn_save
 	}
 	unsafe {
 		// TODO remove unsafe
-		g.table.cur_fn = node
+		g.cur_fn = node
 	}
 	fn_start_pos := g.out.len
 	is_closure := node.scope.has_inherited_vars()
@@ -206,7 +206,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	mut type_name := g.typ(node.return_type)
 
-	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	name = g.generic_fn_name(g.cur_concrete_types, name, true)
 
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
@@ -1333,7 +1333,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
 			if fn_def := g.table.find_fn(node.name) {
-				if utyp := g.table.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
 					node.concrete_types)
 				{
 					arr_info.elem_type = utyp
