@@ -491,7 +491,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				g.write('*')
 			} else {
 				if node.right.is_auto_deref_var() {
-					g.write('(voidptr)&')
+					if !array_info.elem_type.is_ptr() && node.right_type.is_ptr() {
+						g.write('*')
+					} else if array_info.elem_type.is_ptr() && !node.right_type.is_ptr() {
+						g.write('&')
+					}
 				}
 			}
 			g.expr_with_cast(node.right, node.right_type, array_info.elem_type)
