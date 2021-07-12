@@ -1,0 +1,17 @@
+module my_module
+
+import another
+import other as ooo
+
+pub fn do_something() {
+	mut simples := []MyStruct{}
+	//
+	mut threads := []thread MyStruct{}
+	threads.wait()
+	//
+	mut another_threads := []thread another.MyStruct{}
+	another_threads.wait()
+	//
+	mut other_threads := []thread ooo.MyStruct{}
+	other_threads.wait()
+}

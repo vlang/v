@@ -983,7 +983,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.div_assign, '', 2)
 				}
-				if nextc == `/` {
+				if nextc == `/` { // Single line comments
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
@@ -1014,12 +1014,11 @@ fn (mut s Scanner) text_scan() token.Token {
 					// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 					// Skip the comment (return the next token)
 					continue
-				}
-				// Multiline comments
-				if nextc == `*` {
+				} else if nextc == `*` { // Multiline comments
 					start := s.pos + 2
 					start_line := s.line_nr
 					mut nest_count := 1
+					s.pos++
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++

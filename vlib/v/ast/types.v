@@ -865,6 +865,15 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
+	// Note, that the duplication of code in some of the match branches here
+	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
+	// that strongly reduces the usefullness of the exhaustive checking that
+	// match does.
+	//    Using else{} here led to subtle bugs in vfmt discovered *months*
+	// after the original code was written.
+	//    It is important that each case here is handled *explicitly* and
+	// *clearly*, and that when a new kind is added, it should also be handled
+	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {
 			res = sym.name
@@ -989,7 +998,11 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			return 'void'
 		}
-		else {
+		.thread {
+			res = 'thread ' +
+				t.type_to_str_using_aliases(sym.thread_info().return_type, import_aliases)
+		}
+		.alias, .any, .sum_type, .interface_, .size_t, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
