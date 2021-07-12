@@ -93,20 +93,20 @@ fn json_file(file string) string {
 	return json_file
 }
 
-// for enable_globals
-fn new_preferences() &pref.Preferences {
-	mut p := &pref.Preferences{}
-	p.fill_with_defaults()
-	p.enable_globals = true
-	return p
-}
-
 // generate json string
 fn json(file string) string {
+	// use as permissive preferences as possible, so that `v ast`
+	// can print the AST of arbitrary V files, even .vsh or ones
+	// that require globals:
+	mut pref := &pref.Preferences{}
+	pref.fill_with_defaults()
+	pref.enable_globals = true
+	pref.is_fmt = true
+	//
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()
-		pref: new_preferences()
+		pref: pref
 		global_scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
