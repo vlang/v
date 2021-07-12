@@ -13,56 +13,37 @@ import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
+	headers_close     = http.new_custom_header_from_map(map{
+		'Server':          'VWeb'
+		http.CommonHeader.connection.str(): 'close'
+	}) or { panic('should never fail') }
+
 	http_400          = http.Response{
 		version: .v1_1
 		status_code: 400
 		text: '400 Bad Request'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '15')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '15'
+		}).join(headers_close)
 	}
 	http_404 = http.Response{
 		version: .v1_1
 		status_code: 404
 		text: '404 Not Found'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '13')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '13'
+		}).join(headers_close)
 	}
 	http_500 = http.Response{
 		version: .v1_1
 		status_code: 500
 		text: '500 Internal Server Error'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '25')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '25'
+		}).join(headers_close)
 	}
 	mime_types = map{
 		'.css':  'text/css; charset=utf-8'
@@ -161,7 +142,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	sb.write_string(ctx.headers)
 	sb.write_string('\r\n')
-	sb.write_string(headers_close().str())
+	sb.write_string(vweb.headers_close.str())
 	sb.write_string('\r\n')
 	if ctx.chunked_transfer {
 		mut i := 0
@@ -236,7 +217,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close().str()\r\n') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close\r\n') or {
 		return Result{}
 	}
 	return Result{}
@@ -706,10 +687,4 @@ pub type RawHtml = string
 
 fn send_string(mut conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
-}
-
-fn headers_close() http.Header {
-	mut h := http.new_header(key: .connection, value: 'close')
-	h.add_custom('Server', 'VWeb') or {}
-	return h
 }
