@@ -127,7 +127,7 @@ pub mut:
 	pos         token.Position
 	file_path   string
 	kind        SymbolKind
-	tags				[]string
+	tags        []string
 	parent_name string
 	return_type string
 	children    []DocNode
