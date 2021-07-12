@@ -1230,7 +1230,6 @@ fn (t Tree) cast_expr(node ast.CastExpr) &Node {
 	obj.add('typname', t.string_node(node.typname))
 	obj.add('expr_type', t.type_node(node.expr_type))
 	obj.add('has_arg', t.bool_node(node.has_arg))
-	obj.add('in_prexpr', t.bool_node(node.in_prexpr))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
