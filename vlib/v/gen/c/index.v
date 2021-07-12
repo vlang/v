@@ -58,7 +58,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.get_type_symbol(node.left_type)
+	sym := g.table.get_final_type_symbol(node.left_type)
 	if sym.kind == .string {
 		g.write('string_substr(')
 		g.expr(node.left)
