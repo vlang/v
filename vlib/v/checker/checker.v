@@ -3664,6 +3664,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
+		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
+			&& right_sym.kind == .array_fixed && (left is ast.Ident && !left.is_blank_ident())
+			&& right is ast.Ident {
+			if right_sym.info is ast.ArrayFixed {
+				eprintln(right_sym.info.elem_type)
+				if right_sym.info.elem_type.is_ptr() {
+					c.error('assignment from one fixed array to another with a pointer element type is prohibited outside of `unsafe`',
+						node.pos)
+				}
+			}
+		}
 		if left_sym.kind == .map && node.op in [.assign, .decl_assign] && right_sym.kind == .map
 			&& ((right is ast.Ident && right.is_auto_deref_var())
 			|| !right_type.is_ptr()) && !left.is_blank_ident() && right.is_lvalue() {
