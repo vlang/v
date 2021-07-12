@@ -4358,7 +4358,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
-		sym := c.table.get_type_symbol(typ)
+		sym := c.table.get_final_type_symbol(typ)
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method('next') or {
