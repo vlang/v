@@ -999,8 +999,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			return 'void'
 		}
 		.thread {
-			res = 'thread ' +
-				t.type_to_str_using_aliases(sym.thread_info().return_type, import_aliases)
+			rtype := sym.thread_info().return_type
+			if rtype != 1 {
+				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
+			}
 		}
 		.alias, .any, .sum_type, .interface_, .size_t, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
