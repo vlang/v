@@ -453,9 +453,9 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dn.name.len > 0 {
 		if dn.kind == .const_group {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link$tags_str</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$tags_str$hash_link</$head_tag>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link$tags_str</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$tags_str<$hash_link/$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
