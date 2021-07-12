@@ -1,0 +1,4 @@
+vlib/v/checker/tests/hex_literal_overflow.vv:1:35: error: hex character literal overflows string
+    1 | s := 'this hex character literal, \xffffffff, should be caught by the checker'
+      |                                   ~~~~~~~
+    2 | println(s)

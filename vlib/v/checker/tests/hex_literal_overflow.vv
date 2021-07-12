@@ -1,0 +1,2 @@
+s := 'this hex character literal, \xffffffff, should be caught by the checker'
+println(s)
