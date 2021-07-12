@@ -1763,7 +1763,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		receiver_styp := g.typ(receiver_typ)
 		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')
-		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
+		if !node.cond_type.is_ptr() && (receiver_typ.is_ptr() || next_fn.params[0].is_mut) {
 			g.write('&')
 		}
 		g.writeln('$t_expr);')
@@ -1825,6 +1825,9 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_styp string) {
 	mut rparen_n := 1
 	if exp_is_ptr {
+		if g.out.last_n(1) == '&' {
+			g.out.go_back(1)
+		}
 		g.write('HEAP($exp_styp, ')
 		rparen_n++
 	}

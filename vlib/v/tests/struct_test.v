@@ -264,7 +264,7 @@ fn bar_config(c Config, def int) {
 fn mut_bar_config(mut c Config, def int) &Config {
 	c.n = c.def
 	assert c.n == def
-	return unsafe { c }
+	return unsafe { &c }
 }
 
 fn foo_user(u User) {}

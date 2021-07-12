@@ -3,25 +3,25 @@ mut:
 	val int
 }
 
-// this must return a reference, or else you'll get a C error
-// TODO: add a proper checker check for that case
+// this must return a reference, or else the V compiler will complain
+
 fn new(x int) &Test {
 	return &Test{x}
 }
 
 fn (mut t Test) inc() &Test {
 	t.val++
-	return unsafe { t }
+	return unsafe { &t }
 }
 
 fn (mut t Test) add(x int) &Test {
 	t.val += x
-	return unsafe { t }
+	return unsafe { &t }
 }
 
 fn (mut t Test) div(x int) &Test {
 	t.val /= x
-	return unsafe { t }
+	return unsafe { &t }
 }
 
 fn test_method_call_chains() {
