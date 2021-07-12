@@ -9,6 +9,11 @@ import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
 
+struct MutArg {
+	tmp_var string 
+	var string
+}
+
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
 	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
@@ -623,10 +628,19 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
 				// C pointers/references: ignore them
+				if node.op == .amp {
+					g.write('{ value: ')
+					g.expr(node.right)
+					g.write(' } ')
+				} else {
+					g.write('(')
+					g.expr(node.right)
+					g.write(').value')
+				}
 			} else {
 				g.write(node.op.str())
+				g.expr(node.right)
 			}
-			g.expr(node.right)
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
@@ -768,6 +782,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				}
 			}
 			g.expr(left)
+			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+				g.write('.value')
+			}
 			if g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write(', ')
@@ -1255,7 +1272,6 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 	}
 	g.write(']')
 }
-
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
 	mut name := g.js_name(it.name)
@@ -1353,6 +1369,97 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	g.call_stack.delete_last()
 }
+// TODO(playXE): Rewrite this function in a way that it will work, mostly need to change everything after `if sym.kind == .array && it.name in ['map', 'filter'] {`
+/*
+fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+	g.call_stack << it
+	mut name := g.js_name(it.name)
+	call_return_is_optional := it.return_type.has_flag(.optional)
+
+	g.writeln('(function () { ')
+	if call_return_is_optional {
+		g.writeln('try {')
+	}
+	g.write('let result = ')
+	g.expr(it.left)
+	if it.is_method { // foo.bar.baz()
+		sym := g.table.get_type_symbol(it.receiver_type)
+		g.write('.')
+		if sym.kind == .array && it.name in ['map', 'filter'] {
+			// Prevent 'it' from getting shadowed inside the match
+			node := it
+			g.write(it.name)
+			g.write('(')
+			expr := node.args[0].expr
+			match expr {
+				ast.AnonFn {
+					g.gen_fn_decl(expr.decl)
+					g.write(')')
+					return
+				}
+				ast.Ident {
+					if expr.kind == .function {
+						g.write(g.js_name(expr.name))
+						g.write(')')
+						return
+					} else if expr.kind == .variable {
+						v_sym := g.table.get_type_symbol(expr.var_info().typ)
+						if v_sym.kind == .function {
+							g.write(g.js_name(expr.name))
+							g.write(')')
+							return
+						}
+					}
+				}
+				else {}
+			}
+			g.write('it => ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return
+		}
+	} else {
+		if name in g.builtin_fns {
+			g.write('builtin.')
+		}
+	}
+	g.write('${name}(')
+	for i, arg in it.args {
+		g.expr(arg.expr)
+		if i != it.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	// end method call
+	g.writeln(');')
+	if call_return_is_optional {
+		g.writeln('result = builtin.unwrap(result);')
+		g.writeln('} catch (err) {')
+		g.inc_indent()
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
+				}
+				g.write('result =  ')
+				g.stmt(it.or_block.stmts.last())
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin.panic($panicstr)')
+				} else {
+					g.writeln('builtin.js_throw(err)')
+				}
+			}
+			else {}
+		}
+		g.dec_indent()
+		g.writeln('}')
+	}
+	g.writeln('return result;\n})()')
+	g.call_stack.delete_last()
+}*/
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
 	mut name := g.js_name(node.name)
