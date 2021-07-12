@@ -3668,7 +3668,6 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			&& right_sym.kind == .array_fixed && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
 			if right_sym.info is ast.ArrayFixed {
-				eprintln(right_sym.info.elem_type)
 				if right_sym.info.elem_type.is_ptr() {
 					c.error('assignment from one fixed array to another with a pointer element type is prohibited outside of `unsafe`',
 						node.pos)
