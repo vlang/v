@@ -2155,10 +2155,19 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			info := field_type_sym.info as ast.FnType
 			call_expr.return_type = info.func.return_type
 			mut earg_types := []ast.Type{}
-			for mut arg in call_expr.args {
+			for i, mut arg in call_expr.args {
 				targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 				arg.typ = targ
-				earg_types << targ
+				mut earg := info.func.params[i].typ
+				if info.func.params[i].is_mut {
+					// work around existing code where `mut` has been forgotten in the call
+					// TODO: make the following an error
+					if !arg.is_mut {
+						c.note('argument should be passed with `mut`', arg.pos)
+						arg.is_mut = true
+					}
+				}
+				earg_types << earg
 			}
 			call_expr.expected_arg_types = earg_types
 			return info.func.return_type
