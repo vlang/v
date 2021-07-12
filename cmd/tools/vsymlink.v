@@ -31,11 +31,10 @@ fn setup_symlink_unix(vexe string) {
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.execute('ln -sf "$vexe" "$link_path"')
-	if ret.exit_code == 0 {
-		println('Symlink "$link_path" has been created')
-	} else {
+	os.rm(link_path) or {}
+	os.symlink(vexe, link_path) or {
 		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
+		exit(1)
 	}
 }
 
