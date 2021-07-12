@@ -858,7 +858,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			encode_name := js_enc_name(json_type_str)
 			g.writeln('// json.encode')
 			g.write('cJSON* $json_obj = ${encode_name}(')
-			if node.args[0].typ.is_ptr() || node.args[0].expr.is_auto_deref_var() {
+			if node.args[0].typ.is_ptr() {
 				g.write('*')
 			}
 			g.call_args(node)
@@ -1321,7 +1321,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
-	} else if arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function {
+	} else if arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function && !g.is_json_fn {
 		g.write('/*auto ptr*/&')
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
