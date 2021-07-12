@@ -13,7 +13,7 @@ import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.custom_header_from_map(map{
+	headers_close     = http.new_custom_header_from_map(map{
 		'Server':          'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
@@ -22,7 +22,7 @@ pub const (
 		version: .v1_1
 		status_code: 400
 		text: '400 Bad Request'
-		header: http.header_from_map(map{
+		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
 			http.CommonHeader.content_length: '15'
 		}).join(headers_close)
@@ -31,7 +31,7 @@ pub const (
 		version: .v1_1
 		status_code: 404
 		text: '404 Not Found'
-		header: http.header_from_map(map{
+		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
 			http.CommonHeader.content_length: '13'
 		}).join(headers_close)
@@ -40,7 +40,7 @@ pub const (
 		version: .v1_1
 		status_code: 500
 		text: '500 Internal Server Error'
-		header: http.header_from_map(map{
+		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
 			http.CommonHeader.content_length: '25'
 		}).join(headers_close)
