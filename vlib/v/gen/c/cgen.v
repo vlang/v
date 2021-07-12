@@ -1650,7 +1650,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.writeln('\t$styp ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$cond_var[$idx], sizeof($styp));')
 			} else {
-				styp := g.typ(node.val_type)
+				styp := if node.val_is_mut { g.typ(node.val_type.to_ptr()) } else { g.typ(node.val_type) }
 				g.write('\t$styp ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {

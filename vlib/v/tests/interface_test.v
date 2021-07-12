@@ -199,6 +199,7 @@ interface Speaker2 {
 	return_speaker2() ?Speaker2
 }
 
+[heap]
 struct Boss {
 mut:
 	name string
@@ -226,7 +227,7 @@ fn (mut b Boss) return_speaker2() ?Speaker2 {
 
 fn return_speaker2(mut sp Speaker2) Speaker2 {
 	s := sp.return_speaker()
-	s2 := sp.return_speaker2() or { return *sp }
+	s2 := sp.return_speaker2() or { return sp }
 	s.speak()
 	s2.speak()
 	return s2
