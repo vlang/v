@@ -353,44 +353,50 @@ pub fn new_header(kvs ...HeaderConfig) Header {
 	return h
 }
 
-// header_from_map creates a Header from key value pairs
-pub fn header_from_map(kvs map[CommonHeader]string) Header {
-	mut h := Header{
-		data: map[string][]string{}
-	}
-	for k, v in kvs {
-		h.add(k, v)
-	}
+// new_header_from_map creates a Header from key value pairs
+pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
+	mut h := new_header()
+	h.add_map(kvs)
 	return h
 }
 
-// custom_header_from_map creates a Header from string key value pairs
-pub fn custom_header_from_map(kvs map[string]string) ?Header {
-	mut h := Header{
-		data: map[string][]string{}
-	}
-	for k, v in kvs {
-		h.add_custom(k.str(), v) ?
-	}
+// new_custom_header_from_map creates a Header from string key value pairs
+pub fn new_custom_header_from_map(kvs map[string]string) ?Header {
+	mut h := new_header()
+	h.add_custom_map(kvs) ?
 	return h
 }
 
-// Append a value to the header key.
+// add appends a value to the header key.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
 	h.data[k] << value
 	h.add_key(k)
 }
 
-// Append a value to a custom header key. This function will return an error
-// if the key contains invalid header characters.
+// add_custom appends a value to a custom header key. This function will
+// return an error if the key contains invalid header characters.
 pub fn (mut h Header) add_custom(key string, value string) ? {
 	is_valid(key) ?
 	h.data[key] << value
 	h.add_key(key)
 }
 
-// Sets the key-value pair. This function will clear any other values
+// add_map appends the value for each header key.
+pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
+	for k, v in kvs {
+		h.add(k, v)
+	}
+}
+
+// add_custom_map appends the value for each custom header key.
+pub fn (mut h Header) add_custom_map(kvs map[string]string) ? {
+	for k, v in kvs {
+		h.add_custom(k, v) ?
+	}
+}
+
+// set sets the key-value pair. This function will clear any other values
 // that exist for the CommonHeader.
 pub fn (mut h Header) set(key CommonHeader, value string) {
 	k := key.str()
@@ -398,21 +404,22 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 	h.add_key(k)
 }
 
-// Sets the key-value pair for a custom header key. This function will
-// clear any other values that exist for the header. This function will
-// return an error if the key contains invalid header characters.
+// set_custom sets the key-value pair for a custom header key. This
+// function will clear any other values that exist for the header. This
+// function will return an error if the key contains invalid header
+// characters.
 pub fn (mut h Header) set_custom(key string, value string) ? {
 	is_valid(key) ?
 	h.data[key] = [value]
 	h.add_key(key)
 }
 
-// Delete all values for a key.
+// delete deletes all values for a key.
 pub fn (mut h Header) delete(key CommonHeader) {
 	h.delete_custom(key.str())
 }
 
-// Delete all values for a custom header key.
+// delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
 	h.data.delete(key)
 
@@ -427,7 +434,8 @@ pub struct HeaderCoerceConfig {
 	canonicalize bool
 }
 
-// Coerce data by joining keys that match case-insensitively into one entry
+// coerce coerces data in the Header by joining keys that match
+// case-insensitively into one entry.
 pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
 	canon := flags.any(it.canonicalize)
 
@@ -450,7 +458,7 @@ pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
 	}
 }
 
-// Returns whether the header key exists in the map.
+// contains returns whether the header key exists in the map.
 pub fn (h Header) contains(key CommonHeader) bool {
 	return h.contains_custom(key.str())
 }
@@ -459,7 +467,7 @@ pub struct HeaderQueryConfig {
 	exact bool
 }
 
-// Returns whether the custom header key exists in the map.
+// contains_custom returns whether the custom header key exists in the map.
 pub fn (h Header) contains_custom(key string, flags ...HeaderQueryConfig) bool {
 	if flags.any(it.exact) {
 		return key in h.data
@@ -467,14 +475,14 @@ pub fn (h Header) contains_custom(key string, flags ...HeaderQueryConfig) bool {
 	return key.to_lower() in h.keys
 }
 
-// Gets the first value for the CommonHeader, or none if the key does
-// not exist.
+// get gets the first value for the CommonHeader, or none if the key
+// does not exist.
 pub fn (h Header) get(key CommonHeader) ?string {
 	return h.get_custom(key.str())
 }
 
-// Gets the first value for the custom header, or none if the key does
-// not exist.
+// get_custom gets the first value for the custom header, or none if
+// the key does not exist.
 pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 	mut data_key := key
 	if !flags.any(it.exact) {
@@ -491,7 +499,8 @@ pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 	return h.data[data_key][0]
 }
 
-// Gets the first value of the header starting with key, or none if the key does not exist.
+// starting_with gets the first header starting with key, or none if
+// the key does not exist.
 pub fn (h Header) starting_with(key string) ?string {
 	for k, _ in h.data {
 		if k.starts_with(key) {
@@ -501,12 +510,12 @@ pub fn (h Header) starting_with(key string) ?string {
 	return none
 }
 
-// Gets all values for the CommonHeader.
+// values gets all values for the CommonHeader.
 pub fn (h Header) values(key CommonHeader) []string {
 	return h.custom_values(key.str())
 }
 
-// Gets all values for the custom header.
+// custom_values gets all values for the custom header.
 pub fn (h Header) custom_values(key string, flags ...HeaderQueryConfig) []string {
 	if flags.any(it.exact) {
 		return h.data[key]
@@ -519,7 +528,7 @@ pub fn (h Header) custom_values(key string, flags ...HeaderQueryConfig) []string
 	return values
 }
 
-// Gets all header keys as strings
+// keys gets all header keys as strings
 pub fn (h Header) keys() []string {
 	return h.data.keys()
 }
@@ -530,8 +539,8 @@ pub struct HeaderRenderConfig {
 	canonicalize bool
 }
 
-// Renders the Header into a string for use in sending
-// HTTP requests. All header lines will end in `\r\n`
+// render renders the Header into a string for use in sending HTTP
+// requests. All header lines will end in `\r\n`
 [manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
@@ -595,7 +604,7 @@ pub fn (h Header) join(other Header) Header {
 	return combined
 }
 
-// Canonicalize an HTTP header key
+// canonicalize canonicalizes an HTTP header key
 // Common headers are determined by the common_header_map
 // Custom headers are capitalized on the first letter and any letter after a '-'
 // NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
@@ -623,7 +632,7 @@ struct HeaderKeyError {
 	invalid_char byte
 }
 
-// Checks if the header token is valid
+// is_valid checks if the header token contains all valid bytes
 fn is_valid(header string) ? {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
@@ -637,7 +646,7 @@ fn is_valid(header string) ? {
 	}
 }
 
-// Checks if the byte is valid for a header token
+// is_token checks if the byte is valid for a header token
 fn is_token(b byte) bool {
 	return match b {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
@@ -645,8 +654,8 @@ fn is_token(b byte) bool {
 	}
 }
 
-// Returns the headers string as seen in HTTP/1.1 requests
-// Key order is not guaranteed
+// str returns the headers string as seen in HTTP/1.1 requests.
+// Key order is not guaranteed.
 pub fn (h Header) str() string {
 	return h.render(version: .v1_1)
 }

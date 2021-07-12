@@ -276,7 +276,7 @@ fn test_str() ? {
 }
 
 fn test_header_from_map() ? {
-	h := header_from_map(map{
+	h := new_header_from_map(map{
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'
 	})
@@ -287,7 +287,7 @@ fn test_header_from_map() ? {
 }
 
 fn test_custom_header_from_map() ? {
-	h := custom_header_from_map(map{
+	h := new_custom_header_from_map(map{
 		'Server': 'VWeb'
 		'foo':    'bar'
 	}) ?
@@ -298,11 +298,11 @@ fn test_custom_header_from_map() ? {
 }
 
 fn test_header_join() ? {
-	h1 := header_from_map(map{
+	h1 := new_header_from_map(map{
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'
 	})
-	h2 := custom_header_from_map(map{
+	h2 := new_custom_header_from_map(map{
 		'Server': 'VWeb'
 		'foo':    'bar'
 	}) ?
