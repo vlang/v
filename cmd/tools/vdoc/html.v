@@ -441,9 +441,9 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
-	mut tags := dn.tags
+	has_deprecated := 'deprecated' in dn.tags
+	mut tags := dn.tags.filter(it != 'deprecated')
 	tags.sort()
-	tags_str := ' ' + tags.map('<span class="$it-attribute-tag">[$it]</span>').join('')
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	if head && is_module_readme(dn) {
@@ -453,14 +453,23 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dn.name.len > 0 {
 		if dn.kind == .const_group {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$tags_str$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$tags_str<$hash_link/$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
 		dnw.write_string('</div>')
+	}
+	if tags.len > 0 || has_deprecated {
+		mut attributes := if has_deprecated {
+			'<div class="attribute attribute-deprecated">deprecated</div>'
+		} else {
+			''
+		}
+		attributes += tags.map('<div class="attribute">$it</div>').join('')
+		dnw.writeln('<div class="attributes">$attributes</div>')
 	}
 	if !head && dn.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$highlighted_code</code></pre>')
