@@ -4461,19 +4461,17 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 			node.call_expr.or_block.pos)
 	}
 	// Make sure there are no mutable arguments
-	/* postpone this - I have to think about it... Uwe
 	for arg in node.call_expr.args {
-		if arg.is_mut && !arg.typ.is_ptr() {
+		if arg.is_mut && !(arg.typ.is_ptr() || arg.expr.is_auto_deref_var()) {
 			c.error('function in `go` statement cannot contain mutable non-reference arguments',
 				arg.expr.position())
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-		&& !node.call_expr.left_type.is_ptr() {
+		&& !(node.call_expr.left_type.is_ptr() || node.call_expr.left.is_auto_deref_var()) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
-	*/
 	return c.table.find_or_register_thread(ret_type)
 }
 
