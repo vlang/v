@@ -9,6 +9,11 @@ import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
 
+struct MutArg {
+	tmp_var string
+	expr    ast.Expr = ast.empty_expr()
+}
+
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
 	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
@@ -649,10 +654,19 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
 				// C pointers/references: ignore them
+				if node.op == .amp {
+					g.write('{ value: ')
+					g.expr(node.right)
+					g.write(' } ')
+				} else {
+					g.write('(')
+					g.expr(node.right)
+					g.write(').value')
+				}
 			} else {
 				g.write(node.op.str())
+				g.expr(node.right)
 			}
-			g.expr(node.right)
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
@@ -794,6 +808,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				}
 			}
 			g.expr(left)
+			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+				g.write('.value')
+			}
 			if g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write(', ')
@@ -1285,20 +1302,14 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
+	expected_types := it.expected_arg_types
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
-	if call_return_is_optional {
-		g.writeln('(function(){')
-		g.inc_indent()
-		g.writeln('try {')
-		g.inc_indent()
-		g.write('return builtin.unwrap(')
-	}
-	g.expr(it.left)
-	if it.is_method { // foo.bar.baz()
+	if it.is_method {
 		sym := g.table.get_type_symbol(it.receiver_type)
-		g.write('.')
 		if sym.kind == .array && it.name in ['map', 'filter'] {
+			g.expr(it.left)
+			g.write('.')
 			// Prevent 'it' from getting shadowed inside the match
 			node := it
 			g.write(it.name)
@@ -1331,6 +1342,52 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(')')
 			return
 		}
+	}
+
+	g.writeln('(function() { ')
+	g.inc_indent()
+	mut mut_args := map[int]MutArg{}
+	// store all the mutable arguments in temporary variable + allocate an object which boxes these arguments
+	for i, arg in it.args {
+		if arg.is_mut {
+			tmp_var := g.new_tmp_var()
+			g.writeln('const $tmp_var = ')
+			expr := arg.expr
+			match expr {
+				ast.Ident {
+					if expr.var_info().typ.is_ptr() {
+						g.write(expr.name)
+						g.writeln(';')
+					} else {
+						g.write('{ value: ')
+						g.expr(expr)
+						g.writeln(' }; ')
+					}
+				}
+				else {
+					g.write('{ value: ')
+					g.expr(expr)
+					g.writeln(' }; ')
+				}
+			}
+
+			mut_args[i] = MutArg{tmp_var, arg.expr}
+		}
+	}
+	g.write('let result;')
+	if call_return_is_optional {
+		g.writeln('(function(){')
+		g.inc_indent()
+		g.writeln('try {')
+		g.inc_indent()
+		// g.write('return builtin.unwrap(')
+	}
+
+	g.writeln('result = ')
+	g.expr(it.left)
+
+	if it.is_method { // foo.bar.baz()
+		g.write('.')
 	} else {
 		if name in g.builtin_fns {
 			g.write('builtin.')
@@ -1338,16 +1395,51 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	g.write('${name}(')
 	for i, arg in it.args {
-		g.expr(arg.expr)
+		if arg.is_mut {
+			mut_arg := mut_args[i]
+			g.write(mut_arg.tmp_var)
+		} else {
+			g.expr(arg.expr)
+		}
+		// TODO: Is this correct way of passing argument?
+		if i < expected_types.len && arg.typ.is_ptr() && !arg.is_mut && !expected_types[i].is_ptr() {
+			g.write('.value')
+		}
 		if i != it.args.len - 1 {
 			g.write(', ')
 		}
 	}
 	// end method call
-	g.write(')')
+	g.writeln(');')
+	// now unbox all the mutable arguments
+	for i, arg in it.args {
+		if arg.is_mut {
+			mut_arg := mut_args[i]
+			expr := mut_arg.expr
+			match expr {
+				ast.Ident {
+					if !expr.var_info().typ.is_ptr() {
+						g.writeln('$expr.name = ($mut_arg.tmp_var).value;')
+					}
+				}
+				ast.IndexExpr {
+					g.expr(mut_arg.expr)
+					g.writeln(' = ($mut_arg.tmp_var).value;')
+				}
+				ast.SelectorExpr {
+					g.expr(mut_arg.expr)
+					g.writeln(' = ($mut_arg.tmp_var).value;')
+				}
+				else {
+					// TODO
+				}
+			}
+		}
+	}
+
 	if call_return_is_optional {
 		// end unwrap
-		g.writeln(')')
+		g.writeln('result = builtin.unwrap(result)')
 		g.dec_indent()
 		// begin catch block
 		g.writeln('} catch(err) {')
@@ -1358,7 +1450,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				g.write('return ')
+				// g.write('result =  ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1376,8 +1468,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.writeln('}')
 		// end anon fn
 		g.dec_indent()
-		g.write('})()')
+		g.writeln('})()')
 	}
+	g.dec_indent()
+	g.writeln('return result;')
+	g.writeln('})()')
 	g.call_stack.delete_last()
 }
 
@@ -1389,6 +1484,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+
 	// TODO: Generate .val for basic types
 }
 
