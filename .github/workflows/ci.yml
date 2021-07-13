@@ -700,7 +700,7 @@ jobs:
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
-        run : ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
 
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
@@ -739,7 +739,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
 
       - name: Make sure running TCC32 instead of TCC64
-        run : ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
 
       - name: Test v build-tools
         run: ./v -W build-tools
@@ -851,6 +851,13 @@ jobs:
         run: ./v test ~/.vmodules/nedpals/vex
 
   ## vpm modules
-      - name: Installing V modules
-        run: |
-          ./v install ui
+      - name: Install UI through VPM
+        run: ./v install ui
+
+  ## libsodium
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Installl the libsodium wrapper through VPM
+        run: ./v install libsodium
+      - name: Test libsodium
+        run: ./v test ~/.vmodules/libsodium

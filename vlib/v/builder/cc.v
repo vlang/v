@@ -455,49 +455,6 @@ fn (mut v Builder) setup_output_name() {
 	v.ccoptions.o_args << '-o "$v.pref.out_name"'
 }
 
-fn (mut v Builder) vjs_cc() bool {
-	vexe := pref.vexe_path()
-	vdir := os.dir(vexe)
-	// Just create a .c/.js file and exit, for example: `v -o v.c compiler`
-	ends_with_c := v.pref.out_name.ends_with('.c')
-	ends_with_js := v.pref.out_name.ends_with('.js')
-	if ends_with_c || ends_with_js {
-		v.pref.skip_running = true
-		// Translating V code to JS by launching vjs.
-		// Using a separate process for V.js is for performance mostly,
-		// to avoid constant is_js checks.
-		$if !js {
-			if ends_with_js {
-				vjs_path := vexe + 'js'
-				if !os.exists(vjs_path) {
-					println('V.js compiler not found, building...')
-					// Build V.js. Specifying `-os js` makes V include
-					// only _js.v files and ignore _c.v files.
-					ret := os.system('$vexe -o $vjs_path -os js $vdir/cmd/v')
-					if ret == 0 {
-						println('Done.')
-					} else {
-						println('Failed.')
-						exit(1)
-					}
-				}
-				ret := os.system('$vjs_path -o $v.pref.out_name $v.pref.path')
-				if ret == 0 {
-					println('Done. Run it with `node $v.pref.out_name`')
-					println('JS backend is at a very early stage.')
-				}
-			}
-		}
-		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
-		util.timing_start(msg_mv)
-		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
-		util.timing_measure(msg_mv)
-		return true
-	}
-	return false
-}
-
 fn (mut v Builder) dump_c_options(all_args []string) {
 	if v.pref.dump_c_flags != '' {
 		non_empty_args := all_args.filter(it != '').join('\n') + '\n'
@@ -522,7 +479,16 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.vjs_cc() {
+	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
+	ends_with_c := v.pref.out_name.ends_with('.c')
+	ends_with_js := v.pref.out_name.ends_with('.js')
+	if ends_with_c || ends_with_js {
+		v.pref.skip_running = true
+		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		util.timing_start(msg_mv)
+		// v.out_name_c may be on a different partition than v.out_name
+		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
+		util.timing_measure(msg_mv)
 		return
 	}
 	// Cross compiling for Windows
