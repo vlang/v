@@ -281,7 +281,10 @@ fn test_struct_literal_args() {
 	bar_config({}, 10)
 	bar_config({ def: 4 }, 4)
 
-	c := mut_bar_config(mut { def: 10 }, 10)
+	mut c_ := Config{
+		def: 10
+	}
+	c := mut_bar_config(mut c_, 10)
 	assert c.n == 10
 	assert c.def == 10
 
