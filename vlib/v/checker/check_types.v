@@ -517,6 +517,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 							len: idx + 1 - start_idx
 						}
 						match hex_char_count {
+							1...5 {}
 							6 {
 								first_digit := node.val[idx - 5] - 48
 								second_digit := node.val[idx - 4] - 48
