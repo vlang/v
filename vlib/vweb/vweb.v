@@ -138,7 +138,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	resp := http.Response{
 		version: .v1_1
 		status_code: ctx.status.int() // TODO: change / remove ctx.status
-		header: header.join(headers_close)
+		header: header.join(vweb.headers_close)
 		text: res
 	}
 	send_string(mut ctx.conn, resp.bytestr()) or { return false }
