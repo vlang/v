@@ -443,7 +443,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	sym_name := get_sym_name(dn)
 	mut tags := dn.tags
 	tags.sort()
-	tags_str := ' ' + tags.map('<span class="$it-attribute-tag">[$it]</span>').join('')
+	tags_str := ' ' + tags.map('<span class="$it-attribute-tag">[$it]</span>').join('') + ' '
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	if head && is_module_readme(dn) {
@@ -455,7 +455,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$tags_str$hash_link</$head_tag>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$tags_str<$hash_link/$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$tags_str$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
