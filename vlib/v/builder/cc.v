@@ -484,6 +484,11 @@ fn (mut v Builder) cc() {
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
 		v.pref.skip_running = true
+		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		util.timing_start(msg_mv)
+		// v.out_name_c may be on a different partition than v.out_name
+		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
+		util.timing_measure(msg_mv)
 		return
 	}
 	// Cross compiling for Windows
