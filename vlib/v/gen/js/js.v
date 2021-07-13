@@ -1343,9 +1343,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					g.writeln(' }; ')
 				}
 			}
-			
+
 			mut_args[i] = MutArg{tmp_var, arg.expr}
-			
 		}
 	}
 	g.write('let result;')
@@ -1375,7 +1374,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		} else {
 			g.expr(arg.expr)
 		}
-		// TODO: Is this correct way of passing argument? 
+		// TODO: Is this correct way of passing argument?
 		if i < expected_types.len && arg.typ.is_ptr() && !arg.is_mut && !expected_types[i].is_ptr() {
 			g.write('.value')
 		}
