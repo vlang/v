@@ -11,7 +11,7 @@ import v.gen.js.sourcemap
 
 struct MutArg {
 	tmp_var string
-	expr    &ast.Expr
+	expr    ast.Expr
 }
 
 const (
@@ -1343,9 +1343,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					g.writeln(' }; ')
 				}
 			}
-			unsafe {
-				mut_args[i] = MutArg{tmp_var, &arg.expr}
-			}
+			
+			mut_args[i] = MutArg{tmp_var, arg.expr}
+			
 		}
 	}
 	g.write('let result;')
