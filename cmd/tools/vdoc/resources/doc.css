@@ -578,6 +578,11 @@ pre {
   color: var(--code-function-text-color);
 }
 
+/* Attribute tag colors */
+.attribute-tag {
+  color: red !important;
+}
+
 /* Medium screen and up */
 @media (min-width: 768px) {
 	*::-webkit-scrollbar {

@@ -370,6 +370,7 @@ pub:
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
 	is_exported     bool           // true for `[export: 'exact_C_name']`
 	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
+	is_unsafe       bool           // true, when [unsafe] is used on a fn
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
