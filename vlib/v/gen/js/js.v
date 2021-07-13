@@ -1274,6 +1274,7 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 }
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
+	expected_types := it.expected_arg_types
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if it.is_method {
@@ -1372,6 +1373,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(mut_arg.tmp_var)
 		} else {
 			g.expr(arg.expr)
+			
+		}
+		if i < expected_types.len && arg.typ.is_ptr() && !arg.is_mut
+			&& !expected_types[i].is_ptr() {
+			g.write('.value')
 		}
 		if i != it.args.len - 1 {
 			g.write(', ')
@@ -1542,6 +1548,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+	
 	// TODO: Generate .val for basic types
 }
 
