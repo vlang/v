@@ -70,9 +70,10 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	util.get_timers().show('SCAN')
-	util.get_timers().show('PARSE')
-	util.get_timers().show_if_exists('PARSE stmt')
+	mut timers := util.get_timers()
+	timers.show('SCAN')
+	timers.show('PARSE')
+	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
 		return error('stop_after_parser')
 	}
