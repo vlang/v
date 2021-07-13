@@ -11,7 +11,7 @@ import v.gen.js.sourcemap
 
 struct MutArg {
 	tmp_var string 
-	var string
+	expr &ast.Expr
 }
 
 const (
@@ -1276,18 +1276,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
-	if call_return_is_optional {
-		g.writeln('(function(){')
-		g.inc_indent()
-		g.writeln('try {')
-		g.inc_indent()
-		g.write('return builtin.unwrap(')
-	}
-	g.expr(it.left)
-	if it.is_method { // foo.bar.baz()
+	if it.is_method {
 		sym := g.table.get_type_symbol(it.receiver_type)
-		g.write('.')
 		if sym.kind == .array && it.name in ['map', 'filter'] {
+			g.expr(it.left)
+			g.write('.')
 			// Prevent 'it' from getting shadowed inside the match
 			node := it
 			g.write(it.name)
@@ -1320,6 +1313,51 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(')')
 			return
 		}
+	}
+	
+	g.writeln('(function() { ')
+	g.inc_indent()
+	mut mut_args := map[int]MutArg{}
+	for i,arg in it.args {
+		if arg.is_mut {
+			tmp_var := g.new_tmp_var()
+			g.writeln('const $tmp_var = ')
+			expr := arg.expr
+			match expr {
+				ast.Ident {
+					if expr.var_info().typ.is_ptr() {
+						g.write(expr.name)
+						g.writeln(';')
+					} else {
+						g.write('{ value: ')
+						g.expr(expr)
+						g.writeln(' }; ')
+					}
+				}
+				else {
+					// TODO
+				}
+			}
+			unsafe {
+				mut_args[i] = MutArg {tmp_var,&arg.expr}
+			}
+		}
+	}
+	g.write('let result;')
+	if call_return_is_optional {
+		g.writeln('(function(){')
+		g.inc_indent()
+		g.writeln('try {')
+		g.inc_indent()
+		//g.write('return builtin.unwrap(')
+	}
+	
+	
+	g.writeln('result = ')
+	g.expr(it.left)
+	
+	if it.is_method { // foo.bar.baz()
+		g.write('.')
 	} else {
 		if name in g.builtin_fns {
 			g.write('builtin.')
@@ -1327,16 +1365,38 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	g.write('${name}(')
 	for i, arg in it.args {
-		g.expr(arg.expr)
+		if arg.is_mut {
+			mut_arg := mut_args[i]
+			g.write(mut_arg.tmp_var)
+		} else {
+			g.expr(arg.expr)
+		}
 		if i != it.args.len - 1 {
 			g.write(', ')
 		}
 	}
 	// end method call
-	g.write(')')
+	g.writeln(');')
+	for i,arg in it.args {
+		if arg.is_mut {
+			mut_arg := mut_args[i]
+			expr := mut_arg.expr
+			match expr {
+				ast.Ident {
+					if !expr.var_info().typ.is_ptr() {
+						g.writeln('$expr.name = ($mut_arg.tmp_var).value;')
+					}
+				}
+				else {
+					// TODO
+				}
+			}
+		}
+	}
+	
 	if call_return_is_optional {
 		// end unwrap
-		g.writeln(')')
+		g.writeln('result = builtin.unwrap(result)')
 		g.dec_indent()
 		// begin catch block
 		g.writeln('} catch(err) {')
@@ -1347,7 +1407,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				g.write('return ')
+				//g.write('result =  ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1365,8 +1425,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.writeln('}')
 		// end anon fn
 		g.dec_indent()
-		g.write('})()')
+		g.writeln('})()')
 	}
+	g.dec_indent()
+	g.writeln('return result;')
+	g.writeln('})()')
 	g.call_stack.delete_last()
 }
 // TODO(playXE): Rewrite this function in a way that it will work, mostly need to change everything after `if sym.kind == .array && it.name in ['map', 'filter'] {`
