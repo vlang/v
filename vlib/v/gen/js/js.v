@@ -11,7 +11,7 @@ import v.gen.js.sourcemap
 
 struct MutArg {
 	tmp_var string
-	expr    ast.Expr
+	expr    ast.Expr = ast.empty_expr()
 }
 
 const (
