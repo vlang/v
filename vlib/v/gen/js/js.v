@@ -10,8 +10,8 @@ import encoding.base64
 import v.gen.js.sourcemap
 
 struct MutArg {
-	tmp_var string 
-	expr &ast.Expr
+	tmp_var string
+	expr    &ast.Expr
 }
 
 const (
@@ -1272,6 +1272,7 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 	}
 	g.write(']')
 }
+
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
 	expected_types := it.expected_arg_types
@@ -1315,11 +1316,12 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			return
 		}
 	}
-	
+
 	g.writeln('(function() { ')
 	g.inc_indent()
 	mut mut_args := map[int]MutArg{}
-	for i,arg in it.args {
+	// store all the mutable arguments in temporary variable + allocate an object which boxes these arguments
+	for i, arg in it.args {
 		if arg.is_mut {
 			tmp_var := g.new_tmp_var()
 			g.writeln('const $tmp_var = ')
@@ -1342,7 +1344,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				}
 			}
 			unsafe {
-				mut_args[i] = MutArg {tmp_var,&arg.expr}
+				mut_args[i] = MutArg{tmp_var, &arg.expr}
 			}
 		}
 	}
@@ -1352,13 +1354,12 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.inc_indent()
 		g.writeln('try {')
 		g.inc_indent()
-		//g.write('return builtin.unwrap(')
+		// g.write('return builtin.unwrap(')
 	}
-	
-	
+
 	g.writeln('result = ')
 	g.expr(it.left)
-	
+
 	if it.is_method { // foo.bar.baz()
 		g.write('.')
 	} else {
@@ -1373,10 +1374,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(mut_arg.tmp_var)
 		} else {
 			g.expr(arg.expr)
-			
 		}
-		if i < expected_types.len && arg.typ.is_ptr() && !arg.is_mut
-			&& !expected_types[i].is_ptr() {
+		// TODO: Is this correct way of passing argument? 
+		if i < expected_types.len && arg.typ.is_ptr() && !arg.is_mut && !expected_types[i].is_ptr() {
 			g.write('.value')
 		}
 		if i != it.args.len - 1 {
@@ -1385,7 +1385,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	// end method call
 	g.writeln(');')
-	for i,arg in it.args {
+	// now unbox all the mutable arguments
+	for i, arg in it.args {
 		if arg.is_mut {
 			mut_arg := mut_args[i]
 			expr := mut_arg.expr
@@ -1409,7 +1410,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			}
 		}
 	}
-	
+
 	if call_return_is_optional {
 		// end unwrap
 		g.writeln('result = builtin.unwrap(result)')
@@ -1423,7 +1424,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				//g.write('result =  ')
+				// g.write('result =  ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1448,6 +1449,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.writeln('})()')
 	g.call_stack.delete_last()
 }
+
 // TODO(playXE): Rewrite this function in a way that it will work, mostly need to change everything after `if sym.kind == .array && it.name in ['map', 'filter'] {`
 /*
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
@@ -1548,7 +1550,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
-	
+
 	// TODO: Generate .val for basic types
 }
 
