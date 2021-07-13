@@ -1156,6 +1156,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				g.expr(arg.expr)
 			}
 		}
+		j := if i < expected_types.len { i } else { expected_types.len - 1 }
+		if arg.typ.has_flag(.shared_f) && !expected_types[j].has_flag(.shared_f) {
+			g.write('->val')
+		}
 		if i < args.len - 1 || is_variadic {
 			g.write(', ')
 		}
@@ -1329,7 +1333,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			g.write('&')
 		}
 		g.expr(arg.expr)
-		g.write('->val')
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)

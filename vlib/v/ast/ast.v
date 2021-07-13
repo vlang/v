@@ -1605,7 +1605,7 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 	match expr {
 		Ident {
 			if expr.obj is Var {
-				return expr.obj.is_auto_deref
+				return expr.obj.is_auto_deref || expr.obj.is_auto_heap
 			}
 		}
 		PrefixExpr {

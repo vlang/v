@@ -5854,7 +5854,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
 	if expr.is_method {
 		g.write('$arg_tmp_var->arg0 = ')
-		if expr.receiver_type.is_ptr() && !expr.receiver_type.has_flag(.shared_f) {
+		if expr.receiver_type.is_ptr() && !expr.receiver_type.has_flag(.shared_f) && !expr.left_type.is_ptr() {
 			g.write('&')
 		}
 		g.expr(expr.left)
@@ -5862,7 +5862,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	}
 	for i, arg in expr.args {
 		g.write('$arg_tmp_var->arg${i + 1} = ')
-		if arg.is_mut && !expr.expected_arg_types[i].has_flag(.shared_f) {
+		if arg.is_mut && !expr.expected_arg_types[i].has_flag(.shared_f) && !arg.typ.is_ptr() {
 			g.write('&')
 		}
 		g.expr(arg.expr)
@@ -5957,7 +5957,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			for i, arg in expr.args {
 				mut styp := g.typ(arg.typ)
-				if arg.is_mut && !arg.typ.has_flag(.shared_f) {
+				if arg.is_mut && !arg.typ.has_flag(.shared_f) && !arg.typ.is_ptr() {
 					styp += '*'
 				}
 				g.type_definitions.writeln('\t$styp arg${i + 1};')
