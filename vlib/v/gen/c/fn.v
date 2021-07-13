@@ -1337,7 +1337,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		}
 	} else if
 		(arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function && !g.is_json_fn)
-		|| (arg_is_ptr && expr_is_ptr && arg.is_mut) {
+		|| (arg_is_ptr && expr_is_ptr && arg.is_mut && !expected_type.has_flag(.shared_f)) {
 		g.write('/*auto ptr*/&')
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
