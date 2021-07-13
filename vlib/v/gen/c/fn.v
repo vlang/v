@@ -9,7 +9,7 @@ import v.util
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
-		fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+		fkey := if node.is_method { '${node.receiver.typ.set_nr_muls(0)}.$node.name' } else { node.name }
 		is_used_by_main = g.table.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
@@ -21,7 +21,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		}
 	} else {
 		$if trace_skip_unused_fns_in_c_code ? {
-			fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+			fkey := if node.is_method { '${node.receiver.typ.set_nr_muls(0)}.$node.name' } else { node.name }
 			g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $fkey')
 		}
 	}
