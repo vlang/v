@@ -184,6 +184,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .serenity && file.ends_with('_serenity.c.v') {
 		return false
 	}
+	if prefs.os != .vinix && file.ends_with('_vinix.c.v') {
+		return false
+	}
 	return true
 }
 

@@ -2517,9 +2517,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
-		is_fixed_array_var := right_sym.kind == .array_fixed && (val is ast.Ident
-			|| val is ast.IndexExpr || val is ast.CallExpr
+		unwrapped_val_type := g.unwrap_generic(val_type)
+		right_sym := g.table.get_type_symbol(unwrapped_val_type)
+		unaliased_right_sym := g.table.get_final_type_symbol(unwrapped_val_type)
+		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
+			&& (val is ast.Ident || val is ast.IndexExpr || val is ast.CallExpr
+			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit)
 			|| val is ast.SelectorExpr)
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
@@ -4303,6 +4306,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('*(($styp *)(&')
 		g.expr(node.expr)
 		g.write('))')
+	} else if sym.kind == .alias && g.table.get_final_type_symbol(node.typ).kind == .array_fixed {
+		g.expr(node.expr)
 	} else {
 		styp := g.typ(node.typ)
 		mut cast_label := ''

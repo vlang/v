@@ -17,6 +17,7 @@ pub enum OS {
 	android
 	solaris
 	serenity
+	vinix
 	haiku
 	raw
 	all
@@ -36,6 +37,7 @@ pub fn os_from_string(os_str string) ?OS {
 		'js' { return .js }
 		'solaris' { return .solaris }
 		'serenity' { return .serenity }
+		'vinix' { return .vinix }
 		'android' { return .android }
 		'haiku' { return .haiku }
 		'raw' { return .raw }
@@ -60,6 +62,7 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
 		.serenity { return 'SerenityOS' }
+		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
@@ -93,6 +96,9 @@ pub fn get_host_os() OS {
 	}
 	$if serenity {
 		return .serenity
+	}
+	$if vinix {
+		return .vinix
 	}
 	$if solaris {
 		return .solaris

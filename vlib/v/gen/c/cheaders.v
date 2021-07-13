@@ -332,22 +332,7 @@ voidptr memdup(voidptr src, int sz);
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
-#ifdef __linux__
-	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __FreeBSD__
-	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __DragonFly__
-	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __serenity__
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
@@ -359,11 +344,6 @@ voidptr memdup(voidptr src, int sz);
 #endif
 
 #ifdef __NetBSD__
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __sun
-	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
