@@ -1,4 +1,4 @@
-fn modify(mut x int) {
+fn modify(mut x &int) {
 	x = 128
 }
 
