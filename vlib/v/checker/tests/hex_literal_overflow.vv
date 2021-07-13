@@ -1,2 +1,6 @@
-s := 'this hex character literal, \xffffffff, should be caught by the checker'
-println(s)
+a := '\x11ffff'
+b := '\x20ffff'
+c := '\x10fffff'
+println(a)
+println(b)
+println(c)
