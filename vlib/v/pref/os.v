@@ -97,10 +97,9 @@ pub fn get_host_os() OS {
 	$if serenity {
 		return .serenity
 	}
-	// TODO: uncomment the vinix block after v.c is regenerated
-	// $if vinix {
-	//	return .vinix
-	// }
+	$if vinix {
+		return .vinix
+	}
 	$if solaris {
 		return .solaris
 	}
