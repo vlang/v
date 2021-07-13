@@ -526,10 +526,9 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 									c.error(message, end_pos)
 								}
 							}
-							7 {
+							else {
 								c.error(message, end_pos)
 							}
-							else {}
 						}
 						idx++
 						ch = node.val[idx] or { return ast.string_type }
