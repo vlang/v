@@ -4755,14 +4755,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
-		if expr0.is_auto_deref_var() {
-			if g.fn_decl.return_type.is_ptr() {
-				g.write('&')
-			}
-			g.expr(expr0)
-		} else {
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		}
+		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if use_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
