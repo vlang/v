@@ -523,13 +523,13 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 								first_digit := node.val[idx - 5] - 48
 								second_digit := node.val[idx - 4] - 48
 								if first_digit > 1 {
-									c.error(hex_lit_overflow_message, end_pos)
+									c.error(checker.hex_lit_overflow_message, end_pos)
 								} else if first_digit == 1 && second_digit > 0 {
-									c.error(hex_lit_overflow_message, end_pos)
+									c.error(checker.hex_lit_overflow_message, end_pos)
 								}
 							}
 							else {
-								c.error(hex_lit_overflow_message, end_pos)
+								c.error(checker.hex_lit_overflow_message, end_pos)
 							}
 						}
 						idx++
