@@ -16,7 +16,7 @@ dob = 1979-05-27T07:32:00#-08:00 # First class dates
 
 [database]
 server = "192.168.1.1"
-#TODO ports = [ 8000, 8001, 8002 ]
+ports = [ 8000, 8001, 8002 ]
 connection_max = 5000
 enabled = true'
 	os.mkdir_all(out_path) or { assert false }

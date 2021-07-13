@@ -142,6 +142,10 @@ pub fn (mut s Scanner) scan() token.Token {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified colon "$ascii" ($ascii.len)')
 				return s.new_token(.colon, ascii, ascii.len)
 			}
+			`,` {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comma "$ascii" ($ascii.len)')
+				return s.new_token(.comma, ascii, ascii.len)
+			}
 			else {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' could not scan character code $c ("$ascii") at $s.pos ($s.line_nr,$s.col) "${s.text[s.pos]}"')

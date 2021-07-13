@@ -44,7 +44,7 @@ pub fn (mut p Parser) init() {
 
 pub fn (mut p Parser) parse() &ast.Root {
 	p.init()
-	p.root.table = p.table()
+	p.root.table = ast.Value(p.table())
 	return p.root
 }
 
@@ -76,7 +76,7 @@ fn (mut p Parser) expect(expected_token token.Kind) {
 	}
 }
 
-pub fn (mut p Parser) table() ast.Value {
+pub fn (mut p Parser) table() map[string]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing table...')
 	mut table := map[string]ast.Value{}
 	for p.tok.kind != .eof {
@@ -101,12 +101,8 @@ pub fn (mut p Parser) table() ast.Value {
 				}
 			}
 			.lsbr {
-				if p.peek_tok.kind == .lsbr {
-					// p.array()
-				} else {
-					key := p.key()
-					table[key.str()] = p.table()
-				}
+				key := p.key()
+				table[key.str()] = p.table()
 			}
 			.eof {
 				// parent.children << p.eof()
@@ -117,7 +113,46 @@ pub fn (mut p Parser) table() ast.Value {
 			}
 		}
 	}
-	return ast.Value(table)
+	return table
+}
+
+pub fn (mut p Parser) array() []ast.Value {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
+	mut arr := []ast.Value{}
+	p.expect(.lsbr) // '[' bracket
+	for p.tok.kind != .eof {
+		p.next()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+		match p.tok.kind {
+			/*.hash {
+				// TODO table.comments << p.comment()
+				c := p.comment()
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+			}*/
+			.number {
+				val := p.number()
+				arr << val
+			}
+			.quoted {
+				if p.peek_tok.kind == .assign {
+					quoted := p.quoted()
+					arr << ast.Value(quoted)
+				}
+			}
+			.comma {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma array value seperator "$p.tok.lit"')
+				continue
+			}
+			.rsbr {
+				return arr
+			}
+			else {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not parse $p.tok.kind ("$p.tok.lit") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+			}
+		}
+	}
+	return arr
 }
 
 pub fn (mut p Parser) comment() ast.Comment {
@@ -189,9 +224,12 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 		.boolean {
 			ast.Value(p.boolean())
 		}
+		.lsbr {
+			ast.Value(p.array())
+		}
 		else {
 			panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				' value expected .boolean, .quoted or .number got "$p.tok.kind"')
+				' value expected .boolean, .quoted, .lsbr or .number got "$p.tok.kind"')
 			ast.Value(ast.Quoted{}) // TODO workaround bug
 		}
 	}
@@ -220,15 +258,6 @@ pub fn (mut p Parser) boolean() ast.Bool {
 		pos: p.tok.position()
 	}
 }
-
-/*
-pub fn (mut p Parser) assign() ast.Assign {
-	return &ast.Assign {
-		text: p.tok.lit
-		pos: p.tok.position()
-	}
-}
-*/
 
 pub fn (mut p Parser) number() ast.Value {
 	// Date/Time
