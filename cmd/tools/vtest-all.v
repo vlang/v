@@ -58,6 +58,11 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
+		line: '$vexe -o hhww.c examples/hello_world.v'
+		okmsg: 'V can output a .c file, without compiling further.'
+		rmfile: 'hhww.c'
+	}
+	res << Command{
 		line: '$vexe -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
 		rmfile: 'vtmp'
@@ -126,7 +131,7 @@ fn get_all_commands() []Command {
 		okmsg: '`v -usecache` works.'
 		rmfile: 'examples/tetris/tetris'
 	}
-	$if macos {
+	$if macos || linux {
 		res << Command{
 			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
@@ -152,11 +157,22 @@ fn (mut cmd Command) run() {
 		return
 	}
 	if cmd.rmfile != '' {
-		os.rm(cmd.rmfile) or {}
+		mut file_existed := rm_existing(cmd.rmfile)
 		if os.user_os() == 'windows' {
-			os.rm(cmd.rmfile + '.exe') or {}
+			file_existed = file_existed || rm_existing(cmd.rmfile + '.exe')
+		}
+		if !file_existed {
+			eprintln('Expected file did not exist: $cmd.rmfile')
+			cmd.ecode = 999
 		}
 	}
+}
+
+// try to remove a file, return if it existed before the removal attempt
+fn rm_existing(path string) bool {
+	existed := os.exists(path)
+	os.rm(path) or {}
+	return existed
 }
 
 fn term_highlight(s string) string {
