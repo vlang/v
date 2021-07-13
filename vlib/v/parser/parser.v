@@ -2070,10 +2070,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
 			mut to_typ := p.parse_type()
-			if p.is_amp {
-				// Handle `&Foo(0)`
-				to_typ = to_typ.to_ptr()
-			}
 			// this prevents inner casts to also have an `&`
 			// example: &Foo(malloc(int(num)))
 			// without the next line int would result in int*
