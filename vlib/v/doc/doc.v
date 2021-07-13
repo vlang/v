@@ -41,6 +41,7 @@ pub enum Platform {
 	android
 	solaris
 	serenity
+	vinix
 	haiku
 	raw
 	cross // TODO: add functionality for v doc -os cross whenever possible
@@ -61,6 +62,7 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'js' { return .js }
 		'solaris' { return .solaris }
 		'serenity' { return .serenity }
+		'vinix' { return .vinix }
 		'android' { return .android }
 		'haiku' { return .haiku }
 		'nix' { return .linux }

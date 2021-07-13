@@ -566,6 +566,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'serenity' {
 			return '__serenity__'
 		}
+		'vinix' {
+			return '__vinix__'
+		}
 		'freebsd' {
 			return '__FreeBSD__'
 		}
