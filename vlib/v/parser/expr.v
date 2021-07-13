@@ -170,7 +170,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.name_expr()
 			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
-				typ := p.parse_type().to_ptr()
+				typ := p.parse_type()
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
@@ -560,7 +560,7 @@ fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
 }
 
-fn (mut p Parser) prefix_expr() ast.PrefixExpr {
+fn (mut p Parser) prefix_expr() ast.Expr {
 	mut pos := p.tok.position()
 	op := p.tok.kind
 	if op == .amp {
@@ -576,8 +576,14 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	p.next()
 	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
-	if mut right is ast.CastExpr {
-		right.in_prexpr = true
+	if mut right is ast.CastExpr && op == .amp {
+		// Handle &Type(x), as well as &&Type(x) etc:
+		mut new_cast_type := right.typ.to_ptr()
+		return ast.CastExpr{
+			...right
+			typ: new_cast_type
+			pos: pos.extend(right.pos)
+		}
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent

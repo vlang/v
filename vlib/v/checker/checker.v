@@ -5101,19 +5101,13 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type_sym.language != .c {
 		c.ensure_type_exists(node.typ, node.pos) or {}
 	}
-	n_e_t_idx := node.expr_type.idx()
-	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
+	if from_type_sym.kind == .byte && node.expr_type.is_ptr() && to_type_sym.kind == .string
+		&& !node.typ.is_ptr() {
+		c.error('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
+			node.pos)
+	}
 	if node.expr_type == ast.void_type {
 		c.error('expression does not return a value so it cannot be cast', node.expr.position())
-	}
-	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
-		if node.has_arg {
-			c.warn('to convert a C string buffer pointer to a V string, use x.vstring_with_len(len) instead of string(x,len)',
-				node.pos)
-		} else {
-			c.warn('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
-				node.pos)
-		}
 	}
 	if node.expr_type == ast.byte_type && to_type_sym.kind == .string {
 		c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
