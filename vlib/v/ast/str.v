@@ -28,7 +28,7 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
 			cur_mod)
 		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
-		if node.rec_mut {
+		if node.rec_mut && node.receiver.typ.has_flag(.shared_f) {
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)

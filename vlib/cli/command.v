@@ -222,9 +222,7 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	cmd.check_required_flags()
-	println('preex: $cmd.pre_execute')
 	if !isnil(cmd.pre_execute) {
-		println('doex: $cmd.pre_execute')
 		cmd.pre_execute(cmd) or {
 			eprintln('cli preexecution error: $err')
 			exit(1)
