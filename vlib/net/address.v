@@ -185,8 +185,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints,
-			&results)) ?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)) ?
 	} $else {
 		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
 		wrap_error(x) ?

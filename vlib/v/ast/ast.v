@@ -1106,7 +1106,6 @@ pub mut:
 	typname   string // TypeSymbol.name
 	expr_type Type   // `byteptr`
 	has_arg   bool
-	in_prexpr bool // is the parent node a PrefixExpr
 }
 
 pub struct AsmStmt {
