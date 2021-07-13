@@ -4522,7 +4522,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 		} else {
+			// restore if_expr stmt header pos
+			stmt_pos := g.nth_stmt_pos(0)
 			g.stmts(branch.stmts)
+			g.stmt_path_pos << stmt_pos
 		}
 	}
 	g.writeln('}')
