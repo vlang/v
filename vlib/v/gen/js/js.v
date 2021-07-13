@@ -1335,7 +1335,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					}
 				}
 				else {
-					// TODO
+					g.write('{ value: ')
+					g.expr(expr)
+					g.writeln(' }; ')
 				}
 			}
 			unsafe {
@@ -1386,6 +1388,14 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					if !expr.var_info().typ.is_ptr() {
 						g.writeln('$expr.name = ($mut_arg.tmp_var).value;')
 					}
+				}
+				ast.IndexExpr {
+					g.expr(mut_arg.expr)
+					g.writeln(' = ($mut_arg.tmp_var).value;')
+				}
+				ast.SelectorExpr {
+					g.expr(mut_arg.expr)
+					g.writeln(' = ($mut_arg.tmp_var).value;')
 				}
 				else {
 					// TODO
