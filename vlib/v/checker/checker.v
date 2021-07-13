@@ -3755,8 +3755,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident
-			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
 			&& !right_type_unwrapped.has_flag(.generic) && !left_type_unwrapped.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
@@ -4468,7 +4467,8 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-		&& !(node.call_expr.left_type.is_ptr() || node.call_expr.left.is_auto_deref_var()) {
+		&& !(node.call_expr.left_type.is_ptr()
+		|| node.call_expr.left.is_auto_deref_var()) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}

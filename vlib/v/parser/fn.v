@@ -329,7 +329,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_deref: param.is_mut && !param.typ.has_flag(.shared_f) && !param.typ.is_ptr() /* || param.is_auto_rec */
+				is_auto_deref: param.is_mut && !param.typ.has_flag(.shared_f)
+					&& !param.typ.is_ptr() //|| param.is_auto_rec
 				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true

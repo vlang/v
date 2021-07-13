@@ -398,7 +398,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	w.expr(node.left)
 	w.or_block(node.or_block)
 	//
-	fn_name := if node.is_method { node.receiver_type.set_nr_muls(0).str() + '.' + node.name } else { node.name }
+	fn_name := if node.is_method {
+		node.receiver_type.set_nr_muls(0).str() + '.' + node.name
+	} else {
+		node.name
+	}
 	if w.used_fns[fn_name] {
 		return
 	}

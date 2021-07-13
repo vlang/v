@@ -9,7 +9,11 @@ import v.util
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
-		fkey := if node.is_method { '${node.receiver.typ.set_nr_muls(0)}.$node.name' } else { node.name }
+		fkey := if node.is_method {
+			'${node.receiver.typ.set_nr_muls(0)}.$node.name'
+		} else {
+			node.name
+		}
 		is_used_by_main = g.table.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
@@ -21,7 +25,11 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		}
 	} else {
 		$if trace_skip_unused_fns_in_c_code ? {
-			fkey := if node.is_method { '${node.receiver.typ.set_nr_muls(0)}.$node.name' } else { node.name }
+			fkey := if node.is_method {
+				'${node.receiver.typ.set_nr_muls(0)}.$node.name'
+			} else {
+				node.name
+			}
 			g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $fkey')
 		}
 	}
@@ -1274,14 +1282,16 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		}
 		ast.IndexExpr {
 			left_type_sym := g.table.get_type_symbol(arg.expr.left_type)
-			is_non_ptr_index_expr = left_type_sym.kind != .map && (expr_is_ptr || arg.expr.index is ast.RangeExpr)
+			is_non_ptr_index_expr = left_type_sym.kind != .map
+				&& (expr_is_ptr || arg.expr.index is ast.RangeExpr)
 		}
 		else {}
 	}
 	mut needs_closing_brace := false
 	if arg.is_mut && !arg_is_ptr {
 		if !(is_amp && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
-			if needs_interface_promotion || is_non_ptr_index_expr || (exp_sym.kind == .array && needs_array_promotion) {
+			if needs_interface_promotion || is_non_ptr_index_expr
+				|| (exp_sym.kind == .array && needs_array_promotion) {
 				if is_heap {
 					g.write('HEAP(/*mut*/$exp_sym.cname, ')
 				} else {
@@ -1325,7 +1335,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
-	} else if (arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function && !g.is_json_fn)
+	} else if
+		(arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function && !g.is_json_fn)
 		|| (arg_is_ptr && expr_is_ptr && arg.is_mut) {
 		g.write('/*auto ptr*/&')
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {

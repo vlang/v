@@ -487,7 +487,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if needs_clone {
 				g.write('string_clone(')
 			}
-			if (array_info.elem_type.is_ptr() && !array_info.elem_type.has_flag(.shared_f)) && !node.right_type.is_ptr() {
+			if (array_info.elem_type.is_ptr() && !array_info.elem_type.has_flag(.shared_f))
+				&& !node.right_type.is_ptr() {
 				g.write('&')
 			}
 			g.expr_with_cast(node.right, node.right_type, array_info.elem_type)

@@ -1650,7 +1650,11 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.writeln('\t$styp ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$cond_var[$idx], sizeof($styp));')
 			} else {
-				styp := if node.val_is_mut { g.typ(node.val_type.to_ptr()) } else { g.typ(node.val_type) }
+				styp := if node.val_is_mut {
+					g.typ(node.val_type.to_ptr())
+				} else {
+					g.typ(node.val_type)
+				}
 				g.write('\t$styp ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
@@ -4218,7 +4222,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			is_auto_ref = (v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)) || v.is_auto_deref
+			is_auto_ref = (v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign))
+				|| v.is_auto_deref
 			if is_auto_ref {
 				g.write('(*(')
 			}
@@ -5854,7 +5859,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
 	if expr.is_method {
 		g.write('$arg_tmp_var->arg0 = ')
-		if expr.receiver_type.is_ptr() && !expr.receiver_type.has_flag(.shared_f) && !expr.left_type.is_ptr() {
+		if expr.receiver_type.is_ptr() && !expr.receiver_type.has_flag(.shared_f)
+			&& !expr.left_type.is_ptr() {
 			g.write('&')
 		}
 		g.expr(expr.left)
