@@ -855,7 +855,9 @@ jobs:
         run: ./v install ui
 
   ## libsodium
-      - name: Installl libsodium through VPM
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Installl the libsodium wrapper through VPM
         run: ./v install libsodium
       - name: Test libsodium
         run: ./v test ~/.vmodules/libsodium
