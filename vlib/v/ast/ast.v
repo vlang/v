@@ -1605,15 +1605,17 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 	match expr {
 		Ident {
 			if expr.obj is Var {
-				if expr.obj.is_auto_deref {
-					return true
-				}
+				return expr.obj.is_auto_deref
 			}
 		}
 		PrefixExpr {
-			if expr.op == .amp && expr.right.is_auto_deref_var() {
-				return true
-			}
+			return (expr.op == .amp || expr.op == .mul) && expr.right.is_auto_deref_var()
+		}
+		SelectorExpr {
+			return expr.expr.is_auto_deref_var()
+		}
+		IndexExpr {
+			return expr.left.is_auto_deref_var()
 		}
 		else {}
 	}
