@@ -1,6 +1,13 @@
-vlib/v/checker/tests/assign_main_fn_err.vv:2:9: error: `main` cannot be used anywhere other than the main function
+vlib/v/checker/tests/assign_main_fn_err.vv:2:7: error: `main` function cannot be used anywhere
     1 | fn main() {
-    2 |     foo := main
-      |            ~~~~
-    3 |     foo()
-    4 | }
+    2 |     a := main
+      |          ~~~~
+    3 |     a()
+    4 |
+vlib/v/checker/tests/assign_main_fn_err.vv:5:8: error: `main` function cannot be used anywhere
+    3 |     a()
+    4 |
+    5 |     b := [main]
+      |           ~~~~
+    6 |     println(b)
+    7 | }

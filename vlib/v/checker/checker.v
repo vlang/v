@@ -3393,16 +3393,6 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, right in node.right {
-		if right is ast.Ident {
-			if right.name == 'main' {
-				right_type := c.expr(right)
-				right_type_sym := c.table.get_type_symbol(right_type)
-				if right_type_sym.kind == .function {
-					c.error('`main` cannot be used anywhere other than the main function',
-						right.pos)
-				}
-			}
-		}
 		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
 			|| right is ast.MatchExpr {
 			right_type := c.expr(right)
@@ -5428,6 +5418,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		// Got a var with type T, return current generic type
 		return info.typ
 	} else if ident.kind == .function {
+		if ident.name == 'main' {
+			c.error('`main` function cannot be used anywhere', ident.pos)
+		}
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
@@ -5546,6 +5539,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
+			if ident.name == 'main' {
+				c.error('`main` function cannot be used anywhere', ident.pos)
+			}
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(ident.mod, func,
 				false, true))
 			ident.name = name

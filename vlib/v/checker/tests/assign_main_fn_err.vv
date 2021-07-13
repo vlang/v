@@ -1,4 +1,7 @@
 fn main() {
-	foo := main
-	foo()
+	a := main
+	a()
+
+	b := [main]
+	println(b)
 }
