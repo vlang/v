@@ -495,7 +495,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 
 pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
-	mut message := 'hex character literal overflows string'
+	message := 'hex character literal overflows string'
 	for idx < node.val.len {
 		match node.val[idx] {
 			`\\` {
