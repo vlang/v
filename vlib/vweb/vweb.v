@@ -8,7 +8,6 @@ import io
 import net
 import net.http
 import net.urllib
-import strings
 import time
 
 pub const (
