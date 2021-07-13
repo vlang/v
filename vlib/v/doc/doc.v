@@ -127,7 +127,7 @@ pub mut:
 	pos         token.Position
 	file_path   string
 	kind        SymbolKind
-	deprecated  bool
+	tags        []string
 	parent_name string
 	return_type string
 	children    []DocNode
@@ -257,7 +257,15 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.kind = .typedef
 		}
 		ast.FnDecl {
-			node.deprecated = stmt.is_deprecated
+			if stmt.is_deprecated {
+				node.tags << 'deprecated'
+			}
+			if stmt.is_unsafe {
+				node.tags << 'unsafe'
+			}
+			if node.tags.len > 0 {
+				eprintln(node.tags)
+			}
 			node.kind = .function
 			node.return_type = d.type_to_str(stmt.return_type)
 			if stmt.receiver.typ !in [0, 1] {

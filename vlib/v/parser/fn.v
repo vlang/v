@@ -467,6 +467,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_main: is_main
 		is_test: is_test
 		is_keep_alive: is_keep_alive
+		is_unsafe: is_unsafe
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != -1

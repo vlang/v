@@ -2607,6 +2607,9 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if call_arg.is_mut && func.language == .v {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
+			if !call_arg.expr.is_lvalue() {
+				c.error('cannot pass expression as `mut`', call_arg.expr.position())
+			}
 			if !param.is_mut {
 				tok := call_arg.share.str()
 				c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
@@ -5041,7 +5044,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.byte_type.set_nr_muls(1)
 			}
-			return ast.string_type
+			return c.string_lit(mut node)
 		}
 		ast.StringInterLiteral {
 			return c.string_inter_lit(mut node)

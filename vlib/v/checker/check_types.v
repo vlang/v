@@ -493,6 +493,44 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
+pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
+	mut idx := 0
+	for idx < node.val.len {
+		match node.val[idx] {
+			`\\` {
+				mut start_pos := token.Position{
+					...node.pos
+					col: node.pos.col + 1 + idx
+				}
+				start_idx := idx
+				idx++
+				next_ch := node.val[idx] or { return ast.string_type }
+				if next_ch == `x` {
+					idx++
+					mut ch := node.val[idx] or { return ast.string_type }
+					mut hex_char_count := 0
+					for ch.is_hex_digit() {
+						hex_char_count++
+						if hex_char_count > 4 {
+							end_pos := token.Position{
+								...start_pos
+								len: idx + 1 - start_idx
+							}
+							c.error('hex character literal overflows string', end_pos)
+						}
+						idx++
+						ch = node.val[idx] or { return ast.string_type }
+					}
+				}
+			}
+			else {
+				idx++
+			}
+		}
+	}
+	return ast.string_type
+}
+
 pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	if node.val.len < 17 {
 		// can not be a too large number, no need for more expensive checks
