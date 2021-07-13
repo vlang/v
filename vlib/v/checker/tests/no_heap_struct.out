@@ -5,7 +5,7 @@ vlib/v/checker/tests/no_heap_struct.vv:13:6: error: `x` cannot be assigned outsi
       |            ^
    14 |     }
    15 |     return s
-vlib/v/checker/tests/no_heap_struct.vv:19:9: error: `x` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `Abc` as `[heap]`.
+vlib/v/checker/tests/no_heap_struct.vv:19:9: error: fn `g` expects you to return a reference type `&Abc`, but you are returning `Abc` instead
    17 | 
    18 | fn g(mut x Abc) &Abc {
    19 |     return x
