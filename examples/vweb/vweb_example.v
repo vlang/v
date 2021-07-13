@@ -40,7 +40,6 @@ pub fn (mut app App) index() vweb.Result {
 	show := true
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
-	app.enable_chunked_transfer(40)
 	return $vweb.html()
 }
 

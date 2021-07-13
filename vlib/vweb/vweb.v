@@ -84,8 +84,6 @@ pub mut:
 	done              bool
 	page_gen_start    i64
 	form_error        string
-	chunked_transfer  bool
-	max_chunk_len     int = 20
 }
 
 struct FileData {
@@ -137,36 +135,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	sb.write_string('HTTP/1.1 $ctx.status')
 	sb.write_string('\r\nContent-Type: $mimetype')
 	sb.write_string('\r\nContent-Length: $res.len')
-	if ctx.chunked_transfer {
-		sb.write_string('\r\nTransfer-Encoding: chunked')
-	}
 	sb.write_string(ctx.headers)
 	sb.write_string('\r\n')
 	sb.write_string(vweb.headers_close.str())
 	sb.write_string('\r\n')
-	if ctx.chunked_transfer {
-		mut i := 0
-		mut len := res.len
-		for {
-			if len <= 0 {
-				break
-			}
-			mut chunk := ''
-			if len > ctx.max_chunk_len {
-				chunk = res[i..i + ctx.max_chunk_len]
-				i += ctx.max_chunk_len
-				len -= ctx.max_chunk_len
-			} else {
-				chunk = res[i..]
-				len = 0
-			}
-			sb.write_string(chunk.len.hex())
-			sb.write_string('\r\n$chunk\r\n')
-		}
-		sb.write_string('0\r\n\r\n') // End of chunks
-	} else {
-		sb.write_string(res)
-	}
+	sb.write_string(res)
 	s := sb.str()
 	defer {
 		unsafe { s.free() }
@@ -231,12 +204,6 @@ pub fn (mut ctx Context) not_found() Result {
 	ctx.done = true
 	send_string(mut ctx.conn, vweb.http_404.bytestr()) or {}
 	return Result{}
-}
-
-// Enables chunk transfer with max_chunk_len per chunk
-pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
-	ctx.chunked_transfer = true
-	ctx.max_chunk_len = max_chunk_len
 }
 
 // Sets a cookie
