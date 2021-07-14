@@ -2847,7 +2847,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		concrete_types = call_expr.concrete_types
 	}
 	if func.generic_names.len > 0 {
-		for i, call_arg in call_expr.args {
+		for i, mut call_arg in call_expr.args {
 			param := if func.is_variadic && i >= func.params.len - 1 {
 				func.params[func.params.len - 1]
 			} else {
@@ -2861,7 +2861,18 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
 					concrete_types)
 				{
-					c.check_expected_call_arg(c.unwrap_generic(typ), unwrap_typ, call_expr.language) or {
+					utyp := c.unwrap_generic(typ)
+					unwrap_sym := c.table.get_type_symbol(unwrap_typ)
+					if unwrap_sym.kind == .interface_ {
+						if c.type_implements(utyp, unwrap_typ, call_arg.expr.position()) {
+							if !utyp.is_ptr() && !utyp.is_pointer() && !c.inside_unsafe
+								&& c.table.get_type_symbol(utyp).kind != .interface_ {
+								c.mark_as_referenced(mut &call_arg.expr, true)
+							}
+						}
+						continue
+					}
+					c.check_expected_call_arg(utyp, unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}
