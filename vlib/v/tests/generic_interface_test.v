@@ -41,6 +41,18 @@ fn test_extract() {
 	assert x == [123, 456, 789]
 }
 
+// fn test_extract_multiple_instance_types() {
+// 	a := Animal<string>{'123'}
+// 	b := Animal<string>{'456'}
+// 	c := Mineral<string>{'789'}
+
+// 	arr := [Gettable<string>(a), Gettable<string>(b), Gettable<string>(c)]
+// 	assert typeof(arr).name == '[]Gettable<string>'
+
+// 	x := extract<string>(arr)
+// 	assert x == ['123', '456', '789']
+// }
+
 fn test_extract_basic() {
 	a := Animal<int>{123}
 	b := Animal<int>{456}
