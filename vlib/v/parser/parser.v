@@ -3114,18 +3114,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
-	mut generic_types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.next()
-		for {
-			generic_types << p.parse_type()
-			if p.tok.kind != .comma {
-				break
-			}
-			p.next()
-		}
-		p.check(.gt)
-	}
+	generic_types := p.parse_generic_type_list()
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
