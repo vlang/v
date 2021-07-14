@@ -70,7 +70,6 @@ pub struct Fn {
 pub:
 	is_variadic     bool
 	language        Language
-	generic_names   []string
 	is_pub          bool
 	is_deprecated   bool // `[deprecated] fn abc(){}`
 	is_noreturn     bool // `[noreturn] fn abc(){}`
@@ -90,6 +89,7 @@ pub mut:
 	source_fn   voidptr // set in the checker, while processing fn declarations
 	usages      int
 	//
+	generic_names  []string
 	attrs          []Attr // all fn attributes
 	is_conditional bool   // true for `[if abc]fn(){}`
 	ctdefine_idx   int    // the index of the attribute, containing the compile time define [if mytag]

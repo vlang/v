@@ -1137,6 +1137,47 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
+pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
+	if m := t.find_method(name) {
+		return m
+	}
+	mut table := global_table
+	match t.info {
+		Struct, Interface, SumType {
+			if t.info.parent_type.has_flag(.generic) {
+				parent_sym := table.get_type_symbol(t.info.parent_type)
+				if x := parent_sym.find_method(name) {
+					match parent_sym.info {
+						Struct, Interface, SumType {
+							mut method := x
+							generic_names := parent_sym.info.generic_types.map(table.get_type_symbol(it).name)
+							if rt := table.resolve_generic_to_concrete(method.return_type,
+								generic_names, t.info.concrete_types)
+							{
+								method.return_type = rt
+							}
+							method.params = method.params.clone()
+							for mut param in method.params {
+								if pt := table.resolve_generic_to_concrete(param.typ,
+									generic_names, t.info.concrete_types)
+								{
+									param.typ = pt
+								}
+							}
+							method.generic_names.clear()
+							return method
+						}
+						else {}
+					}
+				} else {
+				}
+			}
+		}
+		else {}
+	}
+	return none
+}
+
 pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut has_str_method := false
 	mut expects_ptr := false
