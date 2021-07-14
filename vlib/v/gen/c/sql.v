@@ -313,22 +313,22 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []st
 			g.sql_where_data(expr.left, mut fields, mut kinds, mut data, mut is_and)
 			mut kind := match expr.op {
 				.ne {
-					'orm__OperationKind_neq'
+					'orm__OperationKind__neq'
 				}
 				.eq {
-					'orm__OperationKind_eq'
+					'orm__OperationKind__eq'
 				}
 				.lt {
-					'orm__OperationKind_lt'
+					'orm__OperationKind__lt'
 				}
 				.gt {
-					'orm__OperationKind_gt'
+					'orm__OperationKind__gt'
 				}
 				.ge {
-					'orm__OperationKind_ge'
+					'orm__OperationKind__ge'
 				}
 				.le {
-					'orm__OperationKind_le'
+					'orm__OperationKind__le'
 				}
 				else {
 					''
@@ -340,7 +340,7 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []st
 				} else if expr.op == .and {
 					is_and << true
 				} else {
-					kind = 'orm__OperationKind_eq'
+					kind = 'orm__OperationKind__eq'
 				}
 			}
 			if expr.left !is ast.InfixExpr && expr.right !is ast.InfixExpr {
