@@ -2703,6 +2703,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				*/
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
+			if assign_stmt.ref_compat[i] {
+				g.write('&')
+			}
 			if !cloned {
 				if is_fixed_array_var {
 					typ_str := g.typ(val_type).trim('*')
@@ -4738,6 +4741,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
+				if node.ref_compat[i] {
+					g.write('&')
+				}
 				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.optional))
 				if i < node.exprs.len - 1 {
 					g.write(', ')

@@ -3671,8 +3671,26 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					rtype = rtype.deref()
 				}
 				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+				realright := match right {
+					ast.UnsafeExpr {
+						right.expr
+					}
+					else {
+						right
+					}
+				}
+				if realright.is_auto_deref_var() {
+					c.note('mismatched types `$left_name` and `$right_name` (accepted for compatibility)', node.pos)
+					node.ref_compat << true
+				} else {
+					c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+					node.ref_compat << false
+				}
+			} else {
+				node.ref_compat << false
 			}
+		} else {
+			node.ref_compat << false
 		}
 		// Single side check
 		match node.op {

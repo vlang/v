@@ -900,6 +900,7 @@ pub:
 	end_comments []Comment
 pub mut:
 	right         []Expr
+	ref_compat    []bool
 	left          []Expr
 	left_types    []Type
 	right_types   []Type
