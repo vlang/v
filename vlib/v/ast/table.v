@@ -1180,6 +1180,9 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			return none
 		}
 		typ := concrete_types[index]
+		if typ == 0 {
+			return none
+		}
 		return typ.derive_add_muls(generic_type).clear_flag(.generic)
 	}
 	match mut sym.info {
