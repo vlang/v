@@ -11,12 +11,11 @@ fn (mut g Gen) equality_fn(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_equality_fns() {
-	for i, needed_typ in g.needed_equality_fns {
+	for _, needed_typ in g.needed_equality_fns {
 		if needed_typ in g.generated_eq_fns {
 			continue
 		}
 		sym := g.table.get_type_symbol(needed_typ)
-		println('$i/$g.needed_equality_fns.len: ${*sym}')
 		match sym.kind {
 			.sum_type {
 				g.gen_sumtype_equality_fn(needed_typ)
