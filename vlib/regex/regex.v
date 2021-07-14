@@ -1791,6 +1791,10 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 				re.reset_src()
 				state.match_index = -1
 				state.first_match = -1
+
+				// reset state list
+				re.reset()
+
 				continue
 			}
 
