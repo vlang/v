@@ -778,7 +778,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			&& node.name in ['first', 'last', 'repeat'] {
 			g.write('*')
 		}
-		g.expr(node.left)
+		if node.left is ast.MapInit {
+			g.write('(map[]){')
+			g.expr(node.left)
+			g.write('}[0]')
+		} else {
+			g.expr(node.left)
+		}
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
 			if node.left_type.is_ptr() {
