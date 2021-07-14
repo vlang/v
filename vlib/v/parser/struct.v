@@ -456,6 +456,18 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
 	interface_name := p.prepend_mod(modless_name).clone()
+	mut generic_types := []ast.Type{}
+	if p.tok.kind == .lt {
+		p.next()
+		for {
+			generic_types << p.parse_type()
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+		p.check(.gt)
+	}
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments({})
@@ -473,6 +485,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mod: p.mod
 		info: ast.Interface{
 			types: []
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
 		}
 	)
 	if reg_idx == -1 {
@@ -622,6 +636,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
+		generic_types: generic_types
 		mut_pos: mut_pos
 		name_pos: name_pos
 	}
