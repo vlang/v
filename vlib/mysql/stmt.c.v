@@ -1,7 +1,10 @@
 module mysql
 
 [typedef]
-struct C.MYSQL_STMT {}
+struct C.MYSQL_STMT {
+	mysql   &C.MYSQL
+	stmt_id u32
+}
 
 [typedef]
 struct C.MYSQL_BIND {
@@ -57,6 +60,7 @@ fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
 fn C.mysql_stmt_bind_result(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
 fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
 fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
+fn C.mysql_stmt_store_result(&C.MYSQL_STMT) int
 
 struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(0)
@@ -202,13 +206,14 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	}
 }
 
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []voidptr, data_lens []int, data_len_ptr []&u32, num_fields int) {
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&char, lens []u32, num_fields int) {
 	for i in 0 .. num_fields {
+		len := FieldType(unsafe { fields[i].@type }).get_len()
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].@type }
 			buffer: dataptr[i]
-			buffer_length: u32(data_lens[i])
-			length: data_len_ptr[i]
+			length: &lens[i]
+			buffer_length: &len
 		}
 	}
 }
@@ -217,5 +222,12 @@ pub fn (mut stmt Stmt) bind_result_buffer() ? {
 	res := C.mysql_stmt_bind_result(stmt.stmt, &C.MYSQL_BIND(stmt.res.data))
 	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
+	}
+}
+
+pub fn (mut stmt Stmt) store_result() ? {
+	res := C.mysql_stmt_store_result(stmt.stmt)
+	if res != 0 && stmt.get_error_msg() != '' {
+		return stmt.error(res)
 	}
 }

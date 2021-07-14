@@ -51,7 +51,7 @@ pub fn (mut conn Connection) connect() ?bool {
 // query - make an SQL query and receive the results.
 // `query()` cannot be used for statements that contain binary data;
 // Use `real_query()` instead.
-pub fn (mut conn Connection) query(q string) ?Result {
+pub fn (conn Connection) query(q string) ?Result {
 	if C.mysql_query(conn.conn, q.str) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}

@@ -50,7 +50,7 @@ fn test_mysql_orm() {
 		types: [7, 18, 8]
 	}, orm.OrmQueryData{}, orm.OrmQueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), i64(100)]
+		data: [orm.Primitive('Louis'), i64(101)]
 		types: [18, 8]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
@@ -72,6 +72,6 @@ fn test_mysql_orm() {
 
 	assert age is i64
 	if age is i64 {
-		assert age == 100
+		assert age == 101
 	}
 }

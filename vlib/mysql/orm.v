@@ -3,48 +3,82 @@ module mysql
 import orm
 import time
 
+type Prims = byte | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64
+
 // sql expr
 
 pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
-	eprintln(query)
 	mut stmt := db.init_stmt(query)
 	stmt.prepare() ?
+
 	mysql_stmt_binder(mut stmt, where) ?
 	mysql_stmt_binder(mut stmt, data) ?
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params() ?
 	}
 
+	mut status := stmt.execute() ?
 	num_fields := stmt.get_field_count()
-
 	metadata := stmt.gen_metadata()
-
 	fields := stmt.fetch_fields(metadata)
 
-	dataptr := []voidptr{len: int(num_fields)}
-	data_len_ptr := []&u32{len: int(num_fields)}
-	mut data_lens := []int{len: int(num_fields)}
+	mut dataptr := []Prims{}
 
-	for i, typ in config.types {
-		if typ == orm.string {
-			data_lens[i] = orm.string_max_len
+	for i in 0 .. num_fields {
+		f := unsafe { fields[i] }
+		match FieldType(f.@type) {
+			.type_tiny {
+				dataptr << byte(0)
+			}
+			.type_short {
+				dataptr << u16(0)
+			}
+			.type_long {
+				dataptr << u32(0)
+			}
+			.type_longlong {
+				dataptr << u64(0)
+			}
+			.type_float {
+				dataptr << f32(0)
+			}
+			.type_double {
+				dataptr << f64(0)
+			}
+			.type_string {
+				dataptr << ''
+			}
+			else {
+				dataptr << byte(0)
+			}
 		}
 	}
 
-	stmt.bind_res(fields, dataptr, data_lens, data_len_ptr, num_fields)
-	stmt.bind_result_buffer() ?
+	mut vptr := []&char{}
 
-	mut status := stmt.execute() ?
+	for d in dataptr {
+		vptr << d.get_data_ptr()
+	}
+
+	unsafe { dataptr.free() }
+
+	lens := []u32{len: int(num_fields), init: 0}
+	stmt.bind_res(fields, vptr, lens, num_fields)
+	stmt.bind_result_buffer() ?
+	stmt.store_result() ?
+
+	mut row := 0
+
 	for {
 		status = stmt.fetch_stmt() ?
 
-		if status == 100 {
-			eprintln('no data anymore')
+		if status == 1 || status == 100 {
 			break
 		}
-		data_list := buffer_to_primitive(dataptr, config.types) ?
+		row++
+		data_list := buffer_to_primitive(vptr, config.types) ?
 		ret << data_list
 	}
 
@@ -72,9 +106,13 @@ pub fn (db Connection) delete(table string, where orm.OrmQueryData) ? {
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
-	// query := 'SELECT last_insert_rowid();'
-	// id := db.q_int(query)
-	return orm.Primitive(0)
+	query := 'SELECT last_insert_rowid();'
+	id := db.query(query) or {
+		Result{
+			result: 0
+		}
+	}
+	return orm.Primitive(id.rows()[0].vals[0].int())
 }
 
 // table
@@ -148,10 +186,10 @@ fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
 	}
 }
 
-fn buffer_to_primitive(data_list []voidptr, types []int) ?[]orm.Primitive {
+fn buffer_to_primitive(data_list []&char, types []int) ?[]orm.Primitive {
 	mut res := []orm.Primitive{}
-	for i in 0 .. data_list.len {
-		data := data_list[i]
+
+	for i, data in data_list {
 		mut primitive := orm.Primitive(0)
 		match types[i] {
 			5 {
@@ -188,7 +226,7 @@ fn buffer_to_primitive(data_list []voidptr, types []int) ?[]orm.Primitive {
 				primitive = *(&bool(data))
 			}
 			orm.string {
-				primitive = cstring_to_vstring(&char(data))
+				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
 			orm.time {
 				timestamp := *(&int(data))
@@ -200,6 +238,7 @@ fn buffer_to_primitive(data_list []voidptr, types []int) ?[]orm.Primitive {
 		}
 		res << primitive
 	}
+
 	return res
 }
 
@@ -237,4 +276,15 @@ fn mysql_type_from_v(typ int) ?string {
 		return error('Unknown type $typ')
 	}
 	return str
+}
+
+fn (p Prims) get_data_ptr() &char {
+	return match p {
+		string {
+			p.str
+		}
+		else {
+			&char(&p)
+		}
+	}
 }
