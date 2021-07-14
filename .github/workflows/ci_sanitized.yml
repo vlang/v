@@ -11,7 +11,7 @@ on:
 jobs:
   tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -23,7 +23,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install clang
@@ -36,7 +36,7 @@ jobs:
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
@@ -60,7 +60,7 @@ jobs:
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -89,7 +89,7 @@ jobs:
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
@@ -115,7 +115,7 @@ jobs:
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
@@ -144,7 +144,7 @@ jobs:
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       VFLAGS: -cc clang
       VJOBS: 1
