@@ -3628,6 +3628,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		if right_type_unwrapped == 0 {
 			// right type was a generic `T`
+			node.ref_compat << false
 			continue
 		}
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
@@ -3636,6 +3637,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
+			node.ref_compat << false
 			continue
 		}
 		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
@@ -3680,7 +3682,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 				if realright.is_auto_deref_var() {
-					c.note('mismatched types `$left_name` and `$right_name` (accepted for compatibility)', node.pos)
+					c.note('mismatched types `$left_name` and `$right_name` (accepted for compatibility)',
+						node.pos)
 					node.ref_compat << true
 				} else {
 					c.error('mismatched types `$left_name` and `$right_name`', node.pos)

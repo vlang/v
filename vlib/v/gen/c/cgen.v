@@ -4655,9 +4655,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					s := g.go_before_stmt(0)
 					expr_styp := g.typ(c.return_type)
 					g.write('$expr_styp $tmp=')
-					if node.ref_compat[i] {
-						g.write('&')
-					}
 					g.expr(expr)
 					g.writeln(';')
 					multi_unpack += g.go_before_stmt(0)
@@ -4669,9 +4666,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					// I cant find another way to do this so right now
 					// this will have to do.
 					g.tmp_count--
-					if node.ref_compat[i] {
-						g.write('&')
-					}
 					g.expr(expr)
 					multi_unpack += g.go_before_stmt(0)
 					g.write(s)
