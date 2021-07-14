@@ -2873,6 +2873,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		exprs: exprs
 		comments: comments
 		pos: first_pos.extend(end_pos)
+		ref_compat: []bool{cap: exprs.len}
 	}
 }
 

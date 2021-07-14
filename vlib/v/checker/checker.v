@@ -950,7 +950,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					} else {
 						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
 							&& !expr_type.is_number() {
-							c.error('reference field must be initialized with reference',
+							c.note('reference field must be initialized with reference',
 								field.pos)
 						}
 					}
@@ -3202,6 +3202,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
+				node.ref_compat << false
 				continue
 			}
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
@@ -3216,8 +3217,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
 			pos := node.exprs[i].position()
-			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.note('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
+			node.ref_compat << true
+		} else {
+			node.ref_compat << false
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
 			mut r_expr := unsafe { &node.exprs[i] }

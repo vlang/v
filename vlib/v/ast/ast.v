@@ -467,8 +467,9 @@ pub:
 	pos      token.Position
 	comments []Comment
 pub mut:
-	exprs []Expr
-	types []Type
+	exprs      []Expr
+	types      []Type
+	ref_compat []bool // temp hack for compatibility
 }
 
 /*

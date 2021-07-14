@@ -4613,6 +4613,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if node.exprs.len == 1 && node.exprs[0] is ast.IfExpr {
 			// use a temporary for `return if cond { x,y } else { a,b }`
 			g.write('$ret_typ $tmpvar = ')
+			if node.ref_compat[0] {
+				g.write('&')
+			}
 			g.expr(node.exprs[0])
 			g.writeln(';')
 			g.write_defer_stmts_when_needed()
@@ -4649,6 +4652,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					s := g.go_before_stmt(0)
 					expr_styp := g.typ(c.return_type)
 					g.write('$expr_styp $tmp=')
+					if node.ref_compat[i] {
+						g.write('&')
+					}
 					g.expr(expr)
 					g.writeln(';')
 					multi_unpack += g.go_before_stmt(0)
@@ -4660,6 +4666,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					// I cant find another way to do this so right now
 					// this will have to do.
 					g.tmp_count--
+					if node.ref_compat[i] {
+						g.write('&')
+					}
 					g.expr(expr)
 					multi_unpack += g.go_before_stmt(0)
 					g.write(s)
@@ -4679,6 +4688,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg$arg_idx=')
+			if node.ref_compat[i] {
+				g.write('&')
+			}
 			g.expr(expr)
 			arg_idx++
 			if i < node.exprs.len - 1 {
@@ -4767,6 +4779,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		} else {
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
+		}
+		if node.ref_compat[0] {
+			g.write('&')
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if use_tmp_var {
