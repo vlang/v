@@ -6356,7 +6356,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(node.right, mut scope)
 		} else if node.op == .key_is {
 			right_expr := node.right
-			right_type := match right_expr {
+			mut right_type := match right_expr {
 				ast.TypeNode {
 					right_expr.typ
 				}
@@ -6368,9 +6368,10 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.Type(0)
 				}
 			}
+			right_type = c.unwrap_generic(right_type)
 			if right_type != ast.Type(0) {
 				left_sym := c.table.get_type_symbol(node.left_type)
-				expr_type := c.expr(node.left)
+				expr_type := c.unwrap_generic(c.expr(node.left))
 				if left_sym.kind == .interface_ {
 					c.type_implements(right_type, expr_type, node.pos)
 				} else if !c.check_types(right_type, expr_type) {
