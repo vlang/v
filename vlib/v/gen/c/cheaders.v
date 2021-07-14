@@ -504,7 +504,6 @@ void v_segmentation_fault_handler(int sig) {
   void *array[40];
   size_t size;
 
-  // get void*\'s for all entries on the stack
   size = backtrace(array, 40);
 
   // print out all the frames to stderr

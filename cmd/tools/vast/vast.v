@@ -8,6 +8,7 @@ import v.parser
 import v.ast
 import v.pref
 import v.errors
+import strings
 
 struct Context {
 mut:
@@ -208,7 +209,7 @@ fn (t Tree) type_node(typ ast.Type) &Node {
 		return create_null()
 	} else {
 		type_name := t.table.get_type_name(typ)
-		return create_string(type_name)
+		return create_string(strings.repeat(`&`, typ.nr_muls()) + type_name)
 	}
 }
 
