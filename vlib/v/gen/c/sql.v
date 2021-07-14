@@ -463,9 +463,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.expr(node.order_expr)
 		g.write('"),')
 		if node.has_desc {
-			g.write('.order_type = orm__OrmOrderType_desc,')
+			g.write('.order_type = orm__OrmOrderType__desc,')
 		} else {
-			g.write('.order_type = orm__OrmOrderType_asc,')
+			g.write('.order_type = orm__OrmOrderType__asc,')
 		}
 	}
 	g.write('.has_limit = $node.has_limit,')
