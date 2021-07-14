@@ -493,6 +493,8 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
+const hex_lit_overflow_message = 'hex character literal overflows string'
+
 pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {
@@ -511,12 +513,24 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 					mut hex_char_count := 0
 					for ch.is_hex_digit() {
 						hex_char_count++
-						if hex_char_count > 4 {
-							end_pos := token.Position{
-								...start_pos
-								len: idx + 1 - start_idx
+						end_pos := token.Position{
+							...start_pos
+							len: idx + 1 - start_idx
+						}
+						match hex_char_count {
+							1...5 {}
+							6 {
+								first_digit := node.val[idx - 5] - 48
+								second_digit := node.val[idx - 4] - 48
+								if first_digit > 1 {
+									c.error(checker.hex_lit_overflow_message, end_pos)
+								} else if first_digit == 1 && second_digit > 0 {
+									c.error(checker.hex_lit_overflow_message, end_pos)
+								}
 							}
-							c.error('hex character literal overflows string', end_pos)
+							else {
+								c.error(checker.hex_lit_overflow_message, end_pos)
+							}
 						}
 						idx++
 						ch = node.val[idx] or { return ast.string_type }
