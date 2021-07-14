@@ -2,12 +2,12 @@ import os
 import rand
 import term
 import v.util.vtest
-import v.util
+import v.util.diff
 
 const diff_cmd = find_diff_cmd()
 
 fn find_diff_cmd() string {
-	res := util.find_working_diff_command() or { '' }
+	res := diff.find_working_diff_command() or { '' }
 	return res
 }
 
@@ -52,7 +52,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(util.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
 			println('============\n')
 			nb_fail++
 		} else {

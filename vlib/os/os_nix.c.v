@@ -6,6 +6,9 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <sys/types.h>
+#include <sys/ptrace.h>
+#include <utime.h>
 
 pub const (
 	path_separator = '/'
@@ -47,6 +50,13 @@ mut:
 	machine  &char
 }
 
+struct C.utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C.utime(&char, voidptr) int
+
 fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
@@ -63,6 +73,148 @@ fn C.getppid() int
 fn C.getgid() int
 
 fn C.getegid() int
+
+fn C.ptrace(u32, u32, voidptr, int) u64
+
+enum GlobMatch {
+	exact
+	ends_with
+	starts_with
+	start_and_ends_with
+	contains
+	any
+}
+
+fn glob_match(dir string, pattern string, next_pattern string, mut matches []string) []string {
+	mut subdirs := []string{}
+	if is_file(dir) {
+		return subdirs
+	}
+	mut files := ls(dir) or { return subdirs }
+	mut mode := GlobMatch.exact
+	mut pat := pattern
+	if pat == '*' {
+		mode = GlobMatch.any
+		if next_pattern != pattern && next_pattern != '' {
+			for file in files {
+				if is_dir('$dir/$file') {
+					subdirs << '$dir/$file'
+				}
+			}
+			return subdirs
+		}
+	}
+	if pat == '**' {
+		files = walk_ext(dir, '')
+		pat = next_pattern
+	}
+	if pat.starts_with('*') {
+		mode = .ends_with
+		pat = pat[1..]
+	}
+	if pat.ends_with('*') {
+		mode = if mode == .ends_with { GlobMatch.contains } else { GlobMatch.starts_with }
+		pat = pat[..pat.len - 1]
+	}
+	if pat.contains('*') {
+		mode = .start_and_ends_with
+	}
+	for file in files {
+		mut fpath := file
+		f := if file.contains(os.path_separator) {
+			pathwalk := file.split(os.path_separator)
+			pathwalk[pathwalk.len - 1]
+		} else {
+			fpath = if dir == '.' { file } else { '$dir/$file' }
+			file
+		}
+		if f in ['.', '..'] || f == '' {
+			continue
+		}
+		hit := match mode {
+			.any {
+				true
+			}
+			.exact {
+				f == pat
+			}
+			.starts_with {
+				f.starts_with(pat)
+			}
+			.ends_with {
+				f.ends_with(pat)
+			}
+			.start_and_ends_with {
+				p := pat.split('*')
+				f.starts_with(p[0]) && f.ends_with(p[1])
+			}
+			.contains {
+				f.contains(pat)
+			}
+		}
+		if hit {
+			if is_dir(fpath) {
+				subdirs << fpath
+				if next_pattern == pattern && next_pattern != '' {
+					matches << '$fpath$os.path_separator'
+				}
+			} else {
+				matches << fpath
+			}
+		}
+	}
+	return subdirs
+}
+
+fn native_glob_pattern(pattern string, mut matches []string) ? {
+	steps := pattern.split(os.path_separator)
+	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
+	mut subdirs := [cwd]
+	for i := 0; i < steps.len; i++ {
+		step := steps[i]
+		step2 := if i + 1 == steps.len { step } else { steps[i + 1] }
+		if step == '' {
+			continue
+		}
+		if is_dir('$cwd$os.path_separator$step') {
+			dd := if cwd == '/' {
+				step
+			} else {
+				if cwd == '.' || cwd == '' {
+					step
+				} else {
+					if step == '.' || step == '/' { cwd } else { '$cwd/$step' }
+				}
+			}
+			if i + 1 != steps.len {
+				if dd !in subdirs {
+					subdirs << dd
+				}
+			}
+		}
+		mut subs := []string{}
+		for sd in subdirs {
+			d := if cwd == '/' {
+				sd
+			} else {
+				if cwd == '.' || cwd == '' {
+					sd
+				} else {
+					if sd == '.' || sd == '/' { cwd } else { '$cwd/$sd' }
+				}
+			}
+			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
+		}
+		subdirs = subs.clone()
+	}
+}
+
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C.utimbuf{actime, modtime}
+	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+}
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -317,7 +469,15 @@ pub fn (mut f File) close() {
 	C.fclose(f.cfile)
 }
 
+[inline]
 pub fn debugger_present() bool {
+	// check if the parent could trace its process,
+	// if not a debugger must be present
+	$if linux {
+		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
+	} $else $if macos {
+		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
+	}
 	return false
 }
 

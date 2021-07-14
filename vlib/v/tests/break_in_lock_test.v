@@ -6,7 +6,8 @@ mut:
 }
 
 const (
-	sleep_time = time.millisecond * 50
+	run_time   = time.millisecond * 500 // must be big enough to ensure threads have started
+	sleep_time = time.millisecond * 2000 // some tolerance added
 )
 
 fn test_return_lock() {
@@ -16,12 +17,13 @@ fn test_return_lock() {
 	go fn (shared s AA, start time.Time) {
 		for {
 			reader(shared s)
-			if time.now() - start > sleep_time {
+			if time.now() - start > run_time {
+				eprintln('> ${@FN} exited')
 				exit(0)
 			}
 		}
 	}(shared s, start)
-	time.sleep(sleep_time * 2)
+	time.sleep(sleep_time)
 	assert false
 }
 
@@ -30,7 +32,8 @@ fn printer(shared s AA, start time.Time) {
 		lock s {
 			assert s.b in ['0', '1', '2', '3', '4', '5']
 		}
-		if time.now() - start > time.millisecond * 50 {
+		if time.now() - start > run_time {
+			eprintln('> ${@FN} exited')
 			exit(0)
 		}
 	}

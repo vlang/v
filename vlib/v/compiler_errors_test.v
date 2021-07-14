@@ -1,7 +1,7 @@
 import os
 import rand
 import term
-import v.util
+import v.util.diff
 import v.util.vtest
 import time
 import sync
@@ -57,6 +57,7 @@ fn test_all() {
 	scanner_dir := 'vlib/v/scanner/tests'
 	module_dir := '$checker_dir/modules'
 	global_dir := '$checker_dir/globals'
+	global_run_dir := '$checker_dir/globals_run'
 	run_dir := '$checker_dir/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
 	//
@@ -64,6 +65,7 @@ fn test_all() {
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
+	global_run_tests := get_tests_in_dir(global_run_dir, false)
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
 	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
@@ -76,6 +78,8 @@ fn test_all() {
 	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
 	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
+		false)
+	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
 		false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
@@ -170,8 +174,8 @@ fn (mut tasks Tasks) run() {
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
-	mut work := sync.new_channel<TaskDescription>(tasks.all.len)
-	mut results := sync.new_channel<TaskDescription>(tasks.all.len)
+	mut work := sync.new_channel<TaskDescription>(u32(tasks.all.len))
+	mut results := sync.new_channel<TaskDescription>(u32(tasks.all.len))
 	mut m_skip_files := skip_files.clone()
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		m_skip_files << skip_on_ubuntu_musl
@@ -314,9 +318,9 @@ fn clean_line_endings(s string) string {
 }
 
 fn diff_content(s1 string, s2 string) {
-	diff_cmd := util.find_working_diff_command() or { return }
+	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(util.color_compare_strings(diff_cmd, rand.ulid(), s1, s2))
+	println(diff.color_compare_strings(diff_cmd, rand.ulid(), s1, s2))
 	println('============\n')
 }
 

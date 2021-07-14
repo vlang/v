@@ -34,12 +34,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx]) {
 			return
 		}
-		// allow `C.printf('foo')` instead of `C.printf(c'foo')`
-		if got.idx() == ast.string_type_idx
-			&& (expected in [ast.byteptr_type_idx, ast.charptr_type_idx]
-			|| (expected.idx() == ast.char_type_idx && expected.is_ptr())) {
-			return
-		}
 		exp_sym := c.table.get_type_symbol(expected)
 		// unknown C types are set to int, allow int to be used for types like `&C.FILE`
 		// eg. `C.fflush(C.stderr)` - error: cannot use `int` as `&C.FILE` in argument 1 to `C.fflush`
@@ -47,7 +41,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got == ast.int_type_idx {
 			return
 		}
-		// return
 	}
 	if c.check_types(got, expected) {
 		return
@@ -136,10 +129,6 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	// fn type
 	if got_sym.kind == .function && exp_sym.kind == .function {
 		return c.check_matching_function_symbols(got_sym, exp_sym)
-	}
-	// allow using Error as a string for now (avoid a breaking change)
-	if got == ast.error_type_idx && expected == ast.string_type_idx {
-		return true
 	}
 	// allow `return 0` in a function with `?int` return type
 	expected_nonflagged := expected.clear_flags()
@@ -311,6 +300,15 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.to_ptr() {
 		return true
 	}
+	if expected.has_flag(.optional) {
+		sym := c.table.get_type_symbol(got)
+		if (sym.kind == .interface_ && sym.name == 'IError')
+			|| got in [ast.none_type, ast.error_type] {
+			return true
+		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+			return false
+		}
+	}
 	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false
 	}
@@ -439,6 +437,12 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
+		if ftyp == ast.void_type {
+			c.error('expression does not return a value', expr.position())
+		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
+			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
+				expr.position())
+		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
@@ -487,6 +491,69 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	}
 	c.inside_println_arg = inside_println_arg_save
 	return ast.string_type
+}
+
+pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
+	mut idx := 0
+	for idx < node.val.len {
+		match node.val[idx] {
+			`\\` {
+				mut start_pos := token.Position{
+					...node.pos
+					col: node.pos.col + 1 + idx
+				}
+				start_idx := idx
+				idx++
+				next_ch := node.val[idx] or { return ast.string_type }
+				if next_ch == `x` {
+					idx++
+					mut ch := node.val[idx] or { return ast.string_type }
+					mut hex_char_count := 0
+					for ch.is_hex_digit() {
+						hex_char_count++
+						if hex_char_count > 4 {
+							end_pos := token.Position{
+								...start_pos
+								len: idx + 1 - start_idx
+							}
+							c.error('hex character literal overflows string', end_pos)
+						}
+						idx++
+						ch = node.val[idx] or { return ast.string_type }
+					}
+				}
+			}
+			else {
+				idx++
+			}
+		}
+	}
+	return ast.string_type
+}
+
+pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
+	if node.val.len < 17 {
+		// can not be a too large number, no need for more expensive checks
+		return ast.int_literal_type
+	}
+	lit := node.val.replace('_', '').all_after('-')
+	is_neg := node.val.starts_with('-')
+	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
+	message := 'integer literal $node.val overflows int'
+
+	if lit.len > limit.len {
+		c.error(message, node.pos)
+	} else if lit.len == limit.len {
+		for i, digit in lit {
+			if digit > limit[i] {
+				c.error(message, node.pos)
+			} else if digit < limit[i] {
+				break
+			}
+		}
+	}
+
+	return ast.int_literal_type
 }
 
 pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallExpr) {
@@ -548,7 +615,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				if to_set.has_flag(.generic) {
 					to_set = c.unwrap_generic(to_set)
 				}
-			} else {
+			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.get_type_symbol(arg.typ)
 				if arg_sym.kind == .array && param_type_sym.kind == .array {
 					mut arg_elem_info := arg_sym.info as ast.Array
@@ -586,7 +653,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
-				} else if arg_sym.kind == .struct_ && param.typ.has_flag(.generic) {
+				} else if arg_sym.kind == .struct_ {
 					info := arg_sym.info as ast.Struct
 					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
 					if gt_name in generic_names && info.generic_types.len == info.concrete_types.len {

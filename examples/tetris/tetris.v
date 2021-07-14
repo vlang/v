@@ -115,7 +115,7 @@ mut:
 	// gg context for drawing
 	gg          &gg.Context = voidptr(0)
 	font_loaded bool
-	show_ghost  bool
+	show_ghost  bool = true
 	// frame/time counters:
 	frame     int
 	frame_old int
@@ -127,7 +127,7 @@ fn remap(v f32, min f32, max f32, new_min f32, new_max f32) f32 {
 	return (((v - min) * (new_max - new_min)) / (max - min)) + new_min
 }
 
-[if showfps]
+[if showfps ?]
 fn (mut game Game) showfps() {
 	game.frame++
 	last_frame_ms := f64(game.frame_sw.elapsed().microseconds()) / 1000.0
@@ -167,7 +167,6 @@ fn main() {
 		bg_color: gx.white
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'V Tetris' //
 		user_data: game
@@ -227,7 +226,8 @@ fn (g &Game) draw_ghost() {
 		pos_y := g.move_ghost()
 		for i in 0 .. tetro_size {
 			tetro := g.tetro[i]
-			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gx.gray)
+			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gx.rgba(125, 125, 225,
+				40))
 		}
 	}
 }

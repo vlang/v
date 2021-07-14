@@ -46,12 +46,6 @@ type SignalHandler = fn (Signal)
 
 fn C.signal(signal int, handlercb SignalHandler) voidptr
 
-[deprecated: 'use os.signal_opt() instead']
-[deprecated_after: '2021-06-18']
-pub fn signal(signum int, handler voidptr) voidptr {
-	return voidptr(signal_opt(Signal(signum), handler) or { C.SIG_ERR })
-}
-
 // signal will assign `handler` callback to be called when `signum` signal is received.
 pub fn signal_opt(signum Signal, handler SignalHandler) ?SignalHandler {
 	C.errno = 0

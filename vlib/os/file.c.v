@@ -133,12 +133,6 @@ pub fn create(path string) ?File {
 	}
 }
 
-[deprecated: 'use os.stdin() instead']
-[deprecated_after: '2021-05-17']
-pub fn open_stdin() File {
-	return stdin()
-}
-
 // stdin - return an os.File for stdin, so that you can use .get_line on it too.
 pub fn stdin() File {
 	return File{
@@ -180,7 +174,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []byte) ?int {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	/*
 	$if linux {
@@ -201,7 +195,7 @@ pub fn (mut f File) write(buf []byte) ?int {
 // It returns how many bytes were written, including the \n character.
 pub fn (mut f File) writeln(s string) ?int {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	/*
 	$if linux {
@@ -227,15 +221,8 @@ pub fn (mut f File) writeln(s string) ?int {
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) ?int {
-	if !f.is_opened {
-		return error('file is not opened')
-	}
-	// TODO perf
-	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
-	if written == 0 && s.len != 0 {
-		return error('0 bytes written')
-	}
-	return written
+	unsafe { f.write_full_buffer(s.str, size_t(s.len)) ? }
+	return s.len
 }
 
 // write_to implements the RandomWriter interface.
@@ -243,7 +230,7 @@ pub fn (mut f File) write_string(s string) ?int {
 // It resets the seek position to the end of the file.
 pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 	if !f.is_opened {
-		return error('file is not opened')
+		return error_file_not_opened()
 	}
 	$if x64 {
 		$if windows {
@@ -276,31 +263,36 @@ pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 	return error('Could not write to file')
 }
 
-// write_bytes writes `size` bytes to the file, starting from the address in `data`.
-// NB: write_bytes is unsafe and should be used carefully, since if you pass invalid
-// pointers to it, it will cause your programs to segfault.
-[deprecated: 'use File.write_ptr()']
-[unsafe]
-pub fn (mut f File) write_bytes(data voidptr, size int) int {
-	return unsafe { f.write_ptr(data, size) }
-}
-
-// write_bytes_at writes `size` bytes to the file, starting from the address in `data`,
-// at byte offset `pos`, counting from the start of the file (pos 0).
-// NB: write_bytes_at is unsafe and should be used carefully, since if you pass invalid
-// pointers to it, it will cause your programs to segfault.
-[deprecated: 'use File.write_ptr_at() instead']
-[unsafe]
-pub fn (mut f File) write_bytes_at(data voidptr, size int, pos u64) int {
-	return unsafe { f.write_ptr_at(data, size, pos) }
-}
-
 // write_ptr writes `size` bytes to the file, starting from the address in `data`.
 // NB: write_ptr is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
 pub fn (mut f File) write_ptr(data voidptr, size int) int {
 	return int(C.fwrite(data, 1, size, f.cfile))
+}
+
+// write_full_buffer writes a whole buffer of data to the file, starting from the
+// address in `buffer`, no matter how many tries/partial writes it would take.
+[unsafe]
+pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len size_t) ? {
+	if buffer_len <= size_t(0) {
+		return
+	}
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
+	mut ptr := &byte(buffer)
+	mut remaining_bytes := i64(buffer_len)
+	for remaining_bytes > 0 {
+		unsafe {
+			x := i64(C.fwrite(ptr, 1, remaining_bytes, f.cfile))
+			ptr += x
+			remaining_bytes -= x
+			if x <= 0 {
+				return error('C.fwrite returned 0')
+			}
+		}
+	}
 }
 
 // write_ptr_at writes `size` bytes to the file, starting from the address in `data`,
@@ -448,12 +440,6 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	return error('Could not read file')
 }
 
-// read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
-[deprecated: 'use File.read_from() instead']
-pub fn (f &File) read_at(pos u64, mut buf []byte) ?int {
-	return f.read_from(pos, mut buf)
-}
-
 // read_from implements the RandomReader interface.
 pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
@@ -484,13 +470,6 @@ pub fn (mut f File) flush() {
 		return
 	}
 	C.fflush(f.cfile)
-}
-
-// write_str writes the bytes of a string into a file,
-// *including* the terminating 0 byte.
-[deprecated: 'use File.write_string() instead']
-pub fn (mut f File) write_str(s string) ? {
-	f.write_string(s) or { return err }
 }
 
 pub struct ErrFileNotOpened {

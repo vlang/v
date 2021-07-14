@@ -67,7 +67,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
-* [Types](#types)
+* [V types](#v-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
@@ -102,7 +102,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Modules](#modules)
     * [Manage Packages](#manage-packages)
 	* [Publish package](#publish-package)
-* [Types 2](#types-2)
+* [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
     * [Sum types](#sum-types)
@@ -399,7 +399,7 @@ fn draw(ctx &gg.Context) {
 }
 ```
 
-## Types
+## V Types
 
 ### Primitive types
 
@@ -503,6 +503,18 @@ Strings can be easily converted to integers:
 ```v
 s := '42'
 n := s.int() // 42
+```
+
+### Runes
+A `rune` represents a unicode character and is an alias for `u32`. Runes can be created like this:
+```v
+x := `🚀`
+```
+
+A string can be converted to runes by the `.runes()` method.
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
 ```
 
 ### String interpolation
@@ -625,11 +637,11 @@ println(nums) // `[1, 5, 3]`
 ```
 #### Array Properties
 There are two properties that control the "size" of an array:
-* `len`: *length* - the number of defined elements of the array
-* `cap`: *capacity* - the number of elements for which memory space has been reserved. The array can
-grow up to this size without being reallocated. Usually, V takes care of
-this property automatically but there are cases where the user may want to do manual
-optimizations (see [below](#array-initialization)).
+* `len`: *length* - the number of pre-allocated and initialized elements in the array
+* `cap`: *capacity* - the amount of memory space which has been reserved for elements,
+but not initialized or counted as elements. The array can grow up to this size without
+being reallocated. Usually, V takes care of this property automatically but there are
+cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -710,7 +722,7 @@ An array can be of these types:
 
 **Example Code:**
 
-This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array 
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array
 which can handle different types (e.g. Points, Lines) of data elements.
 
 ```v
@@ -1061,7 +1073,8 @@ fn main() {
 	println('Hello, $name!')
 }
 ```
-Note: This is not allowed for constants - they must always be prefixed.
+Note: This will import the module as well. Also, this is not allowed for
+constants - they must always be prefixed.
 
 You can import several specific symbols at once:
 
@@ -1317,6 +1330,45 @@ for mut num in numbers {
 println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
+
+##### Custom iterators
+Types that implement a `next` method returning an `Option` can be iterated
+with a `for` loop.
+
+```v
+struct SquareIterator {
+	arr []int
+mut:
+	idx int
+}
+
+fn (mut iter SquareIterator) next() ?int {
+	if iter.idx >= iter.arr.len {
+		return error('')
+	}
+	defer {
+		iter.idx++
+	}
+	return iter.arr[iter.idx] * iter.arr[iter.idx]
+}
+
+nums := [1, 2, 3, 4, 5]
+iter := SquareIterator{
+	arr: nums
+}
+for squared in iter {
+	println(squared)
+}
+```
+
+The code above prints:
+```
+1
+4
+9
+16
+25
+```
 
 ##### Map `for`
 
@@ -2043,11 +2095,11 @@ fn (foo &Foo) bar() {
 In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
-```v wip
+```v
 struct Node<T> {
-    val   T
-    left  &Node
-    right &Node
+	val   T
+	left  &Node<T>
+	right &Node<T>
 }
 ```
 
@@ -2344,13 +2396,13 @@ Modules are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` or `v init` you already have a v.mod file). 
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
 
 	```sh
 	v new mymodule
 	Input your project description: My nice module.
 	Input your project version: (0.0.0) 0.0.1
-	Input your project license: (MIT) 
+	Input your project license: (MIT)
 	Initialising ...
 	Complete!
 	```
@@ -2381,7 +2433,7 @@ Modules are up to date.
 	}
 	```
 
-2. Create a git repository in the folder with the `v.mod` file 
+2. Create a git repository in the folder with the `v.mod` file
 	(this is not required if you used `v new` or `v init`):
 	```sh
 	git init
@@ -2397,13 +2449,13 @@ Modules are up to date.
 	You will have to login with your Github account to register the module.
 	**Warning:** _Currently it is not possibility to edit your entry after submiting.
 	Check your module name and github url twice as this cannot be changed by you later._
-6. The final module name is a combination of your github account and 
+6. The final module name is a combination of your github account and
 	the module name you provided e.g. `mygithubname.mymodule`.
 
-**Optional:** tag your V module with `vlang` and `vlang-module` on github.com 
+**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
 to allow a better search experiance.
 
-## Types 2
+## Type Declarations
 
 ### Interfaces
 
@@ -2498,6 +2550,74 @@ fn main() {
 	}
 }
 ```
+
+### Function Types
+
+You can use type aliases for naming specific function signatures - for
+example:
+
+```v
+type Filter = fn (string) string
+```
+
+This works like any other type - for example, a function can accept an
+argument of a function type:
+
+```v
+type Filter = fn (string) string
+
+fn filter(s string, f Filter) string {
+	return f(s)
+}
+```
+
+V has duck-typing, so functions don't need to declare compatibility with
+a function type - they just have to be compatible:
+
+```v
+fn uppercase(s string) string {
+	return s.to_upper()
+}
+
+// now `uppercase` can be used everywhere where Filter is expected
+```
+
+Compatible functions can also be explicitly cast to a function type:
+
+```v oksyntax
+my_filter := Filter(uppercase)
+```
+
+The cast here is purely informational - again, duck-typing means that the
+resulting type is the same without an explicit cast:
+
+```v oksyntax
+my_filter := uppercase
+```
+
+You can pass the assigned function as an argument:
+
+```v oksyntax
+println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
+```
+
+And you could of course have passed it directly as well, without using a
+local variable:
+
+```v oksyntax
+println(filter('Hello world', uppercase))
+```
+
+And this works with anonymous functions as well:
+
+```v oksyntax
+println(filter('Hello world', fn (s string) string {
+	return s.to_upper()
+}))
+```
+
+You can see the complete
+[example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
 
 ### Enums
 
@@ -2604,6 +2724,50 @@ fn main() {
 	tree := Node{0.5, left, right}
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
+```
+
+Enums can have methods, just like structs
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	println(c)
+	c = c.next()
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
 ```
 
 #### Dynamic casts
@@ -3348,7 +3512,7 @@ You can also define special test functions in a test file:
 
 If a test function has an error return type, any propagated errors will fail the test:
 
-```
+```v
 import strconv
 
 fn test_atoi() ? {
@@ -3368,8 +3532,8 @@ option to see more details about the individual tests run.
 You can put additional test data, including .v source files in a folder, named
 `testdata`, right next to your _test.v files. V's test framework will *ignore*
 such folders, while scanning for tests to run. This is usefull, if you want to
-put .v files with invalid V source code, or other tests, including known 
-failing ones, that should be run in a specific way/options by a parent _test.v 
+put .v files with invalid V source code, or other tests, including known
+failing ones, that should be run in a specific way/options by a parent _test.v
 file.
 
 NB: the path to the V compiler, is available through @VEXE, so a _test.v
@@ -3853,6 +4017,18 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
+to handle other cases.
+
+```v ignore
+$if $pkgconfig('mysqlclient') {
+	#pkgconfig mysqlclient
+} $else $if $pkgconfig('mariadb') {
+	#pkgconfig mariadb
+}
+```
+
 ### Including C code
 
 You can also include C code directly in your V module.
@@ -3973,7 +4149,7 @@ a parallel code structure.
 
 ## Debugging
 
-### C Backend binaries (Default) 
+### C Backend binaries (Default)
 
 To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
@@ -4007,7 +4183,7 @@ for example `main`, you can use: `-printfn main -o file.c`.
 
 To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
 
-You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed, 
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed,
 so that the executable is not deleted, after it was created and ran.
 
 To see a detailed list of all flags that V supports,
@@ -4474,7 +4650,6 @@ Translating it to V gives you several advantages:
 module main
 
 import time
-import os
 
 [live]
 fn print_message() {
@@ -4598,6 +4773,21 @@ fn legacy_function() {}
 // This function's calls will be inlined.
 [inline]
 fn inlined_function() {
+}
+
+// This function's calls will NOT be inlined.
+[noinline]
+fn function() {
+}
+
+// This function will NOT return to its callers.
+// Such functions can be used at the end of or blocks,
+// just like exit/1 or panic/1. Such functions can not
+// have return types, and should end either in for{}, or
+// by calling other `[noreturn]` functions.
+[noreturn]
+fn forever() {
+	for {}
 }
 
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
@@ -4738,7 +4928,7 @@ union
 unsafe
 __offsetof
 ```
-See also [Types](#types).
+See also [V Types](#v-types).
 
 ## Appendix II: Operators
 

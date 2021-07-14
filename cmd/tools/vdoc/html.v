@@ -438,9 +438,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		html_tag_escape(comments)
 	}
 	md_content := markdown.to_html(escaped_html)
-	hlighted_code := html_highlight(dn.content, tb)
+	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
+	has_deprecated := 'deprecated' in dn.tags
+	mut tags := dn.tags.filter(it != 'deprecated')
+	tags.sort()
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	if head && is_module_readme(dn) {
@@ -459,8 +462,17 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		}
 		dnw.write_string('</div>')
 	}
+	if tags.len > 0 || has_deprecated {
+		mut attributes := if has_deprecated {
+			'<div class="attribute attribute-deprecated">deprecated</div>'
+		} else {
+			''
+		}
+		attributes += tags.map('<div class="attribute">$it</div>').join('')
+		dnw.writeln('<div class="attributes">$attributes</div>')
+	}
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
+		dnw.writeln('<pre class="signature"><code>$highlighted_code</code></pre>')
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	dnw.writeln('$md_content\n')

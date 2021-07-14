@@ -1,5 +1,5 @@
 import v.ast { InfixExpr }
-import v.table
+import v.table { Type }
 
 fn test_as() {
 	_ := sum_expr() as InfixExpr

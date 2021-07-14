@@ -28,6 +28,7 @@ import os
 import math
 import rand
 import time
+import term
 
 const (
 	inf = 1e+10
@@ -366,6 +367,7 @@ const (
 fn radiance(r Ray, depthi int, scene_id int) Vec {
 	if depthi > 1024 {
 		eprintln('depthi: $depthi')
+		eprintln('')
 		return Vec{}
 	}
 	mut depth := depthi // actual depth in the reflection tree
@@ -506,7 +508,8 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y := 0; y < h; y++ {
-		eprint('\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
+		term.cursor_up(1)
+		eprintln('Rendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
 		for x in 0 .. w {
 			i := (h - y - 1) * w + x
 			mut ivec := unsafe { &image.data[i] }
@@ -566,10 +569,12 @@ fn main() {
 
 	t1 := time.ticks()
 
+	eprintln('Path tracing samples: $samples, file_name: $file_name, scene_id: $scene_id, width: $width, height: $height')
+	eprintln('')
 	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2 := time.ticks()
 
-	eprintln('\nRendering finished. Took: ${(t2 - t1):5}ms')
+	eprintln('Rendering finished. Took: ${(t2 - t1):5}ms')
 
 	image.save_as_ppm(file_name)
 	t3 := time.ticks()

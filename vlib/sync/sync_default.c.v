@@ -125,18 +125,69 @@ pub fn (mut sem Semaphore) post() {
 }
 
 pub fn (mut sem Semaphore) wait() {
-	C.sem_wait(&sem.sem)
+	for {
+		if C.sem_wait(&sem.sem) == 0 {
+			return
+		}
+		e := C.errno
+		match e {
+			C.EINTR {
+				continue // interrupted by signal
+			}
+			else {
+				panic(unsafe { tos_clone(&byte(C.strerror(C.errno))) })
+			}
+		}
+	}
 }
 
+// `try_wait()` should return as fast as possible so error handling is only
+// done when debugging
 pub fn (mut sem Semaphore) try_wait() bool {
-	return C.sem_trywait(&sem.sem) == 0
+	$if !debug {
+		return C.sem_trywait(&sem.sem) == 0
+	} $else {
+		if C.sem_trywait(&sem.sem) != 0 {
+			e := C.errno
+			match e {
+				C.EAGAIN {
+					return false
+				}
+				else {
+					panic(unsafe { tos_clone(&byte(C.strerror(C.errno))) })
+				}
+			}
+		}
+		return true
+	}
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_spec := timeout.timespec()
-	return C.sem_timedwait(&sem.sem, &t_spec) == 0
+	for {
+		if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+			return true
+		}
+		e := C.errno
+		match e {
+			C.EINTR {
+				continue // interrupted by signal
+			}
+			C.ETIMEDOUT {
+				break
+			}
+			else {
+				panic(unsafe { tos_clone(&byte(C.strerror(e))) })
+			}
+		}
+	}
+	return false
 }
 
-pub fn (sem Semaphore) destroy() bool {
-	return C.sem_destroy(&sem.sem) == 0
+pub fn (sem Semaphore) destroy() {
+	res := C.sem_destroy(&sem.sem)
+	if res == 0 {
+		return
+	}
+	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
 }

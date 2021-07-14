@@ -339,6 +339,12 @@ pub fn (x Expr) str() string {
 		ParExpr {
 			return '($x.expr)'
 		}
+		PostfixExpr {
+			if x.op == .question {
+				return '$x.expr ?'
+			}
+			return '$x.expr$x.op'
+		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
 		}

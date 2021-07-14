@@ -382,3 +382,26 @@ fn test_optional_flags() {
 	b := fp.string_opt('another-flag', `b`, '') or { 'some_default_value' }
 	assert b == 'some_default_value'
 }
+
+fn test_dashdash_acts_as_parser_full_stop() ? {
+	mut fp := flag.new_flag_parser(['-b', '5', '--', '-d', '-x', '-b', '4', '-a', '-c', 'hello',
+		'some', 'other', 'parameters'])
+	a := fp.bool_opt('a-bool-flag', `a`, '') or { false }
+	b := fp.int_opt('an-int-flag', `b`, '') or { -1 }
+	c := fp.string_opt('a-string-flag', `c`, '') or { 'default' }
+	assert a == false
+	assert b == 5
+	assert c == 'default'
+	args := fp.finalize() ?
+	assert args.len > 0
+	assert args[0] != '--'
+	assert args == ['-d', '-x', '-b', '4', '-a', '-c', 'hello', 'some', 'other', 'parameters']
+}
+
+fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() ? {
+	mut fp := flag.new_flag_parser(['-b', '5', '-b', '4', 'other', 'params', '--'])
+	b := fp.int_multi('an-int-flag', `b`, '')
+	assert b == [5, 4]
+	args := fp.finalize() ?
+	assert args.len > 0
+}

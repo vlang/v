@@ -25,7 +25,7 @@ pub fn unix(abs int) Time {
 }
 
 // unix2 returns a time struct from Unix time and microsecond value
-pub fn unix2(abs int, microsecond int) Time {
+pub fn unix2(abs i64, microsecond int) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
@@ -46,7 +46,7 @@ pub fn unix2(abs int, microsecond int) Time {
 	}
 }
 
-fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
+fn calculate_date_from_offset(day_offset_ i64) (int, int, int) {
 	mut day_offset := day_offset_
 	// Move offset to year 2001 as it's the start of a new 400-year cycle
 	// Code below this rely on the fact that the day_offset is lined up with the 400-year cycle
@@ -54,14 +54,14 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 	mut year := 2001
 	day_offset -= 31 * 365 + 8
 	// Account for 400 year cycle
-	year += (day_offset / days_per_400_years) * 400
+	year += int(day_offset / days_per_400_years) * 400
 	day_offset %= days_per_400_years
 	// Account for 100 year cycle
 	if day_offset == days_per_100_years * 4 {
 		year += 300
 		day_offset -= days_per_100_years * 3
 	} else {
-		year += (day_offset / days_per_100_years) * 100
+		year += int(day_offset / days_per_100_years) * 100
 		day_offset %= days_per_100_years
 	}
 	// Account for 4 year cycle
@@ -69,7 +69,7 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 		year += 96
 		day_offset -= days_per_4_years * 24
 	} else {
-		year += (day_offset / days_per_4_years) * 4
+		year += int(day_offset / days_per_4_years) * 4
 		day_offset %= days_per_4_years
 	}
 	// Account for every year
@@ -77,7 +77,7 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 		year += 3
 		day_offset -= 365 * 3
 	} else {
-		year += (day_offset / 365)
+		year += int(day_offset / 365)
 		day_offset %= 365
 	}
 	if day_offset < 0 {
@@ -108,10 +108,10 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 		estimated_month--
 	}
 	day_offset -= days_before[estimated_month]
-	return year, estimated_month + 1, day_offset + 1
+	return year, int(estimated_month + 1), int(day_offset + 1)
 }
 
-fn calculate_time_from_offset(second_offset_ int) (int, int, int) {
+fn calculate_time_from_offset(second_offset_ i64) (int, int, int) {
 	mut second_offset := second_offset_
 	if second_offset < 0 {
 		second_offset += seconds_per_day
@@ -120,5 +120,5 @@ fn calculate_time_from_offset(second_offset_ int) (int, int, int) {
 	second_offset %= seconds_per_hour
 	min := second_offset / seconds_per_minute
 	second_offset %= seconds_per_minute
-	return hour_, min, second_offset
+	return int(hour_), int(min), int(second_offset)
 }

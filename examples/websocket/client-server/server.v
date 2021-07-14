@@ -1,6 +1,6 @@
 module main
 
-import x.websocket
+import net.websocket
 import term
 
 // this server accepts client connections and broadcast all messages to other connected clients

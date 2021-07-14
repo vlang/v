@@ -3,7 +3,7 @@ module util
 import os
 import v.pref
 
-[if trace_mod_path_to_full_name]
+[if trace_mod_path_to_full_name ?]
 fn trace_mod_path_to_full_name(line string, mod string, file_path string, res string) {
 	eprintln('> $line ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: $res')
 }

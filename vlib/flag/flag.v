@@ -40,8 +40,9 @@ fn (mut f Flag) free() {
 }
 
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' + '            abbr: $f.abbr\n' +
-		'            usag: $f.usage\n' + '            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: $f.name\n' +
+		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
+		'            desc: $f.val_desc'
 }
 
 pub fn (af []Flag) str() string {
@@ -56,8 +57,18 @@ pub fn (af []Flag) str() string {
 
 //
 pub struct FlagParser {
+pub:
+	original_args      []string // the original arguments to be parsed
+	idx_dashdash       int      // the index of a `--`, -1 if there is not any
+	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
-	args                    []string // the arguments to be parsed
+	usage_examples []string // when set, --help will print:
+	// Usage: $appname $usage_examples[0]`
+	//    or: $appname $usage_examples[1]`
+	// etc
+	default_help_label      string = 'display this help and exit'
+	default_version_label   string = 'output version information and exit'
+	args                    []string // the current list of processed args
 	max_free_args           int
 	flags                   []Flag // registered flags
 	application_name        string
@@ -65,7 +76,8 @@ pub mut:
 	application_description string
 	min_free_args           int
 	args_description        string
-	allow_unknown_args      bool // whether passing undescribed arguments is allowed
+	allow_unknown_args      bool     // whether passing undescribed arguments is allowed
+	footers                 []string // when set, --help will display all the collected footers at the bottom.
 }
 
 [unsafe]
@@ -96,12 +108,39 @@ pub const (
 )
 
 // create a new flag set for parsing command line arguments
-// TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
+	original_args := args.clone()
+	idx_dashdash := args.index('--')
+	mut all_before_dashdash := args.clone()
+	mut all_after_dashdash := []string{}
+	if idx_dashdash >= 0 {
+		all_before_dashdash.trim(idx_dashdash)
+		if idx_dashdash < original_args.len {
+			all_after_dashdash = original_args[idx_dashdash + 1..]
+		}
+	}
 	return &FlagParser{
-		args: args.clone()
+		original_args: original_args
+		idx_dashdash: idx_dashdash
+		all_after_dashdash: all_after_dashdash
+		args: all_before_dashdash
 		max_free_args: flag.max_args_number
 	}
+}
+
+// usage_example - add an usage example
+// All examples will be listed in the help screen.
+// If you do not give any examples, then a default usage
+// will be shown, based on whether the application takes
+// options and expects additional parameters.
+pub fn (mut fs FlagParser) usage_example(example string) {
+	fs.usage_examples << example
+}
+
+// add_footer - add a footnote, that will be shown
+// at the bottom of the help screen.
+pub fn (mut fs FlagParser) footer(footer string) {
+	fs.footers << footer
 }
 
 // change the application name to be used in 'usage' output
@@ -114,9 +153,14 @@ pub fn (mut fs FlagParser) version(vers string) {
 	fs.application_version = vers
 }
 
-// change the application version to be used in 'usage' output
+// description appends to the application description lines, shown
+// in the help/usage screen
 pub fn (mut fs FlagParser) description(desc string) {
-	fs.application_description = desc
+	if fs.application_description.len == 0 {
+		fs.application_description = desc
+	} else {
+		fs.application_description += '\n$desc'
+	}
 }
 
 // in most cases you do not need the first argv for flag parsing
@@ -168,10 +212,6 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 			should_skip_one = false
 			continue
 		}
-		if arg == '--' {
-			// End of input. We're done here.
-			break
-		}
 		if arg[0] != `-` {
 			continue
 		}
@@ -219,10 +259,6 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 	{
 		full := '--$longhand'
 		for i, arg in fs.args {
-			if arg == '--' {
-				// End of input. We're done.
-				break
-			}
 			if arg.len == 0 {
 				continue
 			}
@@ -442,11 +478,20 @@ pub fn (fs FlagParser) usage() string {
 		use << '$fs.application_name $fs.application_version'
 		use << '$flag.underline'
 	}
-	use << 'Usage: $fs.application_name [options] $adesc'
+	if fs.usage_examples.len == 0 {
+		use << 'Usage: $fs.application_name [options] $adesc'
+	} else {
+		for i, example in fs.usage_examples {
+			if i == 0 {
+				use << 'Usage: $fs.application_name $example'
+			} else {
+				use << '   or: $fs.application_name $example'
+			}
+		}
+	}
 	use << ''
 	if fs.application_description != '' {
 		use << 'Description: $fs.application_description'
-		use << ''
 		use << ''
 	}
 	// show a message about the [ARGS]:
@@ -495,7 +540,38 @@ pub fn (fs FlagParser) usage() string {
 			use << fdesc
 		}
 	}
+	for footer in fs.footers {
+		use << footer
+	}
 	return use.join('\n').replace('- ,', '   ')
+}
+
+fn (mut fs FlagParser) find_existing_flag(fname string) ?Flag {
+	for f in fs.flags {
+		if f.name == fname {
+			return f
+		}
+	}
+	return error('no such flag')
+}
+
+fn (mut fs FlagParser) handle_builtin_options() {
+	mut show_version := false
+	mut show_help := false
+	fs.find_existing_flag('help') or {
+		show_help = fs.bool('help', `h`, false, fs.default_help_label)
+	}
+	fs.find_existing_flag('version') or {
+		show_version = fs.bool('version', 0, false, fs.default_version_label)
+	}
+	if show_help {
+		println(fs.usage())
+		exit(0)
+	}
+	if show_version {
+		println('$fs.application_name $fs.application_version')
+		exit(0)
+	}
 }
 
 // finalize - return all remaining arguments (non options).
@@ -503,9 +579,11 @@ pub fn (fs FlagParser) usage() string {
 // The remaining arguments are returned in the same order they are
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
-pub fn (fs FlagParser) finalize() ?[]string {
+pub fn (mut fs FlagParser) finalize() ?[]string {
+	fs.handle_builtin_options()
+	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
-		for a in fs.args {
+		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return IError(&UnkownFlagError{
 					msg: 'Unknown flag `$a`'
@@ -513,20 +591,34 @@ pub fn (fs FlagParser) finalize() ?[]string {
 			}
 		}
 	}
-	if fs.args.len < fs.min_free_args && fs.min_free_args > 0 {
+	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
 		return IError(&MinimumArgsCountError{
-			msg: 'Expected at least $fs.min_free_args arguments, but given $fs.args.len'
+			msg: 'Expected at least $fs.min_free_args arguments, but given $remaining.len'
 		})
 	}
-	if fs.args.len > fs.max_free_args && fs.max_free_args > 0 {
+	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
 		return IError(&MaximumArgsCountError{
-			msg: 'Expected at most $fs.max_free_args arguments, but given $fs.args.len'
+			msg: 'Expected at most $fs.max_free_args arguments, but given $remaining.len'
 		})
 	}
-	if fs.args.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
+	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
 		return IError(&NoArgsExpectedError{
-			msg: 'Expected no arguments, but given $fs.args.len'
+			msg: 'Expected no arguments, but given $remaining.len'
 		})
 	}
-	return fs.args
+	remaining << fs.all_after_dashdash
+	return remaining
+}
+
+// remaining_parameters will return all remaining parameters.
+// Call .remaining_parameters() *AFTER* you have defined all options
+// that your program needs. remaining_parameters will also print any
+// parsing errors and stop the program. Use .finalize() instead, if
+// you want more control over the error handling.
+pub fn (mut fs FlagParser) remaining_parameters() []string {
+	return fs.finalize() or {
+		eprintln(err.msg)
+		println(fs.usage())
+		exit(1)
+	}
 }

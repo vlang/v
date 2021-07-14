@@ -146,6 +146,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			for attr in f.attrs {
 				if attr.name == 'fkey' && attr.has_arg && attr.kind == .string {
 					f_key = attr.arg
+
 				}
 			}
 			if f_key == '' {

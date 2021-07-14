@@ -23,11 +23,25 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if expr.name == val.name {
+					if expr.name == val.name && expr.kind != .blank_ident {
 						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 						return error('undefined variable: `$val.name`')
 					}
 				}
+			}
+		}
+		ast.ArrayInit {
+			if val.has_cap {
+				p.check_undefined_variables(exprs, val.cap_expr) ?
+			}
+			if val.has_len {
+				p.check_undefined_variables(exprs, val.len_expr) ?
+			}
+			if val.has_default {
+				p.check_undefined_variables(exprs, val.default_expr) ?
+			}
+			for expr in val.exprs {
+				p.check_undefined_variables(exprs, expr) ?
 			}
 		}
 		ast.CallExpr {
@@ -39,6 +53,14 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		ast.InfixExpr {
 			p.check_undefined_variables(exprs, val.left) ?
 			p.check_undefined_variables(exprs, val.right) ?
+		}
+		ast.MapInit {
+			for key in val.keys {
+				p.check_undefined_variables(exprs, key) ?
+			}
+			for value in val.vals {
+				p.check_undefined_variables(exprs, value) ?
+			}
 		}
 		ast.ParExpr {
 			p.check_undefined_variables(exprs, val.expr) ?
@@ -59,12 +81,12 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 }
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
-	val_ := val
-	match val_ {
+	val_str := val.str()
+	match val {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if expr.name == val_.name {
+					if expr.name == val.name {
 						return true
 					}
 				}
@@ -72,24 +94,24 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		}
 		ast.IndexExpr {
 			for expr in exprs {
-				if expr.str() == val.str() {
+				if expr.str() == val_str {
 					return true
 				}
 			}
 		}
 		ast.InfixExpr {
-			return p.check_cross_variables(exprs, val_.left)
-				|| p.check_cross_variables(exprs, val_.right)
+			return p.check_cross_variables(exprs, val.left)
+				|| p.check_cross_variables(exprs, val.right)
 		}
 		ast.PrefixExpr {
-			return p.check_cross_variables(exprs, val_.right)
+			return p.check_cross_variables(exprs, val.right)
 		}
 		ast.PostfixExpr {
-			return p.check_cross_variables(exprs, val_.expr)
+			return p.check_cross_variables(exprs, val.expr)
 		}
 		ast.SelectorExpr {
 			for expr in exprs {
-				if expr.str() == val.str() {
+				if expr.str() == val_str {
 					return true
 				}
 			}

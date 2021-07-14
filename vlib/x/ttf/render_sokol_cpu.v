@@ -30,7 +30,7 @@ pub mut:
 * Render functions
 *
 ******************************************************************************/
-fn (mut tf_skl TTF_render_Sokol) format_texture() {
+pub fn (mut tf_skl TTF_render_Sokol) format_texture() {
 	tf_skl.bmp.format_texture()
 }
 
@@ -188,8 +188,8 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		0,
 		1,
 		0,
-		x,
-		y,
+		x * ctx.scale,
+		y * ctx.scale,
 		0,
 		1,
 	]

@@ -16,7 +16,7 @@ fn C.realloc(a &byte, b int) &byte
 
 fn C.free(ptr voidptr)
 
-[trusted]
+[noreturn; trusted]
 fn C.exit(code int)
 
 fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
@@ -246,7 +246,7 @@ fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lp
 
 fn C.RegCloseKey(hKey voidptr)
 
-fn C.RemoveDirectory(lpPathName &char) int
+fn C.RemoveDirectory(lpPathName &u16) int
 
 // fn C.GetStdHandle() voidptr
 fn C.GetStdHandle(u32) voidptr
@@ -343,7 +343,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &byte, &&byte)
+fn C.request(&C.TlsContext, int, &u16, &byte, &&byte) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 

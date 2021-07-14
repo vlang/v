@@ -455,49 +455,6 @@ fn (mut v Builder) setup_output_name() {
 	v.ccoptions.o_args << '-o "$v.pref.out_name"'
 }
 
-fn (mut v Builder) vjs_cc() bool {
-	vexe := pref.vexe_path()
-	vdir := os.dir(vexe)
-	// Just create a .c/.js file and exit, for example: `v -o v.c compiler`
-	ends_with_c := v.pref.out_name.ends_with('.c')
-	ends_with_js := v.pref.out_name.ends_with('.js')
-	if ends_with_c || ends_with_js {
-		v.pref.skip_running = true
-		// Translating V code to JS by launching vjs.
-		// Using a separate process for V.js is for performance mostly,
-		// to avoid constant is_js checks.
-		$if !js {
-			if ends_with_js {
-				vjs_path := vexe + 'js'
-				if !os.exists(vjs_path) {
-					println('V.js compiler not found, building...')
-					// Build V.js. Specifying `-os js` makes V include
-					// only _js.v files and ignore _c.v files.
-					ret := os.system('$vexe -o $vjs_path -os js $vdir/cmd/v')
-					if ret == 0 {
-						println('Done.')
-					} else {
-						println('Failed.')
-						exit(1)
-					}
-				}
-				ret := os.system('$vjs_path -o $v.pref.out_name $v.pref.path')
-				if ret == 0 {
-					println('Done. Run it with `node $v.pref.out_name`')
-					println('JS backend is at a very early stage.')
-				}
-			}
-		}
-		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
-		util.timing_start(msg_mv)
-		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
-		util.timing_measure(msg_mv)
-		return true
-	}
-	return false
-}
-
 fn (mut v Builder) dump_c_options(all_args []string) {
 	if v.pref.dump_c_flags != '' {
 		non_empty_args := all_args.filter(it != '').join('\n') + '\n'
@@ -522,7 +479,16 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.vjs_cc() {
+	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
+	ends_with_c := v.pref.out_name.ends_with('.c')
+	ends_with_js := v.pref.out_name.ends_with('.js')
+	if ends_with_c || ends_with_js {
+		v.pref.skip_running = true
+		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		util.timing_start(msg_mv)
+		// v.out_name_c may be on a different partition than v.out_name
+		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
+		util.timing_measure(msg_mv)
 		return
 	}
 	// Cross compiling for Windows
@@ -752,6 +718,23 @@ fn (mut v Builder) cc() {
 	// }
 }
 
+fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
+	crossrepo_url := 'https://github.com/spytheman/vlinuxroot'
+	sysroot_git_config_path := os.join_path(sysroot, '.git', 'config')
+	if os.is_dir(sysroot) && !os.exists(sysroot_git_config_path) {
+		// remove existing obsolete unarchived .zip file content
+		os.rmdir_all(sysroot) or {}
+	}
+	if !os.is_dir(sysroot) {
+		println('Downloading files for Linux cross compilation (~22MB) ...')
+		os.system('git clone $crossrepo_url $sysroot')
+		if !os.exists(sysroot_git_config_path) {
+			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
+		}
+		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755)
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
@@ -761,19 +744,7 @@ fn (mut b Builder) cc_linux_cross() {
 		os.mkdir(parent_dir) or { panic(err) }
 	}
 	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
-	if !os.is_dir(sysroot) {
-		println('Downloading files for Linux cross compilation (~18 MB)...')
-		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
-		zip_file := sysroot + '.zip'
-		os.system('curl -L -o $zip_file $zip_url')
-		if !os.exists(zip_file) {
-			verror('Failed to download `$zip_url` as $zip_file')
-		}
-		os.system('tar -C $parent_dir -xf $zip_file')
-		if !os.is_dir(sysroot) {
-			verror('Failed to unzip $zip_file to $parent_dir')
-		}
-	}
+	b.ensure_linuxroot_exists(sysroot)
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()

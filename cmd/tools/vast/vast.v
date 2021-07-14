@@ -1,56 +1,80 @@
 module main
 
+import os
+import time
+import flag
 import v.token
 import v.parser
 import v.ast
 import v.pref
 import v.errors
-import os
-import time
 
-const usage = '
-usage:
-  1.v ast demo.v 	 generate demo.json file.
-  2.v ast -w demo.v 	 generate demo.json file, and watch for changes.
-  3.v ast -c demo.v 	 generate demo.json and demo.c file, and watch for changes.
-  4.v ast -p demo.v 	 print the json string to stdout, instead of saving it to a file.
-  '
+struct Context {
+mut:
+	is_watch   bool
+	is_compile bool
+	is_print   bool
+}
+
+struct HideFields {
+mut:
+	names map[string]bool
+}
+
+const hide_fields = &HideFields{}
 
 fn main() {
-	args := os.args[1..]
-	match args.len {
-		2 {
-			file := get_abs_path(args[1])
-			check_file(file)
-			println('AST written to: ' + json_file(file))
-		}
-		3 {
-			file := get_abs_path(args[2])
-			check_file(file)
-			option := args[1]
-			match option {
-				'-p' { println(json(file)) }
-				'-w' { gen(file, false) }
-				'-c' { gen(file, true) }
-				else { println(usage) }
-			}
-		}
-		else {
-			println(usage)
+	if os.args.len < 2 {
+		eprintln('not enough parameters')
+		exit(1)
+	}
+	mut ctx := Context{}
+	mut fp := flag.new_flag_parser(os.args[2..])
+	fp.application('v ast')
+	fp.usage_example('demo.v       generate demo.json file.')
+	fp.usage_example('-w demo.v    generate demo.json file, and watch for changes.')
+	fp.usage_example('-c demo.v    generate demo.json *and* a demo.c file, and watch for changes.')
+	fp.usage_example('-p demo.v    print the json output to stdout.')
+	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
+	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
+	fp.description('Pass -p to see it instead.')
+	ctx.is_watch = fp.bool('watch', `w`, false, 'watch a .v file for changes, rewrite the .json file, when a change is detected')
+	ctx.is_print = fp.bool('print', `p`, false, 'print the AST to stdout')
+	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
+	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
+	mut mhf := unsafe { hide_fields }
+	for hf in hfields.split(',') {
+		mhf.names[hf] = true
+	}
+	fp.limit_free_args_to_at_least(1)
+	rest_of_args := fp.remaining_parameters()
+	for vfile in rest_of_args {
+		file := get_abs_path(vfile)
+		check_file(file)
+		ctx.write_file_or_print(file)
+		if ctx.is_watch || ctx.is_compile {
+			ctx.watch_for_changes(file)
 		}
 	}
 }
 
+fn (ctx Context) write_file_or_print(file string) {
+	if ctx.is_print {
+		println(json(file))
+	} else {
+		println('$time.now(): AST written to: ' + json_file(file))
+	}
+}
+
 // generate ast json file and c source code file
-fn gen(file string, is_genc bool) {
+fn (ctx Context) watch_for_changes(file string) {
 	println('start watching...')
 	mut timestamp := 0
 	for {
 		new_timestamp := os.file_last_mod_unix(file)
 		if timestamp != new_timestamp {
-			res := json_file(file)
-			println('$time.now() : AST written to: ' + res)
-			if is_genc {
+			ctx.write_file_or_print(file)
+			if ctx.is_compile {
 				file_name := file[0..(file.len - os.file_ext(file).len)]
 				os.system('v -o ${file_name}.c $file')
 			}
@@ -74,10 +98,12 @@ fn get_abs_path(path string) string {
 // check file is v file and exists
 fn check_file(file string) {
 	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
-		panic('the file `$file` must be a v file or vsh file')
+		eprintln('the file `$file` must be a v file or vsh file')
+		exit(1)
 	}
 	if !os.exists(file) {
-		panic('the v file `$file` does not exist')
+		eprintln('the v file `$file` does not exist')
+		exit(1)
 	}
 }
 
@@ -91,20 +117,20 @@ fn json_file(file string) string {
 	return json_file
 }
 
-// for enable_globals
-fn new_preferences() &pref.Preferences {
-	mut p := &pref.Preferences{}
-	p.fill_with_defaults()
-	p.enable_globals = true
-	return p
-}
-
 // generate json string
 fn json(file string) string {
+	// use as permissive preferences as possible, so that `v ast`
+	// can print the AST of arbitrary V files, even .vsh or ones
+	// that require globals:
+	mut pref := &pref.Preferences{}
+	pref.fill_with_defaults()
+	pref.enable_globals = true
+	pref.is_fmt = true
+	//
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()
-		pref: new_preferences()
+		pref: pref
 		global_scope: &ast.Scope{
 			start_pos: 0
 			parent: 0
@@ -139,6 +165,9 @@ fn new_object() &Node {
 // add item to object node
 [inline]
 fn (node &Node) add(key string, child &Node) {
+	if hide_fields.names.len > 0 && key in hide_fields.names {
+		return
+	}
 	add_item_to_object(node, key, child)
 }
 
@@ -428,6 +457,7 @@ fn (t Tree) import_symbol(node ast.ImportSymbol) &Node {
 fn (t Tree) position(p token.Position) &Node {
 	mut obj := new_object()
 	obj.add('line_nr', t.number_node(p.line_nr))
+	obj.add('last_line', t.number_node(p.last_line))
 	obj.add('pos', t.number_node(p.pos))
 	obj.add('len', t.number_node(p.len))
 	return obj
@@ -438,7 +468,7 @@ fn (t Tree) comment(node ast.Comment) &Node {
 	obj.add('ast_type', t.string_node('Comment'))
 	obj.add('text', t.string_node(node.text))
 	obj.add('is_multi', t.bool_node(node.is_multi))
-	obj.add('line_nr', t.number_node(node.line_nr))
+	obj.add('is_inline', t.bool_node(node.is_inline))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -477,6 +507,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('is_pub', t.bool_node(node.is_pub))
 	obj.add('is_variadic', t.bool_node(node.is_variadic))
 	obj.add('is_anon', t.bool_node(node.is_anon))
+	obj.add('is_noreturn', t.bool_node(node.is_noreturn))
 	obj.add('is_manualfree', t.bool_node(node.is_manualfree))
 	obj.add('is_main', t.bool_node(node.is_main))
 	obj.add('is_test', t.bool_node(node.is_test))
@@ -493,6 +524,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('no_body', t.bool_node(node.no_body))
 	obj.add('is_builtin', t.bool_node(node.is_builtin))
 	obj.add('is_direct_arr', t.bool_node(node.is_direct_arr))
+	obj.add('ctdefine_idx', t.number_node(node.ctdefine_idx))
 	obj.add('pos', t.position(node.pos))
 	obj.add('body_pos', t.position(node.body_pos))
 	obj.add('return_type_pos', t.position(node.return_type_pos))
@@ -501,7 +533,6 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('return_type', t.type_node(node.return_type))
 	obj.add('source_file', t.number_node(int(node.source_file)))
 	obj.add('scope', t.number_node(int(node.scope)))
-	obj.add('skip_gen', t.bool_node(node.skip_gen))
 	obj.add('attrs', t.array_node_attr(node.attrs))
 	obj.add('params', t.array_node_arg(node.params))
 	obj.add('generic_names', t.array_node_string(node.generic_names))
@@ -630,6 +661,10 @@ fn (t Tree) attr(node ast.Attr) &Node {
 	obj.add('name', t.string_node(node.name))
 	obj.add('has_arg', t.bool_node(node.has_arg))
 	obj.add('kind', t.enum_node(node.kind))
+	obj.add('ct_expr', t.expr(node.ct_expr))
+	obj.add('ct_opt', t.bool_node(node.ct_opt))
+	obj.add('ct_evaled', t.bool_node(node.ct_evaled))
+	obj.add('ct_skip', t.bool_node(node.ct_skip))
 	obj.add('arg', t.string_node(node.arg))
 	return obj
 }
@@ -1195,7 +1230,6 @@ fn (t Tree) cast_expr(node ast.CastExpr) &Node {
 	obj.add('typname', t.string_node(node.typname))
 	obj.add('expr_type', t.type_node(node.expr_type))
 	obj.add('has_arg', t.bool_node(node.has_arg))
-	obj.add('in_prexpr', t.bool_node(node.in_prexpr))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -1386,22 +1420,24 @@ fn (t Tree) ident_fn(node ast.IdentFn) &Node {
 fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('CallExpr'))
-	obj.add('left', t.expr(node.left))
-	obj.add('is_method', t.bool_node(node.is_method))
 	obj.add('mod', t.string_node(node.mod))
 	obj.add('name', t.string_node(node.name))
 	obj.add('language', t.enum_node(node.language))
+	obj.add('left_type', t.type_node(node.left_type))
+	obj.add('receiver_type', t.type_node(node.receiver_type))
+	obj.add('return_type', t.type_node(node.return_type))
+	obj.add('left', t.expr(node.left))
+	obj.add('is_method', t.bool_node(node.is_method))
+	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
+	obj.add('is_noreturn', t.bool_node(node.is_noreturn))
+	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
+	obj.add('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))
 	obj.add('args', t.array_node_call_arg(node.args))
 	obj.add('expected_arg_types', t.array_node_type(node.expected_arg_types))
 	obj.add('concrete_types', t.array_node_type(node.concrete_types))
 	obj.add('or_block', t.or_expr(node.or_block))
-	obj.add('left_type', t.type_node(node.left_type))
-	obj.add('receiver_type', t.type_node(node.receiver_type))
-	obj.add('return_type', t.type_node(node.return_type))
-	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add('concrete_list_pos', t.position(node.concrete_list_pos))
-	obj.add('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('from_embed_type', t.type_node(node.from_embed_type))
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('pos', t.position(node.pos))
@@ -1769,7 +1805,7 @@ fn (t Tree) asm_stmt(node ast.AsmStmt) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('AsmStmt'))
 	obj.add('arch', t.enum_node(node.arch))
-	obj.add('is_top_level', t.bool_node(node.is_top_level))
+	obj.add('is_basic', t.bool_node(node.is_basic))
 	obj.add('is_volatile', t.bool_node(node.is_volatile))
 	obj.add('is_goto', t.bool_node(node.is_goto))
 	obj.add('scope', t.scope(node.scope))
@@ -1989,9 +2025,9 @@ fn (t Tree) array_node_attr(nodes []ast.Attr) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_scope_struct_field(nodes []ast.ScopeStructField) &Node {
+fn (t Tree) array_node_scope_struct_field(nodes map[string]ast.ScopeStructField) &Node {
 	mut arr := new_array()
-	for node in nodes {
+	for _, node in nodes {
 		arr.add_item(t.scope_struct_field(node))
 	}
 	return arr

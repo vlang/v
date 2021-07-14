@@ -16,6 +16,8 @@ struct C.tm {
 }
 
 struct C._FILETIME {
+	dwLowDateTime  u32
+	dwHighDateTime u32
 }
 
 struct SystemTime {
@@ -222,4 +224,16 @@ pub fn wait(duration Duration) {
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
 	C.Sleep(int(duration / millisecond))
+}
+
+// some Windows system functions (e.g. `C.WaitForSingleObject()`) accept an `u32`
+// value as *timeout in milliseconds* with the special value `u32(-1)` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() u32 {
+	if d >= u32(-1) * millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
+		return u32(-1)
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return u32(d / millisecond)
+	}
 }

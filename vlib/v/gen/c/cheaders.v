@@ -63,15 +63,15 @@ const c_common_macros = '
 
 #define __V_architecture 0
 #if defined(__x86_64__)
-#define __V_amd64  1
-#undef __V_architecture
-#define __V_architecture 1
+	#define __V_amd64  1
+	#undef __V_architecture
+	#define __V_architecture 1
 #endif
 
 #if defined(__aarch64__) || defined(__arm64__)
-#define __V_arm64  1
-#undef __V_architecture
-#define __V_architecture 2
+	#define __V_arm64  1
+	#undef __V_architecture
+	#define __V_architecture 2
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -165,9 +165,41 @@ const c_common_macros = '
 	#define _MOV
 #endif
 
-#if defined(__TINYC__) && defined(__has_include)
 // tcc does not support has_include properly yet, turn it off completely
+#if defined(__TINYC__) && defined(__has_include)
 #undef __has_include
+#endif
+
+#if !defined(VNORETURN)
+	#if defined(__TINYC__)
+		#include <stdnoreturn.h>
+		#define VNORETURN noreturn
+	#endif
+	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+	#  define VNORETURN _Noreturn
+	# elif defined(__GNUC__) && __GNUC__ >= 2
+	#  define VNORETURN __attribute__((noreturn))
+	# endif	
+	#ifndef VNORETURN
+		#define VNORETURN
+	#endif
+#endif
+
+#if !defined(VUNREACHABLE)
+	#if defined(__GNUC__) && !defined(__clang__)
+		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
+		#if (V_GCC_VERSION >= 40500L)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif		
+	#if defined(__clang__) && defined(__has_builtin)
+		#if __has_builtin(__builtin_unreachable)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+		#endif
+	#endif
+	#ifndef VUNREACHABLE
+		#define VUNREACHABLE() do { } while (0)
+	#endif		
 #endif
 
 //likely and unlikely macros
@@ -198,12 +230,10 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 '
 
 const c_helper_macros = '//============================== HELPER C MACROS =============================*/
-//#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
 #define _SLIT0 (string){.len=0}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
-//#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 // copy something to the heap
@@ -264,8 +294,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/
-//byte g_str_buf[1024];
-byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
@@ -275,10 +303,6 @@ void _vcleanup();
 
 void v_free(voidptr ptr);
 voidptr memdup(voidptr src, int sz);
-static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
-	v_free(ptr); // heloe
-	return memdup(src, sz);
-}
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -308,17 +332,7 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
-#ifdef __linux__
-	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __FreeBSD__
-	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __DragonFly__
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
@@ -330,11 +344,6 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 #endif
 
 #ifdef __NetBSD__
-	#include <sys/wait.h> // os__wait uses wait on nix
-#endif
-
-#ifdef __sun
-	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
@@ -464,8 +473,6 @@ typedef __builtin_va_list va_list;
 #define va_copy(a, b)  __builtin_va_copy(a, b)
 
 //================================== GLOBALS =================================*/
-//byte g_str_buf[1024];
-byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
@@ -475,10 +482,6 @@ void _vcleanup();
 
 void v_free(voidptr ptr);
 voidptr memdup(voidptr src, int sz);
-static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
-	v_free(ptr); // heloe
-	return memdup(src, sz);
-}
 
 '
 
@@ -488,26 +491,26 @@ const c_wyhash_headers = '
 #define wyhash_final_version_3
 
 #ifndef WYHASH_CONDOM
-//protections that produce different results:
-//1: normal valid behavior
-//2: extra protection against entropy loss (probability=2^-63), aka. "blind multiplication"
+// protections that produce different results:
+// 1: normal valid behavior
+// 2: extra protection against entropy loss (probability=2^-63), aka. "blind multiplication"
 #define WYHASH_CONDOM 1
 #endif
 
 #ifndef WYHASH_32BIT_MUM
-//0: normal version, slow on 32 bit systems
-//1: faster on 32 bit systems but produces different results, incompatible with wy2u0k function
+// 0: normal version, slow on 32 bit systems
+// 1: faster on 32 bit systems but produces different results, incompatible with wy2u0k function
 #define WYHASH_32BIT_MUM 0
 #endif
 
-//includes
+// includes
 #include <stdint.h>
 #if defined(_MSC_VER) && defined(_M_X64)
 	#include <intrin.h>
 	#pragma intrinsic(_umul128)
 #endif
 
-//128bit multiply function
+// 128bit multiply function
 static inline uint64_t _wyrot(uint64_t x) { return (x>>32)|(x<<32); }
 static inline void _wymum(uint64_t *A, uint64_t *B){
 #if(WYHASH_32BIT_MUM)
@@ -544,10 +547,10 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 #endif
 }
 
-//multiply and xor mix function, aka MUM
+// multiply and xor mix function, aka MUM
 static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }
 
-//endian macros
+// endian macros
 #ifndef WYHASH_LITTLE_ENDIAN
 	#ifdef TARGET_ORDER_IS_LITTLE
 		#define WYHASH_LITTLE_ENDIAN 1
@@ -556,69 +559,68 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 	#endif
 #endif
 
-//read functions
+// read functions
 #if (WYHASH_LITTLE_ENDIAN)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
-static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
+	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
+	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
 #elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
-static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
+	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
+	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)
-static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return _byteswap_uint64(v);}
-static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return _byteswap_ulong(v);}
+	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return _byteswap_uint64(v);}
+	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return _byteswap_ulong(v);}
 #else
-static inline uint64_t _wyr8(const uint8_t *p) {
-	uint64_t v; memcpy(&v, p, 8);
-	return (((v >> 56) & 0xff)| ((v >> 40) & 0xff00)| ((v >> 24) & 0xff0000)| ((v >>  8) & 0xff000000)| ((v <<  8) & 0xff00000000)| ((v << 24) & 0xff0000000000)| ((v << 40) & 0xff000000000000)| ((v << 56) & 0xff00000000000000));
-}
-static inline uint64_t _wyr4(const uint8_t *p) {
-	uint32_t v; memcpy(&v, p, 4);
-	return (((v >> 24) & 0xff)| ((v >>  8) & 0xff00)| ((v <<  8) & 0xff0000)| ((v << 24) & 0xff000000));
-}
+	static inline uint64_t _wyr8(const uint8_t *p) {
+		uint64_t v; memcpy(&v, p, 8);
+		return (((v >> 56) & 0xff)| ((v >> 40) & 0xff00)| ((v >> 24) & 0xff0000)| ((v >>  8) & 0xff000000)| ((v <<  8) & 0xff00000000)| ((v << 24) & 0xff0000000000)| ((v << 40) & 0xff000000000000)| ((v << 56) & 0xff00000000000000));
+	}
+	static inline uint64_t _wyr4(const uint8_t *p) {
+		uint32_t v; memcpy(&v, p, 4);
+		return (((v >> 24) & 0xff)| ((v >>  8) & 0xff00)| ((v <<  8) & 0xff0000)| ((v << 24) & 0xff000000));
+	}
 #endif
 static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}
-//wyhash main function
+// wyhash main function
 static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){
-	const uint8_t *p=(const uint8_t *)key; seed^=*secret;	uint64_t	a,	b;
-	if(_likely_(len<=16)){
-		if(_likely_(len>=4)){ a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }
-		else if(_likely_(len>0)){ a=_wyr3(p,len); b=0;}
+	const uint8_t *p=(const uint8_t *)key; seed^=*secret;	uint64_t a, b;
+	if (_likely_(len<=16)) {
+		if (_likely_(len>=4)) { a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }
+		else if (_likely_(len>0)) { a=_wyr3(p,len); b=0; }
 		else a=b=0;
-	}
-	else{
+	} else {
 		size_t i=len;
-		if(_unlikely_(i>48)){
+		if (_unlikely_(i>48)) {
 			uint64_t see1=seed, see2=seed;
-			do{
+			do {
 				seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);
 				see1=_wymix(_wyr8(p+16)^secret[2],_wyr8(p+24)^see1);
 				see2=_wymix(_wyr8(p+32)^secret[3],_wyr8(p+40)^see2);
 				p+=48; i-=48;
-			}while(_likely_(i>48));
+			} while(_likely_(i>48));
 			seed^=see1^see2;
 		}
-		while(_unlikely_(i>16)){  seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);  i-=16; p+=16;  }
+		while(_unlikely_(i>16)) { seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);  i-=16; p+=16; }
 		a=_wyr8(p+i-16);  b=_wyr8(p+i-8);
 	}
 	return _wymix(secret[1]^len,_wymix(a^secret[1],b^seed));
 }
-//the default secret parameters
+// the default secret parameters
 static const uint64_t _wyp[4] = {0xa0761d6478bd642full, 0xe7037ed1a0b428dbull, 0x8ebc6af09c88c6e3ull, 0x589965cc75374cc3ull};
 
-//a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
+// a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
 static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0xa0761d6478bd642full; B^=0xe7037ed1a0b428dbull; _wymum(&A,&B); return _wymix(A^0xa0761d6478bd642full,B^0xe7037ed1a0b428dbull);}
 
-//The wyrand PRNG that pass BigCrush and PractRand
+// the wyrand PRNG that pass BigCrush and PractRand
 static inline uint64_t wyrand(uint64_t *seed){ *seed+=0xa0761d6478bd642full; return _wymix(*seed,*seed^0xe7037ed1a0b428dbull);}
 
-//convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
+// convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}
 
-//convert any 64 bit pseudo random numbers to APPROXIMATE Gaussian distribution. It can be combined with wyrand, wyhash64 or wyhash.
+// convert any 64 bit pseudo random numbers to APPROXIMATE Gaussian distribution. It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2gau(uint64_t r){ const double _wynorm=1.0/(1ull<<20); return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;}
 
 #if(!WYHASH_32BIT_MUM)
-//fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.
+// fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.
 static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; }
 #endif
 #endif

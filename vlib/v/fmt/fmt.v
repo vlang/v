@@ -26,7 +26,7 @@ pub mut:
 	buffering          bool   // disables line wrapping for exprs that will be analyzed later
 	par_level          int    // how many parentheses are put around the current expression
 	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchie in array init
+	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
 	file               ast.File
@@ -730,7 +730,7 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
-	if stmt.is_top_level {
+	if f.indent == 0 {
 		f.writeln('')
 	}
 }
@@ -801,7 +801,13 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(']')
 		}
 		ast.AsmDisp {
-			f.write(arg.val)
+			if arg.val.len >= 2 && arg.val[arg.val.len - 1] in [`b`, `f`]
+				&& arg.val[..arg.val.len - 1].bytes().all(it.is_digit()) {
+				f.write(arg.val[arg.val.len - 1].ascii_str())
+				f.write(arg.val[..arg.val.len - 1])
+			} else {
+				f.write(arg.val)
+			}
 		}
 	}
 }
@@ -1500,32 +1506,65 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			}
 			f.expr(expr)
 		}
-		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
+		mut last_comment_was_inline := false
+		mut has_comments := node.ecmnts[i].len > 0
+		if i < node.ecmnts.len && has_comments {
 			expr_pos := expr.position()
-			for cmt in node.ecmnts[i] {
+			for icmt, cmt in node.ecmnts[i] {
 				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
-					f.write(',')
-					set_comma = true
+					if icmt > 0 {
+						if last_comment_was_inline {
+							f.write(',')
+							set_comma = true
+						}
+					} else {
+						f.write(',') // first comment needs a comma
+						set_comma = true
+					}
+				}
+				mut next_pos := expr_pos
+				if i + 1 < node.exprs.len {
+					next_pos = node.exprs[i + 1].position()
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
-					embed := i + 1 < node.exprs.len
-						&& node.exprs[i + 1].position().line_nr == cmt.pos.last_line
+					embed := i + 1 < node.exprs.len && next_pos.line_nr == cmt.pos.last_line
 					f.writeln('')
 					f.comment(cmt, iembed: embed)
 				} else {
-					f.write(' ')
-					f.comment(cmt, iembed: true)
+					if cmt.is_inline {
+						f.write(' ')
+						f.comment(cmt, iembed: true)
+						if cmt.pos.line_nr == expr_pos.last_line && cmt.pos.pos < expr_pos.pos {
+							f.write(',')
+							set_comma = true
+						} else {
+							if !cmt.is_inline {
+								// a // comment, transformed to a /**/ one, needs a comma too
+								f.write(',')
+								set_comma = true
+							}
+						}
+					} else {
+						f.write(', ')
+						f.comment(cmt, iembed: false)
+						set_comma = true
+					}
 				}
+				last_comment_was_inline = cmt.is_inline
 			}
+		}
+		mut put_comma := !set_comma
+		if has_comments && !last_comment_was_inline {
+			put_comma = false
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma {
+				if put_comma {
 					f.write(',')
 				}
 				f.writeln('')
 			}
-		} else if !set_comma {
+		} else if put_comma {
 			f.write(',')
 		}
 		last_line_nr = pos.last_line
@@ -1638,9 +1677,8 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			is_last := i == node.concrete_types.len - 1
-			f.write(f.table.type_to_str(concrete_type))
-			if !is_last {
+			f.write(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias))
+			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -1681,6 +1719,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
+	f.mark_types_import_as_used(node.typ)
 	f.expr(node.expr)
 	if node.has_arg {
 		f.write(', ')
@@ -1725,6 +1764,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$embed_file('$node.embed_file.rpath')")
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
+		} else if node.is_pkgconfig {
+			f.write("\$pkgconfig('$node.args_var')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
@@ -1763,6 +1804,7 @@ pub fn (mut f Fmt) dump_expr(node ast.DumpExpr) {
 pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 	name := f.short_module(node.enum_name)
 	f.write(name + '.' + node.val)
+	f.mark_import_as_used(name)
 }
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
@@ -1784,7 +1826,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// Force usage of full path to const in the same module:
 		// `println(minute)` => `println(time.minute)`
 		// This makes it clear that a module const is being used
-		// (since V's conts are no longer ALL_CAP).
+		// (since V's consts are no longer ALL_CAP).
 		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
 			mod := f.cur_mod

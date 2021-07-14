@@ -1,6 +1,6 @@
 struct User {
-	name                  string  // name
-	name2                 ustring // name2
+	name                  string // name
+	name2                 []rune // name2
 	very_long_field       bool
 	age                   int // age
 	very_long_type_field1 very_looooog_type     // long

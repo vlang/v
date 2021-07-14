@@ -23,7 +23,6 @@ fn main() {
 		width: size
 		height: size
 		font_size: 20
-		use_ortho: true
 		user_data: context
 		window_title: 'Graph builder'
 		create_window: true

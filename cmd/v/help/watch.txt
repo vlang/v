@@ -23,3 +23,6 @@ Options:
   
   --after <string>          A command to execute *after* each re-run. Example: --after 'rm -rf /tmp/v/'
 	
+You can also customise the timeout, after `v watch` will re-start a monitored
+program automatically, even if it was not changed by setting the enviroment 
+variable VWATCH_TIMEOUT (in seconds). By default, it is 5 min. (300 seconds).

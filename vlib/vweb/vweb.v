@@ -12,15 +12,40 @@ import strings
 import time
 
 pub const (
-	methods_with_form       = [http.Method.post, .put, .patch]
-	header_server           = 'Server: VWeb\r\n'
-	header_connection_close = 'Connection: close\r\n'
-	headers_close           = '$header_server$header_connection_close\r\n'
-	// TODO: use http.response structs
-	http_400                = 'HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 15\r\n${headers_close}400 Bad Request'
-	http_404                = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
-	http_500                = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
-	mime_types              = map{
+	methods_with_form = [http.Method.post, .put, .patch]
+	headers_close     = http.new_custom_header_from_map(map{
+		'Server':          'VWeb'
+		http.CommonHeader.connection.str(): 'close'
+	}) or { panic('should never fail') }
+
+	http_400          = http.Response{
+		version: .v1_1
+		status_code: 400
+		text: '400 Bad Request'
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '15'
+		}).join(headers_close)
+	}
+	http_404 = http.Response{
+		version: .v1_1
+		status_code: 404
+		text: '404 Not Found'
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '13'
+		}).join(headers_close)
+	}
+	http_500 = http.Response{
+		version: .v1_1
+		status_code: 500
+		text: '500 Internal Server Error'
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '25'
+		}).join(headers_close)
+	}
+	mime_types = map{
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -59,8 +84,6 @@ pub mut:
 	done              bool
 	page_gen_start    i64
 	form_error        string
-	chunked_transfer  bool
-	max_chunk_len     int = 20
 }
 
 struct FileData {
@@ -112,35 +135,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	sb.write_string('HTTP/1.1 $ctx.status')
 	sb.write_string('\r\nContent-Type: $mimetype')
 	sb.write_string('\r\nContent-Length: $res.len')
-	if ctx.chunked_transfer {
-		sb.write_string('\r\nTransfer-Encoding: chunked')
-	}
 	sb.write_string(ctx.headers)
 	sb.write_string('\r\n')
-	sb.write_string(vweb.headers_close)
-	if ctx.chunked_transfer {
-		mut i := 0
-		mut len := res.len
-		for {
-			if len <= 0 {
-				break
-			}
-			mut chunk := ''
-			if len > ctx.max_chunk_len {
-				chunk = res[i..i + ctx.max_chunk_len]
-				i += ctx.max_chunk_len
-				len -= ctx.max_chunk_len
-			} else {
-				chunk = res[i..]
-				len = 0
-			}
-			sb.write_string(chunk.len.hex())
-			sb.write_string('\r\n$chunk\r\n')
-		}
-		sb.write_string('0\r\n\r\n') // End of chunks
-	} else {
-		sb.write_string(res)
-	}
+	sb.write_string(vweb.headers_close.str())
+	sb.write_string('\r\n')
+	sb.write_string(res)
 	s := sb.str()
 	defer {
 		unsafe { s.free() }
@@ -181,7 +180,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	if ctx.done {
 		return Result{}
 	}
-	send_string(mut ctx.conn, vweb.http_500) or {}
+	send_string(mut ctx.conn, vweb.http_500.bytestr()) or {}
 	return Result{}
 }
 
@@ -191,7 +190,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close\r\n') or {
 		return Result{}
 	}
 	return Result{}
@@ -203,14 +202,8 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, vweb.http_404) or {}
+	send_string(mut ctx.conn, vweb.http_404.bytestr()) or {}
 	return Result{}
-}
-
-// Enables chunk transfer with max_chunk_len per chunk
-pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
-	ctx.chunked_transfer = true
-	ctx.max_chunk_len = max_chunk_len
 }
 
 // Sets a cookie
@@ -297,6 +290,7 @@ interface DbInterface {
 }
 
 // run_app
+[manualfree]
 pub fn run<T>(global_app &T, port int) {
 	// x := global_app.clone()
 	// mut global_app := &T{}
@@ -333,8 +327,12 @@ pub fn run<T>(global_app &T, port int) {
 		// request_app.Context = Context{
 		// conn: 0
 		//}
-		mut conn := l.accept() or { panic('accept() failed') }
-		handle_conn<T>(mut conn, mut request_app)
+		mut conn := l.accept() or {
+			// failures should not panic
+			eprintln('accept() failed with error: $err.msg')
+			continue
+		}
+		go handle_conn<T>(mut conn, mut request_app)
 	}
 }
 
@@ -344,6 +342,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or {}
+		unsafe {
+			free(app)
+		}
 	}
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
@@ -370,7 +371,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		if 'multipart/form-data' in ct {
 			boundary := ct.filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
-				send_string(mut conn, vweb.http_400) or {}
+				send_string(mut conn, vweb.http_400.bytestr()) or {}
 				return
 			}
 			form, files := parse_multipart_form(req.data, boundary[0][9..])
@@ -449,7 +450,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 	}
 	// site not found
-	send_string(mut conn, vweb.http_404) or {}
+	send_string(mut conn, vweb.http_404.bytestr()) or {}
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
@@ -545,7 +546,7 @@ fn serve_if_static<T>(mut app T, url urllib.URL) bool {
 		return false
 	}
 	data := os.read_file(static_file) or {
-		send_string(mut app.conn, vweb.http_404) or {}
+		send_string(mut app.conn, vweb.http_404.bytestr()) or {}
 		return true
 	}
 	app.send_response_to_client(mime_type, data)

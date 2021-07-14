@@ -361,7 +361,7 @@ fn test_runes() {
 	assert s.len == 12
 	s2 := 'privet'
 	assert s2.len == 6
-	u := s.ustring()
+	u := s.runes()
 	assert u.len == 6
 	assert s2.substr(1, 4).len == 3
 	assert s2.substr(1, 4) == 'riv'
@@ -371,30 +371,16 @@ fn test_runes() {
 	assert s2[..4] == 'priv'
 	assert s2[2..].len == 4
 	assert s2[2..] == 'ivet'
-	assert u.substr(1, 4).len == 6
-	assert u.substr(1, 4) == 'рив'
+	assert u[1..4].string().len == 6
+	assert u[1..4].string() == 'рив'
 	assert s2.substr(1, 2) == 'r'
-	assert u.substr(1, 2) == 'р'
-	assert s2.ustring().at(1) == 'r'
-	assert u.at(1) == 'р'
-	first := u.at(0)
-	last := u.at(u.len - 1)
-	assert first.len == 2
-	assert last.len == 2
-}
-
-fn test_left_right() {
-	s := 'ALOHA'
-	assert s[..3] == 'ALO'
-	assert s[..0] == ''
-	assert s[..5] == s
-	assert s[3..] == 'HA'
-	// assert s.right(6) == ''
-	u := s.ustring()
-	assert u.left(3) == 'ALO'
-	assert u.left(0) == ''
-	assert u.right(3) == 'HA'
-	assert u.right(6) == ''
+	assert u[1..2].string() == 'р'
+	assert s2.runes()[1] == `r`
+	assert u[1] == `р`
+	first := u[0]
+	last := u[u.len - 1]
+	assert first.str().len == 2
+	assert last.str().len == 2
 }
 
 fn test_contains() {
@@ -672,42 +658,6 @@ fn test_quote() {
 	assert a.str() == "'"
 }
 
-fn test_ustring_comparisons() {
-	/*
-	QTODO
-	assert ('h€llô !'.ustring() == 'h€llô !'.ustring()) == true
-	assert ('h€llô !'.ustring() == 'h€llô'.ustring()) == false
-	assert ('h€llô !'.ustring() == 'h€llo !'.ustring()) == false
-
-	assert ('h€llô !'.ustring() != 'h€llô !'.ustring()) == false
-	assert ('h€llô !'.ustring() != 'h€llô'.ustring()) == true
-
-	assert ('h€llô'.ustring() < 'h€llô!'.ustring()) == true
-	assert ('h€llô'.ustring() < 'h€llo'.ustring()) == false
-	assert ('h€llo'.ustring() < 'h€llô'.ustring()) == true
-
-	assert ('h€llô'.ustring() <= 'h€llô!'.ustring()) == true
-	assert ('h€llô'.ustring() <= 'h€llô'.ustring()) == true
-	assert ('h€llô!'.ustring() <= 'h€llô'.ustring()) == false
-
-	assert ('h€llô!'.ustring() > 'h€llô'.ustring()) == true
-	assert ('h€llô'.ustring() > 'h€llô'.ustring()) == false
-
-	assert ('h€llô!'.ustring() >= 'h€llô'.ustring()) == true
-	assert ('h€llô'.ustring() >= 'h€llô'.ustring()) == true
-	assert ('h€llô'.ustring() >= 'h€llô!'.ustring()) == false
-	*/
-}
-
-fn test_ustring_count() {
-	a := 'h€llôﷰ h€llô ﷰ'.ustring()
-	assert (a.count('l'.ustring())) == 4
-	assert (a.count('€'.ustring())) == 2
-	assert (a.count('h€llô'.ustring())) == 2
-	assert (a.count('ﷰ'.ustring())) == 2
-	assert (a.count('a'.ustring())) == 0
-}
-
 fn test_limit() {
 	s := 'hello'
 	assert s.limit(2) == 'he'
@@ -949,4 +899,14 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	assert ccc == "Replacing 'abc' with 'xyz'"
 	cccq := 'Replacing "$cc" with "$tt"'
 	assert cccq == 'Replacing "abc" with "xyz"'
+}
+
+fn test_emoji_to_runes() {
+	x := '👋'
+	assert x.runes()[0] == `👋`
+}
+
+fn test_string_to_rune() {
+	x := 'Hello World 👋'
+	assert x.runes().len == 13
 }

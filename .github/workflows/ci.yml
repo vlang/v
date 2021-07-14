@@ -35,9 +35,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/repeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 201 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+        run: cmd/tools/repeat --max_time 201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1001 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 1201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
@@ -48,12 +48,12 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -112,13 +112,13 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y libgc-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -168,7 +168,7 @@ jobs:
           fetch-depth: 10
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
@@ -326,6 +326,15 @@ jobs:
           ../v -autofree .
           cd ..
 
+#      - name: Test c2v
+#        run: |
+#          git clone --depth 1 https://github.com/vlang/c2v
+#          cd c2v && ../v -o c2v .
+#          ../v .
+#          ../v run tests/run_tests.vsh
+#          ../v -experimental -w c2v_test.v
+#          cd ..
+
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -345,7 +354,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
@@ -442,10 +451,10 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          sudo apt-get install --quiet -y clang
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
@@ -691,7 +700,7 @@ jobs:
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
-        run : ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
 
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
@@ -730,7 +739,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
 
       - name: Make sure running TCC32 instead of TCC64
-        run : ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
 
       - name: Test v build-tools
         run: ./v -W build-tools
@@ -842,6 +851,13 @@ jobs:
         run: ./v test ~/.vmodules/nedpals/vex
 
   ## vpm modules
-      - name: Installing V modules
-        run: |
-          ./v install ui
+      - name: Install UI through VPM
+        run: ./v install ui
+
+  ## libsodium
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Installl the libsodium wrapper through VPM
+        run: ./v install libsodium
+      - name: Test libsodium
+        run: ./v test ~/.vmodules/libsodium

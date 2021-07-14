@@ -68,7 +68,7 @@ fn test_clone_cmp() {
 	}
 	output := input.clone()
 	assert output.get_size() == len
-	assert input.cmp(output) == true
+	assert input == output
 }
 
 fn test_slice_join() {
@@ -86,7 +86,7 @@ fn test_slice_join() {
 		chunk2 := input.slice(point, input.get_size())
 		// concatenate them back into one and compare to the original
 		output := bitfield.join(chunk1, chunk2)
-		if !input.cmp(output) {
+		if input != output {
 			result = 0
 		}
 	}

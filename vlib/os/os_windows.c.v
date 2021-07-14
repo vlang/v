@@ -4,13 +4,13 @@ import strings
 
 #flag windows -l advapi32
 #include <process.h>
+#include <sys/utime.h>
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
-// TCC gets builder error
-// fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
+fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
@@ -87,12 +87,69 @@ mut:
 	b_inherit_handle       bool
 }
 
+struct C._utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C._utime(&char, voidptr) int
+
 fn init_os_args_wide(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	for i in 0 .. argc {
 		args_ << unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
+}
+
+fn native_glob_pattern(pattern string, mut matches []string) ? {
+	$if debug {
+		// FindFirstFile() and FindNextFile() both have a globbing function.
+		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
+		eprintln('os.glob() does not have all the features on Windows as it has on Unix operating systems')
+	}
+	mut find_file_data := Win32finddata{}
+	wpattern := pattern.replace('/', '\\').to_wide()
+	h_find_files := C.FindFirstFile(wpattern, voidptr(&find_file_data))
+
+	defer {
+		C.FindClose(h_find_files)
+	}
+
+	if h_find_files == C.INVALID_HANDLE_VALUE {
+		return error('os.glob(): Could not get a file handle: ' +
+			get_error_msg(int(C.GetLastError())))
+	}
+
+	// save first finding
+	fname := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	if fname !in ['.', '..'] {
+		mut fp := fname.replace('\\', '/')
+		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
+			fp += '/'
+		}
+		matches << fp
+	}
+
+	// check and save next findings
+	for i := 0; C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0; i++ {
+		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		if filename in ['.', '..'] {
+			continue
+		}
+		mut fpath := filename.replace('\\', '/')
+		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
+			fpath += '/'
+		}
+		matches << fpath
+	}
+}
+
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C._utimbuf{actime, modtime}
+	if C._utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
 }
 
 pub fn ls(path string) ?[]string {
@@ -321,7 +378,7 @@ pub fn execute(cmd string) Result {
 
 pub fn symlink(origin string, target string) ?bool {
 	// this is a temporary fix for TCC32 due to runtime error
-	// TODO: patch TCC32
+	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
 	$if x64 || x32 {
 		mut flags := 0
 		if is_dir(origin) {
@@ -344,8 +401,6 @@ pub fn symlink(origin string, target string) ?bool {
 }
 
 pub fn link(origin string, target string) ?bool {
-	/*
-	// TODO: TCC gets builder error
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
@@ -353,12 +408,6 @@ pub fn link(origin string, target string) ?bool {
 	}
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
-	}
-	return true
-	*/
-	res := execute('fsutil hardlink create $target $origin')
-	if res.exit_code != 0 {
-		return error(res.output)
 	}
 	return true
 }
@@ -428,7 +477,7 @@ pub fn hostname() string {
 	size := u32(255)
 	res := C.GetComputerNameW(&hostname[0], &size)
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		return get_error_msg(int(C.GetLastError()))
 	}
 	return unsafe { string_from_wide(&hostname[0]) }
 }
@@ -438,7 +487,7 @@ pub fn loginname() string {
 	size := u32(255)
 	res := C.GetUserNameW(&loginname[0], &size)
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		return get_error_msg(int(C.GetLastError()))
 	}
 	return unsafe { string_from_wide(&loginname[0]) }
 }

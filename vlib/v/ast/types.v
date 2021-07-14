@@ -252,6 +252,12 @@ pub fn (t Type) derive(t_from Type) Type {
 	return (0xffff0000 & t_from) | u16(t)
 }
 
+// copy flags from `t_from` to `t` and return `t`
+[inline]
+pub fn (t Type) derive_add_muls(t_from Type) Type {
+	return Type((0xff000000 & t_from) | u16(t)).set_nr_muls(t.nr_muls() + t_from.nr_muls())
+}
+
 // return new type with TypeSymbol idx set to `idx`
 [inline]
 pub fn new_type(idx int) Type {
@@ -353,17 +359,16 @@ pub const (
 	bool_type_idx          = 16
 	none_type_idx          = 17
 	string_type_idx        = 18
-	ustring_type_idx       = 19
-	rune_type_idx          = 20
-	array_type_idx         = 21
-	map_type_idx           = 22
-	chan_type_idx          = 23
-	size_t_type_idx        = 24
-	any_type_idx           = 25
-	float_literal_type_idx = 26
-	int_literal_type_idx   = 27
-	thread_type_idx        = 28
-	error_type_idx         = 29
+	rune_type_idx          = 19
+	array_type_idx         = 20
+	map_type_idx           = 21
+	chan_type_idx          = 22
+	size_t_type_idx        = 23
+	any_type_idx           = 24
+	float_literal_type_idx = 25
+	int_literal_type_idx   = 26
+	thread_type_idx        = 27
+	error_type_idx         = 28
 )
 
 pub const (
@@ -376,7 +381,7 @@ pub const (
 		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx,
 		int_literal_type_idx, float_literal_type_idx, rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
-	string_type_idxs           = [string_type_idx, ustring_type_idx]
+	string_type_idxs           = [string_type_idx]
 )
 
 pub const (
@@ -399,7 +404,6 @@ pub const (
 	bool_type          = new_type(bool_type_idx)
 	none_type          = new_type(none_type_idx)
 	string_type        = new_type(string_type_idx)
-	ustring_type       = new_type(ustring_type_idx)
 	rune_type          = new_type(rune_type_idx)
 	array_type         = new_type(array_type_idx)
 	map_type           = new_type(map_type_idx)
@@ -411,16 +415,23 @@ pub const (
 	error_type         = new_type(error_type_idx)
 	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
 	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
-	cptr_or_bptr_types = [charptr_type, byteptr_type, new_type(char_type_idx).set_nr_muls(1),
-		new_type(byte_type_idx).set_nr_muls(1),
-	]
+	voidptr_types      = [voidptr_type, new_type(voidptr_type_idx).set_nr_muls(1)]
+	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 )
+
+pub fn merge_types(params ...[]Type) []Type {
+	mut res := []Type{}
+	for types in params {
+		res << types
+	}
+	return res
+}
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
-		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char',
-		'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode',
-		'size_t', 'rune', 'thread', 'Error']
+		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'char', 'byte', 'bool',
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
+		'thread', 'Error']
 )
 
 pub struct MultiReturn {
@@ -465,7 +476,6 @@ pub enum Kind {
 	bool
 	none_
 	string
-	ustring
 	array
 	array_fixed
 	map
@@ -597,7 +607,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
 	t.register_type_symbol(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
 	t.register_type_symbol(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
-	t.register_type_symbol(kind: .ustring, name: 'ustring', cname: 'ustring', mod: 'builtin')
 	t.register_type_symbol(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
 	t.register_type_symbol(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
 	t.register_type_symbol(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
@@ -649,7 +658,7 @@ pub fn (t &TypeSymbol) is_float() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_string() bool {
-	return t.kind in [.string, .ustring]
+	return t.kind == .string
 }
 
 [inline]
@@ -704,7 +713,6 @@ pub fn (k Kind) str() string {
 		.any { 'any' }
 		.function { 'function' }
 		.interface_ { 'interface' }
-		.ustring { 'ustring' }
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
@@ -857,6 +865,15 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
+	// Note, that the duplication of code in some of the match branches here
+	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
+	// that strongly reduces the usefullness of the exhaustive checking that
+	// match does.
+	//    Using else{} here led to subtle bugs in vfmt discovered *months*
+	// after the original code was written.
+	//    It is important that each case here is handled *explicitly* and
+	// *clearly*, and that when a new kind is added, it should also be handled
+	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {
 			res = sym.name
@@ -981,7 +998,13 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			return 'void'
 		}
-		else {
+		.thread {
+			rtype := sym.thread_info().return_type
+			if rtype != 1 {
+				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
+			}
+		}
+		.alias, .any, .sum_type, .interface_, .size_t, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}

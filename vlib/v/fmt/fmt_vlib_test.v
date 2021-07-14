@@ -8,7 +8,7 @@ import v.ast
 import v.fmt
 import v.parser
 import v.pref
-import v.util
+import v.util.diff
 
 const (
 	error_missing_vexe = 1
@@ -31,7 +31,7 @@ fn test_vlib_fmt() {
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or { '' }
+	diff_cmd := diff.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	os.chdir(vroot)
 	input_files := os.walk_ext('vlib/v/', '.v').filter(!it.contains('/tests/'))
@@ -60,7 +60,7 @@ fn test_vlib_fmt() {
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
