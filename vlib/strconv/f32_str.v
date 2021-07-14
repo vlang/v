@@ -68,7 +68,12 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	mut i := 0
 
 	if neg {
-		buf[i] = `-`
+		if buf.data != 0 {
+			// The buf.data != 0 check here, is needed for clean compilation
+			// with `-cc gcc -cstrict -prod`. Without it, gcc produces:
+			// error: potential null pointer dereference
+			buf[i] = `-`
+		}
 		i++
 	}
 
