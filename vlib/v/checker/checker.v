@@ -2932,13 +2932,92 @@ fn semicolonize(main string, details string) string {
 	return '$main; $details'
 }
 
+fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Position) ast.Type {
+	utyp := c.unwrap_generic(typ)
+	typ_sym := c.table.get_type_symbol(utyp)
+	mut inter_sym := c.table.get_type_symbol(interface_type)
+	if mut inter_sym.info is ast.Interface {
+		if inter_sym.info.is_generic {
+			mut inferred_types := []ast.Type{}
+			for ifield in inter_sym.info.fields {
+				if ifield.typ.has_flag(.generic) {
+					if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
+						if field.typ !in inferred_types {
+							inferred_types << field.typ
+						}
+					}
+				}
+			}
+			for imethod in inter_sym.info.methods {
+				method := typ_sym.find_method(imethod.name) or {
+					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
+				}
+				if imethod.return_type.has_flag(.generic) {
+					if method.return_type !in inferred_types {
+						inferred_types << method.return_type
+					}
+				}
+				for i, iparam in imethod.params {
+					param := method.params[i] or { ast.Param{} }
+					if iparam.typ.has_flag(.generic) {
+						if param.typ !in inferred_types {
+							inferred_types << param.typ
+						}
+					}
+				}
+				if inferred_types !in c.table.fn_generic_types[imethod.name] {
+					c.table.fn_generic_types[imethod.name] << inferred_types
+				}
+			}
+			if inferred_types.len == 0 {
+				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}',
+					pos)
+				return ast.void_type
+			}
+			if inferred_types.len > 1 {
+				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}: got conflicting type information',
+					pos)
+				return ast.void_type
+			}
+			inferred_type := inferred_types[0]
+			if inferred_type !in inter_sym.info.concrete_types {
+				inter_sym.info.concrete_types << inferred_type
+			}
+			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			return c.unwrap_generic_type(interface_type, generic_names, inter_sym.info.concrete_types)
+		}
+	}
+	return interface_type
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
 	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: $typ.debug() | inter_typ: $interface_type.debug()')
+		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
 	}
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
+	if mut inter_sym.info is ast.Interface {
+		mut generic_type := interface_type
+		mut generic_info := inter_sym.info
+		if inter_sym.info.parent_type.has_flag(.generic) {
+			parent_sym := c.table.get_type_symbol(inter_sym.info.parent_type)
+			if parent_sym.info is ast.Interface {
+				generic_type = inter_sym.info.parent_type
+				generic_info = parent_sym.info
+			}
+		}
+		mut inferred_type := interface_type
+		if generic_info.is_generic {
+			inferred_type = c.resolve_generic_interface(typ, generic_type, pos)
+			if inferred_type == 0 {
+				return false
+			}
+		}
+		if inter_sym.info.is_generic {
+			return c.type_implements(typ, inferred_type, pos)
+		}
+	}
 	// do not check the same type more than once
 	if mut inter_sym.info is ast.Interface {
 		for t in inter_sym.info.types {
@@ -2965,9 +3044,17 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	} else {
 		inter_sym.methods
 	}
-	// Verify methods
-	for imethod in imethods {
-		if method := typ_sym.find_method(imethod.name) {
+	// voidptr is an escape hatch, it should be allowed to be passed
+	if utyp != ast.voidptr_type {
+		// Verify methods
+		for imethod in imethods {
+			method := typ_sym.find_method(imethod.name) or {
+				typ_sym.find_method_with_generic_parent(imethod.name) or {
+					c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
+						pos)
+					continue
+				}
+			}
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
 				sig := c.table.fn_signature(imethod, skip_receiver: true)
@@ -2976,12 +3063,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 				return false
 			}
-			continue
-		}
-		// voidptr is an escape hatch, it should be allowed to be passed
-		if utyp != ast.voidptr_type {
-			c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
-				pos)
 		}
 	}
 	// Verify fields
