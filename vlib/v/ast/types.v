@@ -974,17 +974,21 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			res += ')'
 		}
-		.struct_ {
+		.struct_, .interface_, .sum_type {
 			if typ.has_flag(.generic) {
-				info := sym.info as Struct
-				res += '<'
-				for i, gtyp in info.generic_types {
-					res += t.get_type_symbol(gtyp).name
-					if i != info.generic_types.len - 1 {
-						res += ', '
+				match sym.info {
+					Struct, Interface, SumType {
+						res += '<'
+						for i, gtyp in sym.info.generic_types {
+							res += t.get_type_symbol(gtyp).name
+							if i != sym.info.generic_types.len - 1 {
+								res += ', '
+							}
+						}
+						res += '>'
 					}
+					else {}
 				}
-				res += '>'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
@@ -1014,7 +1018,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
 			}
 		}
-		.alias, .any, .sum_type, .interface_, .size_t, .aggregate, .placeholder, .enum_ {
+		.alias, .any, .size_t, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
