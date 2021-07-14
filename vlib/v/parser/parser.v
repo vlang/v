@@ -3077,6 +3077,18 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
+	mut generic_types := []ast.Type{}
+	if p.tok.kind == .lt {
+		p.next()
+		for {
+			generic_types << p.parse_type()
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+		p.check(.gt)
+	}
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3132,6 +3144,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			mod: p.mod
 			info: ast.SumType{
 				variants: variant_types
+				is_generic: generic_types.len > 0
+				generic_types: generic_types
 			}
 			is_public: is_pub
 		})
@@ -3141,6 +3155,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
+			generic_types: generic_types
 			pos: decl_pos
 			comments: comments
 		}
