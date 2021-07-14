@@ -751,13 +751,28 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
+	mut idname := ''
 	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
 		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		if !is_range_slice {
-			g.write('&')
+			if node.left is ast.Ident {
+				if node.left.obj is ast.Var {
+					if node.from_embed_type == 0
+						&& (node.left.obj.is_auto_deref || node.left.obj.is_auto_heap) {
+						// optimize &(*(x)) -> x
+						idname = node.left.obj.name
+					} else {
+						g.write('&')
+					}
+				} else {
+					g.write('&')
+				}
+			} else {
+				g.write('&')
+			}
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
@@ -785,7 +800,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		g.expr(node.left)
+		if idname != '' {
+			g.write(idname)
+		} else {
+			g.expr(node.left)
+		}
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
 			if node.left_type.is_ptr() {
@@ -1255,12 +1274,17 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut is_non_ptr_index_expr := false
 	mut is_auto_deref := false
 	mut is_heap := false
+	mut name := ''
 	match arg.expr {
 		ast.Ident {
 			obj := arg.expr.obj
 			if obj is ast.Var {
 				is_auto_deref = obj.is_auto_deref
 				is_heap = obj.is_auto_heap
+				if is_auto_deref {
+					// to optimize &(*(x)) -> x
+					name = obj.name
+				}
 			}
 		}
 		ast.SelectorExpr {
@@ -1338,7 +1362,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	} else if
 		(arg_is_ptr && !arg.is_mut && !expr_is_ptr && arg_sym.kind != .function && !g.is_json_fn)
 		|| (arg_is_ptr && expr_is_ptr && arg.is_mut && !expected_type.has_flag(.shared_f)) {
-		g.write('/*auto ptr*/&')
+		if name != '' {
+			g.write(name)
+			return
+		} else {
+			g.write('/*auto ptr*/&')
+		}
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
 			g.write('&')
