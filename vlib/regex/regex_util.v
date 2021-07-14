@@ -181,15 +181,15 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 		mut s := -1
 		mut e := -1
 		unsafe {
-			//tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			//println("Check: [$tmp_str]")
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
-		
+
 			if s >= 0 && e > s {
 				// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
 				// re.flag = old_flag
 				return i + s, i + e
-			} 
+			}
 			i++
 		}
 	}
@@ -235,8 +235,8 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 // find_all find all the non overlapping occurrences of the match pattern
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
-	//old_flag := re.flag
-	//re.flag |= f_src // enable search mode
+	// old_flag := re.flag
+	// re.flag |= f_src // enable search mode
 
 	mut i := 0
 	mut res := []int{}
@@ -245,9 +245,9 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 		mut s := -1
 		mut e := -1
 		unsafe {
-			//tmp_str := in_txt[i..]
-			//tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			//println("Check: [$tmp_str]")
+			// tmp_str := in_txt[i..]
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 		}
 		if s >= 0 && e > s {
@@ -258,15 +258,15 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 		}
 		i++
 	}
-	//re.flag = old_flag
+	// re.flag = old_flag
 	return res
 }
 
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list
 [direct_array_access]
 pub fn (mut re RE) find_all_str(in_txt string) []string {
-	//old_flag := re.flag
-	//re.flag |= f_src // enable search mode
+	// old_flag := re.flag
+	// re.flag |= f_src // enable search mode
 
 	mut i := 0
 	mut res := []string{}
@@ -275,21 +275,21 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 		mut s := -1
 		mut e := -1
 		unsafe {
-			//tmp_str := in_txt[i..]
-			//tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			//println("Check: [$tmp_str]")
+			// tmp_str := in_txt[i..]
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 		}
 		if s >= 0 && e > s {
 			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			//println("Found: $s:$e [${tmp_str[s..e]}]")
+			// println("Found: $s:$e [${tmp_str[s..e]}]")
 			res << tmp_str[..e]
 			i += e
 			continue
 		}
 		i++
 	}
-	//re.flag = old_flag
+	// re.flag = old_flag
 	return res
 }
 
