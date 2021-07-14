@@ -800,10 +800,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if idname != '' {
-			g.write(idname)
-		} else {
+		if node.left is ast.MapInit {
+			g.write('(map[]){')
 			g.expr(node.left)
+			g.write('}[0]')
+		} else {
+			if idname != '' {
+				g.write(idname)
+			} else {
+				g.expr(node.left)
+			}
 		}
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
