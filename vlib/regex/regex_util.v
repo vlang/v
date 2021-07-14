@@ -276,28 +276,24 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 pub fn (mut re RE) find_all_str(in_txt string) []string {
 	mut i := 0
 	mut res := []string{}
-	mut ls := -1
 
 	for i < in_txt.len {
-		//--- speed references ---
 		mut s := -1
 		mut e := -1
 		unsafe {
-			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			s, e = re.find(tmp_str)
+			//tmp_str := in_txt[i..]
+			//tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			//println("Check: [$tmp_str]")
+			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			if s >= 0 && e > s {
+				tmp_str := tos(in_txt.str + i, in_txt.len - i)
+				//println("Found: $s:$e [${tmp_str[s..e]}]")
+				res << tmp_str[..e]
+				i += e
+				continue
+			}
 		}
-		//------------------------
-		// s,e := re.find(in_txt[i..])
-		//------------------------
-		if s >= 0 && e > s && i + s > ls {
-			// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			res << in_txt[i + s..i + e]
-			ls = i + s
-			i = i + e
-			continue
-		} else {
-			i++
-		}
+		i++
 	}
 	return res
 }
