@@ -636,12 +636,19 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	}
 }
 
-fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
-	ts := c.table.get_type_symbol(struct_type)
-	if ts.info is ast.Struct {
-		if ts.info.is_generic {
-			mut nrt := '$ts.name<'
-			mut c_nrt := '${ts.cname}_T_'
+fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
+	mut final_concrete_types := []ast.Type{}
+	mut fields := []ast.StructField{}
+	mut nrt := ''
+	mut c_nrt := ''
+	ts := c.table.get_type_symbol(typ)
+	match mut ts.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if !ts.info.is_generic {
+				return typ
+			}
+			nrt = '$ts.name<'
+			c_nrt = '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
 				if ct := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
 					generic_names, concrete_types)
@@ -658,15 +665,15 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 			nrt += '>'
 			idx := c.table.type_idxs[nrt]
 			if idx != 0 && c.table.type_symbols[idx].kind != .placeholder {
-				return ast.new_type(idx).derive(struct_type).clear_flag(.generic)
+				return ast.new_type(idx).derive(typ).clear_flag(.generic)
 			} else {
 				// fields type translate to concrete type
-				mut fields := ts.info.fields.clone()
+				fields = ts.info.fields.clone()
 				for i in 0 .. fields.len {
 					if fields[i].typ.has_flag(.generic) {
 						sym := c.table.get_type_symbol(fields[i].typ)
-						if sym.kind == .struct_ && fields[i].typ.idx() != struct_type.idx() {
-							fields[i].typ = c.unwrap_generic_struct(fields[i].typ, generic_names,
+						if sym.kind == .struct_ && fields[i].typ.idx() != typ.idx() {
+							fields[i].typ = c.unwrap_generic_type(fields[i].typ, generic_names,
 								concrete_types)
 						} else {
 							if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
@@ -678,31 +685,80 @@ fn (mut c Checker) unwrap_generic_struct(struct_type ast.Type, generic_names []s
 					}
 				}
 				// update concrete types
-				mut info_concrete_types := []ast.Type{}
 				for i in 0 .. ts.info.generic_types.len {
 					if t_typ := c.table.resolve_generic_to_concrete(ts.info.generic_types[i],
 						generic_names, concrete_types)
 					{
-						info_concrete_types << t_typ
+						final_concrete_types << t_typ
 					}
 				}
-				mut info := ts.info
-				info.is_generic = false
-				info.concrete_types = info_concrete_types
-				info.parent_type = struct_type
-				info.fields = fields
-				stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
-					kind: .struct_
-					name: nrt
-					cname: util.no_dots(c_nrt)
-					mod: c.mod
-					info: info
-				})
-				return ast.new_type(stru_idx).derive(struct_type).clear_flag(.generic)
 			}
 		}
+		else {}
 	}
-	return struct_type
+	match mut ts.info {
+		ast.Struct {
+			mut info := ts.info
+			info.is_generic = false
+			info.concrete_types = final_concrete_types
+			info.parent_type = typ
+			info.fields = fields
+			new_idx := c.table.register_type_symbol(
+				kind: .struct_
+				name: nrt
+				cname: util.no_dots(c_nrt)
+				mod: c.mod
+				info: info
+			)
+			return ast.new_type(new_idx).derive(typ).clear_flag(.generic)
+		}
+		ast.Interface {
+			// resolve generic types inside methods
+			mut imethods := ts.info.methods.clone()
+			for mut method in imethods {
+				if t := c.table.resolve_generic_to_concrete(method.return_type, generic_names,
+					concrete_types)
+				{
+					method.return_type = t
+				}
+				for mut param in method.params {
+					if t := c.table.resolve_generic_to_concrete(param.typ, generic_names,
+						concrete_types)
+					{
+						param.typ = t
+					}
+				}
+			}
+			mut all_methods := ts.methods
+			for imethod in imethods {
+				for mut method in all_methods {
+					if imethod.name == method.name {
+						method = imethod
+					}
+				}
+			}
+			mut info := ts.info
+			info.is_generic = false
+			info.concrete_types = final_concrete_types
+			info.parent_type = typ
+			info.fields = fields
+			info.methods = imethods
+			new_idx := c.table.register_type_symbol(
+				kind: .interface_
+				name: nrt
+				cname: util.no_dots(c_nrt)
+				mod: c.mod
+				info: info
+			)
+			mut ts_copy := c.table.get_type_symbol(new_idx)
+			for method in all_methods {
+				ts_copy.register_method(method)
+			}
+			return ast.new_type(new_idx).derive(typ).clear_flag(.generic)
+		}
+		else {}
+	}
+	return typ
 }
 
 // generic struct instantiations to concrete types
@@ -725,7 +781,7 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 							if fields[i].typ.has_flag(.generic) {
 								sym := c.table.get_type_symbol(fields[i].typ)
 								if sym.kind == .struct_ && fields[i].typ.idx() != info.parent_idx {
-									fields[i].typ = c.unwrap_generic_struct(fields[i].typ,
+									fields[i].typ = c.unwrap_generic_type(fields[i].typ,
 										generic_names, info.concrete_types)
 								} else {
 									if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
@@ -872,7 +928,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			return ast.void_type
 		}
 	}
-	unwrapped_struct_type := c.unwrap_generic_struct(node.typ, c.table.cur_fn.generic_names,
+	unwrapped_struct_type := c.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
 		c.table.cur_concrete_types)
 	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
 	type_sym := c.table.get_type_symbol(unwrapped_struct_type)
@@ -2212,7 +2268,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			call_expr.return_type = c.unwrap_generic_struct(method.return_type, method.generic_names,
+			call_expr.return_type = c.unwrap_generic_type(method.return_type, method.generic_names,
 				concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
@@ -2814,7 +2870,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		call_expr.return_type = c.unwrap_generic_struct(func.return_type, func.generic_names,
+		call_expr.return_type = c.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
