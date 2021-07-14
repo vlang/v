@@ -20,7 +20,7 @@ pub fn (mut r Response) write_string(s string) {
 [inline]
 pub fn (mut r Response) http_ok() &Response {
 	r.write_string('HTTP/1.1 200 OK\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
@@ -29,7 +29,7 @@ pub fn (mut r Response) header(k string, v string) &Response {
 	r.write_string(': ')
 	r.write_string(v)
 	r.write_string('\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
@@ -39,13 +39,13 @@ pub fn (mut r Response) header_date() &Response {
 		r.buf += cpy(r.buf, r.date, 29)
 	}
 	r.write_string('\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
 pub fn (mut r Response) header_server() &Response {
 	r.write_string('Server: V\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
@@ -53,25 +53,25 @@ pub fn (mut r Response) content_type(s string) &Response {
 	r.write_string('Content-Type: ')
 	r.write_string(s)
 	r.write_string('\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
 pub fn (mut r Response) html() &Response {
 	r.write_string('Content-Type: text/html\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
 pub fn (mut r Response) plain() &Response {
 	r.write_string('Content-Type: text/plain\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]
 pub fn (mut r Response) json() &Response {
 	r.write_string('Content-Type: application/json\r\n')
-	return unsafe { r }
+	return unsafe { &r }
 }
 
 [inline]

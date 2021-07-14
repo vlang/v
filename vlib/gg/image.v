@@ -182,7 +182,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true
 	img.ok = true
-	return img
+	return &img
 }
 
 // new_streaming_image returns a cached `image_idx` of a special image, that

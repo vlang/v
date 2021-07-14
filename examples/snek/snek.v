@@ -41,7 +41,7 @@ type HighScore = int
 
 fn (mut h HighScore) save() {
 	os.mkdir_all(os.dir(high_score_file_path)) or { return }
-	os.write_file(high_score_file_path, (*h).str()) or { return }
+	os.write_file(high_score_file_path, h.str()) or { return }
 }
 
 fn (mut h HighScore) load() {
