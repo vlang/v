@@ -1610,12 +1610,6 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 		PrefixExpr {
 			return (expr.op == .amp || expr.op == .mul) && expr.right.is_auto_deref_var()
 		}
-		SelectorExpr {
-			return expr.expr.is_auto_deref_var()
-		}
-		IndexExpr {
-			return expr.left.is_auto_deref_var()
-		}
 		else {}
 	}
 	return false

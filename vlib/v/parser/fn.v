@@ -329,8 +329,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_deref: param.is_mut && !param.typ.has_flag(.shared_f)
-					&& !param.typ.is_ptr() //|| param.is_auto_rec
+				is_auto_deref: param.is_mut && !param.typ.has_flag(.shared_f) //|| param.is_auto_rec
 				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true
@@ -651,7 +650,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
-			is_auto_deref: arg.is_mut && !arg.typ.has_flag(.shared_f) && !arg.typ.is_ptr()
+			is_auto_deref: arg.is_mut && !arg.typ.has_flag(.shared_f)
 			pos: arg.pos
 			is_used: true
 			is_arg: true

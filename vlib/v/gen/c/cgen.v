@@ -5957,7 +5957,11 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	if name !in g.threaded_fns {
 		g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 		if expr.is_method {
-			styp := g.typ(expr.receiver_type)
+			mut rec_typ := expr.receiver_type
+			if rec_typ.has_flag(.shared_f) {
+				rec_typ = rec_typ.set_nr_muls(1)
+			}
+			styp := g.typ(rec_typ)
 			g.type_definitions.writeln('\t$styp arg0;')
 		}
 		need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != ast.void_type
