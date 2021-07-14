@@ -249,12 +249,13 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [$tmp_str]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
-		}
-		if s >= 0 && e > s {
-			res << i + s
-			res << i + e
-			i += e
-			continue
+
+			if s >= 0 && e > s {
+				res << i + s
+				res << i + e
+				i += e
+				continue
+			}
 		}
 		i++
 	}
@@ -279,13 +280,14 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [$tmp_str]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
-		}
-		if s >= 0 && e > s {
-			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			// println("Found: $s:$e [${tmp_str[s..e]}]")
-			res << tmp_str[..e]
-			i += e
-			continue
+
+			if s >= 0 && e > s {
+				tmp_str := tos(in_txt.str + i, in_txt.len - i)
+				// println("Found: $s:$e [${tmp_str[s..e]}]")
+				res << tmp_str[..e]
+				i += e
+				continue
+			}
 		}
 		i++
 	}
