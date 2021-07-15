@@ -3781,7 +3781,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							right.expr.pos)
 						right.expr.ref_compat = true
 						right_type = right_type.to_ptr()
-						left_type = left_type.to_ptr()
+						if is_decl {
+							left_type = left_type.to_ptr()
+						}
 					}
 				}
 			}
