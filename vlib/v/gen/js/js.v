@@ -1855,7 +1855,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		 if call.language == .js {
+		if call.language == .js {
 			for t in call.args {
 				if t.expr is ast.IntegerLiteral {
 					if t.expr == it {
