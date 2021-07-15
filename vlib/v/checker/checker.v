@@ -2161,14 +2161,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position()) {
-					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
-						got_arg_typ_sym := c.table.get_type_symbol(got_arg_typ)
-						if got_arg_typ_sym.kind != .interface_ {
-							c.mark_as_referenced(mut &arg.expr, true)
-						}
-					}
-				}
+				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
 			if exp_arg_typ.has_flag(.generic) {
@@ -2788,12 +2781,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
-					&& typ_sym.kind != .interface_ {
-					c.mark_as_referenced(mut &call_arg.expr, true)
-				}
-			}
+			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
 		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), call_expr.language) or {
@@ -6241,11 +6229,17 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 		}
 		ast.Ident {
 			mut is_mut := false
+			mut is_auto_deref := false
+			mut is_auto_heap := false
+			mut is_stack_obj := false
 			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
 			mut orig_type := 0
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
+				is_auto_deref = expr.obj.is_auto_deref
+				is_auto_heap = expr.obj.is_auto_heap
+				is_stack_obj = expr.obj.is_stack_obj
 				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
@@ -6261,6 +6255,9 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
+					is_auto_deref: is_auto_deref
+					is_auto_heap: is_auto_heap
+					is_stack_obj: is_stack_obj
 					smartcasts: smartcasts
 					orig_type: orig_type
 				})
@@ -6890,8 +6887,13 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 						} else {
 							'referenced'
 						}
-						c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-							node.pos)
+						msg := '`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.'
+						if as_interface {
+							c.note(msg, 
+								node.pos)
+						} else {
+							c.error(msg, node.pos)
+						}
 					}
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
