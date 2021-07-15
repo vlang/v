@@ -22,6 +22,8 @@ fn C.cJSON_CreateBool(bool) &C.cJSON
 
 fn C.cJSON_CreateString(&char) &C.cJSON
 
+fn C.cJSON_CreateRaw(&char) &C.cJSON
+
 fn C.cJSON_Parse(&char) &C.cJSON
 
 fn C.cJSON_PrintUnformatted(&C.cJSON) &char
@@ -179,6 +181,10 @@ fn encode_bool(val bool) &C.cJSON {
 
 fn encode_string(val string) &C.cJSON {
 	return C.cJSON_CreateString(&char(val.str))
+}
+
+fn encode_raw(val string) &C.cJSON {
+	return C.cJSON_CreateRaw(&char(val.str))
 }
 
 // ///////////////////////

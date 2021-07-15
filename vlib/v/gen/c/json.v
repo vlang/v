@@ -183,6 +183,9 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				// it has to be encoded as a unix timestamp number
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}.v_unix));')
 			} else {
+				if field.attrs.contains('raw') {
+					enc_name = js_enc_name('raw')
+				}
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));\n')
 			}
 		}
