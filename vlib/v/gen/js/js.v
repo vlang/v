@@ -1588,7 +1588,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.left)
 		g.write('.arr,')
 		// arr << [1, 2]
-		
+		if r_sym.kind == .array {
+			g.write('...')
+		}
 		g.expr(it.right)
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
