@@ -5904,7 +5904,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	}
 	for i, arg in expr.args {
 		g.write('$arg_tmp_var->arg${i + 1} = ')
-		if arg.is_mut && !expr.expected_arg_types[i].has_flag(.shared_f) && !arg.typ.is_ptr() {
+		if (arg.is_mut || expr.expected_arg_types[i].is_ptr())
+			&& !expr.expected_arg_types[i].has_flag(.shared_f) && !arg.typ.is_ptr() {
 			g.write('&')
 		}
 		g.expr(arg.expr)
@@ -6003,7 +6004,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			for i, arg in expr.args {
 				mut styp := g.typ(arg.typ)
-				if arg.is_mut && !arg.typ.has_flag(.shared_f) && !arg.typ.is_ptr() {
+				if (arg.is_mut || expr.expected_arg_types[i].is_ptr())
+					&& !expr.expected_arg_types[i].has_flag(.shared_f) && !arg.typ.is_ptr() {
 					styp += '*'
 				}
 				g.type_definitions.writeln('\t$styp arg${i + 1};')
