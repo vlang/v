@@ -1060,7 +1060,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = 'string $t = '
 		}
 		// g.expr(arg.expr)
-		s += g.write_expr_to_string(arg.expr)
+		s += g.expr_string(arg.expr)
 		// g.writeln(';// new af pre')
 		s += ';// new af2 pre'
 		g.strs_to_free0 << s
