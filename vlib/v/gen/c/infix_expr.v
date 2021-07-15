@@ -345,7 +345,11 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		}
 		g.write(', ')
 		if !right.typ.is_ptr() {
-			g.write('ADDR(map, ')
+			if node.right.is_auto_deref_var() {
+				g.write('&(')
+			} else {
+				g.write('ADDR(map, ')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else {

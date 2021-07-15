@@ -4219,6 +4219,9 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
+	if node.ref_compat {
+		g.write('&')
+	}
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name == 'lld' {

@@ -638,13 +638,14 @@ pub:
 	mut_pos  token.Position
 	comptime bool
 pub mut:
-	scope  &Scope
-	obj    ScopeObject
-	mod    string
-	name   string
-	kind   IdentKind
-	info   IdentInfo
-	is_mut bool
+	scope      &Scope
+	obj        ScopeObject
+	mod        string
+	name       string
+	kind       IdentKind
+	info       IdentInfo
+	is_mut     bool
+	ref_compat bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -742,8 +743,9 @@ pub mut:
 
 pub struct UnsafeExpr {
 pub:
+	pos token.Position
+pub mut:
 	expr Expr
-	pos  token.Position
 }
 
 pub struct LockExpr {

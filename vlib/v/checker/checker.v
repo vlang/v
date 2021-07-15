@@ -3773,6 +3773,19 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
+		if mut right is ast.UnsafeExpr {
+			if mut right.expr is ast.Ident {
+				if mut right.expr.obj is ast.Var {
+					if right.expr.obj.is_auto_deref || right.expr.obj.is_auto_heap {
+						c.note('`mut` function arg inside `usafe` - assuming referencing for compatibility. You should explict write `&$right.expr.name` or remove the `unsafe` block',
+							right.expr.pos)
+						right.expr.ref_compat = true
+						right_type = right_type.to_ptr()
+						left_type = left_type.to_ptr()
+					}
+				}
+			}
+		}
 		node.left_types << left_type
 		match mut left {
 			ast.Ident {
