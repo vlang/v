@@ -1856,11 +1856,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 10. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
-	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		p.tok.lit[0].is_capital()
-	} else {
-		false
-	}
+	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if lit0_is_capital || p.peek_tok.kind != .lt {
 		return false
 	}
@@ -1898,6 +1894,45 @@ fn (p &Parser) is_generic_call() bool {
 			else { false }
 		}
 	}
+	return false
+}
+
+const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
+
+fn (mut p Parser) is_generic_cast() bool {
+	if !p.tok.can_start_type(ast.builtin_type_names) {
+		return false
+	}
+	mut i := 0
+	mut level := 0
+	mut lt_count := 0
+	for {
+		i++
+		tok := p.peek_token(i)
+
+		if tok.kind == .lt {
+			lt_count++
+			level++
+		} else if tok.kind == .gt {
+			level--
+		}
+		if lt_count > 0 && level == 0 {
+			break
+		}
+
+		if i > 20 || tok.kind !in parser.valid_tokens_inside_types {
+			return false
+		}
+	}
+	next_tok := p.peek_token(i + 1)
+	// `next_tok` is the token following the closing `>` of the generic type: MyType<int>{
+	//                                                                                   ^
+	// if `next_tok` is a left paren, then the full expression looks something like
+	// `Foo<string>(` or `Foo<mod.Type>(`, which are valid type casts - return true
+	if next_tok.kind == .lpar {
+		return true
+	}
+	// any other token is not a valid generic cast, however
 	return false
 }
 
@@ -2041,6 +2076,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		false
 	}
 	is_optional := p.tok.kind == .question
+	is_generic_call := p.is_generic_call()
+	is_generic_cast := p.is_generic_cast()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2053,8 +2090,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				p.defer_vars << ident
 			}
 		}
-	} else if p.peek_tok.kind == .lpar
-		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
+	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
+		|| (is_optional && p.peek_token(2).kind == .lpar) {
 		// foo(), foo<int>() or type() cast
 		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
@@ -2064,7 +2101,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
-			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast
+			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
 			|| (language == .v && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
@@ -3077,6 +3114,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
+	generic_types := p.parse_generic_type_list()
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3132,6 +3170,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			mod: p.mod
 			info: ast.SumType{
 				variants: variant_types
+				is_generic: generic_types.len > 0
+				generic_types: generic_types
 			}
 			is_public: is_pub
 		})
@@ -3141,6 +3181,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
+			generic_types: generic_types
 			pos: decl_pos
 			comments: comments
 		}
