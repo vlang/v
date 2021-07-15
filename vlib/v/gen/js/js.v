@@ -1277,6 +1277,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
 	g.write('new array(')
+	g.inc_indent()
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1304,6 +1305,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {
 		g.gen_array_init_values(it.exprs)
 	}
+	g.dec_indent()
 	g.write(')')
 }
 
@@ -1687,6 +1689,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// key_typ_str := util.no_dots(key_typ_sym.name)
 	// value_typ_str := util.no_dots(value_typ_sym.name)
 	g.writeln('new map(')
+	g.inc_indent()
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()
@@ -1707,6 +1710,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	} else {
 		g.write('new Map()')
 	}
+	g.dec_indent()
 	g.write(')')
 }
 
