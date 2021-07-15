@@ -124,6 +124,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return this.map.length;}, set: function(l) { this.map.length = l; } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
 			g.generated_builtin = true
 		}
 
@@ -1005,6 +1008,13 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write('${it.params[0].name} = this')
 	}
 	g.writeln(') {')
+	for i, arg in args {
+		is_varg := i == args.len - 1 && it.is_variadic
+		if is_varg {
+			name := g.js_name(arg.name)
+			g.writeln('$name = new array($name);')
+		}
+	}
 	g.stmts(it.stmts)
 	g.write('}')
 	if is_main {
@@ -1273,6 +1283,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
+	g.write('new array(')
+	g.inc_indent()
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1300,6 +1312,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {
 		g.gen_array_init_values(it.exprs)
 	}
+	g.dec_indent()
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
@@ -1512,9 +1526,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.expr(expr.left)
 		if expr.is_setter {
 			g.inside_map_set = true
-			g.write('.set(')
+			g.write('.map.set(')
 		} else {
-			g.write('.get(')
+			g.write('.map.get(')
 		}
 		g.expr(expr.index)
 		g.write('.toString()')
@@ -1534,6 +1548,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
+		g.write('.arr')
 		g.write('[')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
@@ -1568,8 +1583,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
+		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
-		g.write('.push(')
+		g.write('.arr,')
 		// arr << [1, 2]
 		if r_sym.kind == .array {
 			g.write('...')
@@ -1579,11 +1595,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
 		if r_sym.kind == .map {
-			g.write('.has(')
+			g.write('.map.has(')
 		} else if r_sym.kind == .string {
 			g.write('.str.includes(')
 		} else {
-			g.write('.includes(')
+			g.write('.arr.includes(')
 		}
 		g.expr(it.left)
 		if l_sym.kind == .string {
@@ -1680,6 +1696,8 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
 	// key_typ_str := util.no_dots(key_typ_sym.name)
 	// value_typ_str := util.no_dots(value_typ_sym.name)
+	g.writeln('new map(')
+	g.inc_indent()
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()
@@ -1700,6 +1718,8 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	} else {
 		g.write('new Map()')
 	}
+	g.dec_indent()
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
@@ -1843,16 +1863,16 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		// if call.language == .js {
-		for t in call.args {
-			if t.expr is ast.IntegerLiteral {
-				if t.expr == it {
-					g.write(it.val)
-					return
+		if call.language == .js {
+			for t in call.args {
+				if t.expr is ast.IntegerLiteral {
+					if t.expr == it {
+						g.write(it.val)
+						return
+					}
 				}
 			}
 		}
-		//}
 	}
 
 	// Skip cast if type is the same as the parrent caster
