@@ -1008,6 +1008,14 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write('${it.params[0].name} = this')
 	}
 	g.writeln(') {')
+	for i,arg in args {
+		
+		is_varg := i == args.len - 1 && it.is_variadic
+		if is_varg {
+			name := g.js_name(arg.name)
+			g.writeln('$name = new array($name);')
+		}
+	}
 	g.stmts(it.stmts)
 	g.write('}')
 	if is_main {
@@ -1576,22 +1584,21 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
+		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
-		g.write('.push(')
+		g.write('.arr,')
 		// arr << [1, 2]
-		if r_sym.kind == .array {
-			g.write('...')
-		}
+		
 		g.expr(it.right)
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
 		if r_sym.kind == .map {
-			g.write('.has(')
+			g.write('.map.has(')
 		} else if r_sym.kind == .string {
 			g.write('.str.includes(')
 		} else {
-			g.write('.includes(')
+			g.write('.arr.includes(')
 		}
 		g.expr(it.left)
 		if l_sym.kind == .string {

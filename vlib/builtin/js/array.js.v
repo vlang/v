@@ -95,7 +95,7 @@ pub fn (a array) index(v string) int {
 
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
-	#result = a.arr.slice(start,end)
+	#result = new array(a.arr.slice(start,end))
 
 	return result
 }
@@ -103,3 +103,12 @@ pub fn (a array) slice(start int, end int) array {
 pub fn (mut a array) insert(i int, val voidptr) {
 	#a.arr.splice(i,0,val)
 }
+
+fn(a array) push(val voidptr) {
+	#a.arr.push(val)
+}
+
+#array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
+#array.prototype.entries = function () { return this.arr.entries(); }
+#array.prototype.map = function(callback) { return this.arr.map(callback); }
+#array.prototype.filter = function(callback) { return this.arr.filter(callback); }
