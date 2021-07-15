@@ -222,7 +222,8 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int) int {
 // update_pixel_data is a helper for working with image streams (i.e. images,
 // that are updated dynamically by the CPU on each frame)
 pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
-	ctx.get_cached_image_by_idx(cached_image_idx).update_pixel_data(buf)
+	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
+	image.update_pixel_data(buf)
 }
 
 pub fn (mut img Image) update_pixel_data(buf &byte) {

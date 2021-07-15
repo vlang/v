@@ -584,22 +584,24 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 			// resolve generic struct receiver
 			if i == 0 && call_expr.is_method && param.typ.has_flag(.generic) {
 				sym := c.table.get_type_symbol(call_expr.receiver_type)
-				if sym.kind == .struct_ {
-					info := sym.info as ast.Struct
-					if c.table.cur_fn.generic_names.len > 0 { // in generic fn
-						if gt_name in c.table.cur_fn.generic_names
-							&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
-							idx := c.table.cur_fn.generic_names.index(gt_name)
-							typ = c.table.cur_concrete_types[idx]
-						}
-					} else { // in non-generic fn
-						receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-						if gt_name in receiver_generic_names
-							&& info.generic_types.len == info.concrete_types.len {
-							idx := receiver_generic_names.index(gt_name)
-							typ = info.concrete_types[idx]
+				match sym.info {
+					ast.Struct, ast.Interface, ast.SumType {
+						if c.table.cur_fn.generic_names.len > 0 { // in generic fn
+							if gt_name in c.table.cur_fn.generic_names
+								&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+								idx := c.table.cur_fn.generic_names.index(gt_name)
+								typ = c.table.cur_concrete_types[idx]
+							}
+						} else { // in non-generic fn
+							receiver_generic_names := sym.info.generic_types.map(c.table.get_type_symbol(it).name)
+							if gt_name in receiver_generic_names
+								&& sym.info.generic_types.len == sym.info.concrete_types.len {
+								idx := receiver_generic_names.index(gt_name)
+								typ = sym.info.concrete_types[idx]
+							}
 						}
 					}
+					else {}
 				}
 			}
 			arg_i := if i != 0 && call_expr.is_method { i - 1 } else { i }
@@ -664,12 +666,20 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
-				} else if arg_sym.kind == .struct_ {
-					info := arg_sym.info as ast.Struct
-					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
-					if gt_name in generic_names && info.generic_types.len == info.concrete_types.len {
+				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+					mut generic_types := []ast.Type{}
+					mut concrete_types := []ast.Type{}
+					match mut arg_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							generic_types = arg_sym.info.generic_types
+							concrete_types = arg_sym.info.concrete_types
+						}
+						else {}
+					}
+					generic_names := generic_types.map(c.table.get_type_symbol(it).name)
+					if gt_name in generic_names && generic_types.len == concrete_types.len {
 						idx := generic_names.index(gt_name)
-						typ = info.concrete_types[idx]
+						typ = concrete_types[idx]
 					}
 				}
 			}

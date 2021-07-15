@@ -47,18 +47,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			name_pos)
 		return ast.StructDecl{}
 	}
-	mut generic_types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.next()
-		for {
-			generic_types << p.parse_type()
-			if p.tok.kind != .comma {
-				break
-			}
-			p.next()
-		}
-		p.check(.gt)
-	}
+	generic_types := p.parse_generic_type_list()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
@@ -456,6 +445,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
 	interface_name := p.prepend_mod(modless_name).clone()
+	generic_types := p.parse_generic_type_list()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments({})
@@ -473,6 +463,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mod: p.mod
 		info: ast.Interface{
 			types: []
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
 		}
 	)
 	if reg_idx == -1 {
@@ -622,6 +614,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
+		generic_types: generic_types
 		mut_pos: mut_pos
 		name_pos: name_pos
 	}
