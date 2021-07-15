@@ -43,13 +43,15 @@ pub fn (s string) bool() bool {
 pub fn (s string) split(dot string) []string {
 	mut arr := s.str.split(dot.str).map(string(it))
 	#arr = new array(arr)
-	return arr 
+
+	return arr
 }
 
 pub fn (s string) bytes() []byte {
 	sep := ''
 	mut arr := s.str.split(sep.str).map(it.charCodeAt(0))
 	#arr = new array(arr)
+
 	return arr
 }
 

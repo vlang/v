@@ -1008,8 +1008,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write('${it.params[0].name} = this')
 	}
 	g.writeln(') {')
-	for i,arg in args {
-		
+	for i, arg in args {
 		is_varg := i == args.len - 1 && it.is_variadic
 		if is_varg {
 			name := g.js_name(arg.name)

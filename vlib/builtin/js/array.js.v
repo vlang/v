@@ -104,7 +104,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	#a.arr.splice(i,0,val)
 }
 
-fn(a array) push(val voidptr) {
+fn (a array) push(val voidptr) {
 	#a.arr.push(val)
 }
 
