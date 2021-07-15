@@ -264,15 +264,16 @@ pub:
 
 pub struct InterfaceDecl {
 pub:
-	name         string
-	typ          Type
-	name_pos     token.Position
-	language     Language
-	field_names  []string
-	is_pub       bool
-	mut_pos      int // mut:
-	pos          token.Position
-	pre_comments []Comment
+	name          string
+	typ           Type
+	name_pos      token.Position
+	language      Language
+	field_names   []string
+	is_pub        bool
+	mut_pos       int // mut:
+	pos           token.Position
+	pre_comments  []Comment
+	generic_types []Type
 pub mut:
 	methods []FnDecl
 	fields  []StructField
@@ -965,11 +966,12 @@ pub:
 // New implementation of sum types
 pub struct SumTypeDecl {
 pub:
-	name     string
-	is_pub   bool
-	pos      token.Position
-	comments []Comment
-	typ      Type
+	name          string
+	is_pub        bool
+	pos           token.Position
+	comments      []Comment
+	typ           Type
+	generic_types []Type
 pub mut:
 	variants []TypeNode
 }

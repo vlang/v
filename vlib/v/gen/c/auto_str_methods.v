@@ -324,6 +324,11 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	if styp.ends_with('*') {
 		clean_interface_v_type_name = '&' + clean_interface_v_type_name.replace('*', '')
 	}
+	if clean_interface_v_type_name.contains('_T_') {
+		clean_interface_v_type_name =
+			clean_interface_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
+			'>'
+	}
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
@@ -377,6 +382,11 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
 		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
+	}
+	if clean_sum_type_v_type_name.contains('_T_') {
+		clean_sum_type_v_type_name =
+			clean_sum_type_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
+			'>'
 	}
 	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
 	fn_builder.writeln('\tswitch(x._typ) {')
