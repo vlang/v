@@ -1968,6 +1968,13 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
+	// x is Bar<T>, x.foo() -> x.foo<T>()
+	if is_generic && call_expr.concrete_types.len == 0 {
+		rec_sym := c.table.get_type_symbol(left_type)
+		if rec_sym.info is ast.Struct {
+			call_expr.concrete_types = rec_sym.info.generic_types
+		}
+	}
 	call_expr.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
 	// or there will be hard to diagnose 0 type panics in cgen.
