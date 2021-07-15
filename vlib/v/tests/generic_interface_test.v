@@ -84,7 +84,9 @@ fn (mut i NumberIterator<T>) next<T>() ?T {
 }
 
 fn test_iterator_implementation() {
-	mut i := Iterator<int>(NumberIterator<int>{ limit: 10 })
+	mut i := Iterator<int>(NumberIterator<int>{
+		limit: 10
+	})
 	for {
 		if val := i.next() {
 			println(val)
