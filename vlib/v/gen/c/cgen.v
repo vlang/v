@@ -2210,7 +2210,10 @@ fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string) {
 	g.write('$ret_styp (*$ptr_name) (')
 	arg_len := func.func.params.len
 	for i, arg in func.func.params {
-		arg_styp := g.typ(arg.typ)
+		mut arg_styp := g.typ(arg.typ)
+		if arg.is_mut {
+			arg_styp += '*'
+		}
 		g.write('$arg_styp $arg.name')
 		if i < arg_len - 1 {
 			g.write(', ')
