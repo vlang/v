@@ -3722,9 +3722,14 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(right)
 					right_type = right.typ
 				}
-			} else if right is ast.PrefixExpr {
+			} else if mut right is ast.PrefixExpr {
 				if right.op == .amp && right.right is ast.StructInit {
 					right_type = c.expr(right)
+				} else if right.op == .mul && right.right.is_auto_deref_var() {
+					c.note('de-referencing `mut` function arguments is not necessary and will be forbidden, soon',
+						right.pos)
+					right_type = c.expr(right.right)
+					right.ref_compat = true
 				}
 			}
 			left_type = c.table.mktyp(right_type)

@@ -2825,7 +2825,9 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			g.gen_cross_tmp_variable(left, val.right)
 		}
 		ast.PrefixExpr {
-			g.write(val.op.str())
+			if !val.ref_compat {
+				g.write(val.op.str())
+			}
 			g.gen_cross_tmp_variable(left, val.right)
 		}
 		ast.PostfixExpr {
@@ -3378,7 +3380,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 				}
 			} else {
-				g.write(node.op.str())
+				if !node.ref_compat {
+					g.write(node.op.str())
+				}
 				g.expr(node.right)
 			}
 			g.is_amp = false
@@ -4244,13 +4248,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		scope := g.file.scope.innermost(node.pos.pos)
-		if v := scope.find_var(node.name) {
-			is_auto_ref = (v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign))
-				|| v.is_auto_deref
+		if node.obj is ast.Var {
+			is_auto_ref =
+				(node.obj.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign))
+				|| node.obj.is_auto_deref
 			if is_auto_ref {
 				g.write('(*(')
 			}
+		}
+		scope := g.file.scope.innermost(node.pos.pos)
+		if v := scope.find_var(node.name) {
 			if v.smartcasts.len > 0 {
 				v_sym := g.table.get_type_symbol(v.typ)
 				if !prevent_sum_type_unwrapping_once {

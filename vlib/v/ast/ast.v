@@ -695,6 +695,7 @@ pub mut:
 	right      Expr
 	or_block   OrExpr
 	is_option  bool // IfGuard
+	ref_compat bool // to work around existing `x := *y` where `y` is `mut` argument
 }
 
 pub struct IndexExpr {
