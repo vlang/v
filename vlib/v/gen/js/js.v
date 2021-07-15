@@ -124,6 +124,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
+
 			g.generated_builtin = true
 		}
 
@@ -1273,6 +1275,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
+	g.write('new array(')
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1300,6 +1303,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {
 		g.gen_array_init_values(it.exprs)
 	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
@@ -1534,6 +1538,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
+		g.write('.arr')
 		g.write('[')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
@@ -1843,16 +1848,16 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		// if call.language == .js {
-		for t in call.args {
-			if t.expr is ast.IntegerLiteral {
-				if t.expr == it {
-					g.write(it.val)
-					return
+		 if call.language == .js {
+			for t in call.args {
+				if t.expr is ast.IntegerLiteral {
+					if t.expr == it {
+						g.write(it.val)
+						return
+					}
 				}
 			}
 		}
-		//}
 	}
 
 	// Skip cast if type is the same as the parrent caster
