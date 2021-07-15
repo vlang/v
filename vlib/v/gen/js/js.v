@@ -125,7 +125,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
-
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return this.map.length;}, set: function(l) { this.map.length = l; } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
 			g.generated_builtin = true
 		}
 
@@ -1516,9 +1517,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.expr(expr.left)
 		if expr.is_setter {
 			g.inside_map_set = true
-			g.write('.set(')
+			g.write('.map.set(')
 		} else {
-			g.write('.get(')
+			g.write('.map.get(')
 		}
 		g.expr(expr.index)
 		g.write('.toString()')
@@ -1685,6 +1686,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
 	// key_typ_str := util.no_dots(key_typ_sym.name)
 	// value_typ_str := util.no_dots(value_typ_sym.name)
+	g.writeln('new map(')
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()
@@ -1705,6 +1707,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	} else {
 		g.write('new Map()')
 	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {

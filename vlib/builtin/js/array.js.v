@@ -72,28 +72,28 @@ fn empty_array() array {
 fn (a &array) set_len(i int) {
 	#a.arr.length=i
 }
-[unsafe]
-pub fn (a &array) clone_to_depth(depth int) array {
-	mut size:=a.len
-	if size == 0 {
-		size = 0
-	}
 
-	mut arr := array{JS.Array {},0}
-	arr.set_len(size)
+pub fn (mut a array) sort_with_comparator(compare voidptr) {
+	#a.arr.sort(compare)
+}
 
-	if depth > 0 {
-		for i in 0..a.len {
-			ar := array {}
-			#ar = a.arr[i]
-			ar_clone := unsafe {ar.clone_to_depth(depth-1)}
-			#arr.arr[i]=ar_clone
-		}
-		return arr
-	} else {
-		for i in 0..a.len {
-			#arr.arr[i] = a.arr[i]
-		}
-		return arr
+pub fn (mut a array) sort() {
+	#a.arr.sort()
+}
+
+pub fn (a array) index(v string) int {
+	for i in 0..a.len {
+		#if (a.arr[i].toString() == v.toString()) 
+		{ return i }
 	}
+	return -1
+}
+
+pub fn (a array) slice(start int, end int) array {
+	mut result := a
+	#result = a.arr.slice(start,end)
+	return result
+}
+pub fn (mut a array) insert(i int,val voidptr) {
+	#a.arr.splice(i,0,val)
 }
