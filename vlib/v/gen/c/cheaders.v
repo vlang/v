@@ -499,15 +499,16 @@ static void* g_live_info = NULL;
 #ifdef _VFREESTANDING
 #undef _VFREESTANDING
 #endif
+'
 
+const segfault_handler = '
 void v_segmentation_fault_handler(int sig) {
   void *array[40];
   size_t size;
 
   size = backtrace(array, 40);
 
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
+  fprintf(stderr, "Error: signal %d:", sig);
   backtrace_symbols_fd(array, size, STDERR_FILENO);
   exit(1);
 }
