@@ -5793,8 +5793,10 @@ fn (mut g Gen) write_init_function() {
 		return
 	}
 	fn_vinit_start_pos := g.out.len
+	g.writeln(segfault_handler)
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+
 	g.writeln('signal(SIGSEGV, v_segmentation_fault_handler);')
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
