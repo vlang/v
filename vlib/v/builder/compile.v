@@ -112,11 +112,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	exefile := os.real_path(b.pref.out_name)
+	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
 	if b.pref.backend == .js {
-		jsfile := os.real_path('${b.pref.out_name}.js')
-		cmd = 'node "$jsfile"'
+		exefile = os.real_path('${b.pref.out_name}.js')
+		cmd = 'node "$exefile"'
 	}
 	for arg in b.pref.run_args {
 		// Determine if there are spaces in the parameters
@@ -142,10 +142,8 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return
 	}
-	if os.is_executable(exefile) {
-		v.pref.vrun_elog('remove run executable: $exefile')
-		os.rm(exefile) or { panic(err) }
-	}
+	v.pref.vrun_elog('remove run executable: $exefile')
+	os.rm(exefile) or { panic(err) }
 }
 
 // 'strings' => 'VROOT/vlib/strings'
