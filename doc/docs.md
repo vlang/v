@@ -3688,34 +3688,34 @@ but allocates them on the heap when obviously necessary. Example:
 
 ```v
 struct RefStruct {
-    r &MyStruct
+	r &MyStruct
 }
 
 struct MyStruct {
-    n int
+	n int
 }
 
 fn main() {
-    q, w := f()
-    println('q: $q.r.n, w: $w.n')
+	q, w := f()
+	println('q: $q.r.n, w: $w.n')
 }
 
 fn f() (RefStruct, &MyStruct) {
-    a := MyStruct{
-        n: 1
-    }
-    b := MyStruct{
-        n: 2
-    }
-    c := MyStruct{
-        n: 3
-    }
-    e := RefStruct{
-        r: &b
-    }
-    x := a.n + c.n
-    println('x: $x')
-    return e, &c
+	a := MyStruct{
+		n: 1
+	}
+	b := MyStruct{
+		n: 2
+	}
+	c := MyStruct{
+		n: 3
+	}
+	e := RefStruct{
+		r: &b
+	}
+	x := a.n + c.n
+	println('x: $x')
+	return e, &c
 }
 ```
 
@@ -3767,32 +3767,33 @@ Things become different if `f()` is doing something with the references itself:
 ```v
 struct RefStruct {
 mut:
-    r &MyStruct
+	r &MyStruct
 }
 
-[heap] // see discussion below
+// see discussion below
+[heap]
 struct MyStruct {
-    n int
+	n int
 }
 
 fn main() {
-    m := MyStruct{}
-    mut r := RefStruct{
-        r: &m
-    }
-    r.g()
-    println('r: $r')
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	println('r: $r')
 }
 
 fn (mut r RefStruct) g() {
-    s := MyStruct{
-        n: 7
-    }
-    r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+	s := MyStruct{
+		n: 7
+	}
+	r.f(&s) // reference to `s` inside `r` is passed back to `main() `
 }
 
 fn (mut r RefStruct) f(s &MyStruct) {
-    r.r = s // would trigger error without `[heap]`
+	r.r = s // would trigger error without `[heap]`
 }
 ```
 
@@ -3814,8 +3815,8 @@ There is a pattern often seen in other programming languages:
 
 ```v failcompile
 fn (mut a MyStruct) f() &MyStruct {
-    // do something with a
-    return &a // would return address of borrowed object
+	// do something with a
+	return &a // would return address of borrowed object
 }
 ```
 
@@ -3830,23 +3831,23 @@ In V the better approach is:
 ```v
 struct MyStruct {
 mut:
-    n int
+	n int
 }
 
 fn (mut a MyStruct) f() {
-    // do something with `a`
+	// do something with `a`
 }
 
 fn (mut a MyStruct) g() {
-    // do something else with `a`
+	// do something else with `a`
 }
 
 fn main() {
-    x := MyStruct{} // stack allocated
-    mut y := x
-    y.f()
-    y.g()
-    // instead of `mut y := x.f().g()
+	x := MyStruct{} // stack allocated
+	mut y := x
+	y.f()
+	y.g()
+	// instead of `mut y := x.f().g()
 }
 ```
 
@@ -3861,42 +3862,42 @@ There is an alternative way to manually control allocation on a case to case bas
 ```v
 struct RefStruct {
 mut:
-    r &MyStruct
+	r &MyStruct
 }
 
 struct MyStruct {
-    n int
+	n int
 }
 
 fn (mut r RefStruct) f(s &MyStruct) {
-    r.r = unsafe { s } // override compiler check
+	r.r = unsafe { s } // override compiler check
 }
 
 fn (mut r RefStruct) g() {
-    s := &MyStruct{ // `s` explicitly referes to a heap object
-        n: 7
-    }
-    r.f(s)
+	s := &MyStruct{ // `s` explicitly referes to a heap object
+		n: 7
+	}
+	r.f(s)
 }
 
 fn use_stack() {
-    x := 7.5
-    y := 3.25
-    z := x + y
-    println('$x $y $z')
+	x := 7.5
+	y := 3.25
+	z := x + y
+	println('$x $y $z')
 }
 
 fn main() {
-    m := MyStruct{}
-    mut r := RefStruct{
-        r: &m
-    }
-    r.g()
-    use_stack() // to erase invalid stack contents
-    println('r: $r')
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	use_stack() // to erase invalid stack contents
+	println('r: $r')
 }
-
 ```
+
 Here the compiler check is suppressed by the `unsafe` block. To make `s` be heap
 allocated even without `[heap]` attribute the `struct` literal is prefixed with
 an ampersand: `&MyStruct{...}`.
