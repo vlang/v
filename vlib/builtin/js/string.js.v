@@ -195,3 +195,137 @@ pub fn (s string) trim_right(cutset string) string {
 
 	return s[..pos + 1]
 }
+
+// trim_left strips any of the characters given in `cutset` from the left of the string.
+// Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
+[direct_array_access]
+pub fn (s string) trim_left(cutset string) string {
+	if s.len < 1 || cutset.len < 1 {
+		return s.clone()
+	}
+	mut pos := 0
+	for pos < s.len {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
+		pos++
+	}
+	return s[pos..]
+}
+
+// trim_prefix strips `str` from the start of the string.
+// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
+pub fn (s string) trim_prefix(str string) string {
+	if s.starts_with(str) {
+		return s[str.len..]
+	}
+	return s.clone()
+}
+
+// trim_suffix strips `str` from the end of the string.
+// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
+pub fn (s string) trim_suffix(str string) string {
+	if s.ends_with(str) {
+		return s[..s.len - str.len]
+	}
+	return s.clone()
+}
+
+// compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
+pub fn compare_strings(a &string, b &string) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+// compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
+fn compare_strings_reverse(a &string, b &string) int {
+	if a < b {
+		return 1
+	}
+	if a > b {
+		return -1
+	}
+	return 0
+}
+
+// compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
+fn compare_strings_by_len(a &string, b &string) int {
+	if a.len < b.len {
+		return -1
+	}
+	if a.len > b.len {
+		return 1
+	}
+	return 0
+}
+
+// compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.
+fn compare_lower_strings(a &string, b &string) int {
+	aa := a.to_lower()
+	bb := b.to_lower()
+	return compare_strings(&aa, &bb)
+}
+
+// at returns the byte at index `idx`.
+// Example: assert 'ABC'.at(1) == byte(`B`)
+fn (s string) at(idx int) byte {
+	$if !no_bounds_checking ? {
+		if idx < 0 || idx >= s.len {
+			panic('string index out of range: $idx / $s.len')
+		}
+	}
+	mut result := byte(0)
+	# result = new byte(s.str.charCodeAt(result))
+	return result
+}
+
+
+pub fn (s string) to_lower() string {
+	mut result := ''
+	# let str = s.str.toLowerCase()
+	# result = new string(str)
+	return result
+}
+pub fn (s string) to_upper() string {
+	mut result := ''
+	# let str = s.str.toUpperCase()
+	# result = new string(str)
+	return result
+}
+
+// sort sorts the string array.
+pub fn (mut s []string) sort() {
+	s.sort_with_compare(compare_strings)
+}
+
+// sort_ignore_case sorts the string array using case insesitive comparing.
+pub fn (mut s []string) sort_ignore_case() {
+	s.sort_with_compare(compare_lower_strings)
+}
+
+// sort_by_len sorts the the string array by each string's `.len` length.
+pub fn (mut s []string) sort_by_len() {
+	s.sort_with_compare(compare_strings_by_len)
+}
+
+// str returns a copy of the string
+pub fn (s string) str() string {
+	return s.clone()
+}
+pub fn (s string) repeat(count int) string {
+	mut result := ''
+	# result = new string(s.str.repeat(count))
+	return result 
+}

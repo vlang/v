@@ -1172,6 +1172,12 @@ pub fn (s string) trim_right(cutset string) string {
 	return s[..pos + 1]
 }
 
+pub fn (s string) to_lower() string {
+	mut result := ''
+	# let str = s.str.toLowerCase()
+	# result = new string(str)
+	return result
+}
 // trim_prefix strips `str` from the start of the string.
 // Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
 pub fn (s string) trim_prefix(str string) string {
