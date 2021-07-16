@@ -4270,24 +4270,19 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write('*')
 						}
 					}
-					if is_auto_ref && v.smartcasts.len == 0 {
+					if is_auto_ref {
 						g.write('(*(')
 					}
-					mut is_ptr := false
-					mut typ_is_ptr := false
 					for i, typ in v.smartcasts {
 						cast_sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+						mut is_ptr := false
 						if i == 0 {
-							if v.orig_type.is_ptr() || (v.is_mut && v.is_arg) || is_auto_ref {
+							if v.orig_type.is_ptr() || (v.is_mut && v.is_arg) {
 								is_ptr = true
-							}
-							typ_is_ptr = typ.is_ptr()
-							if is_auto_ref && !(is_ptr && typ_is_ptr) {
-								g.write('(*(')
 							}
 							g.write(name)
 						}
-						dot := if is_ptr { '->' } else { '.' }
+						dot := if is_ptr || is_auto_ref { '->' } else { '.' }
 						if mut cast_sym.info is ast.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')
@@ -4296,7 +4291,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						g.write(')')
 					}
-					if is_auto_ref && !(is_ptr && typ_is_ptr) {
+					if is_auto_ref {
 						g.write('))')
 					}
 					return

@@ -6889,8 +6889,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 						}
 						msg := '`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.'
 						if as_interface {
-							c.note(msg, 
-								node.pos)
+							c.note(msg, node.pos)
 						} else {
 							c.error(msg, node.pos)
 						}
