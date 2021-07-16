@@ -3857,7 +3857,8 @@ However, stack space is very limited as mentioned above. For this reason the `[h
 attribute might be suitable for very large structures even if not required by use cases
 like those mentioned above.
 
-There is an alternative way to manually control allocation on a case to case basis:
+There is an alternative way to manually control allocation on a case to case basis. This
+approach is not recommended but shown here for the sake of completeness:
 
 ```v
 struct RefStruct {
@@ -3905,7 +3906,7 @@ an ampersand: `&MyStruct{...}`.
 This last step would not be required by the compiler but without it the reference
 inside `r` becomes invalid (the memory area pointed to will be overwritten by
 `use_stack()`) and the program might crash (or at least produce an unpredictable
-final output). That's why this approach is *unsafe*!
+final output). That's why this approach is *unsafe* and should be avoided!
 
 ## ORM
 
