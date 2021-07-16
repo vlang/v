@@ -2055,8 +2055,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					ident := p.parse_ident(language)
 					node = ident
 					if p.inside_defer {
-						if p.defer_vars.filter(it.name == ident.name
-							&& it.mod == ident.mod).len == 0 && ident.name != 'err' {
+						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+							&& ident.name != 'err' {
 							p.defer_vars << ident
 						}
 					}
@@ -2085,7 +2085,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
@@ -2197,7 +2197,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
@@ -2354,7 +2354,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		has_generic := concrete_types.any(it.has_flag(.generic))
 		if !has_generic {
 			// will be added in checker
 			p.table.register_fn_concrete_types(field_name, concrete_types)

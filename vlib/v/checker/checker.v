@@ -2106,6 +2106,9 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(call_expr.left)
+			if !call_expr.left.is_lvalue() {
+				c.error('cannot pass expression as `mut`', call_expr.left.position())
+			}
 			// call_expr.is_mut = true
 			if to_lock != '' && rec_share != .shared_t {
 				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',

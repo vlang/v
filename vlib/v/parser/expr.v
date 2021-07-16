@@ -36,7 +36,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			ident := p.parse_ident(ast.Language.v)
 			node = ident
 			if p.inside_defer {
-				if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 					&& ident.name != 'err' {
 					p.defer_vars << ident
 				}
