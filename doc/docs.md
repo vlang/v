@@ -3676,7 +3676,7 @@ be stored:
   object becomes invalid on function return. Furthermore stack space is
   limited (typically to a few Megabytes per thread).
 * The *heap* is a large memory area (typically some Gigabytes) that is administrated
-  by the operating system. Stack objects are allocated and freed by special function
+  by the operating system. Heap objects are allocated and freed by special function
   calls that delegate the administrative tasks to the OS. This means that they can
   remain valid across several function calls, however, the administration is
   expensive.
@@ -3721,7 +3721,7 @@ fn f() (RefStruct, &MyStruct) {
 
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
-`c` is returned. For this reason `r` and `c` will be heap allocated. 
+`c` is returned. For this reason `b` and `c` will be heap allocated. 
 
 Things become less obvious when a reference to an object is passed as function argument:
 
