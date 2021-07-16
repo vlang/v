@@ -5,6 +5,7 @@ module main
 
 import help
 import os
+import term
 import v.pref
 import v.util
 import v.builder
@@ -60,9 +61,16 @@ fn main() {
 		// Running `./v` without args launches repl
 		if args.len == 0 {
 			if os.is_atty(0) != 0 {
-				println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
+				v_command := fn (command string) string {
+					return term.bright_white(term.bg_cyan(' $command '))
+				}
+				cmd_exit := v_command('exit')
+				cmd_help := v_command('v help')
+				file_main := v_command('main.v')
+				cmd_run := v_command('v run main.v')
+				println('Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
 				eprintln('  NB: the REPL is highly experimental. For best V experience, use a text editor,')
-				eprintln('  save your code in a `main.v` file and do: `v run main.v`')
+				eprintln('  save your code in a $file_main file and execute: $cmd_run')
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
