@@ -4273,15 +4273,19 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write('*')
 						}
 					}
-					if is_auto_ref {
-						g.write('(*(')
-					}
+					mut typ_is_ptr := false
+					mut needs_closing := false
 					for i, typ in v.smartcasts {
 						cast_sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
-							if v.orig_type.is_ptr() || (v.is_mut && v.is_arg) {
+							if v.orig_type.is_ptr() || (v.is_mut && v.is_arg) || is_auto_ref {
 								is_ptr = true
+							}
+							typ_is_ptr = typ.is_ptr()
+							if is_auto_ref && !(is_ptr && typ_is_ptr) {
+								g.write('(*(')
+								needs_closing = true
 							}
 							g.write(name)
 						}
@@ -4294,7 +4298,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						g.write(')')
 					}
-					if is_auto_ref {
+					if needs_closing {
 						g.write('))')
 					}
 					return
