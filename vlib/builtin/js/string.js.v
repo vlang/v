@@ -41,12 +41,18 @@ pub fn (s string) bool() bool {
 }
 
 pub fn (s string) split(dot string) []string {
-	return s.str.split(dot.str).map(string(it))
+	mut arr := s.str.split(dot.str).map(string(it))
+	#arr = new array(arr)
+
+	return arr
 }
 
 pub fn (s string) bytes() []byte {
 	sep := ''
-	return s.str.split(sep.str).map(it.charCodeAt(0))
+	mut arr := s.str.split(sep.str).map(it.charCodeAt(0))
+	#arr = new array(arr)
+
+	return arr
 }
 
 pub fn (s string) capitalize() string {
