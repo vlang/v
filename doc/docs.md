@@ -3929,8 +3929,8 @@ be stored:
 * The *stack* allows fast allocations with almost zero administrative overhead. The
   stack grows and shrinks with the function call depth &ndash; so every called
   function has its stack segment that remains valid until the function returns.
-  So no freeing is necessary on function return, however, this also means that a
-  reference to a stack object then becomes invalid. Furthermore stack space is
+  No freeing is necessary, however, this also means that a reference to a stack
+  object becomes invalid on function return. Furthermore stack space is
   limited (typically to a few Megabytes per thread).
 * The *heap* is a large memory area (typically some Gigabytes) that is administrated
   by the operating system. Stack objects are allocated and freed by special function
@@ -3940,7 +3940,7 @@ be stored:
 
 #### V's default approach
 
-Due to performance considerations V tries to put objects on the stack if possible &ndash;
+Due to performance considerations V tries to put objects on the stack if possible
 but allocates them on the heap when obviously necessary. Example:
 
 ```v
@@ -3976,10 +3976,10 @@ fn f() (RefStruct, &MyStruct) {
 }
 ```
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
-However a reference to `b` is part of `r` which is returned. Also a reference to
+However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `r` and `c` will be heap allocated. 
 
-Things become less obvious when a reference on an object is passed as function argument:
+Things become less obvious when a reference to an object is passed as function argument:
 
 ```v
 struct MyStruct {
@@ -4004,50 +4004,51 @@ fn (mut a MyStruct) f(b &MyStruct) int {
 	return x
 }
 ```
-Here the call `q.f(&w)` passes references of `q` and `w` because `a` is
+Here the call `q.f(&w)` passes references to `q` and `w` because `a` is
 `mut` and `b` is of type `&MyStruct` in `f()`'s declaration, so technically
-these references are leaving `main()`. However the live time of these
-references lies inside that of `main()` so `q` and `w` are allocated
+these references are leaving `main()`. However the *lifetime* of these
+references lies inside the scop of `main()` so `q` and `w` are allocated
 on the stack.
 
 #### Manual Control for Stack and Heap 
 
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
-used for accessing the referred values &ndash; and not to pass the
-references somewhere else. The references to `q` and `w` are only
-*borrowed* to `f()`. Things are different if `f()` is doing something
-with the reference itself:
+used for reading and modifying the referred values &ndash; and not to pass the
+references itself somewhere else. This can be seen in a way that the
+references to `q` and `w` are only *borrowed* to `f()`.
+
+Things become different if `f()` is doing something with the references itself:
 
 ```v
 struct RefStruct {
 mut:
-	r &MyStruct
+    r &MyStruct
 }
 
 [heap] // see discussion below
 struct MyStruct {
-	n int
-}
-
-fn (mut r RefStruct) f(s &MyStruct) {
-	r.r = &s // would trigger error without `[heap]`
-}
-
-fn (mut r RefStruct) g() {
-	s := MyStruct{
-		n: 7
-	}
-	r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+    n int
 }
 
 fn main() {
-	m := MyStruct{}
-	mut r := RefStruct{
-		r: &m
-	}
-	r.g()
-	println('r: $r')
+    m := MyStruct{}
+    mut r := RefStruct{
+        r: &m
+    }
+    r.g()
+    println('r: $r')
+}
+
+fn (mut r RefStruct) g() {
+    s := MyStruct{
+        n: 7
+    }
+    r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+    r.r = s // would trigger error without `[heap]`
 }
 ```
 Here `f()` looks quite innocent but is doing nasty things &ndash; it inserts a
@@ -4058,10 +4059,11 @@ refer to an object stored on stack"*. The assumption made in `g()` that the call
 `r.g(&s)` would only borrow the reference to `s` is wrong. 
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
-`struct MyStruct`. It instructs the compiler to *always* allocate MyStruct-objects
+`struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
 on the heap. This way the references to `s` remains valid even after `g()` returns.
-The compiler takes this into consideration when checking `f()` and allows assigning
-the reference to `s` to the `r.r` field.
+The compiler takes into consideration that `MyStruct` objects are always heap
+allocated when checking `f()` and allows assigning the reference to `s` to the
+`r.r` field.
 
 There is a pattern often seen in other programming languages:
 
@@ -4107,7 +4109,7 @@ This way the `[heap]` attribute can be avoided &ndash; resulting in better perfo
 
 However, stack space is very limited as mentioned above. For this reason the `[heap]`
 attribute might be suitable for very large structures even if not required by use cases
-like those mentioned here.
+like those mentioned above.
 
 There is an alternative way to manually control allocation on a case to case basis:
 
@@ -4154,7 +4156,7 @@ allocated even without `[heap]` attribute the `struct` literal is prefixed with
 an ampersand: `&MyStruct{...}`.
 
 This last step would not be required by the compiler but without it the reference
-inside `r` becomes invalid (and the memory area pointed to overwritten by
+inside `r` becomes invalid (the memory area pointed to will be overwritten by
 `use_stack()`) and the program might crash (or at least produce an unpredictable
 final output). That's why this approach is *unsafe*!
 
@@ -5067,7 +5069,7 @@ fn forever() {
 
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
-// See section [Stack and Heap](#stack-and-heap)
+// See section "Stack and Heap"
 [heap]
 struct Window {
 }
