@@ -43,7 +43,8 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.js { b.compile_js() }
 		.native { b.compile_native() }
 	}
-	util.get_timers().show_remaining()
+	mut timers := util.get_timers()
+	timers.show_remaining()
 	if pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')

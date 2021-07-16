@@ -537,11 +537,12 @@ fn (mut s Scanner) end_of_file() token.Token {
 }
 
 pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
-	util.get_timers().measure_pause('PARSE')
+	mut timers := util.get_timers()
+	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
 	defer {
 		util.timing_measure_cumulative('SCAN')
-		util.get_timers().measure_resume('PARSE')
+		timers.measure_resume('PARSE')
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
