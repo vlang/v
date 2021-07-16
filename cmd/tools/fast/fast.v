@@ -57,7 +57,6 @@ fn main() {
 	} else {
 		exec('./v -o vprod -prod -prealloc cmd/v')
 	}
-	// println('cur vdir="$vdir"')
 	// cache vlib modules
 	exec('$vdir/v wipe-cache')
 	exec('$vdir/v -o v2 -prod cmd/v')
