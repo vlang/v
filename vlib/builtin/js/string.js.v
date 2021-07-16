@@ -94,15 +94,42 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) ends_with(p string) bool {
-	return s.str.ends_with(p.str)
+	return s.str.endsWith(p.str)
 }
 
 pub fn (s string) starts_with(p string) bool {
-	return s.str.starts_with(p.str)
+	return s.str.startsWith(p.str)
 }
 
 pub fn (s string) fields() []string {
-	return [] // s.str.split()
+	mut res := []string{}
+	mut word_start := 0
+	mut word_len := 0
+	mut is_in_word := false
+	mut is_space := false
+	for i, c in s {
+		is_space = c in [32, 9, 10]
+		if !is_space {
+			word_len++
+		}
+		if !is_in_word && !is_space {
+			word_start = i
+			is_in_word = true
+			continue
+		}
+		if is_space && is_in_word {
+			res << s[word_start..word_start + word_len]
+			is_in_word = false
+			word_len = 0
+			word_start = 0
+			continue
+		}
+	}
+	if is_in_word && word_len > 0 {
+		// collect the remainder word at the end
+		res << s[word_start..s.len]
+	}
+	return res
 }
 
 pub fn (s string) find_between(start string, end string) string {
@@ -167,15 +194,16 @@ pub fn (s string) u32() u32 {
 pub fn (s string) u64() u64 {
 	return u64(JS.parseInt(s))
 }
+
 // trim_right strips any of the characters given in `cutset` from the right of the string.
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
-	
+
 	mut pos := s.len - 1
-	
+
 	for pos >= 0 {
 		mut found := false
 		for cs in cutset {
@@ -188,7 +216,7 @@ pub fn (s string) trim_right(cutset string) string {
 		}
 		pos--
 	}
-	
+
 	if pos < 0 {
 		return ''
 	}
@@ -287,21 +315,24 @@ fn (s string) at(idx int) byte {
 		}
 	}
 	mut result := byte(0)
-	# result = new byte(s.str.charCodeAt(result))
+	#result = new byte(s.str.charCodeAt(result))
+
 	return result
 }
-
 
 pub fn (s string) to_lower() string {
 	mut result := ''
-	# let str = s.str.toLowerCase()
-	# result = new string(str)
+	#let str = s.str.toLowerCase()
+	#result = new string(str)
+
 	return result
 }
+
 pub fn (s string) to_upper() string {
 	mut result := ''
-	# let str = s.str.toUpperCase()
-	# result = new string(str)
+	#let str = s.str.toUpperCase()
+	#result = new string(str)
+
 	return result
 }
 
@@ -324,8 +355,109 @@ pub fn (mut s []string) sort_by_len() {
 pub fn (s string) str() string {
 	return s.clone()
 }
+
 pub fn (s string) repeat(count int) string {
 	mut result := ''
-	# result = new string(s.str.repeat(count))
-	return result 
+	#result = new string(s.str.repeat(count))
+
+	return result
+}
+
+// TODO(playX): Use this iterator instead of using .split('').map(c => byte(c))
+#function string_iterator(string) { this.stringIteratorFieldIndex = 0; this.stringIteratorIteratedString = string.str; }
+#string_iterator.prototype.next = function next() {
+#var done = true;
+#var value = undefined;
+#var position = this.stringIteratorFieldIndex;
+#if (position !== -1) {
+#var string = this.stringIteratorIteratedString;
+#var length = string.length >>> 0;
+#if (position >= length) {
+#this.stringIteratorFieldIndex = -1;
+#} else {
+#done = false;
+#var first = string.charCodeAt(position);
+#if (first < 0xD800 || first > 0xDBFF || position + 1 === length)
+#value = new byte(string[position]);
+#else {
+#value = new byte(string[position]+string[position+1])
+#}
+#this.stringIteratorFieldIndex = position + value.length;
+#}
+#}
+#return {
+#value, done
+#}
+#}
+#string.prototype[Symbol.iterator] = function () { return new string_iterator(this) }
+
+// TODO: Make these functions actually work.
+// strip_margin allows multi-line strings to be formatted in a way that removes white-space
+// before a delimeter. by default `|` is used.
+// Note: the delimiter has to be a byte at this time. That means surrounding
+// the value in ``.
+//
+// Example:
+// st := 'Hello there,
+// |this is a string,
+// |    Everything before the first | is removed'.strip_margin()
+// Returns:
+// Hello there,
+// this is a string,
+// Everything before the first | is removed
+pub fn (s string) strip_margin() string {
+	return s.strip_margin_custom(`|`)
+}
+
+// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+[direct_array_access]
+pub fn (s string) strip_margin_custom(del byte) string {
+	mut sep := del
+	if sep.is_space() {
+		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
+		eprintln('    Defaulting to `|`')
+		sep = `|`
+	}
+	// don't know how much space the resulting string will be, but the max it
+	// can be is this big
+	mut ret := []byte{}
+	#ret = new array()
+
+	mut count := 0
+	for i := 0; i < s.len; i++ {
+		if s[i] in [10, 13] {
+			unsafe {
+				ret[count] = s[i]
+			}
+			count++
+			// CRLF
+			if s[i] == 13 && i < s.len - 1 && s[i + 1] == 10 {
+				unsafe {
+					ret[count] = s[i + 1]
+				}
+				count++
+				i++
+			}
+			for s[i] != sep {
+				i++
+				if i >= s.len {
+					break
+				}
+			}
+		} else {
+			unsafe {
+				ret[count] = s[i]
+			}
+			count++
+		}
+	}
+	/*
+	unsafe {
+		ret[count] = 0
+		return ret.vstring_with_len(count)
+	}*/
+	mut result := ''
+	#for (let x of ret.arr) result.str += String.fromCharCode(x.val)
+
+	return result
 }

@@ -1774,14 +1774,14 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text := it.val.replace("'", "\\'")
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
-	if should_cast {
+	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('string(')
 	}
 	g.write("'$text'")
-	if should_cast {
+	if true || should_cast {
 		g.write(')')
 	}
 }
