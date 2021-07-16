@@ -11,17 +11,17 @@ struct AppState {
 mut:
 	gg          &gg.Context = 0
 	istream_idx int
-	pixels      [pwidth][pheight]u32
+	pixels      [pheight][pwidth]u32
 }
 
 [direct_array_access]
 fn (mut state AppState) update() {
 	mut rcolor := u64(state.gg.frame)
 	for {
-		for x in 0 .. pwidth {
-			for y in 0 .. pheight {
+		for y in 0 .. pheight {
+			for x in 0 .. pwidth {
 				rcolor = rcolor * 1664525 + 1013904223
-				state.pixels[x][y] = u32(rcolor & 0x0000_0000_FFFF_FFFF) | 0x1010AFFF
+				state.pixels[y][x] = u32(rcolor & 0x0000_0000_FFFF_FFFF) | 0x1010AFFF
 			}
 		}
 		time.sleep(33 * time.millisecond)
