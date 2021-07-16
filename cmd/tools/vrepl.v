@@ -115,7 +115,7 @@ fn repl_help() {
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
 		println(util.full_v_version(false))
-		println('Use Ctrl-C or ${repl_pretty_print('exit')} to exit, or ${repl_pretty_print('help')} to see other available commands')
+		println('Use Ctrl-C or ${util.pretty_print('exit')} to exit, or ${util.pretty_print('help')} to see other available commands')
 	}
 
 	if vstartup != '' {
@@ -387,8 +387,4 @@ fn repl_run_vfile(file string) ?os.Result {
 		return error(s.output)
 	}
 	return s
-}
-
-fn repl_pretty_print(command string) string {
-	return term.bright_white(term.bg_cyan(' $command '))
 }
