@@ -472,8 +472,8 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 
 fn (mut g Gen) gen_str_for_thread(info ast.Thread, _ string, str_fn_name string) {
 	ret_type_name := util.strip_main_name(g.table.get_type_name(info.return_type))
-	g.type_definitions.writeln('static string ${str_fn_name}(); // auto}')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}() { return _SLIT("thread($ret_type_name)");}')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp _); // auto}')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp _) { return _SLIT("thread($ret_type_name)");}')
 }
 
 [inline]
