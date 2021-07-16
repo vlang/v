@@ -2055,8 +2055,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					ident := p.parse_ident(language)
 					node = ident
 					if p.inside_defer {
-						if p.defer_vars.all(it.name != ident.name
-							|| it.mod != ident.mod) && ident.name != 'err' {
+						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+							&& ident.name != 'err' {
 							p.defer_vars << ident
 						}
 					}
@@ -2085,7 +2085,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.all(it.name != ident.name || it.mod != ident.mod) && ident.name != 'err' {
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
 		}
@@ -2196,7 +2197,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.all(it.name != ident.name || it.mod != ident.mod) && ident.name != 'err' {
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
 		}
