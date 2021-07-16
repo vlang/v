@@ -33,7 +33,7 @@ fn main() {
 	}
 	for fcmd in fails {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
-		println(term.colorize(term.red, '>      Failed: $msg '))
+		println(term.failed('>      Failed:') + ' $msg')
 	}
 	if fails.len > 0 {
 		exit(1)
