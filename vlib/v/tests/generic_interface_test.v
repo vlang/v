@@ -63,3 +63,36 @@ fn test_extract_basic() {
 	cc := extract_basic(c)
 	assert '$aa | $bb | $cc' == '123 | 456 | 789'
 }
+
+//////
+interface Iterator<T> {
+	next() ?T
+}
+
+struct NumberIterator<T> {
+	limit T
+mut:
+	val T
+}
+
+fn (mut i NumberIterator<T>) next<T>() ?T {
+	if i.val >= i.limit {
+		return none
+	}
+	i.val++
+	return i.val
+}
+
+fn test_iterator_implementation() {
+	mut i := Iterator<int>(NumberIterator<int>{
+		limit: 10
+	})
+	for {
+		if val := i.next() {
+			println(val)
+		} else {
+			println('iterator is done')
+			break
+		}
+	}
+}

@@ -33,6 +33,7 @@ pub mut:
 	nmessages     chan LogMessage // many publishers, single consumer/printer
 	nmessage_idx  int      // currently printed message index
 	nprint_ended  chan int // read to block till printing ends, 1:1
+	failed_cmds   shared []string
 }
 
 enum MessageKind {
@@ -46,6 +47,18 @@ enum MessageKind {
 struct LogMessage {
 	message string
 	kind    MessageKind
+}
+
+pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
+	lock ts.failed_cmds {
+		ts.failed_cmds << cmd
+	}
+}
+
+pub fn (mut ts TestSession) show_list_of_failed_tests() {
+	for i, cmd in ts.failed_cmds {
+		eprintln(term.failed('Failed command ${i + 1}:') + '    $cmd')
+	}
 }
 
 pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
@@ -236,6 +249,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
 		}
 	}
+	ts.show_list_of_failed_tests()
 }
 
 fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
@@ -296,6 +310,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
+			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
 	} else {
@@ -308,6 +323,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message(.fail, tls_bench.step_message_fail(normalised_relative_file))
+			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
@@ -316,6 +332,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
 			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
+			ts.add_failed_cmd(cmd)
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
