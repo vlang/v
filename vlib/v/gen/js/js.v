@@ -1540,10 +1540,12 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
 		} else {
+			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
+			g.write('new byte(')
 			g.expr(expr.left)
 			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
-			g.write(')')
+			g.write('))')
 		}
 	} else {
 		// TODO Does this cover all cases?

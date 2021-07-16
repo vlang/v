@@ -167,3 +167,31 @@ pub fn (s string) u32() u32 {
 pub fn (s string) u64() u64 {
 	return u64(JS.parseInt(s))
 }
+// trim_right strips any of the characters given in `cutset` from the right of the string.
+// Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
+pub fn (s string) trim_right(cutset string) string {
+	if s.len < 1 || cutset.len < 1 {
+		return s.clone()
+	}
+	
+	mut pos := s.len - 1
+	
+	for pos >= 0 {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+			}
+		}
+		if !found {
+			break
+		}
+		pos--
+	}
+	println(pos)
+	if pos < 0 {
+		return ''
+	}
+	println(pos)
+	return s[..pos + 1]
+}
