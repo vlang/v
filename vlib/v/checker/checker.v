@@ -1999,8 +1999,7 @@ pub fn (mut c Checker) check_expected_arg_count(mut call_expr ast.CallExpr, f &a
 		c.error('expected $min_required_params arguments, but got $nr_args', call_expr.pos)
 		return error('')
 	} else if !f.is_variadic && nr_args > nr_params {
-		unexpected_args := call_expr.args[min_required_params..]
-		unexpected_args_pos := unexpected_args[0].pos.extend(unexpected_args.last().pos)
+		unexpected_args_pos := call_expr.args[min_required_params].pos.extend(call_expr.args.last().pos)
 		c.error('expected $min_required_params arguments, but got $nr_args', unexpected_args_pos)
 		return error('')
 	}
