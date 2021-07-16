@@ -889,9 +889,9 @@ mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
 ```
-V also supports custom sorting, through the `sort_with_compare` function which 
-expects a comparing function which will define the sort order.
-Useful for sorting on multiple fields or with specific sorting rules.
+V also supports custom sorting, through the `sort_with_compare` array method.
+Which expects a comparing function which will define the sort order.
+Useful for sorting on multiple fields at the same time by custom sorting rules.
 The code below sorts the array ascending on `name` and descending `age`.
 ```v
 struct User {
