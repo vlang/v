@@ -116,6 +116,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
+    * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
 
 </td><td valign=top>
@@ -3662,6 +3663,251 @@ fn test() []int {
 }
 ```
 
+### Stack and Heap
+#### Stack and Heap Basics
+
+Like with most other programming languages there are two locations where data can
+be stored:
+
+* The *stack* allows fast allocations with almost zero administrative overhead. The
+  stack grows and shrinks with the function call depth &ndash; so every called
+  function has its stack segment that remains valid until the function returns.
+  No freeing is necessary, however, this also means that a reference to a stack
+  object becomes invalid on function return. Furthermore stack space is
+  limited (typically to a few Megabytes per thread).
+* The *heap* is a large memory area (typically some Gigabytes) that is administrated
+  by the operating system. Heap objects are allocated and freed by special function
+  calls that delegate the administrative tasks to the OS. This means that they can
+  remain valid across several function calls, however, the administration is
+  expensive.
+
+#### V's default approach
+
+Due to performance considerations V tries to put objects on the stack if possible
+but allocates them on the heap when obviously necessary. Example:
+
+```v
+struct RefStruct {
+	r &MyStruct
+}
+
+struct MyStruct {
+	n int
+}
+
+fn main() {
+	q, w := f()
+	println('q: $q.r.n, w: $w.n')
+}
+
+fn f() (RefStruct, &MyStruct) {
+	a := MyStruct{
+		n: 1
+	}
+	b := MyStruct{
+		n: 2
+	}
+	c := MyStruct{
+		n: 3
+	}
+	e := RefStruct{
+		r: &b
+	}
+	x := a.n + c.n
+	println('x: $x')
+	return e, &c
+}
+```
+
+Here `a` is stored on the stack since it's address never leaves the function `f()`.
+However a reference to `b` is part of `e` which is returned. Also a reference to
+`c` is returned. For this reason `b` and `c` will be heap allocated. 
+
+Things become less obvious when a reference to an object is passed as function argument:
+
+```v
+struct MyStruct {
+mut:
+	n int
+}
+
+fn main() {
+	mut q := MyStruct{
+		n: 7
+	}
+	w := MyStruct{
+		n: 13
+	}
+	x := q.f(&w) // references of `q` and `w` are passed
+	println('q: $q\nx: $x')
+}
+
+fn (mut a MyStruct) f(b &MyStruct) int {
+	a.n += b.n
+	x := a.n * b.n
+	return x
+}
+```
+Here the call `q.f(&w)` passes references to `q` and `w` because `a` is
+`mut` and `b` is of type `&MyStruct` in `f()`'s declaration, so technically
+these references are leaving `main()`. However the *lifetime* of these
+references lies inside the scop of `main()` so `q` and `w` are allocated
+on the stack.
+
+#### Manual Control for Stack and Heap 
+
+In the last example the V compiler could put `q` and `w` on the stack
+because it assumed that in the call `q.f(&w)` these references were only
+used for reading and modifying the referred values &ndash; and not to pass the
+references itself somewhere else. This can be seen in a way that the
+references to `q` and `w` are only *borrowed* to `f()`.
+
+Things become different if `f()` is doing something with the references itself:
+
+```v
+struct RefStruct {
+mut:
+	r &MyStruct
+}
+
+// see discussion below
+[heap]
+struct MyStruct {
+	n int
+}
+
+fn main() {
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	println('r: $r')
+}
+
+fn (mut r RefStruct) g() {
+	s := MyStruct{
+		n: 7
+	}
+	r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+	r.r = s // would trigger error without `[heap]`
+}
+```
+
+Here `f()` looks quite innocent but is doing nasty things &ndash; it inserts a
+reference to `s` into `r`. The problem with this is that `s` lives only as long
+as `g()` is running but `r` is used in `main()` after that. For this reason
+the compiler would complain about the assignment in `f()` because `s` *"might
+refer to an object stored on stack"*. The assumption made in `g()` that the call
+`r.f(&s)` would only borrow the reference to `s` is wrong. 
+
+A solution to this dilemma is the `[heap]` attribute at the declaration of
+`struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
+on the heap. This way the references to `s` remains valid even after `g()` returns.
+The compiler takes into consideration that `MyStruct` objects are always heap
+allocated when checking `f()` and allows assigning the reference to `s` to the
+`r.r` field.
+
+There is a pattern often seen in other programming languages:
+
+```v failcompile
+fn (mut a MyStruct) f() &MyStruct {
+	// do something with a
+	return &a // would return address of borrowed object
+}
+```
+
+Here `f()` is passed a reference `a` that is passed back to the caller and returned
+at the same time. The intention behind such a declaration is method chaining like
+`y = x.f().g()`. However, the problem with this approach is that a second reference
+to `a` is created &ndash; so it is not only borrowed and `MyStruct` has to be
+declared as `[heap]`.
+
+In V the better approach is:
+
+```v
+struct MyStruct {
+mut:
+	n int
+}
+
+fn (mut a MyStruct) f() {
+	// do something with `a`
+}
+
+fn (mut a MyStruct) g() {
+	// do something else with `a`
+}
+
+fn main() {
+	x := MyStruct{} // stack allocated
+	mut y := x
+	y.f()
+	y.g()
+	// instead of `mut y := x.f().g()
+}
+```
+
+This way the `[heap]` attribute can be avoided &ndash; resulting in better performance.
+
+However, stack space is very limited as mentioned above. For this reason the `[heap]`
+attribute might be suitable for very large structures even if not required by use cases
+like those mentioned above.
+
+There is an alternative way to manually control allocation on a case to case basis. This
+approach is not recommended but shown here for the sake of completeness:
+
+```v
+struct RefStruct {
+mut:
+	r &MyStruct
+}
+
+struct MyStruct {
+	n int
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+	r.r = unsafe { s } // override compiler check
+}
+
+fn (mut r RefStruct) g() {
+	s := &MyStruct{ // `s` explicitly referes to a heap object
+		n: 7
+	}
+	r.f(s)
+}
+
+fn use_stack() {
+	x := 7.5
+	y := 3.25
+	z := x + y
+	println('$x $y $z')
+}
+
+fn main() {
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	use_stack() // to erase invalid stack contents
+	println('r: $r')
+}
+```
+
+Here the compiler check is suppressed by the `unsafe` block. To make `s` be heap
+allocated even without `[heap]` attribute the `struct` literal is prefixed with
+an ampersand: `&MyStruct{...}`.
+
+This last step would not be required by the compiler but without it the reference
+inside `r` becomes invalid (the memory area pointed to will be overwritten by
+`use_stack()`) and the program might crash (or at least produce an unpredictable
+final output). That's why this approach is *unsafe* and should be avoided!
+
 ## ORM
 
 (This is still in an alpha state)
@@ -4826,6 +5072,7 @@ fn forever() {
 
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
+// See section "Stack and Heap"
 [heap]
 struct Window {
 }
