@@ -386,7 +386,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 	g.write_optionals()
 	g.dump_expr_definitions() // this uses gen_str_for_type, so it has to go before the below for loop
-	for i, str_type in g.str_types {
+	for str_type in g.str_types {
 		g.final_gen_str(str_type)
 	}
 	for sumtype_casting_fn in g.sumtype_casting_fns {
@@ -5795,6 +5795,7 @@ fn (mut g Gen) write_init_function() {
 	fn_vinit_start_pos := g.out.len
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	g.writeln('signal(SIGSEGV, v_segmentation_fault_handler);')
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
 	}
