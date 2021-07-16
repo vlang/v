@@ -3802,7 +3802,7 @@ reference to `s` into `r`. The problem with this is that `s` lives only as long
 as `g()` is running but `r` is used in `main()` after that. For this reason
 the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
-`r.g(&s)` would only borrow the reference to `s` is wrong. 
+`r.f(&s)` would only borrow the reference to `s` is wrong. 
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
