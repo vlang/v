@@ -93,3 +93,7 @@ test.bin
 
 # ignore codespace env
 .venv/
+shell.nix
+default.nix
+flake.nix
+.envrc
