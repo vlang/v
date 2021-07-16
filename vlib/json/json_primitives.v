@@ -184,7 +184,11 @@ fn encode_string(val string) &C.cJSON {
 }
 
 fn encode_raw(val string) &C.cJSON {
-	return C.cJSON_CreateRaw(&char(val.str))
+	mut ret_val := val
+	if ret_val.len == 0 {
+		ret_val = "null"
+	}
+	return C.cJSON_CreateRaw(&char(ret_val.str))
 }
 
 // ///////////////////////
