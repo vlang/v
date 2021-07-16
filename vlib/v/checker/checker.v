@@ -2972,7 +2972,7 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 				}
 				if imethod.return_type.has_flag(.generic) {
 					if method.return_type !in inferred_types {
-						inferred_types << method.return_type
+						inferred_types << method.return_type.clear_flag(.optional)
 					}
 				}
 				for i, iparam in imethod.params {
@@ -3339,6 +3339,33 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				if sym.info.is_union && node.next_token !in token.assign_tokens {
 					c.warn('reading a union field (or its address) requires `unsafe`',
 						node.pos)
+				}
+			}
+		}
+		if typ.has_flag(.generic) && !has_field {
+			gs := c.table.get_type_symbol(typ)
+			if f := c.table.find_field(gs, field_name) {
+				has_field = true
+				field = f
+			} else {
+				// look for embedded field
+				if gs.info is ast.Struct {
+					mut found_fields := []ast.StructField{}
+					mut embed_of_found_fields := []ast.Type{}
+					for embed in gs.info.embeds {
+						embed_sym := c.table.get_type_symbol(embed)
+						if f := c.table.find_field(embed_sym, field_name) {
+							found_fields << f
+							embed_of_found_fields << embed
+						}
+					}
+					if found_fields.len == 1 {
+						field = found_fields[0]
+						has_field = true
+						node.from_embed_type = embed_of_found_fields[0]
+					} else if found_fields.len > 1 {
+						c.error('ambiguous field `$field_name`', node.pos)
+					}
 				}
 			}
 		}
