@@ -188,10 +188,10 @@ pub fn (s string) trim_right(cutset string) string {
 		}
 		pos--
 	}
-	println(pos)
+	
 	if pos < 0 {
 		return ''
 	}
-	println(pos)
+
 	return s[..pos + 1]
 }

@@ -674,6 +674,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			} else {
 				g.write(node.op.str())
 				g.expr(node.right)
+				g.write('.valueOf()')
 			}
 		}
 		ast.RangeExpr {
@@ -1454,6 +1455,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			}
 			if i < node.branches.len - 1 || !node.has_else {
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.write(' ? ')
 			}
 			g.stmts(branch.stmts)
@@ -1474,6 +1476,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 							g.write('true')
 						} else {
 							g.expr(branch.cond)
+							g.write('.valueOf()')
 						}
 						g.writeln(') {')
 					}
@@ -1481,6 +1484,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			} else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
 				/*

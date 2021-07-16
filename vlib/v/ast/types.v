@@ -339,6 +339,10 @@ pub fn (typ Type) is_number() bool {
 pub fn (typ Type) is_string() bool {
 	return typ.idx() in ast.string_type_idxs
 }
+[inline]
+pub fn (typ Type) is_bool() bool {
+	return int(typ) == ast.bool_type_idx
+}
 
 pub const (
 	void_type_idx          = 1
