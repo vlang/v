@@ -857,6 +857,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// left & left_type will be `x` and `x type` in `x.fieldfn()`
 	// will be `0` for `foo()`
 	mut is_interface_call := false
+	mut is_selector_call := false
 	if node.left_type != 0 {
 		left_sym := g.table.get_type_symbol(node.left_type)
 		if left_sym.kind == .interface_ {
@@ -869,6 +870,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		} else {
 			g.write('.')
 		}
+		is_selector_call = true
 	}
 	mut name := node.name
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
@@ -940,7 +942,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	if !is_selector_call {
+		name = g.generic_fn_name(node.concrete_types, name, false)
+	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
 	// g.generate_tmp_autofree_arg_vars(node, name)
