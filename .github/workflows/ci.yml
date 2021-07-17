@@ -41,7 +41,7 @@ jobs:
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -105,7 +105,7 @@ jobs:
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -159,7 +159,7 @@ jobs:
 
   misc-tooling:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -230,7 +230,7 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       # Alpine docker pre-built container
       image: thevlang/vlang:alpine-build
@@ -258,7 +258,7 @@ jobs:
 
   macos:
     runs-on: macOS-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc clang
     steps:
@@ -346,7 +346,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -441,7 +441,7 @@ jobs:
 
   ubuntu-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc clang
     steps:
@@ -523,7 +523,7 @@ jobs:
 
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
-  #    timeout-minutes: 45
+  #    timeout-minutes: 60
   #    env:
   #      VFLAGS: -cc gcc
   #    steps:
@@ -537,7 +537,7 @@ jobs:
   ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -563,7 +563,7 @@ jobs:
 
   #   ubuntu-musl:
   #     runs-on: ubuntu-20.04
-  #     timeout-minutes: 45
+  #     timeout-minutes: 60
   #     env:
   #       VFLAGS: -cc musl-gcc
   #       V_CI_MUSL: 1
@@ -588,7 +588,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc gcc
     steps:
@@ -630,7 +630,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
     steps:
@@ -673,7 +673,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1
@@ -761,7 +761,7 @@ jobs:
   parser-silent:
     name: Parser silent mode
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - name: Install zzuf
@@ -799,7 +799,7 @@ jobs:
 
   v-apps-compile:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - name: Build V
