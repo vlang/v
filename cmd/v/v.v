@@ -60,9 +60,13 @@ fn main() {
 		// Running `./v` without args launches repl
 		if args.len == 0 {
 			if os.is_atty(0) != 0 {
-				println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
+				cmd_exit := util.pretty_print('exit')
+				cmd_help := util.pretty_print('v help')
+				file_main := util.pretty_print('main.v')
+				cmd_run := util.pretty_print('v run main.v')
+				println('Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
 				eprintln('  NB: the REPL is highly experimental. For best V experience, use a text editor,')
-				eprintln('  save your code in a `main.v` file and do: `v run main.v`')
+				eprintln('  save your code in a $file_main file and execute: $cmd_run')
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
@@ -124,7 +128,7 @@ fn main() {
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
-	eprintln('v $command: unknown command\nRun "v help" for usage.')
+	eprintln('v $command: unknown command\nRun ${util.pretty_print('v help')} for usage.')
 	exit(1)
 }
 
@@ -134,7 +138,7 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1]) }
 		else {}
 	}
-	println('`v help`: provide only one help topic.')
-	println('For usage information, use `v help`.')
+	println('${util.pretty_print('v help')}: provide only one help topic.')
+	println('For usage information, use ${util.pretty_print('v help')}.')
 	exit(1)
 }
