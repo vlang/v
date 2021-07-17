@@ -1,4 +1,4 @@
-fn print_map<T>(x map[string]T) string {
+fn print_map<K, V>(x map[K]V) string {
 	println(x)
 	return '$x'
 }
@@ -18,4 +18,19 @@ fn test_generics_infer_map_type() {
 		'one': 'a'
 	}
 	assert print_map(m3) == "{'one': 'a'}"
+
+	m4 := map{
+		1: 'one'
+	}
+	assert print_map(m4) == "{1: 'one'}"
+
+	m5 := map{
+		1.1: 'one'
+	}
+	assert print_map(m5) == "{1.1: 'one'}"
+
+	m6 := map{
+		'a': 'one'
+	}
+	assert print_map(m6) == "{'a': 'one'}"
 }

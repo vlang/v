@@ -99,7 +99,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| key_sym.kind == .enum_ || key_sym.kind == .placeholder
+		|| key_sym.kind in [.enum_, .placeholder, .any]
 		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
 	if !key_type_supported {
 		if is_alias {
