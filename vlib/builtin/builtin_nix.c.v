@@ -33,9 +33,9 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 			return print_backtrace_skipping_top_frames_linux(skipframes)
 		} $else {
 			println('print_backtrace_skipping_top_frames is not implemented. skipframes: $skipframes')
-			return false
 		}
 	}
+	return false
 }
 
 // the functions below are not called outside this file,
