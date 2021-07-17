@@ -2971,8 +2971,12 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
 				}
 				if imethod.return_type.has_flag(.generic) {
-					if method.return_type !in inferred_types {
-						inferred_types << method.return_type.clear_flag(.optional)
+					mut inferred_type := method.return_type
+					if imethod.return_type.has_flag(.optional) {
+						inferred_type = inferred_type.clear_flag(.optional)
+					}
+					if inferred_type !in inferred_types {
+						inferred_types << inferred_type
 					}
 				}
 				for i, iparam in imethod.params {
