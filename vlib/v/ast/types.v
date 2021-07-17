@@ -342,7 +342,7 @@ pub fn (typ Type) is_string() bool {
 
 [inline]
 pub fn (typ Type) is_bool() bool {
-	return type.idx() == ast.bool_type_idx
+	return typ.idx() == ast.bool_type_idx
 }
 
 pub const (
