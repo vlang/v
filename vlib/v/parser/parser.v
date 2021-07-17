@@ -2126,6 +2126,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
+				typname: p.table.get_type_symbol(to_typ).name
 				expr: expr
 				arg: arg
 				has_arg: has_arg
