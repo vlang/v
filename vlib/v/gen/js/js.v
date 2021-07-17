@@ -1784,7 +1784,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	name := type_sym.name
 	if it.fields.len == 0 {
-		g.write('new ${g.js_name(name)}()')
+		g.write('new ${g.js_name(name)}({})')
 	} else {
 		g.writeln('new ${g.js_name(name)}({')
 		g.inc_indent()
