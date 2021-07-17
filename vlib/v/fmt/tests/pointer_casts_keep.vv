@@ -1,4 +1,7 @@
-struct Struct {}
+struct Struct {
+	name string
+	x    int
+}
 
 fn main() {
 	unsafe {
@@ -26,5 +29,22 @@ fn main() {
 		dump(voidptr(pps))
 		dump(voidptr(ppps))
 		dump(voidptr(pppps))
+	}
+	ss := &Struct{
+		name: 'abc'
+		x: 123
+	}
+	dump(ss)
+	pss := voidptr(ss)
+	if &Struct(pss).name == 'abc' {
+		println('ok')
+	}
+	if &Struct(pss).x == 123 {
+		// &Struct cast and selecting .x
+		println('ok')
+	}
+	if &&Struct(pss) != 0 {
+		// &&Struct
+		println('ok')
 	}
 }

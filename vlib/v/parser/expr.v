@@ -578,15 +578,25 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	p.next()
 	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
-	if mut right is ast.CastExpr && op == .amp {
-		// Handle &Type(x), as well as &&Type(x) etc:
-		mut new_cast_type := right.typ.to_ptr()
-		nct_sym := p.table.get_type_symbol(new_cast_type)
-		return ast.CastExpr{
-			...right
-			typ: new_cast_type
-			typname: nct_sym.name
-			pos: pos.extend(right.pos)
+	if op == .amp {
+		if mut right is ast.CastExpr {
+			// Handle &Type(x), as well as &&Type(x) etc:
+			p.recast_as_pointer(mut right, pos)
+			return right
+		}
+		if mut right is ast.SelectorExpr {
+			// Handle &Type(x).name :
+			if mut right.expr is ast.CastExpr {
+				p.recast_as_pointer(mut right.expr, pos)
+				return right
+			}
+		}
+		if mut right is ast.IndexExpr {
+			// Handle &u64(x)[idx] :
+			if mut right.left is ast.CastExpr {
+				p.recast_as_pointer(mut right.left, pos)
+				return right
+			}
 		}
 	}
 	mut or_stmts := []ast.Stmt{}
@@ -626,4 +636,10 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			pos: or_pos
 		}
 	}
+}
+
+fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Position) {
+	cast_expr.typ = cast_expr.typ.to_ptr()
+	cast_expr.typname = p.table.get_type_symbol(cast_expr.typ).name
+	cast_expr.pos = pos.extend(cast_expr.pos)
 }

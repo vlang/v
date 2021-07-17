@@ -1224,12 +1224,13 @@ fn (t Tree) at_expr(node ast.AtExpr) &Node {
 fn (t Tree) cast_expr(node ast.CastExpr) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('CastExpr'))
-	obj.add('expr', t.expr(node.expr))
-	obj.add('arg', t.expr(node.arg))
 	obj.add('typ', t.type_node(node.typ))
+	obj.add('ityp', t.number_node(int(node.typ)))
 	obj.add('typname', t.string_node(node.typname))
-	obj.add('expr_type', t.type_node(node.expr_type))
 	obj.add('has_arg', t.bool_node(node.has_arg))
+	obj.add('arg', t.expr(node.arg))
+	obj.add('expr_type', t.type_node(node.expr_type))
+	obj.add('expr', t.expr(node.expr))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
