@@ -2821,7 +2821,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
-		if param.typ == ast.voidptr_type && !call_arg.expr.is_lvalue() {
+		if param.typ == ast.voidptr_type && !call_arg.expr.is_lvalue() && func.language == .v {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
 		}
 		mut final_param_sym := param_typ_sym

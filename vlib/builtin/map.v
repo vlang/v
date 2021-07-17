@@ -152,8 +152,7 @@ fn (mut d DenseArray) expand() int {
 			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
 			if d.deletes != 0 {
 				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
-				p := d.all_deleted + d.len
-				C.memset(p, 0, d.cap - d.len)
+				C.memset(d.all_deleted + d.len, 0, d.cap - d.len)
 			}
 		}
 	}
@@ -429,8 +428,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		unsafe {
 			x := realloc_data(&byte(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
-			p := m.metas + mem_size - extra_metas_inc
-			C.memset(p, 0, int(sizeof(u32) * extra_metas_inc))
+			C.memset(m.metas + mem_size - extra_metas_inc, 0, int(sizeof(u32) * extra_metas_inc))
 		}
 		// Should almost never happen
 		if probe_count == 252 {
