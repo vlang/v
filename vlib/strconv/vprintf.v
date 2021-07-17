@@ -83,7 +83,8 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		if ch == `p` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
 			res.write_string('0x')
-			res.write_string(ptr_str(unsafe { pt[p_index] }))
+			el := unsafe { pt[p_index] }
+			res.write_string(ptr_str(el))
 			status = .reset_params
 			p_index++
 			i++

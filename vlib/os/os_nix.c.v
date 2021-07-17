@@ -211,7 +211,8 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 
 pub fn utime(path string, actime int, modtime int) ? {
 	mut u := C.utimbuf{actime, modtime}
-	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+	p := voidptr(&u)
+	if C.utime(&char(path.str), p) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
@@ -474,7 +475,8 @@ pub fn debugger_present() bool {
 	// check if the parent could trace its process,
 	// if not a debugger must be present
 	$if linux {
-		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
+		num := 1
+		return C.ptrace(C.PTRACE_TRACEME, 0, num, 0) == -1
 	} $else $if macos {
 		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
 	}
