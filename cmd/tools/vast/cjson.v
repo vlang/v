@@ -7,7 +7,8 @@ struct UseJson {
 }
 
 fn suppress_json_warning() {
-	json.encode(UseJson{})
+	use_json := UseJson{}
+	json.encode(use_json)
 }
 
 // struct C.cJSON {}
