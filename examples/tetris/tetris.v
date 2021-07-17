@@ -119,8 +119,8 @@ mut:
 	// frame/time counters:
 	frame     int
 	frame_old int
-	frame_sw  time.StopWatch = time.new_stopwatch({})
-	second_sw time.StopWatch = time.new_stopwatch({})
+	frame_sw  time.StopWatch = time.new_stopwatch()
+	second_sw time.StopWatch = time.new_stopwatch()
 }
 
 fn remap(v f32, min f32, max f32, new_min f32, new_max f32) f32 {

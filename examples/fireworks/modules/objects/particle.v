@@ -32,5 +32,5 @@ pub fn (mut particle Particle) tick(mut rocket Rocket, mut ctx gg.Context) {
 	particle.pos += particle.vel
 	particle.draw(mut ctx)
 
-	particle.accel = {}
+	particle.accel = Vector{}
 }

@@ -354,7 +354,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
-					f.remove_new_line({})
+					f.remove_new_line()
 					continue fields_loop
 				}
 			}

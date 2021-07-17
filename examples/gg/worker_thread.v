@@ -48,7 +48,7 @@ fn init(mut app App) {
 
 // worker simulates a workload. This should be run in a separate thread.
 fn worker(mut app App) {
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	mut elapsed := stopwatch.elapsed()
 	// Do heavy operations here - like invoking a path finding algorithm, load an image or similar.
 	for {

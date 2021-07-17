@@ -39,7 +39,7 @@ pub fn (mut rocket Rocket) tick(mut ctx gg.Context) {
 		rocket.pos += rocket.vel
 		rocket.draw(mut ctx)
 
-		rocket.accel = {}
+		rocket.accel = Vector{}
 	}
 
 	for mut particle in rocket.particles {

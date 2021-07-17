@@ -22,7 +22,7 @@ fn main() {
 			y: 0
 		}
 	)
-	bar2_func({}, {})
+	bar2_func({})
 	bar2_func({ x: 's' },
 		x: 's'
 	)

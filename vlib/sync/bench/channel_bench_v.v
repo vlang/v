@@ -32,7 +32,7 @@ fn main() {
 	nrec := os.args[2].int()
 	buflen := os.args[3].int()
 	nobj := os.args[4].int()
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	ch := chan int{cap: buflen}
 	resch := chan i64{}
 	mut no := nobj

@@ -20,7 +20,7 @@ mut:
 }
 
 fn random_color() tui.Color {
-	return {
+	return tui.Color{
 		r: byte(rand.intn(256))
 		g: byte(rand.intn(256))
 		b: byte(rand.intn(256))
@@ -32,7 +32,7 @@ fn event(e &tui.Event, x voidptr) {
 	match e.typ {
 		.mouse_down {
 			app.is_drag = true
-			app.cur_rect = {
+			app.cur_rect = Rect{
 				c: random_color()
 				x: e.x
 				y: e.y
