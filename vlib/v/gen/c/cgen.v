@@ -581,7 +581,7 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := t.nr_muls()
+	nr_muls := g.unwrap_generic(t).nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
@@ -596,11 +596,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) st
 	// `foo<int>()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
-		nr_muls := typ.nr_muls()
-		if is_decl && nr_muls > 0 {
-			name = strings.repeat(`*`, nr_muls) + name
-		}
-		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
 	}
 	return name
 }
