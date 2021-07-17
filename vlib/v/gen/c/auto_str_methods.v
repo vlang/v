@@ -172,6 +172,9 @@ fn (mut g Gen) gen_str_for_type(typ ast.Type) string {
 			ast.Chan {
 				g.gen_str_for_chan(sym.info, styp, str_fn_name)
 			}
+			ast.Thread {
+				g.gen_str_for_thread(sym.info, styp, str_fn_name)
+			}
 			else {
 				verror("could not generate string method $str_fn_name for type '$styp'")
 			}
@@ -465,6 +468,12 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
 	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return sync__Channel_auto_str(x, _SLIT("$elem_type_name")); }')
+}
+
+fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name string) {
+	ret_type_name := util.strip_main_name(g.table.get_type_name(info.return_type))
+	g.type_definitions.writeln('static string ${str_fn_name}($styp _); // auto}')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp _) { return _SLIT("thread($ret_type_name)");}')
 }
 
 [inline]
