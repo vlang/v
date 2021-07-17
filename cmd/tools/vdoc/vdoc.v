@@ -81,7 +81,8 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 		d.head.merge_comments_without_examples()
 	}
 	jw.write_string('{"module_name":"$d.head.name","description":"${escape(comments)}","contents":')
-	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
+	f := d.contents[it]
+	jw.write_string(json.encode(d.contents.keys().map(f)))
 	jw.write_string(',"generator":"vdoc","time_generated":"$d.time_generated.str()"}')
 	return jw.str()
 }
