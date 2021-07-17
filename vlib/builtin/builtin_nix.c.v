@@ -23,52 +23,38 @@ fn builtin_init() {
 }
 
 fn print_backtrace_skipping_top_frames(xskipframes int) bool {
-	skipframes := xskipframes + 2
-	$if macos {
-		return print_backtrace_skipping_top_frames_mac(skipframes)
+	$if no_backtrace ? {
+		return false
+	} $else {
+		skipframes := xskipframes + 2
+		$if macos || freebsd || openbsd || netbsd {
+			return print_backtrace_skipping_top_frames_bsd(skipframes)
+		} $else $if linux {
+			return print_backtrace_skipping_top_frames_linux(skipframes)
+		} $else {
+			println('print_backtrace_skipping_top_frames is not implemented. skipframes: $skipframes')
+			return false
+		}
 	}
-	$if linux {
-		return print_backtrace_skipping_top_frames_linux(skipframes)
-	}
-	$if freebsd {
-		return print_backtrace_skipping_top_frames_freebsd(skipframes)
-	}
-	$if netbsd {
-		return print_backtrace_skipping_top_frames_freebsd(skipframes)
-	}
-	$if openbsd {
-		return print_backtrace_skipping_top_frames_freebsd(skipframes)
-	}
-	println('print_backtrace_skipping_top_frames is not implemented. skipframes: $skipframes')
-	return false
 }
 
 // the functions below are not called outside this file,
 // so there is no need to have their twins in builtin_windows.v
-fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
-	$if macos {
-		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(&buffer[0], 100)
-		if nr_ptrs < 2 {
-			eprintln('C.backtrace returned less than 2 frames')
-			return false
+fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
+	$if no_backtrace ? {
+		return false
+	} $else {
+		$if macos || freebsd || openbsd || netbsd {
+			buffer := [100]voidptr{}
+			nr_ptrs := C.backtrace(&buffer[0], 100)
+			if nr_ptrs < 2 {
+				eprintln('C.backtrace returned less than 2 frames')
+				return false
+			}
+			C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 		}
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+		return true
 	}
-	return true
-}
-
-fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
-	$if freebsd {
-		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(&buffer[0], 100)
-		if nr_ptrs < 2 {
-			eprintln('C.backtrace returned less than 2 frames')
-			return false
-		}
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
-	}
-	return true
 }
 
 fn C.tcc_backtrace(fmt &char) int
