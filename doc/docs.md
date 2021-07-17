@@ -3687,12 +3687,12 @@ Due to performance considerations V tries to put objects on the stack if possibl
 but allocates them on the heap when obviously necessary. Example:
 
 ```v
-struct RefStruct {
-	r &MyStruct
-}
-
 struct MyStruct {
 	n int
+}
+
+struct RefStruct {
+	r &MyStruct
 }
 
 fn main() {
@@ -3751,7 +3751,7 @@ fn (mut a MyStruct) f(b &MyStruct) int {
 Here the call `q.f(&w)` passes references to `q` and `w` because `a` is
 `mut` and `b` is of type `&MyStruct` in `f()`'s declaration, so technically
 these references are leaving `main()`. However the *lifetime* of these
-references lies inside the scop of `main()` so `q` and `w` are allocated
+references lies inside the scope of `main()` so `q` and `w` are allocated
 on the stack.
 
 #### Manual Control for Stack and Heap 
@@ -3759,10 +3759,10 @@ on the stack.
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
 used for reading and modifying the referred values &ndash; and not to pass the
-references itself somewhere else. This can be seen in a way that the
+references themselves somewhere else. This can be seen in a way that the
 references to `q` and `w` are only *borrowed* to `f()`.
 
-Things become different if `f()` is doing something with the references itself:
+Things become different if `f()` is doing something with a reference itself:
 
 ```v
 struct RefStruct {
@@ -3806,7 +3806,7 @@ refer to an object stored on stack"*. The assumption made in `g()` that the call
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
-on the heap. This way the references to `s` remains valid even after `g()` returns.
+on the heap. This way the reference to `s` remains valid even after `g()` returns.
 The compiler takes into consideration that `MyStruct` objects are always heap
 allocated when checking `f()` and allows assigning the reference to `s` to the
 `r.r` field.
@@ -3820,8 +3820,8 @@ fn (mut a MyStruct) f() &MyStruct {
 }
 ```
 
-Here `f()` is passed a reference `a` that is passed back to the caller and returned
-at the same time. The intention behind such a declaration is method chaining like
+Here `f()` is passed a reference `a` as receiver that is passed back to the caller and returned
+as result at the same time. The intention behind such a declaration is method chaining like
 `y = x.f().g()`. However, the problem with this approach is that a second reference
 to `a` is created &ndash; so it is not only borrowed and `MyStruct` has to be
 declared as `[heap]`.
@@ -3861,26 +3861,16 @@ There is an alternative way to manually control allocation on a case to case bas
 approach is not recommended but shown here for the sake of completeness:
 
 ```v
+struct MyStruct {
+	n int
+}
+
 struct RefStruct {
 mut:
 	r &MyStruct
 }
 
-struct MyStruct {
-	n int
-}
-
-fn (mut r RefStruct) f(s &MyStruct) {
-	r.r = unsafe { s } // override compiler check
-}
-
-fn (mut r RefStruct) g() {
-	s := &MyStruct{ // `s` explicitly referes to a heap object
-		n: 7
-	}
-	r.f(s)
-}
-
+// simple function - just to overwrite stack segment previously used by `g()`
 fn use_stack() {
 	x := 7.5
 	y := 3.25
@@ -3896,6 +3886,19 @@ fn main() {
 	r.g()
 	use_stack() // to erase invalid stack contents
 	println('r: $r')
+}
+
+fn (mut r RefStruct) g() {
+	s := &MyStruct{ // `s` explicitly refers to a heap object
+		n: 7
+	}
+	// change `&MyStruct` -> `MyStruct` above and `r.f(s)` -> `r.f(&s)` below
+	// to see data in stack segment being overwritten
+	r.f(s)
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+	r.r = unsafe { s } // override compiler check
 }
 ```
 
