@@ -1400,7 +1400,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		if mut expr is ast.ParExpr {
 			expr = expr.expr
 		} else {
-			p.error('asm in/output must be incolsed in brackets')
+			p.error('asm in/output must be enclosed in brackets')
 		}
 		mut alias := ''
 		if p.tok.kind == .key_as {

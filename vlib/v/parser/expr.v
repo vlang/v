@@ -171,11 +171,13 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type()
+				typname := p.table.get_type_symbol(typ).name
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
 				node = ast.CastExpr{
 					typ: typ
+					typname: typname
 					expr: expr
 					pos: pos
 				}
@@ -579,9 +581,11 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	if mut right is ast.CastExpr && op == .amp {
 		// Handle &Type(x), as well as &&Type(x) etc:
 		mut new_cast_type := right.typ.to_ptr()
+		nct_sym := p.table.get_type_symbol(new_cast_type)
 		return ast.CastExpr{
 			...right
 			typ: new_cast_type
+			typname: nct_sym.name
 			pos: pos.extend(right.pos)
 		}
 	}

@@ -602,6 +602,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	}
 	typ_idx = t.type_symbols.len
 	t.type_symbols << typ
+	t.type_symbols[typ_idx].idx = typ_idx
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
 }

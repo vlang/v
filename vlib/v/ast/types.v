@@ -77,6 +77,7 @@ pub mut:
 	mod       string
 	is_public bool
 	language  Language
+	idx       int
 }
 
 // max of 8
@@ -209,24 +210,42 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
+// debug returns a verbose representation of the information in ts, useful for tracing/debugging
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
-	res << 'parent_idx: $ts.parent_idx'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
+	ts.dbg_common(mut res)
 	res << 'info: $ts.info'
-	res << 'kind: $ts.kind'
-	res << 'is_public: $ts.is_public'
-	res << 'language: $ts.language'
 	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
+// same as .debug(), but without the verbose .info and .methods fields
+pub fn (ts TypeSymbol) dbg() []string {
+	mut res := []string{}
+	ts.dbg_common(mut res)
+	return res
+}
+
+fn (ts TypeSymbol) dbg_common(mut res []string) {
+	res << 'idx: 0x$ts.idx.hex()'
+	res << 'parent_idx: 0x$ts.parent_idx.hex()'
+	res << 'mod: $ts.mod'
+	res << 'name: $ts.name'
+	res << 'cname: $ts.cname'
+	res << 'kind: $ts.kind'
+	res << 'is_public: $ts.is_public'
+	res << 'language: $ts.language'
+}
+
+pub fn (t Type) str() string {
+	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+}
+
+// debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
 pub fn (t Type) debug() []string {
 	mut res := []string{}
-	res << 'idx: ${t.idx():5}'
-	res << 'type: ${t:10}'
+	res << 'idx: 0x${t.idx().hex():-8}'
+	res << 'type: 0x${t.hex():-8}'
 	res << 'nr_muls: $t.nr_muls()'
 	if t.has_flag(.optional) {
 		res << 'optional'

@@ -5473,6 +5473,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		} else {
 			type_name := c.table.type_to_str(node.expr_type)
+			// dump(node.typ)
+			// dump(node.expr_type)
+			// dump(type_name)
+			// dump(to_type_sym.debug())
 			c.error('cannot cast `$type_name` to struct', node.pos)
 		}
 	} else if to_type_sym.kind == .interface_ {
@@ -5507,7 +5511,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.has_arg {
 		c.expr(node.arg)
 	}
-	node.typname = c.table.get_type_symbol(node.typ).name
 	return node.typ
 }
 
