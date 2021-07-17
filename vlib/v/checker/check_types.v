@@ -667,6 +667,17 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 							break
 						}
 					}
+				} else if arg_sym.kind == .map && param_type_sym.kind == .map {
+					arg_map_info := arg_sym.info as ast.Map
+					param_map_info := param_type_sym.info as ast.Map
+					if param_map_info.key_type.has_flag(.generic)
+						&& c.table.get_type_symbol(param_map_info.key_type).name == gt_name {
+						typ = arg_map_info.key_type
+					}
+					if param_map_info.value_type.has_flag(.generic)
+						&& c.table.get_type_symbol(param_map_info.value_type).name == gt_name {
+						typ = arg_map_info.value_type
+					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
