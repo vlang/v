@@ -1964,6 +1964,47 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
+pub fn (mut c Checker) check_expected_arg_count(mut call_expr ast.CallExpr, f &ast.Fn) ? {
+	nr_args := call_expr.args.len
+	nr_params := if call_expr.is_method && f.params.len > 0 {
+		f.params.len - 1
+	} else {
+		f.params.len
+	}
+	mut min_required_params := f.params.len
+	if call_expr.is_method {
+		min_required_params--
+	}
+	if f.is_variadic {
+		min_required_params--
+	}
+	if min_required_params < 0 {
+		min_required_params = 0
+	}
+	if nr_args < min_required_params {
+		if min_required_params == nr_args + 1 {
+			last_typ := f.params.last().typ
+			last_sym := c.table.get_type_symbol(last_typ)
+			if last_sym.kind == .struct_ {
+				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
+				call_expr.args << {
+					expr: ast.StructInit{
+						typ: last_typ
+					}
+					typ: last_typ
+				}
+				return
+			}
+		}
+		c.error('expected $min_required_params arguments, but got $nr_args', call_expr.pos)
+		return error('')
+	} else if !f.is_variadic && nr_args > nr_params {
+		unexpected_args_pos := call_expr.args[min_required_params].pos.extend(call_expr.args.last().pos)
+		c.error('expected $min_required_params arguments, but got $nr_args', unexpected_args_pos)
+		return error('')
+	}
+}
+
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
@@ -2124,21 +2165,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
 			call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 		}
-		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
-		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 {
-			2
-		} else {
-			1
-		}
-		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
-		} else if !method.is_variadic && call_expr.args.len > nr_args {
-			unexpected_arguments := call_expr.args[min_required_args..]
-			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
-			return method.return_type
-		}
+		c.check_expected_arg_count(mut call_expr, method) or { return method.return_type }
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
 		mut no_type_promotion := false
@@ -2696,17 +2723,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
-		min_required_args := if func.is_variadic { func.params.len - 1 } else { func.params.len }
-		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
-		} else if !func.is_variadic && call_expr.args.len > func.params.len {
-			unexpected_arguments := call_expr.args[min_required_args..]
-			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				unexpected_arguments_pos)
-			return func.return_type
-		}
+		c.check_expected_arg_count(mut call_expr, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
 	if fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] && call_expr.args.len > 0 {
