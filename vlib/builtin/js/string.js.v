@@ -309,11 +309,6 @@ fn compare_lower_strings(a &string, b &string) int {
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == byte(`B`)
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking ? {
-		if idx < 0 || idx >= s.len {
-			panic('string index out of range: $idx / $s.len')
-		}
-	}
 	mut result := byte(0)
 	#result = new byte(s.str.charCodeAt(result))
 
