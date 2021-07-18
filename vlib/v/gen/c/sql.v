@@ -265,7 +265,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) {
 	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__OrmQueryData){')
 	g.write('.fields = new_array_from_c_array($node.updated_columns.len, $node.updated_columns.len, sizeof(string),')
-	if node.updated_columns.len {
+	if node.updated_columns.len > 0 {
 		g.write(' _MOV((string[$node.updated_columns.len]){')
 		for field in node.updated_columns {
 			g.write('_SLIT("$field"),')
@@ -558,9 +558,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	}
 	select_fields := fields.filter(g.table.get_type_symbol(it.typ).kind != .array)
 	g.write('.fields = new_array_from_c_array($select_fields.len, $select_fields.len, sizeof(string),')
+	mut types := []int{}
 	if select_fields.len > 0 {
 		g.write(' _MOV((string[$select_fields.len]){')
-		mut types := []int{}
 		for field in select_fields {
 			g.write('_SLIT("${g.get_field_name(field)}"),')
 			sym := g.table.get_type_symbol(field.typ)
