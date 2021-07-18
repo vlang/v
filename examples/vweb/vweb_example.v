@@ -49,7 +49,7 @@ pub fn (mut app App) show_text() vweb.Result {
 
 pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
-	return app.text('Headers: $app.headers')
+	return app.text('Response Headers\n$app.header')
 }
 
 [post]
