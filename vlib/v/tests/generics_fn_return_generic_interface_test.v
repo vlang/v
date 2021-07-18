@@ -4,18 +4,22 @@ interface Iter<T> {
 
 struct ArrayIter<T> {
 	data []T
+mut:
+	index int
 }
 
 fn (mut i ArrayIter<T>) next<T>() ?T {
 	if i.data.len == 0 {
 		return none
 	}
-	return i.data[0]
+	i.index += 1
+	return i.data[i.index]
 }
 
 fn iter<T>(arr []T) Iter<T> {
 	return ArrayIter<T>{
 		data: arr
+		index: 0
 	}
 }
 
@@ -24,5 +28,5 @@ fn test_generics_fn_return_generic_interface() {
 	println(x)
 	y := x.next() or { 0 }
 	println(y)
-	assert y == 1
+	assert y == 2
 }

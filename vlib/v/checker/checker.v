@@ -1780,7 +1780,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
-				.aggregate {
+				.aggregate, .placeholder {
 					c.fail_if_immutable(expr.expr)
 				}
 				else {
