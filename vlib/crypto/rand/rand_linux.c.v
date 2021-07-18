@@ -21,8 +21,7 @@ pub fn read(bytes_needed int) ?[]byte {
 		} else {
 			remaining_bytes
 		}
-		size := unsafe { buffer + bytes_read }
-		rbytes := unsafe { getrandom(batch_size, size) }
+		rbytes := unsafe { getrandom(batch_size, buffer + bytes_read) }
 		if rbytes == -1 {
 			unsafe { free(buffer) }
 			return IError(&ReadError{})

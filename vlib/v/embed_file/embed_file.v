@@ -39,8 +39,7 @@ pub fn (mut ed EmbedFileData) free() {
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		data := ed.data()
-		the_copy := &byte(memdup(data, ed.len))
+		the_copy := &byte(memdup(ed.data(), ed.len))
 		return the_copy.vstring_with_len(ed.len)
 	}
 }
@@ -48,8 +47,7 @@ pub fn (original &EmbedFileData) to_string() string {
 pub fn (original &EmbedFileData) to_bytes() []byte {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		data := ed.data()
-		the_copy := memdup(data, ed.len)
+		the_copy := memdup(ed.data(), ed.len)
 		return the_copy.vbytes(ed.len)
 	}
 }

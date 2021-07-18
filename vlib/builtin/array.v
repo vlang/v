@@ -470,10 +470,7 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
-	unsafe {
-		mem := &byte(a.data) - a.offset
-		free(mem)
-	}
+	unsafe { free(&byte(a.data) - a.offset) }
 }
 
 [unsafe]

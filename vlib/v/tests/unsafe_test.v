@@ -29,16 +29,14 @@ fn test_double_ptr() {
 		mut p := &x
 		(*p) = &int(1)
 	}
-	one := &int(1)
-	assert ptr_str(x) == ptr_str(one)
+	assert ptr_str(x) == ptr_str(&int(1))
 }
 
 fn test_ptr_infix() {
 	v := 4
 	mut q := unsafe { &v - 1 }
 	q = unsafe { q + 3 }
-	v2 := unsafe { &v + 2 }
-	assert ptr_str(q) == ptr_str(v2)
+	assert ptr_str(q) == ptr_str(unsafe { &v + 2 })
 }
 
 struct S1 {

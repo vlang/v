@@ -24,8 +24,6 @@ fn mm_free(addr &byte) Errno {
 	unsafe {
 		ap := &u64(addr - sizeof(u64))
 		size := *ap
-		p := addr - sizeof(u64)
-		length := size + sizeof(u64)
-		return sys_munmap(p, length)
+		return sys_munmap(addr - sizeof(u64), size + sizeof(u64))
 	}
 }

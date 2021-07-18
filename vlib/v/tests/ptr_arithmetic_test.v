@@ -9,15 +9,12 @@ fn test_ptr_arithmetic() {
 		p++
 		p += 2
 		p = p - 1
-		v2 := &v + 2
-		assert ptr_str(p) == ptr_str(v2)
+		assert ptr_str(p) == ptr_str(&v + 2)
 		p = p + 1
-		v3 := &v + 3
-		assert ptr_str(p) == ptr_str(v3)
+		assert ptr_str(p) == ptr_str(&v + 3)
 		r := p++
-		assert ptr_str(r) == ptr_str(v3)
-		v4 := &v + 4
-		assert ptr_str(p) == ptr_str(v4)
+		assert ptr_str(r) == ptr_str(&v + 3)
+		assert ptr_str(p) == ptr_str(&v + 4)
 	}
 }
 

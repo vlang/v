@@ -2825,14 +2825,17 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		if func.is_variadic && param_typ_sym.info is ast.Array {
 			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
 		}
-		// casting to voidptr is used as an escape mechanism, so:
+		// NB: Casting to voidptr is used as an escape mechanism, so:
 		// 1. allow passing *explicit* voidptr (native or through cast) to functions
 		// expecting voidptr or ...voidptr
 		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,
-		// can lead to codegen errors, and it should be opt in (an explicit voidptr(x) cast).
+		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
+		// the compiler has special codegen support for), so it should be opt in, that is it
+		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
 		if call_arg.typ != param.typ
 			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
-			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v {
+			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
 		}
 		// Handle expected interface

@@ -49,8 +49,7 @@ fn test_inspect() {
 module main
 	'
 	file := parse_text(source)
-	zero := voidptr(0)
-	walker.inspect(file, zero, fn (node ast.Node, data voidptr) bool {
+	walker.inspect(file, voidptr(0), fn (node ast.Node, data voidptr) bool {
 		// Second visit must be ast.Stmt
 		if node is ast.Stmt {
 			if node !is ast.Module {
