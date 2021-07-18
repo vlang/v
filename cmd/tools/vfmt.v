@@ -151,9 +151,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	}
 	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
-	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
+	file_ast := parser.parse_file(file, table, .parse_comments, prefs)
 	// checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
@@ -175,9 +173,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
-	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
+	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
 	// checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
