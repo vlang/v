@@ -22,7 +22,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 				}
 				ast.Ident {
 					mut show_non_const_error := false
-					if const_field := p.global_scope.find_const('${p.mod}.$size_expr.name') {
+					if const_field := p.table.global_scope.find_const('${p.mod}.$size_expr.name') {
 						if const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 						} else {
