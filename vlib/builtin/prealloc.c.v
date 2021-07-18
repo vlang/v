@@ -13,7 +13,8 @@ module builtin
 // NB: `-prealloc` is NOT safe to be used for multithreaded programs!
 
 // size of the preallocated chunk
-const prealloc_block_size = 16 * 1024 * 1024
+// TODO: see why comptime calculation of integer expressions fails
+const prealloc_block_size = 16777216
 
 __global g_memory_block &VMemoryBlock
 [heap]
