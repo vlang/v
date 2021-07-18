@@ -332,36 +332,32 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	mut g := global_g
 	g.timers.start('cgen unification')
 	for tg in pp.get_results<Gen>() {
-		g.out.write(tg.out) or { panic('') } // strings.Builder.write() never fails
-		g.cheaders.write(tg.cheaders) or { panic('') }
-		g.includes.write(tg.includes) or { panic('') }
-		g.typedefs.write(tg.typedefs) or { panic('') }
-		g.typedefs2.write(tg.typedefs2) or { panic('') }
-		g.type_definitions.write(tg.type_definitions) or { panic('') }
-		g.definitions.write(tg.definitions) or { panic('') }
-		g.gowrappers.write(tg.gowrappers) or { panic('') }
-		g.stringliterals.write(tg.stringliterals) or { panic('') }
-		g.auto_str_funcs.write(tg.auto_str_funcs) or { panic('') }
-		g.comptime_defines.write(tg.comptime_defines) or { panic('') }
-		g.pcs_declarations.write(tg.pcs_declarations) or { panic('') }
-		g.hotcode_definitions.write(tg.hotcode_definitions) or { panic('') }
-		g.embedded_data.write(tg.embedded_data) or { panic('') }
-		g.shared_types.write(tg.shared_types) or { panic('') }
-		g.shared_functions.write(tg.channel_definitions) or { panic('') }
+		g.out.write(tg.out) or { panic(err) } // strings.Builder.write() never fails
+		g.cheaders.write(tg.cheaders) or { panic(err) }
+		g.includes.write(tg.includes) or { panic(err) }
+		g.typedefs.write(tg.typedefs) or { panic(err) }
+		g.typedefs2.write(tg.typedefs2) or { panic(err) }
+		g.type_definitions.write(tg.type_definitions) or { panic(err) }
+		g.definitions.write(tg.definitions) or { panic(err) }
+		g.gowrappers.write(tg.gowrappers) or { panic(err) }
+		g.stringliterals.write(tg.stringliterals) or { panic(err) }
+		g.auto_str_funcs.write(tg.auto_str_funcs) or { panic(err) }
+		g.comptime_defines.write(tg.comptime_defines) or { panic(err) }
+		g.pcs_declarations.write(tg.pcs_declarations) or { panic(err) }
+		g.hotcode_definitions.write(tg.hotcode_definitions) or { panic(err) }
+		g.embedded_data.write(tg.embedded_data) or { panic(err) }
+		g.shared_types.write(tg.shared_types) or { panic(err) }
+		g.shared_functions.write(tg.channel_definitions) or { panic(err) }
 		for styp, base in tg.optionals { // merge map
 			g.optionals[styp] = base
 		}
-		g.json_forward_decls.write(tg.json_forward_decls) or { panic('') }
-		g.enum_typedefs.write(tg.enum_typedefs) or { panic('') }
-		g.channel_definitions.write(tg.channel_definitions) or { panic('') }
-		g.sql_buf.write(tg.sql_buf) or { panic('') }
-		g.cleanups[tg.file.mod.name].write(tg.cleanup) or { panic('') } // strings.Builder.write never fails; it is like that in the source
-		g.inits[tg.file.mod.name].write(tg.init) or { panic('') }
+		g.json_forward_decls.write(tg.json_forward_decls) or { panic(err) }
+		g.enum_typedefs.write(tg.enum_typedefs) or { panic(err) }
+		g.channel_definitions.write(tg.channel_definitions) or { panic(err) }
+		g.sql_buf.write(tg.sql_buf) or { panic(err) }
 
-		g.threaded_fns << tg.threaded_fns
-		g.waiter_fns << tg.waiter_fns
-		g.auto_fn_definitions << tg.auto_fn_definitions
-		g.anon_fn_definitions << tg.anon_fn_definitions
+		g.cleanups[tg.file.mod.name].write(tg.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
+		g.inits[tg.file.mod.name].write(tg.init) or { panic(err) }
 
 		for str_type in tg.str_types {
 			if str_type !in g.str_types {
