@@ -174,7 +174,7 @@ fn (mut g Gen) macho_dylibs() {
 }
 
 fn (mut g Gen) macho_main(addr int) {
-	g.write32(native.lc_main) // LC_MAIN
+	g.write32(int(native.lc_main)) // LC_MAIN
 	g.write32(24) // cmdsize
 	g.write32(addr) // entrypoint
 	g.write32(0) // initial_stacksize
@@ -242,7 +242,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(native.s_attr_some_instructions | native.s_attr_pure_instructions)
+	g.write32(int(native.s_attr_some_instructions | native.s_attr_pure_instructions))
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)

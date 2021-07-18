@@ -3611,9 +3611,12 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
 		if ct_value := eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
+			if ct_value is u64 {
+				typ = ast.u64_type
+			}
 		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {

@@ -4917,16 +4917,36 @@ fn is_simple_define_const(obj ast.ScopeObject) bool {
 fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
 	mut styp := g.typ(typ)
 	cname := '_const_$name'
-	// eprintln('>> cname: $cname | styp: $styp | $ct_value.type_name() | $ct_value')
 	match ct_value {
 		byte {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
 		rune {
-			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
 		}
 		i64 {
+			if typ == ast.int_type {
+				// TODO: use g.const_decl_write_precomputed here too.
+				// For now, use #define macros, so existing code compiles
+				// with -cstrict. Add checker errors for overflows instead,
+				// so V can catch them earlier, instead of relying on the
+				// C compiler for that.
+				g.const_decl_simple_define(name, ct_value.str())
+				return true
+			}
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
 		}
 		f64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())

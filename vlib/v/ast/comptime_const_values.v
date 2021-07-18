@@ -1,6 +1,6 @@
 module ast
 
-pub type ComptTimeConstValue = EmptyExpr | byte | f64 | i64 | rune | string
+pub type ComptTimeConstValue = EmptyExpr | byte | f64 | i64 | rune | string | u64
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr{}
@@ -8,14 +8,21 @@ pub fn empty_comptime_const_expr() ComptTimeConstValue {
 
 pub fn (val ComptTimeConstValue) i64() ?i64 {
 	match val {
-		i64, byte {
+		byte {
+			return i64(val)
+		}
+		i64 {
 			return i64(val)
 		}
 		f64 {
 			if -9223372036854775808.0 <= val && val <= 9223372036854775807.0 {
 				return i64(val)
 			}
-			return none
+		}
+		u64 {
+			if val <= 9223372036854775807 {
+				return i64(val)
+			}
 		}
 		string {
 			return val.i64()
@@ -23,26 +30,27 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		rune {
 			return int(val)
 		}
-		EmptyExpr {
-			return none
-		}
+		EmptyExpr {}
 	}
 	return none
 }
 
 pub fn (val ComptTimeConstValue) int() ?int {
 	match val {
+		u64 {
+			if val <= 2147483647 {
+				return int(val)
+			}
+		}
 		f64 {
 			if -2147483648.0 <= val && val <= 2147483647.0 {
 				return int(val)
 			}
-			return none
 		}
 		i64 {
 			if -2147483648 <= val && val <= 2147483647 {
 				return int(val)
 			}
-			return none
 		}
 		byte {
 			return int(val)
@@ -50,51 +58,82 @@ pub fn (val ComptTimeConstValue) int() ?int {
 		string {
 			return val.int()
 		}
-		rune {
-			return none
-		}
-		EmptyExpr {
-			return none
-		}
+		rune, EmptyExpr {}
 	}
 	return none
 }
 
 pub fn (val ComptTimeConstValue) string() ?string {
 	match val {
-		i64, f64, byte {
+		u64 {
+			return val.str()
+		}
+		i64 {
+			return val.str()
+		}
+		f64 {
+			return val.str()
+		}
+		byte {
+			return val.str()
+		}
+		rune {
 			return val.str()
 		}
 		string {
 			return val
 		}
-		rune {
-			return val.str()
-		}
-		EmptyExpr {
-			return none
-		}
+		EmptyExpr {}
 	}
 	return none
 }
 
 pub fn (val ComptTimeConstValue) f64() ?f64 {
 	match val {
+		i64 {
+			return f64(val)
+		}
+		u64 {
+			return f64(val)
+		}
+		byte {
+			return f64(val)
+		}
 		f64 {
 			return val
-		}
-		i64, byte {
-			return f64(val)
 		}
 		string {
 			return val.f64()
 		}
-		rune {
-			return none
+		rune {}
+		EmptyExpr {}
+	}
+	return none
+}
+
+pub fn (val ComptTimeConstValue) u64() ?u64 {
+	match val {
+		i64 {
+			if val >= 0 {
+				return u64(val)
+			}
 		}
-		EmptyExpr {
-			return none
+		u64 {
+			return val
 		}
+		byte {
+			return u64(val)
+		}
+		f64 {
+			if val <= 18446744073709551615.0 {
+				return u64(val)
+			}
+		}
+		string {
+			return val.u64()
+		}
+		rune {}
+		EmptyExpr {}
 	}
 	return none
 }
@@ -104,35 +143,34 @@ pub fn (val ComptTimeConstValue) byte() ?byte {
 		byte {
 			return val
 		}
+		u64 {
+			if val <= 255 {
+				return byte(val)
+			}
+		}
 		f64 {
 			if 0 <= val && val <= 255 {
 				return byte(val)
 			}
-			return none
 		}
 		i64 {
 			if 0 <= val && val <= 255 {
 				return byte(val)
 			}
-			return none
 		}
 		string {
 			x := val.int()
 			if 0 <= x && x <= 255 {
 				return byte(x)
 			}
-			return none
 		}
 		rune {
 			x := u32(val)
 			if 0 <= x && x <= 255 {
 				return byte(x)
 			}
-			return none
 		}
-		EmptyExpr {
-			return none
-		}
+		EmptyExpr {}
 	}
 	return none
 }
