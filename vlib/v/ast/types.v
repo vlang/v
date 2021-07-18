@@ -157,6 +157,11 @@ pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
+[inline]
+pub fn (t Type) is_any_kind_of_pointer() bool {
+	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
+}
+
 // set nr_muls on `t` and return it
 [inline]
 pub fn (t Type) set_nr_muls(nr_muls int) Type {

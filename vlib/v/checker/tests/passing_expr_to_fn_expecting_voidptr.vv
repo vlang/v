@@ -1,0 +1,4 @@
+import strconv
+
+strconv.v_printf("%02.02f\n", 1.1)
+
