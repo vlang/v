@@ -205,7 +205,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	$if time_cgening ? {
 		timers_should_print = true
 	}
-	mut glob := Gen{ // TODO: make shared
+	mut global_g := Gen{ // TODO: make shared
 		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
@@ -239,23 +239,23 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 	}
-	// lock glob {
-	glob.timers.start('cgen init')
-	for mod in glob.table.modules {
-		glob.inits[mod] = strings.new_builder(100)
-		glob.global_inits[mod] = strings.new_builder(100)
-		glob.cleanups[mod] = strings.new_builder(100)
+	// lock global_g {
+	global_g.timers.start('cgen init')
+	for mod in global_g.table.modules {
+		global_g.inits[mod] = strings.new_builder(100)
+		global_g.global_inits[mod] = strings.new_builder(100)
+		global_g.cleanups[mod] = strings.new_builder(100)
 	}
-	glob.init()
-	glob.timers.show('cgen init')
-	glob.tests_inited = false
-	glob.autofree_used = false
+	global_g.init()
+	global_g.timers.show('cgen init')
+	global_g.tests_inited = false
+	global_g.autofree_used = false
 	//	}
 	mut pp := pool.new_pool_processor(
 		callback: fn (p &pool.PoolProcessor, idx int, wid int) &Gen {
 			file := p.get_item<&ast.File>(idx)
-			mut glob := &Gen(p.get_shared_context())
-			mut local_timers := util.new_timers(glob.timers_should_print)
+			mut global_g := &Gen(p.get_shared_context())
+			mut local_timers := util.new_timers(global_g.timers_should_print)
 			local_timers.start('cgen_file $file.path')
 			mut g := &Gen{
 				file: file
@@ -282,12 +282,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				sql_buf: strings.new_builder(100)
 				init: strings.new_builder(100)
 				cleanup: strings.new_builder(100)
-				table: glob.table
-				pref: glob.pref
+				table: global_g.table
+				pref: global_g.pref
 				fn_decl: 0
 				is_autofree: true
 				indent: -1
-				module_built: glob.module_built
+				module_built: global_g.module_built
 				timers: local_timers
 				inner_loop: &ast.EmptyStmt{}
 			}
@@ -304,13 +304,13 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				g.is_autofree = false
 			} else {
 				g.is_autofree = true
-				glob.autofree_used = true
+				global_g.autofree_used = true
 			}
 			// anon fn may include assert and thus this needs
 			// to be included before any test contents are written
-			if g.is_test && !glob.tests_inited {
+			if g.is_test && !global_g.tests_inited {
 				g.write_tests_definitions()
-				glob.tests_inited = true
+				global_g.tests_inited = true
 			}
 			g.stmts(file.stmts)
 			// Transfer embedded files
@@ -325,11 +325,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			return g
 		}
 	)
-	// lock glob {
-	pp.set_shared_context(glob) // TODO: make glob shared
+	// lock global_g {
+	pp.set_shared_context(global_g) // TODO: make global_g shared
 	//}
 	pp.work_on_items(files)
-	mut g := glob
+	mut g := global_g
 	g.timers.start('cgen unification')
 	for tg in pp.get_results<Gen>() {
 		g.out.write(tg.out) or { panic('') } // strings.Builder.write() never fails
@@ -395,7 +395,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.gen_equality_fns()
 	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
-	if glob.autofree_used {
+	if global_g.autofree_used {
 		g.is_autofree = true // so that void _vcleanup is generated
 	}
 	// to make sure type idx's are the same in cached mods
