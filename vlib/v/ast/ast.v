@@ -1101,9 +1101,9 @@ pub:
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`
-	typ Type // `string` TODO rename to `type_to_cast_to`
-	pos token.Position
 pub mut:
+	typ       Type // `string` TODO rename to `type_to_cast_to`
+	pos       token.Position
 	expr      Expr   // `buf` in `string(buf, n)`
 	typname   string // TypeSymbol.name
 	expr_type Type   // `byteptr`

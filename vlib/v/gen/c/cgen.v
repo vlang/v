@@ -6123,7 +6123,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
-			idx := variant.str()
+			idx := u32(variant).str()
 			if idx in g.as_cast_type_names {
 				continue
 			}

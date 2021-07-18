@@ -2825,6 +2825,19 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		if func.is_variadic && param_typ_sym.info is ast.Array {
 			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
 		}
+		// NB: Casting to voidptr is used as an escape mechanism, so:
+		// 1. allow passing *explicit* voidptr (native or through cast) to functions
+		// expecting voidptr or ...voidptr
+		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,
+		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
+		// the compiler has special codegen support for), so it should be opt in, that is it
+		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
+		if call_arg.typ != param.typ
+			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
+			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' {
+			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
+		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
 			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
@@ -2991,8 +3004,12 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
 				}
 				if imethod.return_type.has_flag(.generic) {
-					if method.return_type !in inferred_types {
-						inferred_types << method.return_type
+					mut inferred_type := method.return_type
+					if imethod.return_type.has_flag(.optional) {
+						inferred_type = inferred_type.clear_flag(.optional)
+					}
+					if inferred_type !in inferred_types {
+						inferred_types << inferred_type
 					}
 				}
 				for i, iparam in imethod.params {
@@ -3359,6 +3376,33 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				if sym.info.is_union && node.next_token !in token.assign_tokens {
 					c.warn('reading a union field (or its address) requires `unsafe`',
 						node.pos)
+				}
+			}
+		}
+		if typ.has_flag(.generic) && !has_field {
+			gs := c.table.get_type_symbol(typ)
+			if f := c.table.find_field(gs, field_name) {
+				has_field = true
+				field = f
+			} else {
+				// look for embedded field
+				if gs.info is ast.Struct {
+					mut found_fields := []ast.StructField{}
+					mut embed_of_found_fields := []ast.Type{}
+					for embed in gs.info.embeds {
+						embed_sym := c.table.get_type_symbol(embed)
+						if f := c.table.find_field(embed_sym, field_name) {
+							found_fields << f
+							embed_of_found_fields << embed
+						}
+					}
+					if found_fields.len == 1 {
+						field = found_fields[0]
+						has_field = true
+						node.from_embed_type = embed_of_found_fields[0]
+					} else if found_fields.len > 1 {
+						c.error('ambiguous field `$field_name`', node.pos)
+					}
 				}
 			}
 		}
@@ -5473,6 +5517,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		} else {
 			type_name := c.table.type_to_str(node.expr_type)
+			// dump(node.typ)
+			// dump(node.expr_type)
+			// dump(type_name)
+			// dump(to_type_sym.debug())
 			c.error('cannot cast `$type_name` to struct', node.pos)
 		}
 	} else if to_type_sym.kind == .interface_ {
@@ -5507,7 +5555,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.has_arg {
 		c.expr(node.arg)
 	}
-	node.typname = c.table.get_type_symbol(node.typ).name
 	return node.typ
 }
 
