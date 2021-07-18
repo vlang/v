@@ -25,8 +25,8 @@ pub const (
 	string_max_len = 2048
 )
 
-pub type Primitive = bool | byte | f32 | f64 | i16 | i64 | i8 | int | string | time.Time |
-	u16 | u32 | u64
+pub type Primitive = OrmInfixType | bool | byte | f32 | f64 | i16 | i64 | i8 | int | string |
+	time.Time | u16 | u32 | u64
 
 pub enum OperationKind {
 	neq // !=
@@ -35,6 +35,13 @@ pub enum OperationKind {
 	lt // <
 	ge // >=
 	le // <=
+}
+
+pub enum MathOperationKind {
+	add // +
+	sub // -
+	mul // *
+	div // /
 }
 
 pub enum StmtKind {
@@ -78,6 +85,13 @@ pub:
 	types  []int
 	kinds  []OperationKind
 	is_and []bool
+}
+
+pub struct OrmInfixType {
+pub:
+	name     string
+	operator MathOperationKind
+	right    Primitive
 }
 
 pub struct OrmTableField {
@@ -145,7 +159,31 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 		.update {
 			str += 'UPDATE $para$table$para SET '
 			for i, field in data.fields {
-				str += '$para$field$para = $qm'
+				str += '$para$field$para = '
+				if data.data.len > i {
+					d := data.data[i]
+					if d is OrmInfixType {
+						op := match d.operator {
+							.add {
+								'+'
+							}
+							.sub {
+								'-'
+							}
+							.mul {
+								'*'
+							}
+							.div {
+								'/'
+							}
+						}
+						str += '$d.name $op $qm'
+					} else {
+						str += '$qm'
+					}
+				} else {
+					str += '$qm'
+				}
 				if num {
 					str += '$c'
 					c++
@@ -429,5 +467,9 @@ pub fn string_to_primitive(b string) Primitive {
 }
 
 pub fn time_to_primitive(b time.Time) Primitive {
+	return Primitive(b)
+}
+
+pub fn infix_to_primitive(b OrmInfixType) Primitive {
 	return Primitive(b)
 }

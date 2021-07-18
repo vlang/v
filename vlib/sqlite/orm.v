@@ -94,29 +94,38 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 
 fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c &int) ? {
 	for data in d.data {
-		mut err := 0
-		match data {
-			i8, i16, int, byte, u16, u32, bool {
-				err = stmt.bind_int(c, int(data))
-			}
-			i64, u64 {
-				err = stmt.bind_i64(c, i64(data))
-			}
-			f32, f64 {
-				err = stmt.bind_f64(c, unsafe { *(&f64(&data)) })
-			}
-			string {
-				err = stmt.bind_text(c, data)
-			}
-			time.Time {
-				err = stmt.bind_int(c, int(data.unix))
-			}
-		}
+		err := bind(stmt, c, data)
+
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
 		c++
 	}
+}
+
+fn bind(stmt Stmt, c &int, data orm.Primitive) int {
+	mut err := 0
+	match data {
+		i8, i16, int, byte, u16, u32, bool {
+			err = stmt.bind_int(c, int(data))
+		}
+		i64, u64 {
+			err = stmt.bind_i64(c, i64(data))
+		}
+		f32, f64 {
+			err = stmt.bind_f64(c, unsafe { *(&f64(&data)) })
+		}
+		string {
+			err = stmt.bind_text(c, data)
+		}
+		time.Time {
+			err = stmt.bind_int(c, int(data.unix))
+		}
+		orm.OrmInfixType {
+			err = bind(stmt, c, data.right)
+		}
+	}
+	return err
 }
 
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {

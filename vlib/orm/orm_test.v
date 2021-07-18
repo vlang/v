@@ -261,4 +261,30 @@ fn test_orm_sqlite() {
 		select from User where id == 5
 	}
 	assert null_user.name == ''
+
+	age_test := sql db {
+		select from User where id == 1
+	}
+
+	assert age_test.age == 29
+
+	sql db {
+		update User set age = age + 1 where id == 1
+	}
+
+	mut first := sql db {
+		select from User where id == 1
+	}
+
+	assert first.age == 30
+
+	sql db {
+		update User set age = age * 2 where id == 1
+	}
+
+	first = sql db {
+		select from User where id == 1
+	}
+
+	assert first.age == 60
 }

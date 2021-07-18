@@ -265,7 +265,7 @@ fn (mut g Gen) sql_delete(node ast.SqlStmtLine, expr string, table_name string) 
 fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 	match expr {
 		ast.InfixExpr {
-			g.sql_write_orm_primitive(expr.left_type, expr)
+			g.sql_write_orm_primitive(g.table.find_type_idx('orm.OrmInfixType'), expr)
 		}
 		ast.StringLiteral {
 			g.sql_write_orm_primitive(ast.string_type, expr)
@@ -301,8 +301,37 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if typ == 'time__Time' {
 		typ = 'time'
 	}
+	if typ == 'orm__OrmInfixType' {
+		typ = 'infix'
+	}
 	g.write('orm__${typ}_to_primitive(')
-	g.expr(expr)
+	if expr is ast.InfixExpr {
+		g.write('(orm__OrmInfixType){')
+		g.write('.name = _SLIT("$expr.left"),')
+		mut kind := match expr.op {
+			.plus {
+				'orm__MathOperationKind__add'
+			}
+			.minus {
+				'orm__MathOperationKind__sub'
+			}
+			.div {
+				'orm__MathOperationKind__div'
+			}
+			.mul {
+				'orm__MathOperationKind__mul'
+			}
+			else {
+				''
+			}
+		}
+		g.write('.operator = $kind,')
+		g.write('.right = ')
+		g.sql_expr_to_orm_primitive(expr.right)
+		g.write('}')
+	} else {
+		g.expr(expr)
+	}
 	g.write('),')
 }
 

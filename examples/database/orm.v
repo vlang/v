@@ -1,6 +1,6 @@
 import sqlite
 import mysql
-import pg
+// import pg
 
 [table: 'modules']
 struct Module {

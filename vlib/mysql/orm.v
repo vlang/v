@@ -142,46 +142,53 @@ fn mysql_stmt_worker(db Connection, query string, data orm.OrmQueryData, where o
 
 fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
 	for data in d.data {
-		match data {
-			bool {
-				stmt.bind_bool(&data)
-			}
-			i8 {
-				stmt.bind_i8(&data)
-			}
-			i16 {
-				stmt.bind_i16(&data)
-			}
-			int {
-				stmt.bind_int(&data)
-			}
-			i64 {
-				stmt.bind_i64(&data)
-			}
-			byte {
-				stmt.bind_byte(&data)
-			}
-			u16 {
-				stmt.bind_u16(&data)
-			}
-			u32 {
-				stmt.bind_u32(&data)
-			}
-			u64 {
-				stmt.bind_u64(&data)
-			}
-			f32 {
-				stmt.bind_f32(unsafe { &f32(&data) })
-			}
-			f64 {
-				stmt.bind_f64(unsafe { &f64(&data) })
-			}
-			string {
-				stmt.bind_text(data)
-			}
-			time.Time {
-				stmt.bind_int(&int(data.unix))
-			}
+		stmt_binder_match(mut stmt, data)
+	}
+}
+
+fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
+	match data {
+		bool {
+			stmt.bind_bool(&data)
+		}
+		i8 {
+			stmt.bind_i8(&data)
+		}
+		i16 {
+			stmt.bind_i16(&data)
+		}
+		int {
+			stmt.bind_int(&data)
+		}
+		i64 {
+			stmt.bind_i64(&data)
+		}
+		byte {
+			stmt.bind_byte(&data)
+		}
+		u16 {
+			stmt.bind_u16(&data)
+		}
+		u32 {
+			stmt.bind_u32(&data)
+		}
+		u64 {
+			stmt.bind_u64(&data)
+		}
+		f32 {
+			stmt.bind_f32(unsafe { &f32(&data) })
+		}
+		f64 {
+			stmt.bind_f64(unsafe { &f64(&data) })
+		}
+		string {
+			stmt.bind_text(data)
+		}
+		time.Time {
+			stmt.bind_int(&int(data.unix))
+		}
+		orm.OrmInfixType {
+			stmt_binder_match(mut stmt, data.right)
 		}
 	}
 }
