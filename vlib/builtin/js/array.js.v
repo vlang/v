@@ -74,7 +74,7 @@ fn (a &array) set_len(i int) {
 	#a.arr.length=i
 }
 
-pub fn (mut a array) sort_with_comparator(compare voidptr) {
+pub fn (mut a array) sort_with_compare(compare voidptr) {
 	#a.arr.sort(compare)
 }
 
