@@ -61,8 +61,7 @@ fn main() {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
-		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
-			context.scope)
+		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref)
 		context.log('> worker ${pid:5} finished parsing $context.path')
 		exit(0)
 	} else {
