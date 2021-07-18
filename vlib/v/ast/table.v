@@ -16,6 +16,7 @@ pub mut:
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
+	global_scope       &Scope
 	cflags             []cflag.CFlag
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
@@ -70,7 +71,6 @@ pub struct Fn {
 pub:
 	is_variadic     bool
 	language        Language
-	generic_names   []string
 	is_pub          bool
 	is_deprecated   bool // `[deprecated] fn abc(){}`
 	is_noreturn     bool // `[noreturn] fn abc(){}`
@@ -90,6 +90,7 @@ pub mut:
 	source_fn   voidptr // set in the checker, while processing fn declarations
 	usages      int
 	//
+	generic_names  []string
 	attrs          []Attr // all fn attributes
 	is_conditional bool   // true for `[if abc]fn(){}`
 	ctdefine_idx   int    // the index of the attribute, containing the compile time define [if mytag]
@@ -167,6 +168,9 @@ mut:
 pub fn new_table() &Table {
 	mut t := &Table{
 		type_symbols: []TypeSymbol{cap: 64000}
+		global_scope: &Scope{
+			parent: 0
+		}
 		cur_fn: 0
 	}
 	t.register_builtin_type_symbols()
@@ -602,6 +606,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	}
 	typ_idx = t.type_symbols.len
 	t.type_symbols << typ
+	t.type_symbols[typ_idx].idx = typ_idx
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
 }
@@ -1180,6 +1185,9 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			return none
 		}
 		typ := concrete_types[index]
+		if typ == 0 {
+			return none
+		}
 		return typ.derive_add_muls(generic_type).clear_flag(.generic)
 	}
 	match mut sym.info {
@@ -1273,7 +1281,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
 		}
-		Struct {
+		Struct, Interface, SumType {
 			if sym.info.is_generic {
 				mut nrt := '$sym.name<'
 				for i in 0 .. sym.info.generic_types.len {

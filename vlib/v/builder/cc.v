@@ -479,6 +479,13 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
+	if v.pref.out_name.ends_with('/-') {
+		// output to stdout
+		content := os.read_file(v.out_name_c) or { panic(err) }
+		println(content)
+		os.rm(v.out_name_c) or {}
+		return
+	}
 	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')

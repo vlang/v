@@ -131,13 +131,9 @@ fn json(file string) string {
 		root: new_object()
 		table: ast.new_table()
 		pref: pref
-		global_scope: &ast.Scope{
-			start_pos: 0
-			parent: 0
-		}
 	}
 	// parse file with comment
-	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref, t.global_scope)
+	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
 	t.root = t.ast_file(ast_file)
 	// generate the ast string
 	s := json_print(t.root)
@@ -146,9 +142,8 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table        &ast.Table
-	pref         &pref.Preferences
-	global_scope &ast.Scope
+	table &ast.Table
+	pref  &pref.Preferences
 mut:
 	root Node // the root of tree
 }
@@ -1224,12 +1219,13 @@ fn (t Tree) at_expr(node ast.AtExpr) &Node {
 fn (t Tree) cast_expr(node ast.CastExpr) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('CastExpr'))
-	obj.add('expr', t.expr(node.expr))
-	obj.add('arg', t.expr(node.arg))
 	obj.add('typ', t.type_node(node.typ))
+	obj.add('ityp', t.number_node(int(node.typ)))
 	obj.add('typname', t.string_node(node.typname))
-	obj.add('expr_type', t.type_node(node.expr_type))
 	obj.add('has_arg', t.bool_node(node.has_arg))
+	obj.add('arg', t.expr(node.arg))
+	obj.add('expr_type', t.type_node(node.expr_type))
+	obj.add('expr', t.expr(node.expr))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }

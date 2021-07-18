@@ -1187,7 +1187,14 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.write('interface ')
 	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.write('$name {')
+	f.write(name)
+	if node.generic_types.len > 0 {
+		f.write('<')
+		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes)
+		f.write('>')
+	}
+	f.write(' {')
 	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
@@ -1370,7 +1377,15 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	f.write('type $node.name = ')
+	f.write('type $node.name')
+	if node.generic_types.len > 0 {
+		f.write('<')
+		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes)
+		f.write('>')
+	}
+	f.write(' = ')
+
 	mut sum_type_names := []string{}
 	for t in node.variants {
 		sum_type_names << f.table.type_to_str_using_aliases(t.typ, f.mod2alias)

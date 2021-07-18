@@ -519,6 +519,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 	for typ in g.table.type_symbols {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as ast.SumType
+			if sum_info.is_generic {
+				continue
+			}
 			g.writeln('static char * v_typeof_sumtype_${typ.cname}(int sidx) { /* $typ.name */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return "${util.strip_main_name(typ.name)}";')
@@ -541,6 +544,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('}')
 		} else if typ.kind == .interface_ {
 			inter_info := typ.info as ast.Interface
+			if inter_info.is_generic {
+				continue
+			}
 			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
@@ -575,7 +581,7 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := t.nr_muls()
+	nr_muls := g.unwrap_generic(t).nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
@@ -590,11 +596,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) st
 	// `foo<int>()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
-		nr_muls := typ.nr_muls()
-		if is_decl && nr_muls > 0 {
-			name = strings.repeat(`*`, nr_muls) + name
-		}
-		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
 	}
 	return name
 }
@@ -739,23 +741,27 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
-	if mut sym.info is ast.Struct {
-		if sym.info.is_generic {
-			mut sgtyps := '_T'
-			for gt in sym.info.generic_types {
-				gts := g.table.get_type_symbol(g.unwrap_generic(gt))
-				sgtyps += '_$gts.cname'
+	match mut sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if sym.info.is_generic {
+				mut sgtyps := '_T'
+				for gt in sym.info.generic_types {
+					gts := g.table.get_type_symbol(g.unwrap_generic(gt))
+					sgtyps += '_$gts.cname'
+				}
+				styp += sgtyps
 			}
-			styp += sgtyps
 		}
-	} else if mut sym.info is ast.MultiReturn {
-		// TODO: this doesn't belong here, but makes it working for now
-		mut cname := 'multi_return'
-		for mr_typ in sym.info.types {
-			mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
-			cname += '_$mr_type_sym.cname'
+		ast.MultiReturn {
+			// TODO: this doesn't belong here, but makes it working for now
+			mut cname := 'multi_return'
+			for mr_typ in sym.info.types {
+				mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
+				cname += '_$mr_type_sym.cname'
+			}
+			return cname
 		}
-		return cname
+		else {}
 	}
 	if is_prefix_struct && styp.starts_with('C__') {
 		styp = styp[3..]
@@ -889,7 +895,10 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
-	struct_name := c_name(sym.name)
+	if info.is_generic {
+		return
+	}
+	struct_name := c_name(sym.cname)
 	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
 	g.type_definitions.writeln('struct $struct_name {')
 	g.type_definitions.writeln('\tunion {')
@@ -1362,10 +1371,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
-			for method in node.methods {
-				if method.return_type.has_flag(.optional) {
-					// Register an optional if it's not registered yet
-					g.register_optional(method.return_type)
+			ts := g.table.get_type_symbol(node.typ)
+			if !(ts.info as ast.Interface).is_generic {
+				for method in node.methods {
+					if method.return_type.has_flag(.optional) {
+						// Register an optional if it's not registered yet
+						g.register_optional(method.return_type)
+					}
 				}
 			}
 		}
@@ -1852,20 +1864,27 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
-	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
+	if exp_sym.info is ast.Interface && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
 			got_styp := g.cc_type(got_type.to_ptr(), true)
-			exp_styp := g.cc_type(expected_type, true)
-			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			// TODO: why does cc_type even add this in the first place?
+			exp_styp := exp_sym.cname
+			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			if exp_sym.info.is_generic {
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
 				got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
-			exp_styp := g.cc_type(expected_type, true)
-			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			exp_styp := exp_sym.cname
+			mut fname := '/*$exp_sym*/I_${got_styp}_to_Interface_$exp_styp'
+			if exp_sym.info.is_generic {
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
 				got_styp)
 		}
@@ -3421,8 +3440,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// match sum Type
 			// g.write('/* Type */')
 			// type_idx := node.typ.idx()
-			sym := g.table.get_type_symbol(node.typ)
-			sidx := g.type_sidx(node.typ)
+			typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(typ)
+			sidx := g.type_sidx(typ)
 			// g.write('$type_idx /* $sym.name */')
 			g.write('$sidx /* $sym.name */')
 		}
@@ -3839,7 +3859,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				} else if sym.kind == .interface_ {
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						typ := branch.exprs[sumtype_index] as ast.TypeNode
-						branch_sym := g.table.get_type_symbol(typ.typ)
+						branch_sym := g.table.get_type_symbol(g.unwrap_generic(typ.typ))
 						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
 					} else if branch.exprs[sumtype_index] is ast.None && sym.name == 'IError' {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
@@ -4248,7 +4268,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 					}
 					for i, typ in v.smartcasts {
-						cast_sym := g.table.get_type_symbol(typ)
+						cast_sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
 							g.write(name)
@@ -5452,6 +5472,9 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
+				if typ.info.is_generic {
+					continue
+				}
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
@@ -5595,12 +5618,6 @@ fn (mut g Gen) insert_before_stmt(s string) {
 	cur_line := g.go_before_stmt(0)
 	g.writeln(s)
 	g.write(cur_line)
-}
-
-fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
-	pos := g.out.len
-	g.expr(expr)
-	return g.out.cut_last(g.out.len - pos)
 }
 
 // fn (mut g Gen) start_tmp() {
@@ -6106,7 +6123,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
-			idx := variant.str()
+			idx := u32(variant).str()
 			if idx in g.as_cast_type_names {
 				continue
 			}
@@ -6141,6 +6158,9 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		inter_info := ityp.info as ast.Interface
+		if inter_info.is_generic {
+			continue
+		}
 		// interface_name is for example Speaker
 		interface_name := ityp.cname
 		// generate a struct that references interface methods
@@ -6248,13 +6268,41 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					}
 				}
 			}
-			for _, method in st_sym.methods {
+			mut methods := st_sym.methods
+			match st_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					if st_sym.info.parent_type.has_flag(.generic) {
+						parent_sym := g.table.get_type_symbol(st_sym.info.parent_type)
+						for method in parent_sym.methods {
+							if method.name in methodidx {
+								methods << st_sym.find_method_with_generic_parent(method.name) or {
+									continue
+								}
+							}
+						}
+					}
+				}
+				else {}
+			}
+			for method in methods {
+				mut name := method.name
+				if inter_info.parent_type.has_flag(.generic) {
+					parent_sym := g.table.get_type_symbol(inter_info.parent_type)
+					match mut parent_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							name = g.generic_fn_name(parent_sym.info.concrete_types, method.name,
+								false)
+						}
+						else {}
+					}
+				}
+
 				if method.name !in methodidx {
 					// a method that is not part of the interface should be just skipped
 					continue
 				}
 				// .speak = Cat_speak
-				mut method_call := '${cctype}_$method.name'
+				mut method_call := '${cctype}_$name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'

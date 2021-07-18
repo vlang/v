@@ -479,9 +479,9 @@ pub fn (kind Kind) is_infix() bool {
 
 // Pass ast.builtin_type_names
 // Note: can't import table here due to circular module dependency
-pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
+pub fn (tok &Token) can_start_type(builtin_types []string) bool {
 	match tok.kind {
-		.name { return tok.lit[0].is_capital() || tok.lit in builtin_type_names }
+		.name { return (tok.lit.len > 0 && tok.lit[0].is_capital()) || tok.lit in builtin_types }
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question { return true }
 		else {}

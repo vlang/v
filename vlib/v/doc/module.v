@@ -40,10 +40,7 @@ fn get_parent_mod(input_dir string) ?string {
 		return error('No V files found.')
 	}
 	tbl := ast.new_table()
-	scope := &ast.Scope{
-		parent: 0
-	}
-	file_ast := parser.parse_file(v_files[0], tbl, .skip_comments, prefs, scope)
+	file_ast := parser.parse_file(v_files[0], tbl, .skip_comments, prefs)
 	if file_ast.mod.name == 'main' {
 		return ''
 	}

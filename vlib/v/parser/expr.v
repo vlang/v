@@ -36,7 +36,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			ident := p.parse_ident(ast.Language.v)
 			node = ident
 			if p.inside_defer {
-				if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 					&& ident.name != 'err' {
 					p.defer_vars << ident
 				}
@@ -171,11 +171,13 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type()
+				typname := p.table.get_type_symbol(typ).name
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
 				node = ast.CastExpr{
 					typ: typ
+					typname: typname
 					expr: expr
 					pos: pos
 				}
@@ -576,13 +578,25 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	p.next()
 	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
-	if mut right is ast.CastExpr && op == .amp {
-		// Handle &Type(x), as well as &&Type(x) etc:
-		mut new_cast_type := right.typ.to_ptr()
-		return ast.CastExpr{
-			...right
-			typ: new_cast_type
-			pos: pos.extend(right.pos)
+	if op == .amp {
+		if mut right is ast.CastExpr {
+			// Handle &Type(x), as well as &&Type(x) etc:
+			p.recast_as_pointer(mut right, pos)
+			return right
+		}
+		if mut right is ast.SelectorExpr {
+			// Handle &Type(x).name :
+			if mut right.expr is ast.CastExpr {
+				p.recast_as_pointer(mut right.expr, pos)
+				return right
+			}
+		}
+		if mut right is ast.IndexExpr {
+			// Handle &u64(x)[idx] :
+			if mut right.left is ast.CastExpr {
+				p.recast_as_pointer(mut right.left, pos)
+				return right
+			}
 		}
 	}
 	mut or_stmts := []ast.Stmt{}
@@ -622,4 +636,10 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			pos: or_pos
 		}
 	}
+}
+
+fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Position) {
+	cast_expr.typ = cast_expr.typ.to_ptr()
+	cast_expr.typname = p.table.get_type_symbol(cast_expr.typ).name
+	cast_expr.pos = pos.extend(cast_expr.pos)
 }

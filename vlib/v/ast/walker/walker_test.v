@@ -6,10 +6,7 @@ import v.pref
 fn parse_text(text string) &ast.File {
 	tbl := ast.new_table()
 	prefs := pref.new_preferences()
-	scope := &ast.Scope{
-		parent: 0
-	}
-	return parser.parse_text(text, '', tbl, .skip_comments, prefs, scope)
+	return parser.parse_text(text, '', tbl, .skip_comments, prefs)
 }
 
 struct NodeByOffset {
