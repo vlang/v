@@ -142,8 +142,8 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table        &ast.Table
-	pref         &pref.Preferences
+	table &ast.Table
+	pref  &pref.Preferences
 mut:
 	root Node // the root of tree
 }
