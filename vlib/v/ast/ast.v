@@ -213,6 +213,9 @@ pub:
 pub mut:
 	typ      Type      // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
+	// the comptime_expr_value field is filled by the checker, when it has enough
+	// info to evaluate the constant at compile time
+	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()
 }
 
 // const declaration
@@ -1098,16 +1101,18 @@ pub:
 // .in_prexpr is also needed because of that, because the checker needs to
 // show warnings about the deprecated C->V conversions `string(x)` and
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
+// 2021/07/17: TODO: since 6edfb2c, the above is fixed at the parser level,
+// we need to remove the hacks/special cases in vfmt and the checker too.
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`
 pub mut:
-	typ       Type // `string` TODO rename to `type_to_cast_to`
+	typ       Type   // `string`
+	expr      Expr   // `buf` in `string(buf, n)` and `&Type(buf)`
+	typname   string // `&Type` in `&Type(buf)`
+	expr_type Type   // `byteptr`, the type of the `buf` expression
+	has_arg   bool   // true for `string(buf, n)`, false for `&Type(buf)`
 	pos       token.Position
-	expr      Expr   // `buf` in `string(buf, n)`
-	typname   string // TypeSymbol.name
-	expr_type Type   // `byteptr`
-	has_arg   bool
 }
 
 pub struct AsmStmt {

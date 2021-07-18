@@ -4846,24 +4846,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				continue
 			}
 		}
-
 		name := c_name(field.name)
-		/*
-		if field.typ == ast.byte_type {
-			g.const_decl_simple_define(name, val)
-			return
-		}
-		*/
-		/*
-		if ast.is_number(field.typ) {
-			g.const_decl_simple_define(name, val)
-		} else if field.typ == ast.string_type {
-			g.definitions.writeln('string _const_$name; // a string literal, inited later')
-			if g.pref.build_mode != .build_module {
-				g.stringliterals.writeln('\t_const_$name = $val;')
-			}
-		} else {
-		*/
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -4895,6 +4878,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
+				if ct_value := comptime_expr_value(field) {
+					if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
+						continue
+					}
+				}
 				if is_simple_define_const(field) {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
@@ -4907,6 +4895,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
+fn comptime_expr_value(obj ast.ScopeObject) ?ast.ComptTimeConstValue {
+	if obj is ast.ConstField {
+		if obj.comptime_expr_value !is ast.EmptyExpr {
+			return obj.comptime_expr_value
+		}
+	}
+	return none
+}
+
 fn is_simple_define_const(obj ast.ScopeObject) bool {
 	if obj is ast.ConstField {
 		return match obj.expr {
@@ -4915,6 +4912,38 @@ fn is_simple_define_const(obj ast.ScopeObject) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
+	mut styp := g.typ(typ)
+	cname := '_const_$name'
+	// eprintln('>> cname: $cname | styp: $styp | $ct_value.type_name() | $ct_value')
+	match ct_value {
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		i64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		f64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		string {
+			escaped_val := util.smart_quote(ct_value, false)
+			g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+		}
+		ast.EmptyExpr {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, ct_value string) {
+	g.definitions.writeln('$styp $cname = $ct_value; // precomputed')
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {

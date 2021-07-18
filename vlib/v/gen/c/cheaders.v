@@ -179,7 +179,7 @@ const c_common_macros = '
 	#  define VNORETURN _Noreturn
 	# elif defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
-	# endif	
+	# endif
 	#ifndef VNORETURN
 		#define VNORETURN
 	#endif
@@ -191,7 +191,7 @@ const c_common_macros = '
 		#if (V_GCC_VERSION >= 40500L)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
-	#endif		
+	#endif
 	#if defined(__clang__) && defined(__has_builtin)
 		#if __has_builtin(__builtin_unreachable)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
@@ -199,7 +199,7 @@ const c_common_macros = '
 	#endif
 	#ifndef VUNREACHABLE
 		#define VUNREACHABLE() do { } while (0)
-	#endif		
+	#endif
 #endif
 
 //likely and unlikely macros
@@ -232,13 +232,17 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 const c_helper_macros = '//============================== HELPER C MACROS =============================*/
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
-#define _SLIT0 (string){.len=0}
+#define _SLIT0 (string){.str=(byteptr)(""), .len=0, .is_lit=1}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
+#define _SLEN(s, n) ((string){.str=(byteptr)("" s), .len=n, .is_lit=1})
+
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
+
 // copy something to the heap
 #define HEAP(type, expr) ((type*)memdup((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_noscan(type, expr) ((type*)memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
+
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
