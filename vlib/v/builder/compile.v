@@ -40,7 +40,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	mut sw := time.new_stopwatch({})
 	match pref.backend {
 		.c { b.compile_c() }
-		.js_node,.js_freestanding,.js_browser { b.compile_js() }
+		.js_node, .js_freestanding, .js_browser { b.compile_js() }
 		.native { b.compile_native() }
 	}
 	mut timers := util.get_timers()
