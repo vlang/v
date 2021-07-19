@@ -39,6 +39,7 @@ const (
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
