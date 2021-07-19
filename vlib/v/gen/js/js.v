@@ -48,34 +48,36 @@ mut:
 
 [heap]
 struct JsGen {
-	table &ast.Table
-	pref  &pref.Preferences
+	pref &pref.Preferences
 mut:
-	definitions         strings.Builder
-	ns                  &Namespace
-	namespaces          map[string]&Namespace
-	doc                 &JsDoc
-	enable_doc          bool
-	file                &ast.File
-	tmp_count           int
-	inside_ternary      bool
-	inside_loop         bool
-	inside_map_set      bool // map.set(key, value)
-	inside_builtin      bool
-	generated_builtin   bool
-	inside_def_typ_decl bool
-	is_test             bool
-	stmt_start_pos      int
-	defer_stmts         []ast.DeferStmt
-	fn_decl             &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types           []string    // types that need automatic str() generation
-	method_fn_decls     map[string][]ast.FnDecl
-	builtin_fns         []string // Functions defined in `builtin`
-	empty_line          bool
-	cast_stack          []ast.Type
-	call_stack          []ast.CallExpr
-	is_vlines_enabled   bool // is it safe to generate #line directives when -g is passed
-	sourcemap           sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	table                 &ast.Table
+	definitions           strings.Builder
+	ns                    &Namespace
+	namespaces            map[string]&Namespace
+	doc                   &JsDoc
+	enable_doc            bool
+	file                  &ast.File
+	tmp_count             int
+	inside_ternary        bool
+	inside_loop           bool
+	inside_map_set        bool // map.set(key, value)
+	inside_builtin        bool
+	generated_builtin     bool
+	inside_def_typ_decl   bool
+	is_test               bool
+	stmt_start_pos        int
+	defer_stmts           []ast.DeferStmt
+	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types             []string    // types that need automatic str() generation
+	method_fn_decls       map[string][]ast.FnDecl
+	builtin_fns           []string // Functions defined in `builtin`
+	empty_line            bool
+	cast_stack            []ast.Type
+	call_stack            []ast.CallExpr
+	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
+	sourcemap             sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	comptime_var_type_map map[string]ast.Type
+	defer_ifdef           string
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -303,6 +305,25 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
+
+	if g.pref.backend != .js_node {
+		g.definitions.writeln('const \$process = {')
+		g.definitions.writeln('  arch: "js",')
+		if g.pref.backend == .js_freestanding {
+			g.definitions.writeln('  platform: "freestanding"')
+		} else {
+			g.definitions.writeln('  platform: "browser"')
+		}
+		g.definitions.writeln('}')
+
+		g.definitions.writeln('const \$os = {')
+		g.definitions.writeln('  endianess: "LE",')
+
+		g.definitions.writeln('}')
+	} else {
+		g.definitions.writeln('const \$os = require("os");')
+		g.definitions.writeln('const \$process = process;')
+	}
 }
 
 pub fn (g JsGen) hashes() string {
@@ -1443,6 +1464,10 @@ fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
+	if node.is_comptime {
+		g.comp_if(node)
+		return
+	}
 	type_sym := g.table.get_type_symbol(node.typ)
 	// one line ?:
 	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
@@ -1935,4 +1960,15 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	}
 
 	g.write('${g.typ(typ)}($it.val)')
+}
+
+fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
+	if typ.has_flag(.generic) {
+		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
+			g.table.cur_concrete_types)
+		{
+			return t_typ
+		}
+	}
+	return typ
 }

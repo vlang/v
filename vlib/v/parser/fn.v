@@ -633,7 +633,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false
 	p.open_scope()
-	if p.pref.backend != .js {
+	if !p.pref.backend.is_js() {
 		p.scope.detached_from_parent = true
 	}
 	// TODO generics
