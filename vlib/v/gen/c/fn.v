@@ -762,7 +762,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		if !is_range_slice {
-			g.write('&')
+			if !node.left.is_lvalue() {
+				g.write('ADDR($rec_cc_type, ')
+				has_cast = true
+			} else {
+				g.write('&')
+			}
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
