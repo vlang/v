@@ -6,7 +6,7 @@ fn test_mysql_orm() {
 		host: 'localhost'
 		port: 3306
 		username: 'root'
-		password: 'L[ypGVQ95x[;U/Tk'
+		password: ''
 		dbname: 'mysql'
 	}
 	mdb.connect() or { panic(err) }
