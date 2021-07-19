@@ -18,13 +18,13 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend == .c && !prefs.should_compile_c(file) {
 			continue
 		}
-		if prefs.backend == .js && !prefs.should_compile_js(file) {
+		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
 			continue
 		}
 		if prefs.backend == .native && !prefs.should_compile_native(file) {
 			continue
 		}
-		if prefs.backend != .js && !prefs.should_compile_asm(file) {
+		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
 			continue
 		}
 		if file.starts_with('.#') {
