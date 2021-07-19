@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads']
+		'no_bounds_checking', 'freestanding', 'threads', 'js_browser', 'js_freestanding']
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -4802,7 +4802,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 		c.warn('inline assembly goto is not supported, it will most likely not work',
 			stmt.pos)
 	}
-	if c.pref.backend == .js {
+	if c.pref.backend.is_js() {
 		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
@@ -4901,7 +4901,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.skip_flags {
 		return
 	}
-	if c.pref.backend == .js {
+	if c.pref.backend.is_js() {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
 				node.pos)
@@ -6771,7 +6771,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				return false
 			} else if cname in checker.valid_comp_if_other {
 				match cname {
-					'js' { return c.pref.backend != .js }
+					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }

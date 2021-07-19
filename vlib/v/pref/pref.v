@@ -45,8 +45,21 @@ pub enum ColorOutput {
 
 pub enum Backend {
 	c // The (default) C backend
-	js // The JavaScript backend
+	js_node // The JavaScript NodeJS backend
+	js_browser // The JavaScript browser backend
+	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
+}
+
+pub fn (b Backend) is_js() bool {
+	match b {
+		.js_node, .js_browser, .js_freestanding {
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 pub enum CompilerType {
@@ -513,7 +526,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-o', '-output' {
 				res.out_name = cmdline.option(current_args, arg, '')
 				if res.out_name.ends_with('.js') {
-					res.backend = .js
+					res.backend = .js_node
 				}
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)
@@ -524,6 +537,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
 				b := backend_from_string(sbackend) or { continue }
+				if b.is_js() {
+					res.output_cross_c = true
+				}
 				res.backend = b
 				i++
 			}
@@ -723,7 +739,10 @@ fn is_source_file(path string) bool {
 pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
-		'js' { return .js }
+		'js' { return .js_node }
+		'js_node' { return .js_node }
+		'js_browser' { return .js_browser }
+		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}

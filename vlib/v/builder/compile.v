@@ -40,7 +40,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	mut sw := time.new_stopwatch({})
 	match pref.backend {
 		.c { b.compile_c() }
-		.js { b.compile_js() }
+		.js_node, .js_freestanding, .js_browser { b.compile_js() }
 		.native { b.compile_native() }
 	}
 	mut timers := util.get_timers()
@@ -118,7 +118,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
-	if b.pref.backend == .js {
+	if b.pref.backend.is_js() {
 		exefile = os.real_path('${b.pref.out_name}.js')
 		cmd = 'node "$exefile"'
 	}
@@ -200,7 +200,7 @@ pub fn (v Builder) get_builtin_files() []string {
 	for location in v.pref.lookup_path {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
-			if v.pref.backend == .js {
+			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
 			} else {
