@@ -4261,13 +4261,13 @@ Since V does not support overloading functions by intention there are wrapper fu
 C headers named `atomic.h` that are part of the V compiler infrastructure.
 
 There are dedicated wrappers for all unsigend integer types and for pointers.
-(`byte` is not fully supported on Windows) &ndash; the function names include the type name as suffix.
-e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
+(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
 
 To use these functions the C header for the used OS has to be included and the functions
 that are intended to be used have to be declared. Example:
 
-```v
+```v globals
 $if windows {
 	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
@@ -4332,7 +4332,8 @@ fn main() {
 
 In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
 in the global `atom` with a value of `23`. The replacement in the opposite direction is
-done exactly 10000000 times. The last replacement will be with `31` which makes the spawned thread finish.
+done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
+thread finish.
 
 It is not predictable how many replacements occur in which thread, but the sum will always
 be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
