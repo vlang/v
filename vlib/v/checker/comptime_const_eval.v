@@ -55,6 +55,34 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 						return none
 					}
 				}
+			} else if left is u64 && right is i64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
+				}
+			} else if left is i64 && right is u64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
+				}
 			} else if left is u64 && right is u64 {
 				match expr.op {
 					.plus { return left + right }

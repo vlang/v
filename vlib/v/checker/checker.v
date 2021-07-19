@@ -4379,7 +4379,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative', init_expr.position())
+			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
+				init_expr.position())
 		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, int(fixed_size),
 			init_expr)
