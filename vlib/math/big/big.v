@@ -291,9 +291,9 @@ pub fn fact(n int) Number {
 // Example: assert big.from_int(1).bytes()[0] == byte(0x01)
 // Example: assert big.from_int(1024).bytes()[1] == byte(0x04)
 // Example: assert big.from_int(1048576).bytes()[2] == byte(0x10)
-pub fn (n &Number) bytes() []byte {
+pub fn (n Number) bytes() []byte {
 	mut res := []byte{len: 128, init: 0}
-	unsafe { C.memcpy(res.data, n, 128) }
+	unsafe { C.memcpy(res.data, &n, 128) }
 	return res
 }
 
@@ -304,9 +304,9 @@ pub fn (n &Number) bytes() []byte {
 // Example: assert big.from_int(1).bytes_trimmed() == [byte(0x01)]
 // Example: assert big.from_int(1024).bytes_trimmed() == [byte(0x00), 0x04]
 // Example: assert big.from_int(1048576).bytes_trimmed() == [byte(0x00), 0x00, 0x10]
-pub fn (n &Number) bytes_trimmed() []byte {
+pub fn (n Number) bytes_trimmed() []byte {
 	mut res := []byte{len: 128, init: 0}
-	unsafe { C.memcpy(res.data, n, 128) }
+	unsafe { C.memcpy(res.data, &n, 128) }
 	mut non_zero_idx := 127
 	for ; non_zero_idx >= 0; non_zero_idx-- {
 		if res[non_zero_idx] != 0 {
