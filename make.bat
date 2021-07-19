@@ -178,7 +178,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
     echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
 )
-"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
+"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
@@ -186,7 +186,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
     echo    v.exe -cc "!tcc_exe!" self
 )
-v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>NUL
+v.exe -cc "!tcc_exe!" self>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 goto :success
 
@@ -205,7 +205,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
     echo    clang -std=c99 -municode -w -o v.exe .\vc\v_win.c
 )
-clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!" 2>NUL
+clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version>>"!log_file!"
@@ -217,7 +217,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] v.exe -cc clang self>>"!log_file!"
     echo    v.exe -cc clang self
 )
-v.exe -cc clang self>>"!log_file!" 2>NUL
+v.exe -cc clang self>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -234,7 +234,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
     echo    gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c
 )
-gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!" 2>NUL
+gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version>>"!log_File!"
@@ -246,7 +246,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] v.exe -cc gcc self>>"!log_file!"
     echo    v.exe -cc gcc self
 )
-v.exe -cc gcc self>>"!log_file!" 2>NUL
+v.exe -cc gcc self>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -280,9 +280,9 @@ set ObjFile=.v.c.obj
 echo  ^> Attempting to build v_win.c with MSVC
 if !flag_verbose! EQU 1 (
     echo [Debug] cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
-    echo    cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
+    echo         cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
 )
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!" 2>NUL
+cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
     cl.exe 1>NUL 2>"!log_file!"
@@ -294,7 +294,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] v.exe -cc msvc self>>"!log_file!"
     echo    v.exe -cc msvc self
 )
-v.exe -cc msvc self>>"!log_file!" 2>NUL
+v.exe -cc msvc self>>"!log_file!"
 del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
