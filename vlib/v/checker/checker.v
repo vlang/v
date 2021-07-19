@@ -6082,6 +6082,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// parser failed, stop checking
 				return
 			}
+			expr_type_sym := c.table.get_type_symbol(expr_type)
 			if cond_type_sym.kind == .interface_ {
 				// TODO
 				// This generates a memory issue with TCC
@@ -6091,7 +6092,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expr_pos := expr.position()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
 					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
-						expr_type_sym := c.table.get_type_symbol(expr_type)
 						if expr_type_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}
@@ -6103,10 +6103,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
 				}
+			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
+				expr_str := c.table.type_to_str(expr_type)
+				expect_str := c.table.type_to_str(node.cond_type)
+				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.position())
 			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
+				c.error('cannot match `$expect_str` with `$expr_str`', expr.position())
 			}
 			branch_exprs[key] = val + 1
 		}
