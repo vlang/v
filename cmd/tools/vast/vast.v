@@ -131,13 +131,9 @@ fn json(file string) string {
 		root: new_object()
 		table: ast.new_table()
 		pref: pref
-		global_scope: &ast.Scope{
-			start_pos: 0
-			parent: 0
-		}
 	}
 	// parse file with comment
-	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref, t.global_scope)
+	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
 	t.root = t.ast_file(ast_file)
 	// generate the ast string
 	s := json_print(t.root)
@@ -146,9 +142,8 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table        &ast.Table
-	pref         &pref.Preferences
-	global_scope &ast.Scope
+	table &ast.Table
+	pref  &pref.Preferences
 mut:
 	root Node // the root of tree
 }

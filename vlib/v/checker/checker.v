@@ -1780,7 +1780,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
-				.aggregate {
+				.aggregate, .placeholder {
 					c.fail_if_immutable(expr.expr)
 				}
 				else {
@@ -3608,10 +3608,16 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 	mut needs_order := false
 	mut done_fields := []int{}
-	for i, field in node.fields {
+	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		if ct_value := eval_comptime_const_expr(field.expr, 0) {
+			field.comptime_expr_value = ct_value
+			if ct_value is u64 {
+				typ = ast.u64_type
+			}
+		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -4345,7 +4351,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 	} else if array_init.is_fixed && array_init.exprs.len == 1
 		&& array_init.elem_type != ast.void_type {
 		// [50]byte
-		mut fixed_size := 0
+		mut fixed_size := i64(0)
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
@@ -4354,16 +4360,18 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if cint := eval_int_expr(init_expr.obj.expr, 0) {
-						fixed_size = cint
+					if comptime_value := eval_comptime_const_expr(init_expr.obj.expr,
+						0)
+					{
+						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
 					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
-				if cint := eval_int_expr(init_expr, 0) {
-					fixed_size = cint
+				if comptime_value := eval_comptime_const_expr(init_expr, 0) {
+					fixed_size = comptime_value.i64() or { fixed_size }
 				}
 			}
 			else {
@@ -4373,7 +4381,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, int(fixed_size),
 			init_expr)
 		if array_init.elem_type.has_flag(.generic) {
 			array_init.typ = ast.new_type(idx).set_flag(.generic)
@@ -4385,47 +4393,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 	}
 	return array_init.typ
-}
-
-fn eval_int_expr(expr ast.Expr, nlevel int) ?int {
-	if nlevel > 100 {
-		// protect against a too deep comptime eval recursion:
-		return none
-	}
-	match expr {
-		ast.IntegerLiteral {
-			return expr.val.int()
-		}
-		ast.InfixExpr {
-			left := eval_int_expr(expr.left, nlevel + 1) ?
-			right := eval_int_expr(expr.right, nlevel + 1) ?
-			match expr.op {
-				.plus { return left + right }
-				.minus { return left - right }
-				.mul { return left * right }
-				.div { return left / right }
-				.mod { return left % right }
-				.xor { return left ^ right }
-				.pipe { return left | right }
-				.amp { return left & right }
-				.left_shift { return left << right }
-				.right_shift { return left >> right }
-				else { return none }
-			}
-		}
-		ast.Ident {
-			if expr.obj is ast.ConstField {
-				// an int constant?
-				cint := eval_int_expr(expr.obj.expr, nlevel + 1) ?
-				return cint
-			}
-		}
-		else {
-			// dump(expr)
-			return none
-		}
-	}
-	return none
 }
 
 [inline]

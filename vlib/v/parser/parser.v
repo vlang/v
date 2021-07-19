@@ -50,7 +50,6 @@ mut:
 	attrs               []ast.Attr // attributes before next decl stmt
 	expr_mod            string     // for constructing full type names in parse_type()
 	scope               &ast.Scope
-	global_scope        &ast.Scope
 	imports             map[string]string // alias => mod_name
 	ast_imports         []ast.Import      // mod_names
 	used_imports        []string // alias
@@ -90,10 +89,6 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 		table: table
 		pref: &pref.Preferences{}
 		scope: scope
-		global_scope: &ast.Scope{
-			start_pos: 0
-			parent: 0
-		}
 	}
 	p.init_parse_fns()
 	util.timing_start('PARSE stmt')
@@ -104,7 +99,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) &ast.File {
+pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, pref)
 		table: table
@@ -112,12 +107,11 @@ pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, sco
 		scope: scope
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	return p.parse()
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
+pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
@@ -125,11 +119,10 @@ pub fn parse_text(text string, path string, table &ast.Table, comments_mode scan
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: global_scope
+			parent: table.global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	return p.parse()
@@ -176,7 +169,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
+pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -188,11 +181,10 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: global_scope
+			parent: table.global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	return p.parse()
@@ -213,7 +205,6 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
@@ -290,7 +281,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		auto_imports: p.auto_imports
 		stmts: stmts
 		scope: p.scope
-		global_scope: p.global_scope
+		global_scope: p.table.global_scope
 		errors: p.errors
 		warnings: p.warnings
 		global_labels: p.global_labels
@@ -330,7 +321,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, global_scope &ast.Scope) []&ast.File {
+pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(false)
 	$if time_parsing ? {
 		timers.should_print = true
@@ -361,7 +352,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, glo
 	mut files := []&ast.File{}
 	for path in paths {
 		timers.start('parse_file $path')
-		files << parse_file(path, table, .skip_comments, pref, global_scope)
+		files << parse_file(path, table, .skip_comments, pref)
 		timers.show('parse_file $path')
 	}
 	return files
@@ -2873,7 +2864,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field)
+		p.table.global_scope.register(field)
 		comments = []
 		if !is_block {
 			break
@@ -2975,7 +2966,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field)
+		p.table.global_scope.register(field)
 		comments = []
 		if !is_block {
 			break
