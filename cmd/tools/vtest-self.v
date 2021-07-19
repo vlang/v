@@ -76,6 +76,7 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
