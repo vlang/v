@@ -866,6 +866,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	// to prevent generating interface struct before definition of field types
 	for typ in g.table.type_symbols {
 		if typ.kind == .interface_ && typ.name !in c.builtins {
+			g.write_interface_typedef(typ)
+		}
+	}
+	for typ in g.table.type_symbols {
+		if typ.kind == .interface_ && typ.name !in c.builtins {
 			g.write_interface_typesymbol_declaration(typ)
 		}
 	}
@@ -893,13 +898,17 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
 
+pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
+	struct_name := c_name(sym.cname)
+	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+}
+
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
 	if info.is_generic {
 		return
 	}
 	struct_name := c_name(sym.cname)
-	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
 	g.type_definitions.writeln('struct $struct_name {')
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
@@ -5386,6 +5395,7 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
+			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
