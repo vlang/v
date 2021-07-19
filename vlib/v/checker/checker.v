@@ -1470,8 +1470,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(node.left)
-				left_value_type := c.table.value_type(left_type)
-				left_value_sym := c.table.get_type_symbol(left_value_type)
+				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
+				left_value_sym := c.table.get_type_symbol(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
 					if right_final.kind != .array {
 						// []Animal << Cat
@@ -1489,8 +1489,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				}
 				// []T << T or []T << []T
-				if c.check_types(right_type, left_value_type)
-					|| c.check_types(right_type, left_type) {
+				unwrapped_right_type := c.unwrap_generic(right_type)
+				if c.check_types(unwrapped_right_type, left_value_type)
+					|| c.check_types(unwrapped_right_type, left_type) {
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)

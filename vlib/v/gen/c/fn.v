@@ -548,7 +548,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	unwrapped_rec_type := g.unwrap_generic(node.receiver_type)
+	mut unwrapped_rec_type := node.receiver_type
+	if g.table.cur_fn.generic_names.len > 0 { // in generic fn
+		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
+	} else { // in non-generic fn
+		sym := g.table.get_type_symbol(node.receiver_type)
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
+				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+					sym.info.concrete_types)
+				{
+					unwrapped_rec_type = utyp
+				}
+			}
+			else {}
+		}
+	}
 	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
