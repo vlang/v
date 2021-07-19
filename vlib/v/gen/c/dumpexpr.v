@@ -39,6 +39,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.definitions.writeln('\teprint(int_str(line));')
 			g.definitions.writeln('\teprint(${ctoslit('] ')});')
 
+			// g.definitions.writeln('\t/* dump_type: $dump_type | to_string_fn_name: $to_string_fn_name | is_ptr: $is_ptr | ptr_astarisk: $ptr_astarisk | dump_fn_name: $dump_fn_name | cname: $cname */')
 			g.definitions.writeln('\teprint(sexpr);')
 			g.definitions.writeln('\teprint(${ctoslit(': ')});')
 

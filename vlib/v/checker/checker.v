@@ -1764,7 +1764,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
-				.aggregate {
+				.aggregate, .placeholder {
 					c.fail_if_immutable(expr.expr)
 				}
 				else {
@@ -1948,6 +1948,47 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
+pub fn (mut c Checker) check_expected_arg_count(mut call_expr ast.CallExpr, f &ast.Fn) ? {
+	nr_args := call_expr.args.len
+	nr_params := if call_expr.is_method && f.params.len > 0 {
+		f.params.len - 1
+	} else {
+		f.params.len
+	}
+	mut min_required_params := f.params.len
+	if call_expr.is_method {
+		min_required_params--
+	}
+	if f.is_variadic {
+		min_required_params--
+	}
+	if min_required_params < 0 {
+		min_required_params = 0
+	}
+	if nr_args < min_required_params {
+		if min_required_params == nr_args + 1 {
+			last_typ := f.params.last().typ
+			last_sym := c.table.get_type_symbol(last_typ)
+			if last_sym.kind == .struct_ {
+				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
+				call_expr.args << {
+					expr: ast.StructInit{
+						typ: last_typ
+					}
+					typ: last_typ
+				}
+				return
+			}
+		}
+		c.error('expected $min_required_params arguments, but got $nr_args', call_expr.pos)
+		return error('')
+	} else if !f.is_variadic && nr_args > nr_params {
+		unexpected_args_pos := call_expr.args[min_required_params].pos.extend(call_expr.args.last().pos)
+		c.error('expected $min_required_params arguments, but got $nr_args', unexpected_args_pos)
+		return error('')
+	}
+}
+
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
@@ -2090,6 +2131,9 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(call_expr.left)
+			if !call_expr.left.is_lvalue() {
+				c.error('cannot pass expression as `mut`', call_expr.left.position())
+			}
 			// call_expr.is_mut = true
 			if to_lock != '' && rec_share != .shared_t {
 				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
@@ -2105,21 +2149,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
 			call_expr.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 		}
-		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
-		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 {
-			2
-		} else {
-			1
-		}
-		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
-		} else if !method.is_variadic && call_expr.args.len > nr_args {
-			unexpected_arguments := call_expr.args[min_required_args..]
-			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
-			return method.return_type
-		}
+		c.check_expected_arg_count(mut call_expr, method) or { return method.return_type }
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
 		mut no_type_promotion := false
@@ -2674,17 +2704,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
-		min_required_args := if func.is_variadic { func.params.len - 1 } else { func.params.len }
-		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
-		} else if !func.is_variadic && call_expr.args.len > func.params.len {
-			unexpected_arguments := call_expr.args[min_required_args..]
-			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				unexpected_arguments_pos)
-			return func.return_type
-		}
+		c.check_expected_arg_count(mut call_expr, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
 	if fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] && call_expr.args.len > 0 {
@@ -2785,6 +2805,19 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		mut final_param_sym := param_typ_sym
 		if func.is_variadic && param_typ_sym.info is ast.Array {
 			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
+		}
+		// NB: Casting to voidptr is used as an escape mechanism, so:
+		// 1. allow passing *explicit* voidptr (native or through cast) to functions
+		// expecting voidptr or ...voidptr
+		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,
+		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
+		// the compiler has special codegen support for), so it should be opt in, that is it
+		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
+		if call_arg.typ != param.typ
+			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
+			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' {
+			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
@@ -2947,8 +2980,12 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
 				}
 				if imethod.return_type.has_flag(.generic) {
-					if method.return_type !in inferred_types {
-						inferred_types << method.return_type
+					mut inferred_type := method.return_type
+					if imethod.return_type.has_flag(.optional) {
+						inferred_type = inferred_type.clear_flag(.optional)
+					}
+					if inferred_type !in inferred_types {
+						inferred_types << inferred_type
 					}
 				}
 				for i, iparam in imethod.params {
@@ -3318,6 +3355,33 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				}
 			}
 		}
+		if typ.has_flag(.generic) && !has_field {
+			gs := c.table.get_type_symbol(typ)
+			if f := c.table.find_field(gs, field_name) {
+				has_field = true
+				field = f
+			} else {
+				// look for embedded field
+				if gs.info is ast.Struct {
+					mut found_fields := []ast.StructField{}
+					mut embed_of_found_fields := []ast.Type{}
+					for embed in gs.info.embeds {
+						embed_sym := c.table.get_type_symbol(embed)
+						if f := c.table.find_field(embed_sym, field_name) {
+							found_fields << f
+							embed_of_found_fields << embed
+						}
+					}
+					if found_fields.len == 1 {
+						field = found_fields[0]
+						has_field = true
+						node.from_embed_type = embed_of_found_fields[0]
+					} else if found_fields.len > 1 {
+						c.error('ambiguous field `$field_name`', node.pos)
+					}
+				}
+			}
+		}
 	}
 	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
@@ -3515,10 +3579,16 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 	mut needs_order := false
 	mut done_fields := []int{}
-	for i, field in node.fields {
+	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		if ct_value := eval_comptime_const_expr(field.expr, 0) {
+			field.comptime_expr_value = ct_value
+			if ct_value is u64 {
+				typ = ast.u64_type
+			}
+		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -4283,7 +4353,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 	} else if array_init.is_fixed && array_init.exprs.len == 1
 		&& array_init.elem_type != ast.void_type {
 		// [50]byte
-		mut fixed_size := 0
+		mut fixed_size := i64(0)
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
@@ -4292,16 +4362,18 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if cint := eval_int_expr(init_expr.obj.expr, 0) {
-						fixed_size = cint
+					if comptime_value := eval_comptime_const_expr(init_expr.obj.expr,
+						0)
+					{
+						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
 					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
-				if cint := eval_int_expr(init_expr, 0) {
-					fixed_size = cint
+				if comptime_value := eval_comptime_const_expr(init_expr, 0) {
+					fixed_size = comptime_value.i64() or { fixed_size }
 				}
 			}
 			else {
@@ -4311,7 +4383,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, int(fixed_size),
 			init_expr)
 		if array_init.elem_type.has_flag(.generic) {
 			array_init.typ = ast.new_type(idx).set_flag(.generic)
@@ -4323,47 +4395,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 	}
 	return array_init.typ
-}
-
-fn eval_int_expr(expr ast.Expr, nlevel int) ?int {
-	if nlevel > 100 {
-		// protect against a too deep comptime eval recursion:
-		return none
-	}
-	match expr {
-		ast.IntegerLiteral {
-			return expr.val.int()
-		}
-		ast.InfixExpr {
-			left := eval_int_expr(expr.left, nlevel + 1) ?
-			right := eval_int_expr(expr.right, nlevel + 1) ?
-			match expr.op {
-				.plus { return left + right }
-				.minus { return left - right }
-				.mul { return left * right }
-				.div { return left / right }
-				.mod { return left % right }
-				.xor { return left ^ right }
-				.pipe { return left | right }
-				.amp { return left & right }
-				.left_shift { return left << right }
-				.right_shift { return left >> right }
-				else { return none }
-			}
-		}
-		ast.Ident {
-			if expr.obj is ast.ConstField {
-				// an int constant?
-				cint := eval_int_expr(expr.obj.expr, nlevel + 1) ?
-				return cint
-			}
-		}
-		else {
-			// dump(expr)
-			return none
-		}
-	}
-	return none
 }
 
 [inline]
@@ -5456,6 +5487,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		} else {
 			type_name := c.table.type_to_str(node.expr_type)
+			// dump(node.typ)
+			// dump(node.expr_type)
+			// dump(type_name)
+			// dump(to_type_sym.debug())
 			c.error('cannot cast `$type_name` to struct', node.pos)
 		}
 	} else if to_type_sym.kind == .interface_ {
@@ -5490,7 +5525,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.has_arg {
 		c.expr(node.arg)
 	}
-	node.typname = c.table.get_type_symbol(node.typ).name
 	return node.typ
 }
 

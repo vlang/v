@@ -308,7 +308,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					default_value: 'new Number(0)'
 					constructor: 'this.val = typeof(val) == "string" ? val.charCodeAt() : (val | 0)'
 					value_of: 'this.val | 0'
-					to_string: 'String.fromCharCode(this.val)'
+					to_string: 'new string(this.val + "")'
 					eq: 'this.valueOf() === other.valueOf()'
 				)
 			}

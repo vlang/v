@@ -11,11 +11,14 @@ import os
 // then `nr_jobs` will return that number instead.
 // This is useful for runtime tweaking of e.g. threaded or concurrent code.
 pub fn nr_jobs() int {
-	mut cpus := nr_cpus()
+	mut cpus := nr_cpus() - 1
 	// allow for overrides, for example using `VJOBS=32 ./v test .`
 	vjobs := os.getenv('VJOBS').int()
 	if vjobs > 0 {
 		cpus = vjobs
+	}
+	if cpus == 0 {
+		return 1
 	}
 	return cpus
 }

@@ -18,7 +18,6 @@ pub:
 mut:
 	pref          &pref.Preferences
 	checker       &checker.Checker
-	global_scope  &ast.Scope
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
@@ -56,9 +55,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
-		global_scope: &ast.Scope{
-			parent: 0
-		}
 		compiled_dir: compiled_dir
 		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
@@ -68,11 +64,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 
 pub fn (mut b Builder) front_stages(v_files []string) ? {
 	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parse_imports()
-	util.get_timers().show('SCAN')
-	util.get_timers().show('PARSE')
-	util.get_timers().show_if_exists('PARSE stmt')
+	mut timers := util.get_timers()
+	timers.show('SCAN')
+	timers.show('PARSE')
+	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
 		return error('stop_after_parser')
 	}
@@ -145,7 +142,7 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 			}
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
 				mut name := file.mod.name
 				if name == '' {

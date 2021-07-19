@@ -8,7 +8,6 @@ import io
 import net
 import net.http
 import net.urllib
-import strings
 import time
 
 pub const (
@@ -80,7 +79,7 @@ pub mut:
 	form              map[string]string
 	query             map[string]string
 	files             map[string][]FileData
-	headers           string // response headers
+	header            http.Header // response headers
 	done              bool
 	page_gen_start    i64
 	form_error        string
@@ -128,23 +127,20 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-	mut sb := strings.new_builder(1024)
-	defer {
-		unsafe { sb.free() }
+
+	// build header
+	header := http.new_header_from_map(map{
+		http.CommonHeader.content_type:   mimetype
+		http.CommonHeader.content_length: res.len.str()
+	}).join(ctx.header)
+
+	resp := http.Response{
+		version: .v1_1
+		status_code: ctx.status.int() // TODO: change / remove ctx.status
+		header: header.join(vweb.headers_close)
+		text: res
 	}
-	sb.write_string('HTTP/1.1 $ctx.status')
-	sb.write_string('\r\nContent-Type: $mimetype')
-	sb.write_string('\r\nContent-Length: $res.len')
-	sb.write_string(ctx.headers)
-	sb.write_string('\r\n')
-	sb.write_string(vweb.headers_close.str())
-	sb.write_string('\r\n')
-	sb.write_string(res)
-	s := sb.str()
-	defer {
-		unsafe { s.free() }
-	}
-	send_string(mut ctx.conn, s) or { return false }
+	send_string(mut ctx.conn, resp.bytestr()) or { return false }
 	return true
 }
 
@@ -190,7 +186,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close\r\n') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
 		return Result{}
 	}
 	return Result{}
@@ -245,7 +241,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	}
 	cookie_header = ' ' + cookie_header
 	// println('cookie_header="$cookie_header"')
-	// println(ctx.req.headers)
+	// println(ctx.req.header)
 	cookie := if cookie_header.contains(';') {
 		cookie_header.find_between(' $key=', ';')
 	} else {
@@ -268,9 +264,7 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 
 // Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
-	// println('add_header($key, $val)')
-	ctx.headers = ctx.headers + '\r\n$key: $val'
-	// println(ctx.headers)
+	ctx.header.add_custom(key, val) or {}
 }
 
 // Returns the header data from the key

@@ -16,6 +16,7 @@ pub mut:
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
+	global_scope       &Scope
 	cflags             []cflag.CFlag
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
@@ -167,6 +168,9 @@ mut:
 pub fn new_table() &Table {
 	mut t := &Table{
 		type_symbols: []TypeSymbol{cap: 64000}
+		global_scope: &Scope{
+			parent: 0
+		}
 		cur_fn: 0
 	}
 	t.register_builtin_type_symbols()
@@ -602,6 +606,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	}
 	typ_idx = t.type_symbols.len
 	t.type_symbols << typ
+	t.type_symbols[typ_idx].idx = typ_idx
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
 }

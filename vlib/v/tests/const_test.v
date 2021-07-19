@@ -1,17 +1,21 @@
 pub const (
-	a = b
-	c = a + b
-	b = 1
-	d = (e / 2) + 7
-	e = 9
+	a   = b
+	ccc = a + b
+	b   = 1
+	d   = (e / 2) + 7
+	e   = 9
 )
 
 pub const x = 10
 
 fn test_const() {
-	assert a == 1
 	assert d == 11
-	assert c == 1
+	//
+	assert b == 1
+	assert a == 1
+	assert ccc == a + b
+	assert e == 9
+	assert d == (e / 2) + 7
 }
 
 // const optional test

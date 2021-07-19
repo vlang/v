@@ -358,6 +358,9 @@ pub fn (x Expr) str() string {
 			}
 			return s
 		}
+		SelectExpr {
+			return 'ast.SelectExpr'
+		}
 		SelectorExpr {
 			return '${x.expr.str()}.$x.field_name'
 		}
@@ -410,7 +413,50 @@ pub fn (x Expr) str() string {
 		None {
 			return 'none'
 		}
-		else {}
+		IsRefType {
+			return 'isreftype(' + if x.is_type {
+				global_table.type_to_str(x.typ)
+			} else {
+				x.expr.str()
+			} + ')'
+		}
+		IfGuardExpr {
+			return x.var_name + ' := ' + x.expr.str()
+		}
+		StructInit {
+			sname := global_table.get_type_symbol(x.typ).name
+			return '$sname{....}'
+		}
+		ArrayDecompose {
+			return 'ast.ArrayDecompose'
+		}
+		Assoc {
+			return 'ast.Assoc'
+		}
+		ChanInit {
+			return 'ast.ChanInit'
+		}
+		ComptimeCall {
+			return 'ast.ComptimeCall'
+		}
+		EmptyExpr {
+			return 'ast.EmptyExpr'
+		}
+		LockExpr {
+			return 'ast.LockExpr'
+		}
+		MatchExpr {
+			return 'ast.MatchExpr'
+		}
+		NodeError {
+			return 'ast.NodeError'
+		}
+		OrExpr {
+			return 'ast.OrExpr'
+		}
+		SqlExpr {
+			return 'ast.SqlExpr'
+		}
 	}
 	return '[unhandled expr type $x.type_name()]'
 }

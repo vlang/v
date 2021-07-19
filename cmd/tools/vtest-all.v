@@ -62,6 +62,12 @@ fn get_all_commands() []Command {
 		okmsg: 'V can output a .c file, without compiling further.'
 		rmfile: 'hhww.c'
 	}
+	$if linux || macos {
+		res << Command{
+			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
+			okmsg: 'V prints the generated source code to stdout with `-o -` .'
+		}
+	}
 	res << Command{
 		line: '$vexe -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
@@ -152,7 +158,8 @@ fn (mut cmd Command) run() {
 	sw := time.new_stopwatch({})
 	cmd.ecode = os.system(cmd.line)
 	spent := sw.elapsed().milliseconds()
-	println(term_highlight('> Running: "$cmd.line" took: $spent ms.'))
+	println('> Running: "$cmd.line" took: $spent ms ... ' +
+		if cmd.ecode != 0 { term.failed('FAILED') } else { term_highlight('OK') })
 	if vtest_nocleanup {
 		return
 	}

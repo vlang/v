@@ -674,6 +674,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			} else {
 				g.write(node.op.str())
 				g.expr(node.right)
+				g.write('.valueOf()')
 			}
 		}
 		ast.RangeExpr {
@@ -1454,6 +1455,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			}
 			if i < node.branches.len - 1 || !node.has_else {
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.write(' ? ')
 			}
 			g.stmts(branch.stmts)
@@ -1474,6 +1476,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 							g.write('true')
 						} else {
 							g.expr(branch.cond)
+							g.write('.valueOf()')
 						}
 						g.writeln(') {')
 					}
@@ -1481,6 +1484,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			} else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
 				/*
@@ -1540,10 +1544,12 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
 		} else {
+			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
+			g.write('new byte(')
 			g.expr(expr.left)
 			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
-			g.write(')')
+			g.write('))')
 		}
 	} else {
 		// TODO Does this cover all cases?
@@ -1768,14 +1774,14 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text := it.val.replace("'", "\\'")
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
-	if should_cast {
+	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('string(')
 	}
 	g.write("'$text'")
-	if should_cast {
+	if true || should_cast {
 		g.write(')')
 	}
 }

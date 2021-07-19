@@ -581,7 +581,7 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := t.nr_muls()
+	nr_muls := g.unwrap_generic(t).nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
@@ -596,11 +596,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) st
 	// `foo<int>()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
-		nr_muls := typ.nr_muls()
-		if is_decl && nr_muls > 0 {
-			name = strings.repeat(`*`, nr_muls) + name
-		}
-		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
 	}
 	return name
 }
@@ -1854,7 +1850,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	g.write('${fname}(')
 	if !got_is_ptr {
 		if !expr.is_lvalue()
-			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
+			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
 			g.write('ADDR($got_styp, (')
 			rparen_n += 2
 		} else {
@@ -4854,24 +4850,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				continue
 			}
 		}
-
 		name := c_name(field.name)
-		/*
-		if field.typ == ast.byte_type {
-			g.const_decl_simple_define(name, val)
-			return
-		}
-		*/
-		/*
-		if ast.is_number(field.typ) {
-			g.const_decl_simple_define(name, val)
-		} else if field.typ == ast.string_type {
-			g.definitions.writeln('string _const_$name; // a string literal, inited later')
-			if g.pref.build_mode != .build_module {
-				g.stringliterals.writeln('\t_const_$name = $val;')
-			}
-		} else {
-		*/
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -4903,7 +4882,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if is_simple_define_const(field) {
+				if ct_value := field.comptime_expr_value() {
+					if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
+						continue
+					}
+				}
+				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(name, g.expr_string(field_expr))
@@ -4915,14 +4899,64 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn is_simple_define_const(obj ast.ScopeObject) bool {
-	if obj is ast.ConstField {
-		return match obj.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
-			else { false }
+fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
+	mut styp := g.typ(typ)
+	cname := '_const_$name'
+	match ct_value {
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
+		}
+		i64 {
+			if typ == ast.int_type {
+				// TODO: use g.const_decl_write_precomputed here too.
+				// For now, use #define macros, so existing code compiles
+				// with -cstrict. Add checker errors for overflows instead,
+				// so V can catch them earlier, instead of relying on the
+				// C compiler for that.
+				g.const_decl_simple_define(name, ct_value.str())
+				return true
+			}
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
+		}
+		f64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		string {
+			escaped_val := util.smart_quote(ct_value, false)
+			// g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+			// TODO: ^ the above for strings, cause:
+			// `error C2099: initializer is not a constant` errors in MSVC,
+			// so fall back to the delayed initialisation scheme:
+			g.definitions.writeln('$styp $cname; // inited later')
+			g.inits[mod].writeln('\t$cname = _SLIT("$escaped_val");')
+			if g.is_autofree {
+				g.cleanups[mod].writeln('\tstring_free(&$cname);')
+			}
+		}
+		ast.EmptyExpr {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, ct_value string) {
+	g.definitions.writeln('$styp $cname = $ct_value; // precomputed')
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {
@@ -6141,7 +6175,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
-			idx := variant.str()
+			idx := u32(variant).str()
 			if idx in g.as_cast_type_names {
 				continue
 			}

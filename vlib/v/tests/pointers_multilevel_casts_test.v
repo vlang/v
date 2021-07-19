@@ -1,4 +1,7 @@
-struct Struct {}
+struct Struct {
+	name string
+	x    int
+}
 
 fn test_byte_pointer_casts() {
 	unsafe {
@@ -36,5 +39,38 @@ fn test_struct_pointer_casts() {
 		assert voidptr(pps).str() == 'a'
 		assert voidptr(ppps).str() == 'b'
 		assert voidptr(pppps).str() == 'c'
+	}
+}
+
+fn test_struct_pointer_casts_with_field_selectors() {
+	ss := &Struct{
+		name: 'abc'
+		x: 123
+	}
+	dump(ss)
+	pss := voidptr(ss)
+	if &Struct(pss).name == 'abc' {
+		assert true
+	}
+	if &Struct(pss).x == 123 {
+		// &Struct cast and selecting .x
+		assert true
+	}
+	if &&Struct(pss) != 0 {
+		// &&Struct
+		assert true
+	}
+}
+
+fn test_pointer_casts_with_indexing() {
+	mut numbers := [5]u64{}
+	numbers[0] = 123
+	numbers[1] = 456
+	unsafe {
+		pnumbers := voidptr(&numbers[0])
+		assert &u64(pnumbers)[0] == 123
+		assert &u64(pnumbers)[1] == 456
+		idx := 1
+		assert &u64(pnumbers)[idx] == 456
 	}
 }
