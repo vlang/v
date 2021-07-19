@@ -100,8 +100,7 @@ pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryD
 }
 
 pub fn (db Connection) delete(table string, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
-		where)
+	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{}, where)
 	mysql_stmt_worker(db, query, orm.QueryData{}, where) ?
 }
 
