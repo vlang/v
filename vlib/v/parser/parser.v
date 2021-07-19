@@ -2093,7 +2093,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in ast.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
 			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
-			|| (language == .v && name[0].is_capital()) {
+			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
