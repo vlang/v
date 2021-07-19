@@ -445,7 +445,8 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'globals' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals $vfile')
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals -o x.c $vfile')
+					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`example failed to compile with -enable-globals'))
