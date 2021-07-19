@@ -4260,7 +4260,7 @@ defined with the help of macros and C compiler magic to provide a kind of *overl
 Since V does not support overloading functions by intention there are wrapper functions defined in
 C headers named `atomic.h` that are part of the V compiler infrastructure.
 
-There are dedicated wrappers for all unsigend integer types and for pointers.
+There are dedicated wrappers for all unsigned integer types and for pointers.
 (`byte` is not fully supported on Windows) &ndash; the function names include the type name
 as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
 
