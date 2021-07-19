@@ -499,7 +499,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
-	if platform.is_js() {
+	if platform == .js {
 		return error('vdoc: Platform `$platform` is not supported.')
 	}
 	mut doc := new(input_path)

@@ -321,7 +321,7 @@ pub fn (mut g JsGen) init() {
 
 		g.definitions.writeln('}')
 	} else {
-		g.definitions.writeln('const \$os = os;')
+		g.definitions.writeln('const \$os = require("os");')
 		g.definitions.writeln('const \$process = process;')
 	}
 }
