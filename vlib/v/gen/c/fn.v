@@ -1302,8 +1302,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			if left is ast.Ident {
 				obj := left.obj
 				if obj is ast.Var {
-					is_auto_deref = obj.is_auto_deref
-					if is_auto_deref {
+					// is_auto_deref = obj.is_auto_deref
+					if obj.is_auto_deref {
 						needs_array_promotion = true
 					}
 				}
@@ -1312,6 +1312,14 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		ast.PrefixExpr {
 			if arg.expr.op == .amp {
 				is_amp = true
+			}
+			if arg.expr.op == .amp || arg.expr.op == .mul {
+				if arg.expr.right is ast.Ident {
+					obj := arg.expr.right.obj
+					if obj is ast.Var {
+						is_auto_deref = obj.is_auto_deref
+					}
+				}
 			}
 		}
 		ast.IndexExpr {
