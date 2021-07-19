@@ -21,26 +21,26 @@ fn test_fixed_array_const_u64_size() {
 	assert '$a' == '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'
 }
 
-const n = u64(10_000)
+const n = u64(5_000)
 
-const nn = 100_000
+const nn = 5_000
 
 fn test_u64_const_used_as_fixed_array_size() {
 	mut a := [2 * n]f64{}
 	dump(a.len)
-	assert a.len == 20000
+	assert a.len == 10000
 
 	mut b := [n * 2]f64{}
 	dump(b.len)
-	assert b.len == 20000
+	assert b.len == 10000
 }
 
 fn test_int_const_used_as_fixed_array_size() {
 	mut aa := [2 * nn]f64{}
 	dump(aa.len)
-	assert aa.len == 200_000
+	assert aa.len == 10_000
 
 	mut bb := [nn * 2]f64{}
 	dump(bb.len)
-	assert aa.len == 200_000
+	assert aa.len == 10_000
 }
