@@ -34,7 +34,7 @@ fn (stmt Stmt) bind_f64(idx int, v f64) int {
 }
 
 fn (stmt Stmt) bind_text(idx int, s string) int {
-	return C.sqlite3_bind_text(stmt.stmt, idx, s.str, s.len, 0)
+	return C.sqlite3_bind_text(stmt.stmt, idx, voidptr(s.str), s.len, 0)
 }
 
 fn (stmt Stmt) get_int(idx int) int {
@@ -50,7 +50,7 @@ fn (stmt Stmt) get_f64(idx int) f64 {
 }
 
 fn (stmt Stmt) get_text(idx int) string {
-	b := C.sqlite3_column_text(stmt.stmt, idx)
+	b := &char(C.sqlite3_column_text(stmt.stmt, idx))
 	return unsafe { b.vstring() }
 }
 

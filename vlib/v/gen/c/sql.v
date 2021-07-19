@@ -222,6 +222,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 	g.write('),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
 	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
+	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
 	g.writeln('});')
 
 	g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { v_panic(IError_str(${res}.err)); }')
@@ -264,6 +265,9 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) {
 	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__OrmQueryData){')
+	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
+	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
+	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
 	g.write('.fields = new_array_from_c_array($node.updated_columns.len, $node.updated_columns.len, sizeof(string),')
 	if node.updated_columns.len > 0 {
 		g.write(' _MOV((string[$node.updated_columns.len]){')
@@ -440,7 +444,7 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	mut data := []ast.Expr{}
 	mut is_and := []bool{}
 	g.sql_where_data(where_expr, mut fields, mut kinds, mut data, mut is_and)
-
+	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
 	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
 	if fields.len > 0 {
 		g.write(' _MOV((string[$fields.len]){')
@@ -476,8 +480,8 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	g.write('),')
 
 	g.write('.is_and = new_array_from_c_array($is_and.len, $is_and.len, sizeof(bool),')
-	if kinds.len > 0 {
-		g.write(' _MOV((bool[$kinds.len]){')
+	if is_and.len > 0 {
+		g.write(' _MOV((bool[$is_and.len]){')
 		for b in is_and {
 			g.write('$b, ')
 		}
@@ -595,6 +599,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		exprs << node.offset_expr
 	}
 	g.write('(orm__OrmQueryData) {')
+	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
+	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
+	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
 	g.write('.data = new_array_from_c_array($exprs.len, $exprs.len, sizeof(orm__Primitive),')
 	if exprs.len > 0 {
 		g.write(' _MOV((orm__Primitive[$exprs.len]){')
