@@ -7,7 +7,7 @@ type Prims = byte | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64
 
 // sql expr
 
-pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
+pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
@@ -89,20 +89,20 @@ pub fn (db Connection) @select(config orm.OrmSelectConfig, data orm.OrmQueryData
 
 // sql stmt
 
-pub fn (db Connection) insert(table string, data orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, data, orm.OrmQueryData{})
-	mysql_stmt_worker(db, query, data, orm.OrmQueryData{}) ?
+pub fn (db Connection) insert(table string, data orm.QueryData) ? {
+	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, data, orm.QueryData{})
+	mysql_stmt_worker(db, query, data, orm.QueryData{}) ?
 }
 
-pub fn (db Connection) update(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
+pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
 	mysql_stmt_worker(db, query, data, where) ?
 }
 
-pub fn (db Connection) delete(table string, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.OrmQueryData{},
+pub fn (db Connection) delete(table string, where orm.QueryData) ? {
+	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
-	mysql_stmt_worker(db, query, orm.OrmQueryData{}, where) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, where) ?
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
@@ -116,19 +116,19 @@ pub fn (db Connection) last_id() orm.Primitive {
 }
 
 // table
-pub fn (db Connection) create(table string, fields []orm.OrmTableField) ? {
+pub fn (db Connection) create(table string, fields []orm.TableField) ? {
 	query := orm.orm_table_gen(table, '`', false, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
-	mysql_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
 pub fn (db Connection) drop(table string) ? {
 	query := 'DROP TABLE `$table`;'
-	mysql_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
-fn mysql_stmt_worker(db Connection, query string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
+fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ? {
 	mut stmt := db.init_stmt(query)
 	stmt.prepare() ?
 	mysql_stmt_binder(mut stmt, data) ?
@@ -140,7 +140,7 @@ fn mysql_stmt_worker(db Connection, query string, data orm.OrmQueryData, where o
 	stmt.close() ?
 }
 
-fn mysql_stmt_binder(mut stmt Stmt, d orm.OrmQueryData) ? {
+fn mysql_stmt_binder(mut stmt Stmt, d orm.QueryData) ? {
 	for data in d.data {
 		stmt_binder_match(mut stmt, data)
 	}
@@ -187,7 +187,7 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 		time.Time {
 			stmt.bind_int(&int(data.unix))
 		}
-		orm.OrmInfixType {
+		orm.InfixType {
 			stmt_binder_match(mut stmt, data.right)
 		}
 	}

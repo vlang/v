@@ -22,7 +22,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__OrmConnection $conn = (orm__OrmConnection){._')
+	g.write('orm__Connection $conn = (orm__Connection){._')
 	mut fn_prefix := ''
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
@@ -41,7 +41,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	}
 	g.write('$fn_prefix = &')
 	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__OrmConnection_${fn_prefix}_index};')
+	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
 	for line in node.lines {
 		g.sql_stmt_line(line, conn)
 	}
@@ -77,11 +77,11 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 	}
 
 	if node.kind == .create {
-		g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
+		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_create_table(node, expr, table_name)
 		subs = true
 	} else if node.kind == .drop {
-		g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
+		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.writeln('drop(${expr}._object, _SLIT("$table_name"));')
 		subs = true
 	} else if node.kind == .insert {
@@ -90,10 +90,10 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 		g.sql_insert(node, expr, table_name, arr, res, '', false, '')
 		dcheck = true
 	} else if node.kind == .update {
-		g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
+		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_update(node, expr, table_name)
 	} else if node.kind == .delete {
-		g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
+		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_delete(node, expr, table_name)
 	}
 	if !dcheck {
@@ -107,12 +107,12 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 }
 
 fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name string) {
-	g.write('create(${expr}._object, _SLIT("$table_name"), new_array_from_c_array($node.fields.len, $node.fields.len, sizeof(orm__OrmTableField),')
+	g.write('create(${expr}._object, _SLIT("$table_name"), new_array_from_c_array($node.fields.len, $node.fields.len, sizeof(orm__TableField),')
 	if node.fields.len > 0 {
-		g.write(' _MOV((orm__OrmTableField[$node.fields.len]){')
+		g.write(' _MOV((orm__TableField[$node.fields.len]){')
 		for field in node.fields {
 			sym := g.table.get_type_symbol(field.typ)
-			g.write('(orm__OrmTableField){')
+			g.write('(orm__TableField){')
 			g.write('.name = _SLIT("$field.name"),')
 			g.write('.typ = ${int(field.typ)},')
 			g.write('.is_arr = ${sym.kind == .array}, ')
@@ -178,11 +178,11 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr)
-		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){orm__OrmConnection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
+		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
 	}
 
-	g.write('Option_void $res = orm__OrmConnection_name_table[${expr}._typ]._method_')
-	g.write('insert(${expr}._object, _SLIT("$table_name"), (orm__OrmQueryData){')
+	g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+	g.write('insert(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
 
 	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
 	if fields.len > 0 {
@@ -228,7 +228,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 	g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { v_panic(IError_str(${res}.err)); }')
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
-		g.writeln('orm__Primitive $id_name = orm__OrmConnection_name_table[${expr}._typ]._method_last_id(${expr}._object);')
+		g.writeln('orm__Primitive $id_name = orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object);')
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
 			g.writeln('for (int $idx = 0; $idx < ${arr.object_var_name}.${field_names[i]}.len; $idx++) {')
@@ -264,7 +264,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 }
 
 fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) {
-	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__OrmQueryData){')
+	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
 	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
 	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
@@ -301,7 +301,7 @@ fn (mut g Gen) sql_delete(node ast.SqlStmtLine, expr string, table_name string) 
 fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 	match expr {
 		ast.InfixExpr {
-			g.sql_write_orm_primitive(g.table.find_type_idx('orm.OrmInfixType'), expr)
+			g.sql_write_orm_primitive(g.table.find_type_idx('orm.InfixType'), expr)
 		}
 		ast.StringLiteral {
 			g.sql_write_orm_primitive(ast.string_type, expr)
@@ -337,12 +337,12 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if typ == 'time__Time' {
 		typ = 'time'
 	}
-	if typ == 'orm__OrmInfixType' {
+	if typ == 'orm__InfixType' {
 		typ = 'infix'
 	}
 	g.write('orm__${typ}_to_primitive(')
 	if expr is ast.InfixExpr {
-		g.write('(orm__OrmInfixType){')
+		g.write('(orm__InfixType){')
 		g.write('.name = _SLIT("$expr.left"),')
 		mut kind := match expr.op {
 			.plus {
@@ -438,7 +438,7 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []st
 }
 
 fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
-	g.write('(orm__OrmQueryData){')
+	g.write('(orm__QueryData){')
 	mut fields := []string{}
 	mut kinds := []string{}
 	mut data := []ast.Expr{}
@@ -497,7 +497,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__OrmConnection $conn = (orm__OrmConnection){._')
+	g.write('orm__Connection $conn = (orm__Connection){._')
 	mut fn_prefix := ''
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
@@ -514,7 +514,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 
 	g.write('$fn_prefix = &')
 	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__OrmConnection_${fn_prefix}_index};')
+	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
 	g.sql_select(node, conn, left)
 }
 
@@ -539,8 +539,8 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	res := g.new_tmp_var()
 	table_name := g.get_table_name(node.table_expr)
 	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
-	g.write('Option_Array_Array_orm__Primitive _o$res = orm__OrmConnection_name_table[${expr}._typ]._method_select(${expr}._object, ')
-	g.write('(orm__OrmSelectConfig){')
+	g.write('Option_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
+	g.write('(orm__SelectConfig){')
 	g.write('.table = _SLIT("$table_name"),')
 	g.write('.is_count = $node.is_count,')
 	g.write('.has_where = $node.has_where,')
@@ -550,9 +550,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.expr(node.order_expr)
 		g.write('"),')
 		if node.has_desc {
-			g.write('.order_type = orm__OrmOrderType__desc,')
+			g.write('.order_type = orm__OrderType__desc,')
 		} else {
-			g.write('.order_type = orm__OrmOrderType__asc,')
+			g.write('.order_type = orm__OrderType__asc,')
 		}
 	}
 	g.write('.has_limit = $node.has_limit,')
@@ -598,7 +598,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	if node.has_offset {
 		exprs << node.offset_expr
 	}
-	g.write('(orm__OrmQueryData) {')
+	g.write('(orm__QueryData) {')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
 	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
 	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
@@ -617,7 +617,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	if node.has_where {
 		g.sql_gen_where_data(node.where_expr)
 	} else {
-		g.write('(orm__OrmQueryData) {}')
+		g.write('(orm__QueryData) {}')
 	}
 	g.writeln(');')
 	g.writeln('if (_o${res}.state != 0 && _o${res}.err._typ != _IError_None___index) { v_panic(IError_str(_o${res}.err)); }')

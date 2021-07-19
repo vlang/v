@@ -3,9 +3,9 @@ import sqlite
 
 fn test_sqlite_orm() {
 	sdb := sqlite.connect(':memory:') or { panic(err) }
-	db := orm.OrmConnection(sdb)
+	db := orm.Connection(sdb)
 	db.create('Test', [
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'id'
 			typ: 7
 			attrs: [
@@ -20,28 +20,28 @@ fn test_sqlite_orm() {
 				},
 			]
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'name'
 			typ: 18
 			attrs: []
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'age'
 			typ: 8
 		},
 	]) or { panic(err) }
 
-	db.insert('Test', orm.OrmQueryData{
+	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
 	}) or { panic(err) }
 
-	res := db.@select(orm.OrmSelectConfig{
+	res := db.@select(orm.SelectConfig{
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
 		types: [7, 18, 8]
-	}, orm.OrmQueryData{}, orm.OrmQueryData{
+	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(100)]
 		types: [18, 8]

@@ -25,7 +25,7 @@ pub const (
 	string_max_len = 2048
 )
 
-pub type Primitive = OrmInfixType | bool | byte | f32 | f64 | i16 | i64 | i8 | int | string |
+pub type Primitive = InfixType | bool | byte | f32 | f64 | i16 | i64 | i8 | int | string |
 	time.Time | u16 | u32 | u64
 
 pub enum OperationKind {
@@ -50,7 +50,7 @@ pub enum StmtKind {
 	delete
 }
 
-pub enum OrmOrderType {
+pub enum OrderType {
 	asc
 	desc
 }
@@ -67,7 +67,7 @@ fn (kind OperationKind) to_str() string {
 	return str
 }
 
-fn (kind OrmOrderType) to_str() string {
+fn (kind OrderType) to_str() string {
 	return match kind {
 		.desc {
 			'DESC'
@@ -78,7 +78,7 @@ fn (kind OrmOrderType) to_str() string {
 	}
 }
 
-pub struct OrmQueryData {
+pub struct QueryData {
 pub:
 	fields []string
 	data   []Primitive
@@ -87,14 +87,14 @@ pub:
 	is_and []bool
 }
 
-pub struct OrmInfixType {
+pub struct InfixType {
 pub:
 	name     string
 	operator MathOperationKind
 	right    Primitive
 }
 
-pub struct OrmTableField {
+pub struct TableField {
 pub:
 	name        string
 	typ         int
@@ -104,14 +104,14 @@ pub:
 	attrs       []StructAttribute
 }
 
-pub struct OrmSelectConfig {
+pub struct SelectConfig {
 pub:
 	table      string
 	is_count   bool
 	has_where  bool
 	has_order  bool
 	order      string
-	order_type OrmOrderType
+	order_type OrderType
 	has_limit  bool
 	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
 	has_offset bool
@@ -119,17 +119,17 @@ pub:
 	types      []int
 }
 
-pub interface OrmConnection {
-	@select(config OrmSelectConfig, data OrmQueryData, where OrmQueryData) ?[][]Primitive
-	insert(table string, data OrmQueryData) ?
-	update(table string, data OrmQueryData, where OrmQueryData) ?
-	delete(table string, where OrmQueryData) ?
-	create(table string, fields []OrmTableField) ?
+pub interface Connection {
+	@select(config SelectConfig, data QueryData, where QueryData) ?[][]Primitive
+	insert(table string, data QueryData) ?
+	update(table string, data QueryData, where QueryData) ?
+	delete(table string, where QueryData) ?
+	create(table string, fields []TableField) ?
 	drop(talbe string) ?
 	last_id() Primitive
 }
 
-pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, start_pos int, data OrmQueryData, where OrmQueryData) string {
+pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) string {
 	mut str := ''
 
 	mut c := start_pos
@@ -162,7 +162,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 				str += '$para$field$para = '
 				if data.data.len > i {
 					d := data.data[i]
-					if d is OrmInfixType {
+					if d is InfixType {
 						op := match d.operator {
 							.add {
 								'+'
@@ -214,7 +214,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 	return str
 }
 
-pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, start_pos int, where OrmQueryData) string {
+pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
 	if orm.is_count {
@@ -279,7 +279,7 @@ pub fn orm_select_gen(orm OrmSelectConfig, para string, num bool, qm string, sta
 	return str
 }
 
-pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []OrmTableField, sql_from_v fn (int) ?string, alternative bool) ?string {
+pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) ?string, alternative bool) ?string {
 	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
 
 	if alternative {
@@ -387,7 +387,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 	return str
 }
 
-fn sql_field_type(field OrmTableField) int {
+fn sql_field_type(field TableField) int {
 	mut typ := field.typ
 	if field.is_time {
 		return -2
@@ -405,7 +405,7 @@ fn sql_field_type(field OrmTableField) int {
 	return typ
 }
 
-fn sql_field_name(field OrmTableField) string {
+fn sql_field_name(field TableField) string {
 	mut name := field.name
 	for attr in field.attrs {
 		if attr.name == 'sql' && attr.has_arg && attr.kind == .string {
@@ -470,6 +470,6 @@ pub fn time_to_primitive(b time.Time) Primitive {
 	return Primitive(b)
 }
 
-pub fn infix_to_primitive(b OrmInfixType) Primitive {
+pub fn infix_to_primitive(b InfixType) Primitive {
 	return Primitive(b)
 }

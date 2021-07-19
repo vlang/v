@@ -5,7 +5,7 @@ import time
 
 // sql expr
 
-pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where orm.OrmQueryData) ?[][]orm.Primitive {
+pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	stmt := db.new_init_stmt(query) ?
 	mut c := 1
@@ -47,19 +47,19 @@ pub fn (db DB) @select(config orm.OrmSelectConfig, data orm.OrmQueryData, where 
 
 // sql stmt
 
-pub fn (db DB) insert(table string, data orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data, orm.OrmQueryData{})
-	sqlite_stmt_worker(db, query, data, orm.OrmQueryData{}) ?
+pub fn (db DB) insert(table string, data orm.QueryData) ? {
+	query := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data, orm.QueryData{})
+	sqlite_stmt_worker(db, query, data, orm.QueryData{}) ?
 }
 
-pub fn (db DB) update(table string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
+pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .update, true, '?', 1, data, where)
 	sqlite_stmt_worker(db, query, data, where) ?
 }
 
-pub fn (db DB) delete(table string, where orm.OrmQueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, orm.OrmQueryData{}, where)
-	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, where) ?
+pub fn (db DB) delete(table string, where orm.QueryData) ? {
+	query := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, orm.QueryData{}, where)
+	sqlite_stmt_worker(db, query, orm.QueryData{}, where) ?
 }
 
 pub fn (db DB) last_id() orm.Primitive {
@@ -69,21 +69,21 @@ pub fn (db DB) last_id() orm.Primitive {
 }
 
 // table
-pub fn (db DB) create(table string, fields []orm.OrmTableField) ? {
+pub fn (db DB) create(table string, fields []orm.TableField) ? {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, sqlite_type_from_v, false) or {
 		return err
 	}
-	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
+	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
 pub fn (db DB) drop(table string) ? {
 	query := 'DROP TABLE `$table`;'
-	sqlite_stmt_worker(db, query, orm.OrmQueryData{}, orm.OrmQueryData{}) ?
+	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
 // helper
 
-fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQueryData) ? {
+fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ? {
 	stmt := db.new_init_stmt(query) ?
 	mut c := 1
 	sqlite_stmt_binder(stmt, data, query, mut c) ?
@@ -92,7 +92,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.OrmQueryData, where orm.OrmQ
 	stmt.finalize()
 }
 
-fn sqlite_stmt_binder(stmt Stmt, d orm.OrmQueryData, query string, mut c &int) ? {
+fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ? {
 	for data in d.data {
 		err := bind(stmt, c, data)
 
@@ -121,7 +121,7 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 		time.Time {
 			err = stmt.bind_int(c, int(data.unix))
 		}
-		orm.OrmInfixType {
+		orm.InfixType {
 			err = bind(stmt, c, data.right)
 		}
 	}

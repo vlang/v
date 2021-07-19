@@ -1,12 +1,12 @@
 import orm
 
 fn test_orm_stmt_gen_update() {
-	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.OrmQueryData{
+	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
 		kinds: []
-	}, orm.OrmQueryData{
+	}, orm.QueryData{
 		fields: ['id', 'name']
 		data: []
 		types: []
@@ -16,22 +16,22 @@ fn test_orm_stmt_gen_update() {
 }
 
 fn test_orm_stmt_gen_insert() {
-	query := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.OrmQueryData{
+	query := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
 		kinds: []
-	}, orm.OrmQueryData{})
+	}, orm.QueryData{})
 	assert query == "INSERT INTO 'Test' ('test', 'a') VALUES (?0, ?1);"
 }
 
 fn test_orm_stmt_gen_delete() {
-	query := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.OrmQueryData{
+	query := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
 		kinds: []
-	}, orm.OrmQueryData{
+	}, orm.QueryData{
 		fields: ['id', 'name']
 		data: []
 		types: []
@@ -45,30 +45,30 @@ fn get_select_fields() []string {
 }
 
 fn test_orm_select_gen() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
-	}, "'", true, '?', 0, orm.OrmQueryData{})
+	}, "'", true, '?', 0, orm.QueryData{})
 
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC;"
 }
 
 fn test_orm_select_gen_with_limit() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
 		has_limit: true
-	}, "'", true, '?', 0, orm.OrmQueryData{})
+	}, "'", true, '?', 0, orm.QueryData{})
 
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC LIMIT ?0;"
 }
 
 fn test_orm_select_gen_with_where() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
 		has_where: true
-	}, "'", true, '?', 0, orm.OrmQueryData{
+	}, "'", true, '?', 0, orm.QueryData{
 		fields: ['abc', 'test']
 		kinds: [.eq, .gt]
 		is_and: [true]
@@ -78,28 +78,28 @@ fn test_orm_select_gen_with_where() {
 }
 
 fn test_orm_select_gen_with_order() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
 		has_order: true
 		order_type: .desc
-	}, "'", true, '?', 0, orm.OrmQueryData{})
+	}, "'", true, '?', 0, orm.QueryData{})
 
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY '' DESC;"
 }
 
 fn test_orm_select_gen_with_offset() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
 		has_offset: true
-	}, "'", true, '?', 0, orm.OrmQueryData{})
+	}, "'", true, '?', 0, orm.QueryData{})
 
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC OFFSET ?0;"
 }
 
 fn test_orm_select_gen_with_all() {
-	query := orm.orm_select_gen(orm.OrmSelectConfig{
+	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'
 		fields: get_select_fields()
 		has_limit: true
@@ -107,7 +107,7 @@ fn test_orm_select_gen_with_all() {
 		order_type: .desc
 		has_offset: true
 		has_where: true
-	}, "'", true, '?', 0, orm.OrmQueryData{
+	}, "'", true, '?', 0, orm.QueryData{
 		fields: ['abc', 'test']
 		kinds: [.eq, .gt]
 		is_and: [true]
@@ -118,7 +118,7 @@ fn test_orm_select_gen_with_all() {
 
 fn test_orm_table_gen() {
 	query := orm.orm_table_gen('test_table', "'", true, 0, [
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'id'
 			typ: 7
 			default_val: '10'
@@ -134,11 +134,11 @@ fn test_orm_table_gen() {
 				},
 			]
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'test'
 			typ: 18
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'abc'
 			typ: 8
 			default_val: '6754'
@@ -147,7 +147,7 @@ fn test_orm_table_gen() {
 	assert query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'));"
 
 	alt_query := orm.orm_table_gen('test_table', "'", true, 0, [
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'id'
 			typ: 7
 			default_val: '10'
@@ -163,11 +163,11 @@ fn test_orm_table_gen() {
 				},
 			]
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'test'
 			typ: 18
 		},
-		orm.OrmTableField{
+		orm.TableField{
 			name: 'abc'
 			typ: 8
 			default_val: '6754'
