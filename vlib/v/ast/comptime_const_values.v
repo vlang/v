@@ -174,3 +174,24 @@ pub fn (val ComptTimeConstValue) byte() ?byte {
 	}
 	return none
 }
+
+pub fn (obj ConstField) comptime_expr_value() ?ComptTimeConstValue {
+	if obj.comptime_expr_value !is EmptyExpr {
+		return obj.comptime_expr_value
+	}
+	return none
+}
+
+pub fn (obj ConstField) is_simple_define_const() bool {
+	return match obj.expr {
+		CharLiteral, FloatLiteral, IntegerLiteral { true }
+		else { false }
+	}
+}
+
+pub fn (obj ScopeObject) is_simple_define_const() bool {
+	if obj is ConstField {
+		return obj.is_simple_define_const()
+	}
+	return false
+}

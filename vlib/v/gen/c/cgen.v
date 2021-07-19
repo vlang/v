@@ -1838,7 +1838,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	g.write('${fname}(')
 	if !got_is_ptr {
 		if !expr.is_lvalue()
-			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
+			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
 			g.write('ADDR($got_styp, (')
 			rparen_n += 2
 		} else {
@@ -4878,12 +4878,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if ct_value := comptime_expr_value(field) {
+				if ct_value := field.comptime_expr_value() {
 					if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
 						continue
 					}
 				}
-				if is_simple_define_const(field) {
+				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(name, g.expr_string(field_expr))
@@ -4893,25 +4893,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		}
 	}
-}
-
-fn comptime_expr_value(obj ast.ScopeObject) ?ast.ComptTimeConstValue {
-	if obj is ast.ConstField {
-		if obj.comptime_expr_value !is ast.EmptyExpr {
-			return obj.comptime_expr_value
-		}
-	}
-	return none
-}
-
-fn is_simple_define_const(obj ast.ScopeObject) bool {
-	if obj is ast.ConstField {
-		return match obj.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
-			else { false }
-		}
-	}
-	return false
 }
 
 fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
@@ -4953,7 +4934,15 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
-			g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+			// g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+			// TODO: ^ the above for strings, cause:
+			// `error C2099: initializer is not a constant` errors in MSVC,
+			// so fall back to the delayed initialisation scheme:
+			g.definitions.writeln('$styp $cname; // inited later')
+			g.inits[mod].writeln('\t$cname = _SLIT("$escaped_val");')
+			if g.is_autofree {
+				g.cleanups[mod].writeln('\tstring_free(&$cname);')
+			}
 		}
 		ast.EmptyExpr {
 			return false
