@@ -76,7 +76,7 @@ if "%~1" == "--logfile" (
         echo Log file is not specified for -logfile parameter. 1>&2
         exit /b 2
     )
-    pushd "%~dp2" 2>NUL || (
+    pushd "%~dp2" || (
         echo The log file specified for -logfile parameter does not exist. 1>&2
         exit /b 2
     )
@@ -104,13 +104,13 @@ if !flag_verbose! EQU 1 (
     echo [Debug] rmdir /s /q "%tcc_dir%">>"!log_file!"
     echo    rmdir /s /q "%tcc_dir%"
 )
-rmdir /s /q "%tcc_dir%">>"!log_file!" 2>NUL
+rmdir /s /q "%tcc_dir%">>"!log_file!"
 echo  ^> Purge vc repository
 if !flag_verbose! EQU 1 (
     echo [Debug] rmdir /s /q "%vc_dir%">>"!log_file!"
     echo    rmdir /s /q "%vc_dir%"
 )
-rmdir /s /q "%vc_dir%">>"!log_file!" 2>NUL
+rmdir /s /q "%vc_dir%">>"!log_file!"
 exit /b 0
 
 :clean
@@ -120,20 +120,20 @@ if !flag_verbose! EQU 1 (
     echo [Debug] del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!"
     echo    del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so
 )
-del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!" 2>NUL
+del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!"
 echo  ^> Delete old V executable
 if !flag_verbose! EQU 1 (
     echo [Debug] del v_old.exe v*.exe>>"!log_file!"
     echo    del v_old.exe v*.exe
 )
-del v_old.exe v*.exe>>"!log_file!" 2>NUL
+del v_old.exe v*.exe>>"!log_file!"
 exit /b 0
 
 :help
 if [!subcmd!] == [] (
-    call :usage 2>NUL
+    call :usage
 ) else (
-    call :help_!subcmd! 2>NUL
+    call :help_!subcmd!
 )
 if %ERRORLEVEL% NEQ 0 echo Invalid subcommand: !subcmd!
 exit /b %ERRORLEVEL%
@@ -142,24 +142,24 @@ exit /b %ERRORLEVEL%
 if !flag_local! NEQ 1 (
     call :download_tcc
     if %ERRORLEVEL% NEQ 0 goto :error
-    del "!log_file!">NUL 2>&1
-    pushd "%vc_dir%" 2>NUL && (
+    del "!log_file!"
+    pushd "%vc_dir%" && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!
         if !flag_verbose! EQU 1 (
             echo [Debug] cd "%vc_dir%">>"!log_file!"
             echo    cd "%vc_dir%"
-            cd "%vc_dir%">>"!log_file!" 2>NUL
+            cd "%vc_dir%">>"!log_file!"
             echo [Debug] git pull --quiet>>"!log_file!"
             echo    git pull --quiet
-            git pull --quiet>>"!log_file!" 2>NUL
+            git pull --quiet>>"!log_file!"
             echo [Debug] cd ..>>"!log_file!"
             echo    cd ..
-            cd ..>>"!log_file!" 2>NUL
+            cd ..>>"!log_file!"
         ) else (
-            cd "%vc_dir%">>"!log_file!" 2>NUL
-            git pull --quiet>>"!log_file!" 2>NUL
-            cd ..>>"!log_file!" 2>NUL
+            cd "%vc_dir%">>"!log_file!"
+            git pull --quiet>>"!log_file!"
+            cd ..>>"!log_file!"
         )
         popd
     ) || call :cloning_vc
@@ -270,9 +270,9 @@ for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Instal
 )
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-	call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo > NUL
+	call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else if exist "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" (
-	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo > NUL
+	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 )
 
 set ObjFile=.v.c.obj
@@ -285,7 +285,7 @@ if !flag_verbose! EQU 1 (
 cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
-    cl.exe 1>NUL 2>"!log_file!"
+    cl.exe 2>"!log_file!"
     goto :compile_error
 )
 
@@ -300,14 +300,14 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :download_tcc
-pushd %tcc_dir% 2>NUL && (
+pushd %tcc_dir% && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
     if !flag_verbose! EQU 1 (
         echo [Debug] git pull --quiet>>"!log_file!"
         echo    git pull --quiet
     )
-    git pull --quiet>>"!log_file!" 2>NUL
+    git pull --quiet>>"!log_file!"
     popd
 ) || call :bootstrap_tcc
 
@@ -322,7 +322,7 @@ exit /b 0
 
 :compile_error
 echo.
-type "!log_file!">NUL 2>&1
+type "!log_file!"
 goto :error
 
 :error
@@ -416,7 +416,7 @@ if !flag_verbose! EQU 1 (
    echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
    echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
 )
-git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
+git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
 exit /b 0
 
 :cloning_vc
@@ -426,7 +426,7 @@ if !flag_verbose! EQU 1 (
    echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
    echo    git clone --depth 1 --quiet %vc_url%
 )
-git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
+git clone --depth 1 --quiet %vc_url%>>"!log_file!"
 exit /b 0
 
 :eof
