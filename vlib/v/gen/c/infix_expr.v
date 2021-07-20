@@ -434,46 +434,9 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	g.write('_')
 	g.write(util.replace_op(node.op.str()))
 	g.write('(')
-	mut left_nr_muls := left.typ.nr_muls()
-	mut needs_closing := false
-	if method.params[0].typ.is_ptr() {
-		if left_nr_muls > 0 {
-			left_nr_muls--
-		} else {
-			if node.left.is_lvalue() {
-				g.write('&')
-			} else {
-				g.write('ADDR($left_styp, ')
-				needs_closing = true
-			}
-		}
-	}
-	g.write('*'.repeat(left.typ.nr_muls()))
-	g.expr(node.left)
-	if needs_closing {
-		g.write(')')
-		needs_closing = false
-	}
+	g.op_arg(node.left, method.params[0].typ, left.typ)
 	g.write(', ')
-	mut right_nr_muls := right.typ.nr_muls()
-	if method.params[1].typ.is_ptr() {
-		if right_nr_muls > 0 {
-			right_nr_muls--
-		} else {
-			if node.right.is_lvalue() {
-				g.write('&')
-			} else {
-				right_styp := g.typ(right.typ.set_nr_muls(0))
-				g.write('ADDR($right_styp, ')
-				needs_closing = true
-			}
-		}
-	}
-	g.write('*'.repeat(right_nr_muls))
-	g.expr(node.right)
-	if needs_closing {
-		g.write(')')
-	}
+	g.op_arg(node.right, method.params[1].typ, right.typ)
 	g.write(')')
 }
 
@@ -548,6 +511,29 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	g.expr(node.left)
 	g.write(' $node.op.str() ')
 	g.expr_with_cast(node.right, node.right_type, node.left_type)
+}
+
+fn (mut g Gen) op_arg(expr ast.Expr, expected ast.Type, got ast.Type) {
+	mut needs_closing := false
+	mut nr_muls := got.nr_muls()
+	if expected.is_ptr() {
+		if nr_muls > 0 {
+			nr_muls--
+		} else {
+			if expr.is_lvalue() {
+				g.write('&')
+			} else {
+				styp := g.typ(got.set_nr_muls(0))
+				g.write('ADDR($styp, ')
+				needs_closing = true
+			}
+		}
+	}
+	g.write('*'.repeat(nr_muls))
+	g.expr(expr)
+	if needs_closing {
+		g.write(')')
+	}
 }
 
 struct GenSafeIntegerCfg {
