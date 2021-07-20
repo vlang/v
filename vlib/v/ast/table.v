@@ -1109,16 +1109,15 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 }
 
 pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
-	utyp := typ
-	if utyp.idx() == inter_typ.idx() {
+	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true
 	}
-	if inter_typ.idx() == error_type_idx && utyp.idx() == none_type_idx {
+	if inter_typ.idx() == error_type_idx && typ.idx() == none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
-	typ_sym := t.get_type_symbol(utyp)
+	typ_sym := t.get_type_symbol(typ)
 	if typ_sym.language != .v {
 		return false
 	}
@@ -1129,7 +1128,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 	if mut inter_sym.info is Interface {
 		// do not check the same type more than once
 		for tt in inter_sym.info.types {
-			if tt.idx() == utyp.idx() {
+			if tt.idx() == typ.idx() {
 				return true
 			}
 		}
@@ -1165,7 +1164,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 			}
 			return false
 		}
-		inter_sym.info.types << utyp
+		inter_sym.info.types << typ
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}
