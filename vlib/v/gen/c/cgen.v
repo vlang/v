@@ -4905,9 +4905,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if ct_value := field.comptime_expr_value() {
-					if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
-						continue
+				if g.pref.build_mode != .build_module {
+					if ct_value := field.comptime_expr_value() {
+						if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
+							continue
+						}
 					}
 				}
 				if field.is_simple_define_const() {
