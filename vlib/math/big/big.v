@@ -180,15 +180,15 @@ pub fn (a &Number) * (b &Number) Number {
 	return c
 }
 
-pub fn (a Number) / (b Number) Number {
+pub fn (a &Number) / (b &Number) Number {
 	c := Number{}
-	C.bignum_div(&a, &b, &c)
+	C.bignum_div(a, b, &c)
 	return c
 }
 
-pub fn (a Number) % (b Number) Number {
+pub fn (a &Number) % (b &Number) Number {
 	c := Number{}
-	C.bignum_mod(&a, &b, &c)
+	C.bignum_mod(a, b, &c)
 	return c
 }
 
@@ -199,73 +199,73 @@ pub fn divmod(a &Number, b &Number, c &Number) Number {
 }
 
 // //////////////////////////////////////////////////////////
-pub fn cmp(a Number, b Number) int {
-	return C.bignum_cmp(&a, &b)
+pub fn cmp(a &Number, b &Number) int {
+	return C.bignum_cmp(a, b)
 }
 
-pub fn (a Number) is_zero() bool {
-	return C.bignum_is_zero(&a) != 0
+pub fn (a &Number) is_zero() bool {
+	return C.bignum_is_zero(a) != 0
 }
 
 pub fn (mut a Number) inc() {
-	C.bignum_inc(a)
+	C.bignum_inc(&a)
 }
 
 pub fn (mut a Number) dec() {
-	C.bignum_dec(a)
+	C.bignum_dec(&a)
 }
 
-pub fn pow(a Number, b Number) Number {
+pub fn pow(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_pow(&a, &b, &c)
+	C.bignum_pow(a, b, &c)
 	return c
 }
 
-pub fn (a Number) isqrt() Number {
+pub fn (a &Number) isqrt() Number {
 	b := Number{}
-	C.bignum_isqrt(&a, &b)
+	C.bignum_isqrt(a, &b)
 	return b
 }
 
 // //////////////////////////////////////////////////////////
-pub fn b_and(a Number, b Number) Number {
+pub fn b_and(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_and(&a, &b, &c)
+	C.bignum_and(a, b, &c)
 	return c
 }
 
-pub fn b_or(a Number, b Number) Number {
+pub fn b_or(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_or(&a, &b, &c)
+	C.bignum_or(a, b, &c)
 	return c
 }
 
-pub fn b_xor(a Number, b Number) Number {
+pub fn b_xor(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_xor(&a, &b, &c)
+	C.bignum_xor(a, b, &c)
 	return c
 }
 
-pub fn (a Number) lshift(nbits int) Number {
+pub fn (a &Number) lshift(nbits int) Number {
 	b := Number{}
-	C.bignum_lshift(&a, &b, nbits)
+	C.bignum_lshift(a, &b, nbits)
 	return b
 }
 
-pub fn (a Number) rshift(nbits int) Number {
+pub fn (a &Number) rshift(nbits int) Number {
 	b := Number{}
-	C.bignum_rshift(&a, &b, nbits)
+	C.bignum_rshift(a, &b, nbits)
 	return b
 }
 
-pub fn (a Number) clone() Number {
+pub fn (a &Number) clone() Number {
 	b := Number{}
-	C.bignum_assign(&b, &a)
+	C.bignum_assign(&b, a)
 	return b
 }
 
 // //////////////////////////////////////////////////////////
-pub fn factorial(nn Number) Number {
+pub fn factorial(nn &Number) Number {
 	mut n := nn.clone()
 	mut a := nn.clone()
 	n.dec()
