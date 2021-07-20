@@ -119,8 +119,8 @@ pub fn from_string(input string) Number {
 }
 
 // .int() converts (a small) big.Number `n` to an ordinary integer.
-pub fn (n Number) int() int {
-	r := C.bignum_to_int(&n)
+pub fn (n &Number) int() int {
+	r := C.bignum_to_int(n)
 	return r
 }
 
@@ -129,7 +129,7 @@ const (
 )
 
 // .str returns a decimal representation of the big unsigned integer number n.
-pub fn (n Number) str() string {
+pub fn (n &Number) str() string {
 	if n.is_zero() {
 		return '0'
 	}
@@ -145,13 +145,13 @@ pub fn (n Number) str() string {
 }
 
 // .hexstr returns a hexadecimal representation of the bignum `n`
-pub fn (n Number) hexstr() string {
+pub fn (n &Number) hexstr() string {
 	mut buf := [8192]byte{}
 	mut s := ''
 	unsafe {
 		bp := &buf[0]
 		// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
-		C.bignum_to_string(&n, &char(bp), 8192)
+		C.bignum_to_string(n, &char(bp), 8192)
 		s = tos_clone(bp)
 	}
 	if s.len == 0 {
@@ -162,21 +162,21 @@ pub fn (n Number) hexstr() string {
 
 // //////////////////////////////////////////////////////////
 // overloaded ops for the numbers:
-pub fn (a Number) + (b Number) Number {
+pub fn (a &Number) + (b &Number) Number {
 	c := Number{}
-	C.bignum_add(&a, &b, &c)
+	C.bignum_add(a, b, &c)
 	return c
 }
 
-pub fn (a Number) - (b Number) Number {
+pub fn (a &Number) - (b &Number) Number {
 	c := Number{}
-	C.bignum_sub(&a, &b, &c)
+	C.bignum_sub(a, b, &c)
 	return c
 }
 
-pub fn (a Number) * (b Number) Number {
+pub fn (a &Number) * (b &Number) Number {
 	c := Number{}
-	C.bignum_mul(&a, &b, &c)
+	C.bignum_mul(a, b, &c)
 	return c
 }
 
