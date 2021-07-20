@@ -1009,7 +1009,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			}
 			mut inited_fields := []string{}
 			for i, mut field in node.fields {
-				mut info_field := ast.StructField{}
+				mut field_info := ast.StructField{}
 				mut embed_type := ast.Type(0)
 				mut is_embed := false
 				mut field_name := ''
@@ -1019,18 +1019,15 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						// We should just stop here.
 						break
 					}
-					info_field = info.fields[i]
-					field_name = info_field.name
+					field_info = info.fields[i]
+					field_name = field_info.name
 					node.fields[i].name = field_name
 				} else {
 					field_name = field.name
-					mut exists := false
-					for f in info.fields {
-						if f.name == field_name {
-							info_field = f
-							exists = true
-							break
-						}
+					mut exists := true
+					field_info = info.find_field(field_name) or {
+						exists = false
+						ast.StructField{}
 					}
 					if !exists {
 						for embed in info.embeds {
@@ -1039,6 +1036,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 								exists = true
 								embed_type = embed
 								is_embed = true
+								break
+							}
+							embed_struct_info := embed_sym.info as ast.Struct
+							if embed_field_info := embed_struct_info.find_field(field_name) {
+								exists = true
+								field_info = embed_field_info
 								break
 							}
 						}
@@ -1063,7 +1066,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
-							c.error('cannot assign to field `$info_field.name`: $err.msg',
+							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
 					}
@@ -1071,41 +1074,41 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					node.fields[i].expected_type = embed_type
 				} else {
 					inited_fields << field_name
-					field_type_sym := c.table.get_type_symbol(info_field.typ)
-					expected_type = info_field.typ
+					field_type_sym := c.table.get_type_symbol(field_info.typ)
+					expected_type = field_info.typ
 					c.expected_type = expected_type
 					expr_type = c.unwrap_generic(c.expr(field.expr))
-					if !info_field.typ.has_flag(.optional) {
+					if !field_info.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
-						if c.type_implements(expr_type, info_field.typ, field.pos) {
+						if c.type_implements(expr_type, field_info.typ, field.pos) {
 							if !expr_type.is_ptr() && !expr_type.is_pointer()
 								&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
 								c.mark_as_referenced(mut &field.expr, true)
 							}
 						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, info_field.typ) or {
-							c.error('cannot assign to field `$info_field.name`: $err.msg',
+						c.check_expected(expr_type, field_info.typ) or {
+							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
 					}
-					if info_field.typ.has_flag(.shared_f) {
+					if field_info.typ.has_flag(.shared_f) {
 						if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
 							c.error('`shared` field must be initialized with `shared` or value',
 								field.pos)
 						}
 					} else {
-						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+						if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
 							&& !expr_type.is_number() {
 							c.error('reference field must be initialized with reference',
 								field.pos)
 						}
 					}
 					node.fields[i].typ = expr_type
-					node.fields[i].expected_type = info_field.typ
+					node.fields[i].expected_type = field_info.typ
 				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
@@ -6082,6 +6085,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// parser failed, stop checking
 				return
 			}
+			expr_type_sym := c.table.get_type_symbol(expr_type)
 			if cond_type_sym.kind == .interface_ {
 				// TODO
 				// This generates a memory issue with TCC
@@ -6091,7 +6095,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expr_pos := expr.position()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
 					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
-						expr_type_sym := c.table.get_type_symbol(expr_type)
 						if expr_type_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}
@@ -6103,10 +6106,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
 				}
+			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
+				expr_str := c.table.type_to_str(expr_type)
+				expect_str := c.table.type_to_str(node.cond_type)
+				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.position())
 			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
+				c.error('cannot match `$expect_str` with `$expr_str`', expr.position())
 			}
 			branch_exprs[key] = val + 1
 		}
