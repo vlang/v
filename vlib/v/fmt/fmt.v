@@ -267,7 +267,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
 		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments, {})
+		f.import_comments(imp.next_comments)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -855,7 +855,7 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	for i, left in node.left {
 		f.expr(left)
 		if i < node.left.len - 1 {
@@ -989,7 +989,7 @@ pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.expr(node.expr)
 	if !f.single_line_if {
 		f.writeln('')
@@ -1060,7 +1060,7 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	f.expr(node.cond)
 	f.write('; ')
 	f.stmt(node.inc)
-	f.remove_new_line({})
+	f.remove_new_line()
 	f.write(' {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
@@ -1240,7 +1240,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 }
 
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.write('return')
 	if node.exprs.len > 0 {
 		f.write(' ')
@@ -1643,7 +1643,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	for arg in node.args {
-		f.comments(arg.comments, {})
+		f.comments(arg.comments)
 	}
 	if node.is_method {
 		if node.name in ['map', 'filter'] {
@@ -1882,12 +1882,12 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		for i, branch in node.branches {
 			if i == 0 {
 				// first `if`
-				f.comments(branch.comments, {})
+				f.comments(branch.comments)
 			} else {
 				// `else`, close previous branch
 				if branch.comments.len > 0 {
 					f.writeln('}')
-					f.comments(branch.comments, {})
+					f.comments(branch.comments)
 				} else {
 					f.write('} ')
 				}
@@ -2070,7 +2070,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				continue
 			}
 			if i == 0 {
-				f.remove_new_line({})
+				f.remove_new_line()
 			}
 			f.writeln('')
 			f.indent++
@@ -2151,7 +2151,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	}
 	f.writeln('map{')
 	f.indent++
-	f.comments(node.pre_cmnts, {})
+	f.comments(node.pre_cmnts)
 	mut max_field_len := 0
 	for key in node.keys {
 		if key.str().len > max_field_len {
@@ -2177,7 +2177,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
 			if f.line_len + estr.len + 2 > fmt.max_len[5] {
-				f.remove_new_line({})
+				f.remove_new_line()
 				f.writeln('')
 			}
 			f.write(estr)
@@ -2204,7 +2204,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		}
 		f.stmts(branch.stmts)
 		if single_line {
-			f.remove_new_line({})
+			f.remove_new_line()
 			f.writeln(' }')
 		} else {
 			f.writeln('}')
@@ -2221,7 +2221,7 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	mut single_line := true
 	for branch in node.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {

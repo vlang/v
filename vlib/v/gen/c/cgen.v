@@ -6359,7 +6359,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
 					// hack to mutate typ
-					params[0] = {
+					params[0] = ast.Param{
 						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}

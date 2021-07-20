@@ -17,7 +17,7 @@ const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 fn main() {
 	mut commands := get_all_commands()
 	// summary
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	for mut cmd in commands {
 		cmd.run()
 	}
@@ -155,7 +155,7 @@ fn (mut cmd Command) run() {
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	cmd.ecode = os.system(cmd.line)
 	spent := sw.elapsed().milliseconds()
 	println('> Running: "$cmd.line" took: $spent ms ... ' +

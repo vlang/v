@@ -79,7 +79,7 @@ pub fn (o Option) str() string {
 pub fn error(s string) Option {
 	return Option{
 		state: 2
-		err: {
+		err: Error{
 			msg: s
 		}
 	}
@@ -88,7 +88,7 @@ pub fn error(s string) Option {
 pub fn error_with_code(s string, code int) Option {
 	return Option{
 		state: 2
-		err: {
+		err: Error{
 			msg: s
 			code: code
 		}

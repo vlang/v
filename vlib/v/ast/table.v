@@ -556,7 +556,7 @@ fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_id
 		.placeholder {
 			// override placeholder
 			// println('overriding type placeholder `$typ.name`')
-			t.type_symbols[existing_idx] = {
+			t.type_symbols[existing_idx] = TypeSymbol{
 				...typ
 				methods: ex_type.methods
 			}

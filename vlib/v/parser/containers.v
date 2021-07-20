@@ -45,14 +45,14 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		// [1,2,3] or [const]byte
 		old_inside_array_lit := p.inside_array_lit
 		p.inside_array_lit = true
-		pre_cmnts = p.eat_comments({})
+		pre_cmnts = p.eat_comments()
 		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
-			ecmnts << p.eat_comments({})
+			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {
 				p.next()
 			}
-			ecmnts.last() << p.eat_comments({})
+			ecmnts.last() << p.eat_comments()
 		}
 		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
@@ -168,7 +168,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	mut comments := [][]ast.Comment{}
-	pre_cmnts := p.eat_comments({})
+	pre_cmnts := p.eat_comments()
 	for p.tok.kind !in [.rcbr, .eof] {
 		key := p.expr(0)
 		keys << key
@@ -178,7 +178,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 	}
 	return ast.MapInit{
 		keys: keys

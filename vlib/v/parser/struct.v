@@ -154,7 +154,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_module {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
-					return {}
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
@@ -181,7 +181,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// struct embedding
 				type_pos = p.tok.position()
 				typ = p.parse_type()
-				ecomments := p.eat_comments({})
+				ecomments := p.eat_comments()
 				type_pos = type_pos.extend(p.prev_tok.position())
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
@@ -223,7 +223,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_pos = field_start_pos.extend(type_pos)
 			}
 			// Comments after type (same line)
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -241,7 +241,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
-					comments << p.eat_comments({})
+					comments << p.eat_comments()
 				}
 				ast_fields << ast.StructField{
 					name: field_name
@@ -337,11 +337,10 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	pre_comments := p.eat_comments({})
+	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
-	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	mut update_expr := ast.empty_expr()
@@ -391,7 +390,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			p.next()
 		}
 		comments << p.eat_comments(same_line: true)
-		nline_comments << p.eat_comments({})
+		nline_comments << p.eat_comments()
 		if !is_update_expr {
 			fields << ast.StructInitField{
 				name: field_name
@@ -448,7 +447,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	generic_types := p.parse_generic_type_list()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
-	pre_comments := p.eat_comments({})
+	pre_comments := p.eat_comments()
 	if modless_name in p.imported_symbols {
 		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported',
 			name_pos)
@@ -488,7 +487,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			iface_pos := p.tok.position()
 			iface_name := p.tok.lit
 			iface_type := p.parse_type()
-			comments := p.eat_comments({})
+			comments := p.eat_comments()
 			ifaces << ast.InterfaceEmbedding{
 				name: iface_name
 				typ: iface_type
@@ -503,7 +502,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.position())
-				return {}
+				return ast.InterfaceDecl{}
 			}
 			p.next()
 			p.check(.colon)
@@ -554,7 +553,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
 			mcomments := p.eat_comments(same_line: true)
-			mnext_comments := p.eat_comments({})
+			mnext_comments := p.eat_comments()
 			method.comments = mcomments
 			method.next_comments = mnext_comments
 			methods << method

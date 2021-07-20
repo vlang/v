@@ -86,7 +86,7 @@ fn test_select_blocks() {
 		a: 13
 	}
 	sem.wait()
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	go f1(ch1, ch2, ch3, ch4, ch5, mut sem)
 	sem.wait()
 	elapsed_ms := f64(stopwatch.elapsed()) / time.millisecond

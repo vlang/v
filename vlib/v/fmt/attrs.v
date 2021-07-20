@@ -11,7 +11,7 @@ pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 	sorted_attrs.sort(a.arg.len > b.arg.len)
 	for i, attr in sorted_attrs {
 		if attr.arg.len == 0 {
-			f.single_line_attrs(sorted_attrs[i..], {})
+			f.single_line_attrs(sorted_attrs[i..])
 			break
 		}
 		f.writeln('[$attr]')

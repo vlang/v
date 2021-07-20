@@ -122,7 +122,7 @@ fn measure(cmd string, description string) int {
 	mut runs := []int{}
 	for r in 0 .. 5 {
 		println('  Sample ${r + 1}/5')
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		exec(cmd)
 		runs << int(sw.elapsed().milliseconds())
 	}

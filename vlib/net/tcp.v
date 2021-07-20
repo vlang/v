@@ -165,8 +165,8 @@ pub fn (mut c TcpConn) wait_for_write() ? {
 
 pub fn (c &TcpConn) peer_addr() ?Addr {
 	mut addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	mut size := sizeof(Addr)
@@ -217,8 +217,8 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
 	addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	size := sizeof(Addr)

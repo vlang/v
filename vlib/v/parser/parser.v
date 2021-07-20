@@ -2830,7 +2830,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
@@ -2887,7 +2887,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// no return
-	mut comments := p.eat_comments({})
+	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			comments: comments
@@ -2926,7 +2926,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut fields := []ast.GlobalField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.GlobalDecl{}
@@ -3005,7 +3005,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments({})
+	enum_decl_comments := p.eat_comments()
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -3027,7 +3027,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr: expr
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
-			next_comments: p.eat_comments({})
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -3132,7 +3132,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << {
+		sum_variants << ast.TypeNode{
 			typ: first_type
 			pos: type_pos
 		}
@@ -3144,7 +3144,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			prev_tok := p.prev_tok
 			type_end_pos = prev_tok.position()
 			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << {
+			sum_variants << ast.TypeNode{
 				typ: variant_type
 				pos: type_pos
 			}
