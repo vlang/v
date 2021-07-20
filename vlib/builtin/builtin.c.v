@@ -238,7 +238,7 @@ pub fn malloc(n int) &byte {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
 	mut res := &byte(0)
@@ -285,7 +285,7 @@ pub fn malloc_noscan(n int) &byte {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
 	mut res := &byte(0)
