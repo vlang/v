@@ -7,9 +7,8 @@ pub const (
 	args = []string{}
 )
 
-
 $if js_node {
-#$process.argv.forEach(function(val,index) { args.arr[index] = new string(val); })
+	#$process.argv.forEach(function(val,index) { args.arr[index] = new string(val); })
 }
 
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
@@ -21,6 +20,7 @@ pub fn real_path(fpath string) string {
 	$if js_node {
 		mut res := ''
 		#res = new string( $fs.realpathSync(fpath))
+
 		return res
 	} $else {
 		return fpath
@@ -33,6 +33,7 @@ pub fn flush() {
 		#$process.stdout.write('')
 	}
 }
+
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
@@ -40,11 +41,11 @@ pub fn chmod(path string, mode int) {
 		#$fs.chmodSync(''+path,mode.valueOf())
 	}
 }
+
 // chown changes the owner and group attributes of `path` to `owner` and `group`.
 // Octals like `0o600` can be used.
-pub fn chown(path string,owner int,group int) {
+pub fn chown(path string, owner int, group int) {
 	$if js_node {
 		#$fs.chownSync(''+path,owner.valueOf(),group.valueOf())
 	}
 }
-
