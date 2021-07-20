@@ -26,3 +26,4 @@
 - [ ] more advanced errors, not just `error('message')`
 - [ ] VLS for autocomplete, refactoring, go to definition etc
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
+- [ ] Remove `foo = 0` for `&Foo`
