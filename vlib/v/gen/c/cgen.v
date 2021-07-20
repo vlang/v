@@ -5126,8 +5126,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				embed_sym := g.table.get_type_symbol(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
+					embed_struct_info := embed_sym.info as ast.Struct
+					init_field_names := info.fields.map(it.name)
+					// fields that are initialized but belong to the embedding
+					init_fields_to_embed := struct_init.fields.filter(it.name !in init_field_names)
 					default_init := ast.StructInit{
 						typ: embed
+						fields: init_fields_to_embed
 					}
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
