@@ -104,8 +104,8 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 // read reads from the socket into buf up to buf.len returning the number of bytes read
 pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	mut addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	len := sizeof(Addr)
@@ -206,8 +206,8 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 		handle: sockfd
 		l: local_addr
 		r: Addr{
-			addr: {
-				Ip6: {}
+			addr: AddrData{
+				Ip6: Ip6{}
 			}
 		}
 	}
@@ -246,8 +246,8 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 			panic('Invalid family')
 			// Appease compiler
 			Addr{
-				addr: {
-					Ip6: {}
+				addr: AddrData{
+					Ip6: Ip6{}
 				}
 			}
 		}

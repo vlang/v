@@ -616,7 +616,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 	mut i := 0
 	for i < num_tables {
 		tag := tf.get_string(4)
-		tf.tables[tag] = {
+		tf.tables[tag] = Offset_Table{
 			checksum: tf.get_u32()
 			offset: tf.get_u32()
 			length: tf.get_u32()

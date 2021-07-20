@@ -1,10 +1,10 @@
 fn main() {
-	mut m := {
+	mut m := map{
 		'1': 1
 	}
 	m.delete(1)
 	m.delete(1, 2)
-	m2 := {
+	m2 := map{
 		'1': 1
 	}
 	m2.delete('1')

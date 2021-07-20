@@ -16,7 +16,7 @@ fn main() {
 		x: 0
 		y: 0
 	})
-	bar2_func({}, {})
+	bar2_func({})
 	bar2_func({x: 's'}, {x: 's'})
 	baz_func('foo', 'bar', x: 0
 		y: 0

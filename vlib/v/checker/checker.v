@@ -1988,7 +1988,7 @@ pub fn (mut c Checker) check_expected_arg_count(mut call_expr ast.CallExpr, f &a
 			last_sym := c.table.get_type_symbol(last_typ)
 			if last_sym.kind == .struct_ {
 				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
-				call_expr.args << {
+				call_expr.args << ast.CallArg{
 					expr: ast.StructInit{
 						typ: last_typ
 					}

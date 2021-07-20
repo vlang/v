@@ -33,10 +33,10 @@ fn f_compiles2(d Data) []Data {
 }
 
 fn test_match_in_fn_call() {
-	println(f_doesnotcompile({}))
-	assert f_doesnotcompile({}) == []Data{}
-	println(f_compiles1({}))
-	assert f_compiles1({}) == []Data{}
-	println(f_compiles2({}))
-	assert f_compiles2({}) == []Data{}
+	println(f_doesnotcompile())
+	assert f_doesnotcompile() == []Data{}
+	println(f_compiles1())
+	assert f_compiles1() == []Data{}
+	println(f_compiles2())
+	assert f_compiles2() == []Data{}
 }

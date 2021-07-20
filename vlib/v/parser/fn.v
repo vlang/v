@@ -124,7 +124,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
-		mut comments := p.eat_comments({})
+		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
@@ -149,7 +149,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: ast.sharetype_from_flags(is_shared, is_atomic)

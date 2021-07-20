@@ -23,7 +23,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments({})
+		p.eat_comments()
 	}
 	inside_array_lit := p.inside_array_lit
 	p.inside_array_lit = false
@@ -297,18 +297,23 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		.lcbr {
+			// TODO: remove this when deprecation will be removed, vfmt should handle it for a while
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
-				// TODO deprecate
+				p.warn_with_pos("deprecated map syntax, use syntax like `map{'age': 20}`",
+					p.prev_tok.position())
 				node = p.map_init()
 			} else {
 				// it should be a struct
 				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
+					// TODO: remove deprecated
 					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
 					node = p.assoc()
 				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
 					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
+					p.warn_with_pos('short struct initalization is deprecated, use explicit struct name',
+						p.prev_tok.position())
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()

@@ -147,9 +147,9 @@ fn (b Buffer) view(from int, to int) View {
 		}
 	}
 	raw := lines.join('\n')
-	return {
+	return View{
 		raw: raw.replace('\t', strings.repeat(` `, b.tab_width))
-		cursor: {
+		cursor: Cursor{
 			pos_x: x
 			pos_y: b.cursor.pos_y
 		}
