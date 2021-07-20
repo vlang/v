@@ -67,6 +67,7 @@ fn test_comptime_for_fields() {
 	$for field in App.fields {
 		println('  field: $field.name | ' + no_lines('$field'))
 		$if field.typ is string {
+			assert field.type_name == 'string'
 			assert field.name in ['a', 'b', 'g']
 		}
 		$if field.typ is f32 {
