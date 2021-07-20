@@ -415,7 +415,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
-// search for a given field, looking through embedded fields
+// find_field_with_embeds searches for a given field, also looking through embedded fields
 pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
 	if f := t.find_field(sym, field_name) {
 		return f
