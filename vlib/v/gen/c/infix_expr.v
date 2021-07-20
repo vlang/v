@@ -425,21 +425,19 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.type_has_method(left.sym, node.op.str())
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
-		g.write(g.typ(left.typ.set_nr_muls(0)))
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
-		g.write('(')
-		g.write('*'.repeat(left.typ.nr_muls()))
-		g.expr(node.left)
-		g.write(', ')
-		g.write('*'.repeat(right.typ.nr_muls()))
-		g.expr(node.right)
-		g.write(')')
-	} else {
+	method := g.table.type_find_method(left.sym, node.op.str()) or {
 		g.gen_plain_infix_expr(node)
+		return
 	}
+	left_styp := g.typ(left.typ.set_nr_muls(0))
+	g.write(left_styp)
+	g.write('_')
+	g.write(util.replace_op(node.op.str()))
+	g.write('(')
+	g.op_arg(node.left, method.params[0].typ, left.typ)
+	g.write(', ')
+	g.op_arg(node.right, method.params[1].typ, right.typ)
+	g.write(')')
 }
 
 // infix_expr_left_shift_op generates code for the `<<` operator
@@ -513,6 +511,29 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	g.expr(node.left)
 	g.write(' $node.op.str() ')
 	g.expr_with_cast(node.right, node.right_type, node.left_type)
+}
+
+fn (mut g Gen) op_arg(expr ast.Expr, expected ast.Type, got ast.Type) {
+	mut needs_closing := false
+	mut nr_muls := got.nr_muls()
+	if expected.is_ptr() {
+		if nr_muls > 0 {
+			nr_muls--
+		} else {
+			if expr.is_lvalue() {
+				g.write('&')
+			} else {
+				styp := g.typ(got.set_nr_muls(0))
+				g.write('ADDR($styp, ')
+				needs_closing = true
+			}
+		}
+	}
+	g.write('*'.repeat(nr_muls))
+	g.expr(expr)
+	if needs_closing {
+		g.write(')')
+	}
 }
 
 struct GenSafeIntegerCfg {

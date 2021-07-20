@@ -119,8 +119,8 @@ pub fn from_string(input string) Number {
 }
 
 // .int() converts (a small) big.Number `n` to an ordinary integer.
-pub fn (n Number) int() int {
-	r := C.bignum_to_int(&n)
+pub fn (n &Number) int() int {
+	r := C.bignum_to_int(n)
 	return r
 }
 
@@ -129,7 +129,7 @@ const (
 )
 
 // .str returns a decimal representation of the big unsigned integer number n.
-pub fn (n Number) str() string {
+pub fn (n &Number) str() string {
 	if n.is_zero() {
 		return '0'
 	}
@@ -145,13 +145,13 @@ pub fn (n Number) str() string {
 }
 
 // .hexstr returns a hexadecimal representation of the bignum `n`
-pub fn (n Number) hexstr() string {
+pub fn (n &Number) hexstr() string {
 	mut buf := [8192]byte{}
 	mut s := ''
 	unsafe {
 		bp := &buf[0]
 		// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
-		C.bignum_to_string(&n, &char(bp), 8192)
+		C.bignum_to_string(n, &char(bp), 8192)
 		s = tos_clone(bp)
 	}
 	if s.len == 0 {
@@ -162,33 +162,33 @@ pub fn (n Number) hexstr() string {
 
 // //////////////////////////////////////////////////////////
 // overloaded ops for the numbers:
-pub fn (a Number) + (b Number) Number {
+pub fn (a &Number) + (b &Number) Number {
 	c := Number{}
-	C.bignum_add(&a, &b, &c)
+	C.bignum_add(a, b, &c)
 	return c
 }
 
-pub fn (a Number) - (b Number) Number {
+pub fn (a &Number) - (b &Number) Number {
 	c := Number{}
-	C.bignum_sub(&a, &b, &c)
+	C.bignum_sub(a, b, &c)
 	return c
 }
 
-pub fn (a Number) * (b Number) Number {
+pub fn (a &Number) * (b &Number) Number {
 	c := Number{}
-	C.bignum_mul(&a, &b, &c)
+	C.bignum_mul(a, b, &c)
 	return c
 }
 
-pub fn (a Number) / (b Number) Number {
+pub fn (a &Number) / (b &Number) Number {
 	c := Number{}
-	C.bignum_div(&a, &b, &c)
+	C.bignum_div(a, b, &c)
 	return c
 }
 
-pub fn (a Number) % (b Number) Number {
+pub fn (a &Number) % (b &Number) Number {
 	c := Number{}
-	C.bignum_mod(&a, &b, &c)
+	C.bignum_mod(a, b, &c)
 	return c
 }
 
@@ -199,73 +199,73 @@ pub fn divmod(a &Number, b &Number, c &Number) Number {
 }
 
 // //////////////////////////////////////////////////////////
-pub fn cmp(a Number, b Number) int {
-	return C.bignum_cmp(&a, &b)
+pub fn cmp(a &Number, b &Number) int {
+	return C.bignum_cmp(a, b)
 }
 
-pub fn (a Number) is_zero() bool {
-	return C.bignum_is_zero(&a) != 0
+pub fn (a &Number) is_zero() bool {
+	return C.bignum_is_zero(a) != 0
 }
 
 pub fn (mut a Number) inc() {
-	C.bignum_inc(a)
+	C.bignum_inc(&a)
 }
 
 pub fn (mut a Number) dec() {
-	C.bignum_dec(a)
+	C.bignum_dec(&a)
 }
 
-pub fn pow(a Number, b Number) Number {
+pub fn pow(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_pow(&a, &b, &c)
+	C.bignum_pow(a, b, &c)
 	return c
 }
 
-pub fn (a Number) isqrt() Number {
+pub fn (a &Number) isqrt() Number {
 	b := Number{}
-	C.bignum_isqrt(&a, &b)
+	C.bignum_isqrt(a, &b)
 	return b
 }
 
 // //////////////////////////////////////////////////////////
-pub fn b_and(a Number, b Number) Number {
+pub fn b_and(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_and(&a, &b, &c)
+	C.bignum_and(a, b, &c)
 	return c
 }
 
-pub fn b_or(a Number, b Number) Number {
+pub fn b_or(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_or(&a, &b, &c)
+	C.bignum_or(a, b, &c)
 	return c
 }
 
-pub fn b_xor(a Number, b Number) Number {
+pub fn b_xor(a &Number, b &Number) Number {
 	c := Number{}
-	C.bignum_xor(&a, &b, &c)
+	C.bignum_xor(a, b, &c)
 	return c
 }
 
-pub fn (a Number) lshift(nbits int) Number {
+pub fn (a &Number) lshift(nbits int) Number {
 	b := Number{}
-	C.bignum_lshift(&a, &b, nbits)
+	C.bignum_lshift(a, &b, nbits)
 	return b
 }
 
-pub fn (a Number) rshift(nbits int) Number {
+pub fn (a &Number) rshift(nbits int) Number {
 	b := Number{}
-	C.bignum_rshift(&a, &b, nbits)
+	C.bignum_rshift(a, &b, nbits)
 	return b
 }
 
-pub fn (a Number) clone() Number {
+pub fn (a &Number) clone() Number {
 	b := Number{}
-	C.bignum_assign(&b, &a)
+	C.bignum_assign(&b, a)
 	return b
 }
 
 // //////////////////////////////////////////////////////////
-pub fn factorial(nn Number) Number {
+pub fn factorial(nn &Number) Number {
 	mut n := nn.clone()
 	mut a := nn.clone()
 	n.dec()
@@ -291,9 +291,9 @@ pub fn fact(n int) Number {
 // Example: assert big.from_int(1).bytes()[0] == byte(0x01)
 // Example: assert big.from_int(1024).bytes()[1] == byte(0x04)
 // Example: assert big.from_int(1048576).bytes()[2] == byte(0x10)
-pub fn (n Number) bytes() []byte {
+pub fn (n &Number) bytes() []byte {
 	mut res := []byte{len: 128, init: 0}
-	unsafe { C.memcpy(res.data, &n, 128) }
+	unsafe { C.memcpy(res.data, n, 128) }
 	return res
 }
 
@@ -304,9 +304,9 @@ pub fn (n Number) bytes() []byte {
 // Example: assert big.from_int(1).bytes_trimmed() == [byte(0x01)]
 // Example: assert big.from_int(1024).bytes_trimmed() == [byte(0x00), 0x04]
 // Example: assert big.from_int(1048576).bytes_trimmed() == [byte(0x00), 0x00, 0x10]
-pub fn (n Number) bytes_trimmed() []byte {
+pub fn (n &Number) bytes_trimmed() []byte {
 	mut res := []byte{len: 128, init: 0}
-	unsafe { C.memcpy(res.data, &n, 128) }
+	unsafe { C.memcpy(res.data, n, 128) }
 	mut non_zero_idx := 127
 	for ; non_zero_idx >= 0; non_zero_idx-- {
 		if res[non_zero_idx] != 0 {

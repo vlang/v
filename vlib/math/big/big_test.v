@@ -31,6 +31,11 @@ fn test_plus() {
 	assert (big.from_u64(1024) + big.from_u64(1024)).hexstr() == '800'
 	a += b
 	assert a.hexstr() == '5'
+	a.inc()
+	assert a.hexstr() == '6'
+	a.dec()
+	a.dec()
+	assert a.hexstr() == '4'
 }
 
 fn test_minus() {

@@ -1272,6 +1272,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
+	mut needs_closing := false
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
@@ -1303,7 +1304,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			deref_sym := g.table.get_type_symbol(expected_deref_type)
 			if !((arg_typ_sym.kind == .function)
 				|| deref_sym.kind in [.sum_type, .interface_]) && lang != .c {
-				g.write('(voidptr)&/*qq*/')
+				if arg.expr.is_lvalue() {
+					g.write('(voidptr)&/*qq*/')
+				} else {
+					needs_closing = true
+					g.write('ADDR(${g.typ(expected_deref_type)}/*qq*/, ')
+				}
 			}
 		}
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
@@ -1315,6 +1321,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
+	if needs_closing {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) is_gui_app() bool {
