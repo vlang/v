@@ -5787,7 +5787,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
 	if name in c.c_reserved_map {
-		return 'v_$name'
+		return '_v_$name'
 	}
 	return name
 }
