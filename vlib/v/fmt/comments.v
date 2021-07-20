@@ -53,7 +53,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			out_s += s
 		}
 		if !is_separate_line && f.indent > 0 {
-			f.remove_new_line({}) // delete the generated \n
+			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
 		f.write(out_s)
@@ -73,7 +73,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		if end_break {
 			f.empty_line = true
 		} else {
-			f.remove_new_line({})
+			f.remove_new_line()
 		}
 		f.write('*/')
 	}

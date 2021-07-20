@@ -271,7 +271,7 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 		if !work.pop(&task) {
 			break
 		}
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		task.execute()
 		task.took = sw.elapsed()
 		results.push(&task)

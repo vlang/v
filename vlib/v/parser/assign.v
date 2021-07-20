@@ -81,12 +81,12 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 }
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
-	val_ := val
-	match val_ {
+	val_str := val.str()
+	match val {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if expr.name == val_.name {
+					if expr.name == val.name {
 						return true
 					}
 				}
@@ -94,24 +94,24 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		}
 		ast.IndexExpr {
 			for expr in exprs {
-				if expr.str() == val.str() {
+				if expr.str() == val_str {
 					return true
 				}
 			}
 		}
 		ast.InfixExpr {
-			return p.check_cross_variables(exprs, val_.left)
-				|| p.check_cross_variables(exprs, val_.right)
+			return p.check_cross_variables(exprs, val.left)
+				|| p.check_cross_variables(exprs, val.right)
 		}
 		ast.PrefixExpr {
-			return p.check_cross_variables(exprs, val_.right)
+			return p.check_cross_variables(exprs, val.right)
 		}
 		ast.PostfixExpr {
-			return p.check_cross_variables(exprs, val_.expr)
+			return p.check_cross_variables(exprs, val.expr)
 		}
 		ast.SelectorExpr {
 			for expr in exprs {
-				if expr.str() == val.str() {
+				if expr.str() == val_str {
 					return true
 				}
 			}
@@ -128,7 +128,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
-	comments << p.eat_comments({})
+	comments << p.eat_comments()
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
 	right, right_comments = p.expr_list()

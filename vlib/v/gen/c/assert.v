@@ -117,7 +117,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 		ast.TypeNode {
-			sym := g.table.get_type_symbol(typ)
+			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 			g.write(ctoslit('$sym.name'))
 		}
 		else {

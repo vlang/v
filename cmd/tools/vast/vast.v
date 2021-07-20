@@ -1,56 +1,80 @@
 module main
 
+import os
+import time
+import flag
 import v.token
 import v.parser
 import v.ast
 import v.pref
 import v.errors
-import os
-import time
 
-const usage = '
-usage:
-  1.v ast demo.v 	 generate demo.json file.
-  2.v ast -w demo.v 	 generate demo.json file, and watch for changes.
-  3.v ast -c demo.v 	 generate demo.json and demo.c file, and watch for changes.
-  4.v ast -p demo.v 	 print the json string to stdout, instead of saving it to a file.
-  '
+struct Context {
+mut:
+	is_watch   bool
+	is_compile bool
+	is_print   bool
+}
+
+struct HideFields {
+mut:
+	names map[string]bool
+}
+
+const hide_fields = &HideFields{}
 
 fn main() {
-	args := os.args[1..]
-	match args.len {
-		2 {
-			file := get_abs_path(args[1])
-			check_file(file)
-			println('AST written to: ' + json_file(file))
-		}
-		3 {
-			file := get_abs_path(args[2])
-			check_file(file)
-			option := args[1]
-			match option {
-				'-p' { println(json(file)) }
-				'-w' { gen(file, false) }
-				'-c' { gen(file, true) }
-				else { println(usage) }
-			}
-		}
-		else {
-			println(usage)
+	if os.args.len < 2 {
+		eprintln('not enough parameters')
+		exit(1)
+	}
+	mut ctx := Context{}
+	mut fp := flag.new_flag_parser(os.args[2..])
+	fp.application('v ast')
+	fp.usage_example('demo.v       generate demo.json file.')
+	fp.usage_example('-w demo.v    generate demo.json file, and watch for changes.')
+	fp.usage_example('-c demo.v    generate demo.json *and* a demo.c file, and watch for changes.')
+	fp.usage_example('-p demo.v    print the json output to stdout.')
+	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
+	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
+	fp.description('Pass -p to see it instead.')
+	ctx.is_watch = fp.bool('watch', `w`, false, 'watch a .v file for changes, rewrite the .json file, when a change is detected')
+	ctx.is_print = fp.bool('print', `p`, false, 'print the AST to stdout')
+	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
+	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
+	mut mhf := unsafe { hide_fields }
+	for hf in hfields.split(',') {
+		mhf.names[hf] = true
+	}
+	fp.limit_free_args_to_at_least(1)
+	rest_of_args := fp.remaining_parameters()
+	for vfile in rest_of_args {
+		file := get_abs_path(vfile)
+		check_file(file)
+		ctx.write_file_or_print(file)
+		if ctx.is_watch || ctx.is_compile {
+			ctx.watch_for_changes(file)
 		}
 	}
 }
 
+fn (ctx Context) write_file_or_print(file string) {
+	if ctx.is_print {
+		println(json(file))
+	} else {
+		println('$time.now(): AST written to: ' + json_file(file))
+	}
+}
+
 // generate ast json file and c source code file
-fn gen(file string, is_genc bool) {
+fn (ctx Context) watch_for_changes(file string) {
 	println('start watching...')
 	mut timestamp := 0
 	for {
 		new_timestamp := os.file_last_mod_unix(file)
 		if timestamp != new_timestamp {
-			res := json_file(file)
-			println('$time.now() : AST written to: ' + res)
-			if is_genc {
+			ctx.write_file_or_print(file)
+			if ctx.is_compile {
 				file_name := file[0..(file.len - os.file_ext(file).len)]
 				os.system('v -o ${file_name}.c $file')
 			}
@@ -93,27 +117,23 @@ fn json_file(file string) string {
 	return json_file
 }
 
-// for enable_globals
-fn new_preferences() &pref.Preferences {
-	mut p := &pref.Preferences{}
-	p.fill_with_defaults()
-	p.enable_globals = true
-	return p
-}
-
 // generate json string
 fn json(file string) string {
+	// use as permissive preferences as possible, so that `v ast`
+	// can print the AST of arbitrary V files, even .vsh or ones
+	// that require globals:
+	mut pref := &pref.Preferences{}
+	pref.fill_with_defaults()
+	pref.enable_globals = true
+	pref.is_fmt = true
+	//
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()
-		pref: new_preferences()
-		global_scope: &ast.Scope{
-			start_pos: 0
-			parent: 0
-		}
+		pref: pref
 	}
 	// parse file with comment
-	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref, t.global_scope)
+	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
 	t.root = t.ast_file(ast_file)
 	// generate the ast string
 	s := json_print(t.root)
@@ -122,9 +142,8 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table        &ast.Table
-	pref         &pref.Preferences
-	global_scope &ast.Scope
+	table &ast.Table
+	pref  &pref.Preferences
 mut:
 	root Node // the root of tree
 }
@@ -141,6 +160,9 @@ fn new_object() &Node {
 // add item to object node
 [inline]
 fn (node &Node) add(key string, child &Node) {
+	if hide_fields.names.len > 0 && key in hide_fields.names {
+		return
+	}
 	add_item_to_object(node, key, child)
 }
 
@@ -1197,13 +1219,13 @@ fn (t Tree) at_expr(node ast.AtExpr) &Node {
 fn (t Tree) cast_expr(node ast.CastExpr) &Node {
 	mut obj := new_object()
 	obj.add('ast_type', t.string_node('CastExpr'))
-	obj.add('expr', t.expr(node.expr))
-	obj.add('arg', t.expr(node.arg))
 	obj.add('typ', t.type_node(node.typ))
+	obj.add('ityp', t.number_node(int(node.typ)))
 	obj.add('typname', t.string_node(node.typname))
-	obj.add('expr_type', t.type_node(node.expr_type))
 	obj.add('has_arg', t.bool_node(node.has_arg))
-	obj.add('in_prexpr', t.bool_node(node.in_prexpr))
+	obj.add('arg', t.expr(node.arg))
+	obj.add('expr_type', t.type_node(node.expr_type))
+	obj.add('expr', t.expr(node.expr))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }

@@ -5,6 +5,7 @@ module util
 
 import os
 import time
+import term
 import v.pref
 import v.vmod
 import v.util.recompilation
@@ -568,4 +569,10 @@ pub fn find_all_v_files(roots []string) ?[]string {
 		files << file
 	}
 	return files
+}
+
+// Highlight a command with an on-brand background to make CLI
+// commands immediately recognizable.
+pub fn pretty_print(command string) string {
+	return term.bright_white(term.bg_cyan(' $command '))
 }

@@ -111,7 +111,7 @@ fn test_is_file() {
 		assert true
 	} $else {
 		dsymlink := os.join_path(work_dir, 'dir_symlink')
-		os.system('ln -s $work_dir $dsymlink')
+		os.symlink(work_dir, dsymlink) or { panic(err) }
 		assert os.is_file(dsymlink) == false
 	}
 	// Test file symlinks
@@ -119,7 +119,7 @@ fn test_is_file() {
 		assert true
 	} $else {
 		fsymlink := os.join_path(work_dir, 'file_symlink')
-		os.system('ln -s $tfile $fsymlink')
+		os.symlink(tfile, fsymlink) or { panic(err) }
 		assert os.is_file(fsymlink)
 	}
 }

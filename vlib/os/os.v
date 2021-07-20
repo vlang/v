@@ -310,6 +310,12 @@ pub fn user_os() string {
 	$if haiku {
 		return 'haiku'
 	}
+	$if serenity {
+		return 'serenity'
+	}
+	$if vinix {
+		return 'vinix'
+	}
 	return 'unknown'
 }
 

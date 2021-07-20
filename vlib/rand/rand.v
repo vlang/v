@@ -49,7 +49,7 @@ __global (
 
 // init initializes the default RNG.
 fn init() {
-	default_rng = new_default({})
+	default_rng = new_default()
 }
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.

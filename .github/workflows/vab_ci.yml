@@ -11,7 +11,7 @@ on:
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
     - uses: actions/setup-java@v2
       with:

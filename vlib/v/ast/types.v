@@ -77,6 +77,7 @@ pub mut:
 	mod       string
 	is_public bool
 	language  Language
+	idx       int
 }
 
 // max of 8
@@ -156,6 +157,11 @@ pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
+[inline]
+pub fn (t Type) is_any_kind_of_pointer() bool {
+	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
+}
+
 // set nr_muls on `t` and return it
 [inline]
 pub fn (t Type) set_nr_muls(nr_muls int) Type {
@@ -209,24 +215,42 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
+// debug returns a verbose representation of the information in ts, useful for tracing/debugging
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
-	res << 'parent_idx: $ts.parent_idx'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
+	ts.dbg_common(mut res)
 	res << 'info: $ts.info'
-	res << 'kind: $ts.kind'
-	res << 'is_public: $ts.is_public'
-	res << 'language: $ts.language'
 	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
+// same as .debug(), but without the verbose .info and .methods fields
+pub fn (ts TypeSymbol) dbg() []string {
+	mut res := []string{}
+	ts.dbg_common(mut res)
+	return res
+}
+
+fn (ts TypeSymbol) dbg_common(mut res []string) {
+	res << 'idx: 0x$ts.idx.hex()'
+	res << 'parent_idx: 0x$ts.parent_idx.hex()'
+	res << 'mod: $ts.mod'
+	res << 'name: $ts.name'
+	res << 'cname: $ts.cname'
+	res << 'kind: $ts.kind'
+	res << 'is_public: $ts.is_public'
+	res << 'language: $ts.language'
+}
+
+pub fn (t Type) str() string {
+	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+}
+
+// debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
 pub fn (t Type) debug() []string {
 	mut res := []string{}
-	res << 'idx: ${t.idx():5}'
-	res << 'type: ${t:10}'
+	res << 'idx: 0x${t.idx().hex():-8}'
+	res << 'type: 0x${t.hex():-8}'
 	res << 'nr_muls: $t.nr_muls()'
 	if t.has_flag(.optional) {
 		res << 'optional'
@@ -338,6 +362,11 @@ pub fn (typ Type) is_number() bool {
 [inline]
 pub fn (typ Type) is_string() bool {
 	return typ.idx() in ast.string_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_bool() bool {
+	return typ.idx() == ast.bool_type_idx
 }
 
 pub const (
@@ -760,6 +789,11 @@ pub mut:
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type
+	// generic interface support
+	is_generic     bool
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
 }
 
 pub struct Enum {
@@ -846,6 +880,11 @@ pub:
 pub mut:
 	fields       []StructField
 	found_fields bool
+	// generic sumtype support
+	is_generic     bool
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
 }
 
 // human readable type name
@@ -865,6 +904,15 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.get_type_symbol(typ)
 	mut res := sym.name
+	// Note, that the duplication of code in some of the match branches here
+	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
+	// that strongly reduces the usefullness of the exhaustive checking that
+	// match does.
+	//    Using else{} here led to subtle bugs in vfmt discovered *months*
+	// after the original code was written.
+	//    It is important that each case here is handled *explicitly* and
+	// *clearly*, and that when a new kind is added, it should also be handled
+	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {
 			res = sym.name
@@ -955,17 +1003,21 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			res += ')'
 		}
-		.struct_ {
+		.struct_, .interface_, .sum_type {
 			if typ.has_flag(.generic) {
-				info := sym.info as Struct
-				res += '<'
-				for i, gtyp in info.generic_types {
-					res += t.get_type_symbol(gtyp).name
-					if i != info.generic_types.len - 1 {
-						res += ', '
+				match sym.info {
+					Struct, Interface, SumType {
+						res += '<'
+						for i, gtyp in sym.info.generic_types {
+							res += t.get_type_symbol(gtyp).name
+							if i != sym.info.generic_types.len - 1 {
+								res += ', '
+							}
+						}
+						res += '>'
 					}
+					else {}
 				}
-				res += '>'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
@@ -989,7 +1041,13 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			return 'void'
 		}
-		else {
+		.thread {
+			rtype := sym.thread_info().return_type
+			if rtype != 1 {
+				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
+			}
+		}
+		.alias, .any, .size_t, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
@@ -1104,6 +1162,47 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 		if method.name == name {
 			return method
 		}
+	}
+	return none
+}
+
+pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
+	if m := t.find_method(name) {
+		return m
+	}
+	mut table := global_table
+	match t.info {
+		Struct, Interface, SumType {
+			if t.info.parent_type.has_flag(.generic) {
+				parent_sym := table.get_type_symbol(t.info.parent_type)
+				if x := parent_sym.find_method(name) {
+					match parent_sym.info {
+						Struct, Interface, SumType {
+							mut method := x
+							generic_names := parent_sym.info.generic_types.map(table.get_type_symbol(it).name)
+							if rt := table.resolve_generic_to_concrete(method.return_type,
+								generic_names, t.info.concrete_types)
+							{
+								method.return_type = rt
+							}
+							method.params = method.params.clone()
+							for mut param in method.params {
+								if pt := table.resolve_generic_to_concrete(param.typ,
+									generic_names, t.info.concrete_types)
+								{
+									param.typ = pt
+								}
+							}
+							method.generic_names.clear()
+							return method
+						}
+						else {}
+					}
+				} else {
+				}
+			}
+		}
+		else {}
 	}
 	return none
 }

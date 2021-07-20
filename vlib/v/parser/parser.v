@@ -50,7 +50,6 @@ mut:
 	attrs               []ast.Attr // attributes before next decl stmt
 	expr_mod            string     // for constructing full type names in parse_type()
 	scope               &ast.Scope
-	global_scope        &ast.Scope
 	imports             map[string]string // alias => mod_name
 	ast_imports         []ast.Import      // mod_names
 	used_imports        []string // alias
@@ -90,10 +89,6 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 		table: table
 		pref: &pref.Preferences{}
 		scope: scope
-		global_scope: &ast.Scope{
-			start_pos: 0
-			parent: 0
-		}
 	}
 	p.init_parse_fns()
 	util.timing_start('PARSE stmt')
@@ -104,7 +99,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) &ast.File {
+pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, pref)
 		table: table
@@ -112,12 +107,11 @@ pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, sco
 		scope: scope
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	return p.parse()
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
+pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
@@ -125,11 +119,10 @@ pub fn parse_text(text string, path string, table &ast.Table, comments_mode scan
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: global_scope
+			parent: table.global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	return p.parse()
@@ -176,7 +169,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) &ast.File {
+pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -188,11 +181,10 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: global_scope
+			parent: table.global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	return p.parse()
@@ -213,7 +205,6 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
-		global_scope: global_scope
 	}
 	p.set_path(path)
 	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
@@ -290,7 +281,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		auto_imports: p.auto_imports
 		stmts: stmts
 		scope: p.scope
-		global_scope: p.global_scope
+		global_scope: p.table.global_scope
 		errors: p.errors
 		warnings: p.warnings
 		global_labels: p.global_labels
@@ -330,7 +321,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, global_scope &ast.Scope) []&ast.File {
+pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(false)
 	$if time_parsing ? {
 		timers.should_print = true
@@ -361,7 +352,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences, glo
 	mut files := []&ast.File{}
 	for path in paths {
 		timers.start('parse_file $path')
-		files << parse_file(path, table, .skip_comments, pref, global_scope)
+		files << parse_file(path, table, .skip_comments, pref)
 		timers.show('parse_file $path')
 	}
 	return files
@@ -1400,7 +1391,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		if mut expr is ast.ParExpr {
 			expr = expr.expr
 		} else {
-			p.error('asm in/output must be incolsed in brackets')
+			p.error('asm in/output must be enclosed in brackets')
 		}
 		mut alias := ''
 		if p.tok.kind == .key_as {
@@ -1856,11 +1847,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 10. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
-	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		p.tok.lit[0].is_capital()
-	} else {
-		false
-	}
+	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if lit0_is_capital || p.peek_tok.kind != .lt {
 		return false
 	}
@@ -1898,6 +1885,45 @@ fn (p &Parser) is_generic_call() bool {
 			else { false }
 		}
 	}
+	return false
+}
+
+const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
+
+fn (mut p Parser) is_generic_cast() bool {
+	if !p.tok.can_start_type(ast.builtin_type_names) {
+		return false
+	}
+	mut i := 0
+	mut level := 0
+	mut lt_count := 0
+	for {
+		i++
+		tok := p.peek_token(i)
+
+		if tok.kind == .lt {
+			lt_count++
+			level++
+		} else if tok.kind == .gt {
+			level--
+		}
+		if lt_count > 0 && level == 0 {
+			break
+		}
+
+		if i > 20 || tok.kind !in parser.valid_tokens_inside_types {
+			return false
+		}
+	}
+	next_tok := p.peek_token(i + 1)
+	// `next_tok` is the token following the closing `>` of the generic type: MyType<int>{
+	//                                                                                   ^
+	// if `next_tok` is a left paren, then the full expression looks something like
+	// `Foo<string>(` or `Foo<mod.Type>(`, which are valid type casts - return true
+	if next_tok.kind == .lpar {
+		return true
+	}
+	// any other token is not a valid generic cast, however
 	return false
 }
 
@@ -2020,8 +2046,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					ident := p.parse_ident(language)
 					node = ident
 					if p.inside_defer {
-						if p.defer_vars.filter(it.name == ident.name
-							&& it.mod == ident.mod).len == 0 && ident.name != 'err' {
+						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+							&& ident.name != 'err' {
 							p.defer_vars << ident
 						}
 					}
@@ -2041,6 +2067,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		false
 	}
 	is_optional := p.tok.kind == .question
+	is_generic_call := p.is_generic_call()
+	is_generic_cast := p.is_generic_cast()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2048,13 +2076,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
 		}
-	} else if p.peek_tok.kind == .lpar
-		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
+	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
+		|| (is_optional && p.peek_token(2).kind == .lpar) {
 		// foo(), foo<int>() or type() cast
 		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
@@ -2064,16 +2092,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
-			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast
-			|| (language == .v && name[0].is_capital()) {
+			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
+			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
 			mut to_typ := p.parse_type()
-			if p.is_amp {
-				// Handle `&Foo(0)`
-				to_typ = to_typ.to_ptr()
-			}
 			// this prevents inner casts to also have an `&`
 			// example: &Foo(malloc(int(num)))
 			// without the next line int would result in int*
@@ -2093,6 +2117,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
+				typname: p.table.get_type_symbol(to_typ).name
 				expr: expr
 				arg: arg
 				has_arg: has_arg
@@ -2164,7 +2189,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 				&& ident.name != 'err' {
 				p.defer_vars << ident
 			}
@@ -2321,7 +2346,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		has_generic := concrete_types.any(it.has_flag(.generic))
 		if !has_generic {
 			// will be added in checker
 			p.table.register_fn_concrete_types(field_name, concrete_types)
@@ -2805,7 +2830,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
@@ -2839,7 +2864,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field)
+		p.table.global_scope.register(field)
 		comments = []
 		if !is_block {
 			break
@@ -2862,7 +2887,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// no return
-	mut comments := p.eat_comments({})
+	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			comments: comments
@@ -2901,7 +2926,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut fields := []ast.GlobalField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.GlobalDecl{}
@@ -2941,7 +2966,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field)
+		p.table.global_scope.register(field)
 		comments = []
 		if !is_block {
 			break
@@ -2980,7 +3005,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments({})
+	enum_decl_comments := p.eat_comments()
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -3002,7 +3027,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr: expr
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
-			next_comments: p.eat_comments({})
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -3081,6 +3106,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
+	generic_types := p.parse_generic_type_list()
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3106,7 +3132,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << {
+		sum_variants << ast.TypeNode{
 			typ: first_type
 			pos: type_pos
 		}
@@ -3118,7 +3144,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			prev_tok := p.prev_tok
 			type_end_pos = prev_tok.position()
 			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << {
+			sum_variants << ast.TypeNode{
 				typ: variant_type
 				pos: type_pos
 			}
@@ -3136,6 +3162,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			mod: p.mod
 			info: ast.SumType{
 				variants: variant_types
+				is_generic: generic_types.len > 0
+				generic_types: generic_types
 			}
 			is_public: is_pub
 		})
@@ -3145,6 +3173,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
+			generic_types: generic_types
 			pos: decl_pos
 			comments: comments
 		}

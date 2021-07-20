@@ -43,7 +43,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		has_generic := concrete_types.any(it.has_flag(.generic))
 		if !has_generic {
 			// will be added in checker
 			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
@@ -124,7 +124,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
-		mut comments := p.eat_comments({})
+		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
@@ -149,7 +149,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
@@ -467,6 +467,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_main: is_main
 		is_test: is_test
 		is_keep_alive: is_keep_alive
+		is_unsafe: is_unsafe
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != -1
@@ -632,7 +633,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false
 	p.open_scope()
-	if p.pref.backend != .js {
+	if !p.pref.backend.is_js() {
 		p.scope.detached_from_parent = true
 	}
 	// TODO generics

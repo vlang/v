@@ -115,7 +115,7 @@ fn repl_help() {
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
 		println(util.full_v_version(false))
-		println('Use Ctrl-C or `exit` to exit, or `help` to see other available commands')
+		println('Use Ctrl-C or ${util.pretty_print('exit')} to exit, or ${util.pretty_print('help')} to see other available commands')
 	}
 
 	if vstartup != '' {

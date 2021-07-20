@@ -28,37 +28,36 @@ fn reader(s string) &io.BufferedReader {
 }
 
 fn test_parse_request_not_http() {
-	parse_request(mut reader('hello')) or { return }
+	mut reader__ := reader('hello')
+	parse_request(mut reader__) or { return }
 	panic('should not have parsed')
 }
 
 fn test_parse_request_no_headers() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\n\r\n')) or { panic('did not parse: $err') }
+	mut reader_ := reader('GET / HTTP/1.1\r\n\r\n')
+	req := parse_request(mut reader_) or { panic('did not parse: $err') }
 	assert req.method == .get
 	assert req.url == '/'
 	assert req.version == .v1_1
 }
 
 fn test_parse_request_two_headers() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')) or {
-		panic('did not parse: $err')
-	}
+	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')
+	req := parse_request(mut reader_) or { panic('did not parse: $err') }
 	assert req.header.custom_values('Test1') == ['a']
 	assert req.header.custom_values('Test2') == ['B']
 }
 
 fn test_parse_request_two_header_values() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')) or {
-		panic('did not parse: $err')
-	}
+	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
+	req := parse_request(mut reader_) or { panic('did not parse: $err') }
 	assert req.header.custom_values('Test1') == ['a; b']
 	assert req.header.custom_values('Test2') == ['c', 'd']
 }
 
 fn test_parse_request_body() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')) or {
-		panic('did not parse: $err')
-	}
+	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
+	req := parse_request(mut reader_) or { panic('did not parse: $err') }
 	assert req.data == 'body'
 }
 
@@ -132,7 +131,8 @@ ${contents[1]}
 fn test_parse_large_body() ? {
 	body := 'A'.repeat(101) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
-	result := parse_request(mut reader(req)) ?
+	mut reader_ := reader(req)
+	result := parse_request(mut reader_) ?
 	assert result.data.len == body.len
 	assert result.data == body
 }

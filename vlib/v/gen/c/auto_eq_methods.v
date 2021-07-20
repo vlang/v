@@ -20,7 +20,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (a._typ != b._typ) { return false; }')
 	for typ in info.variants {
 		variant := g.unwrap(typ)
-		fn_builder.writeln('\tif (a._typ == $typ) {')
+		fn_builder.writeln('\tif (a._typ == $variant.typ) {')
 		name := '_$variant.sym.cname'
 		if variant.sym.kind == .string {
 			fn_builder.writeln('\t\treturn string__eq(*a.$name, *b.$name);')

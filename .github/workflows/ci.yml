@@ -41,19 +41,19 @@ jobs:
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -102,23 +102,25 @@ jobs:
       - name: Test v tutorials
         run: |
           ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build cmd/tools/fast
+        run: cd cmd/tools/fast && ../../../v fast.v && ./fast
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y libgc-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -159,7 +161,7 @@ jobs:
 
   misc-tooling:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -168,7 +170,7 @@ jobs:
           fetch-depth: 10
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
@@ -230,7 +232,7 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       # Alpine docker pre-built container
       image: thevlang/vlang:alpine-build
@@ -258,7 +260,7 @@ jobs:
 
   macos:
     runs-on: macOS-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc clang
     steps:
@@ -346,7 +348,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -354,7 +356,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
@@ -441,7 +443,7 @@ jobs:
 
   ubuntu-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc clang
     steps:
@@ -451,10 +453,10 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          sudo apt-get install --quiet -y clang
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
@@ -523,7 +525,7 @@ jobs:
 
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
-  #    timeout-minutes: 45
+  #    timeout-minutes: 60
   #    env:
   #      VFLAGS: -cc gcc
   #    steps:
@@ -537,7 +539,7 @@ jobs:
   ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -563,7 +565,7 @@ jobs:
 
   #   ubuntu-musl:
   #     runs-on: ubuntu-20.04
-  #     timeout-minutes: 45
+  #     timeout-minutes: 60
   #     env:
   #       VFLAGS: -cc musl-gcc
   #       V_CI_MUSL: 1
@@ -588,7 +590,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc gcc
     steps:
@@ -630,7 +632,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
     steps:
@@ -673,7 +675,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1
@@ -700,7 +702,7 @@ jobs:
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
-        run : ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
 
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
@@ -739,7 +741,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
 
       - name: Make sure running TCC32 instead of TCC64
-        run : ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
 
       - name: Test v build-tools
         run: ./v -W build-tools
@@ -761,7 +763,7 @@ jobs:
   parser-silent:
     name: Parser silent mode
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - name: Install zzuf
@@ -799,7 +801,7 @@ jobs:
 
   v-apps-compile:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       - name: Build V
@@ -851,6 +853,13 @@ jobs:
         run: ./v test ~/.vmodules/nedpals/vex
 
   ## vpm modules
-      - name: Installing V modules
-        run: |
-          ./v install ui
+      - name: Install UI through VPM
+        run: ./v install ui
+
+  ## libsodium
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Installl the libsodium wrapper through VPM
+        run: ./v install libsodium
+      - name: Test libsodium
+        run: ./v test ~/.vmodules/libsodium

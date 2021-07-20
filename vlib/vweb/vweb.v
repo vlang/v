@@ -8,61 +8,41 @@ import io
 import net
 import net.http
 import net.urllib
-import strings
 import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
+	headers_close     = http.new_custom_header_from_map(map{
+		'Server':          'VWeb'
+		http.CommonHeader.connection.str(): 'close'
+	}) or { panic('should never fail') }
+
 	http_400          = http.Response{
 		version: .v1_1
 		status_code: 400
 		text: '400 Bad Request'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '15')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '15'
+		}).join(headers_close)
 	}
 	http_404 = http.Response{
 		version: .v1_1
 		status_code: 404
 		text: '404 Not Found'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '13')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '13'
+		}).join(headers_close)
 	}
 	http_500 = http.Response{
 		version: .v1_1
 		status_code: 500
 		text: '500 Internal Server Error'
-		header: fn () http.Header {
-			mut h := http.new_header()
-			h.add(.content_type, 'text/plain')
-			h.add(.content_length, '25')
-			close := headers_close()
-			for k in close.keys() {
-				for v in close.custom_values(k) {
-					h.add_custom(k, v) or {}
-				}
-			}
-			return h
-		}()
+		header: http.new_header_from_map(map{
+			http.CommonHeader.content_type:   'text/plain'
+			http.CommonHeader.content_length: '25'
+		}).join(headers_close)
 	}
 	mime_types = map{
 		'.css':  'text/css; charset=utf-8'
@@ -99,12 +79,10 @@ pub mut:
 	form              map[string]string
 	query             map[string]string
 	files             map[string][]FileData
-	headers           string // response headers
+	header            http.Header // response headers
 	done              bool
 	page_gen_start    i64
 	form_error        string
-	chunked_transfer  bool
-	max_chunk_len     int = 20
 }
 
 struct FileData {
@@ -149,48 +127,20 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-	mut sb := strings.new_builder(1024)
-	defer {
-		unsafe { sb.free() }
+
+	// build header
+	header := http.new_header_from_map(map{
+		http.CommonHeader.content_type:   mimetype
+		http.CommonHeader.content_length: res.len.str()
+	}).join(ctx.header)
+
+	resp := http.Response{
+		version: .v1_1
+		status_code: ctx.status.int() // TODO: change / remove ctx.status
+		header: header.join(vweb.headers_close)
+		text: res
 	}
-	sb.write_string('HTTP/1.1 $ctx.status')
-	sb.write_string('\r\nContent-Type: $mimetype')
-	sb.write_string('\r\nContent-Length: $res.len')
-	if ctx.chunked_transfer {
-		sb.write_string('\r\nTransfer-Encoding: chunked')
-	}
-	sb.write_string(ctx.headers)
-	sb.write_string('\r\n')
-	sb.write_string(headers_close().str())
-	sb.write_string('\r\n')
-	if ctx.chunked_transfer {
-		mut i := 0
-		mut len := res.len
-		for {
-			if len <= 0 {
-				break
-			}
-			mut chunk := ''
-			if len > ctx.max_chunk_len {
-				chunk = res[i..i + ctx.max_chunk_len]
-				i += ctx.max_chunk_len
-				len -= ctx.max_chunk_len
-			} else {
-				chunk = res[i..]
-				len = 0
-			}
-			sb.write_string(chunk.len.hex())
-			sb.write_string('\r\n$chunk\r\n')
-		}
-		sb.write_string('0\r\n\r\n') // End of chunks
-	} else {
-		sb.write_string(res)
-	}
-	s := sb.str()
-	defer {
-		unsafe { s.free() }
-	}
-	send_string(mut ctx.conn, s) or { return false }
+	send_string(mut ctx.conn, resp.bytestr()) or { return false }
 	return true
 }
 
@@ -236,7 +186,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close().str()\r\n') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
 		return Result{}
 	}
 	return Result{}
@@ -250,12 +200,6 @@ pub fn (mut ctx Context) not_found() Result {
 	ctx.done = true
 	send_string(mut ctx.conn, vweb.http_404.bytestr()) or {}
 	return Result{}
-}
-
-// Enables chunk transfer with max_chunk_len per chunk
-pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
-	ctx.chunked_transfer = true
-	ctx.max_chunk_len = max_chunk_len
 }
 
 // Sets a cookie
@@ -297,7 +241,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	}
 	cookie_header = ' ' + cookie_header
 	// println('cookie_header="$cookie_header"')
-	// println(ctx.req.headers)
+	// println(ctx.req.header)
 	cookie := if cookie_header.contains(';') {
 		cookie_header.find_between(' $key=', ';')
 	} else {
@@ -320,9 +264,7 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 
 // Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
-	// println('add_header($key, $val)')
-	ctx.headers = ctx.headers + '\r\n$key: $val'
-	// println(ctx.headers)
+	ctx.header.add_custom(key, val) or {}
 }
 
 // Returns the header data from the key
@@ -706,10 +648,4 @@ pub type RawHtml = string
 
 fn send_string(mut conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
-}
-
-fn headers_close() http.Header {
-	mut h := http.new_header(key: .connection, value: 'close')
-	h.add_custom('Server', 'VWeb') or {}
-	return h
 }

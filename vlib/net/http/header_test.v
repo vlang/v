@@ -274,3 +274,52 @@ fn test_str() ? {
 	assert h.str() == 'Accept: text/html,image/jpeg\r\nX-custom: Hello\r\n'
 		|| h.str() == 'X-custom: Hello\r\nAccept:text/html,image/jpeg\r\n'
 }
+
+fn test_header_from_map() ? {
+	h := new_header_from_map(map{
+		CommonHeader.accept:  'nothing'
+		CommonHeader.expires: 'yesterday'
+	})
+	assert h.contains(.accept)
+	assert h.contains(.expires)
+	assert h.get(.accept) or { '' } == 'nothing'
+	assert h.get(.expires) or { '' } == 'yesterday'
+}
+
+fn test_custom_header_from_map() ? {
+	h := new_custom_header_from_map(map{
+		'Server': 'VWeb'
+		'foo':    'bar'
+	}) ?
+	assert h.contains_custom('server')
+	assert h.contains_custom('foo')
+	assert h.get_custom('server') or { '' } == 'VWeb'
+	assert h.get_custom('foo') or { '' } == 'bar'
+}
+
+fn test_header_join() ? {
+	h1 := new_header_from_map(map{
+		CommonHeader.accept:  'nothing'
+		CommonHeader.expires: 'yesterday'
+	})
+	h2 := new_custom_header_from_map(map{
+		'Server': 'VWeb'
+		'foo':    'bar'
+	}) ?
+	h3 := h1.join(h2)
+	// h1 is unchanged
+	assert h1.contains(.accept)
+	assert h1.contains(.expires)
+	assert !h1.contains_custom('Server')
+	assert !h1.contains_custom('foo')
+	// h2 is unchanged
+	assert !h2.contains(.accept)
+	assert !h2.contains(.expires)
+	assert h2.contains_custom('Server')
+	assert h2.contains_custom('foo')
+	// h3 has all four headers
+	assert h3.contains(.accept)
+	assert h3.contains(.expires)
+	assert h3.contains_custom('Server')
+	assert h3.contains_custom('foo')
+}

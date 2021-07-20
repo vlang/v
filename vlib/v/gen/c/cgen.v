@@ -519,6 +519,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 	for typ in g.table.type_symbols {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as ast.SumType
+			if sum_info.is_generic {
+				continue
+			}
 			g.writeln('static char * v_typeof_sumtype_${typ.cname}(int sidx) { /* $typ.name */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return "${util.strip_main_name(typ.name)}";')
@@ -541,6 +544,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('}')
 		} else if typ.kind == .interface_ {
 			inter_info := typ.info as ast.Interface
+			if inter_info.is_generic {
+				continue
+			}
 			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
@@ -575,7 +581,7 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := t.nr_muls()
+	nr_muls := g.unwrap_generic(t).nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
@@ -590,11 +596,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) st
 	// `foo<int>()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
-		nr_muls := typ.nr_muls()
-		if is_decl && nr_muls > 0 {
-			name = strings.repeat(`*`, nr_muls) + name
-		}
-		name += '_' + strings.repeat_string('__ptr__', nr_muls) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
 	}
 	return name
 }
@@ -739,23 +741,27 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
-	if mut sym.info is ast.Struct {
-		if sym.info.is_generic {
-			mut sgtyps := '_T'
-			for gt in sym.info.generic_types {
-				gts := g.table.get_type_symbol(g.unwrap_generic(gt))
-				sgtyps += '_$gts.cname'
+	match mut sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if sym.info.is_generic {
+				mut sgtyps := '_T'
+				for gt in sym.info.generic_types {
+					gts := g.table.get_type_symbol(g.unwrap_generic(gt))
+					sgtyps += '_$gts.cname'
+				}
+				styp += sgtyps
 			}
-			styp += sgtyps
 		}
-	} else if mut sym.info is ast.MultiReturn {
-		// TODO: this doesn't belong here, but makes it working for now
-		mut cname := 'multi_return'
-		for mr_typ in sym.info.types {
-			mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
-			cname += '_$mr_type_sym.cname'
+		ast.MultiReturn {
+			// TODO: this doesn't belong here, but makes it working for now
+			mut cname := 'multi_return'
+			for mr_typ in sym.info.types {
+				mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
+				cname += '_$mr_type_sym.cname'
+			}
+			return cname
 		}
-		return cname
+		else {}
 	}
 	if is_prefix_struct && styp.starts_with('C__') {
 		styp = styp[3..]
@@ -860,6 +866,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	// to prevent generating interface struct before definition of field types
 	for typ in g.table.type_symbols {
 		if typ.kind == .interface_ && typ.name !in c.builtins {
+			g.write_interface_typedef(typ)
+		}
+	}
+	for typ in g.table.type_symbols {
+		if typ.kind == .interface_ && typ.name !in c.builtins {
 			g.write_interface_typesymbol_declaration(typ)
 		}
 	}
@@ -887,10 +898,17 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
 
+pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
+	struct_name := c_name(sym.cname)
+	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+}
+
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
-	struct_name := c_name(sym.name)
-	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+	if info.is_generic {
+		return
+	}
+	struct_name := c_name(sym.cname)
 	g.type_definitions.writeln('struct $struct_name {')
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
@@ -1362,10 +1380,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
-			for method in node.methods {
-				if method.return_type.has_flag(.optional) {
-					// Register an optional if it's not registered yet
-					g.register_optional(method.return_type)
+			ts := g.table.get_type_symbol(node.typ)
+			if !(ts.info as ast.Interface).is_generic {
+				for method in node.methods {
+					if method.return_type.has_flag(.optional) {
+						// Register an optional if it's not registered yet
+						g.register_optional(method.return_type)
+					}
 				}
 			}
 		}
@@ -1826,7 +1847,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	g.write('${fname}(')
 	if !got_is_ptr {
 		if !expr.is_lvalue()
-			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
+			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
 			g.write('ADDR($got_styp, (')
 			rparen_n += 2
 		} else {
@@ -1852,20 +1873,27 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
-	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
+	if exp_sym.info is ast.Interface && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
 			got_styp := g.cc_type(got_type.to_ptr(), true)
-			exp_styp := g.cc_type(expected_type, true)
-			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			// TODO: why does cc_type even add this in the first place?
+			exp_styp := exp_sym.cname
+			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			if exp_sym.info.is_generic {
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
 				got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
-			exp_styp := g.cc_type(expected_type, true)
-			fname := 'I_${got_styp}_to_Interface_$exp_styp'
+			exp_styp := exp_sym.cname
+			mut fname := '/*$exp_sym*/I_${got_styp}_to_Interface_$exp_styp'
+			if exp_sym.info.is_generic {
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
 				got_styp)
 		}
@@ -2512,9 +2540,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
-		is_fixed_array_var := right_sym.kind == .array_fixed && (val is ast.Ident
-			|| val is ast.IndexExpr || val is ast.CallExpr
+		unwrapped_val_type := g.unwrap_generic(val_type)
+		right_sym := g.table.get_type_symbol(unwrapped_val_type)
+		unaliased_right_sym := g.table.get_final_type_symbol(unwrapped_val_type)
+		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
+			&& (val is ast.Ident || val is ast.IndexExpr || val is ast.CallExpr
+			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit)
 			|| val is ast.SelectorExpr)
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
@@ -2575,6 +2606,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
+			mut op_expected_left := ast.Type(0)
+			mut op_expected_right := ast.Type(0)
 			if var_type == ast.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
@@ -2602,6 +2635,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				g.expr(left)
 				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				method := g.table.type_find_method(left_sym, extracted_op) or {
+					// the checker will most likely have found this, already...
+					g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
+						assign_stmt.pos)
+					ast.Fn{}
+				}
+				op_expected_left = method.params[0].typ
+				op_expected_right = method.params[1].typ
 				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
@@ -2650,10 +2691,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_var || is_decl {
-					if !is_decl && left.is_auto_deref_var() {
-						g.write('*')
+					if op_overloaded {
+						g.op_arg(left, op_expected_left, var_type)
+					} else {
+						if !is_decl && left.is_auto_deref_var() {
+							g.write('*')
+						}
+						g.expr(left)
 					}
-					g.expr(left)
 				}
 			}
 			if is_inside_ternary && is_decl {
@@ -2739,7 +2784,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
-						g.expr_with_cast(val, val_type, var_type)
+						if op_overloaded {
+							g.op_arg(val, op_expected_right, val_type)
+						} else {
+							g.expr_with_cast(val, val_type, var_type)
+						}
 					}
 				}
 			}
@@ -3418,8 +3467,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// match sum Type
 			// g.write('/* Type */')
 			// type_idx := node.typ.idx()
-			sym := g.table.get_type_symbol(node.typ)
-			sidx := g.type_sidx(node.typ)
+			typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(typ)
+			sidx := g.type_sidx(typ)
 			// g.write('$type_idx /* $sym.name */')
 			g.write('$sidx /* $sym.name */')
 		}
@@ -3836,7 +3886,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				} else if sym.kind == .interface_ {
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						typ := branch.exprs[sumtype_index] as ast.TypeNode
-						branch_sym := g.table.get_type_symbol(typ.typ)
+						branch_sym := g.table.get_type_symbol(g.unwrap_generic(typ.typ))
 						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
 					} else if branch.exprs[sumtype_index] is ast.None && sym.name == 'IError' {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
@@ -4245,7 +4295,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 					}
 					for i, typ in v.smartcasts {
-						cast_sym := g.table.get_type_symbol(typ)
+						cast_sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
 							g.write(name)
@@ -4319,6 +4369,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('*(($styp *)(&')
 		g.expr(node.expr)
 		g.write('))')
+	} else if sym.kind == .alias && g.table.get_final_type_symbol(node.typ).kind == .array_fixed {
+		g.expr(node.expr)
 	} else {
 		styp := g.typ(node.typ)
 		mut cast_label := ''
@@ -4517,7 +4569,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 		} else {
+			// restore if_expr stmt header pos
+			stmt_pos := g.nth_stmt_pos(0)
 			g.stmts(branch.stmts)
+			g.stmt_path_pos << stmt_pos
 		}
 	}
 	g.writeln('}')
@@ -4818,24 +4873,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				continue
 			}
 		}
-
 		name := c_name(field.name)
-		/*
-		if field.typ == ast.byte_type {
-			g.const_decl_simple_define(name, val)
-			return
-		}
-		*/
-		/*
-		if ast.is_number(field.typ) {
-			g.const_decl_simple_define(name, val)
-		} else if field.typ == ast.string_type {
-			g.definitions.writeln('string _const_$name; // a string literal, inited later')
-			if g.pref.build_mode != .build_module {
-				g.stringliterals.writeln('\t_const_$name = $val;')
-			}
-		} else {
-		*/
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -4867,7 +4905,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if is_simple_define_const(field) {
+				if ct_value := field.comptime_expr_value() {
+					if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
+						continue
+					}
+				}
+				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(name, g.expr_string(field_expr))
@@ -4879,14 +4922,64 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn is_simple_define_const(obj ast.ScopeObject) bool {
-	if obj is ast.ConstField {
-		return match obj.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
-			else { false }
+fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
+	mut styp := g.typ(typ)
+	cname := '_const_$name'
+	match ct_value {
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
+		}
+		i64 {
+			if typ == ast.int_type {
+				// TODO: use g.const_decl_write_precomputed here too.
+				// For now, use #define macros, so existing code compiles
+				// with -cstrict. Add checker errors for overflows instead,
+				// so V can catch them earlier, instead of relying on the
+				// C compiler for that.
+				g.const_decl_simple_define(name, ct_value.str())
+				return true
+			}
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
+		}
+		f64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		string {
+			escaped_val := util.smart_quote(ct_value, false)
+			// g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+			// TODO: ^ the above for strings, cause:
+			// `error C2099: initializer is not a constant` errors in MSVC,
+			// so fall back to the delayed initialisation scheme:
+			g.definitions.writeln('$styp $cname; // inited later')
+			g.inits[mod].writeln('\t$cname = _SLIT("$escaped_val");')
+			if g.is_autofree {
+				g.cleanups[mod].writeln('\tstring_free(&$cname);')
+			}
+		}
+		ast.EmptyExpr {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, ct_value string) {
+	g.definitions.writeln('$styp $cname = $ct_value; // precomputed')
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {
@@ -5047,12 +5140,22 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
+			mut used_embed_fields := []string{}
+			init_field_names := info.fields.map(it.name)
+			// fields that are initialized but belong to the embedding
+			init_fields_to_embed := struct_init.fields.filter(it.name !in init_field_names)
 			for embed in info.embeds {
 				embed_sym := g.table.get_type_symbol(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
+					embed_info := embed_sym.info as ast.Struct
+					embed_field_names := embed_info.fields.map(it.name)
+					fields_to_embed := init_fields_to_embed.filter(it.name !in used_embed_fields
+						&& it.name in embed_field_names)
+					used_embed_fields << fields_to_embed.map(it.name)
 					default_init := ast.StructInit{
 						typ: embed
+						fields: fields_to_embed
 					}
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
@@ -5320,6 +5423,7 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
+			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
@@ -5444,6 +5548,9 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
+				if typ.info.is_generic {
+					continue
+				}
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
@@ -5587,12 +5694,6 @@ fn (mut g Gen) insert_before_stmt(s string) {
 	cur_line := g.go_before_stmt(0)
 	g.writeln(s)
 	g.write(cur_line)
-}
-
-fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
-	pos := g.out.len
-	g.expr(expr)
-	return g.out.cut_last(g.out.len - pos)
 }
 
 // fn (mut g Gen) start_tmp() {
@@ -6098,7 +6199,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
-			idx := variant.str()
+			idx := u32(variant).str()
 			if idx in g.as_cast_type_names {
 				continue
 			}
@@ -6133,6 +6234,9 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		inter_info := ityp.info as ast.Interface
+		if inter_info.is_generic {
+			continue
+		}
 		// interface_name is for example Speaker
 		interface_name := ityp.cname
 		// generate a struct that references interface methods
@@ -6240,13 +6344,41 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					}
 				}
 			}
-			for _, method in st_sym.methods {
+			mut methods := st_sym.methods
+			match st_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					if st_sym.info.parent_type.has_flag(.generic) {
+						parent_sym := g.table.get_type_symbol(st_sym.info.parent_type)
+						for method in parent_sym.methods {
+							if method.name in methodidx {
+								methods << st_sym.find_method_with_generic_parent(method.name) or {
+									continue
+								}
+							}
+						}
+					}
+				}
+				else {}
+			}
+			for method in methods {
+				mut name := method.name
+				if inter_info.parent_type.has_flag(.generic) {
+					parent_sym := g.table.get_type_symbol(inter_info.parent_type)
+					match mut parent_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							name = g.generic_fn_name(parent_sym.info.concrete_types, method.name,
+								false)
+						}
+						else {}
+					}
+				}
+
 				if method.name !in methodidx {
 					// a method that is not part of the interface should be just skipped
 					continue
 				}
 				// .speak = Cat_speak
-				mut method_call := '${cctype}_$method.name'
+				mut method_call := '${cctype}_$name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
@@ -6255,7 +6387,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
 					// hack to mutate typ
-					params[0] = {
+					params[0] = ast.Param{
 						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}

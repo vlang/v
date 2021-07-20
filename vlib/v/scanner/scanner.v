@@ -537,11 +537,12 @@ fn (mut s Scanner) end_of_file() token.Token {
 }
 
 pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
-	util.get_timers().measure_pause('PARSE')
+	mut timers := util.get_timers()
+	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
 	defer {
 		util.timing_measure_cumulative('SCAN')
-		util.get_timers().measure_resume('PARSE')
+		timers.measure_resume('PARSE')
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
@@ -983,7 +984,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.div_assign, '', 2)
 				}
-				if nextc == `/` {
+				if nextc == `/` { // Single line comments
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
@@ -1014,12 +1015,11 @@ fn (mut s Scanner) text_scan() token.Token {
 					// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 					// Skip the comment (return the next token)
 					continue
-				}
-				// Multiline comments
-				if nextc == `*` {
+				} else if nextc == `*` { // Multiline comments
 					start := s.pos + 2
 					start_line := s.line_nr
 					mut nest_count := 1
+					s.pos++
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++

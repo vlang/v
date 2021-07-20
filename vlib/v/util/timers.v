@@ -28,15 +28,18 @@ pub fn get_timers() &Timers {
 }
 
 pub fn timing_start(label string) {
-	get_timers().start(label)
+	mut t := get_timers()
+	t.start(label)
 }
 
 pub fn timing_measure(label string) {
-	get_timers().show(label)
+	mut t := get_timers()
+	t.show(label)
 }
 
 pub fn timing_measure_cumulative(label string) {
-	get_timers().measure_cumulative(label)
+	mut t := get_timers()
+	t.measure_cumulative(label)
 }
 
 pub fn timing_set_should_print(should_print bool) {
@@ -45,7 +48,7 @@ pub fn timing_set_should_print(should_print bool) {
 }
 
 pub fn (mut t Timers) start(name string) {
-	mut sw := t.swatches[name] or { time.new_stopwatch({}) }
+	mut sw := t.swatches[name] or { time.new_stopwatch() }
 	sw.start()
 	t.swatches[name] = sw
 }

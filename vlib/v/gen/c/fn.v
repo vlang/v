@@ -146,7 +146,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.get_type_symbol(it))
-				the_type := syms.map(node.name).join(', ')
+				the_type := syms.map(it.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
 			g.table.cur_concrete_types = concrete_types
@@ -548,7 +548,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	unwrapped_rec_type := g.unwrap_generic(node.receiver_type)
+	mut unwrapped_rec_type := node.receiver_type
+	if g.table.cur_fn.generic_names.len > 0 { // in generic fn
+		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
+	} else { // in non-generic fn
+		sym := g.table.get_type_symbol(node.receiver_type)
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
+				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+					sym.info.concrete_types)
+				{
+					unwrapped_rec_type = utyp
+				}
+			}
+			else {}
+		}
+	}
 	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
@@ -746,7 +762,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		if !is_range_slice {
-			g.write('&')
+			if !node.left.is_lvalue() {
+				g.write('ADDR($rec_cc_type, ')
+				has_cast = true
+			} else {
+				g.write('&')
+			}
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
@@ -778,7 +799,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			&& node.name in ['first', 'last', 'repeat'] {
 			g.write('*')
 		}
-		g.expr(node.left)
+		if node.left is ast.MapInit {
+			g.write('(map[]){')
+			g.expr(node.left)
+			g.write('}[0]')
+		} else {
+			g.expr(node.left)
+		}
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
 			if node.left_type.is_ptr() {
@@ -825,6 +852,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// left & left_type will be `x` and `x type` in `x.fieldfn()`
 	// will be `0` for `foo()`
 	mut is_interface_call := false
+	mut is_selector_call := false
 	if node.left_type != 0 {
 		left_sym := g.table.get_type_symbol(node.left_type)
 		if left_sym.kind == .interface_ {
@@ -837,6 +865,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		} else {
 			g.write('.')
 		}
+		is_selector_call = true
 	}
 	mut name := node.name
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
@@ -908,7 +937,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	if !is_selector_call {
+		name = g.generic_fn_name(node.concrete_types, name, false)
+	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
 	// g.generate_tmp_autofree_arg_vars(node, name)
@@ -1054,7 +1085,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = 'string $t = '
 		}
 		// g.expr(arg.expr)
-		s += g.write_expr_to_string(arg.expr)
+		s += g.expr_string(arg.expr)
 		// g.writeln(';// new af pre')
 		s += ';// new af2 pre'
 		g.strs_to_free0 << s
@@ -1241,6 +1272,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
+	mut needs_closing := false
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
@@ -1272,7 +1304,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			deref_sym := g.table.get_type_symbol(expected_deref_type)
 			if !((arg_typ_sym.kind == .function)
 				|| deref_sym.kind in [.sum_type, .interface_]) && lang != .c {
-				g.write('(voidptr)&/*qq*/')
+				if arg.expr.is_lvalue() {
+					g.write('(voidptr)&/*qq*/')
+				} else {
+					needs_closing = true
+					g.write('ADDR(${g.typ(expected_deref_type)}/*qq*/, ')
+				}
 			}
 		}
 	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
@@ -1284,6 +1321,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
+	if needs_closing {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) is_gui_app() bool {

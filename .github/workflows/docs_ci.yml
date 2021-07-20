@@ -6,13 +6,13 @@ on: [push, pull_request]
 
 jobs:
   check-markdown:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make
-    - name: Check markdown line length & code examples
-      run: ./v check-md -hide-warnings .
-    ## NB: -hide-warnings is used here, so that the output is less noisy,
-    ## thus real errors are easier to spot.
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make
+      - name: Check markdown line length & code examples
+        run: ./v check-md -hide-warnings .
+      ## NB: -hide-warnings is used here, so that the output is less noisy,
+      ## thus real errors are easier to spot.

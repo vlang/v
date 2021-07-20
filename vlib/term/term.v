@@ -27,6 +27,15 @@ pub fn can_show_color_on_stderr() bool {
 	return supports_escape_sequences(2)
 }
 
+// failed returns a bold white on red version of the string `s`
+// If colors are not allowed, returns the string `s`
+pub fn failed(s string) string {
+	if can_show_color_on_stdout() {
+		return bg_red(bold(white(s)))
+	}
+	return s
+}
+
 // ok_message returns a colored string with green color.
 // If colors are not allowed, returns a given string.
 pub fn ok_message(s string) string {
@@ -39,10 +48,7 @@ pub fn ok_message(s string) string {
 // fail_message returns a colored string with red color.
 // If colors are not allowed, returns a given string.
 pub fn fail_message(s string) string {
-	if can_show_color_on_stdout() {
-		return inverse(bg_white(bold(red(' $s '))))
-	}
-	return s
+	return failed(' $s ')
 }
 
 // warn_message returns a colored string with yellow color.

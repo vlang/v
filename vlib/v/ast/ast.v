@@ -213,6 +213,9 @@ pub:
 pub mut:
 	typ      Type      // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
+	// the comptime_expr_value field is filled by the checker, when it has enough
+	// info to evaluate the constant at compile time
+	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()
 }
 
 // const declaration
@@ -264,15 +267,16 @@ pub:
 
 pub struct InterfaceDecl {
 pub:
-	name         string
-	typ          Type
-	name_pos     token.Position
-	language     Language
-	field_names  []string
-	is_pub       bool
-	mut_pos      int // mut:
-	pos          token.Position
-	pre_comments []Comment
+	name          string
+	typ           Type
+	name_pos      token.Position
+	language      Language
+	field_names   []string
+	is_pub        bool
+	mut_pos       int // mut:
+	pos           token.Position
+	pre_comments  []Comment
+	generic_types []Type
 pub mut:
 	methods []FnDecl
 	fields  []StructField
@@ -370,6 +374,7 @@ pub:
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
 	is_exported     bool           // true for `[export: 'exact_C_name']`
 	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
+	is_unsafe       bool           // true, when [unsafe] is used on a fn
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -964,11 +969,12 @@ pub:
 // New implementation of sum types
 pub struct SumTypeDecl {
 pub:
-	name     string
-	is_pub   bool
-	pos      token.Position
-	comments []Comment
-	typ      Type
+	name          string
+	is_pub        bool
+	pos           token.Position
+	comments      []Comment
+	typ           Type
+	generic_types []Type
 pub mut:
 	variants []TypeNode
 }
@@ -1095,17 +1101,18 @@ pub:
 // .in_prexpr is also needed because of that, because the checker needs to
 // show warnings about the deprecated C->V conversions `string(x)` and
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
+// 2021/07/17: TODO: since 6edfb2c, the above is fixed at the parser level,
+// we need to remove the hacks/special cases in vfmt and the checker too.
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`
-	typ Type // `string` TODO rename to `type_to_cast_to`
-	pos token.Position
 pub mut:
-	expr      Expr   // `buf` in `string(buf, n)`
-	typname   string // TypeSymbol.name
-	expr_type Type   // `byteptr`
-	has_arg   bool
-	in_prexpr bool // is the parent node a PrefixExpr
+	typ       Type   // `string`
+	expr      Expr   // `buf` in `string(buf, n)` and `&Type(buf)`
+	typname   string // `&Type` in `&Type(buf)`
+	expr_type Type   // `byteptr`, the type of the `buf` expression
+	has_arg   bool   // true for `string(buf, n)`, false for `&Type(buf)`
+	pos       token.Position
 }
 
 pub struct AsmStmt {

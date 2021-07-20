@@ -23,7 +23,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments({})
+		p.eat_comments()
 	}
 	inside_array_lit := p.inside_array_lit
 	p.inside_array_lit = false
@@ -36,7 +36,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			ident := p.parse_ident(ast.Language.v)
 			node = ident
 			if p.inside_defer {
-				if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0
+				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 					&& ident.name != 'err' {
 					p.defer_vars << ident
 				}
@@ -170,12 +170,14 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.name_expr()
 			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
-				typ := p.parse_type().to_ptr()
+				typ := p.parse_type()
+				typname := p.table.get_type_symbol(typ).name
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
 				node = ast.CastExpr{
 					typ: typ
+					typname: typname
 					expr: expr
 					pos: pos
 				}
@@ -295,18 +297,23 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		.lcbr {
+			// TODO: remove this when deprecation will be removed, vfmt should handle it for a while
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
-				// TODO deprecate
+				p.warn_with_pos("deprecated map syntax, use syntax like `map{'age': 20}`",
+					p.prev_tok.position())
 				node = p.map_init()
 			} else {
 				// it should be a struct
 				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
+					// TODO: remove deprecated
 					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
 					node = p.assoc()
 				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
 					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
+					p.warn_with_pos('short struct initalization is deprecated, use explicit struct name',
+						p.prev_tok.position())
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
@@ -560,7 +567,7 @@ fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
 }
 
-fn (mut p Parser) prefix_expr() ast.PrefixExpr {
+fn (mut p Parser) prefix_expr() ast.Expr {
 	mut pos := p.tok.position()
 	op := p.tok.kind
 	if op == .amp {
@@ -576,8 +583,26 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	p.next()
 	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
-	if mut right is ast.CastExpr {
-		right.in_prexpr = true
+	if op == .amp {
+		if mut right is ast.CastExpr {
+			// Handle &Type(x), as well as &&Type(x) etc:
+			p.recast_as_pointer(mut right, pos)
+			return right
+		}
+		if mut right is ast.SelectorExpr {
+			// Handle &Type(x).name :
+			if mut right.expr is ast.CastExpr {
+				p.recast_as_pointer(mut right.expr, pos)
+				return right
+			}
+		}
+		if mut right is ast.IndexExpr {
+			// Handle &u64(x)[idx] :
+			if mut right.left is ast.CastExpr {
+				p.recast_as_pointer(mut right.left, pos)
+				return right
+			}
+		}
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
@@ -616,4 +641,10 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			pos: or_pos
 		}
 	}
+}
+
+fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Position) {
+	cast_expr.typ = cast_expr.typ.to_ptr()
+	cast_expr.typname = p.table.get_type_symbol(cast_expr.typ).name
+	cast_expr.pos = pos.extend(cast_expr.pos)
 }

@@ -54,9 +54,7 @@ fn test_fmt() {
 			continue
 		}
 		table := ast.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref, &ast.Scope{
-			parent: 0
-		})
+		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref)
 		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
