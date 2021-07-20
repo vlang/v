@@ -1,7 +1,7 @@
 module main
 
 import os
-import x.websocket
+import net.websocket
 import term
 
 // This client should be compiled an run in different konsoles

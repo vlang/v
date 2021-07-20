@@ -47,18 +47,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			name_pos)
 		return ast.StructDecl{}
 	}
-	mut generic_types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.next()
-		for {
-			generic_types << p.parse_type()
-			if p.tok.kind != .comma {
-				break
-			}
-			p.next()
-		}
-		p.check(.gt)
-	}
+	generic_types := p.parse_generic_type_list()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
@@ -71,6 +60,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	if name.len == 1 {
 		p.error_with_pos('struct names must have more than one character', name_pos)
+		return ast.StructDecl{}
+	}
+	if name in p.imported_symbols {
+		p.error_with_pos('cannot register struct `$name`, this type was already imported',
+			name_pos)
 		return ast.StructDecl{}
 	}
 	mut orig_name := name
@@ -160,7 +154,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_module {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
-					return {}
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
@@ -187,12 +181,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// struct embedding
 				type_pos = p.tok.position()
 				typ = p.parse_type()
-				for p.tok.kind == .comment {
-					comments << p.comment()
-					if p.tok.kind == .rcbr {
-						break
-					}
-				}
+				ecomments := p.eat_comments()
 				type_pos = type_pos.extend(p.prev_tok.position())
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
@@ -214,6 +203,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				embeds << ast.Embed{
 					typ: typ
 					pos: type_pos
+					comments: ecomments
 				}
 			} else {
 				// struct field
@@ -233,7 +223,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_pos = field_start_pos.extend(type_pos)
 			}
 			// Comments after type (same line)
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -251,7 +241,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
-					comments << p.eat_comments({})
+					comments << p.eat_comments()
 				}
 				ast_fields << ast.StructField{
 					name: field_name
@@ -347,11 +337,10 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	pre_comments := p.eat_comments({})
+	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
-	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	mut update_expr := ast.empty_expr()
@@ -401,7 +390,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			p.next()
 		}
 		comments << p.eat_comments(same_line: true)
-		nline_comments << p.eat_comments({})
+		nline_comments << p.eat_comments()
 		if !is_update_expr {
 			fields << ast.StructInitField{
 				name: field_name
@@ -453,10 +442,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	name_pos := p.tok.position()
 	p.check_for_impure_v(language, name_pos)
-	interface_name := p.prepend_mod(p.check_name()).clone()
+	modless_name := p.check_name()
+	interface_name := p.prepend_mod(modless_name).clone()
+	generic_types := p.parse_generic_type_list()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
-	pre_comments := p.eat_comments({})
+	pre_comments := p.eat_comments()
+	if modless_name in p.imported_symbols {
+		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(
 		is_public: is_pub
@@ -466,6 +462,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mod: p.mod
 		info: ast.Interface{
 			types: []
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
 		}
 	)
 	if reg_idx == -1 {
@@ -489,7 +487,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			iface_pos := p.tok.position()
 			iface_name := p.tok.lit
 			iface_type := p.parse_type()
-			comments := p.eat_comments({})
+			comments := p.eat_comments()
 			ifaces << ast.InterfaceEmbedding{
 				name: iface_name
 				typ: iface_type
@@ -504,7 +502,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.position())
-				return {}
+				return ast.InterfaceDecl{}
 			}
 			p.next()
 			p.check(.colon)
@@ -555,7 +553,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
 			mcomments := p.eat_comments(same_line: true)
-			mnext_comments := p.eat_comments({})
+			mnext_comments := p.eat_comments()
 			method.comments = mcomments
 			method.next_comments = mnext_comments
 			methods << method
@@ -615,6 +613,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
+		generic_types: generic_types
 		mut_pos: mut_pos
 		name_pos: name_pos
 	}

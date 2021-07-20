@@ -123,7 +123,6 @@ fn main() {
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'Test TTF module'
 		user_data: app
@@ -145,7 +144,7 @@ fn main() {
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf: &(app.tf[0])
-			buf: unsafe { malloc(32000000) }
+			buf: unsafe { malloc_noscan(32000000) }
 			buf_size: (32000000)
 			color: 0xFF0000FF
 			// style: .raw

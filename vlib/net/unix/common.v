@@ -9,7 +9,7 @@ const (
 
 fn C.SUN_LEN(ptr &C.sockaddr_un) int
 
-fn C.strncpy(charptr, charptr, int)
+fn C.strncpy(&char, &char, int)
 
 // Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {
@@ -20,8 +20,6 @@ fn shutdown(handle int) ? {
 		C.shutdown(handle, C.SHUT_RDWR)
 		net.socket_error(C.close(handle)) ?
 	}
-
-	return none
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
@@ -31,8 +29,8 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout.milliseconds() / 1000
-	microseconds := timeout - (seconds * time.second)
+	seconds := timeout / time.second
+	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
 
 	mut tt := C.timeval{
 		tv_sec: u64(seconds)
@@ -65,14 +63,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
 	if deadline.unix == 0 {
-		// only accept infinite_timeout as a valid
-		// negative timeout - it is handled in @select however
-		if timeout < 0 && timeout != unix.infinite_timeout {
+		// do not accept negative timeout
+		if timeout < 0 {
 			return net.err_timed_out
 		}
 		ready := @select(handle, test, timeout) ?
 		if ready {
-			return none
+			return
 		}
 		return net.err_timed_out
 	}
@@ -87,7 +84,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 
 	ready := @select(handle, test, d_timeout) ?
 	if ready {
-		return none
+		return
 	}
 	return net.err_timed_out
 }
@@ -119,7 +116,7 @@ const (
 // infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
 // only ever return with data)
 const (
-	infinite_timeout = time.Duration(-1)
+	infinite_timeout = time.infinite
 )
 
 [inline]

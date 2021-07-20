@@ -29,7 +29,6 @@ pub enum GarbageCollectionMode {
 	boehm_incr // incremental garbage colletion mode
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage colletion mode
-	boehm // default Boehm-GC mode for architecture
 	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
@@ -46,8 +45,21 @@ pub enum ColorOutput {
 
 pub enum Backend {
 	c // The (default) C backend
-	js // The JavaScript backend
+	js_node // The JavaScript NodeJS backend
+	js_browser // The JavaScript browser backend
+	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
+}
+
+pub fn (b Backend) is_js() bool {
+	match b {
+		.js_node, .js_browser, .js_freestanding {
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 pub enum CompilerType {
@@ -67,6 +79,7 @@ pub enum Arch {
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
+	_max
 }
 
 const (
@@ -85,25 +98,28 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_test           bool   // `v test string_test.v`
-	is_script         bool   // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool   // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool   // main program that contains live/hot code
-	is_liveshared     bool   // a shared library, that will be used in a -live main program
-	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
-	is_prof           bool   // benchmark every function
-	profile_file      string // the profile results will be stored inside profile_file
-	profile_no_inline bool   // when true, [inline] functions would not be profiled
-	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod           bool   // use "-O2"
-	obfuscate         bool   // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl           bool
-	is_run            bool
-	sanitize          bool // use Clang's new "-fsanitize" option
-	is_debug          bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
-	show_cc           bool // -showcc, print cc command
-	show_c_output     bool // -show-c-output, print all cc output even if the code was compiled correctly
+	is_test                bool   // `v test string_test.v`
+	is_script              bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh                 bool   // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain            bool   // main program that contains live/hot code
+	is_liveshared          bool   // a shared library, that will be used in a -live main program
+	is_shared              bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_prof                bool   // benchmark every function
+	profile_file           string // the profile results will be stored inside profile_file
+	profile_no_inline      bool   // when true, [inline] functions would not be profiled
+	translated             bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod                bool   // use "-O2"
+	obfuscate              bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_repl                bool
+	is_run                 bool
+	sanitize               bool // use Clang's new "-fsanitize" option
+	is_debug               bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
+	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
+	sourcemap_src_included bool // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
+	is_vlines              bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
+	show_cc                bool // -showcc, print cc command
+	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
@@ -174,7 +190,7 @@ pub mut:
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	// checker settings:
-	checker_match_exhaustive_cutoff_limit int = 10
+	checker_match_exhaustive_cutoff_limit int = 12
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -258,7 +274,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'' {
+					'', 'none' {
 						res.gc_mode = .no_gc
 					}
 					'boehm_full' {
@@ -284,8 +300,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm_opt')
 					}
 					'boehm' {
-						res.gc_mode = .boehm
+						res.gc_mode = .boehm_full_opt // default mode
 						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
 					}
 					'boehm_leak' {
 						res.gc_mode = .boehm_leak
@@ -294,12 +312,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
-						eprintln('  `-gc boehm` ............ default mode for the platform')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}
 				}
@@ -321,6 +340,15 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.retry_compilation = false
 				res.show_cc = true
 				res.show_c_output = true
+			}
+			'-sourcemap' {
+				res.sourcemap = true
+			}
+			'-sourcemap-src-included' {
+				res.sourcemap_src_included = true
+			}
+			'-sourcemap-inline' {
+				res.sourcemap_inline = true
 			}
 			'-repl' {
 				res.is_repl = true
@@ -498,7 +526,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-o', '-output' {
 				res.out_name = cmdline.option(current_args, arg, '')
 				if res.out_name.ends_with('.js') {
-					res.backend = .js
+					res.backend = .js_node
 				}
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)
@@ -509,6 +537,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
 				b := backend_from_string(sbackend) or { continue }
+				if b.is_js() {
+					res.output_cross_c = true
+				}
 				res.backend = b
 				i++
 			}
@@ -577,6 +608,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	if res.is_debug {
 		parse_define(mut res, 'debug')
 	}
+
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
@@ -634,6 +666,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
+		if command_pos + 1 >= args.len {
+			eprintln('v build-module: no module specified')
+			exit(1)
+		}
 		res.path = args[command_pos + 1]
 	}
 	// keep only the unique res.build_options:
@@ -703,7 +739,10 @@ fn is_source_file(path string) bool {
 pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
-		'js' { return .js }
+		'js' { return .js_node }
+		'js_node' { return .js_node }
+		'js_browser' { return .js_browser }
+		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}
@@ -738,20 +777,16 @@ pub fn cc_from_string(cc_str string) CompilerType {
 }
 
 pub fn get_host_arch() Arch {
-	$if amd64 {
-		return .amd64
+	// NB: we can not use `$if arch` here, because V skips cgen for the non
+	// current comptime branches by default, so there is a bootstrapping
+	// problem => the __V_architecture macro is used to resolve it.
+	// TODO: think about how to solve it for non C backends, perhaps we
+	// need a comptime `$if native {` too, and/or a mechanism to always
+	// generate all branches for specific functions?
+	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
+		return Arch.amd64
 	}
-	// $if i386 {
-	// 	return .amd64
-	// }
-	// $if arm64 { // requires new vc
-	$if aarch64 {
-		return .arm64
-	}
-	// $if arm32 {
-	// 	return .arm32
-	// }
-	panic('unknown host OS')
+	return Arch(C.__V_architecture)
 }
 
 fn parse_define(mut prefs Preferences, define string) {

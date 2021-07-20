@@ -31,6 +31,11 @@ fn test_plus() {
 	assert (big.from_u64(1024) + big.from_u64(1024)).hexstr() == '800'
 	a += b
 	assert a.hexstr() == '5'
+	a.inc()
+	assert a.hexstr() == '6'
+	a.dec()
+	a.dec()
+	assert a.hexstr() == '4'
 }
 
 fn test_minus() {
@@ -125,4 +130,26 @@ fn test_factorial() {
 	assert f5.hexstr() == '78'
 	f100 := big.factorial(big.from_u64(100))
 	assert f100.hexstr() == '1b30964ec395dc24069528d54bbda40d16e966ef9a70eb21b5b2943a321cdf10391745570cca9420c6ecb3b72ed2ee8b02ea2735c61a000000000000000000000000'
+}
+
+fn trimbytes(n int, x []byte) []byte {
+	mut res := x.clone()
+	res.trim(n)
+	return res
+}
+
+fn test_bytes() {
+	assert big.from_int(0).bytes().len == 128
+	assert big.from_hex_string('e'.repeat(100)).bytes().len == 128
+	assert trimbytes(3, big.from_int(1).bytes()) == [byte(0x01), 0x00, 0x00]
+	assert trimbytes(3, big.from_int(1024).bytes()) == [byte(0x00), 0x04, 0x00]
+	assert trimbytes(3, big.from_int(1048576).bytes()) == [byte(0x00), 0x00, 0x10]
+}
+
+fn test_bytes_trimmed() {
+	assert big.from_int(0).bytes_trimmed().len == 0
+	assert big.from_hex_string('AB'.repeat(50)).bytes_trimmed().len == 50
+	assert big.from_int(1).bytes_trimmed() == [byte(0x01)]
+	assert big.from_int(1024).bytes_trimmed() == [byte(0x00), 0x04]
+	assert big.from_int(1048576).bytes_trimmed() == [byte(0x00), 0x00, 0x10]
 }

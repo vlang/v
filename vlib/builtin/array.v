@@ -107,7 +107,18 @@ fn (mut a array) ensure_cap(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
+// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+
+// This is a dummy placeholder that will be overridden by `cgen` with an appropriate
+// call to `repeat_to_depth()`. However the `checker` needs it here.
 pub fn (a array) repeat(count int) array {
+	return unsafe { a.repeat_to_depth(count, 0) }
+}
+
+// version of `repeat()` that handles multi dimensional arrays
+// `unsafe` to call directly because `depth` is not checked
+[unsafe]
+pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
@@ -121,15 +132,14 @@ pub fn (a array) repeat(count int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
-	size_of_array := int(sizeof(array))
-	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
-		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+	if a.len > 0 {
+		for i in 0 .. count {
+			if depth > 0 {
+				ary_clone := unsafe { a.clone_to_depth(depth) }
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+			} else {
+				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+			}
 		}
 	}
 	return arr
@@ -329,14 +339,23 @@ fn (a array) slice2(start int, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
-// clone_static returns an independent copy of a given array
-// It should be used only in -autofree generated code.
-fn (a array) clone_static() array {
-	return a.clone()
+// `clone_static_to_depth()` returns an independent copy of a given array.
+// Unlike `clone_to_depth()` it has a value receiver and is used internally
+// for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.
+fn (a array) clone_static_to_depth(depth int) array {
+	return unsafe { a.clone_to_depth(depth) }
 }
 
 // clone returns an independent copy of a given array.
+// this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
+// However the `checker` needs it here.
 pub fn (a &array) clone() array {
+	return unsafe { a.clone_to_depth(0) }
+}
+
+// recursively clone given array - `unsafe` when called directly because depth is not checked
+[unsafe]
+pub fn (a &array) clone_to_depth(depth int) array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
 		size++
@@ -348,57 +367,20 @@ pub fn (a &array) clone() array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
+	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
+			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-		if is_elem_array {
-			return arr
+		return arr
+	} else {
+		if !isnil(a.data) {
+			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
+		return arr
 	}
-
-	if !isnil(a.data) {
-		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
-	}
-	return arr
-}
-
-fn (a &array) slice_clone(start int, _end int) array {
-	mut end := _end
-	$if !no_bounds_checking ? {
-		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
-		}
-		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
-		}
-		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
-		}
-	}
-	mut data := &byte(0)
-	offset := start * a.element_size
-	unsafe {
-		data = &byte(a.data) + offset
-	}
-	l := end - start
-	res := array{
-		element_size: a.element_size
-		data: data
-		offset: offset
-		len: l
-		cap: l
-	}
-	return res.clone()
 }
 
 // we manually inline this for single operations for performance without -prod
@@ -586,6 +568,7 @@ pub fn (mut a []int) sort() {
 
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.
+[direct_array_access]
 pub fn (a []string) index(v string) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -663,168 +646,4 @@ pub fn (data voidptr) vbytes(len int) []byte {
 [unsafe]
 pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
-}
-
-// non-pub "noscan" versions of some above functions
-fn __new_array_noscan(mylen int, cap int, elm_size int) array {
-	cap_ := if cap < mylen { mylen } else { cap }
-	arr := array{
-		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
-		len: mylen
-		cap: cap_
-	}
-	return arr
-}
-
-fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
-	cap_ := if cap < mylen { mylen } else { cap }
-	mut arr := array{
-		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
-		len: mylen
-		cap: cap_
-	}
-	if val != 0 {
-		for i in 0 .. arr.len {
-			unsafe { arr.set_unsafe(i, val) }
-		}
-	}
-	return arr
-}
-
-fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val array) array {
-	cap_ := if cap < mylen { mylen } else { cap }
-	mut arr := array{
-		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
-		len: mylen
-		cap: cap_
-	}
-	for i in 0 .. arr.len {
-		val_clone := val.clone()
-		unsafe { arr.set_unsafe(i, &val_clone) }
-	}
-	return arr
-}
-
-// Private function, used by V (`nums := [1, 2, 3]`)
-fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr) array {
-	cap_ := if cap < len { len } else { cap }
-	arr := array{
-		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
-		len: len
-		cap: cap_
-	}
-	// TODO Write all memory functions (like memcpy) in V
-	unsafe { C.memcpy(arr.data, c_array, len * elm_size) }
-	return arr
-}
-
-fn (a array) repeat_noscan(count int) array {
-	if count < 0 {
-		panic('array.repeat: count is negative: $count')
-	}
-	mut size := count * a.len * a.element_size
-	if size == 0 {
-		size = a.element_size
-	}
-	arr := array{
-		element_size: a.element_size
-		data: vcalloc_noscan(size)
-		len: count * a.len
-		cap: count * a.len
-	}
-	size_of_array := int(sizeof(array))
-	for i in 0 .. count {
-		if a.len > 0 && a.element_size == size_of_array {
-			ary := array{}
-			unsafe { C.memcpy(&ary, a.data, size_of_array) }
-			ary_clone := ary.clone()
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
-		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
-		}
-	}
-	return arr
-}
-
-pub fn (a &array) clone_noscan() array {
-	mut size := a.cap * a.element_size
-	if size == 0 {
-		size++
-	}
-	mut arr := array{
-		element_size: a.element_size
-		data: vcalloc_noscan(size)
-		len: a.len
-		cap: a.cap
-	}
-	// Recursively clone-generated elements if array element is array type
-	size_of_array := int(sizeof(array))
-	if a.element_size == size_of_array {
-		mut is_elem_array := true
-		for i in 0 .. a.len {
-			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
-			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
-				is_elem_array = false
-				break
-			}
-			ar_clone := ar.clone()
-			unsafe { arr.set_unsafe(i, &ar_clone) }
-		}
-		if is_elem_array {
-			return arr
-		}
-	}
-
-	if !isnil(a.data) {
-		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
-	}
-	return arr
-}
-
-fn (a &array) slice_clone_noscan(start int, _end int) array {
-	mut end := _end
-	$if !no_bounds_checking ? {
-		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
-		}
-		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
-		}
-		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
-		}
-	}
-	mut data := &byte(0)
-	unsafe {
-		data = &byte(a.data) + start * a.element_size
-	}
-	l := end - start
-	res := array{
-		element_size: a.element_size
-		data: data
-		len: l
-		cap: l
-	}
-	return res.clone_noscan()
-}
-
-fn (a array) reverse_noscan() array {
-	if a.len < 2 {
-		return a
-	}
-	mut arr := array{
-		element_size: a.element_size
-		data: vcalloc_noscan(a.cap * a.element_size)
-		len: a.len
-		cap: a.cap
-	}
-	for i in 0 .. a.len {
-		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
-	}
-	return arr
 }

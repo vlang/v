@@ -88,7 +88,6 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln(';')
-			//
 			g.write('\t${metaname}.rvalue = ')
 			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
 			g.writeln(';')
@@ -118,7 +117,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 		ast.TypeNode {
-			sym := g.table.get_type_symbol(typ)
+			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 			g.write(ctoslit('$sym.name'))
 		}
 		else {

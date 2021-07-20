@@ -121,6 +121,25 @@ pub fn iter_data<T>(data []T) Iterator<T> {
 
 fn test_generics_return_generic_struct_from_fn() {
 	mut it := iter_data<int>([1, 2, 3])
-	println(it.next())
+	println(it.next() or { -1 })
 	assert '$it.next()' == 'Option(1)'
+}
+
+struct ListNode<T> {
+pub mut:
+	val  T
+	next &ListNode<T> = 0
+}
+
+fn (mut node ListNode<T>) test() &ListNode<T> {
+	return node.next
+}
+
+fn test_generics_return_generic_struct_field() {
+	mut node1 := &ListNode<int>{100, 0}
+	mut node2 := &ListNode<int>{200, 0}
+	node1.next = node2
+	ret := node1.test()
+	println(ret)
+	assert ret.val == 200
 }

@@ -178,21 +178,18 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 
 	mut i := 0
 	for i < in_txt.len {
-		//--- speed references ---
 		mut s := -1
 		mut e := -1
 		unsafe {
-			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			s, e = re.match_string(tmp_str)
-		}
-		//------------------------
-		// s,e := re.find_imp(in_txt[i..])
-		//------------------------
-		if s >= 0 && e > s {
-			// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
-			// re.flag = old_flag
-			return i + s, i + e
-		} else {
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
+
+			if s >= 0 && e > s {
+				// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
+				// re.flag = old_flag
+				return i + s, i + e
+			}
 			i++
 		}
 	}
@@ -239,33 +236,28 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
-	// re.flag |= f_src  // enable search mode
+	// re.flag |= f_src // enable search mode
 
 	mut i := 0
 	mut res := []int{}
-	mut ls := -1
 
 	for i < in_txt.len {
-		//--- speed references ---
 		mut s := -1
 		mut e := -1
 		unsafe {
-			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			s, e = re.match_string(tmp_str)
+			// tmp_str := in_txt[i..]
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
+			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+
+			if s >= 0 && e > s {
+				res << i + s
+				res << i + e
+				i += e
+				continue
+			}
 		}
-		//------------------------
-		// s,e := re.find_imp(in_txt[i..])
-		//------------------------
-		if s >= 0 && e > s && i + s > ls {
-			// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			res << i + s
-			res << i + e
-			ls = i + s
-			i = i + e
-			continue
-		} else {
-			i++
-		}
+		i++
 	}
 	// re.flag = old_flag
 	return res
@@ -274,31 +266,32 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list
 [direct_array_access]
 pub fn (mut re RE) find_all_str(in_txt string) []string {
+	// old_flag := re.flag
+	// re.flag |= f_src // enable search mode
+
 	mut i := 0
 	mut res := []string{}
-	mut ls := -1
 
 	for i < in_txt.len {
-		//--- speed references ---
 		mut s := -1
 		mut e := -1
 		unsafe {
-			tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			s, e = re.find(tmp_str)
+			// tmp_str := in_txt[i..]
+			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
+			// println("Check: [$tmp_str]")
+			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+
+			if s >= 0 && e > s {
+				tmp_str := tos(in_txt.str + i, in_txt.len - i)
+				// println("Found: $s:$e [${tmp_str[s..e]}]")
+				res << tmp_str[..e]
+				i += e
+				continue
+			}
 		}
-		//------------------------
-		// s,e := re.find(in_txt[i..])
-		//------------------------
-		if s >= 0 && e > s && i + s > ls {
-			// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			res << in_txt[i + s..i + e]
-			ls = i + s
-			i = i + e
-			continue
-		} else {
-			i++
-		}
+		i++
 	}
+	// re.flag = old_flag
 	return res
 }
 

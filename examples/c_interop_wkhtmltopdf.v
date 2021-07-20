@@ -53,7 +53,7 @@ fn main() {
 	// init
 	init := C.wkhtmltopdf_init(0)
 	println('wkhtmltopdf_init: $init')
-	version := int(C.wkhtmltopdf_version())
+	version := unsafe { cstring_to_vstring(&char(C.wkhtmltopdf_version())) }
 	println('wkhtmltopdf_version: $version')
 	global_settings := C.wkhtmltopdf_create_global_settings()
 	println('wkhtmltopdf_create_global_settings: ${voidptr(global_settings)}')
@@ -71,14 +71,15 @@ fn main() {
 	error_code := C.wkhtmltopdf_http_error_code(converter)
 	println('wkhtmltopdf_http_error_code: $error_code')
 	if result {
-		data := &charptr(0)
-		size := C.wkhtmltopdf_get_output(converter, data)
+		pdata := &char(0)
+		ppdata := &pdata
+		size := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
 		println('wkhtmltopdf_get_output: $size bytes')
 		mut file := os.open_file('./google.pdf', 'w+', 0o666) or {
 			println('ERR: $err')
 			return
 		}
-		wrote := unsafe { file.write_ptr(data, size) }
+		wrote := unsafe { file.write_ptr(pdata, size) }
 		println('write_bytes: $wrote [./google.pdf]')
 		file.flush()
 		file.close()

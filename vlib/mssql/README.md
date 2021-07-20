@@ -4,14 +4,36 @@
 
 ## Dependencies
 * ODBC C/C++ library
-    * Linux Install: https://docs.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server
-        * `msodbcsql17` and `unixodbc-dev` packages needed
-    * Windows Install: https://docs.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server
+    * Linux Install: 
+		* Details: https://docs.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server
+        * `msodbcsql17` and `unixodbc-dev` packages are needed
+    * Windows Install:
+		* `odbc` lib is included in windows sdk for most of distributions,
+			so there is no need to install it separately
+		* Details: https://docs.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server
+
+## Windows Notes
+### Using `msvc`
+* Make sure `cl.exe` of `msvc` is accessible from command line. 
+You can run `v` commands in `Visual Studio 2019 Developer Command Prompt` to be safe.
+* C Headers and dlls can be automatically resolved by `msvc`.
+### Using `tcc` 
+* Copy those headers to `@VEXEROOT\thirdparty\mssql\include`. 
+The version number `10.0.18362.0` might differ on your system. 
+Command Prompt commands:
+```cmd
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\um\sql.h" thirdparty\mssql\include
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\um\sqlext.h" thirdparty\mssql\include
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\um\sqltypes.h" thirdparty\mssql\include
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\um\sqlucode.h" thirdparty\mssql\include
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\shared\sal.h" thirdparty\mssql\include
+copy "C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\shared\concurrencysal.h" thirdparty\mssql\include
+```
+* dlls can be automatically resolved by `tcc`
 
 ## TODO
-* Support Windows
 * Support Mac 
-* ORM
+* Support ORM
 
 ## Usage
 ```v ignore

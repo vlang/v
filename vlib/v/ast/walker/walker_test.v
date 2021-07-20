@@ -6,10 +6,7 @@ import v.pref
 fn parse_text(text string) &ast.File {
 	tbl := ast.new_table()
 	prefs := pref.new_preferences()
-	scope := &ast.Scope{
-		parent: 0
-	}
-	return parser.parse_text(text, '', tbl, .skip_comments, prefs, scope)
+	return parser.parse_text(text, '', tbl, .skip_comments, prefs)
 }
 
 struct NodeByOffset {
@@ -22,7 +19,7 @@ fn (mut n NodeByOffset) visit(node ast.Node) ? {
 	node_pos := node.position()
 	if n.pos >= node_pos.pos && n.pos <= node_pos.pos + node_pos.len && node !is ast.File {
 		n.node = node
-		return none
+		return error('')
 	}
 	return
 }

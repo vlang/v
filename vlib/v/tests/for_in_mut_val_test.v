@@ -83,3 +83,27 @@ fn test_for_in_mut_val_of_map_fixed_array() {
 	println(m)
 	assert '$m' == "{'foo': [{'c': 3}], 'bar': [{'c': 3}]}"
 }
+
+fn test_for_in_mut_val_of_string() {
+	b := 'c'
+	mut c := ['a', 'b']
+	mut ret := []string{}
+	for mut a in c {
+		a = a + b
+		ret << a
+	}
+	println(ret)
+	assert ret == ['ac', 'bc']
+}
+
+fn test_for_in_mut_val_of_float() {
+	mut values := [1., 2, 3]
+	println(values)
+
+	for mut v in values {
+		v = 1.
+		v = v + 1.
+	}
+	println(values)
+	assert values == [2., 2, 2]
+}

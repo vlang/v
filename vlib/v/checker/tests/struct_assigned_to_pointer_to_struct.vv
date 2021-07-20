@@ -2,7 +2,6 @@ struct Foo { x int }
 
 fn main() {
 	mut f := &Foo{ 10 }
-	f = { x: 223344 }
 	f = Foo{ x: 20 }
 	_ = f
 }

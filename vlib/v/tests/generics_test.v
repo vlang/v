@@ -15,7 +15,11 @@ fn test_identity() {
 		'a': 'b'
 	})['a'] == 'b'
 
-	assert simple<simplemodule.Data>(simplemodule.Data{ value: 0 }).value == 0
+	assert simple<simplemodule.Data>(simplemodule.Data{ value: 8 }).value == 8
+	x := &simplemodule.Data{
+		value: 123
+	}
+	assert simple<&simplemodule.Data>(x).value == 123
 }
 
 fn plus<T>(xxx T, b T) T {

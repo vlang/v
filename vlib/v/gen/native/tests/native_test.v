@@ -6,7 +6,7 @@ const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
-	$if !amd64 {
+	$if arm64 {
 		return
 	}
 	// some tests are running fine in macos

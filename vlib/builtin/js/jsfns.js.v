@@ -21,6 +21,15 @@ pub struct JS.Array {
 
 pub struct JS.Map {}
 
+// browser: https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/Error
+// node: https://nodejs.org/api/errors.html#errors_class_error
+pub struct JS.Error {
+pub:
+	name    string
+	message string
+	stack   string
+}
+
 // Type prototype functions
 fn (v JS.String) toString() JS.String
 fn (v JS.Number) toString() JS.String
@@ -112,5 +121,5 @@ fn (s JS.String) toUpperCase() JS.String
 fn (s JS.String) toLowerCase() JS.String
 fn (s JS.String) concat(a JS.String) JS.String
 fn (s JS.String) includes(substr JS.String) bool
-fn (s JS.String) ends_with(substr JS.String) bool
-fn (s JS.String) starts_with(substr JS.String) bool
+fn (s JS.String) endsWith(substr JS.String) bool
+fn (s JS.String) startsWith(substr JS.String) bool

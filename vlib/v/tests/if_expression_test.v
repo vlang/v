@@ -199,3 +199,17 @@ fn min<T>(a T, b T) T {
 fn test_if_expr_with_fn_generic() {
 	assert min(42, 13) == 13
 }
+
+fn test_if_expr_with_complex_array_methods() {
+	mut ret := []string{}
+	entries := ['a', 'b', 'c']
+
+	if false {
+		ret = entries.map(it.capitalize())
+	} else if entries.any(it == 'a') {
+		ret = entries.map(it)
+	}
+
+	println(ret)
+	assert ret == ['a', 'b', 'c']
+}

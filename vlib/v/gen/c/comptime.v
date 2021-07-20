@@ -232,7 +232,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			} else {
 				g.write('#elif ')
 			}
-			comp_if_stmts_skip = !g.comp_if_cond(branch.cond)
+			comp_if_stmts_skip = !g.comp_if_cond(branch.cond, branch.pkg_exist)
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
@@ -280,7 +280,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 // returning `false` means the statements inside the $if can be skipped
 */
 // returns the value of the bool comptime expression
-fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
+fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	match cond {
 		ast.BoolLiteral {
 			g.expr(cond)
@@ -288,13 +288,13 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		}
 		ast.ParExpr {
 			g.write('(')
-			is_cond_true := g.comp_if_cond(cond.expr)
+			is_cond_true := g.comp_if_cond(cond.expr, pkg_exist)
 			g.write(')')
 			return is_cond_true
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			return g.comp_if_cond(cond.right)
+			return g.comp_if_cond(cond.right, pkg_exist)
 		}
 		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
@@ -307,9 +307,9 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l := g.comp_if_cond(cond.left)
+					l := g.comp_if_cond(cond.left, pkg_exist)
 					g.write(' $cond.op ')
-					r := g.comp_if_cond(cond.right)
+					r := g.comp_if_cond(cond.right, pkg_exist)
 					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
@@ -325,10 +325,10 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 						interface_sym := g.table.get_type_symbol(got_type)
 						if interface_sym.info is ast.Interface {
 							// q := g.table.get_type_symbol(interface_sym.info.types[0])
-							checked_type := g.unwrap_generic((left as ast.TypeNode).typ)
+							checked_type := g.unwrap_generic(left.typ)
 							// TODO PERF this check is run twice (also in the checker)
 							// store the result in a field
-							is_true := g.table.type_implements_interface(checked_type,
+							is_true := g.table.does_type_implement_interface(checked_type,
 								got_type)
 							// true // exp_type in interface_sym.info.types
 							if cond.op == .key_is {
@@ -379,6 +379,10 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		ast.Ident {
 			ifdef := g.comp_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
 			g.write('defined($ifdef)')
+			return true
+		}
+		ast.ComptimeCall {
+			g.write('$pkg_exist')
 			return true
 		}
 		else {
@@ -500,6 +504,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.typ = $styp;')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
+				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
@@ -518,7 +523,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
 				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
 				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
-				g.writeln('\t${node.val_var}.kind = AttributeKind_$attr.kind;')
+				g.writeln('\t${node.val_var}.kind = AttributeKind__$attr.kind;')
 
 				g.writeln('}')
 			}
@@ -558,6 +563,12 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'linux' {
 			return '__linux__'
 		}
+		'serenity' {
+			return '__serenity__'
+		}
+		'vinix' {
+			return '__vinix__'
+		}
 		'freebsd' {
 			return '__FreeBSD__'
 		}
@@ -580,7 +591,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 			return '__sun'
 		}
 		'haiku' {
-			return '__haiku__'
+			return '__HAIKU__'
 		}
 		//
 		'js' {

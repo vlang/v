@@ -43,7 +43,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		has_generic := concrete_types.any(it.has_flag(.generic))
 		if !has_generic {
 			// will be added in checker
 			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
@@ -124,7 +124,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
-		mut comments := p.eat_comments({})
+		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
@@ -149,7 +149,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
@@ -185,8 +185,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_exported := false
 	mut is_unsafe := false
 	mut is_trusted := false
+	mut is_noreturn := false
+	mut is_c2v_variadic := false
 	for fna in p.attrs {
 		match fna.name {
+			'noreturn' { is_noreturn = true }
 			'manualfree' { is_manualfree = true }
 			'deprecated' { is_deprecated = true }
 			'direct_array_access' { is_direct_arr = true }
@@ -194,10 +197,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'export' { is_exported = true }
 			'unsafe' { is_unsafe = true }
 			'trusted' { is_trusted = true }
+			'c2v_variadic' { is_c2v_variadic = true }
 			else {}
 		}
 	}
-	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
+	conditional_ctdefine_idx := p.attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -267,11 +271,18 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 		}
-		// cannot redefine buildin function
-		if !is_method && !p.builtin_mod && name in builtin_functions {
-			p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
-			return ast.FnDecl{
-				scope: 0
+		if !p.pref.is_fmt {
+			if !is_method && !p.builtin_mod && name in builtin_functions {
+				p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
+				return ast.FnDecl{
+					scope: 0
+				}
+			}
+			if name in p.imported_symbols {
+				p.error_with_pos('cannot redefine imported function `$name`', name_pos)
+				return ast.FnDecl{
+					scope: 0
+				}
 			}
 		}
 	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
@@ -300,7 +311,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Args
-	args2, are_args_type_only, is_variadic := p.fn_args()
+	args2, are_args_type_only, mut is_variadic := p.fn_args()
+	if is_c2v_variadic {
+		is_variadic = true
+	}
 	params << args2
 	if !are_args_type_only {
 		for param in params {
@@ -310,10 +324,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					scope: 0
 				}
 			}
-			mut is_stack_obj := true
-			if param.typ.has_flag(.shared_f) {
-				is_stack_obj = false
-			}
+			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
@@ -341,7 +352,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	end_pos := p.prev_tok.position()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
-	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
+		&& (p.file_base.ends_with('_test.v')
+		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test'))
 
 	// Register
 	if is_method {
@@ -351,7 +364,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		mut is_non_local := type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v
 		// check maps & arrays, must be defined in same module as the elem type
-		if !is_non_local && type_sym.kind in [.array, .map] {
+		if !is_non_local && !(p.builtin_mod && p.pref.is_fmt) && type_sym.kind in [.array, .map] {
 			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec.typ))
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
@@ -374,12 +387,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
-			ctdefine: conditional_ctdefine
+			//
+			attrs: p.attrs
+			is_conditional: conditional_ctdefine_idx != -1
+			ctdefine_idx: conditional_ctdefine_idx
+			//
 			no_body: no_body
 			mod: p.mod
-			attrs: p.attrs
 		})
 	} else {
 		if language == .c {
@@ -400,15 +415,18 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
+			is_noreturn: is_noreturn
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
-			ctdefine: conditional_ctdefine
+			//
+			attrs: p.attrs
+			is_conditional: conditional_ctdefine_idx != -1
+			ctdefine_idx: conditional_ctdefine_idx
+			//
 			no_body: no_body
 			mod: p.mod
-			attrs: p.attrs
 			language: language
 		})
 	}
@@ -439,6 +457,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type: return_type
 		return_type_pos: return_type_pos
 		params: params
+		is_noreturn: is_noreturn
 		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
 		is_exported: is_exported
@@ -447,8 +466,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic: is_variadic
 		is_main: is_main
 		is_test: is_test
-		is_conditional: conditional_ctdefine != ''
 		is_keep_alive: is_keep_alive
+		is_unsafe: is_unsafe
+		//
+		attrs: p.attrs
+		is_conditional: conditional_ctdefine_idx != -1
+		ctdefine_idx: conditional_ctdefine_idx
+		//
 		receiver: ast.StructField{
 			name: rec.name
 			typ: rec.typ
@@ -465,7 +489,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
-		attrs: p.attrs
 		scope: p.scope
 		label_names: p.label_names
 	}
@@ -510,13 +533,13 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	rec.typ = p.parse_type_with_mut(rec.is_mut)
 	if rec.typ.idx() == 0 {
 		// error is set in parse_type
-		return none
+		return error('void receiver type')
 	}
 	rec.type_pos = rec.type_pos.extend(p.prev_tok.position())
 	if is_amp && rec.is_mut {
 		p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
 			lpar_pos.extend(p.tok.position()))
-		return none
+		return error('invalid `mut f &Foo`')
 	}
 	if is_shared {
 		rec.typ = rec.typ.set_flag(.shared_f)
@@ -578,6 +601,15 @@ fn (mut p Parser) parse_generic_names() []string {
 		}
 		p.check(.name)
 		param_names << name
+		if p.table.find_type_idx(name) == 0 {
+			p.table.register_type_symbol(ast.TypeSymbol{
+				name: name
+				cname: util.no_dots(name)
+				mod: p.mod
+				kind: .any
+				is_public: true
+			})
+		}
 		first_done = true
 		count++
 	}
@@ -601,7 +633,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false
 	p.open_scope()
-	if p.pref.backend != .js {
+	if !p.pref.backend.is_js() {
 		p.scope.detached_from_parent = true
 	}
 	// TODO generics
@@ -610,10 +642,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		if arg.name.len == 0 {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
 		}
-		mut is_stack_obj := true
-		if arg.typ.has_flag(.shared_f) {
-			is_stack_obj = false
-		}
+		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
@@ -629,7 +658,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut return_type_pos := p.tok.position()
 	// lpar: multiple return types
 	if same_line {
-		if p.tok.kind.is_start_of_type() {
+		if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
+			|| (same_line && p.tok.kind == .key_fn) {
 			return_type = p.parse_type()
 			return_type_pos = return_type_pos.extend(p.tok.position())
 		} else if p.tok.kind != .lcbr {

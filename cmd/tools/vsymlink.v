@@ -4,8 +4,8 @@ import v.util
 
 $if windows {
 	$if tinyc {
-		#flag -lAdvapi32
-		#flag -lUser32
+		#flag -ladvapi32
+		#flag -luser32
 	}
 }
 fn main() {
@@ -24,18 +24,17 @@ fn cleanup_vtmp_folder() {
 
 fn setup_symlink_unix(vexe string) {
 	mut link_path := '/data/data/com.termux/files/usr/bin/v'
-	if os.system("uname -o | grep -q '[A/a]ndroid'") == 1 {
+	if !os.is_dir('/data/data/com.termux/files') {
 		link_dir := '/usr/local/bin'
 		if !os.exists(link_dir) {
 			os.mkdir_all(link_dir) or { panic(err) }
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.execute_or_panic('ln -sf $vexe $link_path')
-	if ret.exit_code == 0 {
-		println('Symlink "$link_path" has been created')
-	} else {
+	os.rm(link_path) or {}
+	os.symlink(vexe, link_path) or {
 		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
+		exit(1)
 	}
 }
 

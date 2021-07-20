@@ -32,6 +32,11 @@ fn call<T>(f fn (T) T, v T) T {
 	return f(v)
 }
 
+struct Pair<T, U> {
+	a T
+	b U
+}
+
 fn test_generics_with_anon_generics_fn() {
 	mut s := MyStruct<int>{
 		arr: [1, 2, 3, 4, 5]
@@ -44,4 +49,9 @@ fn test_generics_with_anon_generics_fn() {
 	assert call<string>(consume_str, '1') == '1'
 	assert call(consume, 1) == 1
 	assert call(consume_str, '1') == '1'
+
+	pair := Pair<int,string>{1, 's'}
+	assert call(fn (v Pair<int, string>) Pair<int, string> {
+		return v
+	}, pair) == pair
 }

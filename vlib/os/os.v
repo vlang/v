@@ -90,18 +90,6 @@ pub fn read_lines(path string) ?[]string {
 	return res
 }
 
-// read_ulines reads the file in `path` into an array of ustring lines.
-fn read_ulines(path string) ?[]ustring {
-	lines := read_lines(path) ?
-	// mut ulines := new_array(0, lines.len, sizeof(ustring))
-	mut ulines := []ustring{}
-	for myline in lines {
-		// ulines[i] = ustr
-		ulines << myline.ustring()
-	}
-	return ulines
-}
-
 // sigint_to_signal_name will translate `si` signal integer code to it's string code representation.
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:
@@ -322,6 +310,12 @@ pub fn user_os() string {
 	$if haiku {
 		return 'haiku'
 	}
+	$if serenity {
+		return 'serenity'
+	}
+	$if vinix {
+		return 'vinix'
+	}
 	return 'unknown'
 }
 
@@ -340,14 +334,14 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write_string(text) ?
+	unsafe { f.write_full_buffer(text.str, size_t(text.len)) ? }
 	f.close()
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	unsafe { f.write_ptr_at(buffer.data, (buffer.len * buffer.element_size), 0) }
+	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
 	f.close()
 }
 
@@ -618,21 +612,23 @@ pub mut:
 	machine  string
 }
 
-[deprecated: 'use os.execute or os.execute_or_panic instead']
-pub fn exec(cmd string) ?Result {
-	res := execute(cmd)
-	if res.exit_code < 0 {
-		return error_with_code(res.output, -1)
-	}
-	return res
-}
-
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: $cmd')
 		eprintln('failed   code: $res.exit_code')
 		panic(res.output)
+	}
+	return res
+}
+
+pub fn execute_or_exit(cmd string) Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: $cmd')
+		eprintln('failed   code: $res.exit_code')
+		eprintln(res.output)
+		exit(1)
 	}
 	return res
 }
@@ -647,4 +643,13 @@ pub fn is_atty(fd int) int {
 	} $else {
 		return C.isatty(fd)
 	}
+}
+
+pub fn glob(patterns ...string) ?[]string {
+	mut matches := []string{}
+	for pattern in patterns {
+		native_glob_pattern(pattern, mut matches) ?
+	}
+	matches.sort()
+	return matches
 }

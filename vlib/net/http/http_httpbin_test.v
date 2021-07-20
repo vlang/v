@@ -1,5 +1,6 @@
-module http //internal tests have access to *everything in the module*
+module http
 
+// internal tests have access to *everything in the module*
 import json
 
 struct HttpbinResponseBody {
@@ -13,7 +14,6 @@ struct HttpbinResponseBody {
 	url     string
 }
 
-
 fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	url := 'https://httpbin.org/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
@@ -23,7 +23,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	for method in methods {
 		lmethod := method.to_lower()
 		config.method = method_from_str(method)
-		res := fetch(url + lmethod, config)?
+		res := fetch(url + lmethod, config) ?
 		// TODO
 		// body := json.decode(HttpbinResponseBody,res.text)?
 		result << res
@@ -32,40 +32,38 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 }
 
 fn test_http_fetch_bare() {
-	$if !network ? { return }
-	responses := http_fetch_mock([], FetchConfig{}) or {
-		panic(err)
+	$if !network ? {
+		return
 	}
+	responses := http_fetch_mock([], FetchConfig{}) or { panic(err) }
 	for response in responses {
 		assert response.status_code == 200
 	}
 }
 
 fn test_http_fetch_with_data() {
-	$if !network ? { return }
-	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'], {
-		data: 'hello world'
-	}) or {
-		panic(err)
+	$if !network ? {
+		return
 	}
+	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'],
+		data: 'hello world'
+	) or { panic(err) }
 	for response in responses {
-		payload := json.decode(HttpbinResponseBody,response.text) or {
-			panic(err)
-		}
+		payload := json.decode(HttpbinResponseBody, response.text) or { panic(err) }
 		assert payload.data == 'hello world'
 	}
 }
 
 fn test_http_fetch_with_params() {
-	$if !network ? { return }
-	responses := http_fetch_mock([], {
-		params: {
-			'a': 'b',
+	$if !network ? {
+		return
+	}
+	responses := http_fetch_mock([],
+		params: map{
+			'a': 'b'
 			'c': 'd'
 		}
-	}) or {
-		panic(err)
-	}
+	) or { panic(err) }
 	for response in responses {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
 		// panic(err)
@@ -78,14 +76,14 @@ fn test_http_fetch_with_params() {
 }
 
 fn test_http_fetch_with_headers() ? {
-	$if !network ? { return }
+	$if !network ? {
+		return
+	}
 	mut header := new_header()
 	header.add_custom('Test-Header', 'hello world') ?
-	responses := http_fetch_mock([], {
+	responses := http_fetch_mock([],
 		header: header
-	}) or {
-		panic(err)
-	}
+	) or { panic(err) }
 	for response in responses {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
 		// panic(err)

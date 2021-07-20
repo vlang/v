@@ -32,7 +32,7 @@ fn main() {
 }
 
 fn compile(vroot string, cmd string) {
-	result := os.execute_or_panic(cmd)
+	result := os.execute_or_exit(cmd)
 	if result.exit_code != 0 {
 		eprintln('cannot compile to `$vroot`: \n$result.output')
 		exit(1)

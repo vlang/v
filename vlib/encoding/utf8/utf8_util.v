@@ -33,11 +33,6 @@ pub fn len(s string) int {
 	return count
 }
 
-// u_len return the length as number of unicode chars from a ustring
-pub fn u_len(s ustring) int {
-	return len(s.s)
-}
-
 // char_len calculate the length in bytes of a utf8 char
 [deprecated: 'use builtin utf8_char_len']
 pub fn char_len(b byte) int {
@@ -134,21 +129,9 @@ pub fn to_upper(s string) string {
 	return up_low(s, true)
 }
 
-// u_to_upper return an uppercase string from a ustring
-pub fn u_to_upper(s ustring) ustring {
-	tmp := up_low(s.s, true)
-	return tmp.ustring()
-}
-
 // to_lower return an lowercase string from a string
 pub fn to_lower(s string) string {
 	return up_low(s, false)
-}
-
-// u_to_lower return an lowercase string from a ustring
-pub fn u_to_lower(s ustring) ustring {
-	tmp := up_low(s.s, false)
-	return tmp.ustring()
 }
 
 /*
@@ -404,7 +387,7 @@ fn utf8_to_upper(in_cp int) int {
 fn up_low(s string, upper_flag bool) string {
 	mut index := 0
 	mut tab_char := 0
-	mut str_res := unsafe { malloc(s.len + 1) }
+	mut str_res := unsafe { malloc_noscan(s.len + 1) }
 
 	for {
 		ch_len := utf8_char_len(s[index])

@@ -1,0 +1,6 @@
+a := '\x11ffff'
+b := '\x20ffff'
+c := '\x10fffff'
+println(a)
+println(b)
+println(c)

@@ -220,6 +220,13 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return res == 0
 }
 
-pub fn (mut sem Semaphore) destroy() bool {
-	return C.pthread_cond_destroy(&sem.cond) == 0 && C.pthread_mutex_destroy(&sem.mtx) == 0
+pub fn (mut sem Semaphore) destroy() {
+	mut res := C.pthread_cond_destroy(&sem.cond)
+	if res == 0 {
+		res = C.pthread_mutex_destroy(&sem.mtx)
+		if res == 0 {
+			return
+		}
+	}
+	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
 }

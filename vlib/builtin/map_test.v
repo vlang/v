@@ -932,3 +932,16 @@ fn test_u64_keys() {
 	}
 	assert m.len == 0
 }
+
+fn test_map_set_fixed_array_variable() {
+	mut m := map[string][2]f64{}
+	m['A'] = [1.1, 2.2]!
+	println(m)
+	assert '$m' == "{'A': [1.1, 2.2]}"
+
+	mut m2 := map[string][2]f64{}
+	arr := [1.1, 2.2]!
+	m2['A'] = arr
+	println(m2)
+	assert '$m2' == "{'A': [1.1, 2.2]}"
+}

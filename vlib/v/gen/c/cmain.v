@@ -70,9 +70,7 @@ fn (mut g Gen) gen_c_main_function_header() {
 
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
-		.boehm_leak,
-	] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
@@ -162,13 +160,21 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
+pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, cvar_name string) {
+	// in test_() functions, a `return error('something')` is sugar for
+	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
+	// and the test is considered failed
+	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
+	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	g.writeln('\tg_test_fails++;')
+	g.writeln('\tlongjmp(g_jump_buffer, 1);')
+}
+
 pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
 	g.gen_c_main_function_header()
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
-		.boehm_leak,
-	] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')

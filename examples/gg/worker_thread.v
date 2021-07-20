@@ -30,7 +30,6 @@ fn main() {
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'Counter'
 		user_data: app
@@ -49,7 +48,7 @@ fn init(mut app App) {
 
 // worker simulates a workload. This should be run in a separate thread.
 fn worker(mut app App) {
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	mut elapsed := stopwatch.elapsed()
 	// Do heavy operations here - like invoking a path finding algorithm, load an image or similar.
 	for {

@@ -111,6 +111,7 @@ pub enum Kind {
 	key_return
 	key_select
 	key_sizeof
+	key_isreftype
 	key_likely
 	key_unlikely
 	key_offsetof
@@ -267,6 +268,7 @@ fn build_token_str() []string {
 	s[Kind.key_return] = 'return'
 	s[Kind.key_module] = 'module'
 	s[Kind.key_sizeof] = 'sizeof'
+	s[Kind.key_isreftype] = 'isreftype'
 	s[Kind.key_likely] = '_likely_'
 	s[Kind.key_unlikely] = '_unlikely_'
 	s[Kind.key_go] = 'go'
@@ -477,9 +479,9 @@ pub fn (kind Kind) is_infix() bool {
 
 // Pass ast.builtin_type_names
 // Note: can't import table here due to circular module dependency
-pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
+pub fn (tok &Token) can_start_type(builtin_types []string) bool {
 	match tok.kind {
-		.name { return tok.lit[0].is_capital() || tok.lit in builtin_type_names }
+		.name { return (tok.lit.len > 0 && tok.lit[0].is_capital()) || tok.lit in builtin_types }
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question { return true }
 		else {}

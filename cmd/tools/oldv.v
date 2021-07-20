@@ -165,7 +165,7 @@ fn main() {
 	scripting.cprintln('#     v commit hash: $shorter_hash | folder: $context.path_v')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
-		cmdres := os.execute_or_panic(context.cmd_to_run)
+		cmdres := os.execute_or_exit(context.cmd_to_run)
 		if cmdres.exit_code != 0 {
 			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
 		}

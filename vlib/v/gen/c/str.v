@@ -5,20 +5,9 @@ module c
 import v.ast
 import v.util
 
-fn (mut g Gen) write_str_fn_definitions() {
-	g.writeln(c_str_fn_defs)
-}
-
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
-	if node.is_raw {
-		escaped_val := util.smart_quote(node.val, true)
-		g.write('_SLIT("$escaped_val")')
-		return
-	}
-	escaped_val := util.smart_quote(node.val, false)
-	if g.is_c_call || node.language == .c {
-		// In C calls we have to generate C strings
-		// `C.printf("hi")` => `printf("hi");`
+	escaped_val := util.smart_quote(node.val, node.is_raw)
+	if node.language == .c {
 		g.write('"$escaped_val"')
 	} else {
 		g.write('_SLIT("$escaped_val")')
@@ -104,7 +93,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
-			ast.SelectorExpr, ast.Ident { true }
+			ast.SelectorExpr, ast.Ident, ast.CTempVar { true }
 			else { false }
 		}
 		if is_var {
@@ -149,6 +138,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
+		if expr.is_auto_deref_var() {
+			g.write('*')
+		}
 		if sym.kind != .function {
 			g.expr_with_cast(expr, typ, typ)
 		}

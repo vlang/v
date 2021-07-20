@@ -1,4 +1,5 @@
 import os
+import time
 
 const (
 	// tfolder will contain all the temporary files/subfolders made by
@@ -110,7 +111,7 @@ fn test_is_file() {
 		assert true
 	} $else {
 		dsymlink := os.join_path(work_dir, 'dir_symlink')
-		os.system('ln -s $work_dir $dsymlink')
+		os.symlink(work_dir, dsymlink) or { panic(err) }
 		assert os.is_file(dsymlink) == false
 	}
 	// Test file symlinks
@@ -118,7 +119,7 @@ fn test_is_file() {
 		assert true
 	} $else {
 		fsymlink := os.join_path(work_dir, 'file_symlink')
-		os.system('ln -s $tfile $fsymlink')
+		os.symlink(tfile, fsymlink) or { panic(err) }
 		assert os.is_file(fsymlink)
 	}
 }
@@ -284,8 +285,76 @@ fn test_cp_all() {
 	assert os.exists(os.join_path('nonexisting', 'ex1.txt'))
 }
 
-fn test_realpath() {
+fn test_realpath_of_empty_string_works() {
 	assert os.real_path('') == ''
+}
+
+fn test_realpath_non_existing() {
+	non_existing_path := 'sdyfuisd_non_existing_file'
+	rpath := os.real_path(non_existing_path)
+	$if windows {
+		// on windows, the workdir is prepended, so the result is absolute:
+		assert rpath.len > non_existing_path.len
+	}
+	$if !windows {
+		// on unix, the workdir is NOT prepended for now, so the result remains the same.
+		// TODO: the windows behaviour seems saner, think about normalising the unix case to do the same.
+		assert os.real_path(non_existing_path) == non_existing_path
+	}
+}
+
+fn test_realpath_existing() {
+	existing_file_name := 'existing_file.txt'
+	existing_file := os.join_path(os.temp_dir(), existing_file_name)
+	os.rm(existing_file) or {}
+	os.write_file(existing_file, 'abc') or {}
+	assert os.exists(existing_file)
+	rpath := os.real_path(existing_file)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(existing_file_name)
+	os.rm(existing_file) or {}
+}
+
+fn test_realpath_removes_dots() {
+	examples_folder := os.join_path(@VEXEROOT, 'vlib', 'v', '..', '..', 'cmd', '.', '..',
+		'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert real_path_of_examples_folder.len < examples_folder.len
+	assert !real_path_of_examples_folder.contains('..')
+}
+
+fn test_realpath_absolutizes_existing_relative_paths() {
+	old_wd := os.getwd()
+	defer {
+		os.chdir(old_wd)
+	}
+	os.chdir(@VEXEROOT)
+	examples_folder := os.join_path('vlib', 'v', '..', '..', 'cmd', '.', '..', 'examples')
+	real_path_of_examples_folder := os.real_path(examples_folder)
+	assert os.is_abs_path(real_path_of_examples_folder)
+}
+
+// TODO: think much more about whether this is desirable:
+fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
+	relative_path := os.join_path('one', 'nonexisting_folder', '..', 'something')
+	$if !windows {
+		assert os.real_path(relative_path).contains('..')
+		assert os.real_path(relative_path) == relative_path
+	}
+}
+
+fn test_realpath_absolutepath_symlink() ? {
+	file_name := 'tolink_file.txt'
+	symlink_name := 'symlink.txt'
+	mut f := os.create(file_name) ?
+	f.close()
+	assert os.symlink(file_name, symlink_name) ?
+	rpath := os.real_path(symlink_name)
+	println(rpath)
+	assert os.is_abs_path(rpath)
+	assert rpath.ends_with(file_name)
+	os.rm(symlink_name) or {}
+	os.rm(file_name) or {}
 }
 
 fn test_tmpdir() {
@@ -561,29 +630,30 @@ fn test_posix_set_bit() {
 	} $else {
 		fpath := '/tmp/permtest'
 		os.create(fpath) or { panic("Couldn't create file") }
-		os.chmod(fpath, 0o7777)
+		os.chmod(fpath, 0o0777)
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		// Take the permissions part of the mode
-		mut mode := u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mut mode := u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
 		// `chmod u-r`
 		os.posix_set_permission_bit(fpath, os.s_irusr, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7377
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0377
 		// `chmod u+r`
 		os.posix_set_permission_bit(fpath, os.s_irusr, true)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
-		assert mode == 0o7777
+		mode = u32(s.st_mode) & 0o0777
+		assert mode == 0o0777
+		// NB: setting the sticky bit is platform dependend
 		// `chmod -s -g -t`
 		os.posix_set_permission_bit(fpath, os.s_isuid, false)
 		os.posix_set_permission_bit(fpath, os.s_isgid, false)
@@ -591,7 +661,7 @@ fn test_posix_set_bit() {
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
-		mode = u32(s.st_mode) & 0o7777
+		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
 		// `chmod g-w o-w`
 		os.posix_set_permission_bit(fpath, os.s_iwgrp, false)
@@ -629,4 +699,44 @@ fn test_truncate() {
 
 fn test_hostname() {
 	assert os.hostname().len > 2
+}
+
+fn test_glob() {
+	os.mkdir('test_dir') or { panic(err) }
+	for i in 0 .. 4 {
+		if i == 3 {
+			mut f := os.create('test_dir/test0_another') or { panic(err) }
+			f.close()
+			mut f1 := os.create('test_dir/test') or { panic(err) }
+			f1.close()
+		} else {
+			mut f := os.create('test_dir/test' + i.str()) or { panic(err) }
+			f.close()
+		}
+	}
+	files := os.glob('test_dir/t*') or { panic(err) }
+	assert files.len == 5
+	assert os.base(files[0]) == 'test'
+
+	for i in 0 .. 3 {
+		os.rm('test_dir/test' + i.str()) or { panic(err) }
+	}
+	os.rm('test_dir/test0_another') or { panic(err) }
+	os.rm('test_dir/test') or { panic(err) }
+	os.rmdir_all('test_dir') or { panic(err) }
+}
+
+fn test_utime() {
+	filename := './test_utime.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err) }
+	defer {
+		f.close()
+		os.rm(filename) or { panic(err) }
+	}
+	f.write_string(hello) or { panic(err) }
+	atime := time.now().add_days(2).unix_time()
+	mtime := time.now().add_days(4).unix_time()
+	os.utime(filename, atime, mtime) or { panic(err) }
+	assert os.file_last_mod_unix(filename) == mtime
 }

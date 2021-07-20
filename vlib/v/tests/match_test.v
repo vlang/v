@@ -139,7 +139,7 @@ fn test_method_call() {
 		1 { false }
 		2 { true }
 		3 { false }
-		else { false }
+		else { true }
 	}
 }
 

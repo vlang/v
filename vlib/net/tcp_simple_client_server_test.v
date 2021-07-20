@@ -3,16 +3,24 @@ import net
 import strings
 
 const (
-	server_port = 22334
+	server_port = ':22443'
 )
 
+fn accept(mut server net.TcpListener, c chan &net.TcpConn) {
+	c <- server.accept() or { panic(err) }
+}
+
 fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
-	mut server := net.listen_tcp(server_port) or { panic(err) }
-	mut client := net.dial_tcp('127.0.0.1:$server_port') or { panic(err) }
-	mut socket := server.accept() or { panic(err) }
+	mut server := net.listen_tcp(.ip6, server_port) or { panic(err) }
+
+	c := chan &net.TcpConn{}
+	go accept(mut server, c)
+	mut client := net.dial_tcp('localhost$server_port') or { panic(err) }
+
+	socket := <-c
+
 	$if debug_peer_ip ? {
-		ip := con.peer_ip() or { '$err' }
-		eprintln('connection peer_ip: $ip')
+		eprintln('$server.addr()\n$client.peer_addr(), $client.addr()\n$socket.peer_addr(), $socket.addr()')
 	}
 	assert true
 	return server, client, socket

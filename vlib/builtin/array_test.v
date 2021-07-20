@@ -233,6 +233,21 @@ fn test_repeat() {
 	}
 }
 
+fn test_deep_repeat() {
+	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+	r := a3.repeat(3)
+	a3[1][1][0] = 17
+	assert r == [
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+	]
+	assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5], [6, 6]]]
+}
+
 fn test_right() {
 	a := [1, 2, 3, 4]
 	c := a[1..a.len]
@@ -315,16 +330,13 @@ fn modify(mut numbers []int) {
 }
 
 fn test_mut_slice() {
-	/*
-	QTODO
 	mut n := [1, 2, 3]
-	//modify(mut n)
+	// modify(mut n)
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
-	*/
 }
 
 fn double_up(mut a []int) {
@@ -367,7 +379,7 @@ fn test_copy() {
 	assert b[2] == 3
 }
 */
-fn test_mutli_array_clone() {
+fn test_multi_array_clone() {
 	// 2d array_int
 	mut a2_1 := [[1, 2, 3], [4, 5, 6]]
 	mut a2_2 := a2_1.clone()
@@ -529,7 +541,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-/*
 fn test_reduce() {
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
@@ -544,7 +555,7 @@ fn test_reduce() {
 	assert f == -6
 	assert g == -7
 }
-*/
+
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
@@ -647,7 +658,7 @@ fn test_anon_fn_map() {
 	assert [1, 2, 3].map(add_num) == [2, 3, 4]
 }
 
-fn test_mutli_anon_fn_map() {
+fn test_multi_anon_fn_map() {
 	a := [1, 2, 3].map(fn (i int) int {
 		return i + 1
 	})
@@ -987,7 +998,7 @@ fn test_array_with_cap() {
 	assert a5.cap == 10
 }
 
-fn test_mutli_array_index() {
+fn test_multi_array_index() {
 	mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 	a[0][0] = 1
 	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
@@ -1081,8 +1092,6 @@ fn test_array_int_pop() {
 	assert z == 4
 	x1 := a.pop()
 	x2 := a.pop()
-	dump(x1)
-	dump(x2)
 	final := a.pop()
 	assert final == 1
 }

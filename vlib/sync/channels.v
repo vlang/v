@@ -11,14 +11,24 @@ $if windows {
 
 $if linux {
 	$if tinyc {
-		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		$if amd64 {
+			// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		} $else $if arm64 {
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/8
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/9
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/10
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/11
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/12
+		}
 		#flag -latomic
 	}
 }
@@ -111,15 +121,19 @@ pub:
 
 pub fn new_channel<T>(n u32) &Channel {
 	st := sizeof(T)
-	return new_channel_st(n, st)
+	if isreftype(T) {
+		return new_channel_st(n, st)
+	} else {
+		return new_channel_st_noscan(n, st)
+	}
 }
 
 fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &byte(0) }
-	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { &byte(0) }
-	mut ch := &Channel{
+	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
+	mut ch := Channel{
 		objsize: st
 		cap: n
 		write_free: n
@@ -133,7 +147,33 @@ fn new_channel_st(n u32, st u32) &Channel {
 	ch.readsem.init(rsem)
 	ch.writesem_im.init(0)
 	ch.readsem_im.init(0)
-	return ch
+	return &ch
+}
+
+fn new_channel_st_noscan(n u32, st u32) &Channel {
+	$if gcboehm_opt ? {
+		wsem := if n > 0 { n } else { 1 }
+		rsem := if n > 0 { u32(0) } else { 1 }
+		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &byte(0) }
+		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &byte(0) }
+		mut ch := Channel{
+			objsize: st
+			cap: n
+			write_free: n
+			read_avail: 0
+			ringbuf: rbuf
+			statusbuf: sbuf
+			write_subscriber: 0
+			read_subscriber: 0
+		}
+		ch.writesem.init(wsem)
+		ch.readsem.init(rsem)
+		ch.writesem_im.init(0)
+		ch.readsem_im.init(0)
+		return &ch
+	} $else {
+		return new_channel_st(n, st)
+	}
 }
 
 pub fn (ch &Channel) auto_str(typename string) string {
@@ -562,8 +602,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 }
 
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
-// object referenced by `objrefs[i]`. `timeout < 0` means wait unlimited time. `timeout == 0` means return immediately
-// if no transaction can be performed without waiting.
+// object referenced by `objrefs[i]`. `timeout = time.infinite` means wait unlimited time. `timeout <= 0` means return
+// immediately if no transaction can be performed without waiting.
 // return value: the index of the channel on which a transaction has taken place
 //               -1 if waiting for a transaction has exceeded timeout
 //               -2 if all channels are closed
@@ -597,8 +637,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = unsafe { &ch.read_subscriber }
 			unsafe {
-				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
-					&subscr[i])
+				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber), &subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
@@ -606,7 +645,11 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
-	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
+	stopwatch := if timeout == time.infinite || timeout <= 0 {
+		time.StopWatch{}
+	} else {
+		time.new_stopwatch()
+	}
 	mut event_idx := -1 // negative index means `timed out`
 
 	outer: for {
@@ -639,10 +682,10 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			event_idx = -2
 			break outer
 		}
-		if timeout == 0 {
+		if timeout <= 0 {
 			break outer
 		}
-		if timeout > 0 {
+		if timeout != time.infinite {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
 				break outer

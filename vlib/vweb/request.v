@@ -93,7 +93,7 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 
 	for field in fields {
 		// TODO: do not split into lines; do same parsing for HTTP body
-		lines := field.split_into_lines()[1..]
+		lines := field.split('\n')[1..]
 		disposition := parse_disposition(lines[0])
 		// Grab everything between the double quotes
 		name := disposition['name'] or { continue }
@@ -106,7 +106,7 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 				continue
 			}
 			mut ct := lines[1].split_nth(':', 2)[1]
-			ct = ct.trim_left(' \t')
+			ct = ct.trim_left(' \t').trim_right('\r')
 			data := lines_to_string(field.len, lines, 3, lines.len - 1)
 			files[name] << FileData{
 				filename: filename
@@ -131,7 +131,7 @@ fn parse_disposition(line string) map[string]string {
 		if kv.len != 2 {
 			continue
 		}
-		key, value := kv[0].to_lower().trim_left(' \t'), kv[1]
+		key, value := kv[0].to_lower().trim_left(' \t'), kv[1].trim_right('\r')
 		if value.starts_with('"') && value.ends_with('"') {
 			data[key] = value[1..value.len - 1]
 		} else {
@@ -148,6 +148,9 @@ fn lines_to_string(len int, lines []string, start int, end int) string {
 		sb.writeln(lines[i])
 	}
 	sb.cut_last(1) // last newline
+	if sb.last_n(1) == '\r' {
+		sb.cut_last(1)
+	}
 	res := sb.str()
 	unsafe { sb.free() }
 	return res

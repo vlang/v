@@ -10,6 +10,8 @@ pub struct Timers {
 pub mut:
 	swatches     map[string]time.StopWatch
 	should_print bool
+	// already_shown records for which of the swatches .show() or .show_if_exists() had been called already
+	already_shown []string
 }
 
 pub fn new_timers(should_print bool) &Timers {
@@ -26,15 +28,18 @@ pub fn get_timers() &Timers {
 }
 
 pub fn timing_start(label string) {
-	get_timers().start(label)
+	mut t := get_timers()
+	t.start(label)
 }
 
 pub fn timing_measure(label string) {
-	get_timers().show(label)
+	mut t := get_timers()
+	t.show(label)
 }
 
 pub fn timing_measure_cumulative(label string) {
-	get_timers().measure_cumulative(label)
+	mut t := get_timers()
+	t.measure_cumulative(label)
 }
 
 pub fn timing_set_should_print(should_print bool) {
@@ -43,7 +48,7 @@ pub fn timing_set_should_print(should_print bool) {
 }
 
 pub fn (mut t Timers) start(name string) {
-	mut sw := t.swatches[name] or { time.new_stopwatch({}) }
+	mut sw := t.swatches[name] or { time.new_stopwatch() }
 	sw.start()
 	t.swatches[name] = sw
 }
@@ -100,6 +105,7 @@ pub fn (mut t Timers) show(label string) {
 	if t.should_print {
 		println(formatted_message)
 	}
+	t.already_shown << label
 }
 
 pub fn (mut t Timers) show_if_exists(label string) {
@@ -107,6 +113,16 @@ pub fn (mut t Timers) show_if_exists(label string) {
 		return
 	}
 	t.show(label)
+	t.already_shown << label
+}
+
+pub fn (mut t Timers) show_remaining() {
+	for k, _ in t.swatches {
+		if k in t.already_shown {
+			continue
+		}
+		t.show(k)
+	}
 }
 
 pub fn (mut t Timers) dump_all() {

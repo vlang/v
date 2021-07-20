@@ -36,7 +36,7 @@ pub fn parse_rfc2822(s string) ?Time {
 	pos := months_string.index(fields[2]) or { return error('Invalid time format: $s') }
 	mm := pos / 3 + 1
 	unsafe {
-		tmstr := malloc(s.len * 2)
+		tmstr := malloc_noscan(s.len * 2)
 		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str,
 			mm, fields[1].str, fields[4].str)
 		return parse(tos(tmstr, count))
@@ -135,6 +135,6 @@ pub fn parse_iso8601(s string) ?Time {
 	} else if unix_offset > 0 {
 		unix_time += u64(unix_offset)
 	}
-	t = unix2(int(unix_time), t.microsecond)
+	t = unix2(i64(unix_time), t.microsecond)
 	return t
 }

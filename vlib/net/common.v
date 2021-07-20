@@ -2,6 +2,20 @@ module net
 
 import time
 
+// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
+// return instantly)
+const no_deadline = time.Time{
+	unix: 0
+}
+
+// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
+// return instantly)
+pub const no_timeout = time.Duration(0)
+
+// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
+// only ever return with data)
+pub const infinite_timeout = time.infinite
+
 // Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {
 	$if windows {
@@ -11,8 +25,6 @@ fn shutdown(handle int) ? {
 		C.shutdown(handle, C.SHUT_RDWR)
 		socket_error(C.close(handle)) ?
 	}
-
-	return none
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
@@ -22,8 +34,8 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout.milliseconds() / 1000
-	microseconds := timeout - (seconds * time.second)
+	seconds := timeout / time.second
+	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
 
 	mut tt := C.timeval{
 		tv_sec: u64(seconds)
@@ -53,17 +65,41 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	return C.FD_ISSET(handle, &set)
 }
 
+// select_with_retry will retry the select if select is failing
+// due to interrupted system call. This can happen on signals
+// for example the GC Boehm uses signals internally on garbage
+// collection
+[inline]
+fn select_with_retry(handle int, test Select, timeout time.Duration) ?bool {
+	mut retries := 10
+	for retries > 0 {
+		ready := @select(handle, test, timeout) or {
+			if err.code == 4 {
+				// signal! lets retry max 10 times
+				// suspend thread with sleep to let the gc get
+				// cycles in the case the Bohem gc is interupting
+				time.sleep(1 * time.millisecond)
+				retries -= 1
+				continue
+			}
+			// we got other error
+			return err
+		}
+		return ready
+	}
+	return error('failed to @select more that three times due to interrupted system call')
+}
+
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
 	if deadline.unix == 0 {
-		// only accept infinite_timeout as a valid
-		// negative timeout - it is handled in @select however
-		if timeout < 0 && timeout != net.infinite_timeout {
+		// do not accept negative timeout
+		if timeout < 0 {
 			return err_timed_out
 		}
-		ready := @select(handle, test, timeout) ?
+		ready := select_with_retry(handle, test, timeout) ?
 		if ready {
-			return none
+			return
 		}
 		return err_timed_out
 	}
@@ -75,10 +111,9 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		// timed out
 		return err_timed_out
 	}
-
-	ready := @select(handle, test, d_timeout) ?
+	ready := select_with_retry(handle, test, timeout) ?
 	if ready {
-		return none
+		return
 	}
 	return err_timed_out
 }
@@ -92,23 +127,3 @@ fn wait_for_write(handle int, deadline time.Time, timeout time.Duration) ? {
 fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ? {
 	return wait_for_common(handle, deadline, timeout, .read)
 }
-
-// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
-// return instantly)
-const (
-	no_deadline = time.Time{
-		unix: 0
-	}
-)
-
-// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
-// return instantly)
-pub const (
-	no_timeout = time.Duration(0)
-)
-
-// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
-// only ever return with data)
-pub const (
-	infinite_timeout = time.Duration(-1)
-)

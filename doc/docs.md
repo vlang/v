@@ -67,7 +67,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
-* [Types](#types)
+* [V types](#v-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
@@ -83,7 +83,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Structs](#structs)
     * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
-    * [Short struct literal syntax](#short-struct-initialization-syntax)
+    * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [Unions](#unions)
@@ -94,14 +94,15 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
-    * [Anonymous & high order functions](#anonymous--high-order-functions)
+    * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Module/package management](#modulepackage-management)
-* [Types 2](#types-2)
+    * [Manage Packages](#manage-packages)
+	* [Publish package](#publish-package)
+* [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
     * [Sum types](#sum-types)
@@ -115,6 +116,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
+    * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
 
 </td><td valign=top>
@@ -129,7 +131,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
-    * [Debugging generated C code](#debugging-generated-c-code)
+	* [Atomics](#atomics)
+    * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
     * [Compile-time reflection](#compile-time-reflection)
@@ -398,7 +401,7 @@ fn draw(ctx &gg.Context) {
 }
 ```
 
-## Types
+## V Types
 
 ### Primitive types
 
@@ -502,6 +505,18 @@ Strings can be easily converted to integers:
 ```v
 s := '42'
 n := s.int() // 42
+```
+
+### Runes
+A `rune` represents a unicode character and is an alias for `u32`. Runes can be created like this:
+```v
+x := `🚀`
+```
+
+A string can be converted to runes by the `.runes()` method.
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
 ```
 
 ### String interpolation
@@ -622,14 +637,13 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-
 #### Array Properties
 There are two properties that control the "size" of an array:
-* `len`: *length* - the number of defined elements of the array
-* `cap`: *capacity* - the number of elements for which memory space has been reserved. The array can
-grow up to this size without being reallocated. Usually, V takes care of
-this property automatically but there are cases where the user may want to do manual
-optimizations (see [below](#array-initialization)).
+* `len`: *length* - the number of pre-allocated and initialized elements in the array
+* `cap`: *capacity* - the amount of memory space which has been reserved for elements,
+but not initialized or counted as elements. The array can grow up to this size without
+being reallocated. Usually, V takes care of this property automatically but there are
+cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -685,6 +699,70 @@ for i in 0 .. 1000 {
 Note: The above code uses a [range `for`](#range-for) statement and a
 [push operator (`<<`)](#array-operations).
 
+#### Array Types
+
+An array can be of these types:
+| Types        | Example Definition                   |
+| ------------ | ------------------------------------ |
+| Number       | `[]int,[]i64`                        |
+| String       | `[]string`                           |
+| Rune         | `[]rune`                             |
+| Boolean      | `[]bool`                             |
+| Array        | `[][]int`                            |
+| Struct       | `[]MyStructName`                     |
+| Channel      | `[]chan f64`                         |
+| Function     | `[]MyFunctionType` `[]fn (int) bool` |
+| Interface    | `[]MyInterfaceName`                  |
+| Sum Type     | `[]MySumTypeName`                    |
+| Generic Type | `[]T`                                |
+| Map          | `[]map[string]f64`                   |
+| Enum         | `[]MyEnumType`                       |
+| Alias        | `[]MyAliasTypeName`                  |
+| Thread       | `[]thread int`                       |
+| Reference    | `[]&f64`                             |
+| Shared       | `[]shared MyStructType`              |
+
+**Example Code:**
+
+This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array
+which can handle different types (e.g. Points, Lines) of data elements.
+
+```v
+struct Point {
+	x int
+	y int
+}
+
+struct Line {
+	p1 Point
+	p2 Point
+}
+
+type ObjectSumType = Line | Point
+
+mut object_list := []ObjectSumType{}
+object_list << Point{1, 1}
+object_list << Line{
+	p1: Point{3, 3}
+	p2: Point{4, 4}
+}
+dump(object_list)
+/*
+object_list: [ObjectSumType(Point{
+    x: 1
+    y: 1
+}), ObjectSumType(Line{
+    p1: Point{
+        x: 3
+        y: 3
+    }
+    p2: Point{
+        x: 4
+        y: 4
+    }
+})]
+*/
+```
 
 #### Multidimensional Arrays
 
@@ -790,6 +868,7 @@ There are further built in methods for arrays:
 * `a.delete_last()` remove last element from array
 * `b := a.reverse()` make `b` contain the elements of `a` in reversed order
 * `a.reverse_in_place()` reverse the order of elements in `a`
+* `a.join(joiner)` concatenate array of strings into a string using `joiner` string as a separator
 
 #### Sorting Arrays
 
@@ -811,6 +890,40 @@ struct User {
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
+```
+V also supports custom sorting, through the `sort_with_compare` array method.
+Which expects a comparing function which will define the sort order.
+Useful for sorting on multiple fields at the same time by custom sorting rules.
+The code below sorts the array ascending on `name` and descending `age`.
+```v
+struct User {
+	age  int
+	name string
+}
+
+mut users := [User{21, 'Bob'}, User{65, 'Bob'}, User{25, 'Alice'}]
+
+custom_sort_fn := fn (a &User, b &User) int {
+	// return -1 when a comes before b
+	// return 0, when both are in same order
+	// return 1 when b comes before a
+	if a.name == b.name {
+		if a.age < b.age {
+			return 1
+		}
+		if a.age > b.age {
+			return -1
+		}
+		return 0
+	}
+	if a.name < b.name {
+		return -1
+	} else if a.name > b.name {
+		return 1
+	}
+	return 0
+}
+users.sort_with_compare(custom_sort_fn)
 ```
 
 #### Array Slices
@@ -996,7 +1109,8 @@ fn main() {
 	println('Hello, $name!')
 }
 ```
-Note: This is not allowed for constants - they must always be prefixed.
+Note: This will import the module as well. Also, this is not allowed for
+constants - they must always be prefixed.
 
 You can import several specific symbols at once:
 
@@ -1252,6 +1366,45 @@ for mut num in numbers {
 println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
+
+##### Custom iterators
+Types that implement a `next` method returning an `Option` can be iterated
+with a `for` loop.
+
+```v
+struct SquareIterator {
+	arr []int
+mut:
+	idx int
+}
+
+fn (mut iter SquareIterator) next() ?int {
+	if iter.idx >= iter.arr.len {
+		return error('')
+	}
+	defer {
+		iter.idx++
+	}
+	return iter.arr[iter.idx] * iter.arr[iter.idx]
+}
+
+nums := [1, 2, 3, 4, 5]
+iter := SquareIterator{
+	arr: nums
+}
+for squared in iter {
+	println(squared)
+}
+```
+
+The code above prints:
+```
+1
+4
+9
+16
+25
+```
 
 ##### Map `for`
 
@@ -1623,6 +1776,10 @@ p = {
 	y: 4
 }
 assert p.y == 4
+//
+// array: first element defines type of array
+points := [Point{10, 20}, Point{20, 30}, Point{40, 50}]
+println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}]
 ```
 
 Omitting the struct name also works for returning a struct literal or passing one
@@ -1895,7 +2052,7 @@ b := [5, 6, 7]
 println(sum(...b)) // output: 18
 ```
 
-### Anonymous & high order functions
+### Anonymous & higher order functions
 
 ```v
 fn sqr(n int) int {
@@ -1974,11 +2131,11 @@ fn (foo &Foo) bar() {
 In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
-```v wip
+```v
 struct Node<T> {
-    val   T
-    left  &Node
-    right &Node
+	val   T
+	left  &Node<T>
+	right &Node<T>
 }
 ```
 
@@ -2038,6 +2195,23 @@ println(blue)
 \* WIP - for now function calls are evaluated at program start-up
 
 Global variables are not normally allowed, so this can be really useful.
+
+**Modules**
+
+Constants can be made public with `pub const`:
+```v oksyntax
+module mymodule
+
+pub const golden_ratio = 1.61803
+
+fn calc() {
+	println(mymodule.golden_ratio)
+}
+```
+The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
+a `const ( )` block.
+
+Outside from module main all constants need to be prefixed with the module name.
 
 ### Required module prefix
 
@@ -2175,7 +2349,7 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
-### Module/package management
+### Manage Packages
 
 Briefly:
 
@@ -2201,7 +2375,7 @@ You can also install modules already created by someone else with [VPM](https://
 ```powershell
 v install [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v install ui
 ```
@@ -2211,7 +2385,7 @@ Removing a module with v:
 ```powershell
 v remove [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v remove ui
 ```
@@ -2221,7 +2395,7 @@ Updating an installed module from [VPM](https://vpm.vlang.io/):
 ```powershell
 v update [module]
 ```
-###### Example:
+**Example:**
 ```powershell
 v update ui
 ```
@@ -2236,7 +2410,7 @@ To see all the modules you have installed, you can use:
 ```powershell
 v list
 ```
-###### Example
+**Example:**
 ```powershell
 > v list
 Installed modules:
@@ -2249,15 +2423,75 @@ outdated          Show installed modules that need updates.
 ```powershell
 v outdated
 ```
-###### Example
+**Example:**
 ```powershell
 > v outdated
 Modules are up to date.
 ```
 
-You can also add your module to VPM by following the instructions on the website https://vpm.vlang.io/new
+### Publish package
 
-## Types 2
+1. Put a `v.mod` file inside the toplevel folder of your module (if you
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
+
+	```sh
+	v new mymodule
+	Input your project description: My nice module.
+	Input your project version: (0.0.0) 0.0.1
+	Input your project license: (MIT)
+	Initialising ...
+	Complete!
+	```
+
+	Example `v.mod`:
+	```v ignore
+	Module {
+		name: 'mymodule'
+		description: 'My nice module.'
+		version: '0.0.1'
+		license: 'MIT'
+		dependencies: []
+	}
+	```
+
+	Minimal file structure:
+	```
+	v.mod
+	mymodule.v
+	```
+
+	Check that your module name is used in `mymodule.v`:
+	```v
+	module mymodule
+
+	pub fn hello_world() {
+		println('Hello World!')
+	}
+	```
+
+2. Create a git repository in the folder with the `v.mod` file
+	(this is not required if you used `v new` or `v init`):
+	```sh
+	git init
+	git add .
+	git commit -m "INIT"
+	````
+
+3. Create a public repository on github.com.
+4. Connect your local repository to the remote repository and push the changes.
+5. Add your module to the public V module registry VPM:
+	https://vpm.vlang.io/new
+
+	You will have to login with your Github account to register the module.
+	**Warning:** _Currently it is not possibility to edit your entry after submiting.
+	Check your module name and github url twice as this cannot be changed by you later._
+6. The final module name is a combination of your github account and
+	the module name you provided e.g. `mygithubname.mymodule`.
+
+**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
+to allow a better search experiance.
+
+## Type Declarations
 
 ### Interfaces
 
@@ -2352,6 +2586,74 @@ fn main() {
 	}
 }
 ```
+
+### Function Types
+
+You can use type aliases for naming specific function signatures - for
+example:
+
+```v
+type Filter = fn (string) string
+```
+
+This works like any other type - for example, a function can accept an
+argument of a function type:
+
+```v
+type Filter = fn (string) string
+
+fn filter(s string, f Filter) string {
+	return f(s)
+}
+```
+
+V has duck-typing, so functions don't need to declare compatibility with
+a function type - they just have to be compatible:
+
+```v
+fn uppercase(s string) string {
+	return s.to_upper()
+}
+
+// now `uppercase` can be used everywhere where Filter is expected
+```
+
+Compatible functions can also be explicitly cast to a function type:
+
+```v oksyntax
+my_filter := Filter(uppercase)
+```
+
+The cast here is purely informational - again, duck-typing means that the
+resulting type is the same without an explicit cast:
+
+```v oksyntax
+my_filter := uppercase
+```
+
+You can pass the assigned function as an argument:
+
+```v oksyntax
+println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
+```
+
+And you could of course have passed it directly as well, without using a
+local variable:
+
+```v oksyntax
+println(filter('Hello world', uppercase))
+```
+
+And this works with anonymous functions as well:
+
+```v oksyntax
+println(filter('Hello world', fn (s string) string {
+	return s.to_upper()
+}))
+```
+
+You can see the complete
+[example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
 
 ### Enums
 
@@ -2458,6 +2760,50 @@ fn main() {
 	tree := Node{0.5, left, right}
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
+```
+
+Enums can have methods, just like structs
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	println(c)
+	c = c.next()
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
 ```
 
 #### Dynamic casts
@@ -3202,7 +3548,7 @@ You can also define special test functions in a test file:
 
 If a test function has an error return type, any propagated errors will fail the test:
 
-```
+```v
 import strconv
 
 fn test_atoi() ? {
@@ -3218,6 +3564,25 @@ To run test functions in an individual test file, use `v foo_test.v`.
 To test an entire module, use `v test mymodule`. You can also use `v test .` to test
 everything inside your current folder (and subfolders). You can pass the `-stats`
 option to see more details about the individual tests run.
+
+You can put additional test data, including .v source files in a folder, named
+`testdata`, right next to your _test.v files. V's test framework will *ignore*
+such folders, while scanning for tests to run. This is usefull, if you want to
+put .v files with invalid V source code, or other tests, including known
+failing ones, that should be run in a specific way/options by a parent _test.v
+file.
+
+NB: the path to the V compiler, is available through @VEXE, so a _test.v
+file, can easily run *other* test files like this:
+```v oksyntax
+import os
+
+fn test_subtest() {
+	res := os.execute('${@VEXE} other_test.v')
+	assert res.exit_code == 1
+	assert res.output.contains('other_test.v does not exist')
+}
+```
 
 ## Memory management
 
@@ -3298,6 +3663,254 @@ fn test() []int {
 	return numbers2
 }
 ```
+
+### Stack and Heap
+#### Stack and Heap Basics
+
+Like with most other programming languages there are two locations where data can
+be stored:
+
+* The *stack* allows fast allocations with almost zero administrative overhead. The
+  stack grows and shrinks with the function call depth &ndash; so every called
+  function has its stack segment that remains valid until the function returns.
+  No freeing is necessary, however, this also means that a reference to a stack
+  object becomes invalid on function return. Furthermore stack space is
+  limited (typically to a few Megabytes per thread).
+* The *heap* is a large memory area (typically some Gigabytes) that is administrated
+  by the operating system. Heap objects are allocated and freed by special function
+  calls that delegate the administrative tasks to the OS. This means that they can
+  remain valid across several function calls, however, the administration is
+  expensive.
+
+#### V's default approach
+
+Due to performance considerations V tries to put objects on the stack if possible
+but allocates them on the heap when obviously necessary. Example:
+
+```v
+struct MyStruct {
+	n int
+}
+
+struct RefStruct {
+	r &MyStruct
+}
+
+fn main() {
+	q, w := f()
+	println('q: $q.r.n, w: $w.n')
+}
+
+fn f() (RefStruct, &MyStruct) {
+	a := MyStruct{
+		n: 1
+	}
+	b := MyStruct{
+		n: 2
+	}
+	c := MyStruct{
+		n: 3
+	}
+	e := RefStruct{
+		r: &b
+	}
+	x := a.n + c.n
+	println('x: $x')
+	return e, &c
+}
+```
+
+Here `a` is stored on the stack since it's address never leaves the function `f()`.
+However a reference to `b` is part of `e` which is returned. Also a reference to
+`c` is returned. For this reason `b` and `c` will be heap allocated. 
+
+Things become less obvious when a reference to an object is passed as function argument:
+
+```v
+struct MyStruct {
+mut:
+	n int
+}
+
+fn main() {
+	mut q := MyStruct{
+		n: 7
+	}
+	w := MyStruct{
+		n: 13
+	}
+	x := q.f(&w) // references of `q` and `w` are passed
+	println('q: $q\nx: $x')
+}
+
+fn (mut a MyStruct) f(b &MyStruct) int {
+	a.n += b.n
+	x := a.n * b.n
+	return x
+}
+```
+Here the call `q.f(&w)` passes references to `q` and `w` because `a` is
+`mut` and `b` is of type `&MyStruct` in `f()`'s declaration, so technically
+these references are leaving `main()`. However the *lifetime* of these
+references lies inside the scope of `main()` so `q` and `w` are allocated
+on the stack.
+
+#### Manual Control for Stack and Heap 
+
+In the last example the V compiler could put `q` and `w` on the stack
+because it assumed that in the call `q.f(&w)` these references were only
+used for reading and modifying the referred values &ndash; and not to pass the
+references themselves somewhere else. This can be seen in a way that the
+references to `q` and `w` are only *borrowed* to `f()`.
+
+Things become different if `f()` is doing something with a reference itself:
+
+```v
+struct RefStruct {
+mut:
+	r &MyStruct
+}
+
+// see discussion below
+[heap]
+struct MyStruct {
+	n int
+}
+
+fn main() {
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	println('r: $r')
+}
+
+fn (mut r RefStruct) g() {
+	s := MyStruct{
+		n: 7
+	}
+	r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+	r.r = s // would trigger error without `[heap]`
+}
+```
+
+Here `f()` looks quite innocent but is doing nasty things &ndash; it inserts a
+reference to `s` into `r`. The problem with this is that `s` lives only as long
+as `g()` is running but `r` is used in `main()` after that. For this reason
+the compiler would complain about the assignment in `f()` because `s` *"might
+refer to an object stored on stack"*. The assumption made in `g()` that the call
+`r.f(&s)` would only borrow the reference to `s` is wrong. 
+
+A solution to this dilemma is the `[heap]` attribute at the declaration of
+`struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
+on the heap. This way the reference to `s` remains valid even after `g()` returns.
+The compiler takes into consideration that `MyStruct` objects are always heap
+allocated when checking `f()` and allows assigning the reference to `s` to the
+`r.r` field.
+
+There is a pattern often seen in other programming languages:
+
+```v failcompile
+fn (mut a MyStruct) f() &MyStruct {
+	// do something with a
+	return &a // would return address of borrowed object
+}
+```
+
+Here `f()` is passed a reference `a` as receiver that is passed back to the caller and returned
+as result at the same time. The intention behind such a declaration is method chaining like
+`y = x.f().g()`. However, the problem with this approach is that a second reference
+to `a` is created &ndash; so it is not only borrowed and `MyStruct` has to be
+declared as `[heap]`.
+
+In V the better approach is:
+
+```v
+struct MyStruct {
+mut:
+	n int
+}
+
+fn (mut a MyStruct) f() {
+	// do something with `a`
+}
+
+fn (mut a MyStruct) g() {
+	// do something else with `a`
+}
+
+fn main() {
+	x := MyStruct{} // stack allocated
+	mut y := x
+	y.f()
+	y.g()
+	// instead of `mut y := x.f().g()
+}
+```
+
+This way the `[heap]` attribute can be avoided &ndash; resulting in better performance.
+
+However, stack space is very limited as mentioned above. For this reason the `[heap]`
+attribute might be suitable for very large structures even if not required by use cases
+like those mentioned above.
+
+There is an alternative way to manually control allocation on a case to case basis. This
+approach is not recommended but shown here for the sake of completeness:
+
+```v
+struct MyStruct {
+	n int
+}
+
+struct RefStruct {
+mut:
+	r &MyStruct
+}
+
+// simple function - just to overwrite stack segment previously used by `g()`
+fn use_stack() {
+	x := 7.5
+	y := 3.25
+	z := x + y
+	println('$x $y $z')
+}
+
+fn main() {
+	m := MyStruct{}
+	mut r := RefStruct{
+		r: &m
+	}
+	r.g()
+	use_stack() // to erase invalid stack contents
+	println('r: $r')
+}
+
+fn (mut r RefStruct) g() {
+	s := &MyStruct{ // `s` explicitly refers to a heap object
+		n: 7
+	}
+	// change `&MyStruct` -> `MyStruct` above and `r.f(s)` -> `r.f(&s)` below
+	// to see data in stack segment being overwritten
+	r.f(s)
+}
+
+fn (mut r RefStruct) f(s &MyStruct) {
+	r.r = unsafe { s } // override compiler check
+}
+```
+
+Here the compiler check is suppressed by the `unsafe` block. To make `s` be heap
+allocated even without `[heap]` attribute the `struct` literal is prefixed with
+an ampersand: `&MyStruct{...}`.
+
+This last step would not be required by the compiler but without it the reference
+inside `r` becomes invalid (the memory area pointed to will be overwritten by
+`use_stack()`) and the program might crash (or at least produce an unpredictable
+final output). That's why this approach is *unsafe* and should be avoided!
 
 ## ORM
 
@@ -3432,7 +4045,7 @@ You can also use stopwatches to measure just portions of your code explicitly:
 import time
 
 fn main() {
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	println('Hello world')
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
@@ -3639,6 +4252,93 @@ fn main() {
 }
 ```
 
+## Atomics
+
+V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
+by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
+defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
+Since V does not support overloading functions by intention there are wrapper functions defined in
+C headers named `atomic.h` that are part of the V compiler infrastructure.
+
+There are dedicated wrappers for all unsigned integer types and for pointers.
+(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
+
+To use these functions the C header for the used OS has to be included and the functions
+that are intended to be used have to be declared. Example:
+
+```v globals
+$if windows {
+	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+}
+
+// declare functions we want to use - V does not parse the C header
+fn C.atomic_store_u32(&u32, u32)
+fn C.atomic_load_u32(&u32) u32
+fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
+fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
+
+const num_iterations = 10000000
+
+__global (
+	atom u32 // ordinary variable but used as atomic
+)
+
+fn change() int {
+	mut races_won_by_change := 0
+	for {
+		mut cmp := u32(17) // addressable value to compare with and to store the found value
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
+			races_won_by_change++
+		} else {
+			if cmp == 31 {
+				break
+			}
+			cmp = 17 // re-assign because overwritten with value of atom
+		}
+	}
+	return races_won_by_change
+}
+
+fn main() {
+	C.atomic_store_u32(&atom, 17)
+	t := go change()
+	mut races_won_by_main := 0
+	mut cmp17 := u32(17)
+	mut cmp23 := u32(23)
+	for i in 0 .. num_iterations {
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
+			races_won_by_main++
+		} else {
+			cmp17 = 17
+		}
+		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
+		// atomic version of `for atom != 23 {} atom = desir`
+		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
+			cmp23 = 23
+		}
+	}
+	races_won_by_change := t.wait()
+	atom_new := C.atomic_load_u32(&atom)
+	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	// prints `atom: 31, #exchanges: 10000000`)
+	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
+}
+```
+
+In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
+in the global `atom` with a value of `23`. The replacement in the opposite direction is
+done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
+thread finish.
+
+It is not predictable how many replacements occur in which thread, but the sum will always
+be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
+will hang &ndash; dependent on the compiler optimization used.)
+
 ### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
@@ -3687,6 +4387,18 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
+
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
+to handle other cases.
+
+```v ignore
+$if $pkgconfig('mysqlclient') {
+	#pkgconfig mysqlclient
+} $else $if $pkgconfig('mariadb') {
+	#pkgconfig mariadb
+}
+```
 
 ### Including C code
 
@@ -3806,9 +4518,11 @@ re-creating the original structure exactly.
 Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
 
-## Debugging generated C code
+## Debugging
 
-To debug issues in the generated C code, you can pass these flags:
+### C Backend binaries (Default)
+
+To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
     V will enforce line numbers from the .v files in the stacktraces, that the
@@ -3838,8 +4552,36 @@ This will make V produce the `file.c` then stop.
 If you want to see the generated C source code for *just* a single C function,
 for example `main`, you can use: `-printfn main -o file.c`.
 
+To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
+
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed,
+so that the executable is not deleted, after it was created and ran.
+
 To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
+
+**Commandline Debugging**
+
+1. compile your binary with debugging info `v -g hello.v`
+2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+
+Troubleshooting (debugging) executables [created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
+
+**Visual debugging Setup:**
+* [Visual Studio Code](vscode.md)
+
+### Native Backend binaries
+
+Currently there is no debugging support for binaries, created by the
+native backend (flag: `-b native`).
+
+### Javascript Backend
+
+To debug the generated Javascript output you can active source maps:
+`v -b js -sourcemap hello.v -o hello.js`
+
+For all supported options check the latest help:
+`v help build-js`
 
 ## Conditional compilation
 
@@ -3847,7 +4589,7 @@ use `v help`, `v help build` and `v help build-c`.
 
 `$` is used as a prefix for compile-time operations.
 
-#### $if
+#### `$if` condition
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3899,7 +4641,7 @@ Full list of builtin options:
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
 | `solaris` | | | |
 
-#### $embed_file
+#### `$embed_file`
 
 ```v ignore
 import os
@@ -3922,7 +4664,7 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
-#### $tmpl for embedding and parsing V template files
+#### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
@@ -3972,7 +4714,7 @@ numbers: [1, 2, 3]
 
 
 
-#### $env
+#### `$env`
 
 ```v
 module main
@@ -4279,7 +5021,6 @@ Translating it to V gives you several advantages:
 module main
 
 import time
-import os
 
 [live]
 fn print_message() {
@@ -4405,8 +5146,24 @@ fn legacy_function() {}
 fn inlined_function() {
 }
 
+// This function's calls will NOT be inlined.
+[noinline]
+fn function() {
+}
+
+// This function will NOT return to its callers.
+// Such functions can be used at the end of or blocks,
+// just like exit/1 or panic/1. Such functions can not
+// have return types, and should end either in for{}, or
+// by calling other `[noreturn]` functions.
+[noreturn]
+fn forever() {
+	for {}
+}
+
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
+// See section "Stack and Heap"
 [heap]
 struct Window {
 }
@@ -4543,7 +5300,7 @@ union
 unsafe
 __offsetof
 ```
-See also [Types](#types).
+See also [V Types](#v-types).
 
 ## Appendix II: Operators
 

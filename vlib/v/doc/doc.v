@@ -40,7 +40,10 @@ pub enum Platform {
 	js // for interoperability in prefs.OS
 	android
 	solaris
+	serenity
+	vinix
 	haiku
+	raw
 	cross // TODO: add functionality for v doc -os cross whenever possible
 }
 
@@ -58,6 +61,8 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'dragonfly' { return .dragonfly }
 		'js' { return .js }
 		'solaris' { return .solaris }
+		'serenity' { return .serenity }
+		'vinix' { return .vinix }
 		'android' { return .android }
 		'haiku' { return .haiku }
 		'nix' { return .linux }
@@ -91,7 +96,7 @@ pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
-	table     &ast.Table      = &ast.Table{}
+	table     &ast.Table      = ast.new_table()
 	checker   checker.Checker = checker.Checker{
 		table: 0
 		pref: 0
@@ -124,7 +129,7 @@ pub mut:
 	pos         token.Position
 	file_path   string
 	kind        SymbolKind
-	deprecated  bool
+	tags        []string
 	parent_name string
 	return_type string
 	children    []DocNode
@@ -254,7 +259,12 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.kind = .typedef
 		}
 		ast.FnDecl {
-			node.deprecated = stmt.is_deprecated
+			if stmt.is_deprecated {
+				node.tags << 'deprecated'
+			}
+			if stmt.is_unsafe {
+				node.tags << 'unsafe'
+			}
 			node.kind = .function
 			node.return_type = d.type_to_str(stmt.return_type)
 			if stmt.receiver.typ !in [0, 1] {
@@ -421,15 +431,12 @@ pub fn (mut d Doc) generate() ? {
 	if d.with_comments {
 		comments_mode = .toplevel_comments
 	}
-	global_scope := &ast.Scope{
-		parent: 0
-	}
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
 	}
 	return d.file_asts(file_asts)
 }

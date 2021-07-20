@@ -11,14 +11,14 @@ const (
 	//
 	macho_symcmd_size        = 0x18
 	macho_d_size             = 0x50
-	lc_symtab                = 0x2
-	lc_dysymtab              = 0xb
 	mh_object                = 1
 	mh_execute               = 2
+	lc_dysymtab              = 0xb
+	lc_load_dylib            = 0xc
+	lc_load_dylinker         = 0xe
 	lc_main                  = 0x80000028
 	lc_segment_64            = 0x19
-	lc_load_dylinker         = 0xe
-	lc_load_dylib            = 0xc
+	lc_symtab                = 0x2
 )
 
 struct Symbol {
@@ -95,7 +95,7 @@ fn (mut g Gen) macho_segment64_text() []int {
 	g.write32(native.lc_segment_64) // LC_SEGMENT_64
 	g.write32(152) // 152
 	g.write_string_with_padding('__TEXT', 16) // section name
-	g.write64(0x100001000) // vmaddr
+	g.write64(0x100000000) // vmaddr
 	patch << g.buf.len
 	g.write64(0x00001000) // + codesize) // vmsize
 	g.write64(0x00000000) // filesize
@@ -109,7 +109,7 @@ fn (mut g Gen) macho_segment64_text() []int {
 
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
-	g.write64(0x0000000100002000) // vmaddr
+	g.write64(0x0000000100001000) // vmaddr
 	patch << g.buf.len
 	g.write64(0) // vmsize
 	g.write32(4096) // offset
@@ -174,7 +174,7 @@ fn (mut g Gen) macho_dylibs() {
 }
 
 fn (mut g Gen) macho_main(addr int) {
-	g.write32(native.lc_main) // LC_MAIN
+	g.write32(int(native.lc_main)) // LC_MAIN
 	g.write32(24) // cmdsize
 	g.write32(addr) // entrypoint
 	g.write32(0) // initial_stacksize
@@ -242,7 +242,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(native.s_attr_some_instructions | native.s_attr_pure_instructions)
+	g.write32(int(native.s_attr_some_instructions | native.s_attr_pure_instructions))
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -395,7 +395,7 @@ fn (mut g Gen) write_symbol(s Symbol) {
 fn (mut g Gen) sym_string_table() int {
 	begin := g.buf.len
 	g.zeroes(1)
-	at := i64(0x100001000)
+	at := i64(0x100000000)
 	for i, s in g.strings {
 		g.write64_at(at + g.buf.len, int(g.str_pos[i]))
 		g.write_string(s)

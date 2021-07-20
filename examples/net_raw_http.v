@@ -7,6 +7,10 @@ fn main() {
 	defer {
 		conn.close() or {}
 	}
+
+	println(' peer: $conn.peer_addr()')
+	println('local: $conn.addr()')
+
 	// Simple http HEAD request for a file
 	conn.write_string('HEAD /index.html HTTP/1.0\r\n\r\n') ?
 	// Read all the data that is waiting

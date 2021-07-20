@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_required_fn_field.vv:12:6: error: field `Abc.f3` must be initialized
+   10 |         f3: fn () {}
+   11 |     }
+   12 |     _ = Abc{
+      |         ~~~~
+   13 |         f1: 123
+   14 |         f2: 789

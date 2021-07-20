@@ -4,17 +4,20 @@ import os
 import term
 import time
 
-const (
-	vexe        = os.getenv('VEXE')
-	vroot       = os.dir(vexe)
-	args_string = os.args[1..].join(' ')
-	vargs       = args_string.all_before('test-all')
-)
+const vexe = os.getenv('VEXE')
+
+const vroot = os.dir(vexe)
+
+const args_string = os.args[1..].join(' ')
+
+const vargs = args_string.all_before('test-all')
+
+const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
 fn main() {
 	mut commands := get_all_commands()
 	// summary
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	for mut cmd in commands {
 		cmd.run()
 	}
@@ -30,7 +33,7 @@ fn main() {
 	}
 	for fcmd in fails {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
-		println(term.colorize(term.red, '>      Failed: $msg '))
+		println(term.failed('>      Failed:') + ' $msg')
 	}
 	if fails.len > 0 {
 		exit(1)
@@ -44,6 +47,7 @@ mut:
 	ecode  int
 	okmsg  string
 	errmsg string
+	rmfile string
 }
 
 fn get_all_commands() []Command {
@@ -51,26 +55,50 @@ fn get_all_commands() []Command {
 	res << Command{
 		line: '$vexe examples/hello_world.v'
 		okmsg: 'V can compile hello world.'
+		rmfile: 'examples/hello_world'
+	}
+	res << Command{
+		line: '$vexe -o hhww.c examples/hello_world.v'
+		okmsg: 'V can output a .c file, without compiling further.'
+		rmfile: 'hhww.c'
+	}
+	$if linux || macos {
+		res << Command{
+			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
+			okmsg: 'V prints the generated source code to stdout with `-o -` .'
+		}
 	}
 	res << Command{
 		line: '$vexe -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
+		rmfile: 'vtmp'
 	}
 	res << Command{
 		line: '$vexe -o vtmp_werror -cstrict cmd/v'
 		okmsg: 'V can compile itself with -cstrict.'
+		rmfile: 'vtmp_werror'
 	}
 	res << Command{
 		line: '$vexe -o vtmp_autofree -autofree cmd/v'
 		okmsg: 'V can compile itself with -autofree.'
+		rmfile: 'vtmp_autofree'
 	}
 	res << Command{
 		line: '$vexe -o vtmp_prealloc -prealloc cmd/v'
 		okmsg: 'V can compile itself with -prealloc.'
+		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
 		line: '$vexe -o vtmp_unused -skip-unused cmd/v'
 		okmsg: 'V can compile itself with -skip-unused.'
+		rmfile: 'vtmp_unused'
+	}
+	$if linux {
+		res << Command{
+			line: '$vexe -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg: 'V can compile with -freestanding on Linux with GCC.'
+			rmfile: 'bel'
+		}
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'
@@ -107,12 +135,14 @@ fn get_all_commands() []Command {
 	res << Command{
 		line: '$vexe -usecache examples/tetris/tetris.v'
 		okmsg: '`v -usecache` works.'
+		rmfile: 'examples/tetris/tetris'
 	}
-	$if macos {
+	$if macos || linux {
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf v.c'
+			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
+			rmfile: 'v.c'
 		}
 	}
 	return res
@@ -125,10 +155,31 @@ fn (mut cmd Command) run() {
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	cmd.ecode = os.system(cmd.line)
 	spent := sw.elapsed().milliseconds()
-	println(term_highlight('> Running: "$cmd.line" took: $spent ms.'))
+	println('> Running: "$cmd.line" took: $spent ms ... ' +
+		if cmd.ecode != 0 { term.failed('FAILED') } else { term_highlight('OK') })
+	if vtest_nocleanup {
+		return
+	}
+	if cmd.rmfile != '' {
+		mut file_existed := rm_existing(cmd.rmfile)
+		if os.user_os() == 'windows' {
+			file_existed = file_existed || rm_existing(cmd.rmfile + '.exe')
+		}
+		if !file_existed {
+			eprintln('Expected file did not exist: $cmd.rmfile')
+			cmd.ecode = 999
+		}
+	}
+}
+
+// try to remove a file, return if it existed before the removal attempt
+fn rm_existing(path string) bool {
+	existed := os.exists(path)
+	os.rm(path) or {}
+	return existed
 }
 
 fn term_highlight(s string) string {

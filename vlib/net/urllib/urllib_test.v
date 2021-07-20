@@ -43,3 +43,9 @@ fn test_parse_query() ? {
 	assert q1.data['format'].data == ['"%l: %c %t"']
 	assert q2.data['format'].data == ['"%l: %c %t"']
 }
+
+fn test_parse_missing_host() ? {
+	// issue #10311
+	url := urllib.parse('http:///') ?
+	assert url.str() == 'http://///'
+}

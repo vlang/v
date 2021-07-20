@@ -334,6 +334,10 @@ fn (mut re RE) reset() {
 	if re.group_csave_flag == true {
 		re.group_csave.clear() // = []int{}
 	}
+
+	// reset state list
+	re.state_list.clear()
+	re.group_stack.clear()
 }
 
 // reset for search mode fail
@@ -1787,6 +1791,10 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 				re.reset_src()
 				state.match_index = -1
 				state.first_match = -1
+
+				// reset state list
+				re.reset()
+
 				continue
 			}
 

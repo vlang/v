@@ -45,27 +45,36 @@ pub struct string {
 pub:
 	str &byte = 0 // points to a C style 0 terminated string of bytes.
 	len int   // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	// NB string.is_lit is an enumeration of the following:
+	// .is_lit == 0 => a fresh string, should be freed by autofree
+	// .is_lit == 1 => a literal string from .rodata, should NOT be freed
+	// .is_lit == -98761234 => already freed string, protects against double frees.
+	// ---------> ^^^^^^^^^ calling free on these is a bug.
+	// Any other value means that the string has been corrupted.
 mut:
 	is_lit int
-}
-
-// NB string.is_lit is an enumeration of the following:
-// .is_lit == 0 => a fresh string, should be freed by autofree
-// .is_lit == 1 => a literal string from .rodata, should NOT be freed
-// .is_lit == -98761234 => already freed string, protects against double frees.
-// ---------> ^^^^^^^^^ calling free on these is a bug.
-// Any other value means that the string has been corrupted.
-pub struct ustring {
-pub mut:
-	s     string
-	runes []int
-	len   int
 }
 
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 [unsafe]
 pub fn vstrlen(s &byte) int {
 	return unsafe { C.strlen(&char(s)) }
+}
+
+pub fn (s string) runes() []rune {
+	mut runes := []rune{cap: s.len}
+	for i := 0; i < s.len; i++ {
+		char_len := utf8_char_len(unsafe { s.str[i] })
+		if char_len > 1 {
+			end := if s.len - 1 >= i + char_len { i + char_len } else { s.len }
+			mut r := unsafe { s[i..end] }
+			runes << r.utf32_code()
+			i += char_len - 1
+		} else {
+			runes << unsafe { s.str[i] }
+		}
+	}
+	return runes
 }
 
 // tos converts a C string to a V string.
@@ -244,11 +253,10 @@ fn (a string) clone_static() string {
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
 	if a.len == 0 {
-		// TODO perf? an extra check in each clone() is not nice.
 		return ''
 	}
 	mut b := string{
-		str: unsafe { malloc(a.len + 1) }
+		str: unsafe { malloc_noscan(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -303,7 +311,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
-	mut b := unsafe { malloc(new_len + 1) } // add space for the null byte at the end
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -406,7 +414,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort2()
-	mut b := unsafe { malloc(new_len + 1) } // add space for 0 terminator
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -450,22 +458,22 @@ pub fn (s string) bool() bool {
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
 pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, 0, 32, false, false))
+	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
 pub fn (s string) i64() i64 {
-	return strconv.common_parse_int(s, 0, 64, false, false)
+	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
 }
 
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
 pub fn (s string) i8() i8 {
-	return i8(strconv.common_parse_int(s, 0, 8, false, false))
+	return i8(strconv.common_parse_int(s, 0, 8, false, false) or { 0 })
 }
 
 // i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
 pub fn (s string) i16() i16 {
-	return i16(strconv.common_parse_int(s, 0, 16, false, false))
+	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
 }
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
@@ -482,17 +490,17 @@ pub fn (s string) f64() f64 {
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
 pub fn (s string) u16() u16 {
-	return u16(strconv.common_parse_uint(s, 0, 16, false, false))
+	return u16(strconv.common_parse_uint(s, 0, 16, false, false) or { 0 })
 }
 
 // u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
 pub fn (s string) u32() u32 {
-	return u32(strconv.common_parse_uint(s, 0, 32, false, false))
+	return u32(strconv.common_parse_uint(s, 0, 32, false, false) or { 0 })
 }
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
 pub fn (s string) u64() u64 {
-	return strconv.common_parse_uint(s, 0, 64, false, false)
+	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
 [direct_array_access]
@@ -532,7 +540,7 @@ fn (s string) < (a string) bool {
 fn (s string) + (a string) string {
 	new_len := a.len + s.len
 	mut res := string{
-		str: unsafe { malloc(new_len + 1) }
+		str: unsafe { malloc_noscan(new_len + 1) }
 		len: new_len
 	}
 	for j in 0 .. s.len {
@@ -676,7 +684,7 @@ pub fn (s string) substr(start int, end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc(len + 1) }
+		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
 	for i in 0 .. len {
@@ -948,7 +956,7 @@ pub fn (s string) ends_with(p string) bool {
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
 	unsafe {
-		mut b := malloc(s.len + 1)
+		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
@@ -977,7 +985,7 @@ pub fn (s string) is_lower() bool {
 // Example: assert 'Hello V'.to_upper() == 'HELLO V'
 pub fn (s string) to_upper() string {
 	unsafe {
-		mut b := malloc(s.len + 1)
+		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
@@ -1073,16 +1081,6 @@ pub fn (s string) find_between(start string, end string) string {
 		return val
 	}
 	return val[..end_pos]
-}
-
-// is_space returns `true` if the byte is a white space character.
-// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: assert byte(` `).is_space() == true
-[inline]
-pub fn (c byte) is_space() bool {
-	// 0x85 is NEXT LINE (NEL)
-	// 0xa0 is NO-BREAK SPACE
-	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
 }
 
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
@@ -1252,165 +1250,6 @@ pub fn (s string) str() string {
 	return s.clone()
 }
 
-// str returns the string itself.
-pub fn (s ustring) str() string {
-	return s.s
-}
-
-// ustring converts the string to a unicode string.
-pub fn (s string) ustring() ustring {
-	mut res := ustring{
-		s: s // runes will have at least s.len elements, save reallocations
-		// TODO use VLA for small strings?
-		runes: __new_array(0, s.len, int(sizeof(int)))
-	}
-	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
-		res.runes << i
-		i += char_len - 1
-		res.len++
-	}
-	return res
-}
-
-// A hack that allows to create ustring without allocations.
-// It's called from functions like draw_text() where we know that the string is going to be freed
-// right away. Uses global buffer for storing runes []int array.
-__global (
-	g_ustring_runes []int
-)
-
-pub fn (s string) ustring_tmp() ustring {
-	if g_ustring_runes.len == 0 {
-		g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
-	}
-	mut res := ustring{
-		s: s
-	}
-	res.runes = g_ustring_runes
-	res.runes.len = s.len
-	mut j := 0
-	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
-		res.runes[j] = i
-		j++
-		i += char_len - 1
-		res.len++
-	}
-	return res
-}
-
-fn (u ustring) == (a ustring) bool {
-	return u.s == a.s
-}
-
-fn (u ustring) < (a ustring) bool {
-	return u.s < a.s
-}
-
-fn (u ustring) + (a ustring) ustring {
-	mut res := ustring{
-		s: u.s + a.s
-		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
-	}
-	mut j := 0
-	for i := 0; i < u.s.len; i++ {
-		char_len := utf8_char_len(unsafe { u.s.str[i] })
-		res.runes << j
-		i += char_len - 1
-		j += char_len
-		res.len++
-	}
-	for i := 0; i < a.s.len; i++ {
-		char_len := utf8_char_len(unsafe { a.s.str[i] })
-		res.runes << j
-		i += char_len - 1
-		j += char_len
-		res.len++
-	}
-	return res
-}
-
-// index_after returns the position of the input string, starting search from `start` position.
-pub fn (u ustring) index_after(p ustring, start int) int {
-	if p.len > u.len {
-		return -1
-	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start > u.len {
-		return -1
-	}
-	mut i := strt
-	for i < u.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && u.at(ii) == p.at(j) {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return -1
-}
-
-// count returns the number of occurrences of `substr` in the string.
-// count returns -1 if no `substr` could be found.
-pub fn (u ustring) count(substr ustring) int {
-	if u.len == 0 || substr.len == 0 {
-		return 0
-	}
-	if substr.len > u.len {
-		return 0
-	}
-	mut n := 0
-	mut i := 0
-	for {
-		i = u.index_after(substr, i)
-		if i == -1 {
-			return n
-		}
-		i += substr.len
-		n++
-	}
-	return 0 // TODO can never get here - v doesn't know that
-}
-
-// substr returns the string between index positions `_start` and `_end`.
-// Example: assert 'ABCD'.substr(1,3) == 'BC'
-pub fn (u ustring) substr(_start int, _end int) string {
-	$if !no_bounds_checking ? {
-		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
-			panic('substr($_start, $_end) out of bounds (len=$u.len)')
-		}
-	}
-	end := if _end >= u.len { u.s.len } else { u.runes[_end] }
-	return u.s.substr(u.runes[_start], end)
-}
-
-// left returns the `n`th leftmost characters of the ustring.
-// Example: assert 'hello'.left(2) == 'he'
-pub fn (u ustring) left(pos int) string {
-	if pos >= u.len {
-		return u.s
-	}
-	return u.substr(0, pos)
-}
-
-// right returns the `n`th rightmost characters of the ustring.
-// Example: assert 'hello'.right(2) == 'lo'
-pub fn (u ustring) right(pos int) string {
-	if pos >= u.len {
-		return ''
-	}
-	return u.substr(pos, u.len)
-}
-
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == byte(`B`)
 fn (s string) at(idx int) byte {
@@ -1424,55 +1263,58 @@ fn (s string) at(idx int) byte {
 	}
 }
 
-// at returns the string at index `idx`.
-// Example: assert 'ABC'.at(1) == 'B'
-pub fn (u ustring) at(idx int) string {
-	$if !no_bounds_checking ? {
-		if idx < 0 || idx >= u.len {
-			panic('string index out of range: $idx / $u.runes.len')
-		}
-	}
-	return u.substr(idx, idx + 1)
-}
-
-// free allows for manually freeing the memory occupied by the unicode string.
-[unsafe]
-fn (u &ustring) free() {
-	$if prealloc {
-		return
+// version of `at()` that is used in `a[i] or {`
+// return an error when the index is out of range
+fn (s string) at_with_check(idx int) ?byte {
+	if idx < 0 || idx >= s.len {
+		return error('string index out of range')
 	}
 	unsafe {
-		u.runes.free()
-		u.s.free()
+		return s.str[idx]
 	}
+}
+
+// is_space returns `true` if the byte is a white space character.
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// Example: assert byte(` `).is_space() == true
+[inline]
+pub fn (c byte) is_space() bool {
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
 // Example: assert byte(`9`) == true
+[inline]
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
 // Example: assert byte(`F`) == true
+[inline]
 pub fn (c byte) is_hex_digit() bool {
 	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
 // Example: assert byte(`7`) == true
+[inline]
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
 // Example: assert byte(`0`) == true
+[inline]
 pub fn (c byte) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
 // Example: assert byte(`V`) == true
+[inline]
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
@@ -1484,14 +1326,16 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
+		double_free_msg := unsafe { &byte(c'double string.free() detected\n') }
+		double_free_msg_len := unsafe { vstrlen(double_free_msg) }
 		$if freestanding {
-			bare_eprint(c'double string.free() detected\n', 30)
+			bare_eprint(double_free_msg, u64(double_free_msg_len))
 		} $else {
-			C.printf(c'double string.free() detected\n')
+			_write_buf_to_fd(1, double_free_msg, double_free_msg_len)
 		}
 		return
 	}
-	if s.is_lit == 1 || s.len == 0 || s.str == 0 {
+	if s.is_lit == 1 || s.str == 0 {
 		return
 	}
 	unsafe {
@@ -1500,74 +1344,90 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
-// before returns the contents before `dot` in the string.
-// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) before(dot string) string {
-	pos := s.index_(dot)
+// before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.before('.') == '23:34:45'
+// Example: assert 'abcd'.before('.') == 'abcd'
+// TODO: deprecate and remove either .before or .all_before
+pub fn (s string) before(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before returns the contents before `dot` in the string.
+// all_before returns the contents before `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
-pub fn (s string) all_before(dot string) string {
+// Example: assert 'abcd'.all_before('.') == 'abcd'
+pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(dot)
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_before_last returns the contents before the last occurence of `dot` in the string.
+// all_before_last returns the contents before the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
-pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_before_last('.') == 'abcd'
+pub fn (s string) all_before_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
 	return s[..pos]
 }
 
-// all_after returns the contents after `dot` in the string.
+// all_after returns the contents after `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after('.') == '234'
-pub fn (s string) all_after(dot string) string {
-	pos := s.index_(dot)
+// Example: assert 'abcd'.all_after('z') == 'abcd'
+pub fn (s string) all_after(sub string) string {
+	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// all_after_last returns the contents after the last occurence of `dot` in the string.
+// all_after_last returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
-pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index_(dot)
+// Example: assert 'abcd'.all_after_last('z') == 'abcd'
+pub fn (s string) all_after_last(sub string) string {
+	pos := s.last_index_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
-	return s[pos + dot.len..]
+	return s[pos + sub.len..]
 }
 
-// after returns the contents after the last occurence of `dot` in the string.
+// after returns the contents after the last occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
-pub fn (s string) after(dot string) string {
-	return s.all_after_last(dot)
+// Example: assert 'abcd'.after('z') == 'abcd'
+// TODO: deprecate either .all_after_last or .after
+pub fn (s string) after(sub string) string {
+	return s.all_after_last(sub)
 }
 
-// after_char returns the contents after the first occurence of `dot` character in the string.
+// after_char returns the contents after the first occurence of `sub` character in the string.
+// If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
-pub fn (s string) after_char(dot byte) string {
-	mut pos := 0
+// Example: assert 'abcd'.after_char(`:`) == 'abcd'
+pub fn (s string) after_char(sub byte) string {
+	mut pos := -1
 	for i, c in s {
-		if c == dot {
+		if c == sub {
 			pos = i
 			break
 		}
 	}
-	if pos == 0 {
+	if pos == -1 {
 		return s.clone()
 	}
 	return s[pos + 1..]
@@ -1586,7 +1446,7 @@ pub fn (a []string) join(sep string) string {
 	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
-		str: unsafe { malloc(len + 1) }
+		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
 	mut idx := 0
@@ -1621,7 +1481,7 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc(s.len + 1) }
+		str: unsafe { malloc_noscan(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -1639,11 +1499,11 @@ pub fn (s string) reverse() string {
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
-	u := s.ustring()
+	u := s.runes()
 	if u.len <= max {
 		return s.clone()
 	}
-	return u.substr(0, max)
+	return u[0..max].string()
 }
 
 // hash returns an integer hash of the string.
@@ -1676,7 +1536,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s.clone()
 	}
-	mut ret := unsafe { malloc(s.len * count + 1) }
+	mut ret := unsafe { malloc_noscan(s.len * count + 1) }
 	for i in 0 .. count {
 		for j in 0 .. s.len {
 			unsafe {
@@ -1753,7 +1613,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := unsafe { malloc(s.len + 1) }
+	mut ret := unsafe { malloc_noscan(s.len + 1) }
 	mut count := 0
 	for i := 0; i < s.len; i++ {
 		if s[i] in [10, 13] {

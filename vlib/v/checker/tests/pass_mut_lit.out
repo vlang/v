@@ -1,0 +1,5 @@
+vlib/v/checker/tests/pass_mut_lit.vv:10:12: error: cannot pass expression as `mut`
+    8 | }
+    9 | 
+   10 | modify(mut Box{}, 10)
+      |            ~~~~~

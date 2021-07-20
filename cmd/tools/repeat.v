@@ -245,7 +245,7 @@ fn (mut context Context) run() {
 			if context.warmup > 0 && run_warmups < context.commands.len {
 				for i in 1 .. context.warmup + 1 {
 					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
-					mut sw := time.new_stopwatch({})
+					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					if res.exit_code != 0 {
 						continue
@@ -261,7 +261,7 @@ fn (mut context Context) run() {
 				if context.show_output {
 					print(' | result: ${oldres:s}')
 				}
-				mut sw := time.new_stopwatch({})
+				mut sw := time.new_stopwatch()
 				res := scripting.exec(cmd) or { continue }
 				duration = int(sw.elapsed().milliseconds())
 				if res.exit_code != 0 {

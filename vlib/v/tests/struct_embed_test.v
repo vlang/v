@@ -37,14 +37,15 @@ fn test_default_value_without_init() {
 	assert b.y == 5
 }
 
-/*
-TODO
 fn test_initialize() {
-	b := Bar{x: 1, y: 2}
+	b := Bar{
+		x: 1
+		y: 2
+	}
 	assert b.x == 1
 	assert b.y == 2
 }
-*/
+
 struct Bar3 {
 	Foo
 	y string = 'test'

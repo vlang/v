@@ -30,7 +30,7 @@ pub mut:
 * Render functions
 *
 ******************************************************************************/
-fn (mut tf_skl TTF_render_Sokol) format_texture() {
+pub fn (mut tf_skl TTF_render_Sokol) format_texture() {
 	tf_skl.bmp.format_texture()
 }
 
@@ -56,7 +56,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 			unsafe { free(tf_skl.bmp.buf) }
 		}
 		dprintln('create_text Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe { malloc(sz) }
+		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
@@ -94,7 +94,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 			unsafe { free(tf_skl.bmp.buf) }
 		}
 		dprintln('Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe { malloc(sz) }
+		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
@@ -188,8 +188,8 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		0,
 		1,
 		0,
-		x,
-		y,
+		x * ctx.scale,
+		y * ctx.scale,
 		0,
 		1,
 	]

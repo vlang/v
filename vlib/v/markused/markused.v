@@ -21,7 +21,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'v_realloc' /* needed for _STR */,
-		'v_malloc' /* needed for _STR */,
+		'malloc',
+		'malloc_noscan',
+		'vcalloc',
+		'vcalloc_noscan',
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
@@ -53,12 +56,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// string. methods
 		'18.add',
 		'18.trim_space',
+		'18.repeat',
 		'18.replace',
 		'18.clone',
 		'18.clone_static',
 		'18.trim',
 		'18.substr',
 		'18.at',
+		'18.at_with_check',
 		'18.index_kmp',
 		// string. ==, !=, etc...
 		'18.eq',
@@ -68,38 +73,31 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'18.le',
 		'18.ge',
 		'fast_string_eq',
-		// ustring. ==, !=, etc...
-		'19.eq',
-		'19.ne',
-		'19.lt',
-		'19.gt',
-		'19.le',
-		'19.ge',
-		'19.add',
 		// other array methods
-		'21.get',
-		'21.set',
-		'21.get_unsafe',
-		'21.set_unsafe',
-		'21.get_with_check' /* used for `x := a[i] or {}` */,
-		'21.clone_static',
-		'21.first',
-		'21.last',
-		'21.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
-		'21.reverse',
-		'21.repeat',
-		'21.slice',
-		'21.slice2',
+		'20.get',
+		'20.set',
+		'20.get_unsafe',
+		'20.set_unsafe',
+		'20.get_with_check' /* used for `x := a[i] or {}` */,
+		'20.clone_static_to_depth',
+		'20.clone_to_depth',
+		'20.first',
+		'20.last',
+		'20.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
+		'20.reverse',
+		'20.repeat_to_depth',
+		'20.slice',
+		'20.slice2',
 		'59.get',
 		'59.set',
-		'65557.last',
-		'65557.pop',
-		'65557.push',
-		'65557.insert_many',
-		'65557.prepend_many',
-		'65557.reverse',
-		'65557.set',
-		'65557.set_unsafe',
+		'65556.last',
+		'65556.pop',
+		'65556.push',
+		'65556.insert_many',
+		'65556.prepend_many',
+		'65556.reverse',
+		'65556.set',
+		'65556.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
 		'json__decode_string',
 		'os.getwd',
@@ -120,14 +118,32 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		all_fn_root_names << [
+			'memdup_noscan',
 			'__new_array_noscan',
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
+			'20.clone_static_to_depth_noscan',
+			'20.clone_to_depth_noscan',
+			'20.reverse_noscan',
+			'20.repeat_to_depth_noscan',
+			'65556.pop_noscan',
+			'65556.push_noscan',
+			'65556.push_many_noscan',
+			'65556.insert_noscan',
+			'65556.insert_many_noscan',
+			'65556.prepend_noscan',
+			'65556.prepend_many_noscan',
+			'65556.reverse_noscan',
+			'65556.grow_cap_noscan',
+			'65556.grow_len_noscan',
 		]
 	}
 
 	for k, mut mfn in all_fns {
+		$if trace_skip_unused_all_fns ? {
+			println('k: $k | mfn: $mfn.name')
+		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
 			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
@@ -156,6 +172,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
+
 		// sync:
 		if k == 'sync.new_channel_st' {
 			all_fn_root_names << k
@@ -271,7 +288,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	if walker.n_asserts > 0 {
 		walker.fn_decl(mut all_fns['__print_assert_failure'])
 	}
-	if walker.n_maps > 0 {
+	if table.used_maps > 0 {
 		for k, mut mfn in all_fns {
 			mut method_receiver_typename := ''
 			if mfn.is_method {
@@ -281,6 +298,27 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
+			}
+			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
+					'new_map_init_noscan_key', 'new_map_init_noscan_value',
+					'new_map_init_noscan_key_value',
+				] {
+					walker.fn_decl(mut mfn)
+				}
+			}
+		}
+	} else {
+		for map_fn_name in ['new_map', 'new_map_init', 'map_hash_string', 'new_dense_array'] {
+			walker.used_fns.delete(map_fn_name)
+		}
+		for k, mut mfn in all_fns {
+			if !mfn.is_method {
+				continue
+			}
+			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
+			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
+				walker.used_fns.delete(k)
 			}
 		}
 	}
@@ -297,7 +335,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused ? {
 		eprintln('>> t.used_fns: $table.used_fns.keys()')
 		eprintln('>> t.used_consts: $table.used_consts.keys()')
-		eprintln('>> walker.n_maps: $walker.n_maps')
+		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
 	}
 }
 

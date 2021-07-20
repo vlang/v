@@ -5,14 +5,15 @@ import pg
 const dash = '----------------------------------------------------------------'
 
 struct Customer {
-	id int
-	name string
+	id        int
+	name      string
 	nr_orders int
-	country string
+	country   string
 }
 
 fn main() {
-	/*db := pg.connect(pg.Config{
+	/*
+	db := pg.connect(pg.Config{
 		host: 'localhost' //'127.0.0.1'
 		user: 'postgres'
 		dbname: 'customerdb'
@@ -60,5 +61,3 @@ fn main() {
 	}
 	db.insert(nc)*/
 }
-
-

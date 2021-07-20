@@ -11,6 +11,7 @@ mut:
 	pos int // current position; pos is *always* kept in [0,ilen]
 }
 
+// new returns a stack allocated instance of TextScanner.
 pub fn new(input string) TextScanner {
 	return TextScanner{
 		input: input
@@ -18,6 +19,7 @@ pub fn new(input string) TextScanner {
 	}
 }
 
+// free frees all allocated resources.
 [unsafe]
 pub fn (mut ss TextScanner) free() {
 	unsafe {
@@ -25,13 +27,15 @@ pub fn (mut ss TextScanner) free() {
 	}
 }
 
-// remaining - return how many characters remain in the input
+// remaining returns how many characters remain from current position.
 [inline]
 pub fn (ss &TextScanner) remaining() int {
 	return ss.ilen - ss.pos
 }
 
-// next - safely get a character from the input text
+// next returns the next character code from the input text.
+// next returns `-1` if it can't reach the next character.
+// next advances the scanner position.
 [direct_array_access; inline]
 pub fn (mut ss TextScanner) next() int {
 	if ss.pos < ss.ilen {
@@ -42,8 +46,8 @@ pub fn (mut ss TextScanner) next() int {
 	return -1
 }
 
-// skip - skip one character; skip() is slightly faster than .next()
-// and ignoring the result.
+// skip skips one character ahead; `skip()` is slightly faster than `.next()`.
+// `skip()` does not return a result.
 [inline]
 pub fn (mut ss TextScanner) skip() {
 	if ss.pos + 1 < ss.ilen {
@@ -51,7 +55,7 @@ pub fn (mut ss TextScanner) skip() {
 	}
 }
 
-// skip_n - skip the next `n` characters
+// skip_n skips ahead `n` characters, stopping at the end of the input.
 [inline]
 pub fn (mut ss TextScanner) skip_n(n int) {
 	ss.pos += n
@@ -60,9 +64,9 @@ pub fn (mut ss TextScanner) skip_n(n int) {
 	}
 }
 
-// peek - safely get the *next* character from the input text
-// if the character exists. NB: unlike next(), peek() *will not* change
-// the state of the scanner.
+// peek returns the *next* character code from the input text.
+// peek returns `-1` if it can't peek the next character.
+// unlike `next()`, `peek()` does not change the state of the scanner.
 [direct_array_access; inline]
 pub fn (ss &TextScanner) peek() int {
 	if ss.pos < ss.ilen {
@@ -71,9 +75,10 @@ pub fn (ss &TextScanner) peek() int {
 	return -1
 }
 
-// peek_n - safely get the *next* character from the input text at the current
-// position + `n`, if the character exists, or else it returns -1.
-// NB: .peek() and .peek_offset(0) are equivalent.
+// peek_n returns the character code from the input text at position + `n`.
+// peek_n returns `-1` if it can't peek `n` characters ahead.
+// ts.peek_n(0) == ts.current() .
+// ts.peek_n(1) == ts.peek() .
 [direct_array_access; inline]
 pub fn (ss &TextScanner) peek_n(n int) int {
 	if ss.pos + n < ss.ilen {
@@ -82,7 +87,7 @@ pub fn (ss &TextScanner) peek_n(n int) int {
 	return -1
 }
 
-// back - go back a character
+// back goes back one character from the current scanner position.
 [inline]
 pub fn (mut ss TextScanner) back() {
 	if ss.pos > 0 {
@@ -90,7 +95,7 @@ pub fn (mut ss TextScanner) back() {
 	}
 }
 
-// back_n - go back `n` characters
+// back_n goes back `n` characters from the current scanner position.
 pub fn (mut ss TextScanner) back_n(n int) {
 	ss.pos -= n
 	if ss.pos < 0 {
@@ -101,7 +106,49 @@ pub fn (mut ss TextScanner) back_n(n int) {
 	}
 }
 
-// reset - go back to the start of the input
+// peek_back returns the *previous* character code from the input text.
+// peek_back returns `-1` if it can't peek the previous character.
+// unlike `back()`, `peek_back()` does not change the state of the scanner.
+[direct_array_access; inline]
+pub fn (ss &TextScanner) peek_back() int {
+	return ss.peek_back_n(1)
+}
+
+// peek_back_n returns the character code from the input text at position - `n`.
+// peek_back_n returns `-1` if it can't peek `n` characters back.
+// ts.peek_back_n(0) == ts.current()
+// ts.peek_back_n(1) == ts.peek_back()
+[direct_array_access; inline]
+pub fn (ss &TextScanner) peek_back_n(n int) int {
+	offset := n + 1
+	if ss.pos >= offset {
+		return ss.input[ss.pos - offset]
+	}
+	return -1
+}
+
+// current returns the current character code from the input text.
+// current returns `-1` at the start of the input text.
+// NB: after `c := ts.next()`, `ts.current()` will also return `c`.
+[direct_array_access; inline]
+pub fn (mut ss TextScanner) current() int {
+	if ss.pos > 0 {
+		return ss.input[ss.pos - 1]
+	}
+	return -1
+}
+
+// reset resets the internal state of the scanner
+// After calling .reset(), .next() will start reading
+// again from the start of the input text.
 pub fn (mut ss TextScanner) reset() {
 	ss.pos = 0
+}
+
+// goto_end has the same effect as `for ts.next() != -1 {}`
+// i.e. after calling .goto_end(), the scanner will be at
+// the end of the input text. Further .next() calls will
+// return -1, unless you go back.
+pub fn (mut ss TextScanner) goto_end() {
+	ss.pos = ss.ilen
 }

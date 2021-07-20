@@ -1,4 +1,5 @@
 module strconv
+
 /*=============================================================================
 
 f64 to string
@@ -20,7 +21,7 @@ https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 =============================================================================*/
 
 // pow of ten table used by n_digit reduction
-const(
+const (
 	ten_pow_table_64 = [
 		u64(1),
 		u64(10),
@@ -48,21 +49,21 @@ const(
 //=============================================================================
 // Conversion Functions
 //=============================================================================
-const(
-	mantbits64  = u32(52)
-	expbits64   = u32(11)
-	bias64      = 1023 // f64 exponent bias
-	maxexp64    = 2047
+const (
+	mantbits64 = u32(52)
+	expbits64  = u32(11)
+	bias64     = 1023 // f64 exponent bias
+	maxexp64   = 2047
 )
 
 [direct_array_access]
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
-	mut n_digit      := i_n_digit + 1
-	pad_digit        := i_pad_digit + 1
-	mut out          := d.m
-	mut d_exp        := d.e
+	mut n_digit := i_n_digit + 1
+	pad_digit := i_pad_digit + 1
+	mut out := d.m
+	mut d_exp := d.e
 	// mut out_len      := decimal_len_64(out)
-	mut out_len      := dec_digits(out)
+	mut out_len := dec_digits(out)
 	out_len_original := out_len
 
 	mut fw_zeros := 0
@@ -70,7 +71,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []byte{len:(out_len + 6 + 1 +1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []byte{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {
@@ -85,19 +86,19 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 
 	// rounding last used digit
 	if n_digit < out_len {
-		//println("out:[$out]")
-		out += ten_pow_table_64[out_len - n_digit - 1] * 5   // round to up
-		out /= ten_pow_table_64[out_len - n_digit]
-		//println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
-		if d.m / ten_pow_table_64[out_len - n_digit] < out {
+		// println("out:[$out]")
+		out += strconv.ten_pow_table_64[out_len - n_digit - 1] * 5 // round to up
+		out /= strconv.ten_pow_table_64[out_len - n_digit]
+		// println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
+		if d.m / strconv.ten_pow_table_64[out_len - n_digit] < out {
 			d_exp++
 			n_digit++
 		}
 
-		//println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
+		// println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
 
 		out_len = n_digit
-		//println("orig: ${out_len_original} new len: ${out_len} out:[$out]")
+		// println("orig: ${out_len_original} new len: ${out_len} out:[$out]")
 	}
 
 	y := i + out_len
@@ -112,8 +113,8 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	// no decimal digits needed, end here
 	if i_n_digit == 0 {
 		unsafe {
-			buf[i]=0
-			return tos(byteptr(&buf[0]), i)
+			buf[i] = 0
+			return tos(&byte(&buf[0]), i)
 		}
 	}
 
@@ -123,7 +124,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		i++
 	}
 
-	if y-x >= 0 {
+	if y - x >= 0 {
 		buf[y - x] = `0` + byte(out % 10)
 		i++
 	}
@@ -134,16 +135,16 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		fw_zeros--
 	}
 
-	buf[i]=`e`
+	buf[i] = `e`
 	i++
 
 	mut exp := d_exp + out_len_original - 1
 	if exp < 0 {
-		buf[i]=`-`
+		buf[i] = `-`
 		i++
 		exp = -exp
 	} else {
-		buf[i]=`+`
+		buf[i] = `+`
 		i++
 	}
 
@@ -153,29 +154,29 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	d1 := exp % 10
 	d0 := exp / 10
 	if d0 > 0 {
-		buf[i]=`0` + byte(d0)
+		buf[i] = `0` + byte(d0)
 		i++
 	}
-	buf[i]=`0` + byte(d1)
+	buf[i] = `0` + byte(d1)
 	i++
-	buf[i]=`0` + byte(d2)
+	buf[i] = `0` + byte(d2)
 	i++
-	buf[i]=0
+	buf[i] = 0
 
 	return unsafe {
-		tos(byteptr(&buf[0]), i)
+		tos(&byte(&buf[0]), i)
 	}
 }
 
 fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
 	mut d := Dec64{}
-	e := exp - bias64
-	if e > mantbits64 {
+	e := exp - strconv.bias64
+	if e > strconv.mantbits64 {
 		return d, false
 	}
-	shift := mantbits64 - e
-	mant  := i_mant | u64(0x0010_0000_0000_0000) // implicit 1
-	//mant  := i_mant | (1 << mantbits64) // implicit 1
+	shift := strconv.mantbits64 - e
+	mant := i_mant | u64(0x0010_0000_0000_0000) // implicit 1
+	// mant  := i_mant | (1 << mantbits64) // implicit 1
 	d.m = mant >> shift
 	if (d.m << shift) != mant {
 		return d, false
@@ -194,24 +195,24 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	if exp == 0 {
 		// We subtract 2 so that the bounds computation has
 		// 2 additional bits.
-		e2 = 1 - bias64 - int(mantbits64) - 2
+		e2 = 1 - strconv.bias64 - int(strconv.mantbits64) - 2
 		m2 = mant
 	} else {
-		e2 = int(exp) - bias64 - int(mantbits64) - 2
-		m2 = (u64(1) << mantbits64) | mant
+		e2 = int(exp) - strconv.bias64 - int(strconv.mantbits64) - 2
+		m2 = (u64(1) << strconv.mantbits64) | mant
 	}
-	even          := (m2 & 1) == 0
+	even := (m2 & 1) == 0
 	accept_bounds := even
 
 	// Step 2: Determine the interval of valid decimal representations.
-	mv       := u64(4 * m2)
+	mv := u64(4 * m2)
 	mm_shift := bool_to_u64(mant != 0 || exp <= 1)
 
 	// Step 3: Convert to a decimal power base uing 128-bit arithmetic.
-	mut vr           := u64(0)
-	mut vp           := u64(0)
-	mut vm           := u64(0)
-	mut e10          := 0
+	mut vr := u64(0)
+	mut vp := u64(0)
+	mut vm := u64(0)
+	mut e10 := 0
 	mut vm_is_trailing_zeros := false
 	mut vr_is_trailing_zeros := false
 
@@ -223,8 +224,8 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		i := -e2 + int(q) + k
 
 		mul := pow5_inv_split_64[q]
-		vr = mul_shift_64(u64(4) * m2                    , mul, i)
-		vp = mul_shift_64(u64(4) * m2 + u64(2)           , mul, i)
+		vr = mul_shift_64(u64(4) * m2, mul, i)
+		vp = mul_shift_64(u64(4) * m2 + u64(2), mul, i)
 		vm = mul_shift_64(u64(4) * m2 - u64(1) - mm_shift, mul, i)
 		if q <= 21 {
 			// This should use q <= 22, but I think 21 is also safe.
@@ -237,7 +238,8 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q
 				// <=> e2 + (^mm & 1) >= q && pow5Factor64(mm) >= q
 				// <=> true && pow5Factor64(mm) >= q, since e2 >= q.
-				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift, q)
+				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift,
+					q)
 			} else if multiple_of_power_of_five_64(mv + 2, q) {
 				vp--
 			}
@@ -250,8 +252,8 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		k := pow5_bits(i) - pow5_num_bits_64
 		j := int(q) - k
 		mul := pow5_split_64[i]
-		vr = mul_shift_64(u64(4) * m2                    , mul, j)
-		vp = mul_shift_64(u64(4) * m2 + u64(2)           , mul, j)
+		vr = mul_shift_64(u64(4) * m2, mul, j)
+		vp = mul_shift_64(u64(4) * m2 + u64(2), mul, j)
 		vm = mul_shift_64(u64(4) * m2 - u64(1) - mm_shift, mul, j)
 		if q <= 1 {
 			// {vr,vp,vm} is trailing zeros if {mv,mp,mm} has at least q trailing 0 bits.
@@ -276,9 +278,9 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 
 	// Step 4: Find the shortest decimal representation
 	// in the interval of valid representations.
-	mut removed            := 0
+	mut removed := 0
 	mut last_removed_digit := byte(0)
-	mut out                := u64(0)
+	mut out := u64(0)
 	// On average, we remove ~2 digits.
 	if vm_is_trailing_zeros || vr_is_trailing_zeros {
 		// General case, which happens rarely (~0.7%).
@@ -355,7 +357,10 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		out = vr + bool_to_u64(vr == vm || round_up)
 	}
 
-	return Dec64{m: out, e: e10 + removed}
+	return Dec64{
+		m: out
+		e: e10 + removed
+	}
 }
 
 //=============================================================================
@@ -366,24 +371,24 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 pub fn f64_to_str(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
-	u := unsafe {u1.u}
+	u := unsafe { u1.u }
 
-	neg   := (u >> (mantbits64 + expbits64)) != 0
-	mant  := u & ((u64(1) << mantbits64) - u64(1))
-	exp   := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
-	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
+	neg := (u >> (strconv.mantbits64 + strconv.expbits64)) != 0
+	mant := u & ((u64(1) << strconv.mantbits64) - u64(1))
+	exp := (u >> strconv.mantbits64) & ((u64(1) << strconv.expbits64) - u64(1))
+	// println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
 
 	// Exit early for easy cases.
-	if (exp == maxexp64) || (exp == 0 && mant == 0) {
+	if (exp == strconv.maxexp64) || (exp == 0 && mant == 0) {
 		return get_string_special(neg, exp == 0, mant == 0)
 	}
 
 	mut d, ok := f64_to_decimal_exact_int(mant, exp)
 	if !ok {
-		//println("to_decimal")
+		// println("to_decimal")
 		d = f64_to_decimal(mant, exp)
 	}
-	//println("${d.m} ${d.e}")
+	// println("${d.m} ${d.e}")
 	return d.get_string_64(neg, n_digit, 0)
 }
 
@@ -391,23 +396,23 @@ pub fn f64_to_str(f f64, n_digit int) string {
 pub fn f64_to_str_pad(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
-	u := unsafe {u1.u}
+	u := unsafe { u1.u }
 
-	neg   := (u >> (mantbits64 + expbits64)) != 0
-	mant  := u & ((u64(1) << mantbits64) - u64(1))
-	exp   := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
-	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
+	neg := (u >> (strconv.mantbits64 + strconv.expbits64)) != 0
+	mant := u & ((u64(1) << strconv.mantbits64) - u64(1))
+	exp := (u >> strconv.mantbits64) & ((u64(1) << strconv.expbits64) - u64(1))
+	// println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
 
 	// Exit early for easy cases.
-	if (exp == maxexp64) || (exp == 0 && mant == 0) {
+	if (exp == strconv.maxexp64) || (exp == 0 && mant == 0) {
 		return get_string_special(neg, exp == 0, mant == 0)
 	}
 
 	mut d, ok := f64_to_decimal_exact_int(mant, exp)
 	if !ok {
-		//println("to_decimal")
+		// println("to_decimal")
 		d = f64_to_decimal(mant, exp)
 	}
-	//println("DEBUG: ${d.m} ${d.e}")
+	// println("DEBUG: ${d.m} ${d.e}")
 	return d.get_string_64(neg, n_digit, n_digit)
 }

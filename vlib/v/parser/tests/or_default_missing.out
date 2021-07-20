@@ -1,4 +1,4 @@
-vlib/v/parser/tests/or_default_missing.vv:4:3: error: `or` block must provide a default value of type `int`, or return/exit/continue/break/panic
+vlib/v/parser/tests/or_default_missing.vv:4:3: error: `or` block must provide a default value of type `int`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)
     2 |     m := [3, 4, 5]
     3 |     el := m[4] or {
     4 |         println('error')

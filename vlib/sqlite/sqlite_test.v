@@ -9,8 +9,11 @@ fn test_sqlite() {
 	db.exec('drop table if exists users')
 	db.exec("create table users (id integer primary key, name text default '');")
 	db.exec("insert into users (name) values ('Sam')")
+	assert db.last_insert_rowid() == 1
 	db.exec("insert into users (name) values ('Peter')")
+	assert db.last_insert_rowid() == 2
 	db.exec("insert into users (name) values ('Kate')")
+	assert db.last_insert_rowid() == 3
 	nr_users := db.q_int('select count(*) from users')
 	assert nr_users == 3
 	name := db.q_string('select name from users where id = 1')

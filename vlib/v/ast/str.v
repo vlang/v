@@ -248,7 +248,7 @@ pub fn (x Expr) str() string {
 			}
 		}
 		AsCast {
-			return '$x.expr.str() as Type($x.typ)'
+			return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
 		}
 		AtExpr {
 			return '$x.val'
@@ -299,6 +299,9 @@ pub fn (x Expr) str() string {
 		FloatLiteral, IntegerLiteral {
 			return x.val
 		}
+		GoExpr {
+			return 'go $x.call_expr'
+		}
 		Ident {
 			return x.name
 		}
@@ -336,6 +339,12 @@ pub fn (x Expr) str() string {
 		ParExpr {
 			return '($x.expr)'
 		}
+		PostfixExpr {
+			if x.op == .question {
+				return '$x.expr ?'
+			}
+			return '$x.expr$x.op'
+		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
 		}
@@ -349,17 +358,20 @@ pub fn (x Expr) str() string {
 			}
 			return s
 		}
+		SelectExpr {
+			return 'ast.SelectExpr'
+		}
 		SelectorExpr {
 			return '${x.expr.str()}.$x.field_name'
 		}
 		SizeOf {
 			if x.is_type {
-				return 'sizeof(Type($x.typ))'
+				return 'sizeof(${global_table.type_to_str(x.typ)})'
 			}
 			return 'sizeof($x.expr)'
 		}
 		OffsetOf {
-			return '__offsetof($x.struct_type, $x.field)'
+			return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
 		}
 		StringInterLiteral {
 			mut res := strings.new_builder(50)
@@ -401,7 +413,50 @@ pub fn (x Expr) str() string {
 		None {
 			return 'none'
 		}
-		else {}
+		IsRefType {
+			return 'isreftype(' + if x.is_type {
+				global_table.type_to_str(x.typ)
+			} else {
+				x.expr.str()
+			} + ')'
+		}
+		IfGuardExpr {
+			return x.var_name + ' := ' + x.expr.str()
+		}
+		StructInit {
+			sname := global_table.get_type_symbol(x.typ).name
+			return '$sname{....}'
+		}
+		ArrayDecompose {
+			return 'ast.ArrayDecompose'
+		}
+		Assoc {
+			return 'ast.Assoc'
+		}
+		ChanInit {
+			return 'ast.ChanInit'
+		}
+		ComptimeCall {
+			return 'ast.ComptimeCall'
+		}
+		EmptyExpr {
+			return 'ast.EmptyExpr'
+		}
+		LockExpr {
+			return 'ast.LockExpr'
+		}
+		MatchExpr {
+			return 'ast.MatchExpr'
+		}
+		NodeError {
+			return 'ast.NodeError'
+		}
+		OrExpr {
+			return 'ast.OrExpr'
+		}
+		SqlExpr {
+			return 'ast.SqlExpr'
+		}
 	}
 	return '[unhandled expr type $x.type_name()]'
 }

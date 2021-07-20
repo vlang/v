@@ -33,13 +33,13 @@ pub struct Readline {
 mut:
 	is_raw            bool
 	orig_termios      Termios // Linux
-	current           ustring // Line being edited
+	current           []rune  // Line being edited
 	cursor            int     // Cursor position
 	overwrite         bool
 	cursor_row_offset int
 	prompt            string
 	prompt_offset     int
-	previous_lines    []ustring
+	previous_lines    [][]rune
 	search_index      int
 	is_tty            bool
 }

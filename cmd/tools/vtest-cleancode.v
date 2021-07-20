@@ -33,9 +33,7 @@ const (
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
-		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
-		'examples/c_interop_wkhtmltopdf.v' /* &charptr --> &&char */,
 	]
 	vfmt_verify_list                = [
 		'cmd/',
@@ -44,9 +42,6 @@ const (
 		'vlib/',
 	]
 	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
-		'vlib/strconv/' /* prevent conflicts, till the new pure V string interpolation is merged */,
-		'vlib/net/' /* prevent conflicts, till ipv6 support is merged */,
-		'vlib/term/ui/input.v' /* comment after a struct embed is removed */,
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
 		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
 		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,

@@ -11,6 +11,7 @@ import v.ast
 import v.pref
 import v.fmt
 import v.util
+import v.util.diff
 import v.parser
 import vhelp
 
@@ -150,9 +151,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	}
 	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
-	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
+	file_ast := parser.parse_file(file, table, .parse_comments, prefs)
 	// checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
@@ -174,9 +173,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
-	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
+	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
 	// checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
@@ -203,25 +200,25 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	if foptions.is_diff {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
 		if foptions.is_verbose {
 			eprintln('Using diff command: $diff_cmd')
 		}
-		diff := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if diff.len > 0 {
 			println(diff)
 		}
 		return
 	}
 	if foptions.is_verify {
-		diff_cmd := util.find_working_diff_command() or {
+		diff_cmd := diff.find_working_diff_command() or {
 			eprintln(err)
 			return
 		}
-		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		x := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
 			return error('')
@@ -331,6 +328,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	return pfolder
 }
 
+[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
 }

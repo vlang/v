@@ -232,7 +232,7 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 	cJSON_ArrayForEach(jsval, root)
 	{
 	$s
-		array_push((array*)&res, &val);
+		array_push${noscan}((array*)&res, &val);
 	}
 '
 }

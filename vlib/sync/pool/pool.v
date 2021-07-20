@@ -45,7 +45,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	if isnil(context.callback) {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
-	mut pool := &PoolProcessor{
+	mut pool := PoolProcessor{
 		items: []
 		results: []
 		shared_context: voidptr(0)
@@ -55,7 +55,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		thread_cb: voidptr(context.callback)
 	}
 	pool.waitgroup.init()
-	return pool
+	return &pool
 }
 
 // set_max_jobs gives you the ability to override the number

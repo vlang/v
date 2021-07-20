@@ -61,8 +61,7 @@ fn main() {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
-		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
-			context.scope)
+		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref)
 		context.log('> worker ${pid:5} finished parsing $context.path')
 		exit(0)
 	} else {
@@ -74,9 +73,9 @@ fn main() {
 		context.expand_all_paths()
 		mut fails := 0
 		mut panics := 0
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		for path in context.all_paths {
-			filesw := time.new_stopwatch({})
+			filesw := time.new_stopwatch()
 			context.start_printing()
 			new_fails, new_panics := context.process_whole_file_in_worker(path)
 			fails += new_fails

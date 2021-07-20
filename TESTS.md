@@ -80,8 +80,14 @@ Run `vlib` module tests, *including* the compiler tests.
 ## `v vlib/v/compiler_errors_test.v`
 
 This runs tests for:
-* `checker/tests/*.vv`
-* `parser/tests/*.vv`
+* `vlib/v/checker/tests/*.vv`
+* `vlib/v/parser/tests/*.vv`
+
+### Special folders that compiler_errors_test.v will try to
+run/compile with specific options:
+
+vlib/v/checker/tests/globals_run/ - `-enable-globals run`; 
+results stored in `.run.out` files, matching the .vv ones.
 
 ## `v test-all`
 

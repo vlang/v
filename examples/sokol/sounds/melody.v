@@ -44,7 +44,6 @@ fn main() {
 		bg_color: gx.rgb(50, 50, 50)
 		width: 1024
 		height: 400
-		use_ortho: true
 		create_window: true
 		window_title: 'ByteBeat Music'
 		frame_fn: graphics_frame

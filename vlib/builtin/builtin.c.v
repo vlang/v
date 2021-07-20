@@ -4,7 +4,13 @@ type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
 
+[noreturn]
+fn vhalt() {
+	for {}
+}
+
 // exit terminates execution immediately and returns exit `code` to the shell.
+[noreturn]
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -17,6 +23,7 @@ fn vcommithash() string {
 // recent versions of tcc print nicer backtraces automatically
 // NB: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
+[noreturn]
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
@@ -52,14 +59,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			C.exit(1)
 		}
 	}
+	vhalt()
 }
 
+[noreturn]
 pub fn panic_optional_not_set(s string) {
 	panic('optional not set ($s)')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
+[noreturn]
 pub fn panic(s string) {
 	$if freestanding {
 		bare_panic(s)
@@ -87,121 +97,125 @@ pub fn panic(s string) {
 			C.exit(1)
 		}
 	}
+	vhalt()
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
+	if s.str == 0 {
+		eprintln('eprintln(NIL)')
+		return
+	}
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
-		if s.str == 0 {
-			bare_eprint(c'eprintln(NIL)\n', 14)
-		} else {
-			bare_eprint(s.str, u64(s.len))
-			bare_eprint(c'\n', 1)
-		}
+		bare_eprint(s.str, u64(s.len))
+		bare_eprint(c'\n', 1)
 	} $else $if ios {
-		if s.str == 0 {
-			C.WrappedNSLog(c'eprintln(NIL)\n')
-		} else {
-			C.WrappedNSLog(s.str)
-		}
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		// eprintln is used in panics, so it should not fail at all
 		$if android {
-			if s.str == 0 {
-				C.fprintf(C.stderr, c'eprintln(NIL)\n')
-			} else {
-				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
-			}
+			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		}
-		if s.str == 0 {
-			_ = C.write(2, c'eprintln(NIL)\n', 14)
-		} else {
-			_ = C.write(2, s.str, s.len)
-			_ = C.write(2, c'\n', 1)
-		}
+		_writeln_to_fd(2, s)
 		C.fflush(C.stderr)
 	}
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
+	if s.str == 0 {
+		eprint('eprint(NIL)')
+		return
+	}
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
-		if s.str == 0 {
-			bare_eprint(c'eprint(NIL)\n', 12)
-		} else {
-			bare_eprint(s.str, u64(s.len))
-		}
+		bare_eprint(s.str, u64(s.len))
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
-		if s.str == 0 {
-			C.WrappedNSLog(c'eprint(NIL)')
-		} else {
-			C.WrappedNSLog(s.str)
-		}
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		$if android {
-			if s.str == 0 {
-				C.fprintf(C.stderr, c'eprint(NIL)')
-			} else {
-				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
-			}
+			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		}
-		if s.str == 0 {
-			_ = C.write(2, c'eprint(NIL)', 11)
-		} else {
-			_ = C.write(2, s.str, s.len)
-		}
+		_write_buf_to_fd(2, s.str, s.len)
 		C.fflush(C.stderr)
 	}
 }
 
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
+[manualfree]
 pub fn print(s string) {
-	$if android { // android print for logcat
-		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+	$if android {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str) // logcat
 	}
-	$if ios { // no else if because we also need console output on android
+	// no else if for android termux support
+	$if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
 	} $else {
-		_ = C.write(1, s.str, s.len)
+		_write_buf_to_fd(1, s.str, s.len)
 	}
 }
 
 // println prints a message with a line end, to stdout. stdout is flushed.
+[manualfree]
 pub fn println(s string) {
 	if s.str == 0 {
-		$if android {
-			C.fprintf(C.stdout, c'println(NIL)\n')
-		} $else $if ios {
-			C.WrappedNSLog(c'println(NIL)')
-		} $else $if freestanding {
-			bare_print(c'println(NIL)\n', 13)
-		} $else {
-			_ = C.write(1, c'println(NIL)\n', 13)
-		}
+		println('println(NIL)')
 		return
 	}
-	$if android { // android print for logcat
-		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+	$if android {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str) // logcat
+		return
 	}
-	$if ios { // no else if because we also need console output on android
+	// no else if for android termux support
+	$if ios {
 		C.WrappedNSLog(s.str)
+		return
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
 		bare_print(c'\n', 1)
+		return
 	} $else {
-		_ = C.write(1, s.str, s.len)
-		_ = C.write(1, c'\n', 1)
+		_writeln_to_fd(1, s)
+	}
+}
+
+[manualfree]
+fn _writeln_to_fd(fd int, s string) {
+	unsafe {
+		buf_len := s.len + 1 // space for \n
+		mut buf := malloc(buf_len)
+		defer {
+			free(buf)
+		}
+		C.memcpy(buf, s.str, s.len)
+		buf[s.len] = `\n`
+		_write_buf_to_fd(fd, buf, buf_len)
+	}
+}
+
+[manualfree]
+fn _write_buf_to_fd(fd int, buf &byte, buf_len int) {
+	if buf_len <= 0 {
+		return
+	}
+	unsafe {
+		mut ptr := buf
+		mut remaining_bytes := buf_len
+		for remaining_bytes > 0 {
+			x := C.write(fd, ptr, remaining_bytes)
+			ptr += x
+			remaining_bytes -= x
+		}
 	}
 }
 
@@ -216,7 +230,10 @@ pub fn malloc(n int) &byte {
 	}
 	$if vplayground ? {
 		if n > 10000 {
-			panic('allocating more than 10 KB is not allowed in the playground')
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
 	}
 	$if trace_malloc ? {
@@ -253,12 +270,68 @@ pub fn malloc(n int) &byte {
 	return res
 }
 
+[unsafe]
+pub fn malloc_noscan(n int) &byte {
+	if n <= 0 {
+		panic('> V malloc(<=0)')
+	}
+	$if vplayground ? {
+		if n > 10000 {
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
+		}
+	}
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	mut res := &byte(0)
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if gcboehm ? {
+		$if gcboehm_opt ? {
+			unsafe {
+				res = C.GC_MALLOC_ATOMIC(n)
+			}
+		} $else {
+			unsafe {
+				res = C.GC_MALLOC(n)
+			}
+		}
+	} $else $if freestanding {
+		mut e := Errno{}
+		res, e = mm_alloc(u64(n))
+		if e != .enoerror {
+			eprint('malloc() failed: ')
+			eprintln(e.str())
+			panic('malloc() failed')
+		}
+	} $else {
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		panic('malloc($n) failed')
+	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		unsafe { C.memset(res, 0x88, n) }
+	}
+	return res
+}
+
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
 pub fn v_realloc(b &byte, n int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
+	}
 	mut new_ptr := &byte(0)
 	$if prealloc {
 		unsafe {
@@ -287,6 +360,9 @@ pub fn v_realloc(b &byte, n int) &byte {
 // `-d debug_realloc`.
 [unsafe]
 pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
+	$if trace_realloc ? {
+		C.fprintf(C.stderr, c'realloc_data old_size: %6d new_size: %6d\n', old_size, new_size)
+	}
 	$if prealloc {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
@@ -329,6 +405,10 @@ pub fn vcalloc(n int) &byte {
 	} else if n == 0 {
 		return &byte(0)
 	}
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -341,6 +421,10 @@ pub fn vcalloc(n int) &byte {
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
 pub fn vcalloc_noscan(n int) &byte {
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -352,7 +436,11 @@ pub fn vcalloc_noscan(n int) &byte {
 		if n < 0 {
 			panic('calloc(<0)')
 		}
-		return unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+		return $if gcboehm_opt ? {
+			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+		} $else {
+			unsafe { &byte(C.GC_MALLOC(n)) }
+		}
 	} $else {
 		return unsafe { vcalloc(n) }
 	}
@@ -387,6 +475,17 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	}
 	unsafe {
 		mem := malloc(sz)
+		return C.memcpy(mem, src, sz)
+	}
+}
+
+[unsafe]
+pub fn memdup_noscan(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc_noscan(1)
+	}
+	unsafe {
+		mem := vcalloc_noscan(sz)
 		return C.memcpy(mem, src, sz)
 	}
 }

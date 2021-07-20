@@ -4,6 +4,8 @@ import os
 import testing
 import v.pref
 
+const github_job = os.getenv('GITHUB_JOB')
+
 const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
@@ -40,21 +42,19 @@ const (
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
 	]
 	skip_with_werror              = [
-		// -Wduplicated-branches
-		'vlib/v/tests/match_in_fn_call_test.v',
-		'vlib/v/tests/match_test.v',
-		'vlib/v/tests/unsafe_test.v',
+		'do_not_remove',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
@@ -78,8 +78,9 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 	]
@@ -94,9 +95,10 @@ const (
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
-		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 	]
 	skip_on_non_windows           = [
@@ -123,8 +125,15 @@ fn main() {
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
-	tsession.files << all_test_files
+	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
+
+	if github_job == 'windows-tcc' {
+		// TODO: fix these ASAP
+		tsession.skip_files << 'vlib/net/tcp_test.v'
+		tsession.skip_files << 'vlib/net/udp_test.v'
+	}
+
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false

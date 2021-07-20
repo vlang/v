@@ -6,6 +6,13 @@ import v.token
 import v.pref
 import v.util
 import v.depgraph
+import encoding.base64
+import v.gen.js.sourcemap
+
+struct MutArg {
+	tmp_var string
+	expr    ast.Expr = ast.empty_expr()
+}
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -22,44 +29,55 @@ const (
 		.int_literal, .float_literal, .size_t, .bool, .string]
 )
 
+struct SourcemapHelper {
+	src_path string
+	src_line u32
+	ns_pos   u32
+}
+
 struct Namespace {
 	name string
 mut:
-	out      strings.Builder = strings.new_builder(128)
-	pub_vars []string
-	imports  map[string]string
-	indent   int
-	methods  map[string][]ast.FnDecl
+	out              strings.Builder = strings.new_builder(128)
+	pub_vars         []string
+	imports          map[string]string
+	indent           int
+	methods          map[string][]ast.FnDecl
+	sourcemap_helper []SourcemapHelper
 }
 
 [heap]
 struct JsGen {
-	table &ast.Table
-	pref  &pref.Preferences
+	pref &pref.Preferences
 mut:
-	definitions         strings.Builder
-	ns                  &Namespace
-	namespaces          map[string]&Namespace
-	doc                 &JsDoc
-	enable_doc          bool
-	file                &ast.File
-	tmp_count           int
-	inside_ternary      bool
-	inside_loop         bool
-	inside_map_set      bool // map.set(key, value)
-	inside_builtin      bool
-	generated_builtin   bool
-	inside_def_typ_decl bool
-	is_test             bool
-	stmt_start_pos      int
-	defer_stmts         []ast.DeferStmt
-	fn_decl             &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types           []string    // types that need automatic str() generation
-	method_fn_decls     map[string][]ast.FnDecl
-	builtin_fns         []string // Functions defined in `builtin`
-	empty_line          bool
-	cast_stack          []ast.Type
-	call_stack          []ast.CallExpr
+	table                 &ast.Table
+	definitions           strings.Builder
+	ns                    &Namespace
+	namespaces            map[string]&Namespace
+	doc                   &JsDoc
+	enable_doc            bool
+	file                  &ast.File
+	tmp_count             int
+	inside_ternary        bool
+	inside_loop           bool
+	inside_map_set        bool // map.set(key, value)
+	inside_builtin        bool
+	generated_builtin     bool
+	inside_def_typ_decl   bool
+	is_test               bool
+	stmt_start_pos        int
+	defer_stmts           []ast.DeferStmt
+	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types             []string    // types that need automatic str() generation
+	method_fn_decls       map[string][]ast.FnDecl
+	builtin_fns           []string // Functions defined in `builtin`
+	empty_line            bool
+	cast_stack            []ast.Type
+	call_stack            []ast.CallExpr
+	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
+	sourcemap             sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	comptime_var_type_map map[string]ast.Type
+	defer_ifdef           string
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -78,9 +96,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// TODO: Add '[-no]-jsdoc' flag
 	if pref.is_prod {
 		g.enable_doc = false
+		g.is_vlines_enabled = false
 	}
 	g.init()
 	mut graph := depgraph.new_dep_graph()
+	if g.pref.sourcemap {
+		mut sg := sourcemap.generate_empty_map()
+		g.sourcemap = sg.add_map('', '', g.pref.sourcemap_src_included, 0, 0)
+	}
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -89,6 +112,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
 	}
+
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
@@ -102,8 +126,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return this.map.length;}, set: function(l) { this.map.length = l; } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
 			g.generated_builtin = true
 		}
+
 		g.stmts(file.stmts)
 		// store the current namespace
 		g.escape_namespace()
@@ -135,8 +163,29 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			out += val
 		}
 		out += ') {\n\t'
-		// private scope
-		out += namespace.out.str().trim_space()
+		namespace_code := namespace.out.str()
+		if g.pref.sourcemap {
+			// calculate current output start line
+			mut current_line := u32(out.count('\n') + 1)
+			mut sm_pos := u32(0)
+			for sourcemap_ns_entry in namespace.sourcemap_helper {
+				// calculate final generated location in output based on position
+				current_segment := namespace_code.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
+				current_line += u32(current_segment.count('\n'))
+				current_column := if last_nl_pos := current_segment.last_index('\n') {
+					u32(current_segment.len - last_nl_pos - 1)
+				} else {
+					u32(0)
+				}
+				g.sourcemap.add_mapping(sourcemap_ns_entry.src_path, sourcemap.SourcePosition{
+					source_line: sourcemap_ns_entry.src_line
+					source_column: 0 // sourcemap_ns_entry.src_column
+				}, current_line, current_column, '')
+				sm_pos = sourcemap_ns_entry.ns_pos
+			}
+		}
+		out += namespace_code
+
 		// public scope
 		out += '\n'
 		if g.enable_doc {
@@ -195,6 +244,18 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
 	}
 	out += '\n'
+	if g.pref.sourcemap {
+		out += g.create_sourcemap()
+	}
+	return out
+}
+
+fn (g JsGen) create_sourcemap() string {
+	mut sm := g.sourcemap
+	mut out := '\n//# sourceMappingURL=data:application/json;base64,'
+	out += base64.encode(sm.to_json().str().bytes())
+	out += '\n'
+
 	return out
 }
 
@@ -243,6 +304,26 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('// Generated by the V compiler\n')
 	g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
+	g.definitions.writeln('var \$global = (new Function("return this"))();')
+
+	if g.pref.backend != .js_node {
+		g.definitions.writeln('const \$process = {')
+		g.definitions.writeln('  arch: "js",')
+		if g.pref.backend == .js_freestanding {
+			g.definitions.writeln('  platform: "freestanding"')
+		} else {
+			g.definitions.writeln('  platform: "browser"')
+		}
+		g.definitions.writeln('}')
+
+		g.definitions.writeln('const \$os = {')
+		g.definitions.writeln('  endianess: "LE",')
+
+		g.definitions.writeln('}')
+	} else {
+		g.definitions.writeln('const \$os = require("os");')
+		g.definitions.writeln('const \$process = process;')
+	}
 }
 
 pub fn (g JsGen) hashes() string {
@@ -251,7 +332,7 @@ pub fn (g JsGen) hashes() string {
 	return res
 }
 
-[inline]
+[noreturn]
 fn verror(msg string) {
 	eprintln('jsgen error: $msg')
 	exit(1)
@@ -354,6 +435,42 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	g.dec_indent()
 }
 
+[inline]
+fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
+	// g.inside_ternary == 0 &&
+	if g.pref.sourcemap {
+		g.ns.sourcemap_helper << SourcemapHelper{
+			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
+			src_line: u32(pos.line_nr + 1)
+			ns_pos: u32(g.ns.out.len)
+		}
+	}
+	if g.pref.is_vlines && g.is_vlines_enabled {
+		g.write(' /* ${pos.line_nr + 1} $g.ns.out.len */ ')
+	}
+}
+
+fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
+	mod := if g.pref.build_mode == .build_module { 'enumerable: false' } else { 'enumerable: true' }
+	for field in node.fields {
+		if field.has_expr {
+			tmp_var := g.new_tmp_var()
+			g.write('const $tmp_var = ')
+			g.expr(field.expr)
+			g.writeln(';')
+			g.writeln('Object.defineProperty(\$global,"$field.name", {
+				configurable: false,
+				$mod ,
+				writable: true,
+				value: $tmp_var
+				}
+			); // global')
+		} else {
+			// TODO(playXE): Initialize with default value of type
+		}
+	}
+}
+
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
@@ -362,64 +479,80 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			panic('inline asm is not supported by js')
 		}
 		ast.AssertStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
 		}
 		ast.AssignStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
+			g.write_v_source_line_info(node.pos)
 			g.gen_block(node)
 			g.writeln('')
 		}
 		ast.BranchStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_branch_stmt(node)
 		}
 		ast.CompFor {}
 		ast.ConstDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}
 		ast.EnumDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_enum_decl(node)
 			g.writeln('')
 		}
 		ast.ExprStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
+			g.write_v_source_line_info(node.pos)
 			g.fn_decl = unsafe { &node }
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_c_stmt(node)
 			g.writeln('')
 		}
 		ast.ForInStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_in_stmt(node)
 			g.writeln('')
 		}
 		ast.ForStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_for_stmt(node)
 			g.writeln('')
 		}
 		ast.GlobalDecl {
-			// TODO
+			g.write_v_source_line_info(node.pos)
+			g.gen_global_decl(node)
+			g.writeln('')
 		}
 		ast.GotoLabel {
+			g.write_v_source_line_info(node.pos)
 			g.writeln('${g.js_name(node.name)}:')
 		}
 		ast.GotoStmt {
 			// skip: JS has no goto
 		}
 		ast.HashStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_hash_stmt(node)
 		}
 		ast.Import {
 			g.ns.imports[node.mod] = node.alias
 		}
 		ast.InterfaceDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_interface_decl(node)
 		}
 		ast.Module {
@@ -434,6 +567,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		}
 		ast.SqlStmt {}
 		ast.StructDecl {
+			g.write_v_source_line_info(node.pos)
 			g.gen_struct_decl(node)
 		}
 		ast.TypeDecl {
@@ -544,10 +678,25 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
 				// C pointers/references: ignore them
+				if node.op == .amp {
+					type_sym := g.table.get_type_symbol(node.right_type)
+					if !type_sym.is_primitive() && !node.right_type.is_pointer() {
+						g.write('{ val: ')
+						g.expr(node.right)
+						g.write(' } ')
+					} else {
+						g.expr(node.right)
+					}
+				} else {
+					g.write('(')
+					g.expr(node.right)
+					g.write(').val')
+				}
 			} else {
 				g.write(node.op.str())
+				g.expr(node.right)
+				g.write('.valueOf()')
 			}
-			g.expr(node.right)
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
@@ -558,7 +707,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
-		ast.SizeOf {
+		ast.SizeOf, ast.IsRefType {
 			// TODO
 		}
 		ast.OffsetOf {
@@ -689,10 +838,18 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				}
 			}
 			g.expr(left)
+			mut is_ptr := false
+			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+				is_ptr = true
+				g.write('.val')
+			}
 			if g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write(', ')
 				g.expr(val)
+				if is_ptr {
+					g.write('.val')
+				}
 				g.write(')')
 			} else {
 				g.write(' $op ')
@@ -709,6 +866,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 					g.write('${g.typ(stmt.left_types.first())}(')
 				}
 				g.expr(val)
+				if is_ptr {
+					g.write('.val')
+				}
 				if should_cast {
 					g.write(')')
 					g.cast_stack.delete_last()
@@ -771,8 +931,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 	for field in it.fields {
 		g.write('$field.name: ')
 		if field.has_expr && field.expr is ast.IntegerLiteral {
-			e := field.expr as ast.IntegerLiteral
-			i = e.val.int()
+			i = field.expr.val.int()
 		}
 		g.writeln('$i,')
 		i++
@@ -825,6 +984,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
+
 		g.write('(')
 		if has_go {
 			g.write('async ')
@@ -870,6 +1030,13 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		g.write('${it.params[0].name} = this')
 	}
 	g.writeln(') {')
+	for i, arg in args {
+		is_varg := i == args.len - 1 && it.is_variadic
+		if is_varg {
+			name := g.js_name(arg.name)
+			g.writeln('$name = new array($name);')
+		}
+	}
 	g.stmts(it.stmts)
 	g.write('}')
 	if is_main {
@@ -1138,6 +1305,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
+	g.write('new array(')
+	g.inc_indent()
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1165,6 +1334,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {
 		g.gen_array_init_values(it.exprs)
 	}
+	g.dec_indent()
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
@@ -1284,6 +1455,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+
 	// TODO: Generate .val for basic types
 }
 
@@ -1292,6 +1464,10 @@ fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
+	if node.is_comptime {
+		g.comp_if(node)
+		return
+	}
 	type_sym := g.table.get_type_symbol(node.typ)
 	// one line ?:
 	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
@@ -1304,6 +1480,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			}
 			if i < node.branches.len - 1 || !node.has_else {
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.write(' ? ')
 			}
 			g.stmts(branch.stmts)
@@ -1324,6 +1501,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 							g.write('true')
 						} else {
 							g.expr(branch.cond)
+							g.write('.valueOf()')
 						}
 						g.writeln(') {')
 					}
@@ -1331,6 +1509,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			} else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
 				g.expr(branch.cond)
+				g.write('.valueOf()')
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
 				/*
@@ -1376,9 +1555,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.expr(expr.left)
 		if expr.is_setter {
 			g.inside_map_set = true
-			g.write('.set(')
+			g.write('.map.set(')
 		} else {
-			g.write('.get(')
+			g.write('.map.get(')
 		}
 		g.expr(expr.index)
 		g.write('.toString()')
@@ -1390,14 +1569,17 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
 		} else {
+			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
+			g.write('new byte(')
 			g.expr(expr.left)
 			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
-			g.write(')')
+			g.write('))')
 		}
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
+		g.write('.arr')
 		g.write('[')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
@@ -1432,8 +1614,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
+		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
-		g.write('.push(')
+		g.write('.arr,')
 		// arr << [1, 2]
 		if r_sym.kind == .array {
 			g.write('...')
@@ -1443,11 +1626,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
 		if r_sym.kind == .map {
-			g.write('.has(')
+			g.write('.map.has(')
 		} else if r_sym.kind == .string {
 			g.write('.str.includes(')
 		} else {
-			g.write('.includes(')
+			g.write('.arr.includes(')
 		}
 		g.expr(it.left)
 		if l_sym.kind == .string {
@@ -1544,6 +1727,8 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
 	// key_typ_str := util.no_dots(key_typ_sym.name)
 	// value_typ_str := util.no_dots(value_typ_sym.name)
+	g.writeln('new map(')
+	g.inc_indent()
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()
@@ -1564,6 +1749,8 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	} else {
 		g.write('new Map()')
 	}
+	g.dec_indent()
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
@@ -1612,14 +1799,14 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text := it.val.replace("'", "\\'")
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
-	if should_cast {
+	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('string(')
 	}
 	g.write("'$text'")
-	if should_cast {
+	if true || should_cast {
 		g.write(')')
 	}
 }
@@ -1707,16 +1894,16 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		// if call.language == .js {
-		for t in call.args {
-			if t.expr is ast.IntegerLiteral {
-				if t.expr == it {
-					g.write(it.val)
-					return
+		if call.language == .js {
+			for t in call.args {
+				if t.expr is ast.IntegerLiteral {
+					if t.expr == it {
+						g.write(it.val)
+						return
+					}
 				}
 			}
 		}
-		//}
 	}
 
 	// Skip cast if type is the same as the parrent caster
@@ -1773,4 +1960,15 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	}
 
 	g.write('${g.typ(typ)}($it.val)')
+}
+
+fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
+	if typ.has_flag(.generic) {
+		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
+			g.table.cur_concrete_types)
+		{
+			return t_typ
+		}
+	}
+	return typ
 }

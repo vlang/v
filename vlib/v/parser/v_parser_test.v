@@ -74,14 +74,9 @@ x := 10
 5+7
 8+4
 '
-	table := &ast.Table{
-		cur_fn: 0
-	}
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
-	gscope := &ast.Scope{
-		parent: 0
-	}
-	prog := parse_file(s, table, .skip_comments, vpref, gscope)
+	prog := parse_file(s, table, .skip_comments, vpref)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
 	res := c.gen([prog], table, vpref)

@@ -30,7 +30,6 @@ pub fn compile(command string, pref &pref.Preferences) {
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
 		verror(err.msg)
-		exit(1)
 	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
@@ -38,12 +37,14 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('builder.compile() pref:')
 		// println(pref)
 	}
-	mut sw := time.new_stopwatch({})
+	mut sw := time.new_stopwatch()
 	match pref.backend {
 		.c { b.compile_c() }
-		.js { b.compile_js() }
+		.js_node, .js_freestanding, .js_browser { b.compile_js() }
 		.native { b.compile_native() }
 	}
+	mut timers := util.get_timers()
+	timers.show_remaining()
 	if pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
@@ -106,17 +107,20 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.only_check_syntax {
 		return
 	}
+	if b.pref.out_name.ends_with('/-') {
+		return
+	}
 	if b.pref.os == .ios {
 		panic('Running iOS apps is not supported yet.')
 	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	exefile := os.real_path(b.pref.out_name)
+	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
-	if b.pref.backend == .js {
-		jsfile := os.real_path('${b.pref.out_name}.js')
-		cmd = 'node "$jsfile"'
+	if b.pref.backend.is_js() {
+		exefile = os.real_path('${b.pref.out_name}.js')
+		cmd = 'node "$exefile"'
 	}
 	for arg in b.pref.run_args {
 		// Determine if there are spaces in the parameters
@@ -142,10 +146,8 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return
 	}
-	if os.is_executable(exefile) {
-		v.pref.vrun_elog('remove run executable: $exefile')
-		os.rm(exefile) or { panic(err) }
-	}
+	v.pref.vrun_elog('remove run executable: $exefile')
+	os.rm(exefile) or { panic(err) }
 }
 
 // 'strings' => 'VROOT/vlib/strings'
@@ -198,7 +200,7 @@ pub fn (v Builder) get_builtin_files() []string {
 	for location in v.pref.lookup_path {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
-			if v.pref.backend == .js {
+			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
 			} else {
@@ -217,9 +219,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		}
 	}
 	// Panic. We couldn't find the folder.
-	verror('`builtin/` not included on module lookup path.
-Did you forget to add vlib to the path? (Use @vlib for default vlib)')
-	panic('Unreachable code reached.')
+	verror('`builtin/` not included on module lookup path.\nDid you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v &Builder) get_user_files() []string {
@@ -259,10 +259,7 @@ pub fn (v &Builder) get_user_files() []string {
 	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := os.read_file(dir) or {
-			verror('$dir does not exist')
-			exit(0)
-		}
+		tcontent := os.read_file(dir) or { verror('$dir does not exist') }
 		slines := tcontent.trim_space().split_into_lines()
 		for sline in slines {
 			line := sline.trim_space()
@@ -290,7 +287,6 @@ pub fn (v &Builder) get_user_files() []string {
 	does_exist := os.exists(dir)
 	if !does_exist {
 		verror("$dir doesn't exist")
-		exit(1)
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
 	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }

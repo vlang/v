@@ -227,3 +227,27 @@ fn test_field_quotes_for_parts() {
 	}
 	assert row_count == 4
 }
+
+fn test_field_double_quotes() {
+	row1 := '11,"12\n13"\n'
+	row2 := '21,"2""2""\n23"\n'
+	row3 := '"3""1""",32\n'
+	data := row1 + row2 + row3
+	mut csv_reader := csv.new_reader(data)
+	mut row_count := 0
+	for {
+		row := csv_reader.read() or { break }
+		row_count++
+		if row_count == 1 {
+			assert row[0] == '11'
+			assert row[1] == '12\n13'
+		} else if row_count == 2 {
+			assert row[0] == '21'
+			assert row[1] == '2"2"\n23'
+		} else if row_count == 3 {
+			assert row[0] == '3"1"'
+			assert row[1] == '32'
+		}
+	}
+	assert row_count == 3
+}

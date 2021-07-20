@@ -438,3 +438,9 @@ fn test_multi_return() {
     value: 'two'
 })"
 }
+
+fn test_fixed_array_of_function() {
+	a := [println, println]!
+	println(a)
+	assert '$a' == '[fn (string), fn (string)]'
+}

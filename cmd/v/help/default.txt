@@ -8,6 +8,7 @@ Examples:
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
    v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
+   v -o - hello.v            Translate `hello.v` and output the C source code to stdout. Do not compile further.
 
    v watch hello.v           Re-does the same compilation, when a source code change is detected.
                              The program is only compiled, not run.
