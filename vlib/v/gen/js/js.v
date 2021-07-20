@@ -126,9 +126,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return this.map.length;}, set: function(l) { this.map.length = l; } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new builtin.int(this.str.length);}, set: function(l) { this.str.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new builtin.int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 
