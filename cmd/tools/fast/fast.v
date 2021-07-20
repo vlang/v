@@ -107,7 +107,7 @@ fn main() {
 }
 
 fn exec(s string) string {
-	e := os.execute_or_panic(s)
+	e := os.execute_or_exit(s)
 	return e.output.trim_right('\r\n')
 }
 
@@ -137,7 +137,7 @@ fn measure(cmd string, description string) int {
 }
 
 fn measure_steps(vdir string) (int, int, int, int, int) {
-	resp := os.execute_or_panic('$vdir/vprod $voptions -o v.c cmd/v')
+	resp := os.execute_or_exit('$vdir/vprod $voptions -o v.c cmd/v')
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
