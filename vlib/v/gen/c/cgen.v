@@ -2606,6 +2606,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
+			mut op_expected_left := ast.Type(0)
+			mut op_expected_right := ast.Type(0)
 			if var_type == ast.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
@@ -2633,6 +2635,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				g.expr(left)
 				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				method := g.table.type_find_method(left_sym, extracted_op) or {
+					// the checker will most likely have found this, already...
+					g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
+						assign_stmt.pos)
+					ast.Fn{}
+				}
+				op_expected_left = method.params[0].typ
+				op_expected_right = method.params[1].typ
 				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
@@ -2681,10 +2691,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_var || is_decl {
-					if !is_decl && left.is_auto_deref_var() {
-						g.write('*')
+					if op_overloaded {
+						g.op_arg(left, op_expected_left, var_type)
+					} else {
+						if !is_decl && left.is_auto_deref_var() {
+							g.write('*')
+						}
+						g.expr(left)
 					}
-					g.expr(left)
 				}
 			}
 			if is_inside_ternary && is_decl {
@@ -2770,7 +2784,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
-						g.expr_with_cast(val, val_type, var_type)
+						if op_overloaded {
+							g.op_arg(val, op_expected_right, val_type)
+						} else {
+							g.expr_with_cast(val, val_type, var_type)
+						}
 					}
 				}
 			}
