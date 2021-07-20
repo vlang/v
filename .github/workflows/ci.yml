@@ -103,7 +103,7 @@ jobs:
         run: |
           ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
-        run: cd cmd/tools/fast && v fast.v && ./fast
+        run: cd cmd/tools/fast && ../../../v fast.v && ./fast
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
