@@ -425,21 +425,56 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.type_has_method(left.sym, node.op.str())
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
-		g.write(g.typ(left.typ.set_nr_muls(0)))
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
-		g.write('(')
-		g.write('*'.repeat(left.typ.nr_muls()))
-		g.expr(node.left)
-		g.write(', ')
-		g.write('*'.repeat(right.typ.nr_muls()))
-		g.expr(node.right)
-		g.write(')')
-	} else {
+	method := g.table.type_find_method(left.sym, node.op.str()) or {
 		g.gen_plain_infix_expr(node)
+		return
 	}
+	left_styp := g.typ(left.typ.set_nr_muls(0))
+	g.write(left_styp)
+	g.write('_')
+	g.write(util.replace_op(node.op.str()))
+	g.write('(')
+	mut left_nr_muls := left.typ.nr_muls()
+	mut needs_closing := false
+	if method.params[0].typ.is_ptr() {
+		if left_nr_muls > 0 {
+			left_nr_muls--
+		} else {
+			if node.left.is_lvalue() {
+				g.write('&')
+			} else {
+				g.write('ADDR($left_styp, ')
+				needs_closing = true
+			}
+		}
+	}
+	g.write('*'.repeat(left.typ.nr_muls()))
+	g.expr(node.left)
+	if needs_closing {
+		g.write(')')
+		needs_closing = false
+	}
+	g.write(', ')
+	mut right_nr_muls := right.typ.nr_muls()
+	if method.params[1].typ.is_ptr() {
+		if right_nr_muls > 0 {
+			right_nr_muls--
+		} else {
+			if node.right.is_lvalue() {
+				g.write('&')
+			} else {
+				right_styp := g.typ(right.typ.set_nr_muls(0))
+				g.write('ADDR($right_styp, ')
+				needs_closing = true
+			}
+		}
+	}
+	g.write('*'.repeat(right_nr_muls))
+	g.expr(node.right)
+	if needs_closing {
+		g.write(')')
+	}
+	g.write(')')
 }
 
 // infix_expr_left_shift_op generates code for the `<<` operator
