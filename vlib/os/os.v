@@ -622,6 +622,17 @@ pub fn execute_or_panic(cmd string) Result {
 	return res
 }
 
+pub fn execute_or_exit(cmd string) Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: $cmd')
+		eprintln('failed   code: $res.exit_code')
+		eprintln(res.output)
+		exit(1)
+	}
+	return res
+}
+
 // is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
 pub fn is_atty(fd int) int {
 	$if windows {

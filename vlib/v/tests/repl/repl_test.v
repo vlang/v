@@ -12,7 +12,7 @@ fn test_the_v_compiler_can_be_invoked() {
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.execute_or_panic(vcmd)
+	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	vcmd_error := '"$vexec" nonexisting.v'

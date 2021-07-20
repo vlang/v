@@ -248,7 +248,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.execute_or_panic(compilation_command)
+		tool_compilation := os.execute_or_exit(compilation_command)
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
 			exit(1)

@@ -274,7 +274,7 @@ fn test_struct_literal_args() {
 		n: 10
 		def: 20
 	)
-	foo_config(10, {})
+	foo_config(10)
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 

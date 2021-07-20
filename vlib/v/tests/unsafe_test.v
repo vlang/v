@@ -54,7 +54,8 @@ fn test_funcs() {
 
 fn test_if_expr_unsafe() {
 	i := 4
-	p := if true { unsafe { &i } } else { unsafe { &i } }
+	ii := 123
+	p := if true { unsafe { &i } } else { unsafe { &ii } }
 	assert *p == 4
 }
 

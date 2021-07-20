@@ -866,6 +866,11 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	// to prevent generating interface struct before definition of field types
 	for typ in g.table.type_symbols {
 		if typ.kind == .interface_ && typ.name !in c.builtins {
+			g.write_interface_typedef(typ)
+		}
+	}
+	for typ in g.table.type_symbols {
+		if typ.kind == .interface_ && typ.name !in c.builtins {
 			g.write_interface_typesymbol_declaration(typ)
 		}
 	}
@@ -893,13 +898,17 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
 
+pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
+	struct_name := c_name(sym.cname)
+	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+}
+
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
 	if info.is_generic {
 		return
 	}
 	struct_name := c_name(sym.cname)
-	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
 	g.type_definitions.writeln('struct $struct_name {')
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
@@ -1838,7 +1847,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	g.write('${fname}(')
 	if !got_is_ptr {
 		if !expr.is_lvalue()
-			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
+			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
 			g.write('ADDR($got_styp, (')
 			rparen_n += 2
 		} else {
@@ -2597,6 +2606,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
+			mut op_expected_left := ast.Type(0)
+			mut op_expected_right := ast.Type(0)
 			if var_type == ast.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
@@ -2624,6 +2635,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				g.expr(left)
 				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				method := g.table.type_find_method(left_sym, extracted_op) or {
+					// the checker will most likely have found this, already...
+					g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
+						assign_stmt.pos)
+					ast.Fn{}
+				}
+				op_expected_left = method.params[0].typ
+				op_expected_right = method.params[1].typ
 				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
@@ -2672,10 +2691,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_var || is_decl {
-					if !is_decl && left.is_auto_deref_var() {
-						g.write('*')
+					if op_overloaded {
+						g.op_arg(left, op_expected_left, var_type)
+					} else {
+						if !is_decl && left.is_auto_deref_var() {
+							g.write('*')
+						}
+						g.expr(left)
 					}
-					g.expr(left)
 				}
 			}
 			if is_inside_ternary && is_decl {
@@ -2761,7 +2784,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
-						g.expr_with_cast(val, val_type, var_type)
+						if op_overloaded {
+							g.op_arg(val, op_expected_right, val_type)
+						} else {
+							g.expr_with_cast(val, val_type, var_type)
+						}
 					}
 				}
 			}
@@ -3794,7 +3821,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.empty_line = true
 		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
-		g.writeln('${g.typ(node.return_type)} $tmp_var;')
+		g.writeln('${g.typ(node.return_type)} $tmp_var = ${g.type_default(node.return_type)};')
 	}
 
 	if is_expr && !need_tmp_var {
@@ -4846,24 +4873,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				continue
 			}
 		}
-
 		name := c_name(field.name)
-		/*
-		if field.typ == ast.byte_type {
-			g.const_decl_simple_define(name, val)
-			return
-		}
-		*/
-		/*
-		if ast.is_number(field.typ) {
-			g.const_decl_simple_define(name, val)
-		} else if field.typ == ast.string_type {
-			g.definitions.writeln('string _const_$name; // a string literal, inited later')
-			if g.pref.build_mode != .build_module {
-				g.stringliterals.writeln('\t_const_$name = $val;')
-			}
-		} else {
-		*/
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -4895,7 +4905,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if is_simple_define_const(field) {
+				if g.pref.build_mode != .build_module {
+					if ct_value := field.comptime_expr_value() {
+						if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
+							continue
+						}
+					}
+				}
+				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(name, g.expr_string(field_expr))
@@ -4907,14 +4924,64 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn is_simple_define_const(obj ast.ScopeObject) bool {
-	if obj is ast.ConstField {
-		return match obj.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
-			else { false }
+fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
+	mut styp := g.typ(typ)
+	cname := '_const_$name'
+	match ct_value {
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
+		}
+		i64 {
+			if typ == ast.int_type {
+				// TODO: use g.const_decl_write_precomputed here too.
+				// For now, use #define macros, so existing code compiles
+				// with -cstrict. Add checker errors for overflows instead,
+				// so V can catch them earlier, instead of relying on the
+				// C compiler for that.
+				g.const_decl_simple_define(name, ct_value.str())
+				return true
+			}
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
+		}
+		f64 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		string {
+			escaped_val := util.smart_quote(ct_value, false)
+			// g.const_decl_write_precomputed(styp, cname, '_SLIT("$escaped_val")')
+			// TODO: ^ the above for strings, cause:
+			// `error C2099: initializer is not a constant` errors in MSVC,
+			// so fall back to the delayed initialisation scheme:
+			g.definitions.writeln('$styp $cname; // inited later')
+			g.inits[mod].writeln('\t$cname = _SLIT("$escaped_val");')
+			if g.is_autofree {
+				g.cleanups[mod].writeln('\tstring_free(&$cname);')
+			}
+		}
+		ast.EmptyExpr {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, ct_value string) {
+	g.definitions.writeln('$styp $cname = $ct_value; // precomputed')
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {
@@ -5075,12 +5142,22 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
+			mut used_embed_fields := []string{}
+			init_field_names := info.fields.map(it.name)
+			// fields that are initialized but belong to the embedding
+			init_fields_to_embed := struct_init.fields.filter(it.name !in init_field_names)
 			for embed in info.embeds {
 				embed_sym := g.table.get_type_symbol(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
+					embed_info := embed_sym.info as ast.Struct
+					embed_field_names := embed_info.fields.map(it.name)
+					fields_to_embed := init_fields_to_embed.filter(it.name !in used_embed_fields
+						&& it.name in embed_field_names)
+					used_embed_fields << fields_to_embed.map(it.name)
 					default_init := ast.StructInit{
 						typ: embed
+						fields: fields_to_embed
 					}
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
@@ -5348,6 +5425,7 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
+			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
@@ -6311,7 +6389,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
 					// hack to mutate typ
-					params[0] = {
+					params[0] = ast.Param{
 						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}

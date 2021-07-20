@@ -26,7 +26,7 @@ fn testsuite_end() {
 
 fn test_temp_file() {
 	// Test defaults
-	mut f, mut path := util.temp_file({}) or {
+	mut f, mut path := util.temp_file() or {
 		assert false
 		return
 	}
@@ -76,7 +76,7 @@ fn test_temp_file() {
 
 fn test_temp_dir() {
 	// Test defaults
-	mut path := util.temp_dir({}) or {
+	mut path := util.temp_dir() or {
 		assert false
 		return
 	}

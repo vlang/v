@@ -135,7 +135,7 @@ fn (app App) git_command(command string) {
 	if git_result.exit_code < 0 {
 		app.get_git()
 		// Try it again with (maybe) git installed
-		os.execute_or_panic('git $command')
+		os.execute_or_exit('git $command')
 	}
 	if git_result.exit_code != 0 {
 		eprintln(git_result.output)

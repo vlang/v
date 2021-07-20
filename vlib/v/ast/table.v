@@ -415,7 +415,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
-// search for a given field, looking through embedded fields
+// find_field_with_embeds searches for a given field, also looking through embedded fields
 pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
 	if f := t.find_field(sym, field_name) {
 		return f
@@ -556,7 +556,7 @@ fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_id
 		.placeholder {
 			// override placeholder
 			// println('overriding type placeholder `$typ.name`')
-			t.type_symbols[existing_idx] = {
+			t.type_symbols[existing_idx] = TypeSymbol{
 				...typ
 				methods: ex_type.methods
 			}
@@ -1109,16 +1109,15 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 }
 
 pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
-	utyp := typ
-	if utyp.idx() == inter_typ.idx() {
+	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true
 	}
-	if inter_typ.idx() == error_type_idx && utyp.idx() == none_type_idx {
+	if inter_typ.idx() == error_type_idx && typ.idx() == none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
-	typ_sym := t.get_type_symbol(utyp)
+	typ_sym := t.get_type_symbol(typ)
 	if typ_sym.language != .v {
 		return false
 	}
@@ -1129,7 +1128,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 	if mut inter_sym.info is Interface {
 		// do not check the same type more than once
 		for tt in inter_sym.info.types {
-			if tt.idx() == utyp.idx() {
+			if tt.idx() == typ.idx() {
 				return true
 			}
 		}
@@ -1165,7 +1164,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 			}
 			return false
 		}
-		inter_sym.info.types << utyp
+		inter_sym.info.types << typ
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}

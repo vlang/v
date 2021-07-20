@@ -17,8 +17,8 @@ const (
 fn new_ip6(port u16, addr [16]byte) Addr {
 	a := Addr{
 		f: u16(AddrFamily.ip6)
-		addr: {
-			Ip6: {
+		addr: AddrData{
+			Ip6: Ip6{
 				port: u16(C.htons(port))
 			}
 		}
@@ -32,8 +32,8 @@ fn new_ip6(port u16, addr [16]byte) Addr {
 fn new_ip(port u16, addr [4]byte) Addr {
 	a := Addr{
 		f: u16(AddrFamily.ip)
-		addr: {
-			Ip: {
+		addr: AddrData{
+			Ip: Ip{
 				port: u16(C.htons(port))
 			}
 		}
@@ -49,7 +49,7 @@ fn temp_unix() ?Addr {
 	// close it
 	// remove it
 	// then reuse the filename
-	mut file, filename := util.temp_file({}) ?
+	mut file, filename := util.temp_file() ?
 	file.close()
 	os.rm(filename) ?
 	addrs := resolve_addrs(filename, .unix, .udp) ?
@@ -203,8 +203,8 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 		match AddrFamily(result.ai_family) {
 			.ip, .ip6 {
 				new_addr := Addr{
-					addr: {
-						Ip6: {}
+					addr: AddrData{
+						Ip6: Ip6{}
 					}
 				}
 				unsafe {
@@ -246,8 +246,8 @@ fn (a Addr) str() string {
 
 pub fn addr_from_socket_handle(handle int) Addr {
 	addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	size := sizeof(addr)

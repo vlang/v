@@ -128,7 +128,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
-	comments << p.eat_comments({})
+	comments << p.eat_comments()
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
 	right, right_comments = p.expr_list()

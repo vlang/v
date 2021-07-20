@@ -444,6 +444,23 @@ fn (mut f MDFile) check_examples() CheckResult {
 					}
 					oks++
 				}
+				'globals' {
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals -o x.c $vfile')
+					os.rm('x.c') or {}
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`example failed to compile with -enable-globals'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`example is not formatted'))
+						}
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
 				'live' {
 					res := cmdexecute('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
 					if res != 0 || fmt_res != 0 {

@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads']
+		'no_bounds_checking', 'freestanding', 'threads', 'js_browser', 'js_freestanding']
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -1009,7 +1009,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			}
 			mut inited_fields := []string{}
 			for i, mut field in node.fields {
-				mut info_field := ast.StructField{}
+				mut field_info := ast.StructField{}
 				mut embed_type := ast.Type(0)
 				mut is_embed := false
 				mut field_name := ''
@@ -1019,18 +1019,15 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						// We should just stop here.
 						break
 					}
-					info_field = info.fields[i]
-					field_name = info_field.name
+					field_info = info.fields[i]
+					field_name = field_info.name
 					node.fields[i].name = field_name
 				} else {
 					field_name = field.name
-					mut exists := false
-					for f in info.fields {
-						if f.name == field_name {
-							info_field = f
-							exists = true
-							break
-						}
+					mut exists := true
+					field_info = info.find_field(field_name) or {
+						exists = false
+						ast.StructField{}
 					}
 					if !exists {
 						for embed in info.embeds {
@@ -1039,6 +1036,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 								exists = true
 								embed_type = embed
 								is_embed = true
+								break
+							}
+							embed_struct_info := embed_sym.info as ast.Struct
+							if embed_field_info := embed_struct_info.find_field(field_name) {
+								exists = true
+								field_info = embed_field_info
 								break
 							}
 						}
@@ -1063,7 +1066,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
-							c.error('cannot assign to field `$info_field.name`: $err.msg',
+							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
 					}
@@ -1071,41 +1074,41 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					node.fields[i].expected_type = embed_type
 				} else {
 					inited_fields << field_name
-					field_type_sym := c.table.get_type_symbol(info_field.typ)
-					expected_type = info_field.typ
+					field_type_sym := c.table.get_type_symbol(field_info.typ)
+					expected_type = field_info.typ
 					c.expected_type = expected_type
 					expr_type = c.unwrap_generic(c.expr(field.expr))
-					if !info_field.typ.has_flag(.optional) {
+					if !field_info.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
-						if c.type_implements(expr_type, info_field.typ, field.pos) {
+						if c.type_implements(expr_type, field_info.typ, field.pos) {
 							if !expr_type.is_ptr() && !expr_type.is_pointer()
 								&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
 								c.mark_as_referenced(mut &field.expr, true)
 							}
 						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, info_field.typ) or {
-							c.error('cannot assign to field `$info_field.name`: $err.msg',
+						c.check_expected(expr_type, field_info.typ) or {
+							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
 					}
-					if info_field.typ.has_flag(.shared_f) {
+					if field_info.typ.has_flag(.shared_f) {
 						if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
 							c.error('`shared` field must be initialized with `shared` or value',
 								field.pos)
 						}
 					} else {
-						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+						if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
 							&& !expr_type.is_number() {
 							c.error('reference field must be initialized with reference',
 								field.pos)
 						}
 					}
 					node.fields[i].typ = expr_type
-					node.fields[i].expected_type = info_field.typ
+					node.fields[i].expected_type = field_info.typ
 				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
@@ -1470,8 +1473,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(node.left)
-				left_value_type := c.table.value_type(left_type)
-				left_value_sym := c.table.get_type_symbol(left_value_type)
+				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
+				left_value_sym := c.table.get_type_symbol(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
 					if right_final.kind != .array {
 						// []Animal << Cat
@@ -1489,8 +1492,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				}
 				// []T << T or []T << []T
-				if c.check_types(right_type, left_value_type)
-					|| c.check_types(right_type, left_type) {
+				unwrapped_right_type := c.unwrap_generic(right_type)
+				if c.check_types(unwrapped_right_type, left_value_type)
+					|| c.check_types(unwrapped_right_type, left_type) {
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
@@ -1780,7 +1784,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
-				.aggregate {
+				.aggregate, .placeholder {
 					c.fail_if_immutable(expr.expr)
 				}
 				else {
@@ -1987,7 +1991,7 @@ pub fn (mut c Checker) check_expected_arg_count(mut call_expr ast.CallExpr, f &a
 			last_sym := c.table.get_type_symbol(last_typ)
 			if last_sym.kind == .struct_ {
 				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
-				call_expr.args << {
+				call_expr.args << ast.CallArg{
 					expr: ast.StructInit{
 						typ: last_typ
 					}
@@ -3608,10 +3612,16 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 	mut needs_order := false
 	mut done_fields := []int{}
-	for i, field in node.fields {
+	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+		if ct_value := eval_comptime_const_expr(field.expr, 0) {
+			field.comptime_expr_value = ct_value
+			if ct_value is u64 {
+				typ = ast.u64_type
+			}
+		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -4345,7 +4355,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 	} else if array_init.is_fixed && array_init.exprs.len == 1
 		&& array_init.elem_type != ast.void_type {
 		// [50]byte
-		mut fixed_size := 0
+		mut fixed_size := i64(0)
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
@@ -4354,16 +4364,18 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if cint := eval_int_expr(init_expr.obj.expr, 0) {
-						fixed_size = cint
+					if comptime_value := eval_comptime_const_expr(init_expr.obj.expr,
+						0)
+					{
+						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
 					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
-				if cint := eval_int_expr(init_expr, 0) {
-					fixed_size = cint
+				if comptime_value := eval_comptime_const_expr(init_expr, 0) {
+					fixed_size = comptime_value.i64() or { fixed_size }
 				}
 			}
 			else {
@@ -4371,9 +4383,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative', init_expr.position())
+			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
+				init_expr.position())
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, int(fixed_size),
 			init_expr)
 		if array_init.elem_type.has_flag(.generic) {
 			array_init.typ = ast.new_type(idx).set_flag(.generic)
@@ -4385,47 +4398,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 	}
 	return array_init.typ
-}
-
-fn eval_int_expr(expr ast.Expr, nlevel int) ?int {
-	if nlevel > 100 {
-		// protect against a too deep comptime eval recursion:
-		return none
-	}
-	match expr {
-		ast.IntegerLiteral {
-			return expr.val.int()
-		}
-		ast.InfixExpr {
-			left := eval_int_expr(expr.left, nlevel + 1) ?
-			right := eval_int_expr(expr.right, nlevel + 1) ?
-			match expr.op {
-				.plus { return left + right }
-				.minus { return left - right }
-				.mul { return left * right }
-				.div { return left / right }
-				.mod { return left % right }
-				.xor { return left ^ right }
-				.pipe { return left | right }
-				.amp { return left & right }
-				.left_shift { return left << right }
-				.right_shift { return left >> right }
-				else { return none }
-			}
-		}
-		ast.Ident {
-			if expr.obj is ast.ConstField {
-				// an int constant?
-				cint := eval_int_expr(expr.obj.expr, nlevel + 1) ?
-				return cint
-			}
-		}
-		else {
-			// dump(expr)
-			return none
-		}
-	}
-	return none
 }
 
 [inline]
@@ -4833,7 +4805,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 		c.warn('inline assembly goto is not supported, it will most likely not work',
 			stmt.pos)
 	}
-	if c.pref.backend == .js {
+	if c.pref.backend.is_js() {
 		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
@@ -4932,7 +4904,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.skip_flags {
 		return
 	}
-	if c.pref.backend == .js {
+	if c.pref.backend.is_js() {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
 				node.pos)
@@ -6113,6 +6085,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// parser failed, stop checking
 				return
 			}
+			expr_type_sym := c.table.get_type_symbol(expr_type)
 			if cond_type_sym.kind == .interface_ {
 				// TODO
 				// This generates a memory issue with TCC
@@ -6122,7 +6095,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expr_pos := expr.position()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
 					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
-						expr_type_sym := c.table.get_type_symbol(expr_type)
 						if expr_type_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}
@@ -6134,10 +6106,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
 				}
+			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
+				expr_str := c.table.type_to_str(expr_type)
+				expect_str := c.table.type_to_str(node.cond_type)
+				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.position())
 			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
+				c.error('cannot match `$expect_str` with `$expr_str`', expr.position())
 			}
 			branch_exprs[key] = val + 1
 		}
@@ -6802,7 +6778,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				return false
 			} else if cname in checker.valid_comp_if_other {
 				match cname {
-					'js' { return c.pref.backend != .js }
+					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }

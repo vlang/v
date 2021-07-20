@@ -60,7 +60,7 @@ fn check_path(dir string, tests []string) ?int {
 			os.write_file(program_out, '') ?
 		}
 		print(program + ' ')
-		res := os.execute('$vexe -b js run $program')
+		res := os.execute('$vexe -b js_node run $program')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

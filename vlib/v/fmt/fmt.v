@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil as mu
+import math.mathutil
 import v.ast
 import strings
 import v.util
@@ -17,9 +17,12 @@ const (
 
 pub struct Fmt {
 pub mut:
+	file               ast.File
 	table              &ast.Table
-	out_imports        strings.Builder
+	pref               &pref.Preferences
+	is_debug           bool
 	out                strings.Builder
+	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
 	line_len           int    // the current line length, NB: it counts \t as 4 spaces, and starts at 0 after f.writeln
@@ -29,15 +32,13 @@ pub mut:
 	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
-	file               ast.File
 	did_imports        bool
 	is_assign          bool
 	is_struct_init     bool
-	auto_imports       []string        // automatically inserted imports that the user forgot to specify
-	import_pos         int             // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string        // to remove unused imports
-	import_syms_used   map[string]bool // to remove unused import symbols.
-	is_debug           bool
+	auto_imports       []string          // automatically inserted imports that the user forgot to specify
+	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
+	used_imports       []string          // to remove unused imports
+	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
@@ -45,18 +46,16 @@ pub mut:
 	inside_lambda      bool
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	pref               &pref.Preferences
 }
 
 pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
 	mut f := Fmt{
+		file: file
+		table: table
+		pref: pref
+		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
-		table: table
-		indent: 0
-		file: file
-		is_debug: is_debug
-		pref: pref
 	}
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
@@ -69,7 +68,7 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := mu.min(res.len, f.import_pos)
+	bounded_import_pos := mathutil.min(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
@@ -267,7 +266,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
 		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments, {})
+		f.import_comments(imp.next_comments)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -670,176 +669,6 @@ fn expr_is_single_line(expr ast.Expr) bool {
 
 //=== Specific Stmt methods ===//
 
-fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
-	f.write('asm ')
-	if stmt.is_volatile {
-		f.write('volatile ')
-	} else if stmt.is_goto {
-		f.write('goto ')
-	}
-	f.writeln('$stmt.arch {')
-	f.indent++
-	for template in stmt.templates {
-		if template.is_directive {
-			f.write('.')
-		}
-		f.write('$template.name')
-		if template.is_label {
-			f.write(':')
-		} else {
-			if template.args.len > 0 {
-				f.write(' ')
-			}
-		}
-		for i, arg in template.args {
-			f.asm_arg(arg)
-			if i + 1 < template.args.len {
-				f.write(', ')
-			}
-		}
-		if template.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(template.comments, inline: false)
-		}
-	}
-	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	f.asm_ios(stmt.output)
-
-	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	f.asm_ios(stmt.input)
-
-	if stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	for i, clob in stmt.clobbered {
-		if i != 0 {
-			f.write('  ')
-		}
-		f.write(clob.reg.name)
-
-		if clob.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(clob.comments, inline: false)
-		}
-	}
-	f.indent--
-	f.writeln('}')
-	if f.indent == 0 {
-		f.writeln('')
-	}
-}
-
-fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
-	match arg {
-		ast.AsmRegister {
-			f.asm_reg(arg)
-		}
-		ast.AsmAlias {
-			f.write('$arg.name')
-		}
-		ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral {
-			f.write(arg.val)
-		}
-		ast.BoolLiteral {
-			f.write(arg.val.str())
-		}
-		string {
-			f.write(arg)
-		}
-		ast.AsmAddressing {
-			f.write('[')
-			base := arg.base
-			index := arg.index
-			displacement := arg.displacement
-			scale := arg.scale
-			match arg.mode {
-				.base {
-					f.asm_arg(base)
-				}
-				.displacement {
-					f.asm_arg(displacement)
-				}
-				.base_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.index_times_scale_plus_displacement {
-					f.asm_arg(index)
-					f.write(' * $scale + ')
-					f.asm_arg(displacement)
-				}
-				.base_plus_index_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(index)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.base_plus_index_times_scale_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(index)
-					f.write(' * $scale + ')
-					f.asm_arg(displacement)
-				}
-				.rip_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.invalid {
-					panic('fmt: invalid addressing mode')
-				}
-			}
-			f.write(']')
-		}
-		ast.AsmDisp {
-			if arg.val.len >= 2 && arg.val[arg.val.len - 1] in [`b`, `f`]
-				&& arg.val[..arg.val.len - 1].bytes().all(it.is_digit()) {
-				f.write(arg.val[arg.val.len - 1].ascii_str())
-				f.write(arg.val[..arg.val.len - 1])
-			} else {
-				f.write(arg.val)
-			}
-		}
-	}
-}
-
-fn (mut f Fmt) asm_reg(reg ast.AsmRegister) {
-	f.write(reg.name)
-}
-
-fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
-	for i, io in ios {
-		if i != 0 {
-			f.write('  ')
-		}
-
-		f.write('$io.constraint ($io.expr)')
-		mut as_block := true
-		if io.expr is ast.Ident {
-			if io.expr.name == io.alias {
-				as_block = false
-			}
-		}
-		if as_block && io.alias != '' {
-			f.write(' as $io.alias')
-		}
-		if io.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(io.comments, inline: false)
-		}
-	}
-}
-
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	if node.expr is ast.ParExpr {
@@ -855,7 +684,7 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	for i, left in node.left {
 		f.expr(left)
 		if i < node.left.len - 1 {
@@ -989,7 +818,7 @@ pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.expr(node.expr)
 	if !f.single_line_if {
 		f.writeln('')
@@ -1060,7 +889,7 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	f.expr(node.cond)
 	f.write('; ')
 	f.stmt(node.inc)
-	f.remove_new_line({})
+	f.remove_new_line()
 	f.write(' {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
@@ -1240,7 +1069,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 }
 
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.write('return')
 	if node.exprs.len > 0 {
 		f.write(' ')
@@ -1643,7 +1472,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	for arg in node.args {
-		f.comments(arg.comments, {})
+		f.comments(arg.comments)
 	}
 	if node.is_method {
 		if node.name in ['map', 'filter'] {
@@ -1882,12 +1711,12 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		for i, branch in node.branches {
 			if i == 0 {
 				// first `if`
-				f.comments(branch.comments, {})
+				f.comments(branch.comments)
 			} else {
 				// `else`, close previous branch
 				if branch.comments.len > 0 {
 					f.writeln('}')
-					f.comments(branch.comments, {})
+					f.comments(branch.comments)
 				} else {
 					f.write('} ')
 				}
@@ -2070,7 +1899,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				continue
 			}
 			if i == 0 {
-				f.remove_new_line({})
+				f.remove_new_line()
 			}
 			f.writeln('')
 			f.indent++
@@ -2151,7 +1980,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	}
 	f.writeln('map{')
 	f.indent++
-	f.comments(node.pre_cmnts, {})
+	f.comments(node.pre_cmnts)
 	mut max_field_len := 0
 	for key in node.keys {
 		if key.str().len > max_field_len {
@@ -2177,7 +2006,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
 			if f.line_len + estr.len + 2 > fmt.max_len[5] {
-				f.remove_new_line({})
+				f.remove_new_line()
 				f.writeln('')
 			}
 			f.write(estr)
@@ -2204,7 +2033,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		}
 		f.stmts(branch.stmts)
 		if single_line {
-			f.remove_new_line({})
+			f.remove_new_line()
 			f.writeln(' }')
 		} else {
 			f.writeln('}')
@@ -2221,7 +2050,7 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	mut single_line := true
 	for branch in node.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
