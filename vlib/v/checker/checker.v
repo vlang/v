@@ -1241,8 +1241,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	left_pos := node.left.position()
 	right_pos := node.right.position()
 	left_right_pos := left_pos.extend(right_pos)
-	if left_type.is_any_kind_of_pointer() && node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
-		if (right_type.is_any_kind_of_pointer() && node.op != .minus) || (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus]) {
+	if left_type.is_any_kind_of_pointer()
+		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
+		if (right_type.is_any_kind_of_pointer() && node.op != .minus)
+			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus]) {
 			left_name := c.table.type_to_str(left_type)
 			right_name := c.table.type_to_str(right_type)
 			c.error('invalid operator `$node.op` to `$left_name` and `$right_name`', left_right_pos)
@@ -1418,7 +1420,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				unalias_right_type := c.table.unalias_num_type(right_type)
 				mut promoted_type := c.promote(unaliased_left_type, unalias_right_type)
 				// substract pointers is allowed in unsafe block
-				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer() && right_type.is_any_kind_of_pointer() && node.op == .minus
+				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
+					&& right_type.is_any_kind_of_pointer() && node.op == .minus
 				if is_allowed_pointer_arithmetic {
 					promoted_type = left_type
 				}
