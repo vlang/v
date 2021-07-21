@@ -293,7 +293,7 @@ fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) 
 }
 
 fn (mut g Gen) sql_delete(node ast.SqlStmtLine, expr string, table_name string) {
-	g.write('v_delete(${expr}._object, _SLIT("$table_name"),')
+	g.write('_v_delete(${expr}._object, _SLIT("$table_name"),')
 	g.sql_gen_where_data(node.where_expr)
 	g.writeln(');')
 }
