@@ -97,7 +97,7 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 		g.sql_delete(node, expr, table_name)
 	}
 	if !dcheck {
-		g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { v_panic(IError_str(${res}.err)); }')
+		g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { _v_panic(IError_str(${res}.err)); }')
 	}
 	if subs {
 		for _, sub in node.sub_structs {
@@ -225,7 +225,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
 	g.writeln('});')
 
-	g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { v_panic(IError_str(${res}.err)); }')
+	g.writeln('if (${res}.state != 0 && ${res}.err._typ != _IError_None___index) { _v_panic(IError_str(${res}.err)); }')
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
 		g.writeln('orm__Primitive $id_name = orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object);')
@@ -620,7 +620,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.write('(orm__QueryData) {}')
 	}
 	g.writeln(');')
-	g.writeln('if (_o${res}.state != 0 && _o${res}.err._typ != _IError_None___index) { v_panic(IError_str(_o${res}.err)); }')
+	g.writeln('if (_o${res}.state != 0 && _o${res}.err._typ != _IError_None___index) { _v_panic(IError_str(_o${res}.err)); }')
 	g.writeln('Array_Array_orm__Primitive $res = (*(Array_Array_orm__Primitive*)_o${res}.data);')
 
 	if node.is_count {
