@@ -200,19 +200,27 @@ pub fn (mut a array) prepend_many(val voidptr, size int) {
 
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
+	a.delete_many(i, 1)
+}
+
+// delete_many deletes `size` elements beginning with index `i`
+pub fn (mut a array) delete_many(i int, size int) {
 	$if !no_bounds_checking ? {
-		if i < 0 || i >= a.len {
-			panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+		if i < 0 || i + size > a.len {
+			endidx := if size > 1 { '..${i + size}' } else { '' }
+			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
 		}
 	}
 	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
 	old_data := a.data
-	a.data = vcalloc((a.len - 1) * a.element_size)
+	a.data = vcalloc((a.len - size) * a.element_size)
 	unsafe { C.memcpy(a.data, old_data, i * a.element_size) }
-	unsafe { C.memcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + 1) * a.element_size,
-		(a.len - i - 1) * a.element_size) }
-	a.len--
+	unsafe {
+		C.memcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
+			(a.len - i - size) * a.element_size)
+	}
+	a.len -= size
 	a.cap = a.len
 }
 
