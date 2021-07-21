@@ -1,5 +1,6 @@
 ## [Version 0.3](https://github.com/vlang/v/projects/5)
 - [ ] [make `-autofree` the default](https://github.com/vlang/v/issues/6989)
+- [x] [gc option]
 - [ ] [coroutines](https://github.com/vlang/v/issues/561)
 - [x] channels
 - [x] lock{}
@@ -12,7 +13,9 @@
 - [x] fix `byte.str()`
 - [x] maps with non-string keys
 - [x] iOS/Android support
-- [ ] parallel parser (and maybe checker/gen?)
+- [ ] parallel parser
+- [ ] parallel checker
+- [ ] parallel cgen
 - [ ] `recover()` from panics
 - [x] IO streams
 - [x] struct embedding
@@ -23,7 +26,7 @@
 - [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
 - [ ] fix all remaining generics issues
 - [ ] merge v.c and v_win.c
-- [ ] more advanced errors, not just `error('message')`
+- [x] more advanced errors, not just `error('message')`
 - [ ] VLS for autocomplete, refactoring, go to definition etc
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
 - [ ] Remove `foo = 0` for `&Foo`
