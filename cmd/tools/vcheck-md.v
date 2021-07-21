@@ -292,7 +292,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 			}
 		}
 	} else {
-		query := r'<a\s*id=["\'](?P<link>[a-z0-9\-\_\x7f-\uffff]+)["\']\s*/>'
+		query := '<a\\s*id=["\'](?P<link>[a-z0-9\\-\\_\\x7f-\\uffff]+)["\']\\s*/>'
 		mut re := regex.regex_opt(query) or { panic(err) }
 		res := re.find_all_str(line)
 
