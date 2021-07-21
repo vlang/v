@@ -2801,6 +2801,16 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 		}
 		c.expected_type = param.typ
+
+		e_sym := c.table.get_type_symbol(c.expected_type)
+		if call_arg.expr is ast.MapInit && e_sym.kind == .struct_ {
+			c.error('cannot initialize a struct with a map', call_arg.pos)
+			continue
+		} else if call_arg.expr is ast.StructInit && e_sym.kind == .map {
+			c.error('cannot initialize a map with a struct', call_arg.pos)
+			continue
+		}
+
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
