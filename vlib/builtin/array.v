@@ -214,14 +214,16 @@ pub fn (mut a array) delete_many(i int, size int) {
 	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
 	old_data := a.data
-	a.data = vcalloc((a.len - size) * a.element_size)
+	new_size := a.len - size
+	new_cap := if new_size == 0 { 1 } else { new_size }
+	a.data = vcalloc(new_cap * a.element_size)
 	unsafe { C.memcpy(a.data, old_data, i * a.element_size) }
 	unsafe {
 		C.memcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
 			(a.len - i - size) * a.element_size)
 	}
-	a.len -= size
-	a.cap = a.len
+	a.len = new_size
+	a.cap = new_cap
 }
 
 // clear clears the array without deallocating the allocated data.

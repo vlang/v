@@ -89,6 +89,8 @@ fn test_delete_many() {
 	a[1] = 17
 	assert a == [1, 17, 3, 4, 8, 9]
 	assert c == [1, 2, 3, 4, 8, 9]
+	a.delete_many(0, a.len)
+	assert a == []int{}
 }
 
 fn test_short() {
