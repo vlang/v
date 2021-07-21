@@ -1067,7 +1067,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		output: output
 		input: input
 		clobbered: clobbered
-		pos: pos.extend(p.tok.position())
+		pos: pos.extend(p.prev_tok.position())
 		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
 		scope: scope
 		global_labels: global_labels

@@ -715,7 +715,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return ($opt_el_type){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return _tmp;
 }')
@@ -729,7 +729,7 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (Option_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return (Option_void){0};
 }')
@@ -5789,7 +5789,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
 	if name in c.c_reserved_map {
-		return 'v_$name'
+		return '_v_$name'
 	}
 	return name
 }
@@ -6052,7 +6052,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			} else {
 				g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)$c_ret_ptr_ptr);')
 			}
-			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
+			g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
 			if g.pref.os == .windows {
 				if node.call_expr.return_type == ast.void_type {
 					g.gowrappers.writeln('\tCloseHandle(thread);')
