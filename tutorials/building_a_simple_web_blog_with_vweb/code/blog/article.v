@@ -1,7 +1,7 @@
 module main
 
 struct Article {
-	id    int
+	id    int    [primary; sql: serial]
 	title string
 	text  string
 }
