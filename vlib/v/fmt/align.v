@@ -4,7 +4,6 @@
 module fmt
 
 import math.mathutil
-import v.ast
 
 const struct_field_align_threshold = 8
 
