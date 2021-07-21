@@ -207,8 +207,13 @@ pub fn (mut a array) delete(i int) {
 	}
 	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
-	unsafe { C.memmove(a.get_unsafe(i), a.get_unsafe(i + 1), (a.len - i - 1) * a.element_size) }
+	old_data := a.data
+	a.data = vcalloc((a.len - 1) * a.element_size)
+	unsafe { C.memcpy(a.data, old_data, i * a.element_size) }
+	unsafe { C.memcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + 1) * a.element_size,
+		(a.len - i - 1) * a.element_size) }
 	a.len--
+	a.cap = a.len
 }
 
 // clear clears the array without deallocating the allocated data.
