@@ -1,6 +1,6 @@
 module os_js
 
-// os.setenv sets the value of an environment variable with `name` to `value`.
+// setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(key string, val string, overwrite bool) {
 	#if ($process.env[key] && !(overwrite.valueOf())) return;
 	#$process.env[key] = val + '';
@@ -14,7 +14,7 @@ pub fn getenv(key string) string {
 	return res
 }
 
-// os.unsetenv clears an environment variable with `name`.
+// unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	#$process.env[name] = ""
 
