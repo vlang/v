@@ -1423,7 +1423,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
 					&& right_type.is_any_kind_of_pointer() && node.op == .minus
 				if is_allowed_pointer_arithmetic {
-					promoted_type = left_type
+					promoted_type = ast.int_type
 				}
 				if promoted_type.idx() == ast.void_type_idx {
 					left_name := c.table.type_to_str(left_type)
