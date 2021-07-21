@@ -1121,6 +1121,12 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 	if typ_sym.language != .v {
 		return false
 	}
+	// generic struct don't generate cast interface fn
+	if typ_sym.info is Struct {
+		if typ_sym.info.is_generic {
+			return false
+		}
+	}
 	mut inter_sym := t.get_type_symbol(inter_typ)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
 		return false
