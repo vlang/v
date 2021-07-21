@@ -74,6 +74,7 @@ pub mut:
 	inside_const   bool
 	inside_anon_fn bool
 	inside_ref_lit bool
+	inside_defer   bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
@@ -4467,6 +4468,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
+			if c.inside_defer {
+				c.error('defers are not allowed in defer statements', node.pos)
+			}
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
@@ -4497,7 +4501,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.defer_vars[i] = id
 				}
 			}
+			c.inside_defer = true
 			c.stmts(node.stmts)
+			c.inside_defer = false
 		}
 		ast.EnumDecl {
 			c.enum_decl(node)
@@ -4542,6 +4548,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
+			if c.inside_defer {
+				c.error('goto is not allowed in defer statements', node.pos)
+			}
 			if !c.inside_unsafe {
 				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
 					node.pos)
@@ -4604,6 +4613,9 @@ fn (mut c Checker) block(node ast.Block) {
 }
 
 fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
+	if c.inside_defer {
+		c.error('`$node.kind.str()` is not allowed in defer statements', node.pos)
+	}
 	if c.in_for_count == 0 {
 		c.error('$node.kind.str() statement not within a loop', node.pos)
 	}
