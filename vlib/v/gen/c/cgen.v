@@ -3424,7 +3424,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.select_expr(node)
 		}
 		ast.SizeOf {
-			node_typ := g.unwrap_generic(node.typ)
+			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			node_typ := g.unwrap_generic(typ)
 			sym := g.table.get_type_symbol(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
 				g.error('unknown type `$sym.name`', node.pos)
@@ -3433,7 +3434,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
 		ast.IsRefType {
-			node_typ := g.unwrap_generic(node.typ)
+			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			node_typ := g.unwrap_generic(typ)
 			sym := g.table.get_type_symbol(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
 				g.error('unknown type `$sym.name`', node.pos)
