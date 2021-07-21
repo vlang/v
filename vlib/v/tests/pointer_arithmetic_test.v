@@ -1,4 +1,4 @@
-fn test_strings(){
+fn test_strings() {
 	s := 'hi'
 	mut p := unsafe { s.str + 1 }
 	n := unsafe { p - s.str }
