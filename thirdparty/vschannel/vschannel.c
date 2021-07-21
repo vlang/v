@@ -60,11 +60,13 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Close socket.
 	if(tls_ctx->socket != INVALID_SOCKET) {
 		closesocket(tls_ctx->socket);
+		tls_ctx->socket = INVALID_SOCKET;
 	}
 	
 	// Close "MY" certificate store.
 	if(tls_ctx->cert_store) {
 		CertCloseStore(tls_ctx->cert_store, 0);
+		tls_ctx->cert_store = NULL;
 	}
 }
 
