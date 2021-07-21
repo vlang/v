@@ -7,8 +7,10 @@ import strings
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
-#include <sys/ptrace.h>
 #include <utime.h>
+$if !solaris {
+	#include <sys/ptrace.h>
+}
 
 pub const (
 	path_separator = '/'
