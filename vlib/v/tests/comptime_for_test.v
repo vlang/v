@@ -64,6 +64,7 @@ fn test_comptime_for_with_if() {
 
 fn test_comptime_for_fields() {
 	println(@FN)
+	mut fields_found := 0
 	$for field in App.fields {
 		println('  field: $field.name | ' + no_lines('$field'))
 		$if field.typ is string {
@@ -81,5 +82,19 @@ fn test_comptime_for_fields() {
 		if field.is_pub && field.is_mut {
 			assert field.name in ['g', 'h']
 		}
+		if field.name == 'f' {
+			assert sizeof(field) == 8
+			assert isreftype(field) == false
+			// assert typeof(field) == 'u64'
+			assert typeof(field).name == 'u64'
+			fields_found++
+		}
+		if field.name == 'g' {
+			// assert typeof(field) == 'string'
+			assert typeof(field).name == 'string'
+			assert isreftype(field) == true
+			fields_found++
+		}
 	}
+	assert fields_found == 2
 }

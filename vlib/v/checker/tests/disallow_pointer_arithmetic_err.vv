@@ -1,0 +1,9 @@
+fn main() {
+	x := 5
+	p := &x
+	_ := p + p //should be error
+	_ := p * p //should be error
+	_ := p * 2 //should be error
+	_ := p + 5 //OK but only in unsafe block, r is *int
+	_ := p - p //OK even in safe code, but n should be isize
+}
