@@ -108,7 +108,6 @@ pub:
 	args        []MethodArgs
 	return_type int
 	typ         int
-	type_name   string
 }
 
 // FieldData holds information about a field. Fields reside on structs.
@@ -120,7 +119,6 @@ pub:
 	is_mut    bool
 	is_shared bool
 	typ       int
-	type_name string
 }
 
 enum AttributeKind {
