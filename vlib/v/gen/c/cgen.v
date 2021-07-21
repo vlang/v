@@ -3497,7 +3497,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 // T.name, typeof(expr).name
-fn (mut g Gen) type_name(typ ast.Type) {
+fn (mut g Gen) type_name(raw_type ast.Type) {
+	typ := if raw_type == g.field_data_type { g.comp_for_field_value.typ } else { raw_type }
 	sym := g.table.get_type_symbol(typ)
 	mut s := ''
 	if sym.kind == .function {
