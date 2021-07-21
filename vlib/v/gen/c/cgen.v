@@ -36,8 +36,9 @@ fn string_array_to_map(a []string) map[string]bool {
 }
 
 struct Gen {
-	pref         &pref.Preferences
-	module_built string
+	pref            &pref.Preferences
+	module_built    string
+	field_data_type ast.Type // cache her to avoid map lookups
 mut:
 	table                  &ast.Table
 	out                    strings.Builder
@@ -225,6 +226,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		module_built: module_built
 		timers: util.new_timers(timers_should_print)
 		inner_loop: &ast.EmptyStmt{}
+		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 	}
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
@@ -3511,7 +3513,12 @@ fn (mut g Gen) type_name(typ ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	sym := g.table.get_type_symbol(node.expr_type)
+	typ := if node.expr_type == g.field_data_type {
+		g.comp_for_field_value.typ
+	} else {
+		node.expr_type
+	}
+	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
@@ -3525,11 +3532,11 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	} else if sym.kind == .function {
 		info := sym.info as ast.FnType
 		g.write('_SLIT("${g.fn_decl_str(info)}")')
-	} else if node.expr_type.has_flag(.variadic) {
-		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
+	} else if typ.has_flag(.variadic) {
+		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(typ))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		x := g.table.type_to_str(node.expr_type)
+		x := g.table.type_to_str(typ)
 		y := util.strip_main_name(x)
 		g.write('_SLIT("$y")')
 	}
