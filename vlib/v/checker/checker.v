@@ -7790,17 +7790,21 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		return_sym := c.table.get_type_symbol(node.return_type)
 		if return_sym.info is ast.MultiReturn {
 			for multi_type in return_sym.info.types {
+				multi_sym := c.table.get_type_symbol(multi_type)
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
 				} else if multi_type.has_flag(.optional) {
 					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
+				} else if multi_sym.kind == .array_fixed {
+					c.error('fixed array cannot be used in multi-return', node.return_type_pos)
 				}
 			}
+		} else if return_sym.kind == .array_fixed {
+			c.error('fixed array cannot be returned by function', node.return_type_pos)
 		}
-	}
-	if node.return_type == ast.void_type {
+	} else {
 		for mut a in node.attrs {
 			if a.kind == .comptime_define {
 				c.evaluate_once_comptime_if_attribute(mut a)

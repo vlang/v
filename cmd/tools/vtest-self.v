@@ -54,10 +54,7 @@ const (
 		'do_not_remove',
 	]
 	skip_with_werror              = [
-		// -Wduplicated-branches
-		'vlib/v/tests/match_in_fn_call_test.v',
-		'vlib/v/tests/match_test.v',
-		'vlib/v/tests/unsafe_test.v',
+		'do_not_remove',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
