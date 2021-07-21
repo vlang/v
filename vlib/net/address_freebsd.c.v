@@ -3,7 +3,7 @@ module net
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-const max_unix_path = 108
+const max_unix_path = 104
 
 struct C.addrinfo {
 mut:
@@ -17,20 +17,30 @@ mut:
 	ai_next      voidptr
 }
 
-struct C.sockaddr_in {
-	sin_family u16
-	sin_port   u16
-	sin_addr   u32
+struct C.sockaddr_in6 {
+mut:
+	// 1 + 1 + 2 + 4 + 16 + 4 = 28;
+	sin6_len      byte     // 1
+	sin6_family   byte     // 1
+	sin6_port     u16      // 2
+	sin6_flowinfo u32      // 4
+	sin6_addr     [16]byte // 16
+	sin6_scope_id u32      // 4
 }
 
-struct C.sockaddr_in6 {
-	sin6_family u16
-	sin6_port   u16
-	sin6_addr   [4]u32
+struct C.sockaddr_in {
+mut:
+	sin_len    byte
+	sin_family byte
+	sin_port   u16
+	sin_addr   u32
+	sin_zero   [8]char
 }
 
 struct C.sockaddr_un {
-	sun_family u16
+mut:
+	sun_len    byte
+	sun_family byte
 	sun_path   [max_unix_path]char
 }
 
@@ -55,12 +65,13 @@ struct Ip {
 }
 
 struct Unix {
-	path [max_unix_path]byte
+	path [max_unix_path]char
 }
 
 [_pack: '1']
 struct Addr {
 pub:
-	f    u16
+	len  u8
+	f    u8
 	addr AddrData
 }
