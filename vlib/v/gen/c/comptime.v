@@ -459,6 +459,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			ret_typ := method.return_type.idx()
 			g.writeln('\t${node.val_var}.typ = $styp;')
 			g.writeln('\t${node.val_var}.return_type = $ret_typ;')
+			g.writeln('\t${node.val_var}.type_name = _SLIT("${g.table.get_type_symbol(ret_typ).name}");')
 			//
 			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp
@@ -502,6 +503,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
 				g.writeln('\t${node.val_var}.typ = $styp;')
+				g.writeln('\t${node.val_var}.type_name = _SLIT("${g.table.get_type_symbol(styp).name}");')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
