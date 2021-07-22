@@ -651,7 +651,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
 				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
-				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				// see comment at top of vlib/v/gen/c/utils.v
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp
