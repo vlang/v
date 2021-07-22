@@ -1126,7 +1126,8 @@ fn (mut s Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote
+			&& (is_raw || prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
