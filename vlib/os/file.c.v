@@ -16,7 +16,6 @@ struct FileInfo {
 fn C.fseeko(&C.FILE, u64, int) int
 
 fn C._fseeki64(&C.FILE, u64, int) int
-fn C._ftelli64(&C.FILE) i64
 
 fn C.getc(&C.FILE) int
 
@@ -774,12 +773,7 @@ pub fn (f &File) tell() ?i64 {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	mut pos := i64(0)
-	$if windows && x64 {
-		pos = C._ftelli64(f.cfile)
-	} $else {
-		pos = C.ftell(f.cfile)
-	}
+	pos := C.ftell(f.cfile)
 	if pos == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
