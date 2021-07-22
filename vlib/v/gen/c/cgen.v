@@ -3625,7 +3625,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('.data)')
 	}
 	// struct embedding
-	if sym.info is ast.Struct {
+	if sym.info is ast.Struct || sym.info is ast.Aggregate {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()

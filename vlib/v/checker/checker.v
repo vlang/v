@@ -2118,7 +2118,6 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		method = m
 		has_method = true
 	} else {
-		// can this logic be moved to ast.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is ast.Struct {
 			if left_type_sym.info.parent_type != 0 {
 				type_sym := c.table.get_type_symbol(left_type_sym.info.parent_type)
@@ -2127,24 +2126,21 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 					has_method = true
 					is_generic = true
 				}
-			} else {
-				mut found_methods := []ast.Fn{}
-				mut embed_of_found_methods := []ast.Type{}
-				for embed in left_type_sym.info.embeds {
-					embed_sym := c.table.get_type_symbol(embed)
-					if m := c.table.type_find_method(embed_sym, method_name) {
-						found_methods << m
-						embed_of_found_methods << embed
-					}
+			}
+		}
+		if !has_method {
+			has_method = true
+			mut embed_type := ast.Type(0)
+			method, embed_type = c.table.type_find_method_from_embeds(left_type_sym, method_name) or {
+				if err.msg != '' {
+					c.error(err.msg, call_expr.pos)
 				}
-				if found_methods.len == 1 {
-					method = found_methods[0]
-					has_method = true
-					is_method_from_embed = true
-					call_expr.from_embed_type = embed_of_found_methods[0]
-				} else if found_methods.len > 1 {
-					c.error('ambiguous method `$method_name`', call_expr.pos)
-				}
+				has_method = false
+				ast.Fn{}, ast.Type(0)
+			}
+			if embed_type != 0 {
+				is_method_from_embed = true
+				call_expr.from_embed_type = embed_type
 			}
 		}
 		if left_type_sym.kind == .aggregate {
@@ -3379,24 +3375,16 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			field = f
 		} else {
 			// look for embedded field
-			if sym.info is ast.Struct {
-				mut found_fields := []ast.StructField{}
-				mut embed_of_found_fields := []ast.Type{}
-				for embed in sym.info.embeds {
-					embed_sym := c.table.get_type_symbol(embed)
-					if f := c.table.find_field(embed_sym, field_name) {
-						found_fields << f
-						embed_of_found_fields << embed
-					}
+			has_field = true
+			mut embed_type := ast.Type(0)
+			field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+				if err.msg != '' {
+					c.error(err.msg, node.pos)
 				}
-				if found_fields.len == 1 {
-					field = found_fields[0]
-					has_field = true
-					node.from_embed_type = embed_of_found_fields[0]
-				} else if found_fields.len > 1 {
-					c.error('ambiguous field `$field_name`', node.pos)
-				}
+				has_field = false
+				ast.StructField{}, ast.Type(0)
 			}
+			node.from_embed_type = embed_type
 			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err.msg
 			}
@@ -3416,24 +3404,16 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				field = f
 			} else {
 				// look for embedded field
-				if gs.info is ast.Struct {
-					mut found_fields := []ast.StructField{}
-					mut embed_of_found_fields := []ast.Type{}
-					for embed in gs.info.embeds {
-						embed_sym := c.table.get_type_symbol(embed)
-						if f := c.table.find_field(embed_sym, field_name) {
-							found_fields << f
-							embed_of_found_fields << embed
-						}
+				has_field = true
+				mut embed_type := ast.Type(0)
+				field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+					if err.msg != '' {
+						c.error(err.msg, node.pos)
 					}
-					if found_fields.len == 1 {
-						field = found_fields[0]
-						has_field = true
-						node.from_embed_type = embed_of_found_fields[0]
-					} else if found_fields.len > 1 {
-						c.error('ambiguous field `$field_name`', node.pos)
-					}
+					has_field = false
+					ast.StructField{}, ast.Type(0)
 				}
+				node.from_embed_type = embed_type
 			}
 		}
 	}
