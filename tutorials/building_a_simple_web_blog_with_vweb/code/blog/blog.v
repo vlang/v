@@ -74,7 +74,8 @@ pub fn (mut app App) new_article() vweb.Result {
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	return app.json(json.encode(articles))
+	json_result := json.encode(articles)
+	return app.json(json_result)
 }
 
 fn (mut app App) time() {
