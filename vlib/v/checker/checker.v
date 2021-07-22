@@ -2131,8 +2131,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if !has_method {
 			has_method = true
 			mut embed_type := ast.Type(0)
-			method, embed_type = c.table.type_find_method_from_embeds(left_type_sym,
-				method_name) or {
+			method, embed_type = c.table.type_find_method_from_embeds(left_type_sym, method_name) or {
 				if err.msg != '' {
 					c.error(err.msg, call_expr.pos)
 				}
