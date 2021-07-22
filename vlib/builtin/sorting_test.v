@@ -82,4 +82,3 @@ fn f(mut users []User) {
 fn z(mut users []User) {
 	users.sort(a.name < b.name)
 }
-
