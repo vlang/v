@@ -4614,7 +4614,7 @@ fn (mut c Checker) block(node ast.Block) {
 }
 
 fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
-	if c.in_for_count == 0 {
+	if c.in_for_count == 0 || c.inside_anon_fn {
 		c.error('$node.kind.str() statement not within a loop', node.pos)
 	}
 	if node.label.len > 0 {
