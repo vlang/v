@@ -360,7 +360,7 @@ fn test_tell() ? {
 		s := 'x'.repeat(size)
 		os.write_file(tfile, s) ?
 		fs := os.file_size(tfile)
-		assert fs == size
+		assert int(fs) == size
 		//
 		mut f := os.open_file(tfile, 'r') ?
 		f.seek(-5, .end) ?
