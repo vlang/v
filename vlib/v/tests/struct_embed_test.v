@@ -175,6 +175,10 @@ struct PieceCommonFields {
 	team TeamEnum
 }
 
+fn (p PieceCommonFields) get_pos() Position {
+	return p.pos
+}
+
 struct King {
 	PieceCommonFields
 }
@@ -191,12 +195,30 @@ fn (piece Piece) position() Position {
 	return pos
 }
 
-fn test_match_aggregate() {
+fn (piece Piece) get_position() Position {
+	mut pos := Position{}
+	match piece {
+		King, Queen { pos = piece.get_pos() }
+	}
+	return pos
+}
+
+fn test_match_aggregate_field() {
 	piece := Piece(King{
 		pos: Position{1, 8}
 		team: .black
 	})
 	pos := piece.position()
+	assert pos.x == 1
+	assert pos.y == 8
+}
+
+fn test_match_aggregate_method() {
+	piece := Piece(King{
+		pos: Position{1, 8}
+		team: .black
+	})
+	pos := piece.get_position()
 	assert pos.x == 1
 	assert pos.y == 8
 }
