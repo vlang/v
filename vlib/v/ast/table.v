@@ -347,9 +347,7 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := StructField{
-		// default_expr: ast.empty_expr()
-	}
+	mut new_field := StructField{}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
 		if type_field := t.find_field(ts, name) {
@@ -415,29 +413,44 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
+// find_field_from_embeds finds and returns a field in the embeddings of a struct and the embedding type
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, Type) {
+	if sym.info is Struct {
+		mut found_fields := []StructField{}
+		mut embed_of_found_fields := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if f := t.find_field(embed_sym, field_name) {
+				found_fields << f
+				embed_of_found_fields << embed
+			}
+		}
+		if found_fields.len == 1 {
+			return found_fields[0], embed_of_found_fields[0]
+		} else if found_fields.len > 1 {
+			return error('ambiguous field `$field_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			field, embed_type := t.find_field_from_embeds(agg_sym, field_name) or { return err }
+			if embed_type != 0 {
+				return field, embed_type
+			}
+		}
+	}
+	return none
+}
+
 // find_field_with_embeds searches for a given field, also looking through embedded fields
 pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
 	if f := t.find_field(sym, field_name) {
 		return f
 	} else {
 		// look for embedded field
-		if sym.info is Struct {
-			mut found_fields := []StructField{}
-			mut embed_of_found_fields := []Type{}
-			for embed in sym.info.embeds {
-				embed_sym := t.get_type_symbol(embed)
-				if f := t.find_field(embed_sym, field_name) {
-					found_fields << f
-					embed_of_found_fields << embed
-				}
-			}
-			if found_fields.len == 1 {
-				return found_fields[0]
-			} else if found_fields.len > 1 {
-				return error('ambiguous field `$field_name`')
-			}
-		}
-		return err
+		first_err := err
+		f, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
+		return f
 	}
 }
 

@@ -3378,25 +3378,16 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			has_field = true
 			field = f
 		} else {
+			first_err := err
 			// look for embedded field
-			if sym.info is ast.Struct {
-				mut found_fields := []ast.StructField{}
-				mut embed_of_found_fields := []ast.Type{}
-				for embed in sym.info.embeds {
-					embed_sym := c.table.get_type_symbol(embed)
-					if f := c.table.find_field(embed_sym, field_name) {
-						found_fields << f
-						embed_of_found_fields << embed
-					}
-				}
-				if found_fields.len == 1 {
-					field = found_fields[0]
-					has_field = true
-					node.from_embed_type = embed_of_found_fields[0]
-				} else if found_fields.len > 1 {
-					c.error('ambiguous field `$field_name`', node.pos)
-				}
+			has_field = true
+			mut embed_type := ast.Type(0)
+			field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+				c.error(first_err.msg, node.pos)
+				has_field = false
+				ast.StructField{}, ast.Type(0)
 			}
+			node.from_embed_type = embed_type
 			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err.msg
 			}
@@ -3415,25 +3406,16 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				has_field = true
 				field = f
 			} else {
+				first_err := err
 				// look for embedded field
-				if gs.info is ast.Struct {
-					mut found_fields := []ast.StructField{}
-					mut embed_of_found_fields := []ast.Type{}
-					for embed in gs.info.embeds {
-						embed_sym := c.table.get_type_symbol(embed)
-						if f := c.table.find_field(embed_sym, field_name) {
-							found_fields << f
-							embed_of_found_fields << embed
-						}
-					}
-					if found_fields.len == 1 {
-						field = found_fields[0]
-						has_field = true
-						node.from_embed_type = embed_of_found_fields[0]
-					} else if found_fields.len > 1 {
-						c.error('ambiguous field `$field_name`', node.pos)
-					}
+				has_field = true
+				mut embed_type := ast.Type(0)
+				field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+					c.error(first_err.msg, node.pos)
+					has_field = false
+					ast.StructField{}, ast.Type(0)
 				}
+				node.from_embed_type = embed_type
 			}
 		}
 	}
