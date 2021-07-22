@@ -4468,9 +4468,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
-			if c.inside_defer {
-				c.error('defers are not allowed in defer statements', node.pos)
-			}
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
