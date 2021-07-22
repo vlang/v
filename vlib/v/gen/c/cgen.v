@@ -3649,7 +3649,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
 	}
-	g.write(c_name(node.field_name))
+	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
+	g.write(field_name)
 	if sum_type_deref_field != '' {
 		g.write('$sum_type_dot$sum_type_deref_field)')
 	}
@@ -5112,7 +5113,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
-			field_name := c_name(field.name)
+			field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 			g.write('.$field_name = ')
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
@@ -5197,7 +5198,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
-				field_name := c_name(sfield.name)
+				field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 				if sfield.typ == 0 {
 					continue
 				}
@@ -5289,7 +5290,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return false
 		}
 	}
-	field_name := c_name(field.name)
+	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	g.write('.$field_name = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {

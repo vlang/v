@@ -13,7 +13,7 @@ fn C.readlink(pathname &char, buf &char, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
-fn C.ftell(fp voidptr) int
+fn C.ftell(fp voidptr) i64
 
 fn C.sigaction(int, voidptr, int) int
 
@@ -83,12 +83,12 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('ftell failed')
 	}
 	C.rewind(fp)
-	mut res := []byte{len: fsize}
+	mut res := []byte{len: int(fsize)}
 	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	res.trim(nr_read_elements * fsize)
+	res.trim(nr_read_elements * int(fsize))
 	return res
 }
 
@@ -110,7 +110,7 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
-		mut str := malloc_noscan(fsize + 1)
+		mut str := malloc_noscan(int(fsize) + 1)
 		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
@@ -586,7 +586,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := unsafe { malloc_noscan(fsize) }
+	buf := unsafe { malloc_noscan(int(fsize)) }
 	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
@@ -594,7 +594,7 @@ pub fn read_file_array<T>(path string) []T {
 			element_size: tsize
 			data: buf
 			len: int(nread)
-			cap: len
+			cap: int(len)
 		}
 	}
 }

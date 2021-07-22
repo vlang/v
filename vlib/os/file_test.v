@@ -331,3 +331,31 @@ fn test_read_raw_at_negative_pos() ? {
 	f.read_raw_at<Point>(-234) or { assert err.msg == 'Invalid argument' }
 	f.close()
 }
+
+fn test_seek() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	f.write_raw(another_point) ?
+	f.write_raw(another_byte) ?
+	f.write_raw(another_color) ?
+	f.write_raw(another_permission) ?
+	f.close()
+
+	// println('> ${sizeof(Point)} ${sizeof(byte)} ${sizeof(Color)} ${sizeof(Permissions)}')
+	f = os.open_file(tfile, 'r') ?
+	defer {
+		f.close()
+	}
+	f.seek(i64(sizeof(Point)), .start) ?
+	assert f.tell() ? == sizeof(Point)
+	b := f.read_raw<byte>() ?
+
+	f.seek(i64(sizeof(Color)), .current) ?
+	x := f.read_raw<Permissions>() ?
+
+	f.seek(-i64(sizeof(Permissions) + sizeof(Color)), .end) ?
+	assert f.tell() ? == sizeof(Point) + sizeof(byte)
+	cc := f.read_raw<Color>() ?
+	assert b == another_byte
+	assert x == another_permission
+	assert cc == another_color
+}
