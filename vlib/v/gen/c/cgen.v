@@ -242,7 +242,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// lock global_g {
 	global_g.timers.start('cgen init')
 	for mod in global_g.table.modules {
-		global_g.inits[mod] = strings.new_builder(100)
+		global_g.inits[mod] = strings.new_builder(200)
 		global_g.global_inits[mod] = strings.new_builder(100)
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
@@ -5362,7 +5362,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
 			g.definitions.writeln('$styp $cname; // inited later')
-			g.inits[mod].writeln('\t$cname = _SLIT("$escaped_val");')
+			g.init.writeln('\t$cname = _SLIT("$escaped_val");')
 			if g.is_autofree {
 				g.cleanups[mod].writeln('\tstring_free(&$cname);')
 			}
