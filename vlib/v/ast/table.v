@@ -450,8 +450,8 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(S
 		mut embed_of_found_fields := []Type{}
 		for embed in sym.info.embeds {
 			embed_sym := t.get_type_symbol(embed)
-			if f := t.find_field(embed_sym, field_name) {
-				found_fields << f
+			if field := t.find_field(embed_sym, field_name) {
+				found_fields << field
 				embed_of_found_fields << embed
 			}
 		}
@@ -474,13 +474,13 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(S
 
 // find_field_with_embeds searches for a given field, also looking through embedded fields
 pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
-	if f := t.find_field(sym, field_name) {
-		return f
+	if field := t.find_field(sym, field_name) {
+		return field
 	} else {
 		// look for embedded field
 		first_err := err
-		f, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
-		return f
+		field, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
+		return field
 	}
 }
 
