@@ -49,3 +49,47 @@ pub fn chown(path string, owner int, group int) {
 		#$fs.chownSync(''+path,owner.valueOf(),group.valueOf())
 	}
 }
+
+pub fn temp_dir() string {
+	mut res := '' 
+	$if js_node {
+		#res = new builtin.string($os.tmpdir())
+	}
+	return res
+}
+
+pub fn home_dir() string {
+	mut res := '' 
+	$if js_node {
+		#res = new builtin.string($os.homedir())
+	}
+	return res
+}
+
+// join_path returns a path as string from input string parameter(s).
+pub fn join_path(base string, dirs ...string) string {
+	mut result := []string{}
+	result << base.trim_right('\\/')
+	for d in dirs {
+		result << d
+	}
+	mut path_sep := ''
+	# path_sep = $path.sep;
+	res := result.join(path_sep)
+	return res
+}
+
+
+pub fn execute(cmd string) Result {
+	mut exit_code := 0
+	mut stdout := ''
+	# let commands = cmd.str.split(' ');
+	# let output = $child_process.spawnSync(commands[0],commands.slice(1,commands.length));
+	# exit_code = new builtin.int(output.status)
+	# stdout = new builtin.string(output.stdout + '')
+	return Result{
+		exit_code: exit_code
+		output: stdout
+	}
+
+}
