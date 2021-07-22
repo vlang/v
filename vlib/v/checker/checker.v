@@ -3378,6 +3378,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			has_field = true
 			mut embed_type := ast.Type(0)
 			field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+				if err.msg != '' {
+					c.error(err.msg, node.pos)
+				}
 				has_field = false
 				ast.StructField{}, ast.Type(0)
 			}
@@ -3404,6 +3407,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				has_field = true
 				mut embed_type := ast.Type(0)
 				field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+					if err.msg != '' {
+						c.error(err.msg, node.pos)
+					}
 					has_field = false
 					ast.StructField{}, ast.Type(0)
 				}
