@@ -342,23 +342,31 @@ fn test_seek() ? {
 
 	// println('> ${sizeof(Point)} ${sizeof(byte)} ${sizeof(Color)} ${sizeof(Permissions)}')
 	f = os.open_file(tfile, 'r') ?
-	defer {
-		f.close()
-	}
+	//
 	f.seek(i64(sizeof(Point)), .start) ?
 	assert f.tell() ? == sizeof(Point)
 	b := f.read_raw<byte>() ?
+	assert b == another_byte
 
 	f.seek(i64(sizeof(Color)), .current) ?
 	x := f.read_raw<Permissions>() ?
-
-	f.seek(-i64(sizeof(Permissions) + sizeof(Color)), .end) ?
-	$if !macos {
-		// TODO: investigate in detail why this behaves differently in macos
-		assert f.tell() ? == sizeof(Point) + sizeof(byte)
-	}
-	cc := f.read_raw<Color>() ?
-	assert b == another_byte
 	assert x == another_permission
-	assert cc == another_color
+	//
+	f.close()
+}
+
+fn test_tell() ? {
+	for size in 10 .. 30 {
+		s := 'x'.repeat(size)
+		os.write_file(tfile, s) ?
+		fs := os.file_size(tfile)
+		assert fs == size
+		//
+		mut f := os.open_file(tfile, 'r') ?
+		f.seek(-5, .end) ?
+		pos := f.tell() ?
+		f.close()
+		// dump(pos)
+		assert pos == size - 5
+	}
 }
