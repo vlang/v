@@ -28,8 +28,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 				version: req.version
 				text: req.data
 				header: req.header
-				cookies: req.cookies
-				status_code: int(Status.ok)
+				status: Status.ok
 			}
 		}
 	}

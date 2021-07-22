@@ -19,7 +19,7 @@ pub const (
 
 	http_400          = http.Response{
 		version: .v1_1
-		status_code: 400
+		status: .bad_request
 		text: '400 Bad Request'
 		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
@@ -28,7 +28,7 @@ pub const (
 	}
 	http_404 = http.Response{
 		version: .v1_1
-		status_code: 404
+		status: .not_found
 		text: '404 Not Found'
 		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
@@ -37,7 +37,7 @@ pub const (
 	}
 	http_500 = http.Response{
 		version: .v1_1
-		status_code: 500
+		status: .internal_server_error
 		text: '500 Internal Server Error'
 		header: http.new_header_from_map(map{
 			http.CommonHeader.content_type:   'text/plain'
@@ -136,7 +136,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 
 	resp := http.Response{
 		version: .v1_1
-		status_code: ctx.status.int() // TODO: change / remove ctx.status
+		status: http.status_from_int(ctx.status.int()) // TODO: change / remove ctx.status
 		header: header.join(vweb.headers_close)
 		text: res
 	}

@@ -4,14 +4,14 @@
 module http
 
 import net.http.chunked
+import strconv
 
 // Response represents the result of the request
 pub struct Response {
 pub mut:
 	text        string
 	header      Header
-	cookies     map[string]string
-	status_code int
+	status      Status
 	version     Version
 }
 
@@ -27,40 +27,49 @@ pub fn (resp Response) bytes() []byte {
 
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
-	// TODO: cookies
-	return ('$resp.version $resp.status_code ${status_from_int(resp.status_code).str()}\r\n' + '${resp.header.render(
+	return ('$resp.version ${resp.status.int()} $resp.status\r\n' + '${resp.header.render(
 		version: resp.version
 	)}\r\n' + '$resp.text')
 }
 
 // Parse a raw HTTP response into a Response object
 pub fn parse_response(resp string) ?Response {
-	// TODO: Cookie data type
-	mut cookies := map[string]string{}
-	first_header := resp.all_before('\n')
-	mut status_code := 0
-	if first_header.contains('HTTP/') {
-		val := first_header.find_between(' ', ' ')
-		status_code = val.int()
-	}
+	version, status_int, _ := parse_response_line(resp.all_before('\n'))?
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp) ?
 	header := parse_headers(resp.substr(start_idx, end_idx)) ?
 	mut text := resp.substr(end_idx, resp.len)
-	// set cookies
-	for cookie in header.values(.set_cookie) {
-		parts := cookie.split_nth('=', 2)
-		cookies[parts[0]] = parts[1]
-	}
 	if header.get(.transfer_encoding) or { '' } == 'chunked' {
 		text = chunked.decode(text)
 	}
 	return Response{
-		status_code: status_code
+		status: status_from_int(status_int)
 		header: header
-		cookies: cookies
 		text: text
+		version: version_from_str(version)
 	}
+}
+
+// parse_response_line parses the first HTTP response line into the HTTP
+// version, response code integer, and response code message
+fn parse_response_line(line string) ?(string, int, string) {
+	if line.len < 5 || line[..5].to_lower() != 'http/' {
+		return error('response does not start with HTTP/')
+	}
+	data := line.split_nth(' ', 3)
+	if data.len != 3 {
+		return error('expected at least 3 tokens')
+	}
+	return data[0], strconv.atoi(data[1])?, data[2]
+}
+
+// cookies parses the Set-Cookie headers into Cookie objects
+pub fn (r Response) cookies() []Cookie {
+	mut cookies := []Cookie{}
+	for cookie in r.header.values(.set_cookie) {
+		cookies << parse_cookie(cookie) or { continue }
+	}
+	return cookies
 }
 
 // find_headers_range returns the start (inclusive) and end (exclusive)
