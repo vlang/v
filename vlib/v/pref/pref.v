@@ -154,7 +154,7 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path      []string
 	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
-	output_cross_c   bool
+	output_cross_c   bool // true, when the user passed `-os cross`
 	prealloc         bool
 	vroot            string
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.

@@ -77,6 +77,7 @@ pub mut:
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
+	fn_level       int // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 mut:
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
@@ -4467,10 +4468,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if id.info is ast.IdentVar {
-					if id.comptime && (id.name in checker.valid_comp_if_compilers
-						|| id.name in checker.valid_comp_if_os
-						|| id.name in checker.valid_comp_if_other
-						|| id.name in checker.valid_comp_if_platforms) {
+					if id.comptime && id.name in checker.valid_comp_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
@@ -6548,6 +6546,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
+			if c.fn_level == 0 && c.pref.output_cross_c {
+				// do not skip any of the branches for top level `$if OS {`
+				// statements, in `-os cross` mode
+				found_branch = false
+				c.skip_flags = false
+			}
 			if !c.skip_flags {
 				c.stmts(branch.stmts)
 			} else if c.pref.output_cross_c {
@@ -6764,7 +6768,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		ast.Ident {
 			cname := cond.name
 			if cname in checker.valid_comp_if_os {
-				return cname != c.pref.os.str().to_lower()
+				mut is_os_target_different := false
+				if !c.pref.output_cross_c {
+					target_os := c.pref.os.str().to_lower()
+					is_os_target_different = cname != target_os
+				}
+				return is_os_target_different
 			} else if cname in checker.valid_comp_if_compilers {
 				return pref.cc_from_string(cname) != c.pref.ccompiler_type
 			} else if cname in checker.valid_comp_if_platforms {
@@ -7763,7 +7772,13 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	c.fn_level++
+	defer {
+		c.fn_level--
+	}
+	//
 	c.returns = false
+
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
