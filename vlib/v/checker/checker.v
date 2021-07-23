@@ -77,7 +77,8 @@ pub mut:
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
-	fn_level       int // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	fn_level       int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	ct_cond_stack  []ast.Expr
 mut:
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
@@ -4908,6 +4909,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.skip_flags {
 		return
 	}
+	if c.ct_cond_stack.len > 0 {
+		node.ct_conds = c.ct_cond_stack.clone()
+	}
 	if c.pref.backend.is_js() {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
@@ -6551,6 +6555,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// statements, in `-os cross` mode
 				found_branch = false
 				c.skip_flags = false
+				c.ct_cond_stack << branch.cond
 			}
 			if !c.skip_flags {
 				c.stmts(branch.stmts)
@@ -6573,6 +6578,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.comptime_fields_type.delete(comptime_field_name)
 			}
 			c.skip_flags = cur_skip_flags
+			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
+				c.ct_cond_stack.pop()
+			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)

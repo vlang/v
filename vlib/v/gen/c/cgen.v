@@ -1358,6 +1358,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('goto $node.name;')
 		}
 		ast.HashStmt {
+			mut ct_condition := ''
+			if node.ct_conds.len > 0 {
+				ct_condition_start := g.out.len
+				for idx, ct_expr in node.ct_conds {
+					g.comp_if_cond(ct_expr, false)
+					if idx < node.ct_conds.len - 1 {
+						g.write(' && ')
+					}
+				}
+				ct_condition = g.out.cut_to(ct_condition_start).trim_space()
+				// dump(node)
+				// dump(ct_condition)
+			}
 			// #include etc
 			if node.kind == 'include' {
 				mut missing_message := 'Header file $node.main, needed for module `$node.mod` was not found.'
@@ -1372,17 +1385,39 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					guarded_include = '#include $node.main'
 				}
 				if node.main.contains('.m') {
+					g.definitions.writeln('\n')
+					if ct_condition.len > 0 {
+						g.definitions.writeln('#if $ct_condition')
+					}
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
-					g.definitions.writeln('// added by module `$node.mod`:')
+					g.definitions.writeln('// added by module `$node.mod`')
 					g.definitions.writeln(guarded_include)
+					if ct_condition.len > 0 {
+						g.definitions.writeln('#endif // \$if $ct_condition')
+					}
+					g.definitions.writeln('\n')
 				} else {
-					g.includes.writeln('// added by module `$node.mod`:')
+					g.includes.writeln('\n')
+					if ct_condition.len > 0 {
+						g.includes.writeln('#if $ct_condition')
+					}
+					g.includes.writeln('// added by module `$node.mod`')
 					g.includes.writeln(guarded_include)
+					if ct_condition.len > 0 {
+						g.includes.writeln('#endif // \$if $ct_condition')
+					}
+					g.includes.writeln('\n')
 				}
 			} else if node.kind == 'define' {
-				g.includes.writeln('// defined by module `$node.mod` in file `$node.source_file`:')
+				if ct_condition.len > 0 {
+					g.includes.writeln('#if $ct_condition')
+				}
+				g.includes.writeln('// defined by module `$node.mod`')
 				g.includes.writeln('#define $node.main')
+				if ct_condition.len > 0 {
+					g.includes.writeln('#endif // \$if $ct_condition')
+				}
 			}
 		}
 		ast.Import {}

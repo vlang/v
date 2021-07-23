@@ -874,17 +874,19 @@ pub mut:
 	scope &Scope
 }
 
-// #include etc
+// #include, #define etc
 pub struct HashStmt {
 pub:
 	mod         string
 	pos         token.Position
 	source_file string
 pub mut:
-	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
-	kind string // : 'include'
-	main string // : '<openssl/rand.h>'
-	msg  string // : 'please install openssl'
+	val      string // example: 'include <openssl/rand.h> # please install openssl // comment'
+	kind     string // : 'include'
+	main     string // : '<openssl/rand.h>'
+	msg      string // : 'please install openssl'
+	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
+	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
 }
 
 /*
