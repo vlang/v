@@ -2224,6 +2224,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	mut return_type := ast.void_type
 	is_decl := assign_stmt.op == .decl_assign
+	g.assign_op = assign_stmt.op
 	op := if is_decl { token.Kind.assign } else { assign_stmt.op }
 	right_expr := assign_stmt.right[0]
 	match right_expr {
@@ -2353,20 +2354,40 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				g.expr(lx)
 				noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
-				if is_opt {
-					mr_base_styp := g.base_type(return_type)
-					if is_auto_heap {
-						g.writeln(' = HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+				if g.is_arraymap_set {
+					if is_opt {
+						mr_base_styp := g.base_type(return_type)
+						if is_auto_heap {
+							g.writeln('HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i) });')
+						} else {
+							g.writeln('(*($mr_base_styp*)${mr_var_name}.data).arg$i });')
+						}
 					} else {
-						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+						if is_auto_heap {
+							g.writeln('HEAP${noscan}($styp, ${mr_var_name}.arg$i) });')
+						} else {
+							g.writeln('${mr_var_name}.arg$i });')
+						}
 					}
 				} else {
-					if is_auto_heap {
-						g.writeln(' = HEAP${noscan}($styp, ${mr_var_name}.arg$i);')
+					if is_opt {
+						mr_base_styp := g.base_type(return_type)
+						if is_auto_heap {
+							g.writeln(' = HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+						} else {
+							g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+						}
 					} else {
-						g.writeln(' = ${mr_var_name}.arg$i;')
+						if is_auto_heap {
+							g.writeln(' = HEAP${noscan}($styp, ${mr_var_name}.arg$i);')
+						} else {
+							g.writeln(' = ${mr_var_name}.arg$i;')
+						}
 					}
 				}
+			}
+			if g.is_arraymap_set {
+				g.is_arraymap_set = false
 			}
 			return
 		}
