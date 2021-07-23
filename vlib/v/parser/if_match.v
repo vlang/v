@@ -393,12 +393,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					if check_timeout {
 						if has_else {
 							p.error_with_pos('`else` and timeout value are mutually exclusive `select` keys',
-								p.tok.position())
+								stmt.pos)
 							return ast.SelectExpr{}
 						}
 						if has_timeout {
 							p.error_with_pos('at most one timeout branch allowed in `select` block',
-								p.tok.position())
+								stmt.pos)
 							return ast.SelectExpr{}
 						}
 						is_timeout = true
