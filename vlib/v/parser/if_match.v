@@ -313,7 +313,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			mut is_gt := false
 			if p.tok.kind == .gt {
 				is_gt = true
-				p.note_with_pos('`>` is deprecated and will soon be forbidden - just state the timeout in nonoseconds',
+				p.note_with_pos('`>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds',
 					p.tok.position())
 				p.next()
 			}
