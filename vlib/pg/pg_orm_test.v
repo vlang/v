@@ -7,7 +7,7 @@ fn test_pg_orm() {
 	mut db := pg.connect(
 		host: 'localhost'
 		user: 'postgres'
-		password: 'Mxbobf64'
+		password: ''
 		dbname: 'postgres'
 	) or { panic(err) }
 
