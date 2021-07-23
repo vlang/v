@@ -1,4 +1,4 @@
-vlib/v/parser/tests/select_bad_key_1.vv:19:3: notice: `>` is deprecated and will soon be forbidden - just state the timeout in nonoseconds
+vlib/v/parser/tests/select_bad_key_1.vv:19:3: notice: `>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds
    17 |             a++
    18 |         }
    19 |         > 50 * time.millisecond {
