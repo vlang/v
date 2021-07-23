@@ -4,9 +4,12 @@ import orm
 import pg
 
 fn test_pg_orm() {
-	mut db := pg.connect(host: 'localhost', user: 'postgres', password: 'Mxbobf64', dbname: 'postgres') or {
-		panic(err)
-	}
+	mut db := pg.connect(
+		host: 'localhost'
+		user: 'postgres'
+		password: 'Mxbobf64'
+		dbname: 'postgres'
+	) or { panic(err) }
 
 	db.create('Test', [
 		orm.TableField{
@@ -52,7 +55,6 @@ fn test_pg_orm() {
 		is_and: [true]
 		kinds: [.eq]
 	}) or { panic(err) }
-
 
 	id := res[0][0]
 	name := res[0][1]

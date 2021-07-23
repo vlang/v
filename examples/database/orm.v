@@ -118,7 +118,6 @@ fn mysql_array() {
 	db.close()
 }
 
-
 fn psql_array() {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
@@ -224,7 +223,6 @@ fn mysql() {
 	eprintln(m)
 	conn.close()
 }
-
 
 fn psql() {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {

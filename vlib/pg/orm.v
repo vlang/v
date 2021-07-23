@@ -9,7 +9,7 @@ import net.conv
 pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
 	mut ret := [][]orm.Primitive{}
-	
+
 	res := pg_stmt_worker(db, query, orm.QueryData{}, where) ?
 
 	for row in res {
@@ -20,7 +20,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 		}
 		ret << row_data
 	}
-	
+
 	return ret
 }
 
@@ -43,18 +43,14 @@ pub fn (db DB) delete(table string, where orm.QueryData) ? {
 
 pub fn (db DB) last_id() orm.Primitive {
 	query := 'SELECT LASTVAL();'
-	id := db.q_int(query) or {
-		0
-	}
+	id := db.q_int(query) or { 0 }
 	return orm.Primitive(id)
 }
 
 // table
 
 pub fn (db DB) create(table string, fields []orm.TableField) ? {
-	query := orm.orm_table_gen(table, '"', true, 0, fields, pg_type_from_v, false) or {
-		return err
-	}
+	query := orm.orm_table_gen(table, '"', true, 0, fields, pg_type_from_v, false) or { return err }
 	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
@@ -67,24 +63,27 @@ pub fn (db DB) drop(table string) ? {
 
 fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ?[]Row {
 	mut param_types := []Oid{}
-	mut param_vals := []charptr{}
+	mut param_vals := []&char{}
 	mut param_lens := []int{}
 	mut param_formats := []int{}
 
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, data)
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, where)
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
+		data)
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
+		where)
 
-	res := C.PQexecParams(db.conn, query.str, param_vals.len, param_types.data, param_vals.data, param_lens.data, param_formats.data, 0)
+	res := C.PQexecParams(db.conn, query.str, param_vals.len, param_types.data, param_vals.data,
+		param_lens.data, param_formats.data, 0)
 	return db.handle_error_or_result(res, 'orm_stmt_worker')
 }
 
-fn pg_stmt_binder(mut types []Oid, mut vals []charptr, mut lens []int, mut formats []int, d orm.QueryData) {
+fn pg_stmt_binder(mut types []Oid, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
 	}
 }
 
-fn pg_stmt_match(mut types []Oid, mut vals []charptr, mut lens []int, mut formats []int, data orm.Primitive) {
+fn pg_stmt_match(mut types []Oid, mut vals []&char, mut lens []int, mut formats []int, data orm.Primitive) {
 	d := data
 	match data {
 		bool {
@@ -102,21 +101,21 @@ fn pg_stmt_match(mut types []Oid, mut vals []charptr, mut lens []int, mut format
 		u16 {
 			types << t_int2
 			num := conv.htn16(&data)
-			vals << &char(&(num))
+			vals << &char(&num)
 			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << t_int4
 			num := conv.htn32(&data)
-			vals << &char(&(num))
+			vals << &char(&num)
 			lens << int(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << t_int8
 			num := conv.htn64(&data)
-			vals << &char(&(num))
+			vals << &char(&num)
 			lens << int(sizeof(u64))
 			formats << 1
 		}
@@ -129,21 +128,21 @@ fn pg_stmt_match(mut types []Oid, mut vals []charptr, mut lens []int, mut format
 		i16 {
 			types << t_int2
 			num := conv.htn16(unsafe { &u16(&data) })
-			vals << &char(&(num))
+			vals << &char(&num)
 			lens << int(sizeof(i16))
 			formats << 1
 		}
 		int {
 			types << t_int4
 			num := conv.htn32(unsafe { &u32(&data) })
-			vals << &char(&(num))
+			vals << &char(&num)
 			lens << int(sizeof(int))
 			formats << 1
 		}
 		i64 {
 			types << t_int8
-			num := conv.htn64(unsafe { &u64(&data)})
-			vals << &char(&(num))
+			num := conv.htn64(unsafe { &u64(&data) })
+			vals << &char(&num)
 			lens << int(sizeof(i64))
 			formats << 1
 		}
@@ -212,42 +211,53 @@ fn pg_type_from_v(typ int) ?string {
 
 fn str_to_primitive(str string, typ int) ?orm.Primitive {
 	match typ {
-		/* bool */ 16 {
+		// bool
+		16 {
 			return orm.Primitive(str.i8() == 1)
 		}
-		/* i8 */  5 {
+		// i8
+		5 {
 			return orm.Primitive(str.i8())
 		}
-		/* i16 */ 6 {
-			return orm.Primitive(str.i16())			
+		// i16
+		6 {
+			return orm.Primitive(str.i16())
 		}
-		/* int */ 7 {
-			return orm.Primitive(str.int())			
+		// int
+		7 {
+			return orm.Primitive(str.int())
 		}
-		/* i64 */ 8 {
-			return orm.Primitive(str.i64())			
+		// i64
+		8 {
+			return orm.Primitive(str.i64())
 		}
-		/* byte */ 9 {
+		// byte
+		9 {
 			data := str.i8()
 			return orm.Primitive(*unsafe { &byte(&data) })
 		}
-		/* u16 */ 10 {
+		// u16
+		10 {
 			data := str.i16()
-			return orm.Primitive(*unsafe { &u16(&data) })		
+			return orm.Primitive(*unsafe { &u16(&data) })
 		}
-		/* u32 */ 11 {
+		// u32
+		11 {
 			data := str.int()
-			return orm.Primitive(*unsafe { &u32(&data) })			
+			return orm.Primitive(*unsafe { &u32(&data) })
 		}
-		/* u64 */ 12 {
+		// u64
+		12 {
 			data := str.i64()
-			return orm.Primitive(*unsafe { &u64(&data) })			
+			return orm.Primitive(*unsafe { &u64(&data) })
 		}
-		/* f32 */ 13 {
+		// f32
+		13 {
 			return orm.Primitive(str.f32())
 		}
-		/* f64 */ 14 {
-			return orm.Primitive(str.f64())			
+		// f64
+		14 {
+			return orm.Primitive(str.f64())
 		}
 		orm.string {
 			return orm.Primitive(str)
@@ -256,8 +266,7 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 			timestamp := str.int()
 			return orm.Primitive(time.unix(timestamp))
 		}
-		else {
-		}
+		else {}
 	}
 	return error('Unknown field type $typ')
 }

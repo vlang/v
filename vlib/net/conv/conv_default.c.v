@@ -11,7 +11,7 @@ fn C.ntohs(net u16) u16
 struct Bytes {
 mut:
 	first u32
-	last u32
+	last  u32
 }
 
 union LongLong {
@@ -21,24 +21,26 @@ union LongLong {
 
 // host to net 64 (htonll)
 pub fn htn64(host &u64) u64 {
-	mut ll := LongLong{ll: host}
+	mut ll := LongLong{
+		ll: host
+	}
 
 	unsafe {
 		ll.first = htn32(ll.first)
 		ll.last = htn32(ll.last)
 	}
-
 	return unsafe { ll.ll }
 }
 
 // net to host 64 (ntohll)
 pub fn nth64(net &u64) u64 {
-	mut ll := LongLong{ll: net}
+	mut ll := LongLong{
+		ll: net
+	}
 
 	unsafe {
 		ll.first = nth32(ll.first)
 		ll.last = nth32(ll.last)
 	}
-
 	return unsafe { ll.ll }
 }
