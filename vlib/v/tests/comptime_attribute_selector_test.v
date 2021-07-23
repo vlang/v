@@ -10,6 +10,8 @@ fn test_comp_for_attributes() {
 		if attr.name == 'amount' && attr.has_arg && attr.kind == .number {
 			amount = attr.arg.int()
 		}
+	}
+	$for attr in Abc.attributes {
 		if attr.name == 'name' && attr.has_arg && attr.kind == .string {
 			res = attr.arg.repeat(amount)
 		}
