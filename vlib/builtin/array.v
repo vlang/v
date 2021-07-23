@@ -55,7 +55,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 		cap: cap_
 	}
 	for i in 0 .. arr.len {
-		val_clone := val.clone()
+		val_clone := unsafe { val.clone_to_depth(1) }
 		unsafe { arr.set_unsafe(i, &val_clone) }
 	}
 	return arr
@@ -382,7 +382,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	if depth > 0 {
+	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
 			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
