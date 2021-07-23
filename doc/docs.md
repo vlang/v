@@ -3350,7 +3350,7 @@ fn main() {
 			time.sleep(5 * time.millisecond)
 			eprintln('> c: $c was send on channel ch3')
 		}
-		> 500 * time.millisecond {
+		500 * time.millisecond {
 			// do something if no channel has become ready within 0.5s
 			eprintln('> more than 0.5s passed without a channel being ready')
 		}

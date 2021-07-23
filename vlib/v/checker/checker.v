@@ -6330,7 +6330,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				if branch.is_timeout {
 					if !branch.stmt.typ.is_int() {
 						tsym := c.table.get_type_symbol(branch.stmt.typ)
-						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`',
+						c.error('invalid type `$tsym.name` for timeout - expected integer number of nanoseconds aka `time.Duration`',
 							branch.stmt.pos)
 					}
 				} else {

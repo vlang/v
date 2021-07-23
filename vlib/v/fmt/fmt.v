@@ -2169,9 +2169,6 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 		if branch.is_else {
 			f.write('else {')
 		} else {
-			if branch.is_timeout {
-				f.write('> ')
-			}
 			f.single_line_if = true
 			match branch.stmt {
 				ast.ExprStmt { f.expr(branch.stmt.expr) }
