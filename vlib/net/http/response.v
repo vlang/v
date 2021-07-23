@@ -9,10 +9,10 @@ import strconv
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	text        string
-	header      Header
-	status      Status
-	version     Version
+	text    string
+	header  Header
+	status  Status
+	version Version
 }
 
 fn (mut resp Response) free() {
@@ -27,14 +27,14 @@ pub fn (resp Response) bytes() []byte {
 
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
-	return ('$resp.version ${resp.status.int()} $resp.status\r\n' + '${resp.header.render(
+	return ('$resp.version $resp.status.int() $resp.status\r\n' + '${resp.header.render(
 		version: resp.version
 	)}\r\n' + '$resp.text')
 }
 
 // Parse a raw HTTP response into a Response object
 pub fn parse_response(resp string) ?Response {
-	version, status_int, _ := parse_response_line(resp.all_before('\n'))?
+	version, status_int, _ := parse_response_line(resp.all_before('\n')) ?
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp) ?
 	header := parse_headers(resp.substr(start_idx, end_idx)) ?
@@ -60,7 +60,7 @@ fn parse_response_line(line string) ?(string, int, string) {
 	if data.len != 3 {
 		return error('expected at least 3 tokens')
 	}
-	return data[0], strconv.atoi(data[1])?, data[2]
+	return data[0], strconv.atoi(data[1]) ?, data[2]
 }
 
 // cookies parses the Set-Cookie headers into Cookie objects
