@@ -3454,7 +3454,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.SqlExpr {
-			g.sql_select_expr(node, false, '')
+			g.sql_select_expr(node)
 		}
 		ast.StringLiteral {
 			g.string_literal(node)

@@ -9,6 +9,7 @@ const github_job = os.getenv('GITHUB_JOB')
 const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
+		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit
@@ -38,6 +39,7 @@ const (
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
@@ -72,6 +74,7 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
