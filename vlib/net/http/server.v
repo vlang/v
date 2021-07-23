@@ -7,31 +7,21 @@ import io
 import net
 import time
 
+interface Handler {
+	handle(Request) Response
+}
+
 pub struct Server {
 pub mut:
-	port          int = 8080
-	handler       fn (Request) Response
+	port          int           = 8080
+	handler       Handler       = DebugHandler{}
 	read_timeout  time.Duration = 30 * time.second
 	write_timeout time.Duration = 30 * time.second
 }
 
 pub fn (mut s Server) listen_and_serve() ? {
-	if voidptr(s.handler) == 0 {
+	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
-		s.handler = fn (req Request) Response {
-			$if debug {
-				eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
-			} $else {
-				eprintln('[$time.now()] $req.method $req.url - 200')
-			}
-			mut r := Response{
-				text: req.data
-				header: req.header
-			}
-			r.set_status(.ok)
-			r.set_version(req.version)
-			return r
-		}
 	}
 	mut l := net.listen_tcp(.ip6, ':$s.port') ?
 	eprintln('Listening on :$s.port')
@@ -63,9 +53,28 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 		}
 		return
 	}
-	mut resp := s.handler(req)
+	mut resp := s.handler.handle(req)
 	if resp.version() == .unknown {
 		resp.set_version(req.version)
 	}
 	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
+}
+
+// DebugHandler implements the Handler interface by echoing the request
+// in the response
+struct DebugHandler {}
+
+fn (d DebugHandler) handle(req Request) Response {
+	$if debug {
+		eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
+	} $else {
+		eprintln('[$time.now()] $req.method $req.url - 200')
+	}
+	mut r := Response{
+		text: req.data
+		header: req.header
+	}
+	r.set_status(.ok)
+	r.set_version(req.version)
+	return r
 }
