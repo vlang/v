@@ -899,7 +899,8 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 }
 
 fn (mut c Checker) check_init_fields(node ast.StructInit, inited_fields []string, next_node ast.Struct, next_node_name string, depth int) {
-	unwrapped_struct_type := c.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+	unwrapped_struct_type := c.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
+		c.table.cur_concrete_types)
 	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
 	type_sym := c.table.get_type_symbol(unwrapped_struct_type)
 
@@ -907,8 +908,10 @@ fn (mut c Checker) check_init_fields(node ast.StructInit, inited_fields []string
 		if field.has_default_expr || field.name in inited_fields {
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr && !c.pref.translated && depth == 0 {
-			c.error('reference field `${type_sym.name}.$field.name` must be initialized', node.pos)
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
+			&& !c.pref.translated && depth == 0 {
+			c.error('reference field `${type_sym.name}.$field.name` must be initialized',
+				node.pos)
 		}
 		// Do not allow empty uninitialized sum types
 		/*
