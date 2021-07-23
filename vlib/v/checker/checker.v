@@ -898,6 +898,50 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 	}
 }
 
+fn (mut c Checker) check_init_fields(node ast.StructInit, inited_fields []string, next_node ast.Struct, next_node_name string) {
+	unwrapped_struct_type := c.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
+		c.table.cur_concrete_types)
+	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
+	type_sym := c.table.get_type_symbol(unwrapped_struct_type)
+
+	for field in next_node.fields {
+		if field.has_default_expr || field.name in inited_fields {
+			continue
+		}
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
+			&& !c.pref.translated {
+			c.error('reference field `${type_sym.name}.$field.name` must be initialized',
+				node.pos)
+		}
+		// Do not allow empty uninitialized sum types
+		/*
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .sum_type {
+			c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+				node.pos)
+		}
+		*/
+		// Check for `[required]` struct attr
+		field_sym := c.table.get_type_symbol(field.typ)
+		if field_sym.info is ast.Struct {
+			c.check_init_fields(node, inited_fields, field_sym.info, field_sym.name)
+		}
+		if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
+			mut found := false
+			for init_field in node.fields {
+				if field.name == init_field.name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				c.error('nested field `${next_node_name}.$field.name` must be initialized',
+					node.pos)
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.typ == ast.void_type {
 		// Short syntax `({foo: bar})`
@@ -1136,38 +1180,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			// Check uninitialized refs/sum types
-			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields {
-					continue
-				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated {
-					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
-						node.pos)
-				}
-				// Do not allow empty uninitialized sum types
-				/*
-				sym := c.table.get_type_symbol(field.typ)
-				if sym.kind == .sum_type {
-					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
-						node.pos)
-				}
-				*/
-				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
-					mut found := false
-					for init_field in node.fields {
-						if field.name == init_field.name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						c.error('field `${type_sym.name}.$field.name` must be initialized',
-							node.pos)
-					}
-				}
-			}
+			c.check_init_fields(node, inited_fields, info, type_sym.name)
 		}
 		else {}
 	}

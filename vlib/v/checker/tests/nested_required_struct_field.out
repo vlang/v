@@ -1,0 +1,11 @@
+vlib/v/checker/tests/nested_required_struct_field.vv:17:6: error: nested field `Bar.baz` must be initialized
+   15 | }
+   16 | 
+   17 | _ := Foo{}
+      |      ~~~~~
+   18 | _ := FooToo{}
+vlib/v/checker/tests/nested_required_struct_field.vv:18:6: error: nested field `Bar.baz` must be initialized
+   16 | 
+   17 | _ := Foo{}
+   18 | _ := FooToo{}
+      |      ~~~~~~~~
