@@ -310,7 +310,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			has_else = true
 			p.next()
 			/*
-		} else if p.tok.kind == .gt {
+			} else if p.tok.kind == .gt {
 			if has_else {
 				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys',
 					p.tok.position())
@@ -332,7 +332,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				pos: expr.position()
 				comments: [comment]
 				is_expr: true
-			} */
+			}*/
 		} else {
 			mut is_gt := false
 			if p.tok.kind == .gt {
@@ -377,7 +377,8 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 									*/
 									check_timeout = true
 								} else if is_gt {
-									p.error_with_pos('send expression cannot be used as timeout', stmt.pos)
+									p.error_with_pos('send expression cannot be used as timeout',
+										stmt.pos)
 								}
 							}
 							else {
@@ -423,7 +424,8 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					}
 				}
 				else {
-					p.error_with_pos('select: transmission statement, timeout (in ns) or `else` expected', stmt.pos)
+					p.error_with_pos('select: transmission statement, timeout (in ns) or `else` expected',
+						stmt.pos)
 					return ast.SelectExpr{}
 				}
 			}
