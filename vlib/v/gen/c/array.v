@@ -244,13 +244,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	if compare_fn == '' {
 		// `users.sort(a.age > b.age)`
 		// Generate a comparison function for a custom type
-		tmp_name := g.new_tmp_var()
+		tmp_name := g.new_global_tmp_var()
 		styp := g.typ(typ).trim('*')
 		compare_fn = 'compare_${tmp_name}_$styp'
 		if is_reverse {
 			compare_fn += '_reverse'
 		}
 		// Register a new custom `compare_xxx` function for qsort()
+		// TODO: move to checker
 		g.table.register_fn(name: compare_fn, return_type: ast.int_type)
 
 		if node.args.len == 0 {

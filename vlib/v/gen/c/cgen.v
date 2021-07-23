@@ -71,6 +71,7 @@ mut:
 	tmp_count              int      // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count2             int      // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations int      // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count       int      // like tmp_count but global and not resetted in each function
 	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
 	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
@@ -1002,6 +1003,11 @@ pub fn (mut g Gen) writeln(s string) {
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
 	return '_t$g.tmp_count'
+}
+
+pub fn (mut g Gen) new_global_tmp_var() string {
+	g.global_tmp_count++
+	return '_t$g.global_tmp_count'
 }
 
 pub fn (mut g Gen) new_tmp_declaration_name() string {
