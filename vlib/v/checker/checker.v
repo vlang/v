@@ -521,7 +521,8 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 			for field in decl.fields {
 				field_sym := c.table.get_type_symbol(field.typ)
 				if field.name == method.name && field_sym.kind == .function {
-					c.error('type `$decl_sym.name` has both field and method named `$method.name`', method.pos)
+					c.error('type `$decl_sym.name` has both field and method named `$method.name`',
+						method.pos)
 				}
 			}
 			for j in 0 .. i {
@@ -7872,7 +7873,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if field := c.table.find_field(sym, node.name) {
 				field_sym := c.table.get_type_symbol(field.typ)
 				if field_sym.kind == .function {
-					c.error('type `$sym.name` has both field and method named `$node.name`', node.pos)
+					c.error('type `$sym.name` has both field and method named `$node.name`',
+						node.pos)
 				}
 			}
 		}
