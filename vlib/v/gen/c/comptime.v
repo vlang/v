@@ -519,12 +519,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			for attr in sym.info.attrs {
 				g.writeln('/* attribute $i */ {')
-
 				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
 				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
 				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__$attr.kind;')
-
+				g.stmts(node.stmts)
 				g.writeln('}')
 			}
 		}
