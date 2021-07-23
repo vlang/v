@@ -644,6 +644,14 @@ fn is_valid(header string) ? {
 			})
 		}
 	}
+	if header.len == 0 {
+		return IError(HeaderKeyError{
+			msg: "Invalid header key: '$header'"
+			code: 2
+			header: header
+			invalid_char: 0
+		})
+	}
 }
 
 // is_token checks if the byte is valid for a header token
@@ -658,4 +666,35 @@ fn is_token(b byte) bool {
 // Key order is not guaranteed.
 pub fn (h Header) str() string {
 	return h.render(version: .v1_1)
+}
+
+// parse_headers parses a newline delimited string into a Header struct
+fn parse_headers(s string) ?Header {
+	mut h := new_header()
+	mut last_key := ''
+	mut last_value := ''
+	for line in s.split_into_lines() {
+		if line.len == 0 {
+			break
+		}
+		// handle header fold
+		if line[0] == ` ` || line[0] == `\t` {
+			last_value += ' ${line.trim(' \t')}'
+			continue
+		} else if last_key != '' {
+			h.add_custom(last_key, last_value) ?
+		}
+		last_key, last_value = parse_header(line) ?
+	}
+	h.add_custom(last_key, last_value) ?
+	return h
+}
+
+fn parse_header(s string) ?(string, string) {
+	if !s.contains(':') {
+		return error('missing colon in header')
+	}
+	words := s.split_nth(':', 2)
+	// TODO: parse quoted text according to the RFC
+	return words[0], words[1].trim(' \t')
 }
