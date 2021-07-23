@@ -329,7 +329,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 }
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
-	first_pos := p.tok.position()
+	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).position()
 	typ := if short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
