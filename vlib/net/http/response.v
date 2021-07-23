@@ -9,10 +9,10 @@ import strconv
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	text    string
-	header  Header
-	status_code int
-	status_msg string
+	text         string
+	header       Header
+	status_code  int
+	status_msg   string
 	http_version string
 }
 
@@ -69,9 +69,7 @@ fn parse_status_line(line string) ?(string, int, string) {
 		return error('HTTP version malformed')
 	}
 	for digit in digits {
-		strconv.atoi(digit) or {
-			return error('HTTP version must contain only integers')
-		}
+		strconv.atoi(digit) or { return error('HTTP version must contain only integers') }
 	}
 	return version, strconv.atoi(data[1]) ?, data[2]
 }
@@ -108,14 +106,14 @@ pub fn (mut r Response) set_version(v Version) {
 		return
 	}
 	maj, min := v.protos()
-	r.http_version = '${maj}.${min}'
+	r.http_version = '${maj}.$min'
 }
 
 pub struct ResponseConfig {
 	version Version = .v1_1
-	status Status = .ok
-	header Header
-	text string
+	status  Status  = .ok
+	header  Header
+	text    string
 }
 
 // new_response creates a Response object from the configuration. This

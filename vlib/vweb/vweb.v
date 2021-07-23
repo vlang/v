@@ -25,7 +25,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	http_404 = http.new_response(
+	http_404          = http.new_response(
 		status: .not_found
 		text: '404 Not Found'
 		header: http.new_header(
@@ -33,7 +33,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	http_500 = http.new_response(
+	http_500          = http.new_response(
 		status: .internal_server_error
 		text: '500 Internal Server Error'
 		header: http.new_header(
@@ -41,7 +41,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	mime_types = map{
+	mime_types        = map{
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
