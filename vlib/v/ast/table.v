@@ -321,7 +321,7 @@ pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 	return false
 }
 
-// search from current type up through each parent looking for method
+// type_find_method searches from current type up through each parent looking for method
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := unsafe { s }
@@ -340,6 +340,36 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	return none
 }
 
+pub fn (t &Table) type_find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, Type) {
+	if sym.info is Struct {
+		mut found_methods := []Fn{}
+		mut embed_of_found_methods := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if m := t.type_find_method(embed_sym, method_name) {
+				found_methods << m
+				embed_of_found_methods << embed
+			}
+		}
+		if found_methods.len == 1 {
+			return found_methods[0], embed_of_found_methods[0]
+		} else if found_methods.len > 1 {
+			return error('ambiguous method `$method_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			method, embed_type := t.type_find_method_from_embeds(agg_sym, method_name) or {
+				return err
+			}
+			if embed_type != 0 {
+				return method, embed_type
+			}
+		}
+	}
+	return none
+}
+
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
@@ -347,9 +377,7 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := StructField{
-		// default_expr: ast.empty_expr()
-	}
+	mut new_field := StructField{}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
 		if type_field := t.find_field(ts, name) {
@@ -415,29 +443,44 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
-// find_field_with_embeds searches for a given field, also looking through embedded fields
-pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
-	if f := t.find_field(sym, field_name) {
-		return f
-	} else {
-		// look for embedded field
-		if sym.info is Struct {
-			mut found_fields := []StructField{}
-			mut embed_of_found_fields := []Type{}
-			for embed in sym.info.embeds {
-				embed_sym := t.get_type_symbol(embed)
-				if f := t.find_field(embed_sym, field_name) {
-					found_fields << f
-					embed_of_found_fields << embed
-				}
-			}
-			if found_fields.len == 1 {
-				return found_fields[0]
-			} else if found_fields.len > 1 {
-				return error('ambiguous field `$field_name`')
+// find_field_from_embeds finds and returns a field in the embeddings of a struct and the embedding type
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, Type) {
+	if sym.info is Struct {
+		mut found_fields := []StructField{}
+		mut embed_of_found_fields := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if field := t.find_field(embed_sym, field_name) {
+				found_fields << field
+				embed_of_found_fields << embed
 			}
 		}
-		return err
+		if found_fields.len == 1 {
+			return found_fields[0], embed_of_found_fields[0]
+		} else if found_fields.len > 1 {
+			return error('ambiguous field `$field_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			field, embed_type := t.find_field_from_embeds(agg_sym, field_name) or { return err }
+			if embed_type != 0 {
+				return field, embed_type
+			}
+		}
+	}
+	return none
+}
+
+// find_field_with_embeds searches for a given field, also looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
+	if field := t.find_field(sym, field_name) {
+		return field
+	} else {
+		// look for embedded field
+		first_err := err
+		field, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
+		return field
 	}
 }
 

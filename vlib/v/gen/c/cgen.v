@@ -71,6 +71,7 @@ mut:
 	tmp_count              int      // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count2             int      // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations int      // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count       int      // like tmp_count but global and not resetted in each function
 	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
 	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
@@ -1002,6 +1003,11 @@ pub fn (mut g Gen) writeln(s string) {
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
 	return '_t$g.tmp_count'
+}
+
+pub fn (mut g Gen) new_global_tmp_var() string {
+	g.global_tmp_count++
+	return '_t$g.global_tmp_count'
 }
 
 pub fn (mut g Gen) new_tmp_declaration_name() string {
@@ -3448,7 +3454,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.SqlExpr {
-			g.sql_select_expr(node, false, '')
+			g.sql_select_expr(node)
 		}
 		ast.StringLiteral {
 			g.string_literal(node)
@@ -3625,7 +3631,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('.data)')
 	}
 	// struct embedding
-	if sym.info is ast.Struct {
+	if sym.info is ast.Struct || sym.info is ast.Aggregate {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()
@@ -3649,7 +3655,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
 	}
-	g.write(c_name(node.field_name))
+	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
+	g.write(field_name)
 	if sum_type_deref_field != '' {
 		g.write('$sum_type_dot$sum_type_deref_field)')
 	}
@@ -5112,7 +5119,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
-			field_name := c_name(field.name)
+			field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 			g.write('.$field_name = ')
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
@@ -5197,7 +5204,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
-				field_name := c_name(sfield.name)
+				field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 				if sfield.typ == 0 {
 					continue
 				}
@@ -5289,7 +5296,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return false
 		}
 	}
-	field_name := c_name(field.name)
+	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	g.write('.$field_name = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {

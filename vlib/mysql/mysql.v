@@ -19,6 +19,11 @@ pub enum ConnectionFlag {
 	client_remember_options = C.CLIENT_REMEMBER_OPTIONS
 }
 
+struct SQLError {
+	msg  string
+	code int
+}
+
 // TODO: Documentation
 pub struct Connection {
 mut:
@@ -46,7 +51,7 @@ pub fn (mut conn Connection) connect() ?bool {
 // query - make an SQL query and receive the results.
 // `query()` cannot be used for statements that contain binary data;
 // Use `real_query()` instead.
-pub fn (mut conn Connection) query(q string) ?Result {
+pub fn (conn Connection) query(q string) ?Result {
 	if C.mysql_query(conn.conn, q.str) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -127,7 +132,7 @@ pub fn (conn &Connection) tables(wildcard string) ?[]string {
 pub fn (conn &Connection) escape_string(s string) string {
 	unsafe {
 		to := malloc_noscan(2 * s.len + 1)
-		C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
+		C.mysql_real_escape_string(conn.conn, to, s.str, s.len)
 		return to.vstring()
 	}
 }

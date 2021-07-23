@@ -1,0 +1,10 @@
+fn main() {
+	asm volatile amd64 {
+		mov ecx, 5
+		loop_start:
+		add j, 3
+		loop loop_start
+		; +r (j)
+		; ; ecx
+	}
+}

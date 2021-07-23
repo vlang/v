@@ -14,10 +14,22 @@ $if windows {
 
 #include "sqlite3.h"
 
+const (
+	sqlite_ok    = 0
+	sqlite_error = 1
+	sqlite_row   = 100
+	sqlite_done  = 101
+)
+
 struct C.sqlite3 {
 }
 
 struct C.sqlite3_stmt {
+}
+
+struct Stmt {
+	stmt &C.sqlite3_stmt
+	db   &DB
 }
 
 struct SQLError {
@@ -72,6 +84,8 @@ fn C.sqlite3_column_count(&C.sqlite3_stmt) int
 //
 fn C.sqlite3_errstr(int) &char
 
+fn C.sqlite3_errmsg(&C.sqlite3) &char
+
 fn C.sqlite3_free(voidptr)
 
 // connect Opens the connection with a database.
@@ -104,14 +118,6 @@ pub fn (mut db DB) close() ?bool {
 		})
 	}
 	return true // successfully closed
-}
-
-// Only for V ORM
-fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
-	// println('init_stmt("$query")')
-	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	return stmt
 }
 
 // Only for V ORM
@@ -204,6 +210,14 @@ pub fn (db DB) exec_one(query string) ?Row {
 	return rows[0]
 }
 
+pub fn (db DB) error_message(code int, query string) IError {
+	msg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
+	return IError(&SQLError{
+		msg: '$msg ($code) ($query)'
+		code: code
+	})
+}
+
 // In case you don't expect any result, but still want an error code
 // e.g. INSERT INTO ... VALUES (...)
 pub fn (db DB) exec_none(query string) int {
@@ -216,8 +230,6 @@ TODO
 pub fn (db DB) exec_param(query string, param string) []Row {
 }
 */
-pub fn (db DB) insert<T>(x T) {
-}
 
 pub fn (db DB) create_table(table_name string, columns []string) {
 	db.exec('create table if not exists $table_name (' + columns.join(',\n') + ')')

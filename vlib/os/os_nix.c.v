@@ -7,8 +7,10 @@ import strings
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
-#include <sys/ptrace.h>
 #include <utime.h>
+$if !solaris {
+	#include <sys/ptrace.h>
+}
 
 pub const (
 	path_separator = '/'
@@ -304,10 +306,7 @@ pub fn is_dir(path string) bool {
 	return res
 }
 */
-/*
-pub fn (mut f File) fseek(pos, mode int) {
-}
-*/
+
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
 	if path == '.' {
