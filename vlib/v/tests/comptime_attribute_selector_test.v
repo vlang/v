@@ -11,9 +11,10 @@ fn test_comp_for_attributes() {
 			amount = attr.arg.int()
 		}
 		if attr.name == 'name' && attr.has_arg && attr.kind == .string {
-			res = attr.arg.repeat(amount)
+			res = attr.arg
 		}
 	}
+	res = res.repeat(amount)
 	assert res == 'abcabc'
 }
 
