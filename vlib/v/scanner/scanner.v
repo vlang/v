@@ -688,11 +688,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
-			if s.pos == 0 && next_char == ` ` {
-				// If a single letter name at the start of the file, increment
-				// Otherwise the scanner would be stuck at s.pos = 0
-				s.pos++
-			}
 			return s.new_token(.name, name, name.len)
 		} else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 			// `123`, `.123`
