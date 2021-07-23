@@ -72,7 +72,9 @@ fn C.mysql_fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD
 
 fn C.mysql_free_result(res &C.MYSQL_RES)
 
-fn C.mysql_real_escape_string_quote(mysql &C.MYSQL, to &byte, from &byte, len u64, quote byte) u64
+fn C.mysql_real_escape_string(mysql &C.MYSQL, to &byte, from &byte, len u64) u64
+
+// fn C.mysql_real_escape_string_quote(mysql &C.MYSQL, to &byte, from &byte, len u64, quote byte) u64 (Don't exist in mariadb)
 
 fn C.mysql_close(sock &C.MYSQL)
 

@@ -2,7 +2,7 @@ module abcde
 
 pub struct Builder {
 pub mut:
-	// TODO
+	// inline before field
 	buf          []byte
 	str_calls    int
 	len          int

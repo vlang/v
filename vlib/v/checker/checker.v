@@ -7655,6 +7655,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+	for i, column in node.updated_columns {
+		field := node.fields.filter(it.name == column)[0]
+		node.updated_columns[i] = c.fetch_field_name(field)
+	}
 	if node.kind == .update {
 		for expr in node.update_exprs {
 			c.expr(expr)
@@ -7681,6 +7685,21 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 		c.error('V orm: `id int` must be the first field in `$table_name`', pos)
 	}
 	return fields
+}
+
+fn (mut c Checker) fetch_field_name(field ast.StructField) string {
+	mut name := field.name
+	for attr in field.attrs {
+		if attr.kind == .string && attr.name == 'sql' && attr.arg != '' {
+			name = attr.arg
+			break
+		}
+	}
+	sym := c.table.get_type_symbol(field.typ)
+	if sym.kind == .struct_ {
+		name = '${name}_id'
+	}
+	return name
 }
 
 fn (mut c Checker) post_process_generic_fns() {
