@@ -9,7 +9,7 @@ fn solaris_now() Time {
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
-	C.localtime_r(&ts.tv_sec, &loc_tm)
+	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 

@@ -217,15 +217,6 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 	return method, target, version
 }
 
-fn parse_header(s string) ?(string, string) {
-	if !s.contains(':') {
-		return error('missing colon in header')
-	}
-	words := s.split_nth(':', 2)
-	// TODO: parse quoted text according to the RFC
-	return words[0], words[1].trim_left(' \t')
-}
-
 // Parse URL encoded key=value&key=value forms
 fn parse_form(body string) map[string]string {
 	words := body.split('&')
