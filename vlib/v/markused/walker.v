@@ -5,6 +5,7 @@ module markused
 // Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
+import v.pref
 
 pub struct Walker {
 pub mut:
@@ -12,6 +13,7 @@ pub mut:
 	used_fns    map[string]bool // used_fns['println'] == true
 	used_consts map[string]bool // used_consts['os.args'] == true
 	n_asserts   int
+	pref        &pref.Preferences
 mut:
 	files      []&ast.File
 	all_fns    map[string]ast.FnDecl
@@ -213,6 +215,13 @@ fn (mut w Walker) expr(node ast.Expr) {
 		}
 		ast.GoExpr {
 			w.expr(node.call_expr)
+			if w.pref.os == .windows {
+				w.fn_by_name('panic_lasterr')
+				w.fn_by_name('winapi_lasterr_str')
+			} else {
+				w.fn_by_name('c_error_number_str')
+				w.fn_by_name('panic_error_number')
+			}
 		}
 		ast.IndexExpr {
 			w.expr(node.left)

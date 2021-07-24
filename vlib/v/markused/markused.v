@@ -280,6 +280,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
+		pref: pref
 	}
 	// println( all_fns.keys() )
 	walker.mark_exported_fns()
