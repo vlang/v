@@ -102,8 +102,8 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	if !os.exists(file_path) {
-		verror("$file_path doesn't exist")
+	if !os.is_file(file_path) {
+		verror('$file_path is not a file')
 	}
 	raw_text := util.read_file(file_path) or {
 		verror(err.msg)
