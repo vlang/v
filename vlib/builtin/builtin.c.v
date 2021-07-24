@@ -3,7 +3,7 @@ module builtin
 type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
-fn C.strerror(int) voidptr
+fn C.strerror(int) &char
 
 [noreturn]
 fn vhalt() {
@@ -103,9 +103,9 @@ pub fn panic(s string) {
 
 // return a C-API error message matching to `errnum` 
 pub fn c_error_number_str(errnum int) string {
-	c_msg := &byte(C.strerror(errnum))
+	c_msg := C.strerror(errnum)
 	err_msg := string{
-		str: c_msg
+		str: &byte(c_msg)
 		len: unsafe { C.strlen(c_msg) }
 		is_lit: 1
 	}
