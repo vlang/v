@@ -1,7 +1,7 @@
 module http
 
 fn test_header_new() {
-	h := new_header({ key: .accept, value: 'nothing' },
+	h := new_header(HeaderConfig{ key: .accept, value: 'nothing' },
 		key: .expires
 		value: 'yesterday'
 	)
@@ -37,7 +37,7 @@ fn test_header_get() ? {
 }
 
 fn test_header_set() ? {
-	mut h := new_header({ key: .dnt, value: 'one' },
+	mut h := new_header(HeaderConfig{ key: .dnt, value: 'one' },
 		key: .dnt
 		value: 'two'
 	)
@@ -47,7 +47,7 @@ fn test_header_set() ? {
 }
 
 fn test_header_delete() {
-	mut h := new_header({ key: .dnt, value: 'one' },
+	mut h := new_header(HeaderConfig{ key: .dnt, value: 'one' },
 		key: .dnt
 		value: 'two'
 	)
@@ -322,4 +322,40 @@ fn test_header_join() ? {
 	assert h3.contains(.expires)
 	assert h3.contains_custom('Server')
 	assert h3.contains_custom('foo')
+}
+
+fn parse_headers_test(s string, expected map[string]string) ? {
+	assert parse_headers(s) ? == new_custom_header_from_map(expected) ?
+}
+
+fn test_parse_headers() ? {
+	parse_headers_test('foo: bar', map{
+		'foo': 'bar'
+	}) ?
+	parse_headers_test('foo: \t  bar', map{
+		'foo': 'bar'
+	}) ?
+	parse_headers_test('foo: bar\r\n\tbaz', map{
+		'foo': 'bar baz'
+	}) ?
+	parse_headers_test('foo: bar \r\n\tbaz\r\n   buzz', map{
+		'foo': 'bar baz buzz'
+	}) ?
+	parse_headers_test('foo: bar\r\nbar:baz', map{
+		'foo': 'bar'
+		'bar': 'baz'
+	}) ?
+	parse_headers_test('foo: bar\r\nbar:baz\r\n', map{
+		'foo': 'bar'
+		'bar': 'baz'
+	}) ?
+	parse_headers_test('foo: bar\r\nbar:baz\r\n\r\n', map{
+		'foo': 'bar'
+		'bar': 'baz'
+	}) ?
+	assert parse_headers('foo: bar\r\nfoo:baz') ?.custom_values('foo') == ['bar', 'baz']
+
+	if x := parse_headers(' oops: oh no') {
+		return error('should have errored, but got $x')
+	}
 }
