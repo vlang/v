@@ -462,7 +462,14 @@ fn (mut a App) draw_gameover() {
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &App{
+		snake: Snake{
+			app: 0
+		}
+		rat: Rat{
+			app: 0
+		}
+	}
 	app.termui = termui.init(
 		user_data: app
 		event_fn: event

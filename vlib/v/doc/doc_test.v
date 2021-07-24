@@ -15,7 +15,7 @@ fn test_generate_from_mod() {
 			fmt: fmt.Fmt{
 				table: 0
 				pref: 0
-				file: ast.File {
+				file: ast.File{
 					global_scope: 0
 					scope: 0
 				}

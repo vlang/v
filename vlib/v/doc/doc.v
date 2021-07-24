@@ -165,7 +165,7 @@ pub fn new(input_path string) Doc {
 		fmt: fmt.Fmt{
 			table: 0
 			pref: 0
-			file: ast.File {
+			file: ast.File{
 				global_scope: 0
 				scope: 0
 			}
@@ -176,10 +176,10 @@ pub fn new(input_path string) Doc {
 		indent: 0
 		is_debug: false
 		table: d.table
-		file: ast.File {
-				global_scope: 0
-				scope: 0
-			}
+		file: ast.File{
+			global_scope: 0
+			scope: 0
+		}
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)
 	return d

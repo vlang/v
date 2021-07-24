@@ -20,7 +20,11 @@ mut:
 
 fn main() {
 	println('vweb example')
-	vweb.run(&App{}, port)
+	vweb.run(&App{
+		Context: vweb.Context{
+			conn: 0
+		}
+	}, port)
 }
 
 pub fn (mut app App) init_server() {

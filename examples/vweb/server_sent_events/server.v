@@ -11,7 +11,11 @@ struct App {
 }
 
 fn main() {
-	vweb.run(&App{}, 8081)
+	vweb.run(&App{
+		Context: vweb.Context{
+			conn: 0
+		}
+	}, 8081)
 }
 
 pub fn (mut app App) init_server() {
