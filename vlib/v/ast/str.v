@@ -17,6 +17,22 @@ pub fn (node &FnDecl) modname() string {
 	return pamod
 }
 
+// fkey returns a unique name of the function/method.
+// it is used in table.used_fns and v.markused.
+pub fn (node &FnDecl) fkey() string {
+	if node.is_method {
+		return '${int(node.receiver.typ)}.$node.name'
+	}
+	return node.name
+}
+
+pub fn (node &CallExpr) fkey() string {
+	if node.is_method {
+		return '${int(node.receiver_type)}.$node.name'
+	}
+	return node.name
+}
+
 // These methods are used only by vfmt, vdoc, and for debugging.
 pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
