@@ -32,7 +32,6 @@ $if static_boehm ? {
 	} $else $if openbsd || freebsd {
 		#flag -I/usr/local/include
 		#flag -L/usr/local/lib
-		#flag -lgc
 	}
 	$if windows {
 		$if tinyc {
@@ -44,6 +43,8 @@ $if static_boehm ? {
 			#flag -I@VEXEROOT/thirdparty/libgc
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
+	} $else {
+		#flag -lgc
 	}
 }
 
