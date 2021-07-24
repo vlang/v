@@ -1,6 +1,6 @@
 import sqlite
 import mysql
-// import pg
+import pg
 
 [table: 'modules']
 struct Module {
@@ -33,11 +33,11 @@ struct Child {
 fn main() {
 	sqlite3_array()
 	mysql_array()
-	// psql_array()
+	psql_array()
 
 	sqlite3()
 	mysql()
-	// psql()
+	psql()
 }
 
 fn sqlite3_array() {
@@ -118,7 +118,6 @@ fn mysql_array() {
 	db.close()
 }
 
-/*
 fn psql_array() {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
@@ -156,7 +155,7 @@ fn psql_array() {
 	}
 
 	db.close()
-}*/
+}
 
 fn sqlite3() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
@@ -225,7 +224,6 @@ fn mysql() {
 	conn.close()
 }
 
-/*
 fn psql() {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
@@ -259,4 +257,4 @@ fn psql() {
 
 	eprintln(modul)
 	db.close()
-}*/
+}
