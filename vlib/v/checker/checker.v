@@ -521,6 +521,13 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 			for param in method.params {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 			}
+			for field in decl.fields {
+				field_sym := c.table.get_type_symbol(field.typ)
+				if field.name == method.name && field_sym.kind == .function {
+					c.error('type `$decl_sym.name` has both field and method named `$method.name`',
+						method.pos)
+				}
+			}
 			for j in 0 .. i {
 				if method.name == decl.methods[j].name {
 					c.error('duplicate method name `$method.name`', method.pos)
@@ -7888,11 +7895,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// make sure interface does not implement its own interface methods
 		if sym.kind == .interface_ && sym.has_method(node.name) {
-			if sym.info is ast.Interface {
-				info := sym.info as ast.Interface
+			if mut sym.info is ast.Interface {
 				// if the method is in info.methods then it is an interface method
-				if info.has_method(node.name) {
+				if sym.info.has_method(node.name) {
 					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+						node.pos)
+				}
+			}
+		}
+		if mut sym.info is ast.Struct {
+			if field := c.table.find_field(sym, node.name) {
+				field_sym := c.table.get_type_symbol(field.typ)
+				if field_sym.kind == .function {
+					c.error('type `$sym.name` has both field and method named `$node.name`',
 						node.pos)
 				}
 			}
