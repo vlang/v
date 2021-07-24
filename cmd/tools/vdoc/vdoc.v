@@ -10,6 +10,8 @@ import runtime
 import v.doc
 import v.pref
 import v.vmod
+import v.fmt
+import v.ast
 import json
 import term
 
@@ -164,7 +166,18 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 
 fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	for {
-		mut pdoc := ParallelDoc{}
+		mut pdoc := ParallelDoc{
+			d: doc.Doc{
+				fmt: fmt.Fmt{
+					table: 0
+					pref: 0
+					file: ast.File{
+						global_scope: 0
+						scope: 0
+					}
+				}
+			}
+		}
 		if !work.pop(&pdoc) {
 			break
 		}
@@ -283,6 +296,14 @@ fn (mut vd VDoc) generate_docs_from_file() {
 					comments: [comment]
 				}
 				time_generated: time.now()
+				fmt: fmt.Fmt{
+					table: 0
+					pref: 0
+					file: ast.File{
+						global_scope: 0
+						scope: 0
+					}
+				}
 			}
 		}
 	}

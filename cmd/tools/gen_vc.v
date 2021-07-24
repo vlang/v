@@ -125,7 +125,11 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(&WebhookServer{}, flag_options.port)
+		vweb.run<WebhookServer>(&WebhookServer{
+			Context: vweb.Context{
+				conn: 0
+			}
+		}, flag_options.port)
 	} else {
 		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
