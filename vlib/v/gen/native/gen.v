@@ -113,10 +113,8 @@ pub fn (mut g Gen) generate_header() {
 
 pub fn (mut g Gen) create_executable() {
 	// Create the binary // should be .o ?
-	mut f := os.create(g.out_name) or { panic(err) }
+	os.write_file_array(g.out_name, g.buf) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it executable
-	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
-	f.close()
 	if g.pref.is_verbose {
 		println('\n$g.out_name: native binary has been successfully generated')
 	}

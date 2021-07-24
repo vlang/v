@@ -351,11 +351,7 @@ fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]as
 		for node in file.stmts {
 			match node {
 				ast.FnDecl {
-					fkey := if node.is_method {
-						'${int(node.receiver.typ)}.$node.name'
-					} else {
-						node.name
-					}
+					fkey := node.fkey()
 					all_fns[fkey] = node
 				}
 				ast.ConstDecl {
