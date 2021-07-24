@@ -136,7 +136,9 @@ fn break_if_debugger_attached() {
 }
 
 // These functions are Windows specific - provide dummys for *nix
-pub fn winapi_lasterr_str() string {}
+pub fn winapi_lasterr_str() string {
+	return ''
+}
 
 [noreturn]
 pub fn panic_lasterr() {}
