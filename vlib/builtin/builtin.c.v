@@ -3,7 +3,7 @@ module builtin
 type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
-fn C.strerror(int) voidptr
+fn C.strerror(int) &byte
 
 [noreturn]
 fn vhalt() {

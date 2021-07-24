@@ -6087,7 +6087,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			'thread_$tmp'
 		}
 		g.writeln('HANDLE $simple_handle = CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
-		g.writeln('if (!$simple_handle) panic_lasterr(tos3("`go ${name}()`: ");')
+		g.writeln('if (!$simple_handle) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('$gohandle_name thread_$tmp = {')
 			g.writeln('\t.ret_ptr = $arg_tmp_var->ret_ptr,')
