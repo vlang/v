@@ -101,9 +101,9 @@ pub fn panic(s string) {
 	vhalt()
 }
 
-// return an error message matching the thread local value of `C.errno`
-pub fn c_errno_str() string {
-	c_msg := C.strerror(C.errno)
+// return a C-API error message matching to `errnum` 
+pub fn c_error_number_str(errnum int) string {
+	c_msg := C.strerror(errnum)
 	err_msg := string{
 		str: c_msg
 		len: unsafe { C.strlen(c_msg) }
@@ -112,10 +112,10 @@ pub fn c_errno_str() string {
 	return err_msg
 }
 
-// panic with an error message matching the thread local value of `C.errno`
+// panic with a C-API error message matching `errnum`
 [noreturn]
-pub fn panic_errno() {
-	panic(c_errno_str())
+pub fn panic_error_number(basestr string, errnum int) {
+	panic(basestr + c_error_number_str(errnum))
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.

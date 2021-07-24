@@ -298,6 +298,6 @@ pub fn winapi_lasterr_str() string {
 
 // panic with an error message generated from WinAPI's `LastError`
 [noreturn]
-pub fn panic_lasterr() {
-	panic(winapi_lasterr_str())
+pub fn panic_lasterr(base string) {
+	panic(base + winapi_lasterr_str())
 }
