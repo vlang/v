@@ -1,0 +1,13 @@
+vlib/v/checker/tests/duplicate_field_method_err.vv:5:1: error: type `St` has both field and method named `attr`
+    3 | }
+    4 | 
+    5 | fn (s St) attr() {}
+      | ~~~~~~~~~~~~~~~~
+    6 | 
+    7 | interface Foo {
+vlib/v/checker/tests/duplicate_field_method_err.vv:9:2: error: type `Foo` has both field and method named `bar`
+    7 | interface Foo {
+    8 |     bar fn ()
+    9 |     bar()
+      |     ~~~~~
+   10 | }
