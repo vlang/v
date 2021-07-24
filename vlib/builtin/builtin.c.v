@@ -3,6 +3,7 @@ module builtin
 type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
+fn C.strerror(int) voidptr
 
 [noreturn]
 fn vhalt() {
@@ -98,6 +99,23 @@ pub fn panic(s string) {
 		}
 	}
 	vhalt()
+}
+
+// return an error message matching the thread local value of `C.errno`
+pub fn c_errno_str() string {
+	c_msg := C.strerror(C.errno)
+	err_msg := string{
+		str: c_msg
+		len: unsafe { C.strlen(c_msg) }
+		is_lit: 1
+	}
+	return err_msg
+}
+
+// panic with an error message matching the thread local value of `C.errno`
+[noreturn]
+pub fn panic_errno() {
+	panic(c_errno_str())
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
