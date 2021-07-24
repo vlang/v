@@ -34,8 +34,7 @@ pub fn (resp Response) bytestr() string {
 }
 
 // Parse a raw HTTP response into a Response object
-pub fn parse_response(resp string) Response {
-	mut header := new_header()
+pub fn parse_response(resp string) ?Response {
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
 	first_header := resp.all_before('\n')
@@ -44,28 +43,10 @@ pub fn parse_response(resp string) Response {
 		val := first_header.find_between(' ', ' ')
 		status_code = val.int()
 	}
-	mut text := ''
 	// Build resp header map and separate the body
-	mut nl_pos := 3
-	mut i := 1
-	for {
-		old_pos := nl_pos
-		nl_pos = resp.index_after('\n', nl_pos + 1)
-		if nl_pos == -1 {
-			break
-		}
-		h := resp[old_pos + 1..nl_pos]
-		// End of headers
-		if h.len <= 1 {
-			text = resp[nl_pos + 1..]
-			break
-		}
-		i++
-		pos := h.index(':') or { continue }
-		mut key := h[..pos]
-		val := h[pos + 2..].trim_space()
-		header.add_custom(key, val) or { eprintln('$err; skipping header') }
-	}
+	start_idx, end_idx := find_headers_range(resp) ?
+	header := parse_headers(resp.substr(start_idx, end_idx)) ?
+	mut text := resp.substr(end_idx, resp.len)
 	// set cookies
 	for cookie in header.values(.set_cookie) {
 		parts := cookie.split_nth('=', 2)
@@ -80,4 +61,24 @@ pub fn parse_response(resp string) Response {
 		cookies: cookies
 		text: text
 	}
+}
+
+// find_headers_range returns the start (inclusive) and end (exclusive)
+// index of the headers in the string, including the trailing newlines. This
+// helper function expects the first line in `data` to be the HTTP status line
+// (HTTP/1.1 200 OK).
+fn find_headers_range(data string) ?(int, int) {
+	start_idx := data.index('\n') or { return error('no start index found') } + 1
+	mut count := 0
+	for i := start_idx; i < data.len; i++ {
+		if data[i] == `\n` {
+			count++
+		} else if data[i] != `\r` {
+			count = 0
+		}
+		if count == 2 {
+			return start_idx, i + 1
+		}
+	}
+	return error('no end index found')
 }
