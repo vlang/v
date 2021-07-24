@@ -101,7 +101,7 @@ pub fn panic(s string) {
 	vhalt()
 }
 
-// return a C-API error message matching to `errnum` 
+// return a C-API error message matching to `errnum`
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {

@@ -284,7 +284,8 @@ fn break_if_debugger_attached() {
 pub fn winapi_lasterr_str() string {
 	mut msgbuf := &byte(0)
 	err_msg_id := C.GetLastError()
-	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM, C.NULL, err_msg_id, 0, &msgbuf, 0, C.NULL)
+	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM,
+		C.NULL, err_msg_id, 0, &msgbuf, 0, C.NULL)
 	err_msg := if res == 0 {
 		'unknown error $err_msg_id'
 	} else {
