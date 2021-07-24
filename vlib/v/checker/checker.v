@@ -6597,7 +6597,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
-				c.ct_cond_stack.pop()
+				c.ct_cond_stack.delete_last()
 			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
