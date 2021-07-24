@@ -4,7 +4,11 @@ import os
 
 // parse parses and returns the DOM from the given text.
 pub fn parse(text string) DocumentObjectModel {
-	mut parser := Parser{}
+	mut parser := Parser{
+		dom: DocumentObjectModel{
+			root: &Tag{}
+		}
+	}
 	parser.parse_html(text)
 	return parser.get_dom()
 }

@@ -3,7 +3,11 @@ module html
 import strings
 
 fn test_split_parse() {
-	mut parser := Parser{}
+	mut parser := Parser{
+		dom: DocumentObjectModel{
+			root: &Tag{}
+		}
+	}
 	parser.init()
 	parser.split_parse('<!doctype htm')
 	parser.split_parse('l public')
@@ -22,7 +26,11 @@ fn test_split_parse() {
 
 fn test_giant_string() {
 	mut temp_html := strings.new_builder(200)
-	mut parser := Parser{}
+	mut parser := Parser{
+		dom: DocumentObjectModel{
+			root: &Tag{}
+		}
+	}
 	temp_html.write_string('<!doctype html><html><head><title>Giant String</title></head><body>')
 	for counter := 0; counter < 2000; counter++ {
 		temp_html.write_string("<div id='name_$counter' class='several-$counter'>Look at $counter</div>")
@@ -33,7 +41,11 @@ fn test_giant_string() {
 }
 
 fn test_script_tag() {
-	mut parser := Parser{}
+	mut parser := Parser{
+		dom: DocumentObjectModel{
+			root: &Tag{}
+		}
+	}
 	script_content := "\nvar googletag = googletag || {};\ngoogletag.cmd = googletag.cmd || [];if(3 > 5) {console.log('Birl');}\n"
 	temp_html := '<html><body><script>$script_content</script></body></html>'
 	parser.parse_html(temp_html)

@@ -22,7 +22,11 @@ fn test_a_vweb_application_compiles() {
 		time.sleep(2 * time.second)
 		exit(0)
 	}()
-	vweb.run(&App{}, 18081)
+	vweb.run(&App{
+		Context: vweb.Context{
+			conn: 0
+		}
+	}, 18081)
 }
 
 pub fn (mut app App) init_server() {

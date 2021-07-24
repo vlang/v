@@ -100,6 +100,9 @@ pub mut:
 	checker   checker.Checker = checker.Checker{
 		table: 0
 		pref: 0
+		main_fn_decl_node: &ast.FnDecl{
+			scope: 0
+		}
 	}
 	fmt                 fmt.Fmt
 	filename            string
@@ -159,12 +162,24 @@ pub fn new(input_path string) Doc {
 		head: DocNode{}
 		contents: map[string]DocNode{}
 		time_generated: time.now()
+		fmt: fmt.Fmt{
+			table: 0
+			pref: 0
+			file: ast.File {
+				global_scope: 0
+				scope: 0
+			}
+		}
 	}
 	d.fmt = fmt.Fmt{
 		pref: d.prefs
 		indent: 0
 		is_debug: false
 		table: d.table
+		file: ast.File {
+				global_scope: 0
+				scope: 0
+			}
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)
 	return d
