@@ -628,7 +628,11 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.pref.is_script && p.tok.kind == .name {
 		p.error_with_pos('function declarations in script mode should be before all script statements',
 			p.tok.position())
-		return ast.AnonFn{}
+		return ast.AnonFn{
+			decl: ast.FnDecl{
+				scope: 0
+			}
+		}
 	}
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false

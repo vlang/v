@@ -228,6 +228,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		timers: util.new_timers(timers_should_print)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
+		cur_lock: ast.LockExpr{
+			scope: 0
+		}
 	}
 	g.timers.start('cgen init')
 	for mod in g.table.modules {

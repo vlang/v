@@ -42,6 +42,10 @@ fn (mut p Parser) hash() ast.HashStmt {
 fn (mut p Parser) comp_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
+		vweb_tmpl: ast.File{
+			scope: 0
+			global_scope: 0
+		}
 	}
 	p.check(.dollar)
 	start_pos := p.prev_tok.position()
@@ -75,6 +79,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			is_env: true
 			env_pos: spos
 			pos: spos.extend(p.prev_tok.position())
+			vweb_tmpl: ast.File{
+				scope: 0
+				global_scope: 0
+			}
 		}
 	}
 	if n == 'pkgconfig' {
@@ -88,6 +96,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			is_pkgconfig: true
 			env_pos: spos
 			pos: spos.extend(p.prev_tok.position())
+			vweb_tmpl: ast.File{
+				scope: 0
+				global_scope: 0
+			}
 		}
 	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
@@ -134,6 +146,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				apath: epath
 			}
 			pos: start_pos.extend(p.prev_tok.position())
+			vweb_tmpl: ast.File{
+				global_scope: 0
+				scope: 0
+			}
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -164,6 +180,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 					method_name: n
 					args_var: literal_string_param
 					pos: start_pos.extend(p.prev_tok.position())
+					vweb_tmpl: ast.File{
+						global_scope: 0
+						scope: 0
+					}
 				}
 			}
 			if is_html {
@@ -337,6 +357,10 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			args_var: ''
 			args: args
 			pos: start_pos.extend(p.prev_tok.position())
+			vweb_tmpl: ast.File{
+				global_scope: 0
+				scope: 0
+			}
 		}
 	}
 	mut has_parens := false

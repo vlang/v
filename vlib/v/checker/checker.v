@@ -113,6 +113,9 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 		pref: pref
 		timers: util.new_timers(timers_should_print)
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
+		main_fn_decl_node: ast.FnDecl{
+			scope: 0
+		}
 	}
 }
 
@@ -992,21 +995,9 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
-			mut info := ast.Struct{}
-			if type_sym.kind == .alias {
-				info_t := type_sym.info as ast.Alias
-				sym := c.table.get_type_symbol(info_t.parent_type)
-				if sym.kind == .placeholder { // pending import symbol did not resolve
-					c.error('unknown struct: $type_sym.name', node.pos)
-					return ast.void_type
-				}
-				if sym.kind == .struct_ {
-					info = sym.info as ast.Struct
-				} else {
-					c.error('alias type name: $sym.name is not struct type', node.pos)
-				}
-			} else {
-				info = type_sym.info as ast.Struct
+			info := c.type_symbol_to_struct_info(type_sym) or {
+				c.error(err.msg, node.pos)
+				return ast.void_type
 			}
 			if node.is_short {
 				exp_len := info.fields.len
@@ -1144,38 +1135,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			// Check uninitialized refs/sum types
-			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields {
-					continue
-				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated {
-					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
-						node.pos)
-				}
-				// Do not allow empty uninitialized sum types
-				/*
-				sym := c.table.get_type_symbol(field.typ)
-				if sym.kind == .sum_type {
-					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
-						node.pos)
-				}
-				*/
-				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
-					mut found := false
-					for init_field in node.fields {
-						if field.name == init_field.name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						c.error('field `${type_sym.name}.$field.name` must be initialized',
-							node.pos)
-					}
-				}
-			}
+			c.check_init_struct_fields(node.pos, node.has_update_expr, node.is_short,
+				type_sym, inited_fields, type_sym.name)
 		}
 		else {}
 	}
@@ -1203,6 +1164,69 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	return unwrapped_struct_type
+}
+
+fn (mut c Checker) type_symbol_to_struct_info(type_sym ast.TypeSymbol) ?ast.Struct {
+	mut info := ast.Struct{}
+	if type_sym.kind == .alias {
+		info_t := type_sym.info as ast.Alias
+		sym := c.table.get_type_symbol(info_t.parent_type)
+		if sym.kind == .placeholder { // pending import symbol did not resolve
+			return error('unknown struct: $type_sym.name')
+		}
+		if sym.kind == .struct_ {
+			info = sym.info as ast.Struct
+		} else {
+			return error('alias type name: $sym.name is not struct type')
+		}
+	} else {
+		info = type_sym.info as ast.Struct
+	}
+	return info
+}
+
+pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_expr bool, is_short bool, type_sym ast.TypeSymbol, inited_fields []string, prefix string) {
+	info := c.type_symbol_to_struct_info(type_sym) or {
+		c.error(err.msg, pos)
+		return
+	}
+	for field in info.fields {
+		if field.has_default_expr || field.name in inited_fields {
+			continue
+		}
+
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !has_update_expr
+			&& !c.pref.translated {
+			c.error('reference field `${prefix}.$field.name` must be initialized', pos)
+		}
+		// Do not allow empty uninitialized sum types
+		/*
+		sym := c.table.get_type_symbol(field.typ)
+				if sym.kind == .sum_type {
+					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+						node.pos)
+				}
+		*/
+		// Check for `[required]` struct attr
+		if field.attrs.contains('required') && !is_short && !has_update_expr {
+			mut found := false
+			for init_field in inited_fields {
+				if field.name == init_field {
+					found = true
+					break
+				}
+			}
+			if !found {
+				c.error('field `${prefix}.$field.name` must be initialized', pos)
+			}
+		}
+
+		// Check for `[required]` in sub struct
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .struct_ && !field.typ.is_ptr() && !info.is_union {
+			c.check_init_struct_fields(pos, has_update_expr, is_short, sym, [], '${prefix}.$field.name')
+		}
+	}
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
