@@ -1,0 +1,13 @@
+vlib/v/checker/tests/require_sub_struct_init.vv:16:7: error: field `NestedAbc.Abc.field` must be initialized
+   14 | 
+   15 | fn main() {
+   16 |     _ := NestedAbc{}
+      |          ~~~~~~~~~~~
+   17 |     _ := FieldAbc{}
+   18 | }
+vlib/v/checker/tests/require_sub_struct_init.vv:17:7: error: field `FieldAbc.field.field` must be initialized
+   15 | fn main() {
+   16 |     _ := NestedAbc{}
+   17 |     _ := FieldAbc{}
+      |          ~~~~~~~~~~
+   18 | }

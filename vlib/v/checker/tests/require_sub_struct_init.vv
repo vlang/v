@@ -1,0 +1,18 @@
+module main
+
+struct Abc {
+	field int [required]
+}
+
+struct NestedAbc {
+	Abc
+}
+
+struct FieldAbc {
+	field Abc
+}
+
+fn main() {
+	_ := NestedAbc{}
+	_ := FieldAbc{}
+}
