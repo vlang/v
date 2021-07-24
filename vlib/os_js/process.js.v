@@ -18,7 +18,7 @@ pub enum ProcessState {
 }
 
 // todo(playX): fix reference member access in JS backend
-// [heap]
+[heap]
 pub struct Process {
 pub:
 	filename string
@@ -41,8 +41,8 @@ pub mut:
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.
 // In order to start it, call p.run() or p.wait()
-pub fn new_process(filename string) Process {
-	return Process{
+pub fn new_process(filename string) &Process {
+	return &Process{
 		filename: filename
 		stdio_fd: [-1, -1, -1]!
 	}
@@ -71,20 +71,20 @@ pub fn (mut p Process) set_environment(envs map[string]string) {
 }
 
 fn (mut p Process) spawn_internal() {
-	#p.pid = $child_process.spawn(
-	#p.filename+'',
-	#p.args.arr.map((x) => x.valueOf() + ''),
+	#p.val.pid = $child_process.spawn(
+	#p.val.filename+'',
+	#p.val.args.arr.map((x) => x.valueOf() + ''),
 	#{
-	#env: (p.env_is_custom ? p.env : $process.env),
+	#env: (p.val.env_is_custom ? p.val.env : $process.env),
 	#})
-	#p.pid.on('error', function (err) { builtin.panic('Failed to start subprocess') })
+	#p.val.pid.on('error', function (err) { builtin.panic('Failed to start subprocess') })
 
 	p.status = .running
 	// todo(playX): stderr,stdin
 	if p.use_stdio_ctl {
-		#p.pid.stdout.pipe(process.stdout)
-		#p.pid.stdin.pipe(process.stdin)
-		#p.pid.stderr.pipe(process.stderr)
+		#p.val.pid.stdout.pipe(process.stdout)
+		#p.val.pid.stdin.pipe(process.stdin)
+		#p.val.pid.stderr.pipe(process.stderr)
 	}
 }
 
@@ -100,7 +100,7 @@ pub fn (mut p Process) signal_kill() {
 	if p.status !in [.running, .stopped] {
 		return
 	}
-	#p.pid.kill('SIGKILL');
+	#p.val.pid.kill('SIGKILL');
 
 	p.status = .aborted
 }
@@ -109,7 +109,7 @@ pub fn (mut p Process) signal_stop() {
 	if p.status !in [.running, .stopped] {
 		return
 	}
-	#p.pid.kill('SIGSTOP');
+	#p.val.pid.kill('SIGSTOP');
 
 	p.status = .aborted
 }
@@ -118,7 +118,7 @@ pub fn (mut p Process) signal_continue() {
 	if p.status != .stopped {
 		return
 	}
-	#p.pid.kill('SIGCONT');
+	#p.val.pid.kill('SIGCONT');
 
 	p.status = .running
 	return
@@ -137,7 +137,7 @@ pub fn (mut p Process) wait() {
 }
 
 fn (mut p Process) wait_internal() {
-	#p.pid.on('exit', function (code) { console.log(code) })
+	#p.val.pid.on('exit', function (code) { console.log(code) })
 }
 
 pub fn (mut p Process) set_redirect_stdio() {
@@ -147,7 +147,7 @@ pub fn (mut p Process) set_redirect_stdio() {
 
 pub fn (mut p Process) stdin_write(s string) {
 	p.check_redirection_call('stdin_write')
-	#p.pid.stdin.write(s)
+	#p.val.pid.stdin.write(s)
 }
 
 // todo(playX): probably does not work
@@ -157,7 +157,7 @@ pub fn (mut p Process) stdin_write(s string) {
 pub fn (mut p Process) stdout_slurp() string {
 	p.check_redirection_call('stdout_slurp')
 	mut res := ''
-	#p.pid.stdout.on('data', function (data) { res = new builtin.string(data) })
+	#p.val.pid.stdout.on('data', function (data) { res = new builtin.string(data) })
 
 	return res
 }
