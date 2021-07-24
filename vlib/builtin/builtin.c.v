@@ -103,7 +103,7 @@ pub fn panic(s string) {
 
 // return a C-API error message matching to `errnum` 
 pub fn c_error_number_str(errnum int) string {
-	c_msg := C.strerror(errnum)
+	c_msg := &byte(C.strerror(errnum))
 	err_msg := string{
 		str: c_msg
 		len: unsafe { C.strlen(c_msg) }

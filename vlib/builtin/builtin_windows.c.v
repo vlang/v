@@ -289,7 +289,7 @@ pub fn winapi_lasterr_str() string {
 		'unknown error $err_msg_id'
 	} else {
 		string{
-			str: &byte(msgbuf)
+			str: msgbuf
 			len: int(res)
 		}
 	}
