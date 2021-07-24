@@ -8,7 +8,9 @@ struct map {
 // Removes the mapping of a particular key from the map.
 [unsafe]
 pub fn (mut m map) delete(key voidptr) {
-	#m.m.delete(key)
+	#m.map.delete(key)
 }
 
 pub fn (m &map) free() {}
+
+#map.prototype[Symbol.iterator] = function () { return this.map[Symbol.iterator](); }
