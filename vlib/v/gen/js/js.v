@@ -685,9 +685,10 @@ fn (mut g JsGen) expr(node ast.Expr) {
 
 					if !type_sym.is_primitive() && !node.right_type.is_pointer() {
 						// kind of weird way to handle references but it allows us to access type methods easily.
-						g.write('(function() {  let x =  ')
+						g.write('(function(x) {')
+						g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
 						g.expr(node.right)
-						g.write('; return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})()  ')
+						g.write(')')
 					} else {
 						g.expr(node.right)
 					}
