@@ -1,6 +1,6 @@
 module builtin
 
-#define GC_THREADS 1
+#flag -DGC_THREADS=1
 
 $if static_boehm ? {
 	$if macos {
@@ -13,10 +13,16 @@ $if static_boehm ? {
 		#flag /usr/local/lib/libgc.a
 		#flag -lpthread
 	} $else $if windows {
-		#define GC_NOT_DLL 1
-		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -L@VEXEROOT/thirdparty/libgc
-		#flag -lgc
+		#flag -DGC_NOT_DLL=1
+		$if tinyc {
+			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -L@VEXEROOT/thirdparty/libgc
+			#flag -lgc
+		} $else {
+			#flag -DGC_BUILTIN_ATOMIC=1
+			#flag -I@VEXEROOT/thirdparty/libgc
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
+		}
 	} $else {
 		#flag -lgc
 	}
@@ -28,14 +34,22 @@ $if static_boehm ? {
 		#flag -L/usr/local/lib
 	}
 	$if windows {
-		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -L@VEXEROOT/thirdparty/libgc
+		$if tinyc {
+			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -L@VEXEROOT/thirdparty/libgc
+			#flag -lgc
+		} $else {
+			#flag -DGC_BUILTIN_ATOMIC=1
+			#flag -I@VEXEROOT/thirdparty/libgc
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
+		}
+	} $else {
+		#flag -lgc
 	}
-	#flag -lgc
 }
 
 $if gcboehm_leak ? {
-	#define GC_DEBUG
+	#flag -DGC_DEBUG=1
 }
 
 #include <gc.h>
