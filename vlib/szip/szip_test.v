@@ -39,14 +39,20 @@ fn test_extract_zipped_files() ? {
 }
 
 fn test_reading_zipping_files() ? {
+	n_files := 2
+	mut file_name_list := []string{}
+	for i in 0..n_files {
+		file_name_list << 'file_${i:02}.txt'
+	}
+
 	os.chdir(os.temp_dir())
 	os.rmdir_all(test_path) or {}
 	os.mkdir(test_path) ?
-	os.write_file(fpath1, 'file one') ?
-	os.write_file(fpath2, 'file two') ?
-	assert os.exists(fpath1)
-	assert os.exists(fpath2)
-
+	for c, f_name in file_name_list {
+		tmp_path := os.join_path(test_path, f_name)
+		os.write_file(tmp_path, 'file ${c:02}') ?
+		assert os.exists(tmp_path)
+	}
 	files := (os.ls(test_path) ?).map(os.join_path(test_path, it))
 	
 	szip.zip_files(files, test_out_zip) ?
@@ -54,26 +60,21 @@ fn test_reading_zipping_files() ? {
 
 	mut zp := szip.open(test_out_zip,szip.CompressionLevel.no_compression , szip.OpenMode.read_only)?
 	n_entries := zp.total()?
-	assert n_entries == 2
+	assert n_entries == n_files
 
-	buf := unsafe{ malloc(32)}
+	unsafe {
+		buf := malloc(32)
 
-	zp.open_entry_by_index(0)?
-	assert zp.name() == 'file_2.txt'
-	zp.read_entry_buf(buf,32)?
-	assert tos2(buf) == 'file two'
-	
-
-	zp.open_entry_by_index(1)?
-	assert zp.name() == 'file_1.txt'
-	zp.read_entry_buf(buf,32)?
-	assert tos2(buf) == 'file one'
-
-	free(buf)
-
+		for i in 0..n_files {
+			zp.open_entry_by_index(0)?
+			assert zp.name() in file_name_list
+			zp.read_entry_buf(buf,32)?
+			tmp_str := tos2(buf)
+			assert  tmp_str[0..4] == 'file'
+			assert  tmp_str[5..7] == zp.name()[5..7]
+		}
+		free(buf)
+	}
 
 	zp.close()
-	eprintln("files: ${files.len} n_entries: $n_entries ")
-	assert n_entries == files.len
-
 }
