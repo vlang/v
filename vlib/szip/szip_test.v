@@ -39,7 +39,7 @@ fn test_extract_zipped_files() ? {
 }
 
 fn test_reading_zipping_files() ? {
-	n_files := 10
+	n_files := 2
 	mut file_name_list := []string{}
 	for i in 0 .. n_files {
 		file_name_list << 'file_${i:02}.txt'
@@ -63,16 +63,25 @@ fn test_reading_zipping_files() ? {
 	assert n_entries == n_files
 
 	unsafe {
-		buf := malloc(32)
+		data_len := 'file XX'.len
+		buf_size := 32
+		buf := malloc(data_len * 2)
 
-		for i in 0 .. n_files {
+		for _ in 0 .. n_files {
 			zp.open_entry_by_index(0) ?
-			assert zp.name() in file_name_list
-			zp.read_entry_buf(buf, 32) ?
-			tmp_str := tos2(buf)
+			name := zp.name()
+			assert name in file_name_list
+
+			zp.read_entry_buf(buf, buf_size) ?
+			buf[data_len] = 0
+			tmp_str := tos(buf, data_len)
+
 			assert tmp_str[0..4] == 'file'
-			assert tmp_str[5..7] == zp.name()[5..7]
+			assert tmp_str[5..7] == name[5..7]
+
+			zp.close_entry()
 		}
+
 		free(buf)
 	}
 	zp.close()
