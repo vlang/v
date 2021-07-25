@@ -17,6 +17,8 @@ fn C.zip_close(&Zip)
 
 fn C.zip_entry_open(&Zip, &byte) int
 
+fn C.zip_entry_openbyindex(&Zip, int) int
+
 fn C.zip_entry_close(&Zip) int
 
 fn C.zip_entry_name(&Zip) &byte
@@ -105,6 +107,13 @@ pub fn (mut zentry Zip) open_entry(name string) ? {
 	res := C.zip_entry_open(zentry, &char(name.str))
 	if res == -1 {
 		return error('szip: cannot open archive entry')
+	}
+}
+
+pub fn (mut z Zip) open_entry_by_index(index int) ? {
+	res := C.zip_entry_openbyindex(z, index)
+	if res == -1 {
+		return error('szip: cannot open archive entry at index $index')
 	}
 }
 
