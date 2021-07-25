@@ -54,8 +54,6 @@ fn C.SymFromAddr(h_process voidptr, address u64, p_displacement voidptr, p_symbo
 
 fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr, p_line &Line64) int
 
-fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer &voidptr, nSize u32, Arguments voidptr) u32
-
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions
 const (
 	symopt_undname               = 0x00000002
@@ -282,17 +280,19 @@ fn break_if_debugger_attached() {
 
 // return an error message generated from WinAPI's `LastError`
 pub fn winapi_lasterr_str() string {
-	mut msgbuf := &byte(0)
 	err_msg_id := C.GetLastError()
-	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM,
-		C.NULL, err_msg_id, 0, &msgbuf, 0, C.NULL)
+	if err_msg_id == 8 {
+		// handle this case special since `FormatMessage()` might not work anymore
+		return 'insufficient memory'
+	}
+	mut msgbuf := &u16(0)
+	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM | C.FORMAT_MESSAGE_IGNORE_INSERTS,
+		C.NULL, err_msg_id, C.MAKELANGID(C.LANG_NEUTRAL, C.SUBLANG_DEFAULT), &msgbuf,
+		0, C.NULL)
 	err_msg := if res == 0 {
-		'unknown error $err_msg_id'
+		'Win-API error $err_msg_id'
 	} else {
-		string{
-			str: msgbuf
-			len: int(res)
-		}
+		unsafe { string_from_wide(msgbuf) }
 	}
 	return err_msg
 }
