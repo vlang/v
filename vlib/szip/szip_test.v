@@ -39,7 +39,7 @@ fn test_extract_zipped_files() ? {
 }
 
 fn test_reading_zipping_files() ? {
-	n_files := 2
+	n_files := 10
 	mut file_name_list := []string{}
 	for i in 0..n_files {
 		file_name_list << 'file_${i:02}.txt'
