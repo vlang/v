@@ -37,6 +37,8 @@ fn C.zip_entry_fwrite(&Zip, &char) int
 
 fn C.zip_entry_read(&Zip, &voidptr, &size_t) int
 
+fn C.zip_entry_noallocread(&Zip, voidptr, size_t) int
+
 fn C.zip_entry_fread(&Zip, &char) int
 
 fn C.zip_total_entries(&Zip) int
@@ -199,6 +201,15 @@ pub fn (mut zentry Zip) read_entry() ?voidptr {
 		return error('szip: cannot read properly data from entry')
 	}
 	return buf
+}
+
+pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ? int {
+	bsize := size_t(in_bsize)
+	res := C.zip_entry_noallocread(zentry, buf, bsize)
+	if res == -1 {
+		return error('szip: cannot read properly data from entry')
+	}
+	return res
 }
 
 // extract_entry extracts the current zip entry into output file.

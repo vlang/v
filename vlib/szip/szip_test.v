@@ -56,10 +56,20 @@ fn test_reading_zipping_files() ? {
 	n_entries := zp.total()?
 	assert n_entries == 2
 
+	buf := unsafe{ malloc(32)}
+
 	zp.open_entry_by_index(0)?
 	assert zp.name() == 'file_2.txt'
+	zp.read_entry_buf(buf,32)?
+	assert tos2(buf) == 'file two'
+	
+
 	zp.open_entry_by_index(1)?
 	assert zp.name() == 'file_1.txt'
+	zp.read_entry_buf(buf,32)?
+	assert tos2(buf) == 'file one'
+
+	free(buf)
 
 
 	zp.close()
