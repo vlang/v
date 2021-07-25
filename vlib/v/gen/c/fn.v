@@ -180,6 +180,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
+		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return
+		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}
