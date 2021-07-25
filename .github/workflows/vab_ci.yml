@@ -48,5 +48,5 @@ jobs:
         export VEXE=./v
         for example in "${v_examples[@]}"; do
           safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
-          vab/vab --api 29 -v 3 examples/$example -o apks/$safe_name.apk
+          vab/vab --api 29 --build-tools '29.0.0' -v 3 examples/$example -o apks/$safe_name.apk
         done
