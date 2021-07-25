@@ -78,8 +78,10 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	#a.arr.sort(compare)
 }
 
+#function $sort_cmp(a,b) { return typeof a == "string" ? a > b : a - b  }
+
 pub fn (mut a array) sort() {
-	#a.arr.sort()
+	#a.arr.sort($sort_cmp)
 }
 
 pub fn (a array) index(v string) int {
@@ -104,7 +106,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	#a.arr.splice(i,0,val)
 }
 
-pub fn (mut a array) join(separator string) string {
+pub fn (a array) join(separator string) string {
 	mut res := ''
 	#res = new builtin.string(a.arr.join(separator +''));
 
