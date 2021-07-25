@@ -116,6 +116,7 @@ fn exec(s string) string {
 fn measure(cmd string, description string) int {
 	println('  Measuring $description')
 	println('  Warming up...')
+	println(cmd)
 	for _ in 0 .. 3 {
 		exec(cmd)
 	}
