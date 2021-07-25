@@ -212,7 +212,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 			should_skip_one = false
 			continue
 		}
-		if arg[0] != `-` {
+		if arg.len == 0 || arg[0] != `-` {
 			continue
 		}
 		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {

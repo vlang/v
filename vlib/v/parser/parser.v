@@ -1067,7 +1067,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		output: output
 		input: input
 		clobbered: clobbered
-		pos: pos.extend(p.tok.position())
+		pos: pos.extend(p.prev_tok.position())
 		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
 		scope: scope
 		global_labels: global_labels
@@ -3107,6 +3107,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	mut sum_variants := []ast.TypeNode{}
 	generic_types := p.parse_generic_type_list()
+	decl_pos_with_generics := decl_pos.extend(p.prev_tok.position())
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3179,6 +3180,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	// type MyType = int
+	if generic_types.len > 0 {
+		p.error_with_pos('generic type aliases are not yet implemented', decl_pos_with_generics)
+		return ast.AliasTypeDecl{}
+	}
 	parent_type := first_type
 	parent_sym := p.table.get_type_symbol(parent_type)
 	pidx := parent_type.idx()

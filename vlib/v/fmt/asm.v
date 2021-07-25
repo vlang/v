@@ -14,30 +14,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.writeln('$stmt.arch {')
 	f.indent++
-	for template in stmt.templates {
-		if template.is_directive {
-			f.write('.')
-		}
-		f.write('$template.name')
-		if template.is_label {
-			f.write(':')
-		} else {
-			if template.args.len > 0 {
-				f.write(' ')
-			}
-		}
-		for i, arg in template.args {
-			f.asm_arg(arg)
-			if i + 1 < template.args.len {
-				f.write(', ')
-			}
-		}
-		if template.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(template.comments, inline: false)
-		}
-	}
+
+	f.asm_templates(stmt.templates)
+
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
 		f.write('; ')
 	}
@@ -51,18 +30,8 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	if stmt.clobbered.len != 0 {
 		f.write('; ')
 	}
-	for i, clob in stmt.clobbered {
-		if i != 0 {
-			f.write('  ')
-		}
-		f.write(clob.reg.name)
+	f.asm_clobbered(stmt.clobbered)
 
-		if clob.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(clob.comments, inline: false)
-		}
-	}
 	f.indent--
 	f.writeln('}')
 	if f.indent == 0 {
@@ -149,6 +118,46 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 
 fn (mut f Fmt) asm_reg(reg ast.AsmRegister) {
 	f.write(reg.name)
+}
+
+fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
+	for template in templates {
+		if template.is_directive {
+			f.write('.')
+		}
+		f.write('$template.name')
+		if template.is_label {
+			f.write(':')
+		} else if template.args.len > 0 {
+			f.write(' ')
+		}
+		for i, arg in template.args {
+			f.asm_arg(arg)
+			if i + 1 < template.args.len {
+				f.write(', ')
+			}
+		}
+		if template.comments.len == 0 {
+			f.writeln('')
+		} else {
+			f.comments(template.comments, inline: false)
+		}
+	}
+}
+
+fn (mut f Fmt) asm_clobbered(clobbered []ast.AsmClobbered) {
+	for i, clob in clobbered {
+		if i != 0 {
+			f.write('  ')
+		}
+		f.write(clob.reg.name)
+
+		if clob.comments.len == 0 {
+			f.writeln('')
+		} else {
+			f.comments(clob.comments, inline: false)
+		}
+	}
 }
 
 fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {

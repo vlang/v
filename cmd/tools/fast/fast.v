@@ -47,8 +47,9 @@ fn main() {
 	// exec('git checkout $commit')
 	println('  Building vprod...')
 	os.chdir(vdir)
-	exec('$vdir/v -o $vdir/vprod -prod -prealloc cmd/v')
-	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
+	exec('./v -o vprod -prod -prealloc cmd/v')
+	// println('cur vdir="$vdir"')
+	// exec('v -o vprod cmd/v') // for faster debugging
 	// cache vlib modules
 	exec('$vdir/v wipe-cache')
 	exec('$vdir/v -o v2 -prod cmd/v')
@@ -115,6 +116,7 @@ fn exec(s string) string {
 fn measure(cmd string, description string) int {
 	println('  Measuring $description')
 	println('  Warming up...')
+	println(cmd)
 	for _ in 0 .. 3 {
 		exec(cmd)
 	}

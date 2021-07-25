@@ -102,8 +102,8 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	if !os.exists(file_path) {
-		verror("$file_path doesn't exist")
+	if !os.is_file(file_path) {
+		verror('$file_path is not a file')
 	}
 	raw_text := util.read_file(file_path) or {
 		verror(err.msg)
@@ -688,11 +688,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
-			if s.pos == 0 && next_char == ` ` {
-				// If a single letter name at the start of the file, increment
-				// Otherwise the scanner would be stuck at s.pos = 0
-				s.pos++
-			}
 			return s.new_token(.name, name, name.len)
 		} else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 			// `123`, `.123`
@@ -1126,7 +1121,8 @@ fn (mut s Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote
+			&& (is_raw || prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}

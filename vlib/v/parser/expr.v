@@ -312,9 +312,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 					node = p.assoc()
 				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
 					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
-					p.warn_with_pos('short struct initalization is deprecated, use explicit struct name',
-						p.prev_tok.position())
 					node = p.struct_init(true) // short_syntax: true
+					p.warn_with_pos('short struct initalization is deprecated, use explicit struct name',
+						node.position())
 				} else if p.tok.kind == .name {
 					p.next()
 					return p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',

@@ -109,7 +109,7 @@ fn test_a_simple_tcp_client_html_page() {
 
 // net.http client based tests follow:
 fn assert_common_http_headers(x http.Response) ? {
-	assert x.status_code == 200
+	assert x.status() == .ok
 	assert x.header.get(.server) ? == 'VWeb'
 	assert x.header.get(.content_length) ?.int() > 0
 	assert x.header.get(.connection) ? == 'close'
@@ -130,7 +130,7 @@ fn test_http_client_404() ? {
 	]
 	for url in url_404_list {
 		res := http.get(url) or { panic(err) }
-		assert res.status_code == 404
+		assert res.status() == .not_found
 	}
 }
 
@@ -168,7 +168,7 @@ fn test_http_client_user_repo_settings_page() ? {
 	assert y.text == 'username: kent | repository: golang'
 	//
 	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or { panic(err) }
-	assert z.status_code == 404
+	assert z.status() == .not_found
 }
 
 struct User {
@@ -231,7 +231,7 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 		assert err.msg == ''
 		return
 	}
-	assert x.status_code == 404
+	assert x.status() == .not_found
 	assert x.text == '404 Not Found'
 }
 
@@ -247,7 +247,7 @@ fn testsuite_end() {
 		assert err.msg == ''
 		return
 	}
-	assert x.status_code == 200
+	assert x.status() == .ok
 	assert x.text == 'good bye'
 }
 

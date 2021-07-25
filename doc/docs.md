@@ -862,6 +862,9 @@ There are further built in methods for arrays:
 * `a.prepend(arr)` insert elements of array `arr` at beginning
 * `a.trim(new_len)` truncate the length (if `new_length < a.len`, otherwise do nothing)
 * `a.clear()` empty the array (without changing `cap`, equivalent to `a.trim(0)`)
+* `a.delete_many(start, size)` removes `size` consecutive elements beginning with index `start`
+  &ndash; triggers reallocation
+* `a.delete(index)` equivalent to `a.delete_many(index, 1)`
 * `v := a.first()` equivalent to `v := a[0]`
 * `v := a.last()` equivalent to `v := a[a.len - 1]`
 * `v := a.pop()` get last element and remove it from array
@@ -3347,7 +3350,7 @@ fn main() {
 			time.sleep(5 * time.millisecond)
 			eprintln('> c: $c was send on channel ch3')
 		}
-		> 500 * time.millisecond {
+		500 * time.millisecond {
 			// do something if no channel has become ready within 0.5s
 			eprintln('> more than 0.5s passed without a channel being ready')
 		}

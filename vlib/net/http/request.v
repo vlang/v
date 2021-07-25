@@ -56,7 +56,9 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
-		if resp.status_code !in [301, 302, 303, 307, 308] {
+		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+			.permanent_redirect,
+		] {
 			break
 		}
 		// follow any redirects
@@ -215,15 +217,6 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 	}
 
 	return method, target, version
-}
-
-fn parse_header(s string) ?(string, string) {
-	if !s.contains(':') {
-		return error('missing colon in header')
-	}
-	words := s.split_nth(':', 2)
-	// TODO: parse quoted text according to the RFC
-	return words[0], words[1].trim_left(' \t')
 }
 
 // Parse URL encoded key=value&key=value forms

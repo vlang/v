@@ -9,7 +9,7 @@ import v.util
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
-		fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+		fkey := node.fkey()
 		is_used_by_main = g.table.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
@@ -21,8 +21,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		}
 	} else {
 		$if trace_skip_unused_fns_in_c_code ? {
-			fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
-			g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $fkey')
+			g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $node.fkey()')
 		}
 	}
 	return is_used_by_main
@@ -33,7 +32,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 		return
 	}
 	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.name == 'malloc' {
-		g.definitions.write_string('#define v_malloc GC_MALLOC\n')
+		g.definitions.write_string('#define _v_malloc GC_MALLOC\n')
 		return
 	}
 	g.gen_attrs(node.attrs)
@@ -181,6 +180,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
+		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return
+		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}

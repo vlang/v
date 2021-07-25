@@ -60,11 +60,13 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Close socket.
 	if(tls_ctx->socket != INVALID_SOCKET) {
 		closesocket(tls_ctx->socket);
+		tls_ctx->socket = INVALID_SOCKET;
 	}
 	
 	// Close "MY" certificate store.
 	if(tls_ctx->cert_store) {
 		CertCloseStore(tls_ctx->cert_store, 0);
+		tls_ctx->cert_store = NULL;
 	}
 }
 
@@ -755,7 +757,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 
 	// Build HTTP request. Note that I'm assuming that this is less than
 	// the maximum message size. If it weren't, it would have to be broken up.
-	sprintf(pbMessage,  req);
+	sprintf(pbMessage, "%s", req);
 
 	cbMessage = (DWORD)strlen(pbMessage);
 

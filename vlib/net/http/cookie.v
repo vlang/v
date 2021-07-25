@@ -48,96 +48,8 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 	}
 	mut cookies := []&Cookie{}
 	for _, line in cookies_s {
-		mut parts := line.trim_space().split(';')
-		if parts.len == 1 && parts[0] == '' {
-			continue
-		}
-		parts[0] = parts[0].trim_space()
-		keyval := parts[0].split('=')
-		if keyval.len != 2 {
-			continue
-		}
-		name := keyval[0]
-		raw_value := keyval[1]
-		if !is_cookie_name_valid(name) {
-			continue
-		}
-		value := parse_cookie_value(raw_value, true) or { continue }
-		mut c := &Cookie{
-			name: name
-			value: value
-			raw: line
-		}
-		for i, _ in parts {
-			parts[i] = parts[i].trim_space()
-			if parts[i].len == 0 {
-				continue
-			}
-			mut attr := parts[i]
-			mut raw_val := ''
-			if attr.contains('=') {
-				pieces := attr.split('=')
-				attr = pieces[0]
-				raw_val = pieces[1]
-			}
-			lower_attr := attr.to_lower()
-			val := parse_cookie_value(raw_val, false) or {
-				c.unparsed << parts[i]
-				continue
-			}
-			match lower_attr {
-				'samesite' {
-					lower_val := val.to_lower()
-					match lower_val {
-						'lax' { c.same_site = .same_site_lax_mode }
-						'strict' { c.same_site = .same_site_strict_mode }
-						'none' { c.same_site = .same_site_none_mode }
-						else { c.same_site = .same_site_default_mode }
-					}
-				}
-				'secure' {
-					c.secure = true
-					continue
-				}
-				'httponly' {
-					c.http_only = true
-					continue
-				}
-				'domain' {
-					c.domain = val
-					continue
-				}
-				'max-age' {
-					mut secs := val.int()
-					if secs != 0 && val[0] != `0` {
-						break
-					}
-					if secs <= 0 {
-						secs = -1
-					}
-					c.max_age = secs
-					continue
-				}
-				// TODO: Fix this once time works better
-				// 'expires' {
-				// 	c.raw_expires = val
-				// 	mut exptime := time.parse_iso(val)
-				// 	if exptime.year == 0 {
-				// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
-				// 	}
-				// 	c.expires = exptime
-				// 	continue
-				// }
-				'path' {
-					c.path = val
-					continue
-				}
-				else {
-					c.unparsed << parts[i]
-				}
-			}
-		}
-		cookies << c
+		c := parse_cookie(line) or { continue }
+		cookies << &c
 	}
 	return cookies
 }
@@ -405,4 +317,97 @@ fn is_cookie_name_valid(name string) bool {
 		}
 	}
 	return true
+}
+
+fn parse_cookie(line string) ?Cookie {
+	mut parts := line.trim_space().split(';')
+	if parts.len == 1 && parts[0] == '' {
+		return error('malformed cookie')
+	}
+	parts[0] = parts[0].trim_space()
+	keyval := parts[0].split('=')
+	if keyval.len != 2 {
+		return error('malformed cookie')
+	}
+	name := keyval[0]
+	raw_value := keyval[1]
+	if !is_cookie_name_valid(name) {
+		return error('malformed cookie')
+	}
+	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }
+	mut c := Cookie{
+		name: name
+		value: value
+		raw: line
+	}
+	for i, _ in parts {
+		parts[i] = parts[i].trim_space()
+		if parts[i].len == 0 {
+			continue
+		}
+		mut attr := parts[i]
+		mut raw_val := ''
+		if attr.contains('=') {
+			pieces := attr.split('=')
+			attr = pieces[0]
+			raw_val = pieces[1]
+		}
+		lower_attr := attr.to_lower()
+		val := parse_cookie_value(raw_val, false) or {
+			c.unparsed << parts[i]
+			continue
+		}
+		match lower_attr {
+			'samesite' {
+				lower_val := val.to_lower()
+				match lower_val {
+					'lax' { c.same_site = .same_site_lax_mode }
+					'strict' { c.same_site = .same_site_strict_mode }
+					'none' { c.same_site = .same_site_none_mode }
+					else { c.same_site = .same_site_default_mode }
+				}
+			}
+			'secure' {
+				c.secure = true
+				continue
+			}
+			'httponly' {
+				c.http_only = true
+				continue
+			}
+			'domain' {
+				c.domain = val
+				continue
+			}
+			'max-age' {
+				mut secs := val.int()
+				if secs != 0 && val[0] != `0` {
+					break
+				}
+				if secs <= 0 {
+					secs = -1
+				}
+				c.max_age = secs
+				continue
+			}
+			// TODO: Fix this once time works better
+			// 'expires' {
+			// 	c.raw_expires = val
+			// 	mut exptime := time.parse_iso(val)
+			// 	if exptime.year == 0 {
+			// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
+			// 	}
+			// 	c.expires = exptime
+			// 	continue
+			// }
+			'path' {
+				c.path = val
+				continue
+			}
+			else {
+				c.unparsed << parts[i]
+			}
+		}
+	}
+	return c
 }

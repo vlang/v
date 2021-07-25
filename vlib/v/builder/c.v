@@ -21,14 +21,11 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.pref.out_name_c = os.real_path(out_file)
 	b.info('build_c($out_file)')
 	output2 := b.gen_c(v_files)
-	mut f := os.create(out_file) or { panic(err) }
-	f.writeln(output2) or { panic(err) }
-	f.close()
+	os.write_file(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {
 		b.stats_lines = output2.count('\n') + 1
 		b.stats_bytes = output2.len
 	}
-	// os.write_file(out_file, b.gen_c(v_files))
 }
 
 pub fn (mut b Builder) compile_c() {

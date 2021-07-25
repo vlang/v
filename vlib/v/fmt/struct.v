@@ -7,88 +7,6 @@ import math.mathutil as mu
 import strings
 import v.ast
 
-const (
-	threshold_to_align_struct = 8
-)
-
-struct StructFieldAlignInfo {
-mut:
-	first_line   int
-	last_line    int
-	max_type_len int
-	max_len      int
-}
-
-fn (mut list []StructFieldAlignInfo) add_new_info(len int, type_len int, line int) {
-	list << StructFieldAlignInfo{
-		first_line: line
-		last_line: line
-		max_type_len: type_len
-		max_len: len
-	}
-}
-
-[direct_array_access]
-fn (mut list []StructFieldAlignInfo) add_info(len int, type_len int, line int) {
-	if list.len == 0 {
-		list.add_new_info(len, type_len, line)
-		return
-	}
-	i := list.len - 1
-	if line - list[i].last_line > 1 {
-		list.add_new_info(len, type_len, line)
-		return
-	}
-	list[i].last_line = line
-	if len > list[i].max_len {
-		list[i].max_len = len
-	}
-	if type_len > list[i].max_type_len {
-		list[i].max_type_len = type_len
-	}
-}
-
-struct CommentAndExprAlignInfo {
-mut:
-	max_attrs_len int
-	max_type_len  int
-	first_line    int
-	last_line     int
-}
-
-fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int, line int) {
-	list << CommentAndExprAlignInfo{
-		max_attrs_len: attrs_len
-		max_type_len: type_len
-		first_line: line
-		last_line: line
-	}
-}
-
-fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, line int) {
-	if list.len == 0 {
-		list.add_new_info(attrs_len, type_len, line)
-		return
-	}
-	i := list.len - 1
-	if line - list[i].last_line > 1 {
-		list.add_new_info(attrs_len, type_len, line)
-		return
-	}
-	d_len := mu.abs(list[i].max_attrs_len - attrs_len) + mu.abs(list[i].max_type_len - type_len)
-	if !(d_len < fmt.threshold_to_align_struct) {
-		list.add_new_info(attrs_len, type_len, line)
-		return
-	}
-	list[i].last_line = line
-	if attrs_len > list[i].max_attrs_len {
-		list[i].max_attrs_len = attrs_len
-	}
-	if type_len > list[i].max_type_len {
-		list[i].max_type_len = type_len
-	}
-}
-
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)
 	if node.is_pub {
@@ -113,9 +31,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		return
 	}
 	f.writeln(' {')
-	mut field_aligns := []StructFieldAlignInfo{}
-	mut comment_aligns := []CommentAndExprAlignInfo{}
-	mut default_expr_aligns := []CommentAndExprAlignInfo{}
+	mut field_aligns := []AlignInfo{}
+	mut comment_aligns := []AlignInfo{}
+	mut default_expr_aligns := []AlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	for i, field in node.fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
@@ -126,7 +44,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		for comment in field.comments {
 			if comment.pos.pos >= end_pos {
 				if comment.pos.line_nr == field.pos.line_nr {
-					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr)
+					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
+						use_threshold: true)
 				}
 				continue
 			}
@@ -136,7 +55,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
-			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr)
+			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
+				use_threshold: true)
 		}
 	}
 	for embed in node.embeds {
@@ -194,7 +114,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.comments(between_comments, iembed: true, has_nl: false)
 		comments_len := f.line_len - before_len
 		mut field_align := field_aligns[field_align_i]
-		if field_align.last_line < field.pos.line_nr {
+		if field_align.line_nr < field.pos.line_nr {
 			field_align_i++
 			field_align = field_aligns[field_align_i]
 		}
@@ -209,11 +129,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if field.has_default_expr {
 			mut align := default_expr_aligns[default_expr_align_i]
-			if align.last_line < field.pos.line_nr {
+			if align.line_nr < field.pos.line_nr {
 				default_expr_align_i++
 				align = default_expr_aligns[default_expr_align_i]
 			}
-			pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+			pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
 			if !expr_is_single_line(field.default_expr) {
@@ -233,11 +153,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			} else {
 				if !field.has_default_expr {
 					mut align := comment_aligns[comment_align_i]
-					if align.last_line < field.pos.line_nr {
+					if align.line_nr < field.pos.line_nr {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+					pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')

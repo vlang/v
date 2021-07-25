@@ -200,6 +200,9 @@ const c_common_macros = '
 	#ifndef VUNREACHABLE
 		#define VUNREACHABLE() do { } while (0)
 	#endif
+	#if defined(__FreeBSD__) && defined(__TINYC__)
+		#define VUNREACHABLE() do { } while (0)
+	#endif
 #endif
 
 //likely and unlikely macros

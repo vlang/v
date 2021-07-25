@@ -280,6 +280,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
+		pref: pref
 	}
 	// println( all_fns.keys() )
 	walker.mark_exported_fns()
@@ -351,11 +352,7 @@ fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]as
 		for node in file.stmts {
 			match node {
 				ast.FnDecl {
-					fkey := if node.is_method {
-						'${int(node.receiver.typ)}.$node.name'
-					} else {
-						node.name
-					}
+					fkey := node.fkey()
 					all_fns[fkey] = node
 				}
 				ast.ConstDecl {

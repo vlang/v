@@ -98,8 +98,8 @@ pub fn (mut b Builder) writeln(s string) {
 	b << byte(`\n`)
 }
 
-// buf == 'hello world'
 // last_n(5) returns 'world'
+// buf == 'hello world'
 pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
@@ -108,8 +108,8 @@ pub fn (b &Builder) last_n(n int) string {
 	return x.bytestr()
 }
 
-// buf == 'hello world'
 // after(6) returns 'world'
+// buf == 'hello world'
 pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
@@ -133,7 +133,7 @@ pub fn (mut b Builder) str() string {
 	return s
 }
 
-// free - manually free the contents of the buffer
+// free is for manually freeing the contents of the buffer
 [unsafe]
 pub fn (mut b Builder) free() {
 	unsafe { free(b.data) }

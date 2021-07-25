@@ -250,3 +250,10 @@ fn test_array_init_inferred_from_optional() {
 fn read() ?[]string {
 	return error('failed')
 }
+
+fn test_multi_array_update_data() {
+	mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
+	a[0][1][1] = 2
+	println(a)
+	assert '$a' == '[[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]'
+}

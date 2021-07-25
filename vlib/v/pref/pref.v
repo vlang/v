@@ -120,6 +120,7 @@ pub mut:
 	is_vlines              bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
 	show_cc                bool // -showcc, print cc command
 	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
+	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
@@ -154,7 +155,7 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path      []string
 	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
-	output_cross_c   bool
+	output_cross_c   bool   // true, when the user passed `-os cross`
 	prealloc         bool
 	vroot            string
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
@@ -439,6 +440,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-show-c-output' {
 				res.show_c_output = true
+			}
+			'-show-callgraph' {
+				res.show_callgraph = true
 			}
 			'-dump-c-flags' {
 				res.dump_c_flags = cmdline.option(current_args, arg, '-')

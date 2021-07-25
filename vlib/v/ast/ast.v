@@ -874,17 +874,19 @@ pub mut:
 	scope &Scope
 }
 
-// #include etc
+// #include, #define etc
 pub struct HashStmt {
 pub:
 	mod         string
 	pos         token.Position
 	source_file string
 pub mut:
-	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
-	kind string // : 'include'
-	main string // : '<openssl/rand.h>'
-	msg  string // : 'please install openssl'
+	val      string // example: 'include <openssl/rand.h> # please install openssl // comment'
+	kind     string // : 'include'
+	main     string // : '<openssl/rand.h>'
+	msg      string // : 'please install openssl'
+	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
+	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
 }
 
 /*
@@ -1479,16 +1481,16 @@ pub mut:
 
 pub struct SqlStmtLine {
 pub:
-	kind            SqlStmtKind
-	object_var_name string // `user`
-	pos             token.Position
-	where_expr      Expr
-	updated_columns []string // for `update set x=y`
-	update_exprs    []Expr   // for `update`
+	kind         SqlStmtKind
+	pos          token.Position
+	where_expr   Expr
+	update_exprs []Expr // for `update`
 pub mut:
-	table_expr  TypeNode
-	fields      []StructField
-	sub_structs map[int]SqlStmtLine
+	object_var_name string   // `user`
+	updated_columns []string // for `update set x=y`
+	table_expr      TypeNode
+	fields          []StructField
+	sub_structs     map[int]SqlStmtLine
 }
 
 pub struct SqlExpr {

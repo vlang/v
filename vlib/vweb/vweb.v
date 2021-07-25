@@ -17,34 +17,31 @@ pub const (
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
-	http_400          = http.Response{
-		version: .v1_1
-		status_code: 400
+	http_400          = http.new_response(
+		status: .bad_request
 		text: '400 Bad Request'
-		header: http.new_header_from_map(map{
-			http.CommonHeader.content_type:   'text/plain'
-			http.CommonHeader.content_length: '15'
-		}).join(headers_close)
-	}
-	http_404 = http.Response{
-		version: .v1_1
-		status_code: 404
+		header: http.new_header(
+			key: .content_type
+			value: 'text/plain'
+		).join(headers_close)
+	)
+	http_404          = http.new_response(
+		status: .not_found
 		text: '404 Not Found'
-		header: http.new_header_from_map(map{
-			http.CommonHeader.content_type:   'text/plain'
-			http.CommonHeader.content_length: '13'
-		}).join(headers_close)
-	}
-	http_500 = http.Response{
-		version: .v1_1
-		status_code: 500
+		header: http.new_header(
+			key: .content_type
+			value: 'text/plain'
+		).join(headers_close)
+	)
+	http_500          = http.new_response(
+		status: .internal_server_error
 		text: '500 Internal Server Error'
-		header: http.new_header_from_map(map{
-			http.CommonHeader.content_type:   'text/plain'
-			http.CommonHeader.content_length: '25'
-		}).join(headers_close)
-	}
-	mime_types = map{
+		header: http.new_header(
+			key: .content_type
+			value: 'text/plain'
+		).join(headers_close)
+	)
+	mime_types        = map{
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -134,12 +131,12 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		http.CommonHeader.content_length: res.len.str()
 	}).join(ctx.header)
 
-	resp := http.Response{
-		version: .v1_1
-		status_code: ctx.status.int() // TODO: change / remove ctx.status
+	mut resp := http.Response{
 		header: header.join(vweb.headers_close)
 		text: res
 	}
+	resp.set_version(.v1_1)
+	resp.set_status(http.status_from_int(ctx.status.int()))
 	send_string(mut ctx.conn, resp.bytestr()) or { return false }
 	return true
 }

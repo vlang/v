@@ -47,7 +47,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		metaname_panic := g.gen_assert_metainfo(node)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
 		g.gen_assert_postfailure_mode(node)
-		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
+		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
 	}
 }
