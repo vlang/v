@@ -539,6 +539,9 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
+			if field.typ == decl.typ {
+				c.error('recursive interface fields are not allowed because they cannot be initialised', field.type_pos)
+			}
 			for j in 0 .. i {
 				if field.name == decl.fields[j].name {
 					c.error('field name `$field.name` duplicate', field.pos)
