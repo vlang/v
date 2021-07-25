@@ -1214,39 +1214,7 @@ fn test_multidimensional_array_initialization_with_consts() {
 	assert data[1][1][1] == cell_value
 }
 
-fn test_byteptr_vbytes() {
-	unsafe {
-		bp := malloc(5)
-		bp[0] = 1
-		bp[1] = 2
-		bp[2] = 3
-		bp[3] = 4
-		bp[4] = 255
-		bytes := bp.vbytes(5)
-		println(bytes)
-		assert bytes.len == 5
-		assert bytes[0] == 1
-		assert bytes[1] == 2
-		assert bytes[2] == 3
-		assert bytes[3] == 4
-		assert bytes[4] == 255
-	}
-}
 
-fn test_voidptr_vbytes() {
-	unsafe {
-		bp := malloc(3)
-		bp[0] = 4
-		bp[1] = 5
-		bp[2] = 6
-		bytes := voidptr(bp).vbytes(3)
-		assert bytes.len == 3
-		assert bytes[0] == 4
-		assert bytes[1] == 5
-		assert bytes[2] == 6
-		println(bytes)
-	}
-}
 
 fn test_multi_array_prepend() {
 	mut a := [][]int{}
