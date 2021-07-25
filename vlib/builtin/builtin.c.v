@@ -3,6 +3,7 @@ module builtin
 type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
+fn C.strerror(int) &char
 
 [noreturn]
 fn vhalt() {
@@ -98,6 +99,28 @@ pub fn panic(s string) {
 		}
 	}
 	vhalt()
+}
+
+// return a C-API error message matching to `errnum`
+pub fn c_error_number_str(errnum int) string {
+	mut err_msg := ''
+	$if freestanding {
+		err_msg = 'error $errnum'
+	} $else {
+		c_msg := C.strerror(errnum)
+		err_msg = string{
+			str: &byte(c_msg)
+			len: unsafe { C.strlen(c_msg) }
+			is_lit: 1
+		}
+	}
+	return err_msg
+}
+
+// panic with a C-API error message matching `errnum`
+[noreturn]
+pub fn panic_error_number(basestr string, errnum int) {
+	panic(basestr + c_error_number_str(errnum))
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.

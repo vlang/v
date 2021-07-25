@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads', 'js_browser', 'js_freestanding']
+		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -74,9 +74,12 @@ pub mut:
 	inside_const   bool
 	inside_anon_fn bool
 	inside_ref_lit bool
+	inside_defer   bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr bool // true inside [if expr]
 	skip_flags     bool // should `#flag` and `#include` be skipped
+	fn_level       int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	ct_cond_stack  []ast.Expr
 mut:
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
@@ -517,6 +520,13 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 			for param in method.params {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
+			}
+			for field in decl.fields {
+				field_sym := c.table.get_type_symbol(field.typ)
+				if field.name == method.name && field_sym.kind == .function {
+					c.error('type `$decl_sym.name` has both field and method named `$method.name`',
+						method.pos)
+				}
 			}
 			for j in 0 .. i {
 				if method.name == decl.methods[j].name {
@@ -4473,10 +4483,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if id.info is ast.IdentVar {
-					if id.comptime && (id.name in checker.valid_comp_if_compilers
-						|| id.name in checker.valid_comp_if_os
-						|| id.name in checker.valid_comp_if_other
-						|| id.name in checker.valid_comp_if_platforms) {
+					if id.comptime && id.name in checker.valid_comp_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
@@ -4493,7 +4500,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.defer_vars[i] = id
 				}
 			}
+			c.inside_defer = true
 			c.stmts(node.stmts)
+			c.inside_defer = false
 		}
 		ast.EnumDecl {
 			c.enum_decl(node)
@@ -4538,6 +4547,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
+			if c.inside_defer {
+				c.error('goto is not allowed in defer statements', node.pos)
+			}
 			if !c.inside_unsafe {
 				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
 					node.pos)
@@ -4600,7 +4612,10 @@ fn (mut c Checker) block(node ast.Block) {
 }
 
 fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
-	if c.in_for_count == 0 || c.inside_anon_fn {
+	if c.inside_defer {
+		c.error('`$node.kind.str()` is not allowed in defer statements', node.pos)
+	}
+	if c.in_for_count == 0 {
 		c.error('$node.kind.str() statement not within a loop', node.pos)
 	}
 	if node.label.len > 0 {
@@ -4915,6 +4930,9 @@ fn (mut c Checker) asm_ios(ios []ast.AsmIO, mut scope ast.Scope, output bool) []
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.skip_flags {
 		return
+	}
+	if c.ct_cond_stack.len > 0 {
+		node.ct_conds = c.ct_cond_stack.clone()
 	}
 	if c.pref.backend.is_js() {
 		if !c.file.path.ends_with('.js.v') {
@@ -6237,7 +6255,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		} else {
 			remaining := unhandled.len - c.match_exhaustive_cutoff_limit
 			err_details += unhandled[0..c.match_exhaustive_cutoff_limit].join(', ')
-			err_details += ', and $remaining others ...'
+			if remaining > 0 {
+				err_details += ', and $remaining others ...'
+			}
 		}
 		err_details += ' or `else {}` at the end)'
 	} else {
@@ -6325,7 +6345,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				if branch.is_timeout {
 					if !branch.stmt.typ.is_int() {
 						tsym := c.table.get_type_symbol(branch.stmt.typ)
-						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`',
+						c.error('invalid type `$tsym.name` for timeout - expected integer number of nanoseconds aka `time.Duration`',
 							branch.stmt.pos)
 					}
 				} else {
@@ -6554,6 +6574,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
+			if c.fn_level == 0 && c.pref.output_cross_c {
+				// do not skip any of the branches for top level `$if OS {`
+				// statements, in `-os cross` mode
+				found_branch = false
+				c.skip_flags = false
+				c.ct_cond_stack << branch.cond
+			}
 			if !c.skip_flags {
 				c.stmts(branch.stmts)
 			} else if c.pref.output_cross_c {
@@ -6575,6 +6602,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.comptime_fields_type.delete(comptime_field_name)
 			}
 			c.skip_flags = cur_skip_flags
+			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
+				c.ct_cond_stack.delete_last()
+			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)
@@ -6770,7 +6800,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		ast.Ident {
 			cname := cond.name
 			if cname in checker.valid_comp_if_os {
-				return cname != c.pref.os.str().to_lower()
+				mut is_os_target_different := false
+				if !c.pref.output_cross_c {
+					target_os := c.pref.os.str().to_lower()
+					is_os_target_different = cname != target_os
+				}
+				return is_os_target_different
 			} else if cname in checker.valid_comp_if_compilers {
 				return pref.cc_from_string(cname) != c.pref.ccompiler_type
 			} else if cname in checker.valid_comp_if_platforms {
@@ -7769,7 +7804,6 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.returns = false
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
@@ -7779,6 +7813,30 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return
+	}
+	// save all the state that fn_decl or inner  statements/expressions
+	// could potentially modify, since functions can be nested, due to
+	// anonymous function support, and ensure that it is restored, when
+	// fn_decl returns:
+	prev_fn_scope := c.fn_scope
+	prev_in_for_count := c.in_for_count
+	prev_inside_defer := c.inside_defer
+	prev_inside_unsafe := c.inside_unsafe
+	prev_inside_anon_fn := c.inside_anon_fn
+	prev_returns := c.returns
+	c.fn_level++
+	c.in_for_count = 0
+	c.inside_defer = false
+	c.inside_unsafe = false
+	c.returns = false
+	defer {
+		c.fn_level--
+		c.returns = prev_returns
+		c.inside_anon_fn = prev_inside_anon_fn
+		c.inside_unsafe = prev_inside_unsafe
+		c.inside_defer = prev_inside_defer
+		c.in_for_count = prev_in_for_count
+		c.fn_scope = prev_fn_scope
 	}
 	// Check generics fn/method without generic type parameters
 	mut need_generic_names := false
@@ -7860,11 +7918,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// make sure interface does not implement its own interface methods
 		if sym.kind == .interface_ && sym.has_method(node.name) {
-			if sym.info is ast.Interface {
-				info := sym.info as ast.Interface
+			if mut sym.info is ast.Interface {
 				// if the method is in info.methods then it is an interface method
-				if info.has_method(node.name) {
+				if sym.info.has_method(node.name) {
 					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+						node.pos)
+				}
+			}
+		}
+		if mut sym.info is ast.Struct {
+			if field := c.table.find_field(sym, node.name) {
+				field_sym := c.table.get_type_symbol(field.typ)
+				if field_sym.kind == .function {
+					c.error('type `$sym.name` has both field and method named `$node.name`',
 						node.pos)
 				}
 			}
@@ -7998,7 +8064,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	c.returns = false
 	node.source_file = c.file
 }
 

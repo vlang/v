@@ -24,13 +24,13 @@ pub fn (mut s Server) listen_and_serve() ? {
 			} $else {
 				eprintln('[$time.now()] $req.method $req.url - 200')
 			}
-			return Response{
-				version: req.version
+			mut r := Response{
 				text: req.data
 				header: req.header
-				cookies: req.cookies
-				status_code: int(Status.ok)
 			}
+			r.set_status(.ok)
+			r.set_version(req.version)
+			return r
 		}
 	}
 	mut l := net.listen_tcp(.ip6, ':$s.port') ?
@@ -64,8 +64,8 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 		return
 	}
 	mut resp := s.handler(req)
-	if resp.version == .unknown {
-		resp.version = req.version
+	if resp.version() == .unknown {
+		resp.set_version(req.version)
 	}
 	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
 }

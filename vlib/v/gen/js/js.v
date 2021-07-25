@@ -126,9 +126,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return this.map.length;}, set: function(l) { this.map.length = l; } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return this.arr.length;}, set: function(l) { this.arr.length = l; } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new builtin.int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new builtin.int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 
@@ -305,7 +306,8 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
-
+	g.definitions.writeln('function \$ref(value) { this.val = value; } ')
+	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
 	if g.pref.backend != .js_node {
 		g.definitions.writeln('const \$process = {')
 		g.definitions.writeln('  arch: "js",')
@@ -680,10 +682,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				// C pointers/references: ignore them
 				if node.op == .amp {
 					type_sym := g.table.get_type_symbol(node.right_type)
+
 					if !type_sym.is_primitive() && !node.right_type.is_pointer() {
-						g.write('{ val: ')
+						// kind of weird way to handle references but it allows us to access type methods easily.
+						g.write('(function(x) {')
+						g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
 						g.expr(node.right)
-						g.write(' } ')
+						g.write(')')
 					} else {
 						g.expr(node.right)
 					}
@@ -1110,6 +1115,9 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
+				if it.cond_type.is_ptr() {
+					g.write('.valueOf()')
+				}
 				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
 				if g.ns.name == 'builtin' {
 					g.write('new ')
@@ -1117,11 +1125,17 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 				g.write('byte($val)])')
 			} else {
 				g.expr(it.cond)
+				if it.cond_type.is_ptr() {
+					g.write('.valueOf()')
+				}
 				g.write('.entries()')
 			}
 		} else {
 			g.write('for (const $val of ')
 			g.expr(it.cond)
+			if it.cond_type.is_ptr() {
+				g.write('.valueOf()')
+			}
 			if it.kind == .string {
 				g.write(".str.split('')")
 			}
@@ -1145,6 +1159,9 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
 		g.write('for (let [$key, $val] of ')
 		g.expr(it.cond)
+		if it.cond_type.is_ptr() {
+			g.write('.valueOf()')
+		}
 		g.writeln(') {')
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -1537,6 +1554,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
 		g.expr(expr.left)
+		if expr.left_type.is_ptr() {
+			g.write('.val')
+		}
 		g.write('.slice(')
 		if expr.index.has_low {
 			g.expr(expr.index.low)
@@ -1548,6 +1568,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.expr(expr.index.high)
 		} else {
 			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.val')
+			}
 			g.write('.length')
 		}
 		g.write(')')
@@ -1572,6 +1595,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
 			g.write('new byte(')
 			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.val')
+			}
 			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
 			g.write('))')
@@ -1579,6 +1605,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
+		if expr.left_type.is_ptr() {
+			g.write('.val')
+		}
 		g.write('.arr')
 		g.write('[')
 		g.cast_stack << ast.int_type_idx
@@ -1755,6 +1784,9 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	g.expr(it.expr)
+	if it.expr_type.is_ptr() {
+		g.write('.valueOf()')
+	}
 	g.write('.$it.field_name')
 }
 

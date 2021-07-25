@@ -10,6 +10,7 @@ import v.checker
 import v.parser
 import v.depgraph
 import v.markused
+import v.callgraph
 
 pub struct Builder {
 pub:
@@ -85,6 +86,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+	if b.pref.show_callgraph {
+		callgraph.show(mut b.table, b.pref, b.parsed_files)
 	}
 }
 

@@ -270,7 +270,7 @@ fn (mut context Context) compilation_runner_loop() {
 							return
 						}
 					}
-					> 100 * time.millisecond {
+					100 * time.millisecond {
 						should_restart := RerunCommand.restart in cmds
 						cmds = []
 						if should_restart {

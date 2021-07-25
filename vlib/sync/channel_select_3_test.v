@@ -32,7 +32,7 @@ fn f1(ch1 chan int, ch2 chan St, ch3 chan int, ch4 chan int, ch5 chan int, mut s
 		ch5 <- getint() {
 			a = 9
 		}
-		> 300 * time.millisecond {
+		300 * time.millisecond {
 			a = 3
 		}
 	}

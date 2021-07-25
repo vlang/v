@@ -309,30 +309,14 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			is_else = true
 			has_else = true
 			p.next()
-		} else if p.tok.kind == .gt {
-			if has_else {
-				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys',
-					p.tok.position())
-				return ast.SelectExpr{}
-			}
-			if has_timeout {
-				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block',
-					p.tok.position())
-				return ast.SelectExpr{}
-			}
-			is_timeout = true
-			has_timeout = true
-			p.next()
-			p.inside_match = true
-			expr := p.expr(0)
-			p.inside_match = false
-			stmt = ast.ExprStmt{
-				expr: expr
-				pos: expr.position()
-				comments: [comment]
-				is_expr: true
-			}
 		} else {
+			mut is_gt := false
+			if p.tok.kind == .gt {
+				is_gt = true
+				p.note_with_pos('`>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds',
+					p.tok.position())
+				p.next()
+			}
 			p.inside_match = true
 			p.inside_select = true
 			exprs, comments := p.expr_list()
@@ -354,6 +338,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			p.inside_select = false
 			match mut stmt {
 				ast.ExprStmt {
+					mut check_timeout := false
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
 						return ast.SelectExpr{}
@@ -361,17 +346,30 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 						match mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
-									p.error_with_pos('select key: `<-` operator expected',
-										stmt.expr.pos)
-									return ast.SelectExpr{}
+									check_timeout = true
+								} else if is_gt {
+									p.error_with_pos('send expression cannot be used as timeout',
+										stmt.pos)
 								}
 							}
 							else {
-								p.error_with_pos('select key: send expression (`ch <- x`) expected',
-									stmt.pos)
-								return ast.SelectExpr{}
+								check_timeout = true
 							}
 						}
+					}
+					if check_timeout {
+						if has_else {
+							p.error_with_pos('`else` and timeout value are mutually exclusive `select` keys',
+								stmt.pos)
+							return ast.SelectExpr{}
+						}
+						if has_timeout {
+							p.error_with_pos('at most one timeout branch allowed in `select` block',
+								stmt.pos)
+							return ast.SelectExpr{}
+						}
+						is_timeout = true
+						has_timeout = true
 					}
 				}
 				ast.AssignStmt {
@@ -392,7 +390,8 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					}
 				}
 				else {
-					p.error_with_pos('select: transmission statement expected', stmt.pos)
+					p.error_with_pos('select: transmission statement, timeout (in ns) or `else` expected',
+						stmt.pos)
 					return ast.SelectExpr{}
 				}
 			}

@@ -757,7 +757,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 
 	// Build HTTP request. Note that I'm assuming that this is less than
 	// the maximum message size. If it weren't, it would have to be broken up.
-	sprintf(pbMessage,  req);
+	sprintf(pbMessage, "%s", req);
 
 	cbMessage = (DWORD)strlen(pbMessage);
 

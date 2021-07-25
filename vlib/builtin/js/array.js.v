@@ -104,6 +104,13 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	#a.arr.splice(i,0,val)
 }
 
+pub fn (mut a array) join(separator string) string {
+	mut res := ''
+	#res = new builtin.string(a.arr.join(separator +''));
+
+	return res
+}
+
 fn (a array) push(val voidptr) {
 	#a.arr.push(val)
 }

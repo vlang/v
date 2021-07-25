@@ -32,8 +32,8 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 		.mysql {
 			fn_prefix = 'mysql__Connection'
 		}
-		.mssql {
-			// g.mssql_create_table(node, typ, expr)
+		.psql {
+			fn_prefix = 'pg__DB'
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -506,6 +506,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		}
 		.mysql {
 			fn_prefix = 'mysql__Connection'
+		}
+		.psql {
+			fn_prefix = 'pg__DB'
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
