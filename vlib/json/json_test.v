@@ -14,15 +14,12 @@ struct Employee {
 	title  JobTitle
 }
 
-fn test_simple() {
+fn test_simple() ? {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
 	eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	y := json.decode(Employee, s) or {
-		assert false
-		Employee{}
-	}
+	y := json.decode(Employee, s) ?
 	eprintln('Employee y: $y')
 	assert y.name == 'Peter'
 	assert y.age == 28
@@ -59,11 +56,11 @@ struct User {
 	pets          string [json: 'pet_animals'; raw]
 }
 
-fn test_parse_user() {
+fn test_parse_user() ? {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json.decode(User2, s) or { exit(1) }
+	u2 := json.decode(User2, s) ?
 	println(u2)
-	u := json.decode(User, s) or { exit(1) }
+	u := json.decode(User, s) ?
 	println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
@@ -76,7 +73,7 @@ fn test_parse_user() {
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
-fn test_encode_decode_time() {
+fn test_encode_decode_time() ? {
 	user := User2{
 		age: 25
 		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
@@ -84,10 +81,7 @@ fn test_encode_decode_time() {
 	s := json.encode(user)
 	println(s)
 	assert s.contains('"reg_date":1608621780')
-	user2 := json.decode(User2, s) or {
-		assert false
-		return
-	}
+	user2 := json.decode(User2, s) ?
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 	println(user2)
 	println(user2.reg_date)
@@ -146,11 +140,8 @@ struct Country {
 	name   string
 }
 
-fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') or {
-		assert false
-		exit(1)
-	}
+fn test_struct_in_struct() ? {
+	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') ?
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
@@ -171,20 +162,14 @@ fn test_encode_map() {
 	assert out == expected
 }
 
-fn test_parse_map() {
+fn test_parse_map() ? {
 	expected := map{
 		'one':   1
 		'two':   2
 		'three': 3
 		'four':  4
 	}
-	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}') or {
-		assert false
-		r := map{
-			'': 0
-		}
-		r
-	}
+	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}') ?
 	println(out)
 	assert out == expected
 }
@@ -195,7 +180,7 @@ struct Data {
 	extra     map[string]map[string]int
 }
 
-fn test_nested_type() {
+fn test_nested_type() ? {
 	data_expected := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 	data := Data{
 		countries: [
@@ -244,10 +229,7 @@ fn test_nested_type() {
 	out := json.encode(data)
 	println(out)
 	assert out == data_expected
-	data2 := json.decode(Data, data_expected) or {
-		assert false
-		Data{}
-	}
+	data2 := json.decode(Data, data_expected) ?
 	assert data2.countries.len == data.countries.len
 	for i in 0 .. 1 {
 		assert data2.countries[i].name == data.countries[i].name
@@ -277,11 +259,11 @@ pub:
 	data T
 }
 
-fn test_generic_struct() {
+fn test_generic_struct() ? {
 	foo_int := Foo<int>{'bar', 12}
 	foo_enc := json.encode(foo_int)
 	assert foo_enc == '{"name":"bar","data":12}'
-	foo_dec := json.decode(Foo<int>, foo_enc) or { exit(1) }
+	foo_dec := json.decode(Foo<int>, foo_enc) ?
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }
@@ -315,11 +297,8 @@ struct Message {
 	id ID
 }
 
-fn test_decode_alias_struct() {
-	msg := json.decode(Message, '{"id": "118499178790780929"}') or {
-		assert false
-		Message{}
-	}
+fn test_decode_alias_struct() ? {
+	msg := json.decode(Message, '{"id": "118499178790780929"}') ?
 	// hacky way of comparing aliased strings
 	assert msg.id.str() == '118499178790780929'
 }
@@ -336,29 +315,20 @@ struct List {
 	items []string
 }
 
-fn test_list() {
-	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}') or {
-		println('error')
-		return
-	}
+fn test_list() ? {
+	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}') ?
 	assert list.id == 1
 	assert list.items == ['1', '2']
 }
 
-fn test_list_no_id() {
-	list := json.decode(List, '{"items": ["1", "2"]}') or {
-		println('error')
-		return
-	}
+fn test_list_no_id() ? {
+	list := json.decode(List, '{"items": ["1", "2"]}') ?
 	assert list.id == 0
 	assert list.items == ['1', '2']
 }
 
-fn test_list_no_items() {
-	list := json.decode(List, '{"id": 1}') or {
-		println('error')
-		return
-	}
+fn test_list_no_items() ? {
+	list := json.decode(List, '{"id": 1}') ?
 	assert list.id == 1
 	assert list.items == []
 }
@@ -369,8 +339,8 @@ struct Info {
 	maps  map[string]string
 }
 
-fn test_decode_null_object() {
-	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') or { panic(err) }
+fn test_decode_null_object() ? {
+	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') ?
 	assert info.id == 22
 	assert '$info.items' == '[]'
 	assert '$info.maps' == '{}'
