@@ -4609,7 +4609,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 	if c.inside_defer {
 		c.error('`$node.kind.str()` is not allowed in defer statements', node.pos)
 	}
-	if c.in_for_count == 0 || c.inside_anon_fn {
+	if c.in_for_count == 0 {
 		c.error('$node.kind.str() statement not within a loop', node.pos)
 	}
 	if node.label.len > 0 {
@@ -7798,13 +7798,6 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.fn_level++
-	defer {
-		c.fn_level--
-	}
-	//
-	c.returns = false
-
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
@@ -7814,6 +7807,30 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return
+	}
+	// save all the state that fn_decl or inner  statements/expressions
+	// could potentially modify, since functions can be nested, due to
+	// anonymous function support, and ensure that it is restored, when
+	// fn_decl returns:
+	prev_fn_scope := c.fn_scope
+	prev_in_for_count := c.in_for_count
+	prev_inside_defer := c.inside_defer
+	prev_inside_unsafe := c.inside_unsafe
+	prev_inside_anon_fn := c.inside_anon_fn
+	prev_returns := c.returns
+	c.fn_level++
+	c.in_for_count = 0
+	c.inside_defer = false
+	c.inside_unsafe = false
+	c.returns = false
+	defer {
+		c.fn_level--
+		c.returns = prev_returns
+		c.inside_anon_fn = prev_inside_anon_fn
+		c.inside_unsafe = prev_inside_unsafe
+		c.inside_defer = prev_inside_defer
+		c.in_for_count = prev_in_for_count
+		c.fn_scope = prev_fn_scope
 	}
 	// Check generics fn/method without generic type parameters
 	mut need_generic_names := false
@@ -8041,7 +8058,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	c.returns = false
 	node.source_file = c.file
 }
 
