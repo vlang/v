@@ -205,7 +205,7 @@ pub fn (mut zentry Zip) read_entry() ?voidptr {
 }
 
 // read_entry_buf extracts the current zip entry into user specified buffer
-pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ? int {
+pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
 	bsize := size_t(in_bsize)
 	res := C.zip_entry_noallocread(zentry, buf, bsize)
 	if res == -1 {

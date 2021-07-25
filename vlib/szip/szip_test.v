@@ -41,7 +41,7 @@ fn test_extract_zipped_files() ? {
 fn test_reading_zipping_files() ? {
 	n_files := 10
 	mut file_name_list := []string{}
-	for i in 0..n_files {
+	for i in 0 .. n_files {
 		file_name_list << 'file_${i:02}.txt'
 	}
 
@@ -54,27 +54,26 @@ fn test_reading_zipping_files() ? {
 		assert os.exists(tmp_path)
 	}
 	files := (os.ls(test_path) ?).map(os.join_path(test_path, it))
-	
+
 	szip.zip_files(files, test_out_zip) ?
 	assert os.exists(test_out_zip)
 
-	mut zp := szip.open(test_out_zip,szip.CompressionLevel.no_compression , szip.OpenMode.read_only)?
-	n_entries := zp.total()?
+	mut zp := szip.open(test_out_zip, szip.CompressionLevel.no_compression, szip.OpenMode.read_only) ?
+	n_entries := zp.total() ?
 	assert n_entries == n_files
 
 	unsafe {
 		buf := malloc(32)
 
-		for i in 0..n_files {
-			zp.open_entry_by_index(0)?
+		for i in 0 .. n_files {
+			zp.open_entry_by_index(0) ?
 			assert zp.name() in file_name_list
-			zp.read_entry_buf(buf,32)?
+			zp.read_entry_buf(buf, 32) ?
 			tmp_str := tos2(buf)
-			assert  tmp_str[0..4] == 'file'
-			assert  tmp_str[5..7] == zp.name()[5..7]
+			assert tmp_str[0..4] == 'file'
+			assert tmp_str[5..7] == zp.name()[5..7]
 		}
 		free(buf)
 	}
-
 	zp.close()
 }
