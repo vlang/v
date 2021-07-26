@@ -75,25 +75,6 @@ pub enum OPCode {
 	pong = 0x0A
 }
 
-// new_client instance a new websocket client
-[deprecated: 'use net.websocket module instead']
-pub fn new_client(address string) ?&Client {
-	uri := parse_uri(address) ?
-	return &Client{
-		conn: 0
-		is_server: false
-		ssl_conn: openssl.new_ssl_conn()
-		is_ssl: address.starts_with('wss')
-		logger: &log.Log{
-			level: .info
-		}
-		uri: uri
-		state: .closed
-		id: rand.uuid_v4()
-		header: http.new_header()
-	}
-}
-
 // connect connects to remote websocket server
 pub fn (mut ws Client) connect() ? {
 	ws.assert_not_connected() ?

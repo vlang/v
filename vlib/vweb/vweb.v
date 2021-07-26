@@ -212,14 +212,6 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
 }
 
-// Old function
-[deprecated]
-pub fn (mut ctx Context) set_cookie_old(key string, val string) {
-	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
-	// ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
-	ctx.add_header('Set-Cookie', '$key=$val; HttpOnly')
-}
-
 // Sets the response content type
 pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ

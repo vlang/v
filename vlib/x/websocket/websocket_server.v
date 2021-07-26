@@ -34,20 +34,6 @@ pub mut:
 	client &Client
 }
 
-// new_server instance a new websocket server on provided port and route
-[deprecated: 'use net.websocket module instead']
-pub fn new_server(family net.AddrFamily, port int, route string) &Server {
-	return &Server{
-		ls: 0
-		family: family
-		port: port
-		logger: &log.Log{
-			level: .info
-		}
-		state: .closed
-	}
-}
-
 // set_ping_interval sets the interval that the server will send ping messages to clients
 pub fn (mut s Server) set_ping_interval(seconds int) {
 	s.ping_interval = seconds
