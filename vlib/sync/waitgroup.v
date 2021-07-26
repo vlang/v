@@ -9,6 +9,9 @@ fn C.atomic_fetch_add_u32(voidptr, u32) u32
 [trusted]
 fn C.atomic_load_u32(voidptr) u32
 
+[trusted]
+fn C.atomic_store_u32(voidptr, u32)
+
 // WaitGroup
 // Do not copy an instance of WaitGroup, use a ref instead.
 //
@@ -50,6 +53,8 @@ pub fn (mut wg WaitGroup) add(delta int) {
 		panic('Negative number of jobs in waitgroup')
 	}
 	if new_nrjobs == 0 && num_waiters > 0 {
+		// clear waiters
+		C.atomic_store_u32(&wg.wait_count, 0)
 		for (num_waiters > 0) {
 			wg.sem.post()
 			num_waiters--

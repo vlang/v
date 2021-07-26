@@ -10,6 +10,7 @@ fn test_waitgroup_reuse() {
 	mut executed := false
 	go fn (mut wg WaitGroup, executed voidptr) {
 		defer {
+			assert wg.wait_count == 1
 			wg.done()
 		}
 		unsafe {
@@ -19,4 +20,5 @@ fn test_waitgroup_reuse() {
 
 	wg.wait()
 	assert executed
+	assert wg.wait_count == 0
 }
