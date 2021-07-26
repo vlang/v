@@ -674,7 +674,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.tok.lit == 'sql' {
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
 				return p.sql_stmt()
 			}
 			if p.peek_tok.kind == .colon {
