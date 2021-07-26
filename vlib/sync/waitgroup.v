@@ -6,6 +6,9 @@ module sync
 [trusted]
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
+[trusted]
+fn C.atomic_load_u32(voidptr) u32
+
 // WaitGroup
 // Do not copy an instance of WaitGroup, use a ref instead.
 //
@@ -22,6 +25,7 @@ fn C.atomic_fetch_add_u32(voidptr, u32) u32
 struct WaitGroup {
 mut:
 	task_count u32       // current task count - reading/writing should be atomic
+	wait_count u32       // current wait count - reading/writing should be atomic
 	sem        Semaphore // This blocks wait() until tast_countreleased by add()
 }
 
@@ -41,11 +45,15 @@ pub fn (mut wg WaitGroup) init() {
 pub fn (mut wg WaitGroup) add(delta int) {
 	old_nrjobs := int(C.atomic_fetch_add_u32(&wg.task_count, u32(delta)))
 	new_nrjobs := old_nrjobs + delta
+	mut num_waiters := int(C.atomic_load_u32(&wg.wait_count))
 	if new_nrjobs < 0 {
 		panic('Negative number of jobs in waitgroup')
 	}
-	if new_nrjobs == 0 {
-		wg.sem.post()
+	if new_nrjobs == 0 && num_waiters > 0 {
+		for (num_waiters > 0) {
+			wg.sem.post()
+			num_waiters--
+		}
 	}
 }
 
@@ -56,5 +64,6 @@ pub fn (mut wg WaitGroup) done() {
 
 // wait blocks until all tasks are done (task count becomes zero)
 pub fn (mut wg WaitGroup) wait() {
+	C.atomic_fetch_add_u32(&wg.wait_count, 1)
 	wg.sem.wait() // blocks until task_count becomes 0
 }
