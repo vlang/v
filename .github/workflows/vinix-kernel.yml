@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  build:
+  vinix-build:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -24,6 +24,6 @@ jobs:
       - name: Install mlibc headers
         run: mkdir mlibc-build && cd mlibc-build && meson --cross-file ../vinix/cross_file.txt --prefix=/ -Dheaders_only=true ../mlibc && ninja && mkdir ../mlibc-headers && DESTDIR=`realpath ../mlibc-headers` ninja install
       - name: Attempt to build the Vinix kernel (debug)
-        run: cd vinix/kernel && make PROD=false CFLAGS="-O2 -g -pipe -I../mlibc-headers/include" V="../../v" && make clean
+        run: cd vinix/kernel && make PROD=false CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include" V="../../v" && make clean
       - name: Attempt to build the Vinix kernel (prod)
-        run: cd vinix/kernel && make PROD=true  CFLAGS="-O2 -g -pipe -I../mlibc-headers/include" V="../../v" && make clean
+        run: cd vinix/kernel && make PROD=true  CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include" V="../../v" && make clean
