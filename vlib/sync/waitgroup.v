@@ -69,6 +69,11 @@ pub fn (mut wg WaitGroup) done() {
 
 // wait blocks until all tasks are done (task count becomes zero)
 pub fn (mut wg WaitGroup) wait() {
+	nrjobs := int(C.atomic_load_u32(&wg.task_count))
+	if nrjobs == 0 {
+		// no need to wait
+		return
+	}
 	C.atomic_fetch_add_u32(&wg.wait_count, 1)
 	wg.sem.wait() // blocks until task_count becomes 0
 }

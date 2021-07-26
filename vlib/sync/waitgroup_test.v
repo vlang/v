@@ -1,5 +1,7 @@
 module sync
 
+import time
+
 fn test_waitgroup_reuse() {
 	mut wg := new_waitgroup()
 
@@ -21,4 +23,18 @@ fn test_waitgroup_reuse() {
 	wg.wait()
 	assert executed
 	assert wg.wait_count == 0
+}
+
+fn test_waitgroup_no_use() {
+	mut done := false
+	go fn(done voidptr) {
+		time.sleep(1 * time.second)
+		if *(&bool(done)) == false {
+			panic('test_waitgroup_no_use did not complete in time')
+		}
+	}(voidptr(&done))
+
+	mut wg := new_waitgroup()
+	wg.wait()
+	done = true
 }
