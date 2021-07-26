@@ -3023,58 +3023,64 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
+
 	if mut inter_sym.info is ast.Interface {
 		if inter_sym.info.is_generic {
 			mut inferred_types := []ast.Type{}
-			for ifield in inter_sym.info.fields {
-				if ifield.typ.has_flag(.generic) {
-					if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
-						if field.typ !in inferred_types {
-							inferred_types << field.typ
+			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			// inferring interface generic types
+			for gt_name in generic_names {
+				mut inferred_type := ast.void_type
+				for ifield in inter_sym.info.fields {
+					if ifield.typ.has_flag(.generic) && c.table.get_type_name(ifield.typ) == gt_name {
+						if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
+							inferred_type = field.typ
 						}
 					}
 				}
+				for imethod in inter_sym.info.methods {
+					method := typ_sym.find_method(imethod.name) or {
+						typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
+					}
+					if imethod.return_type.has_flag(.generic) {
+						imret_sym := c.table.get_type_symbol(imethod.return_type)
+						mret_sym := c.table.get_type_symbol(method.return_type)
+						if imret_sym.info is ast.MultiReturn && mret_sym.info is ast.MultiReturn {
+							for i, mr_typ in imret_sym.info.types {
+								if mr_typ.has_flag(.generic)
+									&& c.table.get_type_name(mr_typ) == gt_name {
+									inferred_type = mret_sym.info.types[i]
+								}
+							}
+						} else if c.table.get_type_name(imethod.return_type) == gt_name {
+							mut ret_typ := method.return_type
+							if imethod.return_type.has_flag(.optional) {
+								ret_typ = ret_typ.clear_flag(.optional)
+							}
+							inferred_type = ret_typ
+						}
+					}
+					for i, iparam in imethod.params {
+						param := method.params[i] or { ast.Param{} }
+						if iparam.typ.has_flag(.generic)
+							&& c.table.get_type_name(iparam.typ) == gt_name {
+							inferred_type = param.typ
+						}
+					}
+				}
+				if inferred_type == ast.void_type {
+					c.error('could not infer generic type `$gt_name` in interface', pos)
+					return interface_type
+				}
+				inferred_types << inferred_type
 			}
+			// add concrete types to method
 			for imethod in inter_sym.info.methods {
-				method := typ_sym.find_method(imethod.name) or {
-					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
-				}
-				if imethod.return_type.has_flag(.generic) {
-					mut inferred_type := method.return_type
-					if imethod.return_type.has_flag(.optional) {
-						inferred_type = inferred_type.clear_flag(.optional)
-					}
-					if inferred_type !in inferred_types {
-						inferred_types << inferred_type
-					}
-				}
-				for i, iparam in imethod.params {
-					param := method.params[i] or { ast.Param{} }
-					if iparam.typ.has_flag(.generic) {
-						if param.typ !in inferred_types {
-							inferred_types << param.typ
-						}
-					}
-				}
 				if inferred_types !in c.table.fn_generic_types[imethod.name] {
 					c.table.fn_generic_types[imethod.name] << inferred_types
 				}
 			}
-			if inferred_types.len == 0 {
-				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}',
-					pos)
-				return ast.void_type
-			}
-			if inferred_types.len > 1 {
-				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}: got conflicting type information',
-					pos)
-				return ast.void_type
-			}
-			inferred_type := inferred_types[0]
-			if inferred_type !in inter_sym.info.concrete_types {
-				inter_sym.info.concrete_types << inferred_type
-			}
-			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			inter_sym.info.concrete_types = inferred_types
 			return c.unwrap_generic_type(interface_type, generic_names, inter_sym.info.concrete_types)
 		}
 	}
