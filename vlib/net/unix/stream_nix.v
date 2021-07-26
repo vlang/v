@@ -199,12 +199,6 @@ pub fn (mut c StreamConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
-// write_str blocks and attempts to write all data
-[deprecated: 'use StreamConn.write_string() instead']
-pub fn (mut c StreamConn) write_str(s string) ?int {
-	return c.write_string(s)
-}
-
 // write_string blocks and attempts to write all data
 pub fn (mut c StreamConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
