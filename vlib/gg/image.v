@@ -185,11 +185,21 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	return img
 }
 
+pub struct StreamingImageConfig {
+	pixel_format gfx.PixelFormat = .rgba8
+	wrap_u       gfx.Wrap        = .clamp_to_edge
+	wrap_v       gfx.Wrap        = .clamp_to_edge
+	min_filter   gfx.Filter      = .linear
+	mag_filter   gfx.Filter      = .linear
+	num_mipmaps  int = 1
+	num_slices   int = 1
+}
+
 // new_streaming_image returns a cached `image_idx` of a special image, that
 // can be updated *each frame* by calling:  gg.update_pixel_data(image_idx, buf)
 // ... where buf is a pointer to the actual pixel data for the image.
 // NB: you still need to call app.gg.draw_image after that, to actually draw it.
-pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int) int {
+pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
 	mut img := Image{}
 	img.width = w
 	img.height = h
@@ -197,14 +207,14 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int) int {
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
-		pixel_format: .rgba8
+		pixel_format: sicfg.pixel_format
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		min_filter: .linear
-		mag_filter: .linear
+		wrap_u: sicfg.wrap_u
+		wrap_v: sicfg.wrap_v
+		min_filter: sicfg.min_filter
+		mag_filter: sicfg.mag_filter
 		label: img.path.str
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
