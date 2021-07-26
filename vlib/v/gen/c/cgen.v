@@ -5000,6 +5000,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
 	mut styp := g.typ(typ)
 	cname := '_const_$name'
+	$if trace_const_precomputed ? {
+		eprintln('> styp: $styp | cname: $cname | ct_value: $ct_value | $ct_value.type_name()')
+	}
 	match ct_value {
 		byte {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
@@ -5026,7 +5029,11 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				g.const_decl_simple_define(name, ct_value.str())
 				return true
 			}
-			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+			if typ == ast.u64_type {
+				g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
+			} else {
+				g.const_decl_write_precomputed(styp, cname, ct_value.str())
+			}
 		}
 		u64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')

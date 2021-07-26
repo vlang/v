@@ -41,12 +41,12 @@ jobs:
         export VEXE=./v
         vab/vab doctor
 
-##    - name: Build graphical V examples as APK
-##      run: |
-##        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
-##        mkdir apks
-##        export VEXE=./v
-##        for example in "${v_examples[@]}"; do
-##          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
-##          vab/vab -v 3 examples/$example -o apks/$safe_name.apk
-##        done
+    - name: Build graphical V examples as APK
+      run: |
+        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
+        mkdir apks
+        export VEXE=./v
+        for example in "${v_examples[@]}"; do
+          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
+          vab/vab --api 29 --build-tools '29.0.0' -v 3 examples/$example -o apks/$safe_name.apk
+        done

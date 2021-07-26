@@ -107,11 +107,13 @@ pub fn c_error_number_str(errnum int) string {
 	$if freestanding {
 		err_msg = 'error $errnum'
 	} $else {
-		c_msg := C.strerror(errnum)
-		err_msg = string{
-			str: &byte(c_msg)
-			len: unsafe { C.strlen(c_msg) }
-			is_lit: 1
+		$if !vinix {
+			c_msg := C.strerror(errnum)
+			err_msg = string{
+				str: &byte(c_msg)
+				len: unsafe { C.strlen(c_msg) }
+				is_lit: 1
+			}
 		}
 	}
 	return err_msg

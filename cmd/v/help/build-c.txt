@@ -139,7 +139,7 @@ see also `v help build`.
       more performant without autofree.
       
    -gc <mode>
-      Use and link an optional garbage collector. Only tThe Boehm–Demers–Weiser
+      Use and link an optional garbage collector. Only the Boehm–Demers–Weiser
       garbage collector is supported currently with the following sub-options:
 
       `-gc boehm` ........... selects the default mode for the architecture
