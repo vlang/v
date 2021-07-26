@@ -48,7 +48,7 @@ pub fn (mut wg WaitGroup) init() {
 pub fn (mut wg WaitGroup) add(delta int) {
 	old_nrjobs := int(C.atomic_fetch_add_u32(&wg.task_count, u32(delta)))
 	new_nrjobs := old_nrjobs + delta
-	mut num_waiters := int(C.atomic_load_u32(&wg.wait_count))
+	mut num_waiters := C.atomic_load_u32(&wg.wait_count)
 	if new_nrjobs < 0 {
 		panic('Negative number of jobs in waitgroup')
 	}
