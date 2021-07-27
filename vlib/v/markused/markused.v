@@ -271,19 +271,45 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	// handle vweb magic router methods:
 	typ_vweb_result := table.find_type_idx('vweb.Result')
 	if typ_vweb_result != 0 {
+		all_fn_root_names << 'vweb.filter'
+		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
+		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_vweb_types {
 			sym_app := table.get_type_symbol(vgt)
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
 					pvgt := vgt.set_nr_muls(1)
 					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-					all_fn_root_names << '${pvgt}.$m.name'
+					all_fn_root_names << '${int(pvgt)}.$m.name'
 				}
 			}
 		}
 	}
 
-	//
+	// handle ORM drivers:
+	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
+	if orm_connection_implementations.len > 0 {
+		for k, _ in all_fns {
+			if k.starts_with('orm.') {
+				all_fn_root_names << k
+			}
+		}
+		for orm_type in orm_connection_implementations {
+			all_fn_root_names << '${int(orm_type)}.select'
+			all_fn_root_names << '${int(orm_type)}.insert'
+			all_fn_root_names << '${int(orm_type)}.update'
+			all_fn_root_names << '${int(orm_type)}.delete'
+			all_fn_root_names << '${int(orm_type)}.create'
+			all_fn_root_names << '${int(orm_type)}.drop'
+			all_fn_root_names << '${int(orm_type)}.last_id'
+		}
+	}
+
+	// handle -live main programs:
+	if pref.is_livemain {
+		all_fn_root_names << 'v.live.executable.start_reloader'
+		all_fn_root_names << 'v.live.executable.new_live_reload_info'
+	}
 
 	mut walker := Walker{
 		table: table
