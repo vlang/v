@@ -13,6 +13,7 @@ pub mut:
 	type_symbols       []TypeSymbol
 	type_idxs          map[string]int
 	fns                map[string]Fn
+	iface_types        map[string][]Type
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
@@ -1111,7 +1112,12 @@ pub fn (mut t Table) complete_interface_check() {
 				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
 				continue
 			}
-			t.does_type_implement_interface(tk, idecl.typ)
+			if t.does_type_implement_interface(tk, idecl.typ) {
+				$if trace_types_implementing_each_interface ? {
+					eprintln('>>> tsym.mod: $tsym.mod | tsym.name: $tsym.name | tk: $tk | idecl.name: $idecl.name | idecl.typ: $idecl.typ')
+				}
+				t.iface_types[idecl.name] << tk
+			}
 		}
 	}
 }
