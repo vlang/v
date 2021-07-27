@@ -5117,9 +5117,14 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if field.has_expr {
 			g.definitions.writeln('$mod$styp $field.name = $field.expr; // global')
 		} else {
-			g.definitions.writeln('$mod$styp $field.name; // global')
-			if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
-				g.global_initializations.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+			default_initializer := g.type_default(field.typ)
+			if default_initializer == '{0}' {
+				g.definitions.writeln('$mod$styp $field.name = {0}; // global')
+			} else {
+				g.definitions.writeln('$mod$styp $field.name; // global')
+				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
+					g.global_initializations.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+				}
 			}
 		}
 	}
