@@ -49,6 +49,7 @@ mut:
 	typedefs2              strings.Builder
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	global_initializations strings.Builder // default initializers for globals (goes in _vinit())
 	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
 	cleanups               map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers             strings.Builder // all go callsite wrappers
@@ -205,6 +206,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		typedefs2: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
+		global_initializations: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
@@ -5115,7 +5117,15 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if field.has_expr {
 			g.definitions.writeln('$mod$styp $field.name = $field.expr; // global')
 		} else {
-			g.definitions.writeln('$mod$styp $field.name; // global')
+			default_initializer := g.type_default(field.typ)
+			if default_initializer == '{0}' {
+				g.definitions.writeln('$mod$styp $field.name = {0}; // global')
+			} else {
+				g.definitions.writeln('$mod$styp $field.name; // global')
+				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
+					g.global_initializations.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+				}
+			}
 		}
 	}
 }
@@ -5441,6 +5451,9 @@ fn (mut g Gen) write_init_function() {
 	//
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
+	//
+	g.writeln('\t// Initializations for global variables with default initializers')
+	g.write(g.global_initializations.str())
 	//
 	for mod_name in g.table.modules {
 		g.writeln('\t// Initializations for module $mod_name :')
