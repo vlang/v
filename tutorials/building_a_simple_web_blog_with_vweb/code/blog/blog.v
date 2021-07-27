@@ -13,7 +13,12 @@ pub mut:
 }
 
 fn main() {
-	mut app := App{}
+	mut app := App{
+		Context: vweb.Context{
+			conn: 0
+		}
+		db: sqlite.connect('blog.db') or { panic(err) }
+	}
 	app.init_server()
 	vweb.run(app, 8081)
 }
@@ -36,7 +41,6 @@ pub fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_server() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
 	sql app.db {
 		create table Article
 	}

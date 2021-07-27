@@ -16,7 +16,7 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn
+	conn &C.PGconn = 0
 }
 
 pub struct Row {

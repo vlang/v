@@ -31,11 +31,9 @@ fn test_a_vweb_application_compiles() {
 
 pub fn (mut app App) init_server() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('article', [
-		'id integer primary key',
-		"title text default ''",
-		"text text default ''",
-	])
+	sql app.db {
+		create table Article
+	}
 }
 
 pub fn (mut app App) before_request() {
