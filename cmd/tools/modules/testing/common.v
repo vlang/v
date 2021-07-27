@@ -267,7 +267,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
 	mut cmd_options := [ts.vargs]
-	if relative_file.contains('global_') {
+	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
 		cmd_options << ' -enable-globals'
 	}
 	if ts.root_relative {
