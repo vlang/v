@@ -1,10 +1,13 @@
 import os
 import term
 import benchmark
-import v.util
 import v.util.vtest
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
+fn bold(s string) string {
+	return term.colorize(term.bold, s)
+}
 
 //
 // NB: skip_compile_files can be used for totally skipping .v files temporarily.
@@ -72,7 +75,7 @@ fn test_all() {
 		exe_filename := '$wrkdir/x'
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
-		vprintln('compile cmd: ${util.bold(compile_cmd)}')
+		vprintln('compile cmd: ${bold(compile_cmd)}')
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
 			bench.fail()
@@ -89,11 +92,11 @@ fn test_all() {
 			}
 		}
 		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
-		vprintln('valgrind cmd: ${util.bold(valgrind_cmd)}')
+		vprintln('valgrind cmd: ${bold(valgrind_cmd)}')
 		valgrind_res := os.execute(valgrind_cmd)
 		if valgrind_res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(test)}'))
+			eprintln(bench.step_message_fail('failed valgrind check for ${bold(test)}'))
 			eprintln(valgrind_res.output)
 			eprintln('You can reproduce the failure with:\n$compile_cmd && $valgrind_cmd')
 			continue

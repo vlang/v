@@ -9,6 +9,7 @@ import v.ast
 import v.pref
 import v.token
 import v.util
+import v.util.version
 import v.depgraph
 
 const (
@@ -389,8 +390,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 }
 
 pub fn (g &Gen) hashes() string {
-	mut res := c_commit_hash_default.replace('@@@', util.vhash())
-	res += c_current_commit_hash_default.replace('@@@', util.githash(g.pref.building_v))
+	mut res := c_commit_hash_default.replace('@@@', version.vhash())
+	res += c_current_commit_hash_default.replace('@@@', version.githash(g.pref.building_v))
 	return res
 }
 
