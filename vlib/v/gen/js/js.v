@@ -5,6 +5,7 @@ import v.ast
 import v.token
 import v.pref
 import v.util
+import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
@@ -329,8 +330,8 @@ pub fn (mut g JsGen) init() {
 }
 
 pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH $util.vhash()\n'
-	res += '// V_CURRENT_COMMIT_HASH ${util.githash(g.pref.building_v)}\n'
+	mut res := '// V_COMMIT_HASH $version.vhash()\n'
+	res += '// V_CURRENT_COMMIT_HASH ${version.githash(g.pref.building_v)}\n'
 	return res
 }
 

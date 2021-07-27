@@ -10,6 +10,7 @@ import v.vmod
 import v.token
 import v.pref
 import v.util
+import v.util.version
 import v.errors
 import v.pkgconfig
 import v.gen.native
@@ -5683,7 +5684,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = (node.pos.col + 1).str()
 		}
 		.vhash {
-			node.val = util.vhash()
+			node.val = version.vhash()
 		}
 		.vmod_file {
 			// cache the vmod content, do not read it many times

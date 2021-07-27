@@ -8,7 +8,7 @@ import term
 import rand
 import readline
 import os.cmdline
-import v.util
+import v.util.version
 
 struct Repl {
 mut:
@@ -102,7 +102,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 }
 
 fn repl_help() {
-	println(util.full_v_version(false))
+	println(version.full_v_version(false))
 	println('
 	|help                   Displays this information.
 	|list                   Show the program so far.
@@ -114,8 +114,8 @@ fn repl_help() {
 
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
-		println(util.full_v_version(false))
-		println('Use Ctrl-C or ${util.pretty_print('exit')} to exit, or ${util.pretty_print('help')} to see other available commands')
+		println(version.full_v_version(false))
+		println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
 	}
 
 	if vstartup != '' {

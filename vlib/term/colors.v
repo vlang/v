@@ -191,3 +191,9 @@ pub fn yellow(msg string) string {
 pub fn bright_yellow(msg string) string {
 	return format(msg, '93', '39')
 }
+
+// highlight_command highlights the command with an on-brand background
+// to make CLI commands immediately recognizable.
+pub fn highlight_command(command string) string {
+	return bright_white(bg_cyan(' $command '))
+}

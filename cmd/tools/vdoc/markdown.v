@@ -47,7 +47,8 @@ fn (vd VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Build
 				}
 				cw.writeln('```\n')
 			}
-			cw.writeln('[\[Return to contents\]](#Contents)\n')
+			cw.writeln(r'[[Return to contents]](#Contents)')
+			cw.writeln('')
 		}
 		vd.write_markdown_content(cn.children, mut cw, mut hw, indent + 1, with_toc)
 	}
