@@ -5113,6 +5113,14 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
 	for field in node.fields {
+		if g.pref.skip_unused {
+			if field.name !in g.table.used_globals {
+				$if trace_skip_unused_globals ? {
+					eprintln('>> skipping unused global name: $field.name')
+				}
+				continue
+			}
+		}
 		styp := g.typ(field.typ)
 		if field.has_expr {
 			g.definitions.writeln('$mod$styp $field.name;')
