@@ -3422,7 +3422,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				// look for embedded field
 				has_field = true
 				mut embed_type := ast.Type(0)
-				field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+				field, embed_type = c.table.find_field_from_embeds(gs, field_name) or {
 					if err.msg != '' {
 						c.error(err.msg, node.pos)
 					}
