@@ -5118,7 +5118,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.definitions.writeln('$mod$styp $field.name = $field.expr; // global')
 		} else {
 			g.definitions.writeln('$mod$styp $field.name; // global')
-			if field.name != 'as_cast_type_indexes' {
+			if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
 				g.global_initializations.writeln('\t$field.name = ($styp)${g.type_default(field.typ)}; // global')
 			}
 		}
