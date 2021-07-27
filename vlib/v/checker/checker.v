@@ -4807,7 +4807,8 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			expr_typ := c.expr(field.expr)
 			if !c.check_types(expr_typ, field.typ) {
 				got_sym := c.table.get_type_symbol(expr_typ)
-				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`', field.expr.position())
+				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`',
+					field.expr.position())
 			}
 		}
 		c.global_names << field.name
