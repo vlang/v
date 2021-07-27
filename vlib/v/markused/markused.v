@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts := all_fn_and_const(ast_files)
+	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -316,6 +316,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
+		all_globals: all_globals
 		pref: pref
 	}
 	// println( all_fns.keys() )
@@ -376,13 +377,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	}
 }
 
-fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
+	mut all_globals := map[string]ast.GlobalField{}
 	for i in 0 .. ast_files.len {
 		file := ast_files[i]
 		for node in file.stmts {
@@ -397,9 +399,15 @@ fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]as
 						all_consts[ckey] = cfield
 					}
 				}
+				ast.GlobalDecl {
+					for gfield in node.fields {
+						gkey := gfield.name
+						all_globals[gkey] = gfield
+					}
+				}
 				else {}
 			}
 		}
 	}
-	return all_fns, all_consts
+	return all_fns, all_consts, all_globals
 }
