@@ -4888,7 +4888,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
-			if node.exprs[0] !is ast.Ident {
+			// Just in case of defer statements exists, that the return values cannot
+			// be modified.
+			if node.exprs[0] !is ast.Ident || use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
 				use_tmp_var = false
