@@ -5118,7 +5118,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		} else {
 			g.definitions.writeln('$mod$styp $field.name; // global')
 			if field.name != 'as_cast_type_indexes' {
-				g.global_initializations.writeln('\t$field.name = ${g.type_default(field.typ)}; // global')
+				g.global_initializations.writeln('\t$field.name = ($styp)${g.type_default(field.typ)}; // global')
 			}
 		}
 	}
