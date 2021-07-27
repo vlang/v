@@ -116,7 +116,6 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.stmts(node.stmts)
 		}
 		ast.Return {
-			println('handling returns:')
 			w.exprs(node.exprs)
 		}
 		ast.SqlStmt {
@@ -135,7 +134,6 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			for gf in node.fields {
 				if gf.has_expr {
-					println('walking thru $gf.expr')
 					w.expr(gf.expr)
 				}
 			}

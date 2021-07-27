@@ -369,10 +369,12 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	table.used_fns = walker.used_fns.move()
 	table.used_consts = walker.used_consts.move()
+	table.used_globals = walker.used_globals.move()
 
 	$if trace_skip_unused ? {
 		eprintln('>> t.used_fns: $table.used_fns.keys()')
 		eprintln('>> t.used_consts: $table.used_consts.keys()')
+		eprintln('>> t.used_globals: $table.used_globals.keys()')
 		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
 	}
 }
