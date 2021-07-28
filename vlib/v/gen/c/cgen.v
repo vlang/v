@@ -2514,12 +2514,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(left.typ)
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
+					mut sel := '.'
 					if left.expr_type.is_ptr() {
-						g.write('/* left.expr_type */')
-						g.writeln('->$left.field_name;')
-					} else {
-						g.writeln('.$left.field_name;')
+						if left.expr_type.has_flag(.shared_f) {
+							sel = '->val.'
+						} else {
+							sel = '->'
+						}
 					}
+					g.writeln('$sel$left.field_name;')
 				}
 				else {}
 			}
