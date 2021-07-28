@@ -33,61 +33,6 @@ pub fn sum64(key []byte, seed u64) u64 {
 	return wyhash_c(&byte(key.data), u64(key.len), seed)
 }
 
-// This is an outdated version of wyhash with memory errors!
-[deprecated; inline]
-fn wyhash64(key &byte, len u64, seed_ u64) u64 {
-	if len == 0 {
-		return 0
-	}
-	mut p := unsafe { key }
-	mut seed := seed_
-	mut i := len & 63
-	seed = unsafe {
-		match i {
-			0...3 {
-				wymum(wyr3(p, i) ^ seed ^ hash.wyp0, seed ^ hash.wyp1)
-			}
-			4...8 {
-				wymum(wyr4(p) ^ seed ^ hash.wyp0, wyr4(p + i - 4) ^ seed ^ hash.wyp1)
-			}
-			9...16 {
-				wymum(wyr8(p) ^ seed ^ hash.wyp0, wyr8(p + i - 8) ^ seed ^ hash.wyp1)
-			}
-			17...24 {
-				wymum(wyr8(p) ^ seed ^ hash.wyp0, wyr8(p + 8) ^ seed ^ hash.wyp1) ^ wymum(wyr8(p + i - 8) ^ seed ^ hash.wyp2,
-					seed ^ hash.wyp3)
-			}
-			25...32 {
-				wymum(wyr8(p) ^ seed ^ hash.wyp0, wyr8(p + 8) ^ seed ^ hash.wyp1) ^ wymum(wyr8(p +
-					16) ^ seed ^ hash.wyp2, wyr8(p + i - 8) ^ seed ^ hash.wyp3)
-			}
-			else {
-				wymum(wyr8(p) ^ seed ^ hash.wyp0, wyr8(p + 8) ^ seed ^ hash.wyp1) ^ wymum(wyr8(p +
-					16) ^ seed ^ hash.wyp2, wyr8(p + 24) ^ seed ^ hash.wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ hash.wyp1,
-					wyr8(p + i - 24) ^ seed ^ hash.wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ hash.wyp3,
-					wyr8(p + i - 8) ^ seed ^ hash.wyp0)
-			}
-		}
-	}
-	if i == len {
-		return wymum(seed, len ^ hash.wyp4)
-	}
-	mut see1 := seed
-	mut see2 := seed
-	mut see3 := seed
-	unsafe {
-		p = p + i
-		for i = len - i; i >= 64; i -= 64 {
-			seed = wymum(wyr8(p) ^ seed ^ hash.wyp0, wyr8(p + 8) ^ seed ^ hash.wyp1)
-			see1 = wymum(wyr8(p + 16) ^ see1 ^ hash.wyp2, wyr8(p + 24) ^ see1 ^ hash.wyp3)
-			see2 = wymum(wyr8(p + 32) ^ see2 ^ hash.wyp1, wyr8(p + 40) ^ see2 ^ hash.wyp2)
-			see3 = wymum(wyr8(p + 48) ^ see3 ^ hash.wyp3, wyr8(p + 56) ^ see3 ^ hash.wyp0)
-			p = p + 64
-		}
-	}
-	return wymum(seed ^ see1 ^ see2, see3 ^ len ^ hash.wyp4)
-}
-
 [inline]
 fn wyrotr(v u64, k u32) u64 {
 	return (v >> k) | (v << (64 - k))

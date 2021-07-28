@@ -9,12 +9,6 @@ pub fn isnil(v voidptr) bool {
 	return v == 0
 }
 
-[deprecated: 'use os.is_atty(x) instead']
-pub fn is_atty(fd int) int {
-	panic('use os.is_atty(x) instead')
-	return 0
-}
-
 /*
 fn on_panic(f fn(int)int) {
 	// TODO

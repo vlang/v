@@ -140,15 +140,6 @@ pub fn tos5(s &char) string {
 	return unsafe { tos3(s) }
 }
 
-[deprecated: 'tos_lit has been deprecated, use _SLIT instead']
-pub fn tos_lit(s &char) string {
-	return string{
-		str: &byte(s)
-		len: unsafe { C.strlen(s) }
-		is_lit: 1
-	}
-}
-
 // vstring converts a C style string to a V string. NB: the string data is reused, NOT copied.
 // strings returned from this function will be normal V strings beside that (i.e. they would be
 // freed by V's -autofree mechanism, when they are no longer used).
