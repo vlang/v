@@ -4,6 +4,7 @@ struct array {
 	arr JS.Array
 pub:
 	len int
+	cap int
 }
 
 #function flatIntoArray(target, source, sourceLength, targetIndex, depth) {
@@ -48,6 +49,14 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	#arr.arr = flatArray(tmp,depth+1);
 
 	return arr
+}
+
+// last returns the last element of the array.
+pub fn (a array) last() voidptr {
+	mut res := voidptr(0)
+	#res = a.arr[a.len-1];
+
+	return res
 }
 
 fn (a array) get(ix int) voidptr {
@@ -104,6 +113,10 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	#a.arr.splice(i,0,val)
 }
 
+pub fn (mut a array) insert_many(i int, val voidptr, size int) {
+	#a.arr.splice(i,0,...val.slice(0,+size))
+}
+
 pub fn (mut a array) join(separator string) string {
 	mut res := ''
 	#res = new builtin.string(a.arr.join(separator +''));
@@ -115,7 +128,24 @@ fn (a array) push(val voidptr) {
 	#a.arr.push(val)
 }
 
+pub fn (a array) str() string {
+	mut res := ''
+	#res = new builtin.string(a + '')
+
+	return res
+}
+
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { return this.arr.entries(); }
 #array.prototype.map = function(callback) { return this.arr.map(callback); }
 #array.prototype.filter = function(callback) { return this.arr.filter(callback); }
+#Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
+// delete deletes array element at index `i`.
+pub fn (mut a array) delete(i int) {
+	a.delete_many(i, 1)
+}
+
+// delete_many deletes `size` elements beginning with index `i`
+pub fn (mut a array) delete_many(i int, size int) {
+	#a.arr.splice(i.valueOf(),size.valueOf())
+}
