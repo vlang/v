@@ -8,9 +8,10 @@ import v.ast
 import v.vmod
 import v.checker
 import v.parser
-import v.depgraph
 import v.markused
+import v.depgraph
 import v.callgraph
+import v.dotgraph
 
 pub struct Builder {
 pub:
@@ -52,6 +53,9 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		}
 	}
 	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
+	if pref.show_callgraph || pref.show_depgraph {
+		dotgraph.start_digraph()
+	}
 	return Builder{
 		pref: pref
 		table: table
@@ -179,6 +183,9 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
+	}
+	if b.pref.show_depgraph {
+		depgraph.show(deps_resolved, b.pref.path)
 	}
 	cycles := deps_resolved.display_cycles()
 	if cycles.len > 1 {
