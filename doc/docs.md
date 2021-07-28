@@ -624,6 +624,13 @@ f2 := f32(3.14)
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
+Float literals can also be declared as a power of ten:
+```v
+f0 := 42e1 // 420
+f1 := 123e-2 // 1.23
+f2 := 456e+2 // 45600
+```
+
 ### Arrays
 #### Basic Array Concepts
 Arrays are collections of data elements of the same type. They can be represented by
@@ -3730,7 +3737,7 @@ fn f() (RefStruct, &MyStruct) {
 
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
-`c` is returned. For this reason `b` and `c` will be heap allocated. 
+`c` is returned. For this reason `b` and `c` will be heap allocated.
 
 Things become less obvious when a reference to an object is passed as function argument:
 
@@ -3763,7 +3770,7 @@ these references are leaving `main()`. However the *lifetime* of these
 references lies inside the scope of `main()` so `q` and `w` are allocated
 on the stack.
 
-#### Manual Control for Stack and Heap 
+#### Manual Control for Stack and Heap
 
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
@@ -3811,7 +3818,7 @@ reference to `s` into `r`. The problem with this is that `s` lives only as long
 as `g()` is running but `r` is used in `main()` after that. For this reason
 the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
-`r.f(&s)` would only borrow the reference to `s` is wrong. 
+`r.f(&s)` would only borrow the reference to `s` is wrong.
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
@@ -4396,7 +4403,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 
