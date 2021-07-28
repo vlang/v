@@ -44,8 +44,13 @@ pub interface PRNG {
 }
 
 __global (
-	default_rng = &PRNG(new_default())
+	default_rng &PRNG
 )
+
+// init initializes the default RNG.
+fn init() {
+	default_rng = new_default()
+}
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
 pub fn new_default(config PRNGConfigStruct) &PRNG {
