@@ -25,7 +25,7 @@ const (
 		'Array', 'Map']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
+		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array', 'any']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .size_t, .bool, .string]
 )
@@ -682,9 +682,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			if node.op in [.amp, .mul] {
 				// C pointers/references: ignore them
 				if node.op == .amp {
-					type_sym := g.table.get_type_symbol(node.right_type)
-
-					if !type_sym.is_primitive() && !node.right_type.is_pointer() {
+					if !node.right_type.is_pointer() {
 						// kind of weird way to handle references but it allows us to access type methods easily.
 						g.write('(function(x) {')
 						g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
@@ -696,12 +694,14 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				} else {
 					g.write('(')
 					g.expr(node.right)
-					g.write(').val')
+					g.write(').valueOf()')
 				}
 			} else {
 				g.write(node.op.str())
+				g.write('(')
 				g.expr(node.right)
 				g.write('.valueOf()')
+				g.write(')')
 			}
 		}
 		ast.RangeExpr {
@@ -1103,7 +1103,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.write('; $i < ')
 		g.expr(it.high)
-		g.writeln('; ++$i) {')
+		g.writeln('; $i = new builtin.int($i + 1)) {')
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -1379,6 +1379,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.write('return builtin.unwrap(')
 	}
 	g.expr(it.left)
+
 	if it.is_method { // foo.bar.baz()
 		sym := g.table.get_type_symbol(it.receiver_type)
 		g.write('.')
@@ -1410,10 +1411,41 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				}
 				else {}
 			}
+
 			g.write('it => ')
 			g.expr(node.args[0].expr)
 			g.write(')')
 			return
+		}
+
+		left_sym := g.table.get_type_symbol(it.left_type)
+		if left_sym.kind == .array {
+			node := it
+			match node.name {
+				'insert' {
+					arg2_sym := g.table.get_type_symbol(node.args[1].typ)
+					is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+					if is_arg2_array {
+						g.write('insert_many(')
+					} else {
+						g.write('insert(')
+					}
+
+					g.expr(node.args[0].expr)
+					g.write(',')
+					if is_arg2_array {
+						g.expr(node.args[1].expr)
+						g.write('.arr,')
+						g.expr(node.args[1].expr)
+						g.write('.len')
+					} else {
+						g.expr(node.args[1].expr)
+					}
+					g.write(')')
+					return
+				}
+				else {}
+			}
 		}
 	} else {
 		if name in g.builtin_fns {
@@ -1647,8 +1679,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
 		g.write('.arr,')
+		array_info := l_sym.info as ast.Array
 		// arr << [1, 2]
-		if r_sym.kind == .array {
+		if r_sym.kind == .array && array_info.elem_type != it.right_type {
 			g.write('...')
 		}
 		g.expr(it.right)
