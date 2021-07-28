@@ -7197,13 +7197,14 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_auto_deref_var()) || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !typ.has_flag(.shared_f)
+		&& !node.left.is_auto_deref_var()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
 				v := node.left.obj as ast.Var
 				// `mut param []T` function parameter
-				is_ok = ((v.is_mut && v.is_arg) || v.share == .shared_t) && !typ.deref().is_ptr()
+				is_ok = ((v.is_mut && v.is_arg)) && !typ.deref().is_ptr()
 			}
 		}
 		if !is_ok && !c.pref.translated {
