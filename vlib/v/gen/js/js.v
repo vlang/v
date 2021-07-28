@@ -682,8 +682,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			if node.op in [.amp, .mul] {
 				// C pointers/references: ignore them
 				if node.op == .amp {
-					type_sym := g.table.get_type_symbol(node.right_type)
-
 					if !node.right_type.is_pointer() {
 						// kind of weird way to handle references but it allows us to access type methods easily.
 						g.write('(function(x) {')
@@ -1426,7 +1424,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			match node.name {
 				'insert' {
 					left_info := left_sym.info as ast.Array
-					elem_type_str := g.typ(left_info.elem_type)
+
 					arg2_sym := g.table.get_type_symbol(node.args[1].typ)
 					is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
 					if is_arg2_array {
