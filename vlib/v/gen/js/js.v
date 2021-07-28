@@ -1381,6 +1381,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.write('return builtin.unwrap(')
 	}
 	g.expr(it.left)
+
 	if it.is_method { // foo.bar.baz()
 		sym := g.table.get_type_symbol(it.receiver_type)
 		g.write('.')
@@ -1412,10 +1413,43 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				}
 				else {}
 			}
+
 			g.write('it => ')
 			g.expr(node.args[0].expr)
 			g.write(')')
 			return
+		}
+
+		left_sym := g.table.get_type_symbol(it.left_type)
+		if left_sym.kind == .array {
+			node := it
+			match node.name {
+				'insert' {
+					left_info := left_sym.info as ast.Array
+					elem_type_str := g.typ(left_info.elem_type)
+					arg2_sym := g.table.get_type_symbol(node.args[1].typ)
+					is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+					if is_arg2_array {
+						g.write('insert_many(')
+					} else {
+						g.write('insert(')
+					}
+
+					g.expr(node.args[0].expr)
+					g.write(',')
+					if is_arg2_array {
+						g.expr(node.args[1].expr)
+						g.write('.arr,')
+						g.expr(node.args[1].expr)
+						g.write('.len')
+					} else {
+						g.expr(node.args[1].expr)
+					}
+					g.write(')')
+					return
+				}
+				else {}
+			}
 		}
 	} else {
 		if name in g.builtin_fns {
