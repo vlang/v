@@ -4544,7 +4544,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.for_stmt(mut node)
 		}
 		ast.GlobalDecl {
-			c.global_decl(node)
+			c.global_decl(mut node)
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
@@ -4793,8 +4793,8 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 }
 
-fn (mut c Checker) global_decl(node ast.GlobalDecl) {
-	for field in node.fields {
+fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	for mut field in node.fields {
 		c.check_valid_snake_case(field.name, 'global name', field.pos)
 		if field.name in c.global_names {
 			c.error('duplicate global `$field.name`', field.pos)
@@ -4802,6 +4802,14 @@ fn (mut c Checker) global_decl(node ast.GlobalDecl) {
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.name`', field.typ_pos)
+		}
+		if field.expr !is ast.EmptyExpr {
+			expr_typ := c.expr(field.expr)
+			if !c.check_types(expr_typ, field.typ) {
+				got_sym := c.table.get_type_symbol(expr_typ)
+				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`',
+					field.expr.position())
+			}
 		}
 		c.global_names << field.name
 	}

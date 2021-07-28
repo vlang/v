@@ -9,15 +9,17 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table       &ast.Table
-	used_fns    map[string]bool // used_fns['println'] == true
-	used_consts map[string]bool // used_consts['os.args'] == true
-	n_asserts   int
-	pref        &pref.Preferences
+	table        &ast.Table
+	used_fns     map[string]bool // used_fns['println'] == true
+	used_consts  map[string]bool // used_consts['os.args'] == true
+	used_globals map[string]bool
+	n_asserts    int
+	pref         &pref.Preferences
 mut:
-	files      []&ast.File
-	all_fns    map[string]ast.FnDecl
-	all_consts map[string]ast.ConstField
+	files       []&ast.File
+	all_fns     map[string]ast.FnDecl
+	all_consts  map[string]ast.ConstField
+	all_globals map[string]ast.GlobalField
 }
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
@@ -34,6 +36,15 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
+}
+
+pub fn (mut w Walker) mark_global_as_used(ckey string) {
+	$if trace_skip_unused_marked ? {
+		eprintln('  global > |$ckey|')
+	}
+	w.used_globals[ckey] = true
+	gfield := w.all_globals[ckey] or { return }
+	w.expr(gfield.expr)
 }
 
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
@@ -268,8 +279,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 				.function {
 					w.fn_by_name(node.name)
 				}
+				.global {
+					w.mark_global_as_used(node.name)
+				}
 				else {
-					// `.unresolved`, `.blank_ident`, `.variable`, `.global`, `.function`
+					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
