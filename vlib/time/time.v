@@ -336,18 +336,6 @@ pub fn sleep(seconds int) {
 }
 */
 
-// sleep_ms makes the calling thread sleep for a given number of milliseconds.
-[deprecated: 'call time.sleep(n * time.millisecond)']
-pub fn sleep_ms(milliseconds int) {
-	wait(milliseconds * time.millisecond)
-}
-
-// usleep makes the calling thread sleep for a given number of microseconds.
-[deprecated: 'call time.sleep(n * time.microsecond)']
-pub fn usleep(microseconds int) {
-	wait(microseconds * time.microsecond)
-}
-
 // is_leap_year checks if a given a year is a leap year.
 pub fn is_leap_year(year int) bool {
 	return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0)
