@@ -25,7 +25,7 @@ const (
 		'Array', 'Map']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
+		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array', 'any']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .size_t, .bool, .string]
 )
@@ -684,7 +684,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				if node.op == .amp {
 					type_sym := g.table.get_type_symbol(node.right_type)
 
-					if !type_sym.is_primitive() && !node.right_type.is_pointer() {
+					if !node.right_type.is_pointer() {
 						// kind of weird way to handle references but it allows us to access type methods easily.
 						g.write('(function(x) {')
 						g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
@@ -696,12 +696,14 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				} else {
 					g.write('(')
 					g.expr(node.right)
-					g.write(').val')
+					g.write(').valueOf()')
 				}
 			} else {
 				g.write(node.op.str())
+				g.write('(')
 				g.expr(node.right)
 				g.write('.valueOf()')
+				g.write(')')
 			}
 		}
 		ast.RangeExpr {
@@ -1647,8 +1649,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
 		g.write('.arr,')
+		array_info := l_sym.info as ast.Array
 		// arr << [1, 2]
-		if r_sym.kind == .array {
+		if r_sym.kind == .array && array_info.elem_type != it.right_type {
 			g.write('...')
 		}
 		g.expr(it.right)

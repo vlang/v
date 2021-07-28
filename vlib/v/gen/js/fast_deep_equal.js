@@ -5,7 +5,8 @@ function vEq(a, b) {
 
 	if (a && b && typeof a == 'object' && typeof b == 'object') {
 		if (a.constructor !== b.constructor) return false;
-
+		a = a.valueOf();
+		b = b.valueOf();
 		var length, i, keys;
 		if (Array.isArray(a)) {
 			length = a.length;
@@ -62,5 +63,5 @@ function vEq(a, b) {
 	}
 
 	// true if both NaN, false otherwise
-	return a!==a && b!==b;
+	return a !== a && b !== b;
 };
