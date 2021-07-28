@@ -3,7 +3,7 @@ module callgraph
 import v.ast
 import v.ast.walker
 import v.pref
-import strings
+import v.dotgraph
 
 // callgraph.show walks the AST, starting at main() and prints a DOT output describing the calls
 // that function make transitively
@@ -11,18 +11,14 @@ pub fn show(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) 
 	mut mapper := &Mapper{
 		pref: pref
 		table: table
+		dg: dotgraph.new('CallGraph', 'CallGraph for $pref.path', 'green')
 	}
-	mapper.sb.writeln('digraph G {')
-	mapper.sb.writeln('\tedge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10",style="solid",color="black"];')
-	mapper.sb.writeln('\tnode [fontname="Helvetica",fontsize="10",style="filled",fontcolor="black",fillcolor="white",color="black",shape="box"];')
-	mapper.sb.writeln('\trankdir="LR";')
 	// Node14 [shape="box",label="PrivateBase",URL="$classPrivateBase.html"];
 	// Node15 -> Node9 [dir=back,color="midnightblue",fontsize=10,style="solid"];
 	for afile in ast_files {
 		walker.walk(mapper, afile)
 	}
-	mapper.sb.writeln('}')
-	println(mapper.sb.str())
+	mapper.dg.finish()
 }
 
 [heap]
@@ -37,7 +33,7 @@ mut:
 	caller_name     string
 	dot_caller_name string
 	is_caller_used  bool
-	sb              strings.Builder = strings.new_builder(1024)
+	dg              dotgraph.DotGraph
 }
 
 fn (mut m Mapper) dot_normalise_node_name(name string) string {
@@ -104,11 +100,10 @@ fn (mut m Mapper) visit(node &ast.Node) ? {
 					m.caller_name = m.fn_name(node.name, node.receiver.typ, node.is_method)
 					m.dot_caller_name = m.dot_fn_name(node.name, node.receiver.typ, node.is_method)
 					if m.is_caller_used {
-						if m.caller_name == 'main.main' {
-							m.sb.writeln('\t$m.dot_caller_name [label="fn main()",color="blue",height=0.2,width=0.4,fillcolor="#00FF00",tooltip="The main program entry point.",shape=oval];')
-						} else {
-							m.sb.writeln('\t$m.dot_caller_name [shape="box",label="$m.caller_name"];')
-						}
+						m.dg.new_node(m.caller_name,
+							node_name: m.dot_caller_name
+							should_highlight: m.caller_name == 'main.main'
+						)
 					}
 				}
 				else {}
@@ -121,11 +116,9 @@ fn (mut m Mapper) visit(node &ast.Node) ? {
 						dot_called_name := m.dot_fn_name(node.name, node.receiver_type,
 							node.is_method)
 						// Node15 -> Node9 [dir=back,color="midnightblue",fontsize=10,style="solid"];
-						if m.caller_name == 'main.main' {
-							m.sb.writeln('\t$m.dot_caller_name -> $dot_called_name [color="blue"];')
-						} else {
-							m.sb.writeln('\t$m.dot_caller_name -> $dot_called_name')
-						}
+						m.dg.new_edge(m.dot_caller_name, dot_called_name,
+							should_highlight: m.caller_name == 'main.main'
+						)
 					}
 				}
 				else {}
@@ -134,13 +127,3 @@ fn (mut m Mapper) visit(node &ast.Node) ? {
 		else {}
 	}
 }
-
-/*
-mut fpath := ''
-	if m.file != 0 {
-		fpath = m.file.path
-	}
-	node_pos := node.position()
-	fpos := '$fpath:$node_pos.line_nr:$node_pos.col:'
-	println('$fpos $node.type_name() | $node')
-*/
