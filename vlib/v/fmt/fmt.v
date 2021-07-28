@@ -982,6 +982,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 		if node.is_block {
 			f.writeln('')
 		}
+		f.mark_types_import_as_used(field.typ)
 	}
 	f.comments_after_last_field(node.end_comments)
 	if node.is_block {
