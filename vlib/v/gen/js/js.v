@@ -1423,8 +1423,6 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			node := it
 			match node.name {
 				'insert' {
-					left_info := left_sym.info as ast.Array
-
 					arg2_sym := g.table.get_type_symbol(node.args[1].typ)
 					is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
 					if is_arg2_array {
