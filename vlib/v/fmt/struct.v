@@ -18,19 +18,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write('struct ')
 	}
 	f.write_language_prefix(node.language)
-	name := node.name.after('.')
+	name := node.name.after('.') // strip prepended module
 	f.write(name)
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln(' {}')
 		return
 	}
-	f.writeln(' {')
 	mut field_aligns := []AlignInfo{}
 	mut comment_aligns := []AlignInfo{}
 	mut default_expr_aligns := []AlignInfo{}
@@ -59,6 +53,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				use_threshold: true)
 		}
 	}
+	f.writeln(' {')
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
