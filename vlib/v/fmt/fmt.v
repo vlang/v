@@ -110,14 +110,6 @@ fn (mut f Fmt) write_indent() {
 	f.line_len += f.indent * 4
 }
 
-fn (mut f Fmt) write_language_prefix(lang ast.Language) {
-	match lang {
-		.c { f.write('C.') }
-		.js { f.write('JS.') }
-		else {}
-	}
-}
-
 pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
@@ -154,6 +146,25 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	}
 	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
+}
+
+//=== Specialized write methods ===//
+
+fn (mut f Fmt) write_language_prefix(lang ast.Language) {
+	match lang {
+		.c { f.write('C.') }
+		.js { f.write('JS.') }
+		else {}
+	}
+}
+
+fn (mut f Fmt) write_generic_types(gtypes []ast.Type) {
+	if gtypes.len > 0 {
+		f.write('<')
+		gtypes_string := gtypes.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes_string)
+		f.write('>')
+	}
 }
 
 //=== Module handling helper methods ===//
@@ -1016,19 +1027,14 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	f.write('interface ')
 	f.write_language_prefix(node.language)
-	name := node.name.after('.')
+	name := node.name.after('.') // strip prepended module
 	f.write(name)
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	f.write(' {')
 	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
-	f.comments_after_last_field(node.pre_comments)
+	f.comments_before_field(node.pre_comments)
 	for iface in node.ifaces {
 		f.write('\t$iface.name')
 		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
@@ -1208,12 +1214,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		f.write('pub ')
 	}
 	f.write('type $node.name')
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
 	mut sum_type_names := []string{}
@@ -1510,7 +1511,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.mod == '' && node.name == '' {
 		f.write(node.left.str())
 	}
-	f.write_generic_if_require(node)
+	f.write_generic_call_if_require(node)
 	f.write('(')
 	f.call_args(node.args)
 	f.write(')')
@@ -1518,7 +1519,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.comments(node.comments, has_nl: false)
 }
 
-fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
+fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
