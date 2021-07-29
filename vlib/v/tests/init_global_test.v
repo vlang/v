@@ -115,7 +115,7 @@ fn switch2() u64 {
 	return 0
 }
 
-fn test_global_mutex() {
+fn ktest_global_mutex() {
 	t := go switch2()
 	for _ in 0 .. 2500000 {
 		mtx.@lock()
@@ -128,6 +128,7 @@ fn test_global_mutex() {
 	} else {
 		f2 = 17.0
 	}
+	mtx.unlock()
 	mtx.@rlock()
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
