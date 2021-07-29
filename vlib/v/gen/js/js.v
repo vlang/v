@@ -1445,7 +1445,6 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					return
 				}
 				'prepend' {
-					left_info := left_sym.info as ast.Array
 					arg_sym := g.table.get_type_symbol(node.args[0].typ)
 					is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
 					if is_arg_array {
