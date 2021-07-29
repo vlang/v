@@ -546,6 +546,7 @@ pub mut:
 
 pub struct GlobalDecl {
 pub:
+	mod      string
 	pos      token.Position
 	is_block bool // __global() block
 pub mut:

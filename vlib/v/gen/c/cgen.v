@@ -49,7 +49,7 @@ mut:
 	typedefs2              strings.Builder
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	global_initializations strings.Builder // default initializers for globals (goes in _vinit())
+	global_inits           map[string]strings.Builder // default initializers for globals (goes in _vinit())
 	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
 	cleanups               map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers             strings.Builder // all go callsite wrappers
@@ -206,7 +206,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		typedefs2: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
-		global_initializations: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
@@ -235,6 +234,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
 		g.inits[mod] = strings.new_builder(100)
+		g.global_inits[mod] = strings.new_builder(100)
 		g.cleanups[mod] = strings.new_builder(100)
 	}
 	g.init()
@@ -2518,12 +2518,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(left.typ)
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
+					mut sel := '.'
 					if left.expr_type.is_ptr() {
-						g.write('/* left.expr_type */')
-						g.writeln('->$left.field_name;')
-					} else {
-						g.writeln('.$left.field_name;')
+						if left.expr_type.has_flag(.shared_f) {
+							sel = '->val.'
+						} else {
+							sel = '->'
+						}
 					}
+					g.writeln('$sel$left.field_name;')
 				}
 				else {}
 			}
@@ -5116,6 +5119,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
+	key := node.mod // module name
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {
@@ -5128,7 +5132,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		styp := g.typ(field.typ)
 		if field.has_expr {
 			g.definitions.writeln('$mod$styp $field.name;')
-			g.global_initializations.writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+			g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
 		} else {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' {
@@ -5136,7 +5140,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			} else {
 				g.definitions.writeln('$mod$styp $field.name; // global')
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
-					g.global_initializations.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+					g.global_inits[key].writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
 				}
 			}
 		}
@@ -5465,12 +5469,10 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
-	g.writeln('\t// Initializations for global variables with default initializers')
-	g.write(g.global_initializations.str())
-	//
 	for mod_name in g.table.modules {
 		g.writeln('\t// Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())
+		g.write(g.global_inits[mod_name].str())
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
