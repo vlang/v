@@ -135,9 +135,9 @@ pub fn (n &Number) str() string {
 	}
 	mut digits := []byte{}
 	mut x := n.clone()
-	
+
 	for !x.is_zero() {
-		//changes to reflect new api
+		// changes to reflect new api
 		div, mod := divmod(&x, &big.ten)
 		digits << byte(mod.int()) + `0`
 		x = div
