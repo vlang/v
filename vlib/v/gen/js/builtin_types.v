@@ -19,8 +19,8 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	mut styp := ''
 	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' }
 	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal,
-		.size_t {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal, .size_t {
 			styp = '$prefix${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
@@ -132,8 +132,8 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal,
-		.size_t {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal, .size_t {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
