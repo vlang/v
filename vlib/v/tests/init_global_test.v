@@ -115,7 +115,7 @@ fn switch2() u64 {
 	return 0
 }
 
-fn ktest_global_mutex() {
+fn test_global_mutex() {
 	t := go switch2()
 	for _ in 0 .. 2500000 {
 		mtx.@lock()
