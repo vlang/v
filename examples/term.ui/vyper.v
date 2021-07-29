@@ -71,7 +71,7 @@ mut:
 // snake representation
 struct Snake {
 mut:
-	app       &App
+	app       &App [no_check]
 	direction Orientation
 	body      []BodyPart
 	velocity  Vec = Vec{
@@ -247,7 +247,7 @@ mut:
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App
+	app      &App [no_check]
 }
 
 // randomize spawn the rat in a new spot within the playable field
@@ -462,14 +462,7 @@ fn (mut a App) draw_gameover() {
 }
 
 fn main() {
-	mut app := &App{
-		snake: Snake{
-			app: 0
-		}
-		rat: Rat{
-			app: 0
-		}
-	}
+	mut app := &App{}
 	app.termui = termui.init(
 		user_data: app
 		event_fn: event

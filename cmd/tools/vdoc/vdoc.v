@@ -300,8 +300,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 					table: ast.new_table()
 					pref: &pref.Preferences{}
 					file: ast.File{
-						global_scope: 0
-						scope: 0
+						global_scope: &ast.Scope{}
+						scope: &ast.Scope{}
 					}
 				}
 			}

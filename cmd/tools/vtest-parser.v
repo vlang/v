@@ -94,9 +94,6 @@ fn main() {
 
 fn process_cli_args() &Context {
 	mut context := &Context{
-		scope: ast.Scope{
-			parent: 0
-		}
 		table: ast.new_table()
 		pref: pref.new_preferences()
 	}

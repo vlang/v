@@ -166,8 +166,8 @@ pub fn new(input_path string) Doc {
 			table: ast.new_table()
 			pref: &pref.Preferences{}
 			file: ast.File{
-				global_scope: 0
-				scope: 0
+				global_scope: &ast.Scope{}
+				scope: &ast.Scope{}
 			}
 		}
 	}
@@ -177,8 +177,8 @@ pub fn new(input_path string) Doc {
 		is_debug: false
 		table: d.table
 		file: ast.File{
-			global_scope: 0
-			scope: 0
+			global_scope: &ast.Scope{}
+			scope: &ast.Scope{}
 		}
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)

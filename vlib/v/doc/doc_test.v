@@ -15,10 +15,10 @@ fn test_generate_from_mod() {
 		doc.Doc{
 			fmt: fmt.Fmt{
 				table: ast.new_table()
-				pref: 0
+				pref: &pref.Preferences{}
 				file: ast.File{
-					global_scope: 0
-					scope: 0
+					global_scope: &ast.Scope{}
+					scope: &ast.Scope{}
 				}
 			}
 		}

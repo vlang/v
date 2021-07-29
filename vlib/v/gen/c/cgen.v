@@ -229,7 +229,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		cur_lock: ast.LockExpr{
-			scope: 0
+			scope: &ast.Scope{}
 		}
 	}
 	g.timers.start('cgen init')
@@ -2371,7 +2371,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			for i, lx in assign_stmt.left {
 				mut is_auto_heap := false
 				mut ident := ast.Ident{
-					scope: 0
+					scope: &ast.Scope{}
 				}
 				if lx is ast.Ident {
 					ident = lx
@@ -2534,7 +2534,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut is_call := false
 		mut blank_assign := false
 		mut ident := ast.Ident{
-			scope: 0
+			scope: &ast.Scope{}
 		}
 		left_sym := g.table.get_type_symbol(var_type)
 		if left is ast.Ident {
@@ -3739,7 +3739,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	g.cur_lock = unsafe { node } // is ok because it is discarded at end of fn
 	defer {
 		g.cur_lock = ast.LockExpr{
-			scope: 0
+			scope: &ast.Scope{}
 		}
 	}
 	tmp_result := if node.is_expr { g.new_tmp_var() } else { '' }

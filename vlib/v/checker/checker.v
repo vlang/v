@@ -114,7 +114,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 		timers: util.new_timers(timers_should_print)
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 		main_fn_decl_node: ast.FnDecl{
-			scope: 0
+			scope: &ast.Scope{}
 		}
 	}
 }
@@ -1195,8 +1195,9 @@ pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_e
 			continue
 		}
 
+		// If no check, then ref check get skipped because it can prevent loops e.g. in ast.Scope
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !has_update_expr
-			&& !c.pref.translated {
+			&& !c.pref.translated && !field.attrs.contains('no_check') {
 			c.error('reference field `${prefix}.$field.name` must be initialized', pos)
 		}
 		// Do not allow empty uninitialized sum types
