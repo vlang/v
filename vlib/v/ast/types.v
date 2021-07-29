@@ -670,7 +670,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_type_symbol(kind: .u8, name: 'uu8', cname: 'uu8', mod: 'builtin')
+	t.register_type_symbol(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
 }
 
 [inline]
