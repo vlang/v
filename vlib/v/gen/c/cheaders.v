@@ -50,7 +50,6 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 '
 
 const c_common_macros = '
-//typedef unsigned char u8;
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION
@@ -430,6 +429,7 @@ typedef int16_t i16;
 typedef int8_t i8;
 typedef uint64_t u64;
 typedef uint32_t u32;
+typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint8_t byte;
 typedef uint32_t rune;
