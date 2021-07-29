@@ -128,6 +128,7 @@ fn test_global_mutex() {
 	} else {
 		f2 = 17.0
 	}
+	mtx.unlock()
 	mtx.@rlock()
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
