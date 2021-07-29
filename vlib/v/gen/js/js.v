@@ -1444,6 +1444,26 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 					g.write(')')
 					return
 				}
+				'prepend' {
+					arg_sym := g.table.get_type_symbol(node.args[0].typ)
+					is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
+					if is_arg_array {
+						g.write('prepend_many(')
+					} else {
+						g.write('prepend(')
+					}
+
+					if is_arg_array {
+						g.expr(node.args[0].expr)
+						g.write('.arr, ')
+						g.expr(node.args[0].expr)
+						g.write('.len')
+					} else {
+						g.expr(node.args[0].expr)
+					}
+					g.write(')')
+					return
+				}
 				else {}
 			}
 		}
@@ -1975,7 +1995,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
-			g.write('$it.val')
+			g.write('new int($it.val)')
 			return
 		}
 	}
@@ -2013,7 +2033,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack[g.cast_stack.len - 1] in ast.float_type_idxs {
-			g.write('$it.val')
+			g.write('new f32($it.val)')
 			return
 		} else if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
 			g.write(int(it.val.f64()).str())

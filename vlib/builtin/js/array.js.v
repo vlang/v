@@ -149,3 +149,14 @@ pub fn (mut a array) delete(i int) {
 pub fn (mut a array) delete_many(i int, size int) {
 	#a.arr.splice(i.valueOf(),size.valueOf())
 }
+
+// prepend prepends one value to the array.
+pub fn (mut a array) prepend(val voidptr) {
+	a.insert(0, val)
+}
+
+// prepend_many prepends another array to this array.
+[unsafe]
+pub fn (mut a array) prepend_many(val voidptr, size int) {
+	unsafe { a.insert_many(0, val, size) }
+}
