@@ -11,3 +11,4 @@ vlib/v/checker/tests/require_sub_struct_init.vv:17:7: error: field `FieldAbc.fie
    17 |     _ := FieldAbc{}
       |          ~~~~~~~~~~
    18 | }
+   

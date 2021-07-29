@@ -169,8 +169,8 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		mut pdoc := ParallelDoc{
 			d: doc.Doc{
 				fmt: fmt.Fmt{
-					table: 0
-					pref: 0
+					table: ast.new_table()
+					pref: &pref.Preferences{}
 					file: ast.File{
 						global_scope: 0
 						scope: 0
@@ -297,8 +297,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				}
 				time_generated: time.now()
 				fmt: fmt.Fmt{
-					table: 0
-					pref: 0
+					table: ast.new_table()
+					pref: &pref.Preferences{}
 					file: ast.File{
 						global_scope: 0
 						scope: 0

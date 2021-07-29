@@ -98,8 +98,8 @@ pub mut:
 	base_path string
 	table     &ast.Table      = ast.new_table()
 	checker   checker.Checker = checker.Checker{
-		table: 0
-		pref: 0
+		table: ast.new_table()
+		pref: &pref.Preferences{}
 		main_fn_decl_node: &ast.FnDecl{
 			scope: 0
 		}
@@ -163,8 +163,8 @@ pub fn new(input_path string) Doc {
 		contents: map[string]DocNode{}
 		time_generated: time.now()
 		fmt: fmt.Fmt{
-			table: 0
-			pref: 0
+			table: ast.new_table()
+			pref: &pref.Preferences{}
 			file: ast.File{
 				global_scope: 0
 				scope: 0

@@ -1,6 +1,7 @@
 // import v.ast
 import v.doc
 import v.fmt
+import v.pref
 import v.ast
 
 // fn test_generate_with_pos() {}
@@ -13,7 +14,7 @@ fn test_generate_from_mod() {
 		assert false
 		doc.Doc{
 			fmt: fmt.Fmt{
-				table: 0
+				table: ast.new_table()
 				pref: 0
 				file: ast.File{
 					global_scope: 0

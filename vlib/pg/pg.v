@@ -16,12 +16,15 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn = 0
+	conn &C.PGconn = &C.PgConn{}
 }
 
 pub struct Row {
 pub mut:
 	vals []string
+}
+
+struct C.PgConn {
 }
 
 struct C.PGResult {

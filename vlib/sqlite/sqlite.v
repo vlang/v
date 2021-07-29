@@ -42,7 +42,7 @@ pub struct DB {
 pub mut:
 	is_open bool
 mut:
-	conn &C.sqlite3 = 0
+	conn &C.sqlite3 = &C.sqlite3{}
 }
 
 pub fn (db DB) str() string {
