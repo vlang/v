@@ -135,9 +135,10 @@ pub fn (n &Number) str() string {
 	}
 	mut digits := []byte{}
 	mut x := n.clone()
-	div := Number{}
+
 	for !x.is_zero() {
-		mod := divmod(&x, &big.ten, &div)
+		// changes to reflect new api
+		div, mod := divmod(&x, &big.ten)
 		digits << byte(mod.int()) + `0`
 		x = div
 	}
@@ -192,10 +193,13 @@ pub fn (a &Number) % (b &Number) Number {
 	return c
 }
 
-pub fn divmod(a &Number, b &Number, c &Number) Number {
+// divmod returns a pair of quotient and remainder from div modulo operation
+// between two bignums `a` and `b`
+pub fn divmod(a &Number, b &Number) (Number, Number) {
+	c := Number{}
 	d := Number{}
-	C.bignum_divmod(a, b, c, &d)
-	return d
+	C.bignum_divmod(a, b, &c, &d)
+	return c, d
 }
 
 // //////////////////////////////////////////////////////////

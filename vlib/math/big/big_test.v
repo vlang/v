@@ -90,6 +90,18 @@ fn test_mod() {
 	assert (big.from_u64(7) % big.from_u64(5)).int() == 2
 }
 
+fn test_divmod() {
+	x, y := big.divmod(big.from_u64(13), big.from_u64(10))
+	assert x.int() == 1
+	assert y.int() == 3
+	p, q := big.divmod(big.from_u64(13), big.from_u64(9))
+	assert p.int() == 1
+	assert q.int() == 4
+	c, d := big.divmod(big.from_u64(7), big.from_u64(5))
+	assert c.int() == 1
+	assert d.int() == 2
+}
+
 fn test_from_str() {
 	assert big.from_string('9870123').str() == '9870123'
 	assert big.from_string('').str() == '0'
