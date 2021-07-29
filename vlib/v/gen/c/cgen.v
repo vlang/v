@@ -901,6 +901,10 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 			parent_styp = g.typ(sym.info.parent_type)
 		}
 	}
+	if parent_styp == 'byte' && sym.cname == 'u8' {
+		// TODO: remove this check; it is here just to fix V rebuilding in -cstrict mode with clang-12
+		return
+	}
 	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
 
