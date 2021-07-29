@@ -183,4 +183,140 @@ fn main() {
 		a.insert(1, b)
 		println(a)
 	}
+	{
+		// test prepend
+		mut a := []int{}
+		println(a.len)
+		a.prepend(1)
+		println(a.len)
+		println(a[0])
+		mut b := []f64{}
+
+		println(b.len)
+
+		b.prepend(f64(1.1))
+
+		println(b.len)
+
+		println(b[0])
+	}
+	{
+		// test prepend many
+		mut a := [3, 4]
+		a.prepend([1, 2])
+		println(a)
+		b := [5, 6]
+		a.prepend(b)
+		println(a)
+	}
+	{
+		// test repeat
+		{
+			a := [0].repeat(5)
+			println(a.len)
+			println(a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0)
+		}
+		{
+			a := [1.1].repeat(10)
+			println(a[0])
+			println(a[5])
+			println(a[9])
+		}
+		{
+			a := [i64(-123)].repeat(10)
+			println(a[0])
+			println(a[5])
+			println(a[9])
+		}
+		{
+			a := [u64(123)].repeat(10)
+			println(a[0])
+			println(a[5])
+			println(a[9])
+		}
+		{
+			a := [1.1].repeat(10)
+			println(a[0])
+			println(a[5])
+			println(a[9])
+		}
+		{
+			a := [1, 2].repeat(2)
+			println(a[0])
+			println(a[1])
+			println(a[2])
+			println(a[3])
+		}
+		{
+			a := ['1', 'abc'].repeat(2)
+			println(a[0])
+			println(a[1])
+			println(a[2])
+			println(a[3])
+		}
+		{
+			mut a := ['1', 'abc'].repeat(0)
+			println(a.len)
+			a << 'abc'
+			println(a[0])
+		}
+	}
+	{
+		/*
+		// test deep repeat
+		mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+		r := a3.repeat(3)
+		a3[1][1][0] = 17
+		print(r)
+		assert r == [
+			[[1, 1], [2, 2], [3, 3]],
+			[[4, 4], [5, 5], [6, 6]],
+			[[1, 1], [2, 2], [3, 3]],
+			[[4, 4], [5, 5], [6, 6]],
+			[[1, 1], [2, 2], [3, 3]],
+			[[4, 4], [5, 5], [6, 6]],
+		]
+		assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5],
+			[6, 6],
+		]]
+		*/
+	}
+	{
+		// test right
+		a := [1, 2, 3, 4]
+		c := a[1..a.len]
+		d := a[1..]
+		println(c[0])
+		println(c[1])
+		println(d[0])
+		println(d[1])
+	}
+	{
+		// test left
+		a := [1, 2, 3]
+		c := a[0..2]
+		d := a[..2]
+		println(c[0])
+		println(c[1])
+		println(d[0])
+		println(d[1])
+	}
+	{
+		// test slice
+		a := [1, 2, 3, 4]
+		b := a[2..4]
+		println(b.len)
+		println(a[1..2].len)
+		println(a.len)
+	}
+	{
+		// test push many
+		mut a := [1, 2, 3]
+		b := [4, 5, 6]
+		a << b
+		println(a.len)
+		println(a[0])
+		println(a[3])
+		println(a[5])
+	}
 }
