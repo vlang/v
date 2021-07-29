@@ -73,7 +73,7 @@ pub:
 	req http.Request
 	// TODO Response
 pub mut:
-	conn              &net.TcpConn
+	conn              &net.TcpConn = &net.TcpConn{}
 	static_files      map[string]string
 	static_mime_types map[string]string
 	form              map[string]string

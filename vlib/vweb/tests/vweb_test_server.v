@@ -39,9 +39,6 @@ fn main() {
 		max_ping: 50
 	}
 	app := &App{
-		Context: vweb.Context{
-			conn: 0
-		}
 		port: http_port
 		timeout: timeout
 		global_config: config

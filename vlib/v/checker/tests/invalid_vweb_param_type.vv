@@ -9,8 +9,4 @@ fn (mut app App) index(list []bool) vweb.Result {
 	return app.text('')
 }
 
-vweb.run(&App{
-	Context: vweb.Context{
-		conn: 0
-	}
-}, 5000)
+vweb.run(&App{}, 5000)
