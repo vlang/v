@@ -670,7 +670,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_type_symbol(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin')
+	t.register_type_symbol(kind: .u8, name: 'uu8', cname: 'uu8', mod: 'builtin')
 }
 
 [inline]
@@ -925,8 +925,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		.int_literal, .float_literal {
 			res = sym.name
 		}
-		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool,
-		.none_, .byteptr, .voidptr, .charptr {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string,
+		.bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			if sym.kind == .byteptr {
 				res = '&byte'

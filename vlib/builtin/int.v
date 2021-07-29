@@ -7,6 +7,8 @@ module builtin
 // ----- value to string functions -----
 //
 
+type u8 = byte
+
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
