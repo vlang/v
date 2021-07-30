@@ -36,7 +36,7 @@ __global (
 	sem       sync.Semaphore
 	shmap     shared map[string]f64
 	mtx       sync.RwMutex
-	f1        = f64(34.0625)
+	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
 	f2        f64
 )
 
@@ -116,6 +116,7 @@ fn switch2() u64 {
 }
 
 fn test_global_mutex() {
+	assert f1 == 34.0625
 	t := go switch2()
 	for _ in 0 .. 2500000 {
 		mtx.@lock()

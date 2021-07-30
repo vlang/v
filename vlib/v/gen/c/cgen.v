@@ -5156,8 +5156,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		styp := g.typ(field.typ)
 		if field.has_expr {
-			g.definitions.writeln('$mod$styp $field.name;')
-			g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+			g.definitions.write_string('$mod$styp $field.name')
+			if field.expr.is_literal() {
+				g.definitions.writeln(' = ${g.expr_string(field.expr)}; // global')
+			} else {
+				g.definitions.writeln(';')
+				g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+			}
 		} else {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' {
