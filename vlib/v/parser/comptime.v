@@ -43,8 +43,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
 		vweb_tmpl: ast.File{
-			global_scope: &ast.Scope{}
-			scope: &ast.Scope{}
+			global_scope: 0
+			scope: 0
 		}
 	}
 	p.check(.dollar)
@@ -80,8 +80,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			env_pos: spos
 			pos: spos.extend(p.prev_tok.position())
 			vweb_tmpl: ast.File{
-				global_scope: &ast.Scope{}
-				scope: &ast.Scope{}
+				global_scope: 0
+				scope: 0
 			}
 		}
 	}
@@ -97,8 +97,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			env_pos: spos
 			pos: spos.extend(p.prev_tok.position())
 			vweb_tmpl: ast.File{
-				global_scope: &ast.Scope{}
-				scope: &ast.Scope{}
+				global_scope: 0
+				scope: 0
 			}
 		}
 	}
@@ -147,8 +147,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			}
 			pos: start_pos.extend(p.prev_tok.position())
 			vweb_tmpl: ast.File{
-				global_scope: &ast.Scope{}
-				scope: &ast.Scope{}
+				global_scope: 0
+				scope: 0
 			}
 		}
 	}
@@ -181,8 +181,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 					args_var: literal_string_param
 					pos: start_pos.extend(p.prev_tok.position())
 					vweb_tmpl: ast.File{
-						global_scope: &ast.Scope{}
-						scope: &ast.Scope{}
+						global_scope: 0
+						scope: 0
 					}
 				}
 			}
@@ -358,8 +358,8 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			args: args
 			pos: start_pos.extend(p.prev_tok.position())
 			vweb_tmpl: ast.File{
-				global_scope: &ast.Scope{}
-				scope: &ast.Scope{}
+				global_scope: 0
+				scope: 0
 			}
 		}
 	}

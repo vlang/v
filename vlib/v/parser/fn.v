@@ -630,7 +630,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			p.tok.position())
 		return ast.AnonFn{
 			decl: ast.FnDecl{
-				scope: &ast.Scope{}
+				scope: 0
 			}
 		}
 	}

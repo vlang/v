@@ -115,7 +115,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 		timers: util.new_timers(timers_should_print)
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 		main_fn_decl_node: ast.FnDecl{
-			scope: &ast.Scope{}
+			scope: 0
 		}
 	}
 }
@@ -1203,17 +1203,17 @@ pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_e
 		// If no check, then ref check get skipped because it can prevent loops e.g. in ast.Scope
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !has_update_expr
 			&& !c.pref.translated && !field.attrs.contains('no_check') {
-			//c.error('reference field `${prefix}.$field.name` must be initialized', pos)
+			// c.error('reference field `${prefix}.$field.name` must be initialized', pos)
 		}
-    
-    	// Do not allow empty uninitialized interfaces
+
+		// Do not allow empty uninitialized interfaces
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .interface_ {
 			// TODO error
 			c.warn('interface field `${type_sym.name}.$field.name` must be initialized',
 				pos)
 		}
-    
+
 		// Do not allow empty uninitialized sum types
 		/*
 		sym := c.table.get_type_symbol(field.typ)
