@@ -134,9 +134,23 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			}
 		}
 	}
-	for stmt in ast_file.stmts {
-		c.expr_level = 0
-		c.stmt(stmt)
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.ConstDecl {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
+	}
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.GlobalDecl {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
+	}
+	for mut stmt in ast_file.stmts {
+		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
 	}
 	c.check_scope_vars(c.file.scope)
 }
