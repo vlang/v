@@ -28,6 +28,15 @@ fn test_global_init() {
 	assert true
 }
 
+fn get_u64() u64 {
+	return 27
+}
+
+fn test_no_type() {
+	assert test == 0
+	assert typeof(test).name == 'int'
+}
+
 __global (
 	intmap    map[string]int
 	numberfns map[string]fn () int
@@ -38,6 +47,7 @@ __global (
 	mtx       sync.RwMutex
 	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
 	f2        f64
+	test      = 0 // int
 )
 
 fn init() {
