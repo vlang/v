@@ -6,9 +6,6 @@ import rand
 import benchmark
 
 fn main() {
-	_ := map{
-		1: 1
-	}
 	rand.seed([u32(42), 0])
 	sample_size := 10000000
 	min_str_len := 20
