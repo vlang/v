@@ -2,11 +2,13 @@ name: Sanitized CI
 
 on:
   push:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'vlib/v/**.v'
   pull_request:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'vlib/v/**.v'
 
 jobs:
   no-scheduling:
