@@ -620,9 +620,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if is_source_file(command) {
-		res.path = command
-	} else if command == 'run' {
+	if command == 'run' {
 		res.is_run = true
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
@@ -666,6 +664,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}
+	} else if is_source_file(command) {
+		res.path = command
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
