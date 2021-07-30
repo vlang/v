@@ -163,7 +163,7 @@ pub fn (mut a array) prepend_many(val voidptr, size int) {
 
 pub fn (a array) reverse() array {
 	mut res := array{}
-	#res = Array.from(a.arr).reverse()
+	#res.arr = Array.from(a.arr).reverse()
 
 	return res
 }
