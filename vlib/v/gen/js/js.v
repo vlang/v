@@ -1577,7 +1577,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				g.write(' : ')
 			}
 			if i < node.branches.len - 1 || !node.has_else {
+				g.write('(')
 				g.expr(branch.cond)
+				g.write(')')
 				g.write('.valueOf()')
 				g.write(' ? ')
 			}
@@ -1598,7 +1600,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						if '$branch.cond' == 'js' {
 							g.write('true')
 						} else {
+							g.write('(')
 							g.expr(branch.cond)
+							g.write(')')
 							g.write('.valueOf()')
 						}
 						g.writeln(') {')
@@ -1606,7 +1610,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				}
 			} else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
+				g.write('(')
 				g.expr(branch.cond)
+				g.write(')')
 				g.write('.valueOf()')
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {

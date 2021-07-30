@@ -331,6 +331,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 			}
 			'bool' {
 				g.gen_builtin_prototype(
+					constructor: 'this.val = +val !== 0'
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
 					to_jsval: '+this != 0'
