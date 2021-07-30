@@ -1991,7 +1991,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 }
 
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
-fn (expr Expr) is_literal() bool {
+pub fn (expr Expr) is_literal() bool {
 	match expr {
 		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral {
 			return true
