@@ -135,7 +135,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		}
 	}
 	for mut stmt in ast_file.stmts {
-		if stmt is ast.ConstDecl {
+		if stmt is ast.ConstDecl || stmt is ast.ExprStmt {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
@@ -147,7 +147,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		}
 	}
 	for mut stmt in ast_file.stmts {
-		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl {
+		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
