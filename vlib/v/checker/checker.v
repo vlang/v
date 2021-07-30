@@ -3208,8 +3208,13 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 	if expr is ast.CallExpr {
 		if expr.return_type.has_flag(.optional) {
 			if expr.or_block.kind == .absent {
-				c.error('${expr.name}() returns an option, so it should have either an `or {}` block, or `?` at the end',
-					expr.pos)
+				if c.inside_defer {
+					c.error('${expr.name}() returns an option, so it should have an `or {}` block at the end',
+						expr.pos)
+				} else {
+					c.error('${expr.name}() returns an option, so it should have either an `or {}` block, or `?` at the end',
+						expr.pos)
+				}
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr.return_type.clear_flag(.optional))
 			}
