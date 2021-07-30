@@ -1923,6 +1923,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
+	if got_sym.kind == .none_ && exp_sym.name == 'IError' {
+		g.expr(expr)
+		return
+	}
 	if exp_sym.info is ast.Interface && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {

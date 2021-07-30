@@ -540,6 +540,10 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
+			if field.typ == decl.typ {
+				c.error('recursive interface fields are not allowed because they cannot be initialised',
+					field.type_pos)
+			}
 			for j in 0 .. i {
 				if field.name == decl.fields[j].name {
 					c.error('field name `$field.name` duplicate', field.pos)
@@ -1152,6 +1156,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
 					&& !c.pref.translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
+						node.pos)
+				}
+				// Do not allow empty uninitialized interfaces
+				sym := c.table.get_type_symbol(field.typ)
+				if sym.kind == .interface_ {
+					c.error('interface field `${type_sym.name}.$field.name` must be initialized',
 						node.pos)
 				}
 				// Do not allow empty uninitialized sum types

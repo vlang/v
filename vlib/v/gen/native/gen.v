@@ -15,7 +15,8 @@ import term
 pub const builtins = ['println', 'exit']
 
 interface CodeGen {
-	g &Gen
+mut:
+	g Gen
 	gen_exit(mut g Gen, expr ast.Expr)
 	// XXX WHY gen_exit fn (expr ast.Expr)
 }
@@ -54,13 +55,13 @@ enum Size {
 	_64
 }
 
-fn (g &Gen) get_backend() ?CodeGen {
-	match g.pref.arch {
+fn get_backend(arch pref.Arch) ?CodeGen {
+	match arch {
 		.arm64 {
-			return Arm64{g}
+			return Arm64{}
 		}
 		.amd64 {
-			return Amd64{g}
+			return Amd64{}
 		}
 		else {}
 	}
@@ -73,11 +74,13 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		sect_header_name_pos: 0
 		out_name: out_name
 		pref: pref
+		// TODO: workaround, needs to support recursive init
+		cgen: get_backend(pref.arch) or {
+			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
+			exit(1)
+		}
 	}
-	g.cgen = g.get_backend() or {
-		eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
-		exit(1)
-	}
+	g.cgen.g = g
 	g.generate_header()
 	for file in files {
 		if file.warnings.len > 0 {
