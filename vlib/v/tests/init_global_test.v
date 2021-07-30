@@ -69,7 +69,11 @@ __global (
 	testexpl  = f32(7)
 	testfn    = get_u64()
 	testarr   = []f64{len: 10, init: 2.75}
-	testmap   = map{'qwe': 2.5, 'asd': -7.25, 'yxc': 3.125}
+	testmap   = map{
+		'qwe': 2.5
+		'asd': -7.25
+		'yxc': 3.125
+	}
 )
 
 fn init() {
