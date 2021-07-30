@@ -167,3 +167,5 @@ pub fn (a array) reverse() array {
 
 	return res
 }
+
+# array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}

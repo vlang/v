@@ -348,7 +348,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					val_name: 'map'
 					default_value: 'new Map()'
 					constructor: 'this.map = map'
-					value_of: 'this.map'
+					value_of: 'this'
 					to_string: 'this.map.toString()'
 					eq: 'vEq(this, other)'
 				)
@@ -359,7 +359,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					val_name: 'arr'
 					default_value: 'new Array()'
 					constructor: 'this.arr = arr'
-					value_of: 'this.arr'
+					value_of: 'this'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
 					eq: 'vEq(this, other)'
 				)
