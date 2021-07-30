@@ -45,6 +45,11 @@ fn test_no_type() {
 	assert typeof(testexpl).name == 'f32'
 	assert testfn == 27
 	assert typeof(testfn).name == 'u64'
+	assert typeof(testarr).name == '[]f64'
+	assert testarr.len == 10
+	assert testarr[9] == 2.75
+	assert typeof(testmap).name == 'map[string]f64'
+	assert testmap['asd'] == -7.25
 }
 
 __global (
@@ -63,6 +68,8 @@ __global (
 	testnegf  = -1.25e06 // f64
 	testexpl  = f32(7)
 	testfn    = get_u64()
+	testarr   = []f64{len: 10, init: 2.75}
+	testmap   = map{'qwe': 2.5, 'asd': -7.25, 'yxc': 3.125}
 )
 
 fn init() {
