@@ -983,10 +983,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
-			f.write(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-			f.write('(')
 			f.expr(field.expr)
-			f.write(')')
 		} else {
 			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)}')
 		}
