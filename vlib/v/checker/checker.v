@@ -5591,7 +5591,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type_sym.kind == .enum_ {
 		if node.expr is ast.IntegerLiteral {
 			enum_typ_name := c.table.get_type_name(node.typ)
-			node_val := node.expr.val.int()
+			node_val := (node.expr as ast.IntegerLiteral).val.int()
 
 			if enum_decl := c.table.enum_decls[to_type_sym.name] {
 				mut in_range := false
