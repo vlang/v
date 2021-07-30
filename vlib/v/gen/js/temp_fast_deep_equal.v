@@ -9,8 +9,8 @@ function vEq(a, b) {
 
 	if (a && b && typeof a == 'object' && typeof b == 'object') {
 		if (a.constructor !== b.constructor) return false;
-		a = a.valueOf();
-		b = b.valueOf();
+		a = a.\$toJS();
+		b = b.\$toJS();
 		var length, i, keys;
 		if (Array.isArray(a)) {
 			length = a.length;

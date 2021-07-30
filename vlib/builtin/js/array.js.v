@@ -138,7 +138,7 @@ pub fn (a array) str() string {
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { return this.arr.entries(); }
 #array.prototype.map = function(callback) { return this.arr.map(callback); }
-#array.prototype.filter = function(callback) { return this.arr.filter(callback); }
+#array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
@@ -159,4 +159,24 @@ pub fn (mut a array) prepend(val voidptr) {
 [unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
+}
+
+pub fn (a array) reverse() array {
+	mut res := array{}
+	#res.arr = Array.from(a.arr).reverse()
+
+	return res
+}
+
+#array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
+
+// reduce executes a given reducer function on each element of the array,
+// resulting in a single output value.
+pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
+	mut accum_ := accum_start
+	#for (let i of a)  {
+	#accum_ = iter(accum_, a.arr[i])
+	#}
+
+	return accum_
 }

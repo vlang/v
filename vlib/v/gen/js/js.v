@@ -1079,6 +1079,7 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 		g.write('; ')
 	}
 	if it.has_cond {
+		g.write('+') // convert to number or boolean
 		g.expr(it.cond)
 	}
 	g.write('; ')
@@ -1174,6 +1175,7 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 	if it.is_inf {
 		g.write('true')
 	} else {
+		g.write('+') // convert expr to number or boolean
 		g.expr(it.cond)
 	}
 	g.writeln(') {')
@@ -1325,6 +1327,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// offering similar performance
 	g.write('new array(')
 	g.inc_indent()
+
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1333,6 +1336,31 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('const $t1 = [];')
 		g.write('for (let $t2 = 0; $t2 < ')
 		g.expr(it.len_expr)
+		g.writeln('; $t2++) {')
+		g.inc_indent()
+		g.write('${t1}.push(')
+		if it.has_default {
+			g.expr(it.default_expr)
+		} else {
+			// Fill the array with the default values for its type
+			t := g.to_js_typ_val(it.elem_type)
+			g.write(t)
+		}
+		g.writeln(');')
+		g.dec_indent()
+		g.writeln('};')
+		g.writeln('return $t1;')
+		g.dec_indent()
+		g.write('})()')
+	} else if it.is_fixed && it.exprs.len == 1 {
+		// [100]byte codegen
+		t1 := g.new_tmp_var()
+		t2 := g.new_tmp_var()
+		g.writeln('(function() {')
+		g.inc_indent()
+		g.writeln('const $t1 = [];')
+		g.write('for (let $t2 = 0; $t2 < ')
+		g.expr(it.exprs[0])
 		g.writeln('; $t2++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
@@ -1549,7 +1577,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				g.write(' : ')
 			}
 			if i < node.branches.len - 1 || !node.has_else {
+				g.write('(')
 				g.expr(branch.cond)
+				g.write(')')
 				g.write('.valueOf()')
 				g.write(' ? ')
 			}
@@ -1570,7 +1600,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						if '$branch.cond' == 'js' {
 							g.write('true')
 						} else {
+							g.write('(')
 							g.expr(branch.cond)
+							g.write(')')
 							g.write('.valueOf()')
 						}
 						g.writeln(') {')
@@ -1578,7 +1610,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				}
 			} else if i < node.branches.len - 1 || !node.has_else {
 				g.write('} else if (')
+				g.write('(')
 				g.expr(branch.cond)
+				g.write(')')
 				g.write('.valueOf()')
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
@@ -1608,7 +1642,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	if expr.index is ast.RangeExpr {
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
-			g.write('.val')
+			g.write('.valueOf()')
 		}
 		g.write('.slice(')
 		if expr.index.has_low {
@@ -1622,7 +1656,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		} else {
 			g.expr(expr.left)
 			if expr.left_type.is_ptr() {
-				g.write('.val')
+				g.write('.valueOf()')
 			}
 			g.write('.length')
 		}
@@ -1649,7 +1683,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('new byte(')
 			g.expr(expr.left)
 			if expr.left_type.is_ptr() {
-				g.write('.val')
+				g.write('.valueOf()')
 			}
 			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
@@ -1659,10 +1693,10 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
-			g.write('.val')
+			g.write('.valueOf()')
 		}
 		g.write('.arr')
-		g.write('[')
+		g.write('[+')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
 		g.cast_stack.delete_last()
@@ -1682,7 +1716,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	if it.op == .eq || it.op == .ne {
 		// Shallow equatables
 		if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
+			// wrap left expr in parens so binary operations will work correctly.
+			g.write('(')
 			g.expr(it.left)
+			g.write(')')
 			g.write('.eq(')
 			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
@@ -1713,7 +1750,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		} else if r_sym.kind == .string {
 			g.write('.str.includes(')
 		} else {
-			g.write('.arr.includes(')
+			g.write('.\$includes(')
 		}
 		g.expr(it.left)
 		if l_sym.kind == .string {
@@ -1728,14 +1765,15 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		mut needs_cast := is_arithmetic && it.left_type != it.right_type
 		mut greater_typ := 0
-		if needs_cast {
+		// todo(playX): looks like this cast is always required to perform .eq operation on types.
+		if true || needs_cast {
 			greater_typ = g.greater_typ(it.left_type, it.right_type)
 			if g.cast_stack.len > 0 {
 				needs_cast = g.cast_stack.last() != greater_typ
 			}
 		}
 
-		if needs_cast {
+		if true || needs_cast {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
 			}
@@ -1746,7 +1784,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(' $it.op ')
 		g.expr(it.right)
 
-		if needs_cast {
+		if true || needs_cast {
 			g.cast_stack.delete_last()
 			g.write(')')
 		}

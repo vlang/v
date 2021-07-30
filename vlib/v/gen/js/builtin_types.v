@@ -263,6 +263,7 @@ struct BuiltinPrototypeConfig {
 	value_of      string = 'this.val'
 	to_string     string = 'this.val.toString()'
 	eq            string = 'this.val === other.val'
+	to_jsval      string = 'this'
 	extras        string
 	has_strfn     bool
 }
@@ -284,6 +285,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	g.writeln('valueOf() { return $c.value_of },')
 	g.writeln('toString() { return $c.to_string },')
 	g.writeln('eq(other) { return $c.eq },')
+	g.writeln('\$toJS() { return $c.to_jsval }, ')
 	if c.has_strfn {
 		g.writeln('str() { return new string(this.toString()) }')
 	}
@@ -306,6 +308,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of: 'this.val | 0'
 					to_string: 'this.valueOf().toString()'
 					eq: 'this.valueOf() === other.valueOf()'
+					to_jsval: '+this'
 				)
 			}
 			'byte' {
@@ -316,18 +319,22 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of: 'this.val | 0'
 					to_string: 'new string(this.val + "")'
 					eq: 'this.valueOf() === other.valueOf()'
+					to_jsval: '+this'
 				)
 			}
 			'f32', 'f64', 'float_literal' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
+					to_jsval: '+this'
 				)
 			}
 			'bool' {
 				g.gen_builtin_prototype(
+					constructor: 'this.val = +val !== 0'
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
+					to_jsval: '+this != 0'
 				)
 			}
 			'string' {
@@ -340,6 +347,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					to_string: 'this.str'
 					eq: 'this.str === other.str'
 					has_strfn: false
+					to_jsval: 'this.str'
 				)
 			}
 			'map' {
@@ -348,9 +356,10 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					val_name: 'map'
 					default_value: 'new Map()'
 					constructor: 'this.map = map'
-					value_of: 'this.map'
+					value_of: 'this'
 					to_string: 'this.map.toString()'
 					eq: 'vEq(this, other)'
+					to_jsval: 'this.map'
 				)
 			}
 			'array' {
@@ -359,9 +368,10 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					val_name: 'arr'
 					default_value: 'new Array()'
 					constructor: 'this.arr = arr'
-					value_of: 'this.arr'
+					value_of: 'this'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
 					eq: 'vEq(this, other)'
+					to_jsval: 'this.arr'
 				)
 			}
 			'any' {
@@ -373,6 +383,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of: 'this.val'
 					to_string: '"&" + this.val'
 					eq: 'this == other' // compare by ptr
+					to_jsval: 'this.val.\$toJS()'
 				)
 			}
 			else {}
