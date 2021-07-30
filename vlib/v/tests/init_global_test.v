@@ -35,6 +35,16 @@ fn get_u64() u64 {
 fn test_no_type() {
 	assert test == 0
 	assert typeof(test).name == 'int'
+	assert testf == 1.25
+	assert typeof(testf).name == 'f64'
+	assert testneg == -2
+	assert typeof(testneg).name == 'int'
+	assert testnegf == -1250000
+	assert typeof(testnegf).name == 'f64'
+	assert testexpl == 7
+	assert typeof(testexpl).name == 'f32'
+	assert testfn == 27
+	assert typeof(testfn).name == 'u64'
 }
 
 __global (
@@ -48,6 +58,11 @@ __global (
 	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
 	f2        f64
 	test      = 0 // int
+	testf     = 1.25 // f64
+	testneg   = -2 // int
+	testnegf  = -1.25e06 // f64
+	testexpl  = f32(7)
+	testfn    = get_u64()
 )
 
 fn init() {
