@@ -2142,6 +2142,16 @@ struct Node<T> {
 }
 ```
 
+In V references have to be initialized by default, because there is no null.
+Anyways there are situations, this could cause a loop, that's why there is an
+attribute for that, which skips the checking for it.
+
+```v
+struct Node {
+	parent &Node [no_check]
+}
+```
+
 ## Constants
 
 ```v

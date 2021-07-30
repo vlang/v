@@ -71,7 +71,7 @@ mut:
 // snake representation
 struct Snake {
 mut:
-	app       &App [no_check]
+	app       &App        [no_check]
 	direction Orientation
 	body      []BodyPart
 	velocity  Vec = Vec{
@@ -247,7 +247,7 @@ mut:
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App [no_check]
+	app      &App         [no_check]
 }
 
 // randomize spawn the rat in a new spot within the playable field
