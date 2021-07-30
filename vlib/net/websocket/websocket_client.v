@@ -310,12 +310,6 @@ pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
 	return ws.write_ptr(&byte(bytes.data), bytes.len, code)
 }
 
-// write_string, writes a string with a websocket texttype to socket
-[deprecated: 'use Client.write_string() instead']
-pub fn (mut ws Client) write_str(str string) ?int {
-	return ws.write_string(str)
-}
-
 // write_str, writes a string with a websocket texttype to socket
 pub fn (mut ws Client) write_string(str string) ?int {
 	return ws.write_ptr(str.str, str.len, .text_frame)

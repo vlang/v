@@ -6,7 +6,7 @@ jobs:
 
   debug-msvc:
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
     steps:

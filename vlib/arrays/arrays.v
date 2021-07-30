@@ -124,8 +124,3 @@ pub fn group<T>(lists ...[]T) [][]T {
 
 	return [][]T{}
 }
-
-[deprecated]
-pub fn shuffle<T>(mut a []T, n int) {
-	panic('Please use rand.util.shuffle() instead')
-}

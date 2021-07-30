@@ -4,6 +4,9 @@ import os
 import v.vcache
 
 fn main() {
+	_ := map{
+		1: 1
+	}
 	mut cm := vcache.new_cache_manager([])
 	cpath := cm.basepath
 	if os.exists(cpath) && os.is_dir(cpath) {

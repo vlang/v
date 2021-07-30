@@ -33,12 +33,6 @@ pub fn len(s string) int {
 	return count
 }
 
-// char_len calculate the length in bytes of a utf8 char
-[deprecated: 'use builtin utf8_char_len']
-pub fn char_len(b byte) int {
-	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
-}
-
 // get_uchar convert a unicode glyph in string[index] into a int unicode char
 pub fn get_uchar(s string, index int) int {
 	mut res := 0

@@ -10,7 +10,7 @@ pub fn download_file(url string, out string) ? {
 		println('download file url=$url out=$out')
 	}
 	s := get(url) or { return err }
-	if s.status_code != 200 {
+	if s.status() != .ok {
 		return error('received http code $s.status_code')
 	}
 	os.write_file(out, s.text) ?

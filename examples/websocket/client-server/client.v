@@ -4,7 +4,7 @@ import os
 import net.websocket
 import term
 
-// This client should be compiled an run in different konsoles
+// This client should be compiled an run in different consoles
 // it connects to the server who will broadcast your messages
 // to all other connected clients
 fn main() {

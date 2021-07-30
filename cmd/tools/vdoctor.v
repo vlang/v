@@ -1,6 +1,7 @@
 import os
 import time
-import v.util
+import term
+import v.util.version
 import runtime
 
 struct App {
@@ -109,7 +110,7 @@ fn (mut a App) collect_info() {
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('is vroot writable', is_writable_dir(vroot).str())
 	a.line('is vmodules writable', is_writable_dir(vmodules).str())
-	a.line('V full version', util.full_v_version(true))
+	a.line('V full version', version.full_v_version(true))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
 		a.line('env VTMP', '"$vtmp"')
@@ -149,7 +150,7 @@ fn (mut a App) cmd(c CmdConfig) string {
 }
 
 fn (mut a App) line(label string, value string) {
-	a.println('$label: ${util.bold(value)}')
+	a.println('$label: ${term.colorize(term.bold, value)}')
 }
 
 fn (app &App) parse(config string, sep string) map[string]string {

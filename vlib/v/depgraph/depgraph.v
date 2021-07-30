@@ -5,6 +5,8 @@
 // this implementation is specifically suited to ordering dependencies
 module depgraph
 
+import v.dotgraph
+
 struct DepGraphNode {
 pub mut:
 	name string
@@ -196,4 +198,21 @@ fn (mut nn NodeNames) is_part_of_cycle(name string, already_seen []string) (bool
 	}
 	nn.is_cycle[name] = false
 	return false, new_already_seen
+}
+
+pub fn show(graph &DepGraph, path string) {
+	mut dg := dotgraph.new('ModGraph', 'ModGraph for $path', 'blue')
+	mbuiltin := 'builtin'
+	for node in graph.nodes {
+		is_main := node.name == 'main'
+		dg.new_node(node.name, should_highlight: is_main)
+		mut deps := node.deps.clone()
+		if node.name != mbuiltin && mbuiltin !in deps {
+			deps << mbuiltin
+		}
+		for dep in deps {
+			dg.new_edge(node.name, dep, should_highlight: is_main)
+		}
+	}
+	dg.finish()
 }

@@ -674,7 +674,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.tok.lit == 'sql' {
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
 				return p.sql_stmt()
 			}
 			if p.peek_tok.kind == .colon {
@@ -2977,6 +2977,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 	return ast.GlobalDecl{
 		pos: start_pos.extend(p.prev_tok.position())
+		mod: p.mod
 		fields: fields
 		end_comments: comments
 		is_block: is_block

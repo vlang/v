@@ -9,6 +9,7 @@ import v.ast
 import v.pref
 import v.token
 import v.util
+import v.util.version
 import v.depgraph
 
 const (
@@ -48,6 +49,7 @@ mut:
 	typedefs2              strings.Builder
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	global_inits           map[string]strings.Builder // default initializers for globals (goes in _vinit())
 	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
 	cleanups               map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers             strings.Builder // all go callsite wrappers
@@ -235,6 +237,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
 		g.inits[mod] = strings.new_builder(100)
+		g.global_inits[mod] = strings.new_builder(100)
 		g.cleanups[mod] = strings.new_builder(100)
 	}
 	g.init()
@@ -392,8 +395,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 }
 
 pub fn (g &Gen) hashes() string {
-	mut res := c_commit_hash_default.replace('@@@', util.vhash())
-	res += c_current_commit_hash_default.replace('@@@', util.githash(g.pref.building_v))
+	mut res := c_commit_hash_default.replace('@@@', version.vhash())
+	res += c_current_commit_hash_default.replace('@@@', version.githash(g.pref.building_v))
 	return res
 }
 
@@ -900,6 +903,10 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 		if sym.info is ast.Alias {
 			parent_styp = g.typ(sym.info.parent_type)
 		}
+	}
+	if parent_styp == 'byte' && sym.cname == 'u8' {
+		// TODO: remove this check; it is here just to fix V rebuilding in -cstrict mode with clang-12
+		return
 	}
 	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
 }
@@ -1919,6 +1926,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
+	if got_sym.kind == .none_ && exp_sym.name == 'IError' {
+		g.expr(expr)
+		return
+	}
 	if exp_sym.info is ast.Interface && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
@@ -2514,12 +2525,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					styp := g.typ(left.typ)
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
+					mut sel := '.'
 					if left.expr_type.is_ptr() {
-						g.write('/* left.expr_type */')
-						g.writeln('->$left.field_name;')
-					} else {
-						g.writeln('.$left.field_name;')
+						if left.expr_type.has_flag(.shared_f) {
+							sel = '->val.'
+						} else {
+							sel = '->'
+						}
 					}
+					g.writeln('$sel$left.field_name;')
 				}
 				else {}
 			}
@@ -5003,6 +5017,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
 	mut styp := g.typ(typ)
 	cname := '_const_$name'
+	$if trace_const_precomputed ? {
+		eprintln('> styp: $styp | cname: $cname | ct_value: $ct_value | $ct_value.type_name()')
+	}
 	match ct_value {
 		byte {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
@@ -5029,7 +5046,11 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				g.const_decl_simple_define(name, ct_value.str())
 				return true
 			}
-			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+			if typ == ast.u64_type {
+				g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
+			} else {
+				g.const_decl_write_precomputed(styp, cname, ct_value.str())
+			}
 		}
 		u64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
@@ -5105,12 +5126,30 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
+	key := node.mod // module name
 	for field in node.fields {
+		if g.pref.skip_unused {
+			if field.name !in g.table.used_globals {
+				$if trace_skip_unused_globals ? {
+					eprintln('>> skipping unused global name: $field.name')
+				}
+				continue
+			}
+		}
 		styp := g.typ(field.typ)
 		if field.has_expr {
-			g.definitions.writeln('$mod$styp $field.name = $field.expr; // global')
+			g.definitions.writeln('$mod$styp $field.name;')
+			g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
 		} else {
-			g.definitions.writeln('$mod$styp $field.name; // global')
+			default_initializer := g.type_default(field.typ)
+			if default_initializer == '{0}' {
+				g.definitions.writeln('$mod$styp $field.name = {0}; // global')
+			} else {
+				g.definitions.writeln('$mod$styp $field.name; // global')
+				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
+					g.global_inits[key].writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+				}
+			}
 		}
 	}
 }
@@ -5440,6 +5479,7 @@ fn (mut g Gen) write_init_function() {
 	for mod_name in g.table.modules {
 		g.writeln('\t// Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())
+		g.write(g.global_inits[mod_name].str())
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
@@ -6090,6 +6130,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			'thread_$tmp'
 		}
 		g.writeln('HANDLE $simple_handle = CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		g.writeln('if (!$simple_handle) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('$gohandle_name thread_$tmp = {')
 			g.writeln('\t.ret_ptr = $arg_tmp_var->ret_ptr,')
@@ -6101,7 +6142,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	} else {
 		g.writeln('pthread_t thread_$tmp;')
-		g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
 		if !node.is_expr {
 			g.writeln('pthread_detach(thread_$tmp);')
 		}

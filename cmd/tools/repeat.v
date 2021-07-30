@@ -6,7 +6,6 @@ import time
 import term
 import math
 import scripting
-import v.util
 
 struct CmdResult {
 mut:
@@ -127,8 +126,12 @@ fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 	return res
 }
 
+fn bold(s string) string {
+	return term.colorize(term.bold, s)
+}
+
 fn (a Aints) str() string {
-	return util.bold('${a.average:6.2f}') +
+	return bold('${a.average:6.2f}') +
 		'ms ± σ: ${a.stddev:4.1f}ms, min: ${a.imin:4}ms, max: ${a.imax:4}ms, runs:${a.values.len:3}, nmins:${a.nmins:2}, nmaxs:${a.nmaxs:2}'
 }
 
@@ -346,7 +349,7 @@ fn (mut context Context) show_diff_summary() {
 		first_marker = ' '
 		cpercent := (r.atiming.average / base) * 100 - 100
 		if r.icmd == 0 {
-			first_marker = util.bold('>')
+			first_marker = bold('>')
 			first_cmd_percentage = cpercent
 		}
 		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')

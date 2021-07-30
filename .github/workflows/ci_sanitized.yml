@@ -9,9 +9,16 @@ on:
       - "**.md"
 
 jobs:
+  no-scheduling:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dont schedule all jobs
+        run: sleep 10
+
   tests-sanitize-undefined-clang:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -35,8 +42,9 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
@@ -59,8 +67,9 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-address-clang:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -88,8 +97,9 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-address-msvc:
+    needs: no-scheduling
     runs-on: windows-2019
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
@@ -114,8 +124,9 @@ jobs:
           .\v.exe -cflags -fsanitize=address test-self
 
   tests-sanitize-address-gcc:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
@@ -143,8 +154,9 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-memory-clang:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       VFLAGS: -cc clang
       VJOBS: 1

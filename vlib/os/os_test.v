@@ -534,6 +534,8 @@ fn test_dir() {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
 		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
 	} $else {
+		assert os.dir('/') == '/'
+		assert os.dir('/abc') == '/'
 		assert os.dir('/var/tmp/foo') == '/var/tmp'
 		assert os.dir('/var/tmp/') == '/var/tmp'
 	}

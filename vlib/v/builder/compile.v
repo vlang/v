@@ -237,7 +237,10 @@ pub fn (v &Builder) get_user_files() []string {
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	mut preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	if v.pref.backend == .js_node {
+		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
+	}
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}

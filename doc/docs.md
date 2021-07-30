@@ -132,6 +132,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
 	* [Atomics](#atomics)
+	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -623,6 +624,13 @@ f2 := f32(3.14)
 ```
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
+
+Float literals can also be declared as a power of ten:
+```v
+f0 := 42e1 // 420
+f1 := 123e-2 // 1.23
+f2 := 456e+2 // 45600
+```
 
 ### Arrays
 #### Basic Array Concepts
@@ -3460,7 +3468,12 @@ struct Foo {
 }
 
 struct User {
-	name string
+	// Adding a [required] attribute will make decoding fail, if that
+	// field is not present in the input.
+	// If a field is not [required], but is missing, it will be assumed
+	// to have its default value, like 0 for numbers, or '' for strings,
+	// and decoding will not fail.
+	name string [required]
 	age  int
 	// Use the `skip` attribute to skip certain fields
 	foo Foo [skip]
@@ -3470,7 +3483,7 @@ struct User {
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
 user := json.decode(User, data) or {
-	eprintln('Failed to decode json')
+	eprintln('Failed to decode json, error: $err')
 	return
 }
 println(user.name)
@@ -3735,7 +3748,7 @@ fn f() (RefStruct, &MyStruct) {
 
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
-`c` is returned. For this reason `b` and `c` will be heap allocated. 
+`c` is returned. For this reason `b` and `c` will be heap allocated.
 
 Things become less obvious when a reference to an object is passed as function argument:
 
@@ -3768,7 +3781,7 @@ these references are leaving `main()`. However the *lifetime* of these
 references lies inside the scope of `main()` so `q` and `w` are allocated
 on the stack.
 
-#### Manual Control for Stack and Heap 
+#### Manual Control for Stack and Heap
 
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
@@ -3816,7 +3829,7 @@ reference to `s` into `r`. The problem with this is that `s` lives only as long
 as `g()` is running but `r` is used in `main()` after that. For this reason
 the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
-`r.f(&s)` would only borrow the reference to `s` is wrong. 
+`r.f(&s)` would only borrow the reference to `s` is wrong.
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
@@ -4295,6 +4308,7 @@ fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
 
 const num_iterations = 10000000
 
+// see section "Global Variables" below
 __global (
 	atom u32 // ordinary variable but used as atomic
 )
@@ -4352,6 +4366,50 @@ It is not predictable how many replacements occur in which thread, but the sum w
 be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
 will hang &ndash; dependent on the compiler optimization used.)
 
+## Global Variables
+
+By default V does not allow global variables. However, in low level applications they have their
+place so their usage can be enabled with the compiler flag `-enable-globals`.
+Declarations of global variables must be surrounded with a `__global ( ... )`
+specification &ndash; as in the example [above](#atomics).
+
+An initializer for global variables must be explicitly converted to the
+desired target type. If no initializer is given a default initialization is done.
+Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
+not with a value returned from a function call but with a method call by reference.
+A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
+
+```v globals
+import sync
+
+__global (
+	sem   sync.Semaphore // needs initialization in `init()`
+	mtx   sync.RwMutex // needs initialization in `init()`
+	f1    = f64(34.0625) // explicily initialized
+	shmap shared map[string]f64 // initialized as empty `shared` map
+	f2    f64 // initialized to `0.0`
+)
+
+fn init() {
+	sem.init(0)
+	mtx.init()
+}
+```
+Be aware that in multi threaded applications the access to global variables is subject
+to race conditions. There are several approaches to deal with these:
+
+- use `shared` types for the variable declarations and use `lock` blocks for access.
+  This is most appropriate for larger objects like structs, arrays or maps.
+- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- use explicit synchronization primitives like mutexes to control access. The compiler
+  cannot really help in this case, so you have to know what you are doing.
+- don't care &ndash; this approach is possible but makes only sense if the exact values
+  of global variables do not really matter. An example can be found in the `rand` module
+  where global variables are used to generate (non cryptographic) pseudo random numbers.
+  In this case data races lead to random numbers in different threads becoming somewhat
+  correlated, which is acceptable considering the performance penalty that using
+  synchonization primitives would represent.
+
 ### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
@@ -4401,7 +4459,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 

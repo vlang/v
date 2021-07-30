@@ -13,6 +13,7 @@ pub mut:
 	type_symbols       []TypeSymbol
 	type_idxs          map[string]int
 	fns                map[string]Fn
+	iface_types        map[string][]Type
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
@@ -25,6 +26,7 @@ pub mut:
 	is_fmt             bool
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
@@ -51,6 +53,7 @@ pub fn (t &Table) free() {
 		t.cmod_prefix.free()
 		t.used_fns.free()
 		t.used_consts.free()
+		t.used_globals.free()
 		t.used_vweb_types.free()
 	}
 }
@@ -1111,7 +1114,12 @@ pub fn (mut t Table) complete_interface_check() {
 				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
 				continue
 			}
-			t.does_type_implement_interface(tk, idecl.typ)
+			if t.does_type_implement_interface(tk, idecl.typ) {
+				$if trace_types_implementing_each_interface ? {
+					eprintln('>>> tsym.mod: $tsym.mod | tsym.name: $tsym.name | tk: $tk | idecl.name: $idecl.name | idecl.typ: $idecl.typ')
+				}
+				t.iface_types[idecl.name] << tk
+			}
 		}
 	}
 }

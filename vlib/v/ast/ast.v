@@ -535,17 +535,18 @@ pub:
 pub struct GlobalField {
 pub:
 	name     string
-	expr     Expr
 	has_expr bool
 	pos      token.Position
 	typ_pos  token.Position
 pub mut:
+	expr     Expr
 	typ      Type
 	comments []Comment
 }
 
 pub struct GlobalDecl {
 pub:
+	mod      string
 	pos      token.Position
 	is_block bool // __global() block
 pub mut:

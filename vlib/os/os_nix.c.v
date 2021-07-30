@@ -8,7 +8,7 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <utime.h>
-$if !solaris {
+$if !solaris && !haiku {
 	#include <sys/ptrace.h>
 }
 

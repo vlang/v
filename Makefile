@@ -90,7 +90,7 @@ ifdef WIN32
 else
 	$(CC) $(CFLAGS) -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	$(V) -o v2.exe $(VFLAGS) cmd/v
-	mv -f v2.exe v  
+	mv -f v2.exe v
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
@@ -150,5 +150,5 @@ selfcompile-static:
 
 ### NB: Please keep this Makefile and make.bat simple.
 install:
-	@echo 'Please use `sudo v symlink` instead.'
-    
+	@echo 'Please use `sudo ./v symlink` instead.'
+

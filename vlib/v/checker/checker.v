@@ -10,6 +10,7 @@ import v.vmod
 import v.token
 import v.pref
 import v.util
+import v.util.version
 import v.errors
 import v.pkgconfig
 import v.gen.native
@@ -542,6 +543,10 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
+			if field.typ == decl.typ {
+				c.error('recursive interface fields are not allowed because they cannot be initialised',
+					field.type_pos)
+			}
 			for j in 0 .. i {
 				if field.name == decl.fields[j].name {
 					c.error('field name `$field.name` duplicate', field.pos)
@@ -1200,6 +1205,15 @@ pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_e
 			&& !c.pref.translated && !field.attrs.contains('no_check') {
 			c.error('reference field `${prefix}.$field.name` must be initialized', pos)
 		}
+    
+    // Do not allow empty uninitialized interfaces
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .interface_ {
+			// TODO error
+			c.warn('interface field `${type_sym.name}.$field.name` must be initialized',
+				node.pos)
+		}
+    
 		// Do not allow empty uninitialized sum types
 		/*
 		sym := c.table.get_type_symbol(field.typ)
@@ -2009,7 +2023,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 			}
 		}
 		ast.CallExpr {
-			if is_map && arg_expr.return_type == ast.void_type {
+			if is_map && arg_expr.return_type in [ast.void_type, 0] {
 				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
@@ -2791,6 +2805,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 		c.inside_println_arg = false
+		call_expr.return_type = ast.void_type
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
@@ -3048,58 +3063,64 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
+
 	if mut inter_sym.info is ast.Interface {
 		if inter_sym.info.is_generic {
 			mut inferred_types := []ast.Type{}
-			for ifield in inter_sym.info.fields {
-				if ifield.typ.has_flag(.generic) {
-					if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
-						if field.typ !in inferred_types {
-							inferred_types << field.typ
+			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			// inferring interface generic types
+			for gt_name in generic_names {
+				mut inferred_type := ast.void_type
+				for ifield in inter_sym.info.fields {
+					if ifield.typ.has_flag(.generic) && c.table.get_type_name(ifield.typ) == gt_name {
+						if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
+							inferred_type = field.typ
 						}
 					}
 				}
+				for imethod in inter_sym.info.methods {
+					method := typ_sym.find_method(imethod.name) or {
+						typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
+					}
+					if imethod.return_type.has_flag(.generic) {
+						imret_sym := c.table.get_type_symbol(imethod.return_type)
+						mret_sym := c.table.get_type_symbol(method.return_type)
+						if imret_sym.info is ast.MultiReturn && mret_sym.info is ast.MultiReturn {
+							for i, mr_typ in imret_sym.info.types {
+								if mr_typ.has_flag(.generic)
+									&& c.table.get_type_name(mr_typ) == gt_name {
+									inferred_type = mret_sym.info.types[i]
+								}
+							}
+						} else if c.table.get_type_name(imethod.return_type) == gt_name {
+							mut ret_typ := method.return_type
+							if imethod.return_type.has_flag(.optional) {
+								ret_typ = ret_typ.clear_flag(.optional)
+							}
+							inferred_type = ret_typ
+						}
+					}
+					for i, iparam in imethod.params {
+						param := method.params[i] or { ast.Param{} }
+						if iparam.typ.has_flag(.generic)
+							&& c.table.get_type_name(iparam.typ) == gt_name {
+							inferred_type = param.typ
+						}
+					}
+				}
+				if inferred_type == ast.void_type {
+					c.error('could not infer generic type `$gt_name` in interface', pos)
+					return interface_type
+				}
+				inferred_types << inferred_type
 			}
+			// add concrete types to method
 			for imethod in inter_sym.info.methods {
-				method := typ_sym.find_method(imethod.name) or {
-					typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
-				}
-				if imethod.return_type.has_flag(.generic) {
-					mut inferred_type := method.return_type
-					if imethod.return_type.has_flag(.optional) {
-						inferred_type = inferred_type.clear_flag(.optional)
-					}
-					if inferred_type !in inferred_types {
-						inferred_types << inferred_type
-					}
-				}
-				for i, iparam in imethod.params {
-					param := method.params[i] or { ast.Param{} }
-					if iparam.typ.has_flag(.generic) {
-						if param.typ !in inferred_types {
-							inferred_types << param.typ
-						}
-					}
-				}
 				if inferred_types !in c.table.fn_generic_types[imethod.name] {
 					c.table.fn_generic_types[imethod.name] << inferred_types
 				}
 			}
-			if inferred_types.len == 0 {
-				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}',
-					pos)
-				return ast.void_type
-			}
-			if inferred_types.len > 1 {
-				c.error('cannot infer generic types for ${c.table.type_to_str(interface_type)}: got conflicting type information',
-					pos)
-				return ast.void_type
-			}
-			inferred_type := inferred_types[0]
-			if inferred_type !in inter_sym.info.concrete_types {
-				inter_sym.info.concrete_types << inferred_type
-			}
-			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			inter_sym.info.concrete_types = inferred_types
 			return c.unwrap_generic_type(interface_type, generic_names, inter_sym.info.concrete_types)
 		}
 	}
@@ -3441,7 +3462,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				// look for embedded field
 				has_field = true
 				mut embed_type := ast.Type(0)
-				field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+				field, embed_type = c.table.find_field_from_embeds(gs, field_name) or {
 					if err.msg != '' {
 						c.error(err.msg, node.pos)
 					}
@@ -3954,6 +3975,14 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if !left_type.is_ptr() {
 									if c.table.get_type_symbol(left_type).is_heap() {
 										left.obj.is_auto_heap = true
+									}
+								}
+								if left_type in ast.unsigned_integer_type_idxs {
+									if right is ast.IntegerLiteral {
+										if right.val[0] == `-` {
+											c.error('Cannot assign negative value to unsigned integer type',
+												right.pos)
+										}
 									}
 								}
 							}
@@ -4562,7 +4591,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.for_stmt(mut node)
 		}
 		ast.GlobalDecl {
-			c.global_decl(node)
+			c.global_decl(mut node)
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
@@ -4634,7 +4663,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 	if c.inside_defer {
 		c.error('`$node.kind.str()` is not allowed in defer statements', node.pos)
 	}
-	if c.in_for_count == 0 || c.inside_anon_fn {
+	if c.in_for_count == 0 {
 		c.error('$node.kind.str() statement not within a loop', node.pos)
 	}
 	if node.label.len > 0 {
@@ -4811,8 +4840,8 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 }
 
-fn (mut c Checker) global_decl(node ast.GlobalDecl) {
-	for field in node.fields {
+fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	for mut field in node.fields {
 		c.check_valid_snake_case(field.name, 'global name', field.pos)
 		if field.name in c.global_names {
 			c.error('duplicate global `$field.name`', field.pos)
@@ -4820,6 +4849,14 @@ fn (mut c Checker) global_decl(node ast.GlobalDecl) {
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.name`', field.typ_pos)
+		}
+		if field.expr !is ast.EmptyExpr {
+			expr_typ := c.expr(field.expr)
+			if !c.check_types(expr_typ, field.typ) {
+				got_sym := c.table.get_type_symbol(expr_typ)
+				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`',
+					field.expr.position())
+			}
 		}
 		c.global_names << field.name
 	}
@@ -5702,7 +5739,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = (node.pos.col + 1).str()
 		}
 		.vhash {
-			node.val = util.vhash()
+			node.val = version.vhash()
 		}
 		.vmod_file {
 			// cache the vmod content, do not read it many times
@@ -6622,7 +6659,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
-				c.ct_cond_stack.pop()
+				c.ct_cond_stack.delete_last()
 			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
@@ -7207,13 +7244,14 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_auto_deref_var()) || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !typ.has_flag(.shared_f)
+		&& !node.left.is_auto_deref_var()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
 				v := node.left.obj as ast.Var
 				// `mut param []T` function parameter
-				is_ok = ((v.is_mut && v.is_arg) || v.share == .shared_t) && !typ.deref().is_ptr()
+				is_ok = ((v.is_mut && v.is_arg)) && !typ.deref().is_ptr()
 			}
 		}
 		if !is_ok && !c.pref.translated {
@@ -7823,13 +7861,6 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut a ast.Attr) bool {
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.fn_level++
-	defer {
-		c.fn_level--
-	}
-	//
-	c.returns = false
-
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
@@ -7839,6 +7870,30 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return
+	}
+	// save all the state that fn_decl or inner  statements/expressions
+	// could potentially modify, since functions can be nested, due to
+	// anonymous function support, and ensure that it is restored, when
+	// fn_decl returns:
+	prev_fn_scope := c.fn_scope
+	prev_in_for_count := c.in_for_count
+	prev_inside_defer := c.inside_defer
+	prev_inside_unsafe := c.inside_unsafe
+	prev_inside_anon_fn := c.inside_anon_fn
+	prev_returns := c.returns
+	c.fn_level++
+	c.in_for_count = 0
+	c.inside_defer = false
+	c.inside_unsafe = false
+	c.returns = false
+	defer {
+		c.fn_level--
+		c.returns = prev_returns
+		c.inside_anon_fn = prev_inside_anon_fn
+		c.inside_unsafe = prev_inside_unsafe
+		c.inside_defer = prev_inside_defer
+		c.in_for_count = prev_in_for_count
+		c.fn_scope = prev_fn_scope
 	}
 	// Check generics fn/method without generic type parameters
 	mut need_generic_names := false
@@ -8066,7 +8121,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	c.returns = false
 	node.source_file = c.file
 }
 

@@ -5,7 +5,7 @@ import v.ast
 
 pub struct Amd64 {
 mut:
-	g &Gen
+	g Gen
 	// arm64 specific stuff for code generation
 }
 
@@ -601,7 +601,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0xbc) // r11 is 0xbb etc
 			}
 			else {
-				panic('unhandled mov $reg')
+				verror('unhandled mov $reg')
 			}
 		}
 		g.write32(val)
@@ -618,18 +618,17 @@ fn (mut g Gen) mul_reg(a Register, b Register) {
 			g.write8(0x48)
 			g.write8(0xf7)
 			g.write8(0xe8)
-			g.println('mul $a')
 		}
 		.rbx {
 			g.write8(0x48)
 			g.write8(0xf7)
 			g.write8(0xeb)
-			g.println('mul $a')
 		}
 		else {
 			panic('unhandled div $a')
 		}
 	}
+	g.println('mul $a')
 }
 
 fn (mut g Gen) div_reg(a Register, b Register) {
@@ -641,19 +640,18 @@ fn (mut g Gen) div_reg(a Register, b Register) {
 			g.write8(0x48)
 			g.write8(0xf7)
 			g.write8(0xf8)
-			g.println('div $a')
 		}
 		.rbx {
 			g.mov(.edx, 0)
 			g.write8(0x48)
 			g.write8(0xf7)
 			g.write8(0xfb) // idiv ebx
-			g.println('div $a')
 		}
 		else {
 			panic('unhandled div $a')
 		}
 	}
+	g.println('div $a')
 }
 
 fn (mut g Gen) sub_reg(a Register, b Register) {
@@ -661,10 +659,10 @@ fn (mut g Gen) sub_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x29)
 		g.write8(0xd8)
-		g.println('sub $a, $b')
 	} else {
 		panic('unhandled add $a, $b')
 	}
+	g.println('sub $a, $b')
 }
 
 fn (mut g Gen) add_reg(a Register, b Register) {
@@ -672,10 +670,14 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x01)
 		g.write8(0xd8)
-		g.println('add $a, $b')
+	} else if a == .rax && b == .rdi {
+		g.write8(0x48)
+		g.write8(0x01)
+		g.write8(0xf8)
 	} else {
 		panic('unhandled add $a, $b')
 	}
+	g.println('add $a, $b')
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
@@ -690,6 +692,10 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x89)
 		g.write8(0xc8)
+	} else if a == .rax && b == .rdi {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xf8)
 	} else if a == .rdi && b == .rsi {
 		g.write8(0x48)
 		g.write8(0x89)
@@ -701,6 +707,7 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 	} else {
 		verror('unhandled mov_reg combination for $a $b')
 	}
+	g.println('mov $a, $b')
 }
 
 // generates `mov rbp, rsp`
@@ -918,10 +925,20 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				ie := node.right[i] as ast.IndexExpr
 				var_name := ie.left.str()
 				mut dest := g.get_var_offset(var_name)
-				index := ie.index as ast.IntegerLiteral
-				dest += index.val.int() * 8
+				if ie.index is ast.IntegerLiteral {
+					index := ie.index
+					dest += index.val.int() * 8
+					g.mov_var_to_reg(.rax, dest)
+				} else if ie.index is ast.Ident {
+					ident := ie.index
+					var_offset := g.get_var_offset(ident.name)
+					g.mov_var_to_reg(.edi, var_offset)
+					g.mov_var_to_reg(.rax, dest)
+					g.add_reg(.rax, .rdi)
+				} else {
+					verror('only integers and idents can be used as indexes')
+				}
 				// TODO check if out of bounds access
-				g.mov_var_to_reg(.rax, dest)
 				g.mov_reg_to_var(offset, .eax)
 			}
 			ast.StringLiteral {

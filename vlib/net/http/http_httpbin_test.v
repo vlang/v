@@ -37,7 +37,7 @@ fn test_http_fetch_bare() {
 	}
 	responses := http_fetch_mock([], FetchConfig{}) or { panic(err) }
 	for response in responses {
-		assert response.status_code == 200
+		assert response.status() == .ok
 	}
 }
 
@@ -68,7 +68,7 @@ fn test_http_fetch_with_params() {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
 		// panic(err)
 		// }
-		assert response.status_code == 200
+		assert response.status() == .ok
 		// TODO
 		// assert payload.args['a'] == 'b'
 		// assert payload.args['c'] == 'd'
@@ -88,7 +88,7 @@ fn test_http_fetch_with_headers() ? {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
 		// panic(err)
 		// }
-		assert response.status_code == 200
+		assert response.status() == .ok
 		// TODO
 		// assert payload.headers['Test-Header'] == 'hello world'
 	}

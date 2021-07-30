@@ -170,6 +170,9 @@ pub fn dir(path string) string {
 		return '.'
 	}
 	pos := path.last_index(path_separator) or { return '.' }
+	if pos == 0 && path_separator == '/' {
+		return '/'
+	}
 	return path[..pos]
 }
 

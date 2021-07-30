@@ -323,6 +323,14 @@ pub fn (s string) to_lower() string {
 	return result
 }
 
+// TODO: check if that behaves the same as V's own string.replace(old_sub,new_sub):
+pub fn (s string) replace(old_sub string, new_sub string) string {
+	mut result := ''
+	#result = new string( s.str.replaceAll(old_sub.str, new_sub.str) )
+
+	return result
+}
+
 pub fn (s string) to_upper() string {
 	mut result := ''
 	#let str = s.str.toUpperCase()

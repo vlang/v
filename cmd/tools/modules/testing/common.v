@@ -266,6 +266,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
+	mut cmd_options := [ts.vargs]
+	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
+		cmd_options << ' -enable-globals'
+	}
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
@@ -285,7 +289,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
-	mut cmd_options := [ts.vargs]
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}

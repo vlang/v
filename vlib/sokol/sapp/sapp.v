@@ -27,6 +27,7 @@ pub fn create_desc() C.sg_desc {
 		context: C.sg_context_desc{
 			metal: metal_desc
 			d3d11: d3d11_desc
+			color_format: .bgra8
 		}
 		image_pool_size: 1000
 	}

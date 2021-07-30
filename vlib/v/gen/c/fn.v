@@ -180,6 +180,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
+		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return
+		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}
@@ -1306,8 +1310,16 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if arg.expr.is_lvalue() {
 					g.write('(voidptr)&/*qq*/')
 				} else {
-					needs_closing = true
-					g.write('ADDR(${g.typ(expected_deref_type)}/*qq*/, ')
+					mut atype := expected_deref_type
+					if atype.has_flag(.generic) {
+						atype = g.unwrap_generic(atype)
+					}
+					if atype.has_flag(.generic) {
+						g.write('(voidptr)&/*qq*/')
+					} else {
+						needs_closing = true
+						g.write('ADDR(${g.typ(atype)}/*qq*/, ')
+					}
 				}
 			}
 		}

@@ -54,6 +54,7 @@ V supports the following commands:
 
 Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`, `v help build-native`
 Use "v help other" to see less frequently used commands.
+Use "v help topics" to see a list of all known help topics.
 
 Note: Help is required to write more help topics.
 Only build, new, init, doc, fmt, vet, run, test, watch, search, install, remove, update, bin2v, check-md are properly documented currently.

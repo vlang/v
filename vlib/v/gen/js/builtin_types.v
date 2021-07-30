@@ -19,8 +19,8 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	mut styp := ''
 	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' }
 	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal,
-		.size_t {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal, .size_t {
 			styp = '$prefix${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
@@ -37,6 +37,9 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 		}
 		.struct_ {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
+		}
+		.voidptr {
+			styp = 'null'
 		}
 		else {
 			// TODO
@@ -100,6 +103,9 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 		.array {
 			styp = 'array'
 		}
+		.voidptr {
+			styp = 'any'
+		}
 		else {
 			// TODO
 			styp = 'undefined'
@@ -126,8 +132,8 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal,
-		.size_t {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal, .size_t {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
@@ -356,6 +362,17 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of: 'this.arr'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
 					eq: 'vEq(this, other)'
+				)
+			}
+			'any' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					val_name: 'any'
+					default_value: 'null'
+					constructor: 'this.val = any'
+					value_of: 'this.val'
+					to_string: '"&" + this.val'
+					eq: 'this == other' // compare by ptr
 				)
 			}
 			else {}

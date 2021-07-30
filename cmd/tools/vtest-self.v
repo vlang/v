@@ -10,6 +10,7 @@ const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit

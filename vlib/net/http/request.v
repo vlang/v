@@ -56,7 +56,9 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
-		if resp.status_code !in [301, 302, 303, 307, 308] {
+		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+			.permanent_redirect,
+		] {
 			break
 		}
 		// follow any redirects

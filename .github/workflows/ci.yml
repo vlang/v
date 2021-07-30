@@ -9,7 +9,14 @@ on:
       - "**.md"
 
 jobs:
+  no-scheduling:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dont schedule all jobs
+        run: sleep 10
+
   code-formatting-perf-regressions:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
@@ -40,8 +47,9 @@ jobs:
         run: cmd/tools/repeat --max_time 1201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -106,8 +114,9 @@ jobs:
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
 
   ubuntu-tcc-boehm-gc:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -160,8 +169,9 @@ jobs:
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
   misc-tooling:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -230,9 +240,10 @@ jobs:
 
 
   alpine-docker-musl-gcc:
+    needs: no-scheduling
     name: alpine-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     container:
       # Alpine docker pre-built container
       image: thevlang/vlang:alpine-build
@@ -259,8 +270,9 @@ jobs:
           ./v -silent test-self
 
   macos:
+    needs: no-scheduling
     runs-on: macOS-latest
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc clang
     steps:
@@ -347,8 +359,9 @@ jobs:
           ../v run examples/build_examples.vsh
 
   ubuntu:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -442,8 +455,9 @@ jobs:
   #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc clang
     steps:
@@ -525,7 +539,7 @@ jobs:
 
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
-  #    timeout-minutes: 60
+  #    timeout-minutes: 121
   #    env:
   #      VFLAGS: -cc gcc
   #    steps:
@@ -537,9 +551,10 @@ jobs:
 
   # Ubuntu docker pre-built container
   ubuntu-musl:
+    needs: no-scheduling
     name: ubuntu-musl
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -565,7 +580,7 @@ jobs:
 
   #   ubuntu-musl:
   #     runs-on: ubuntu-20.04
-  #     timeout-minutes: 60
+  #     timeout-minutes: 121
   #     env:
   #       VFLAGS: -cc musl-gcc
   #       V_CI_MUSL: 1
@@ -589,8 +604,9 @@ jobs:
   #       run: ./v -silent test-self
 
   windows-gcc:
+    needs: no-scheduling
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc gcc
     steps:
@@ -631,8 +647,9 @@ jobs:
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
+    needs: no-scheduling
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
     steps:
@@ -674,8 +691,9 @@ jobs:
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-tcc:
+    needs: no-scheduling
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1
@@ -761,9 +779,10 @@ jobs:
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   parser-silent:
+    needs: no-scheduling
     name: Parser silent mode
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2
       - name: Install zzuf
@@ -800,8 +819,9 @@ jobs:
           ./v test-parser -S examples/2048/2048_fuzz.v
 
   v-apps-compile:
+    needs: no-scheduling
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2
       - name: Build V

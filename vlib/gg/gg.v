@@ -144,9 +144,11 @@ pub mut:
 	scroll_x      int
 	scroll_y      int
 	//
-	key_modifiers Modifier
-	key_repeat    bool
-	pressed_keys  [key_code_max]bool
+	key_modifiers     Modifier // the current key modifiers
+	key_repeat        bool     // whether the pressed key was an autorepeated one
+	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
+	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
+	// *before* the current event was different
 }
 
 pub struct Size {
@@ -311,7 +313,10 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	g.key_repeat = e.key_repeat
 	if e.typ in [.key_down, .key_up] {
 		key_idx := int(e.key_code) % key_code_max
-		g.pressed_keys[key_idx] = e.typ == .key_down
+		prev := g.pressed_keys[key_idx]
+		next := e.typ == .key_down
+		g.pressed_keys[key_idx] = next
+		g.pressed_keys_edge[key_idx] = prev != next
 	}
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
