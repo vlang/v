@@ -2937,24 +2937,15 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		pos := p.tok.position()
 		name := p.check_name()
 		has_expr := p.tok.kind == .assign
+		mut expr := ast.empty_expr()
+		mut typ := ast.void_type
+		mut typ_pos := token.Position{}
 		if has_expr {
 			p.next() // =
-		}
-		typ_pos := p.tok.position()
-		typ := p.parse_type()
-		if p.tok.kind == .assign {
-			p.error('global assign must have the type around the value, use `name = type(value)`')
-			return ast.GlobalDecl{}
-		}
-		mut expr := ast.empty_expr()
-		if has_expr {
-			if p.tok.kind != .lpar {
-				p.error('global assign must have a type and value, use `name = type(value)` or `name type`')
-				return ast.GlobalDecl{}
-			}
-			p.next() // (
 			expr = p.expr(0)
-			p.check(.rpar)
+		} else {
+			typ_pos = p.tok.position()
+			typ = p.parse_type()
 		}
 		field := ast.GlobalField{
 			name: name
