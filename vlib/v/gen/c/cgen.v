@@ -5018,20 +5018,14 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		eprintln('> styp: $styp | cname: $cname | ct_value: $ct_value | $ct_value.type_name()')
 	}
 	match ct_value {
-		byte {
+		i8 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
-		rune {
-			rune_code := u32(ct_value)
-			if rune_code <= 255 {
-				if rune_code in [`"`, `\\`, `\'`] {
-					return false
-				}
-				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
-				g.const_decl_write_precomputed(styp, cname, "'$escval'")
-			} else {
-				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
-			}
+		i16 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		int {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
 		i64 {
 			if typ == ast.int_type {
@@ -5049,11 +5043,35 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				g.const_decl_write_precomputed(styp, cname, ct_value.str())
 			}
 		}
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u16 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u32 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
 		u64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
 		}
+		f32 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
 		f64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
