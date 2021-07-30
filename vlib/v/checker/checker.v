@@ -4828,13 +4828,12 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.name`', field.typ_pos)
 		}
-		if field.expr !is ast.EmptyExpr {
-			expr_typ := c.expr(field.expr)
-			if !c.check_types(expr_typ, field.typ) {
-				got_sym := c.table.get_type_symbol(expr_typ)
-				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`',
-					field.expr.position())
+		if field.has_expr {
+			field.typ = c.expr(field.expr)
+			mut v := c.file.global_scope.find_global(field.name) or {
+				panic('internal compiler error - could not find global in scope')
 			}
+			v.typ = c.table.mktyp(field.typ)
 		}
 		c.global_names << field.name
 	}
