@@ -160,3 +160,10 @@ pub fn (mut a array) prepend(val voidptr) {
 pub fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
+
+pub fn (a array) reverse() array {
+	mut res := array{}
+	#res = Array.from(a.arr).reverse()
+
+	return res
+}
