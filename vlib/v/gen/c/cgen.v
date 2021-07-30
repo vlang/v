@@ -5028,6 +5028,9 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
 		i64 {
+			if typ == ast.i64_type {
+				return false
+			}
 			if typ == ast.int_type {
 				// TODO: use g.const_decl_write_precomputed here too.
 				// For now, use #define macros, so existing code compiles
