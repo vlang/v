@@ -1079,6 +1079,7 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 		g.write('; ')
 	}
 	if it.has_cond {
+		g.write('+') // convert to number or boolean
 		g.expr(it.cond)
 	}
 	g.write('; ')
@@ -1174,6 +1175,7 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 	if it.is_inf {
 		g.write('true')
 	} else {
+		g.write('+') // convert expr to number or boolean
 		g.expr(it.cond)
 	}
 	g.writeln(') {')
@@ -1708,7 +1710,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	if it.op == .eq || it.op == .ne {
 		// Shallow equatables
 		if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
+			// wrap left expr in parens so binary operations will work correctly.
+			g.write('(')
 			g.expr(it.left)
+			g.write(')')
 			g.write('.eq(')
 			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
@@ -1754,14 +1759,15 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		mut needs_cast := is_arithmetic && it.left_type != it.right_type
 		mut greater_typ := 0
-		if needs_cast {
+		// todo(playX): looks like this cast is always required to perform .eq operation on types.
+		if true || needs_cast {
 			greater_typ = g.greater_typ(it.left_type, it.right_type)
 			if g.cast_stack.len > 0 {
 				needs_cast = g.cast_stack.last() != greater_typ
 			}
 		}
 
-		if needs_cast {
+		if true || needs_cast {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
 			}
@@ -1772,7 +1778,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(' $it.op ')
 		g.expr(it.right)
 
-		if needs_cast {
+		if true || needs_cast {
 			g.cast_stack.delete_last()
 			g.write(')')
 		}
