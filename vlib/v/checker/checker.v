@@ -4235,6 +4235,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 	}
+	if node.left_types.len != node.left.len {
+		c.error('assign statement left type number mismatch', node.pos)
+	}
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
