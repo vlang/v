@@ -2943,6 +2943,38 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if has_expr {
 			p.next() // =
 			expr = p.expr(0)
+			match expr {
+				ast.CastExpr {
+					typ = (expr as ast.CastExpr).typ
+				}
+				ast.StructInit {
+					typ = (expr as ast.StructInit).typ
+				}
+				ast.ArrayInit {
+					typ = (expr as ast.ArrayInit).typ
+				}
+				ast.ChanInit {
+					typ = (expr as ast.ChanInit).typ
+				}
+				ast.BoolLiteral, ast.IsRefType {
+					typ = ast.bool_type
+				}
+				ast.CharLiteral {
+					typ = ast.char_type
+				}
+				ast.FloatLiteral {
+					typ = ast.f64_type
+				}
+				ast.IntegerLiteral, ast.SizeOf {
+					typ = ast.int_type
+				}
+				ast.StringLiteral, ast.StringInterLiteral {
+					typ = ast.string_type
+				}
+				else {
+					// type will be deduced by checker
+				}
+			}
 		} else {
 			typ_pos = p.tok.position()
 			typ = p.parse_type()
