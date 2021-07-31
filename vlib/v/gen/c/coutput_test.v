@@ -6,7 +6,7 @@ import v.util.vtest
 
 const vexe = @VEXE
 
-const vroot = os.real_path(@VMODROOT).replace('./', '')
+const vroot = os.real_path(@VMODROOT)
 
 const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
 
@@ -161,9 +161,17 @@ fn ensure_compilation_succeeded(compilation os.Result) {
 }
 
 fn target2paths(target_path string, postfix string) (string, string, string, string) {
+	eprintln('')
+	eprintln('> target2paths $target_path | postfix: $postfix')
 	basename := os.file_name(target_path).replace(postfix, '')
-	path := os.join_path(os.dir(target_path), '${basename}.vv')
+	eprintln('           basename: $basename')
+	target_dir := os.dir(target_path)
+	eprintln('         target_dir: $target_dir')
+	path := os.join_path(target_dir, '${basename}.vv')
+	eprintln('               path: $path')
 	relpath := vroot_relative(path)
+	eprintln('            relpath: $relpath')
 	target_relpath := vroot_relative(target_path)
+	eprintln('     target_relpath: $target_relpath')
 	return basename, path, relpath, target_relpath
 }
