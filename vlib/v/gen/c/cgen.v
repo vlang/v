@@ -231,7 +231,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		table: table
 		pref: pref
 		fn_decl: 0
-		is_autofree: true
+		is_autofree: pref.autofree
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
@@ -285,7 +285,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				table: global_g.table
 				pref: global_g.pref
 				fn_decl: 0
-				is_autofree: true
 				indent: -1
 				module_built: global_g.module_built
 				timers: local_timers
@@ -2120,6 +2119,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := g.table.mktyp(got_type_raw)
 	exp_sym := g.table.get_type_symbol(expected_type)
+	got_sym := g.table.get_type_symbol(got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
 	// allow using the new Error struct as a string, to avoid a breaking change
