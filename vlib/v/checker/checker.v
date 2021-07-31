@@ -1203,7 +1203,7 @@ pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_e
 		// If no check, then ref check get skipped because it can prevent loops e.g. in ast.Scope
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !has_update_expr
 			&& !c.pref.translated && !field.attrs.contains('no_check') {
-			// c.error('reference field `${prefix}.$field.name` must be initialized', pos)
+			c.error('reference field `${prefix}.$field.name` must be initialized', pos)
 		}
 
 		// Do not allow empty uninitialized interfaces

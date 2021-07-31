@@ -9,7 +9,12 @@ fn test_macho() {
 		pref: &pref.Preferences{}
 		out_name: 'test.bin'
 		table: ast.new_table()
-		cgen: native.Amd64{}
+		cgen: native.Amd64{
+			g: native.Gen{
+				pref: &pref.Preferences{}
+				table: ast.new_table()
+			}
+		}
 	}
 	g.generate_macho_header()
 	g.generate_macho_footer()
