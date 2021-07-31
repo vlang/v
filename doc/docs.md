@@ -131,6 +131,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
+    * [Calling V from C](#calling-v-from-c)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
@@ -4267,6 +4268,23 @@ fn main() {
 	C.sqlite3_close(db)
 }
 ```
+
+## Calling V from C
+
+Since V can compile to C, calling V code from C is very easy.
+
+By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
+
+For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
+
+To use a custom export name, use the `[export]` attribute:
+
+```
+[export: 'my_custom_c_name']
+fn foo() {
+}
+```
+
 
 ## Atomics
 
