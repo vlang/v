@@ -2937,24 +2937,47 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		pos := p.tok.position()
 		name := p.check_name()
 		has_expr := p.tok.kind == .assign
+		mut expr := ast.empty_expr()
+		mut typ := ast.void_type
+		mut typ_pos := token.Position{}
 		if has_expr {
 			p.next() // =
-		}
-		typ_pos := p.tok.position()
-		typ := p.parse_type()
-		if p.tok.kind == .assign {
-			p.error('global assign must have the type around the value, use `name = type(value)`')
-			return ast.GlobalDecl{}
-		}
-		mut expr := ast.empty_expr()
-		if has_expr {
-			if p.tok.kind != .lpar {
-				p.error('global assign must have a type and value, use `name = type(value)` or `name type`')
-				return ast.GlobalDecl{}
-			}
-			p.next() // (
 			expr = p.expr(0)
-			p.check(.rpar)
+			match expr {
+				ast.CastExpr {
+					typ = (expr as ast.CastExpr).typ
+				}
+				ast.StructInit {
+					typ = (expr as ast.StructInit).typ
+				}
+				ast.ArrayInit {
+					typ = (expr as ast.ArrayInit).typ
+				}
+				ast.ChanInit {
+					typ = (expr as ast.ChanInit).typ
+				}
+				ast.BoolLiteral, ast.IsRefType {
+					typ = ast.bool_type
+				}
+				ast.CharLiteral {
+					typ = ast.char_type
+				}
+				ast.FloatLiteral {
+					typ = ast.f64_type
+				}
+				ast.IntegerLiteral, ast.SizeOf {
+					typ = ast.int_type
+				}
+				ast.StringLiteral, ast.StringInterLiteral {
+					typ = ast.string_type
+				}
+				else {
+					// type will be deduced by checker
+				}
+			}
+		} else {
+			typ_pos = p.tok.position()
+			typ = p.parse_type()
 		}
 		field := ast.GlobalField{
 			name: name

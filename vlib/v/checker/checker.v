@@ -134,9 +134,23 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			}
 		}
 	}
-	for stmt in ast_file.stmts {
-		c.expr_level = 0
-		c.stmt(stmt)
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.ConstDecl || stmt is ast.ExprStmt {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
+	}
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.GlobalDecl {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
+	}
+	for mut stmt in ast_file.stmts {
+		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
 	}
 	c.check_scope_vars(c.file.scope)
 }
@@ -4831,13 +4845,12 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.name`', field.typ_pos)
 		}
-		if field.expr !is ast.EmptyExpr {
-			expr_typ := c.expr(field.expr)
-			if !c.check_types(expr_typ, field.typ) {
-				got_sym := c.table.get_type_symbol(expr_typ)
-				c.error('cannot initialize global variable `$field.name` of type `$sym.name` with expression of type `$got_sym.name`',
-					field.expr.position())
+		if field.has_expr {
+			field.typ = c.expr(field.expr)
+			mut v := c.file.global_scope.find_global(field.name) or {
+				panic('internal compiler error - could not find global in scope')
 			}
+			v.typ = c.table.mktyp(field.typ)
 		}
 		c.global_names << field.name
 	}
@@ -5569,7 +5582,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
 		}
-	} else if node.typ == ast.bool_type && !c.inside_unsafe {
+	} else if node.typ == ast.bool_type && node.expr_type != ast.bool_type && !c.inside_unsafe {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 	} else if node.expr_type == ast.none_type && !node.typ.has_flag(.optional) {
 		type_name := c.table.type_to_str(node.typ)
