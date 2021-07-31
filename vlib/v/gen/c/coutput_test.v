@@ -12,6 +12,13 @@ const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
 
 const diff_cmd = diff.find_working_diff_command() or { '' }
 
+fn test_windows() ? {
+	$if windows {
+		eprintln('this test can not run on windows for now')
+		exit(0)
+	}
+}
+
 fn test_out_files() ? {
 	eprintln('> vroot: $vroot')
 	println(term.colorize(term.green, '> testing whether .out files match:'))
@@ -160,18 +167,23 @@ fn ensure_compilation_succeeded(compilation os.Result) {
 	}
 }
 
+[if etrace ?]
+fn etrace(msg string) {
+	eprintln(msg)
+}
+
 fn target2paths(target_path string, postfix string) (string, string, string, string) {
-	eprintln('')
-	eprintln('> target2paths $target_path | postfix: $postfix')
+	etrace('')
+	etrace('> target2paths $target_path | postfix: $postfix')
 	basename := os.file_name(target_path).replace(postfix, '')
-	eprintln('           basename: $basename')
+	etrace('           basename: $basename')
 	target_dir := os.dir(target_path)
-	eprintln('         target_dir: $target_dir')
+	etrace('         target_dir: $target_dir')
 	path := os.join_path(target_dir, '${basename}.vv')
-	eprintln('               path: $path')
+	etrace('               path: $path')
 	relpath := vroot_relative(path)
-	eprintln('            relpath: $relpath')
+	etrace('            relpath: $relpath')
 	target_relpath := vroot_relative(target_path)
-	eprintln('     target_relpath: $target_relpath')
+	etrace('     target_relpath: $target_relpath')
 	return basename, path, relpath, target_relpath
 }
