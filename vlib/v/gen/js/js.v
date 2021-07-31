@@ -433,9 +433,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	g.inc_indent()
 	for stmt in stmts {
-		cur_fn_decl := g.fn_decl
 		g.stmt(stmt)
-		g.fn_decl = cur_fn_decl
 	}
 	g.dec_indent()
 }
@@ -966,7 +964,9 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	if g.inside_builtin {
 		g.builtin_fns << it.name
 	}
+	cur_fn_decl := g.fn_decl
 	g.gen_method_decl(it)
+	g.fn_decl = cur_fn_decl
 }
 
 fn fn_has_go(node ast.FnDecl) bool {
