@@ -13,7 +13,9 @@ struct App {
 }
 
 fn main() {
-	vweb.run(&App{}, port)
+	mut app := &App{}
+	app.init_server()
+	vweb.run(app, port)
 }
 
 pub fn (mut app App) init_server() {
@@ -23,7 +25,7 @@ pub fn (mut app App) init_server() {
 	// app.handle_static('assets')
 	// This would make available all known static mime types from current
 	// directory and below.
-	app.handle_static('.', false)
+	app.handle_static('assets', true)
 }
 
 pub fn (mut app App) index() vweb.Result {
