@@ -352,7 +352,7 @@ echo.
 echo Target:
 echo     build[default]                    Compiles V using the given C compiler
 echo     clean                             Clean build artifacts and debugging symbols
-echo     clean-all                         Cleanup entire ALL build artifacts and vc repository
+echo     cleanall                         Cleanup entire ALL build artifacts and vc repository
 echo     help                              Display usage help for the given target
 echo.
 echo Examples:
@@ -372,7 +372,7 @@ echo Usage:
 echo     make.bat help [target]
 echo.
 echo Target:
-echo     build ^| clean ^| clean-all ^| help    Query given target
+echo     build ^| clean ^| cleanall ^| help    Query given target
 exit /b 0
 
 :help_clean
@@ -386,7 +386,7 @@ exit /b 0
 
 :help_cleanall
 echo Usage:
-echo     make.bat clean-all
+echo     make.bat cleanall
 echo.
 echo Options:
 echo    --logfile PATH                    Use the specified PATH as the log
