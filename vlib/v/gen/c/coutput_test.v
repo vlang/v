@@ -6,13 +6,14 @@ import v.util.vtest
 
 const vexe = @VEXE
 
-const vroot = @VMODROOT
+const vroot = os.real_path(@VMODROOT).replace('./', '')
 
 const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
 
 const diff_cmd = diff.find_working_diff_command() or { '' }
 
 fn test_out_files() ? {
+	eprintln('> vroot: $vroot')
 	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot)
 	output_path := os.join_path(os.temp_dir(), 'coutput', 'out')
@@ -147,7 +148,7 @@ fn normalize_panic_message(message string, vroot string) string {
 }
 
 fn vroot_relative(path string) string {
-	return path.replace(os.path_separator, '/').replace('$vroot/', '')
+	return path.replace(os.path_separator, '/').replace('$vroot/', '').replace('./', '')
 }
 
 fn ensure_compilation_succeeded(compilation os.Result) {
