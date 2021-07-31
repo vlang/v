@@ -165,10 +165,11 @@ pub fn file_ext(path string) string {
 // If the path is empty, dir returns ".". If the path consists entirely of separators,
 // dir returns a single separator.
 // The returned path does not end in a separator unless it is the root directory.
-pub fn dir(path string) string {
-	if path == '' {
+pub fn dir(opath string) string {
+	if opath == '' {
 		return '.'
 	}
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -180,10 +181,11 @@ pub fn dir(path string) string {
 // Trailing path separators are removed before extracting the last element.
 // If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
 // single separator.
-pub fn base(path string) string {
-	if path == '' {
+pub fn base(opath string) string {
+	if opath == '' {
 		return '.'
 	}
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	if path == path_separator {
 		return path_separator
 	}
@@ -198,7 +200,8 @@ pub fn base(path string) string {
 
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
-pub fn file_name(path string) string {
+pub fn file_name(opath string) string {
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	return path.all_after_last(path_separator)
 }
 
@@ -363,7 +366,8 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		if exepath.contains(path_separator) {
+		rexepath := exepath.replace_each(['/', path_separator, r'\', path_separator])
+		if rexepath.contains(path_separator) {
 			exepath = join_path(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
