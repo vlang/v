@@ -479,7 +479,7 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.pref.out_name.ends_with('/-') {
+	if v.pref.should_output_to_stdout() {
 		// output to stdout
 		content := os.read_file(v.out_name_c) or { panic(err) }
 		println(content)

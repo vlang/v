@@ -695,6 +695,10 @@ pub fn (pref &Preferences) vrun_elog(s string) {
 	}
 }
 
+pub fn (pref &Preferences) should_output_to_stdout() bool {
+	return pref.out_name.ends_with('/-') || pref.out_name.ends_with(r'\-')
+}
+
 pub fn arch_from_string(arch_str string) ?Arch {
 	match arch_str {
 		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
