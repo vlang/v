@@ -6,12 +6,12 @@ import strings
 import v.ast
 
 fn (mut g Gen) equality_fn(typ ast.Type) string {
-	g.needed_equality_fns << typ
+	g.needed_equality_fns << typ.set_nr_muls(0)
 	return g.typ(g.unwrap_generic(typ).set_nr_muls(0))
 }
 
 fn (mut g Gen) gen_equality_fns() {
-	for _, needed_typ in g.needed_equality_fns {
+	for needed_typ in g.needed_equality_fns {
 		if needed_typ in g.generated_eq_fns {
 			continue
 		}
