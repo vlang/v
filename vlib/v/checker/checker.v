@@ -140,7 +140,12 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.stmt(stmt)
 		}
 	}
-	// check for globals is done in `c.check_files()` for now
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.GlobalDecl {
+			c.expr_level = 0
+			c.stmt(stmt)
+		}
+	}
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
@@ -193,20 +198,8 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
-	// globals are "project global" at the moment - so check them
-	// before modules/files are checked for anything else
-	for file in ast_files {
-		c.timers.start('checker_check_globals $file.path')
-		c.change_current_file(file)
-		for stmt in file.stmts {
-			if stmt is ast.GlobalDecl {
-				c.expr_level = 0
-				c.stmt(stmt)
-			}
-		}
-		c.timers.show('checker_check_globals $file.path')
-	}
-	for file in ast_files {
+	for i in 0 .. ast_files.len {
+		file := unsafe { ast_files[i] }
 		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
