@@ -1989,3 +1989,32 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	}
 	return res
 }
+
+// is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
+pub fn (expr Expr) is_literal() bool {
+	match expr {
+		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral {
+			return true
+		}
+		PrefixExpr {
+			return expr.right.is_literal()
+		}
+		InfixExpr {
+			return expr.left.is_literal() && expr.right.is_literal()
+		}
+		ParExpr {
+			return expr.expr.is_literal()
+		}
+		CastExpr {
+			return !expr.has_arg && expr.expr.is_literal()
+				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
+				|| expr.typ in [i8_type, i16_type, int_type, i64_type, byte_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+		}
+		SizeOf, IsRefType {
+			return expr.is_type || expr.expr.is_literal()
+		}
+		else {
+			return false
+		}
+	}
+}

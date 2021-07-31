@@ -6,6 +6,12 @@ fn C.wyhash(&byte, u64, u64, &u64) u64
 
 fn C.wyhash64(u64, u64) u64
 
+fn init() {
+	_ := map{
+		1: 1
+	}
+}
+
 [inline]
 pub fn wyhash_c(key &byte, len u64, seed u64) u64 {
 	return C.wyhash(key, len, seed, &u64(C._wyp))

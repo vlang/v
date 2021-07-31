@@ -715,10 +715,16 @@ jobs:
       - name: v doctor
         run: |
           ./v doctor
+
       - name: Verify `v test` works
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
+
+      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        run: |
+          .\v.exe vlib/v/gen/c/coutput_test.v
+
       - name: Make sure running TCC64 instead of TCC32
         run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
 
@@ -753,10 +759,15 @@ jobs:
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
         run: ./v doctor
+
       - name: Verify `v test` works
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
+
+      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        run: |
+          .\v.exe vlib/v/gen/c/coutput_test.v
 
       - name: Make sure running TCC32 instead of TCC64
         run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v

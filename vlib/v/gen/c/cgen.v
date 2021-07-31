@@ -4905,7 +4905,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
-			if node.exprs[0] !is ast.Ident {
+			// Just in case of defer statements exists, that the return values cannot
+			// be modified.
+			if node.exprs[0] !is ast.Ident || use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
 				use_tmp_var = false
@@ -5021,22 +5023,19 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		eprintln('> styp: $styp | cname: $cname | ct_value: $ct_value | $ct_value.type_name()')
 	}
 	match ct_value {
-		byte {
+		i8 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
-		rune {
-			rune_code := u32(ct_value)
-			if rune_code <= 255 {
-				if rune_code in [`"`, `\\`, `\'`] {
-					return false
-				}
-				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
-				g.const_decl_write_precomputed(styp, cname, "'$escval'")
-			} else {
-				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
-			}
+		i16 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		int {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
 		i64 {
+			if typ == ast.i64_type {
+				return false
+			}
 			if typ == ast.int_type {
 				// TODO: use g.const_decl_write_precomputed here too.
 				// For now, use #define macros, so existing code compiles
@@ -5052,11 +5051,35 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				g.const_decl_write_precomputed(styp, cname, ct_value.str())
 			}
 		}
+		byte {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u16 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		u32 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
 		u64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str() + 'U')
 		}
+		f32 {
+			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
 		f64 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
+		}
+		rune {
+			rune_code := u32(ct_value)
+			if rune_code <= 255 {
+				if rune_code in [`"`, `\\`, `\'`] {
+					return false
+				}
+				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				g.const_decl_write_precomputed(styp, cname, "'$escval'")
+			} else {
+				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())
+			}
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
@@ -5138,8 +5161,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		styp := g.typ(field.typ)
 		if field.has_expr {
-			g.definitions.writeln('$mod$styp $field.name;')
-			g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+			g.definitions.write_string('$mod$styp $field.name')
+			if field.expr.is_literal() {
+				g.definitions.writeln(' = ${g.expr_string(field.expr)}; // global')
+			} else {
+				g.definitions.writeln(';')
+				g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+			}
 		} else {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' {

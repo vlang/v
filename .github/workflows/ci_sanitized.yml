@@ -1,12 +1,55 @@
 name: Sanitized CI
 
+## Running these jobs is slow (over ~1 hour, sometimes even 2)
+## so we run them only when there is a chance that the generated
+## C code could have changed, or for some critical vlib modules,
+## like `builtin`, `os`, `sync`, where they have demonstrated
+## their usefulness by catching actual very hard to find bugs.
+## The cost of this selective running is delayed feedback when
+## there are bugs in other V modules.
+## The positive is *much faster CI runs* for most V contributors,
+## that make PRs that are not concerning V itself, or the critical
+## V modules.
+
 on:
   push:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
   pull_request:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
 
 jobs:
   no-scheduling:

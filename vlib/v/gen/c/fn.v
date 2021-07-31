@@ -71,7 +71,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	unsafe {
 		g.fn_decl = &node
 	}
-	if node.name == 'main.main' {
+	if node.is_main {
 		g.has_main = true
 	}
 	if node.name == 'backtrace' || node.name == 'backtrace_symbols'
@@ -196,8 +196,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
 
-	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
-		&& name != 'main__main' && node.name != 'str' {
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
+		&& node.name != 'str' {
 		mut key := node.name
 		if node.is_method {
 			sym := g.table.get_type_symbol(node.receiver.typ)
@@ -435,7 +435,13 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 				}
 			}
 			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
-			s := '$arg_type_name $var_name_prefix$caname'
+			const_prefix := if arg.typ.is_any_kind_of_pointer() && !arg.is_mut
+				&& arg.name.starts_with('const_') {
+				'const '
+			} else {
+				''
+			}
+			s := '$const_prefix$arg_type_name $var_name_prefix$caname'
 			g.write(s)
 			g.definitions.write_string(s)
 			fargs << caname
