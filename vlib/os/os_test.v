@@ -533,11 +533,15 @@ fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
 		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/c') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/') == 'C:\\a\\b'
 	} $else {
 		assert os.dir('/') == '/'
 		assert os.dir('/abc') == '/'
 		assert os.dir('/var/tmp/foo') == '/var/tmp'
 		assert os.dir('/var/tmp/') == '/var/tmp'
+		assert os.dir('C:\\a\\b\\c') == 'C:/a/b'
+		assert os.dir('C:\\a\\b\\') == 'C:/a/b'
 	}
 	assert os.dir('os') == '.'
 }
@@ -546,9 +550,13 @@ fn test_base() {
 	$if windows {
 		assert os.base('v\\vlib\\os') == 'os'
 		assert os.base('v\\vlib\\os\\') == 'os'
+		assert os.base('v/vlib/os') == 'os'
+		assert os.base('v/vlib/os/') == 'os'
 	} $else {
 		assert os.base('v/vlib/os') == 'os'
 		assert os.base('v/vlib/os/') == 'os'
+		assert os.base('v\\vlib\\os') == 'os'
+		assert os.base('v\\vlib\\os\\') == 'os'
 	}
 	assert os.base('filename') == 'filename'
 }
