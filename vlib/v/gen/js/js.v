@@ -964,7 +964,9 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	if g.inside_builtin {
 		g.builtin_fns << it.name
 	}
+	cur_fn_decl := g.fn_decl
 	g.gen_method_decl(it)
+	g.fn_decl = cur_fn_decl
 }
 
 fn fn_has_go(node ast.FnDecl) bool {
@@ -1043,6 +1045,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.writeln('$name = new array($name);')
 		}
 	}
+
 	g.stmts(it.stmts)
 	g.write('}')
 	if is_main {
