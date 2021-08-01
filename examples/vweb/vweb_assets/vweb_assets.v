@@ -15,6 +15,7 @@ struct App {
 fn main() {
 	mut app := &App{}
 	app.serve_static('/favicon.ico', 'favicon.ico')
+	// Automatically make available known static mime types found in given directory.
 	app.handle_static('assets', true)
 	vweb.run(app, port)
 }
