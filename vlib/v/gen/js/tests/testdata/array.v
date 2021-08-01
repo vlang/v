@@ -10,6 +10,23 @@ const (
 	c_n = 5
 )
 
+struct User {
+	age  int
+	name string
+}
+
+fn map_test_helper_1(i int) int {
+	return i * i
+}
+
+fn map_test_helper_2(i int, b string) int {
+	return i + b.len
+}
+
+fn map_test_helper_3(i int, b []string) int {
+	return i + b.map(it.len)[i % b.len]
+}
+
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
@@ -510,21 +527,245 @@ fn main() {
 		println([1, 5, 10].filter(filter_test_helper_1))
 	}
 	{
-		// todo(playX): RUNTIME ERROR: Invalid memory access
-		/*
 		// test anon fn filter
 		filter_num := fn (i int) bool {
 			return i % 2 == 0
 		}
-		assert [1, 2, 3, 4, 5].filter(filter_num) == [2, 4]
-		*/
+		println([1, 2, 3, 4, 5].filter(filter_num))
 	}
 	{
-		/*
 		a := [1, 2, 3, 4].filter(fn (i int) bool {
 			return i % 2 == 0
 		})
-		assert a == [2, 4]
+		println(a)
+	}
+	{
+		// test map
+		nums := [1, 2, 3, 4, 5, 6]
+		strs := ['v', 'is', 'awesome']
+		// assert nums.map() == <error>
+		// assert nums.map(it, 'excessive') == <error>
+		// identity
+		println(nums.map(it))
+		println(strs.map(it))
+		println(nums.map(it - it))
+		println(nums.map(it - it)[0])
+		// type switch
+		println(nums.map(it * 10))
+		println(nums.map(it * it))
+		println(nums.map('$it'))
+		println(nums.map(it % 2 == 0))
+		println(strs.map(it.to_upper()))
+		println(strs.map(it == 'awesome'))
+		println(strs.map(it.len in nums))
+		println(strs.map(int(7)))
+		// external func
+		println(nums.map(map_test_helper_1(it)))
+		println(nums.map(map_test_helper_2(it, 'bb')))
+		println(nums.map(map_test_helper_3(it, strs)))
+		// empty array as input
+		println([]int{len: 0}.map(it * 2))
+		// nested maps (where it is of same type)
+		println(nums.map(strs.map(int(7)) == [7, 7, 7]))
+		println(nums.map('$it' + strs.map('a')[0]))
+		// assert nums.map(it + strs.map(int(7))[0]) == [8, 9, 10, 11, 12, 13]
+		println(nums.map(it + strs.map(it.len)[0]))
+		println(strs.map(it.len + strs.map(it.len)[0]))
+		// nested (different it types)
+		// todo(playX): this one produces invalid JS code.
+		// assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
+		println(nums[0..3].map('$it' + strs.map(it)[it - 1]))
+		println(nums.map(map_test_helper_1))
+		println([1, 5, 10].map(map_test_helper_1))
+		println(nums)
+		println(strs)
+	}
+	{
+		// test anon fn map
+		add_num := fn (i int) int {
+			return i + 1
+		}
+		println([1, 2, 3].map(add_num))
+	}
+	{
+		// test multi anon fn map
+		a := [1, 2, 3].map(fn (i int) int {
+			return i + 1
+		})
+		b := [1, 2, 3].map(fn (i int) int {
+			return i + 2
+		})
+		println(a)
+		println(b)
+	}
+	{
+		// test anon fn arg map
+		a := [1, 2, 3].map(fn (i int) int {
+			return i + 1
+		})
+		println(a)
+	}
+	{
+		// test anon fn arg different type map
+		i_to_str := fn (i int) string {
+			return i.str()
+		}
+		a := [1, 2, 3].map(i_to_str)
+		println(a)
+	}
+	{
+		// test anon fn inline different type map
+		a := [1, 2, 3].map(fn (i int) string {
+			return i.str()
+		})
+		println(a)
+	}
+	{
+		// test array str
+		// todo(playX): JS array formatting should match what default builtin impl has.
+		/*
+		numbers := [1, 2, 3]
+		assert numbers == [1, 2, 3]
+		numbers2 := [numbers, [4, 5, 6]] // dup str() bug
+		println(numbers2)
+		assert true
+		assert numbers.str() == '[1, 2, 3]'
 		*/
+	}
+	{
+		// test eq
+		println([5, 6, 7] != [6, 7])
+		println([`a`, `b`] == [`a`, `b`])
+		println([User{
+			age: 22
+			name: 'bob'
+		}] == [User{
+			age: 22
+			name: 'bob'
+		}])
+		// todo(playX): map cmp does not work yet
+		/*
+		assert [map{
+			'bob': 22
+		}, map{
+			'tom': 33
+		}] == [map{
+			'bob': 22
+		}, map{
+			'tom': 33
+		}]*/
+		println([[1, 2, 3], [4]] == [[1, 2, 3], [4]])
+	}
+	{
+		// test fixed array eq
+		a1 := [1, 2, 3]!
+		println(a1 == [1, 2, 3]!)
+		println(a1 != [2, 3, 4]!)
+
+		a2 := [[1, 2]!, [3, 4]!]!
+		println(a2 == [[1, 2]!, [3, 4]!]!)
+		println(a2 != [[3, 4]!, [1, 2]!]!)
+
+		a3 := [[1, 2], [3, 4]]!
+		println(a3 == [[1, 2], [3, 4]]!)
+		println(a3 != [[1, 1], [2, 2]]!)
+
+		a4 := [[`a`, `b`], [`c`, `d`]]!
+		println(a4 == [[`a`, `b`], [`c`, `d`]]!)
+		println(a4 != [[`c`, `a`], [`a`, `b`]]!)
+
+		a5 := [['aaa', 'bbb'], ['ccc', 'ddd']]!
+		println(a5 == [['aaa', 'bbb'], ['ccc', 'ddd']]!)
+		println(a5 != [['abc', 'def'], ['ccc', 'ddd']]!)
+
+		a6 := [['aaa', 'bbb']!, ['ccc', 'ddd']!]!
+		println(a6 == [['aaa', 'bbb']!, ['ccc', 'ddd']!]!)
+		println(a6 != [['aaa', 'bbb']!, ['aaa', 'ddd']!]!)
+
+		a7 := [[1, 2]!, [3, 4]!]
+		println(a7 == [[1, 2]!, [3, 4]!])
+		println(a7 != [[2, 3]!, [1, 2]!])
+
+		a8 := [['aaa', 'bbb']!, ['ccc', 'ddd']!]
+		println(a8 == [['aaa', 'bbb']!, ['ccc', 'ddd']!])
+		println(a8 != [['bbb', 'aaa']!, ['cccc', 'dddd']!])
+	}
+	{
+		// test fixed array literal eq
+		println([1, 2, 3]! == [1, 2, 3]!)
+		println([1, 1, 1]! != [1, 2, 3]!)
+
+		println([[1, 2], [3, 4]]! == [[1, 2], [3, 4]]!)
+		println([[1, 1], [2, 2]]! != [[1, 2], [3, 4]]!)
+
+		println([[1, 1]!, [2, 2]!]! == [[1, 1]!, [2, 2]!]!)
+		println([[1, 1]!, [2, 2]!]! != [[1, 2]!, [2, 3]!]!)
+
+		println([[1, 1]!, [2, 2]!] == [[1, 1]!, [2, 2]!])
+		println([[1, 1]!, [2, 2]!] != [[1, 2]!, [2, 3]!])
+	}
+	{
+		// test sort
+		mut a := ['hi', '1', '5', '3']
+		a.sort()
+		println(a)
+
+		mut nums := [67, -3, 108, 42, 7]
+		nums.sort()
+		println(nums)
+		assert nums[0] == -3
+		assert nums[1] == 7
+		assert nums[2] == 42
+		assert nums[3] == 67
+		assert nums[4] == 108
+		// todo(playX): add codegen for comparator fn passed
+		/*
+		nums.sort(a < b)
+		assert nums[0] == -3
+		assert nums[1] == 7
+		assert nums[2] == 42
+		assert nums[3] == 67
+		assert nums[4] == 108
+
+		mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
+		users.sort(a.age < b.age)
+		assert users[0].age == 20
+		assert users[1].age == 22
+		assert users[2].age == 25
+		assert users[0].name == 'Bob'
+		assert users[1].name == 'Peter'
+		assert users[2].name == 'Alice'
+
+		users.sort(a.age > b.age)
+		assert users[0].age == 25
+		assert users[1].age == 22
+		assert users[2].age == 20
+
+		users.sort(a.name < b.name) // Test sorting by string fields
+		*/
+	}
+	{
+		// test rune sort
+		mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
+		bs.sort()
+		println(bs)
+
+		/*
+		bs.sort(a > b)
+		println(bs)
+		assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+
+		bs.sort(a < b)
+		println(bs)
+		assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+		*/
+	}
+	{
+		// test f32 sort
+		mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
+		f.sort()
+		println(f[0])
+		println(f[1])
+		println(f[6])
 	}
 }

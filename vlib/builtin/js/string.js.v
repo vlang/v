@@ -3,7 +3,7 @@ module builtin
 pub struct string {
 pub:
 	str JS.String
-	len u32
+	len int
 }
 
 pub fn (s string) slice(a int, b int) string {

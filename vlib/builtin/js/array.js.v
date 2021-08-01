@@ -87,8 +87,21 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	#a.arr.sort(compare)
 }
 
+#function $sortComparator(a, b)
+#{
+#"use strict";
+#a = a.$toJS();
+#b = b.$toJS();
+#
+#if (a > b) return 1;
+#if (a < b) return -1;
+#return 0;
+#
+#
+#}
+
 pub fn (mut a array) sort() {
-	#a.arr.sort()
+	#a.arr.sort($sortComparator)
 }
 
 pub fn (a array) index(v string) int {
@@ -137,7 +150,7 @@ pub fn (a array) str() string {
 
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { return this.arr.entries(); }
-#array.prototype.map = function(callback) { return this.arr.map(callback); }
+#array.prototype.map = function(callback) { return new builtin.array(this.arr.map(callback)); }
 #array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
 // delete deletes array element at index `i`.
