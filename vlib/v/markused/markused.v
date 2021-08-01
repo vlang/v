@@ -258,12 +258,18 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		}
 		for itype in interface_info.types {
 			pitype := itype.set_nr_muls(1)
+			mut itypes := [itype]
+			if pitype != itype {
+				itypes << pitype
+			}
 			for method in interface_info.methods {
-				interface_implementation_method_name := '${pitype}.$method.name'
-				$if trace_skip_unused_interface_methods ? {
-					eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+				for typ in itypes {
+					interface_implementation_method_name := '${int(typ)}.$method.name'
+					$if trace_skip_unused_interface_methods ? {
+						eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+					}
+					all_fn_root_names << interface_implementation_method_name
 				}
-				all_fn_root_names << interface_implementation_method_name
 			}
 		}
 	}
