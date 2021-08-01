@@ -619,7 +619,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_type_cast_expr(node)
 		}
 		ast.CharLiteral {
-			g.write("'$node.val'")
+			// todo(playX): char type?
+			g.write("new builtin.string('$node.val')")
 		}
 		ast.Comment {}
 		ast.ConcatExpr {
@@ -1312,8 +1313,9 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		}
 		g.writeln('}`')
 		g.dec_indent()
-		g.writeln('}')
+		g.writeln('},')
 	}
+	g.writeln('\$toJS() { return this; }')
 	g.dec_indent()
 	g.writeln('};\n')
 	if node.is_pub {
