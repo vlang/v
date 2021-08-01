@@ -49,6 +49,7 @@ fn (mut g Gen) dec(reg Register) {
 		.r12 { g.write8(0xc4) }
 		else { panic('unhandled inc $reg') }
 	}
+	g.println('dec $reg')
 }
 
 fn (mut g Gen) inc(reg Register) {
@@ -58,22 +59,44 @@ fn (mut g Gen) inc(reg Register) {
 		.r12 { g.write8(0xc4) }
 		else { panic('unhandled inc $reg') }
 	}
+	g.println('inc $reg')
 }
 
 fn (mut g Gen) cmp(reg Register, size Size, val i64) {
-	g.write8(0x49)
 	// Second byte depends on the size of the value
 	match size {
-		._8 { g.write8(0x83) }
-		._32 { g.write8(0x81) }
-		else { panic('unhandled cmp') }
+		._8 {
+			g.write8(0x48)
+			g.write8(0x83)
+		}
+		._32 {
+			g.write8(0x4a)
+			g.write8(0x81)
+		}
+		else {
+			panic('unhandled cmp')
+		}
 	}
 	// Third byte depends on the register being compared to
 	match reg {
 		.r12 { g.write8(0xfc) }
+		.rsi { g.write8(0x3f) }
+		.eax { g.write8(0xf8) }
+		.rbx { g.write8(0xfb) }
 		else { panic('unhandled cmp') }
 	}
-	g.write8(int(val))
+	match size {
+		._8 {
+			g.write8(int(val))
+		}
+		._32 {
+			g.write32(int(val))
+		}
+		else {
+			panic('unhandled cmp')
+		}
+	}
+	g.println('cmp $reg, $val')
 }
 
 /*
@@ -106,22 +129,22 @@ fn (mut g Gen) inc_var(var_name string) {
 	g.println('inc_var `$var_name`')
 }
 
-// Returns the position of the address to jump to (set later).
-fn (mut g Gen) jne() int {
-	g.write16(0x850f)
+enum JumpOp {
+	je = 0x840f
+	jne = 0x850f
+	jge = 0x8d0f
+	jle = 0x8e0f
+}
+
+fn (mut g Gen) cjmp(op JumpOp) int {
+	g.write16(u16(op))
 	pos := g.pos()
 	g.write32(placeholder)
-	g.println('jne')
+	g.println('$op')
 	return int(pos)
 }
 
-fn (mut g Gen) jge() int {
-	g.write16(0x8d0f)
-	pos := g.pos()
-	g.write32(placeholder)
-	g.println('jne')
-	return int(pos)
-}
+// Returns the position of the address to jump to (set later).
 
 fn (mut g Gen) jmp(addr int) {
 	g.write8(0xe9)
@@ -133,7 +156,7 @@ fn abs(a i64) i64 {
 	return if a < 0 { -a } else { a }
 }
 
-fn (mut g Gen) jle(addr i64) {
+fn (mut g Gen) tmp_jle(addr i64) {
 	// Calculate the relative offset to jump to
 	// (`addr` is absolute address)
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
@@ -992,23 +1015,79 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
-	mut jne_addr := 0 // location of `jne *00 00 00 00*`
+	mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
 	match mut infix_expr.left {
+		ast.IntegerLiteral {
+			match mut infix_expr.right {
+				ast.IntegerLiteral {
+					// 3 < 4
+					a0 := infix_expr.left.val.int()
+					// a0 := (infix_expr.left as ast.IntegerLiteral).val.int()
+					a1 := (infix_expr.right as ast.IntegerLiteral).val.int()
+					// TODO. compute at compile time
+					g.mov(.eax, a0)
+					g.cmp(.eax, ._32, a1)
+				}
+				ast.Ident {
+					// 3 < var
+					// lit := infix_expr.right as ast.IntegerLiteral
+					// g.cmp_var(infix_expr.left.name, lit.val.int())
+					// +not
+					verror('unsupported if construction')
+				}
+				else {
+					verror('unsupported if construction')
+				}
+			}
+		}
 		ast.Ident {
-			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(infix_expr.left.name, lit.val.int())
-			jne_addr = g.jne()
+			match mut infix_expr.right {
+				ast.IntegerLiteral {
+					// var < 4
+					lit := infix_expr.right as ast.IntegerLiteral
+					g.cmp_var(infix_expr.left.name, lit.val.int())
+				}
+				ast.Ident {
+					// var < var2
+					verror('unsupported if construction')
+				}
+				else {
+					verror('unsupported if construction')
+				}
+			}
 		}
 		else {
+			dump(node)
 			verror('unhandled infix.left')
+		}
+	}
+	cjmp_addr = match infix_expr.op {
+		.gt {
+			g.cjmp(.jle)
+		}
+		.lt {
+			g.cjmp(.jge)
+		}
+		.ne {
+			g.cjmp(.je)
+		}
+		.eq {
+			g.cjmp(.jne)
+		}
+		else {
+			g.cjmp(.je)
 		}
 	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
 	// The value is the relative address, difference between current position and the location
 	// after `jne 00 00 00 00`
-	// println('after if g.pos=$g.pos() jneaddr=$jne_addr')
-	g.write32_at(jne_addr, int(g.pos() - jne_addr - 4)) // 4 is for "00 00 00 00"
+	// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
+	g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
+
+	if node.has_else {
+		verror('else statements not yet supported')
+	}
 }
 
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
@@ -1020,7 +1099,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
 			g.cmp_var(infix_expr.left.name, lit.val.int())
-			jump_addr = g.jge()
+			jump_addr = g.cjmp(.jge)
 		}
 		else {
 			verror('unhandled infix.left')
