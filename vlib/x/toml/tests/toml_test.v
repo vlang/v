@@ -28,6 +28,15 @@ fn test_parse_file() {
 	assert title == toml.Any('TOML Example')
 	assert title as string == 'TOML Example'
 
+	owner_name := toml_doc.value('owner.name')
+	assert owner_name as string == 'Tom Preston-Werner'
+
+	/*
+	TODO currently fails
+	database_server := toml_doc.value('database.server')
+	assert database_server as string == '192.168.1.1'
+	*/
+	// NOTE Kept for easier testing:
 	// dump(toml_doc.ast)
 	// assert false
 }

@@ -5,6 +5,7 @@ module toml
 
 import os
 import x.toml.ast
+import x.toml.util
 import x.toml.input
 import x.toml.scanner
 import x.toml.parser
@@ -91,8 +92,14 @@ pub fn parse(toml string) Doc {
 // value queries a value from the TOML document.
 pub fn (d Doc) value(key string) Any {
 	values := d.ast.table as map[string]ast.Value
-	value := values[key]
+	return d.get_map_value(values, key)
+}
 
+// map_value queries a value from `value_map`.
+fn (d Doc) get_map_value(value_map map[string]ast.Value, key string) Any {
+	key_split := key.split('.')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	value := value_map[key_split[0]]
 	// `match` isn't very good for these types of constructs...
 	if value is ast.Quoted {
 		return Any((value as ast.Quoted).text)
@@ -108,11 +115,10 @@ pub fn (d Doc) value(key string) Any {
 			return Any(true)
 		}
 		return Any(false)
+	} else if value is map[string]ast.Value {
+		m := (value as map[string]ast.Value)
+		return d.get_map_value(m, key_split[1..].join('.'))
 	}
-	/*
-	TODO else if value is map[string]ast.Value {
-		return value(???)
-	}*/
 	// TODO add more types
 	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
 	return Any('')
