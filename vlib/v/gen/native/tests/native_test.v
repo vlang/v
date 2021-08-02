@@ -32,20 +32,21 @@ fn test_native() {
 	for test in tests {
 		bench.step()
 		full_test_path := os.real_path(os.join_path(dir, test))
+		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
-		work_test_path := '$wrkdir/x.v'
-		os.cp(full_test_path, work_test_path) or {}
-		cmd := '$vexe -o exe -native $work_test_path'
+		work_test_path := '$wrkdir/$test_file_name'
+		exe_test_path := '$wrkdir/${test_file_name}.exe'
+		cmd := '"$vexe" -o "$exe_test_path" -b native "$full_test_path"'
 		if is_verbose {
 			println(cmd)
 		}
 		res_native := os.execute(cmd)
 		if res_native.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('native $test failed'))
+			eprintln(bench.step_message_fail(cmd))
 			continue
 		}
-		res := os.execute('./exe')
+		res := os.execute(exe_test_path)
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('$full_test_path failed to run'))

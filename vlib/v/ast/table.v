@@ -35,6 +35,7 @@ pub mut:
 	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
+	enum_decls         map[string]EnumDecl
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 
@@ -655,6 +656,11 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	t.type_symbols[typ_idx].idx = typ_idx
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
+}
+
+[inline]
+pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
+	t.enum_decls[enum_decl.name] = enum_decl
 }
 
 pub fn (t &Table) known_type(name string) bool {

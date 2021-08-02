@@ -1145,7 +1145,7 @@ import crypto.sha256
 import mymod.sha256 as mysha256
 
 fn main() {
-	v_hash := mysha256.sum('hi'.bytes()).hex()
+	v_hash := sha256.sum('hi'.bytes()).hex()
 	my_hash := mysha256.sum('hi'.bytes()).hex()
 	assert my_hash == v_hash
 }

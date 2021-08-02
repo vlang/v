@@ -107,7 +107,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.only_check_syntax {
 		return
 	}
-	if b.pref.out_name.ends_with('/-') {
+	if b.pref.should_output_to_stdout() {
 		return
 	}
 	if b.pref.os == .ios {

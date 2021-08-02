@@ -100,6 +100,16 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 	return none
 }
 
+pub fn (s &Scope) find_global(name string) ?&GlobalField {
+	if obj := s.find(name) {
+		match obj {
+			GlobalField { return &obj }
+			else {}
+		}
+	}
+	return none
+}
+
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
 		match obj {
