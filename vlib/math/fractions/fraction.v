@@ -16,8 +16,8 @@ import math.bits
 // 3. If provided d is negative, it will be made positive. n will change as well.
 struct Fraction {
 pub:
-	n i64
-	d i64
+	n          i64
+	d          i64
 	is_reduced bool
 }
 
