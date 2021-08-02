@@ -131,9 +131,9 @@ pub fn parse_iso8601(s string) ?Time {
 	}
 	mut unix_time := t.unix
 	if unix_offset < 0 {
-		unix_time -= u64(-unix_offset)
+		unix_time -= (-unix_offset)
 	} else if unix_offset > 0 {
-		unix_time += u64(unix_offset)
+		unix_time += unix_offset
 	}
 	t = unix2(i64(unix_time), t.microsecond)
 	return t

@@ -58,8 +58,8 @@ fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 fn C.QueryPerformanceFrequency(&u64) C.BOOL
 
-fn make_unix_time(t C.tm) int {
-	return int(C._mkgmtime(&t))
+fn make_unix_time(t C.tm) i64 {
+	return i64(C._mkgmtime(&t))
 }
 
 fn init_win_time_freq() u64 {
@@ -91,7 +91,7 @@ fn vpc_now() u64 {
 }
 
 // local_as_unix_time returns the current local time as unix time
-fn local_as_unix_time() int {
+fn local_as_unix_time() i64 {
 	t := C.time(0)
 	tm := C.localtime(&t)
 	return make_unix_time(tm)
@@ -117,7 +117,7 @@ pub fn (t Time) local() Time {
 		minute: st_local.minute
 		second: st_local.second // These are the same
 		microsecond: st_local.millisecond * 1000
-		unix: u64(st_local.unix_time())
+		unix: st_local.unix_time()
 	}
 	return t_local
 }
@@ -140,7 +140,7 @@ fn win_now() Time {
 		minute: st_local.minute
 		second: st_local.second
 		microsecond: st_local.millisecond * 1000
-		unix: u64(st_local.unix_time())
+		unix: st_local.unix_time()
 	}
 	return t
 }
@@ -161,13 +161,13 @@ fn win_utc() Time {
 		minute: st_utc.minute
 		second: st_utc.second
 		microsecond: st_utc.millisecond * 1000
-		unix: u64(st_utc.unix_time())
+		unix: st_utc.unix_time()
 	}
 	return t
 }
 
 // unix_time returns Unix time.
-pub fn (st SystemTime) unix_time() int {
+pub fn (st SystemTime) unix_time() i64 {
 	tt := C.tm{
 		tm_sec: st.second
 		tm_min: st.minute
