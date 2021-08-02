@@ -58,24 +58,10 @@ enum Size {
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
-			arm64 := Arm64{
-				g: Gen{
-					cgen: CodeGen(*(&Arm64(voidptr(0))))
-					pref: &pref.Preferences{}
-					table: ast.new_table()
-				}
-			}
-			return arm64
+			return Arm64{}
 		}
 		.amd64 {
-			amd64 := Amd64{
-				g: Gen{
-					cgen: CodeGen(*(&Amd64(voidptr(0))))
-					pref: &pref.Preferences{}
-					table: ast.new_table()
-				}
-			}
-			return amd64
+			return Amd64{}
 		}
 		else {}
 	}
