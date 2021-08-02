@@ -26,7 +26,7 @@ pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
-	cgen                 CodeGen
+	cgen                 CodeGen          [no_check]
 	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
