@@ -29,7 +29,7 @@ vlib/v/checker/tests/array_or_map_assign_err.vv:10:7: error: cannot copy map: ca
 vlib/v/checker/tests/array_or_map_assign_err.vv:25:8: error: cannot copy map: call `move` or `clone` method (or use a reference)
    23 |
    24 | fn foo(mut m map[string]int) {
-   25 |     m2 := m
+   25 |     m2 := *m
       |           ^
    26 |     m['foo'] = 100
-   27 |     println(m)
+   27 |     println(*m)

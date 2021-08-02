@@ -94,12 +94,12 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 
 fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ? {
 	for data in d.data {
-		err := bind(stmt, c, data)
+		err := bind(stmt, *c, data)
 
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
-		c++
+		(*c)++
 	}
 }
 

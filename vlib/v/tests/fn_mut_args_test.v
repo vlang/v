@@ -1,7 +1,9 @@
 fn func(mut a []int) {
-	a = [1, 2, 3, 4]
-	println('inside fn: $a')
-	assert '$a' == '[1, 2, 3, 4]'
+	unsafe {
+		*a = [1, 2, 3, 4]
+	}
+	println('inside fn: ${*a}')
+	assert '${*a}' == '[1, 2, 3, 4]'
 }
 
 fn test_fn_mut_args_of_array() {
@@ -12,8 +14,10 @@ fn test_fn_mut_args_of_array() {
 }
 
 fn init_map(mut n map[string]int) {
-	n = map{
-		'one': 1
+	unsafe {
+		*n = map{
+			'one': 1
+		}
 	}
 }
 
@@ -32,7 +36,7 @@ pub mut:
 }
 
 fn pass_array_mut(mut ar []int) int {
-	if ar.len > 0 && ar.last() == 99 {
+	if ar.len > 0 && (*ar).last() == 99 {
 		return 99
 	}
 	return 0
@@ -58,7 +62,7 @@ mut:
 }
 
 fn (mut p Parent) add(mut x ChildInterface) {
-	p.children << x
+	p.children << *x
 }
 
 fn test_fn_mut_args_of_interface() {

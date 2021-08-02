@@ -118,8 +118,8 @@ pub mut:
 	typ Type
 }
 
-pub fn (f Fn) new_method_with_receiver_type(new_type Type) Fn {
-	mut new_method := f
+pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
+	mut new_method := *f
 	new_method.params = f.params.clone()
 	for i in 1 .. new_method.params.len {
 		if new_method.params[i].typ == new_method.params[0].typ {
@@ -130,8 +130,8 @@ pub fn (f Fn) new_method_with_receiver_type(new_type Type) Fn {
 	return new_method
 }
 
-pub fn (f FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
-	mut new_method := f
+pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+	mut new_method := *f
 	new_method.params = f.params.clone()
 	for i in 1 .. new_method.params.len {
 		if new_method.params[i].typ == new_method.params[0].typ {

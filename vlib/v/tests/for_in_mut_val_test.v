@@ -1,6 +1,8 @@
 fn foo1(mut arr []int) {
 	for _, mut j in arr {
-		j *= 2
+		unsafe {
+			*j *= 2
+		}
 	}
 }
 
@@ -13,7 +15,9 @@ fn test_for_in_mut_val_of_array() {
 
 fn foo2(mut arr [3]int) {
 	for _, mut j in arr {
-		j *= 2
+		unsafe {
+			*j *= 2
+		}
 	}
 }
 
@@ -41,7 +45,9 @@ fn test_fn_mut_val_of_map() {
 
 fn foo4(mut m map[string][3]int) {
 	for _, mut j in m['hello'] {
-		j *= 2
+		unsafe {
+			*j *= 2
+		}
 	}
 }
 
@@ -60,7 +66,9 @@ fn test_for_in_mut_val_of_map_direct() {
 		'bar': 2
 	}
 	for _, mut j in m {
-		j = 3
+		unsafe {
+			*j = 3
+		}
 	}
 	println(m)
 	assert '$m' == "{'foo': 3, 'bar': 3}"
@@ -76,9 +84,11 @@ fn test_for_in_mut_val_of_map_fixed_array() {
 		}]!
 	}
 	for _, mut j in m {
-		j = [map{
-			'c': 3
-		}]!
+		unsafe {
+			*j = [map{
+				'c': 3
+			}]!
+		}
 	}
 	println(m)
 	assert '$m' == "{'foo': [{'c': 3}], 'bar': [{'c': 3}]}"
@@ -89,8 +99,10 @@ fn test_for_in_mut_val_of_string() {
 	mut c := ['a', 'b']
 	mut ret := []string{}
 	for mut a in c {
-		a = a + b
-		ret << a
+		unsafe {
+			*a = *a + b
+		}
+		ret << *a
 	}
 	println(ret)
 	assert ret == ['ac', 'bc']
@@ -101,8 +113,10 @@ fn test_for_in_mut_val_of_float() {
 	println(values)
 
 	for mut v in values {
-		v = 1.
-		v = v + 1.
+		unsafe {
+			*v = 1.
+			*v = *v + 1.
+		}
 	}
 	println(values)
 	assert values == [2., 2, 2]

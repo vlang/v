@@ -68,7 +68,9 @@ fn mut_alias(mut ps PZZMyStructInt) int {
 	//	dump(ptr_str(voidptr(ps)))
 	another := &MyStructInt{789}
 	//	dump(ptr_str(voidptr(another)))
-	ps = PZZMyStructInt(another)
+	unsafe {
+		*ps = PZZMyStructInt(another)
+	}
 	//	dump(ptr_str(voidptr(ps)))
 	return 123
 }

@@ -60,20 +60,20 @@ pub fn (cmd Command) str() string {
 }
 
 // is_root returns `true` if this `Command` has no parents.
-pub fn (cmd Command) is_root() bool {
+pub fn (cmd &Command) is_root() bool {
 	return isnil(cmd.parent)
 }
 
 // root returns the root `Command` of the command chain.
-pub fn (cmd Command) root() Command {
+pub fn (cmd &Command) root() Command {
 	if cmd.is_root() {
-		return cmd
+		return *cmd
 	}
 	return cmd.parent.root()
 }
 
 // full_name returns the full `string` representation of all commands int the chain.
-pub fn (cmd Command) full_name() string {
+pub fn (cmd &Command) full_name() string {
 	if cmd.is_root() {
 		return cmd.name
 	}

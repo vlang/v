@@ -16,8 +16,8 @@ fn test_for_mut_in_array_of_fixed_array() {
 	mut arr := [][2]int{len: 3}
 
 	for mut pair in arr {
-		println(pair)
-		rets << '$pair'
+		println(*pair)
+		rets << '${*pair}'
 	}
 	assert rets[0] == '[0, 0]'
 	assert rets[1] == '[0, 0]'
@@ -42,8 +42,8 @@ fn test_for_mut_in_fixed_array_of_fixed_array() {
 	mut arr := [[1, 2]!, [3, 4]!, [5, 6]!]!
 
 	for mut pair in arr {
-		println(pair)
-		rets << '$pair'
+		println(*pair)
+		rets << '${*pair}'
 	}
 	assert rets[0] == '[1, 2]'
 	assert rets[1] == '[3, 4]'
@@ -104,8 +104,8 @@ fn test_for_mut_in_map_of_fixed_array() {
 	}
 
 	for k, mut v in m {
-		println('$k, $v')
-		rets << '$k, $v'
+		println('$k, ${*v}')
+		rets << '$k, ${*v}'
 	}
 	assert rets[0] == 'aa, [1, 2]'
 	assert rets[1] == 'bb, [3, 4]'

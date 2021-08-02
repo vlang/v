@@ -518,7 +518,9 @@ fn test_rmdir_all() {
 	mut dirs := ['some/dir', 'some/.hidden/directory']
 	$if windows {
 		for mut d in dirs {
-			d = d.replace('/', '\\')
+			unsafe {
+				*d = d.replace('/', '\\')
+			}
 		}
 	}
 	for d in dirs {

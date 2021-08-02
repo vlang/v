@@ -762,7 +762,9 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
-						method = imethod
+						unsafe {
+							*method = imethod
+						}
 					}
 				}
 			}
@@ -870,7 +872,9 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {
-									method = imethod
+									unsafe {
+										*method = imethod
+									}
 								}
 							}
 						}
@@ -4381,7 +4385,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.get_type_symbol(typ)
 					if typ_sym.kind != .interface_ {
-						c.mark_as_referenced(mut &expr, true)
+						c.mark_as_referenced(mut expr, true)
 					}
 				}
 				continue

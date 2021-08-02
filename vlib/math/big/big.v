@@ -212,11 +212,11 @@ pub fn (a &Number) is_zero() bool {
 }
 
 pub fn (mut a Number) inc() {
-	C.bignum_inc(&a)
+	C.bignum_inc(a)
 }
 
 pub fn (mut a Number) dec() {
-	C.bignum_dec(&a)
+	C.bignum_dec(a)
 }
 
 pub fn pow(a &Number, b &Number) Number {

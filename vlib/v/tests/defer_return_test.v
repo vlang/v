@@ -9,7 +9,7 @@ fn mut_x(mut x Hwe) &Hwe {
 	// defer statement should not have run, yet
 	assert n == 10
 	x.n += 5
-	return &x
+	return x
 }
 
 fn deferer() &Hwe {
@@ -61,7 +61,7 @@ fn option_return_good(mut a Qwe) ?Qwe {
 		a.n += 7
 	}
 	a.n += 3
-	return a
+	return *a
 }
 
 fn test_defer_opt_return() {

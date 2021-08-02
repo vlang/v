@@ -36,9 +36,11 @@ fn test_complex_map_high_order_fixed_array() {
 		}]!]!
 	}
 	for _, mut j in m {
-		j = [[map{
-			'c': 3
-		}]!]!
+		unsafe {
+			*j = [[map{
+				'c': 3
+			}]!]!
+		}
 	}
 	println(m)
 	assert '$m' == "{'foo': [[{'c': 3}]], 'bar': [[{'c': 3}]]}"

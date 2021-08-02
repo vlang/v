@@ -1611,21 +1611,21 @@ pub fn (expr Expr) is_lit() bool {
 }
 
 pub fn (expr Expr) is_auto_deref_var() bool {
-	match expr {
-		Ident {
-			if expr.obj is Var {
-				if expr.obj.is_auto_deref {
-					return true
-				}
-			}
-		}
-		PrefixExpr {
-			if expr.op == .amp && expr.right.is_auto_deref_var() {
-				return true
-			}
-		}
-		else {}
-	}
+	// match expr {
+	// 	Ident {
+	// 		if expr.obj is Var {
+	// 			if expr.obj.is_auto_deref {
+	// 				return true
+	// 			}
+	// 		}
+	// 	}
+	// 	PrefixExpr {
+	// 		if expr.op == .amp && expr.right.is_auto_deref_var() {
+	// 			return true
+	// 		}
+	// 	}
+	// 	else {}
+	// }
 	return false
 }
 

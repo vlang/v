@@ -20,19 +20,21 @@ fn get_keys_and_values<T>(mut keys []string, mut values []string, mut data T) ([
 			values << data.$(field.name)
 		}
 	}
-	return keys, values, data
+	return *keys, *values, *data
 }
 
 fn awesome<T>(mut data T) {
 	mut keys := []string{}
 	mut values := []string{}
-	keys, values, data = get_keys_and_values(mut keys, mut values, mut data)
+	unsafe {
+		keys, values, *data = get_keys_and_values(mut keys, mut values, mut data)
+	}
 	println(keys)
 	assert keys == ['lang', 'page', 'var_one', 'var_two']
 	println(values)
 	assert values == ['vlang', 'one', 'variable one', 'variable two']
-	println(data)
-	assert '$data'.contains("title: 'what a title'")
+	println(*data)
+	assert '${*data}'.contains("title: 'what a title'")
 }
 
 fn test_generic_fn_infer_multi_paras() {
@@ -41,7 +43,7 @@ fn test_generic_fn_infer_multi_paras() {
 		page: 'one'
 		var_one: 'variable one'
 		var_two: 'variable two'
-		var_three: {
+		var_three: Two_data{
 			title: 'what a title'
 			content: 'what a content'
 		}
