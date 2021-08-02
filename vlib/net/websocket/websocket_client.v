@@ -38,7 +38,7 @@ pub mut:
 	state             State    // current state of connection
 	logger            &log.Log // logger used to log messages
 	resource_name     string   // name of current resource
-	last_pong_ut      u64      // last time in unix time we got a pong message
+	last_pong_ut      i64      // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
