@@ -45,7 +45,9 @@ fn (mut h HighScore) save() {
 }
 
 fn (mut h HighScore) load() {
-	unsafe { *h = (os.read_file(high_score_file_path) or { '' }).int() }
+	unsafe {
+		*h = (os.read_file(high_score_file_path) or { '' }).int()
+	}
 }
 
 struct App {
