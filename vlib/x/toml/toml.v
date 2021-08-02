@@ -102,6 +102,12 @@ pub fn (d Doc) value(key string) Any {
 			return Any(str.f64())
 		}
 		return Any(str.i64())
+	} else if value is ast.Bool {
+		str := (value as ast.Bool).text
+		if str == 'true' {
+			return Any(true)
+		}
+		return Any(false)
 	}
 	/*
 	TODO else if value is map[string]ast.Value {

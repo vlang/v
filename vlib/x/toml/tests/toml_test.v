@@ -34,17 +34,55 @@ fn test_parse_file() {
 
 fn test_parse_text() {
 	toml_doc := toml.parse_text(toml_text)
-	title := toml_doc.value('title')
-	assert title == toml.Any('TOML Example')
-	assert title as string == 'TOML Example'
+	value := toml_doc.value('title')
+	assert value == toml.Any('TOML Example')
+	assert value as string == 'TOML Example'
 }
 
 fn test_i64() {
 	toml_txt := 'i64 = 120'
-	toml_doc := toml.parse_text(toml_txt)
+	toml_doc := toml.parse(toml_txt)
 
 	value := toml_doc.value('i64')
 	assert value == toml.Any(i64(120))
 	assert value as i64 == 120
 }
 
+fn test_bool() {
+	toml_txt := 'bool_true = true
+bool_false = false'
+	toml_doc := toml.parse(toml_txt)
+
+	value_true := toml_doc.value('bool_true')
+	assert value_true == toml.Any(true)
+	assert value_true as bool == true
+	assert value_true != toml.Any(false)
+	assert value_true as bool != false
+
+	value_false := toml_doc.value('bool_false')
+	assert value_false == toml.Any(false)
+	assert value_false as bool == false
+	assert value_false != toml.Any(true)
+	assert value_false as bool != true
+}
+
+/*
+TODO enable me when fixed
+fn test_key_is_not_value() {
+	toml_txt := 'true = true
+false = false'
+	toml_doc := toml.parse(toml_txt)
+
+	value_true := toml_doc.value('true')
+	assert value_true == toml.Any(true)
+	assert value_true as bool == true
+	assert value_true != toml.Any(false)
+	assert value_true as bool != false
+
+	value_false := toml_doc.value('false')
+	assert value_false == toml.Any(false)
+	assert value_false as bool == false
+	assert value_false != toml.Any(true)
+	assert value_false as bool != true
+}
+*/
