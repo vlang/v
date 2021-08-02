@@ -114,7 +114,11 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name st
 			sym := g.table.get_type_symbol(field.typ)
 			g.write('(orm__TableField){')
 			g.write('.name = _SLIT("$field.name"),')
-			g.write('.typ = ${int(field.typ)},')
+			mut typ := int(field.typ)
+			if sym.name == 'time.Time' {
+				typ = -2
+			}
+			g.write('.typ = $typ,')
 			g.write('.is_arr = ${sym.kind == .array}, ')
 			g.write('.is_time = ${int(g.table.get_type_name(field.typ) == 'time__Time')},')
 			g.write('.default_val = (string){.str = (byteptr) "$field.default_val", .is_lit = 1},')
@@ -151,7 +155,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for f in node.fields {
 		sym := g.table.get_type_symbol(f.typ)
-		if sym.kind == .struct_ {
+		if sym.kind == .struct_ && sym.name != 'time.Time' {
 			subs << node.sub_structs[int(f.typ)]
 		} else if sym.kind == .array {
 			mut f_key := ''
@@ -206,12 +210,12 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 				continue
 			}
 			mut sym := g.table.get_type_symbol(f.typ)
-			if sym.kind == .struct_ {
+			mut typ := sym.cname
+			if sym.kind == .struct_ && typ != 'time__Time' {
 				g.write('(*(orm__Primitive*) array_get($last_ids_arr, $structs)),')
 				structs++
 				continue
 			}
-			mut typ := sym.cname
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
@@ -571,6 +575,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		for field in select_fields {
 			g.write('_SLIT("${g.get_field_name(field)}"),')
 			sym := g.table.get_type_symbol(field.typ)
+			if sym.name == 'time.Time' {
+				types << -2
+				continue
+			}
 			if sym.kind == .struct_ {
 				types << int(ast.int_type)
 				continue
@@ -664,7 +672,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		for i, field in fields {
 			sel := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get($res, $idx)), $i))'
 			sym := g.table.get_type_symbol(field.typ)
-			if sym.kind == .struct_ {
+			if sym.kind == .struct_ && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(field.typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
@@ -819,7 +827,7 @@ fn (mut g Gen) get_field_name(field ast.StructField) string {
 		}
 	}
 	sym := g.table.get_type_symbol(field.typ)
-	if sym.kind == .struct_ {
+	if sym.kind == .struct_ && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
 	return name
