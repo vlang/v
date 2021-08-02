@@ -1210,13 +1210,13 @@ pub fn (mut c Checker) check_init_struct_fields(pos token.Position, has_update_e
 		return
 	}
 	for field in info.fields {
-		if field.has_default_expr || field.name in inited_fields {
+		if field.has_default_expr || field.name in inited_fields || field.attrs.contains('no_check') {
 			continue
 		}
 
 		// If no check, then ref check get skipped because it can prevent loops e.g. in ast.Scope
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !has_update_expr
-			&& !c.pref.translated && !field.attrs.contains('no_check') {
+			&& !c.pref.translated {
 			c.error('reference field `${prefix}.$field.name` must be initialized', pos)
 		}
 
