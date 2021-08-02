@@ -60,6 +60,7 @@ fn get_backend(arch pref.Arch) ?CodeGen {
 		.arm64 {
 			arm64 := Arm64{
 				g: Gen{
+					cgen: CodeGen(*(&Arm64(voidptr(0))))
 					pref: &pref.Preferences{}
 					table: ast.new_table()
 				}
@@ -69,6 +70,7 @@ fn get_backend(arch pref.Arch) ?CodeGen {
 		.amd64 {
 			amd64 := Amd64{
 				g: Gen{
+					cgen: CodeGen(*(&Amd64(voidptr(0))))
 					pref: &pref.Preferences{}
 					table: ast.new_table()
 				}
