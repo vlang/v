@@ -7983,7 +7983,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	} else {
 		for mut a in node.attrs {
 			if a.kind == .comptime_define {
-				c.evaluate_once_comptime_if_attribute(mut a)
+				node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut a)
 			}
 		}
 	}
