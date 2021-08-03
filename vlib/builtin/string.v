@@ -1221,11 +1221,6 @@ fn compare_lower_strings(a &string, b &string) int {
 	return compare_strings(&aa, &bb)
 }
 
-// sort sorts the string array.
-pub fn (mut s []string) sort() {
-	s.sort_with_compare(compare_strings)
-}
-
 // sort_ignore_case sorts the string array using case insesitive comparing.
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
