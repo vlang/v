@@ -195,48 +195,59 @@ pub fn encode_in_buffer(data []byte, buffer &byte) int {
 // Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
 // Please note: This function is for internal base64 encoding
 fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
-	input_length := src_len
-	output_length := 4 * ((input_length + 2) / 3)
-
-	mut i := 0
-	mut j := 0
+	if src_len == 0 {
+		return 0
+	}
+	output_length := 4 * ((src_len + 2) / 3)
 
 	mut d := unsafe { src }
 	mut b := unsafe { dest }
-	mut etable := base64.enc_table.str
-	for i < input_length {
-		mut octet_a := 0
-		mut octet_b := 0
-		mut octet_c := 0
+	etable := base64.enc_table.str
 
-		if i < input_length {
-			octet_a = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_b = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_c = int(unsafe { d[i] })
-			i++
-		}
-
-		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
-
+	mut di := 0
+	mut si := 0
+	n := (src_len / 3) * 3
+	for si < n {
+		// Convert 3x 8bit source bytes into 4 bytes
 		unsafe {
-			b[j] = etable[(triple >> 3 * 6) & 63] // 63 is 0x3F
-			b[j + 1] = etable[(triple >> 2 * 6) & 63]
-			b[j + 2] = etable[(triple >> 1 * 6) & 63]
-			b[j + 3] = etable[(triple >> 0 * 6) & 63]
+			val := u32(d[si + 0]) << 16 | u32(d[si + 1]) << 8 | u32(d[si + 2])
+
+			b[di + 0] = etable[val >> 18 & 0x3F]
+			b[di + 1] = etable[val >> 12 & 0x3F]
+			b[di + 2] = etable[val >> 6 & 0x3F]
+			b[di + 3] = etable[val & 0x3F]
 		}
-		j += 4
+		si += 3
+		di += 4
 	}
 
-	padding_length := base64.ending_table[input_length % 3]
-	for i = 0; i < padding_length; i++ {
-		unsafe {
-			b[output_length - 1 - i] = `=`
+	remain := src_len - si
+	if remain == 0 {
+		return output_length
+	}
+
+	// Add the remaining small block and padding
+	unsafe {
+		mut val := u32(d[si + 0]) << 16
+		if remain == 2 {
+			val |= u32(d[si + 1]) << 8
+		}
+
+		b[di + 0] = etable[val >> 18 & 0x3F]
+		b[di + 1] = etable[val >> 12 & 0x3F]
+
+		match remain {
+			2 {
+				b[di + 2] = etable[val >> 6 & 0x3F]
+				b[di + 3] = byte(`=`)
+			}
+			1 {
+				b[di + 2] = byte(`=`)
+				b[di + 3] = byte(`=`)
+			}
+			else {
+				panic('base64: This case should never occur.')
+			}
 		}
 	}
 	return output_length
