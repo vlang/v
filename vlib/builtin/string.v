@@ -1176,17 +1176,6 @@ pub fn compare_strings(a &string, b &string) int {
 	return 0
 }
 
-// compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
-fn compare_strings_reverse(a &string, b &string) int {
-	if a < b {
-		return 1
-	}
-	if a > b {
-		return -1
-	}
-	return 0
-}
-
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
 	if a.len < b.len {

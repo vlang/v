@@ -592,27 +592,6 @@ pub fn copy(dst []byte, src []byte) int {
 	return min
 }
 
-// Private function. Comparator for int type.
-fn compare_ints(a &int, b &int) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_ints_reverse(a &int, b &int) int {
-	if *a > *b {
-		return -1
-	}
-	if *a < *b {
-		return 1
-	}
-	return 0
-}
-
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
