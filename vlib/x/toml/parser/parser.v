@@ -40,11 +40,13 @@ pub fn new_parser(config Config) Parser {
 
 pub fn (mut p Parser) init() {
 	p.next()
+	p.root.table = ast.Value(map[string]ast.Value{})
 }
 
 pub fn (mut p Parser) parse() &ast.Root {
 	p.init()
-	p.root.table = ast.Value(p.table())
+	// p.root.table = ast.Value(p.table(''))
+	p.root.table = ast.Value(p.root_table())
 	return p.root
 }
 
@@ -76,9 +78,11 @@ fn (mut p Parser) expect(expected_token token.Kind) {
 	}
 }
 
-pub fn (mut p Parser) table() map[string]ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing table...')
+pub fn (mut p Parser) root_table() map[string]ast.Value {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing root table...')
+
 	mut table := map[string]ast.Value{}
+
 	for p.tok.kind != .eof {
 		p.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
@@ -94,15 +98,34 @@ pub fn (mut p Parser) table() map[string]ast.Value {
 					table[key.str()] = val
 				}
 			}
-			.bare, .quoted {
+			.bare, .quoted, .boolean { // NOTE .boolean allows for use of "true" and "false" as table keys
 				if p.peek_tok.kind == .assign {
 					key, val := p.key_value()
 					table[key.str()] = val
 				}
 			}
 			.lsbr {
-				key := p.key()
-				table[key.str()] = p.table()
+				key := p.bracket_key()
+				key_str := key.str()
+				if key_str == '' {
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
+						'  could not parse $p.tok.kind ("$p.tok.lit") token \n$p.tok empty keys are not supported')
+				}
+				ks := key_str.split('.')
+				mut t := map[string]ast.Value{}
+				if ks.len > 1 { // Has "." dot separators
+					// TODO fix dot/nested lookup
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
+						' nested keys like "$key_str" is not supported')
+					// t = p.find_table(key_str)
+				}
+				p.table(mut t)
+				if ks.len == 1 { // Has "." dot separators
+					table[key_str] = ast.Value(t)
+				} else {
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
+						' could not parse $p.tok.kind ("$p.tok.lit") token \n$p.tok unknown table key "$key_str"')
+				}
 			}
 			.eof {
 				// parent.children << p.eof()
@@ -114,6 +137,45 @@ pub fn (mut p Parser) table() map[string]ast.Value {
 		}
 	}
 	return table
+}
+
+pub fn (mut p Parser) table(mut t map[string]ast.Value) {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing into table...')
+
+	for p.tok.kind != .eof {
+		p.next()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+		match p.tok.kind {
+			.hash {
+				// TODO table.comments << p.comment()
+				c := p.comment()
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+			}
+			.number {
+				if p.peek_tok.kind == .assign {
+					key, val := p.key_value()
+					t[key.str()] = val
+				}
+			}
+			.bare, .quoted {
+				if p.peek_tok.kind == .assign {
+					key, val := p.key_value()
+					t[key.str()] = val
+				}
+			}
+			.eof {
+				// parent.children << p.eof()
+			}
+			else {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not parse $p.tok.kind ("$p.tok.lit") token \n$p.tok') //\n$p.prev_tok\n$p.peek_tok\n$p.scanner')
+			}
+		}
+		if p.peek_tok.kind == .lsbr {
+			return
+		}
+	}
+	// return table
 }
 
 pub fn (mut p Parser) array() []ast.Value {
@@ -163,24 +225,11 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-pub fn (mut p Parser) key() ast.Key {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key...')
+pub fn (mut p Parser) bracket_key() ast.Key {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing bracketed key...')
 
 	p.check(.lsbr) // '[' bracket
-	key := match p.tok.kind {
-		.bare {
-			bare := p.bare()
-			ast.Key(bare)
-		}
-		.quoted {
-			quoted := p.quoted()
-			ast.Key(quoted)
-		}
-		else {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key expected .bare or .quoted')
-			ast.Key(ast.Bare{}) // TODO workaround bug
-		}
-	}
+	key := p.key()
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
 	p.next()
 	p.expect(.rsbr) // ']' bracket
@@ -192,24 +241,37 @@ pub fn (mut p Parser) key() ast.Key {
 	return ast.Key(ast.Bare{})*/
 }
 
-pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
-	// println('parsed comment "${p.tok.lit}"')
-	// mut key := ast.Key{}
+pub fn (mut p Parser) key() ast.Key {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key...')
 
 	key := match p.tok.kind {
-		.bare, .number {
+		.bare {
 			ast.Key(p.bare())
 		}
-		.quoted {
+		.quoted, .boolean {
 			ast.Key(p.quoted())
 		}
 		else {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				' key expected .bare or .quoted got "$p.tok.kind"')
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key expected .bare, .quoted or .boolean')
 			ast.Key(ast.Bare{}) // TODO workaround bug
 		}
 	}
+
+	/*
+	NOTE kept for eased debugging
+	util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
+	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok')
+	return ast.Key(ast.Bare{})
+	*/
+
+	return key
+}
+
+pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
+	// println('parsed comment "${p.tok.lit}"')
+
+	key := p.key()
 	p.next()
 	p.check(.assign) // Assignment operator
 
@@ -243,6 +305,13 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 
 pub fn (mut p Parser) bare() ast.Bare {
 	return ast.Bare{
+		text: p.tok.lit
+		pos: p.tok.position()
+	}
+}
+
+pub fn (mut p Parser) quoted() ast.Quoted {
+	return ast.Quoted{
 		text: p.tok.lit
 		pos: p.tok.position()
 	}
@@ -332,15 +401,54 @@ pub fn (mut p Parser) time() ast.Time {
 	}
 }
 
-pub fn (mut p Parser) quoted() ast.Quoted {
-	return ast.Quoted{
-		text: p.tok.lit
-		pos: p.tok.position()
-	}
-}
-
 pub fn (mut p Parser) eof() ast.EOF {
 	return ast.EOF{
 		pos: p.tok.position()
 	}
+}
+
+fn (mut p Parser) table_exists(key string) bool {
+	if key == '' {
+		return true
+	}
+	mut t := p.root.table as map[string]ast.Value
+	ks := key.split('.')
+	for i in 0 .. ks.len {
+		k := ks[i]
+		if k in t {
+			if t[k] is map[string]ast.Value {
+				continue
+			} else {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) find_table(key string) map[string]ast.Value {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" ...')
+	mut t := p.root.table as map[string]ast.Value
+	if key == '' {
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' key is blank returning root ...')
+		return t
+	}
+	ks := key.split('.')
+	for i in 0 .. ks.len {
+		k := ks[i]
+		if k in t {
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'located "$k" ...')
+			if t[k] is map[string]ast.Value {
+				t = t[k] as map[string]ast.Value
+			} else {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a table')
+			}
+		} else {
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating new table for "$k" ...')
+			t[k] = map[string]ast.Value{}
+		}
+	}
+	return t
 }

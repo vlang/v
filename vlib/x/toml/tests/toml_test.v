@@ -28,15 +28,25 @@ fn test_parse_file() {
 	assert title == toml.Any('TOML Example')
 	assert title as string == 'TOML Example'
 
-	owner_name := toml_doc.value('owner.name')
-	assert owner_name as string == 'Tom Preston-Werner'
+	// TODO make the following pass (by converting ast.Date* types)
+	// owner := toml_doc.value('owner') as map[string]toml.Any
 
-	/*
-	TODO currently fails
-	database_server := toml_doc.value('database.server')
-	assert database_server as string == '192.168.1.1'
-	*/
-	// NOTE Kept for easier testing:
+	database := toml_doc.value('database') as map[string]toml.Any
+	assert database['server'] as string == '192.168.1.1'
+
+	assert toml_doc.value('owner.name') as string == 'Tom Preston-Werner'
+
+	assert toml_doc.value('database.server') as string == '192.168.1.1'
+
+	database_ports := toml_doc.value('database.ports') as []toml.Any
+	assert database_ports[0] as i64 == 8000
+	assert database_ports[1] as i64 == 8001
+	assert database_ports[2] as i64 == 8002
+
+	assert toml_doc.value('database.connection_max') as i64 == 5000
+	assert toml_doc.value('database.enabled') as bool == true
+
+	// NOTE Kept for easier debugging:
 	// dump(toml_doc.ast)
 	// assert false
 }
@@ -58,7 +68,8 @@ fn test_i64() {
 }
 
 fn test_bool() {
-	toml_txt := 'bool_true = true
+	toml_txt := '
+bool_true = true
 bool_false = false'
 	toml_doc := toml.parse(toml_txt)
 
@@ -75,9 +86,7 @@ bool_false = false'
 	assert value_false as bool != true
 }
 
-/*
-TODO enable me when fixed
-fn test_key_is_not_value() {
+fn test_bool_key_is_not_value() {
 	toml_txt := 'true = true
 false = false'
 	toml_doc := toml.parse(toml_txt)
@@ -94,4 +103,3 @@ false = false'
 	assert value_false != toml.Any(true)
 	assert value_false as bool != true
 }
-*/
