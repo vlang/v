@@ -562,11 +562,11 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
 		idx := p.table.register_type_symbol(ast.TypeSymbol{
-			kind: .generic_struct_inst
+			kind: .generic_inst
 			name: bs_name
 			cname: util.no_dots(bs_cname)
 			mod: p.mod
-			info: ast.GenericStructInst{
+			info: ast.GenericInst{
 				parent_idx: parent_idx
 				concrete_types: concrete_types
 			}

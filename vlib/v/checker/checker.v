@@ -793,8 +793,8 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 // generic struct instantiations to concrete types
 pub fn (mut c Checker) generic_insts_to_concrete() {
 	for mut typ in c.table.type_symbols {
-		if typ.kind == .generic_struct_inst {
-			info := typ.info as ast.GenericStructInst
+		if typ.kind == .generic_inst {
+			info := typ.info as ast.GenericInst
 			parent := c.table.type_symbols[info.parent_idx]
 			if parent.kind == .placeholder {
 				typ.kind = .placeholder
