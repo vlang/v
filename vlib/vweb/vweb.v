@@ -100,7 +100,9 @@ struct MultiplePathAttributesError {
 }
 
 // declaring init_server in your App struct is optional
-pub fn (ctx Context) init_server() {}
+pub fn (ctx Context) init_server() {
+	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
+}
 
 // declaring before_request in your App struct is optional
 pub fn (ctx Context) before_request() {}
@@ -275,7 +277,6 @@ interface DbInterface {
 // run_app
 [manualfree]
 pub fn run<T>(global_app &T, port int) {
-	// x := global_app.clone()
 	// mut global_app := &T{}
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
@@ -287,7 +288,9 @@ pub fn run<T>(global_app &T, port int) {
 	// conn: 0
 	//}
 	// app.init_server()
+	// unsafe {
 	// global_app.init_server()
+	//}
 	//$for method in T.methods {
 	//$if method.return_type is Result {
 	// check routes for validity

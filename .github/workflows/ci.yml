@@ -870,6 +870,7 @@ jobs:
           git clone --depth 1 https://github.com/vlang/gitly
           cd gitly
           ../v .
+          ./gitly -ci_run
           ../v -autofree .
           cd ..
 
