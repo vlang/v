@@ -1,6 +1,7 @@
 // import os
 // import pg
 // import term
+import time
 import sqlite
 
 struct Module {
@@ -21,6 +22,11 @@ struct User {
 
 struct Foo {
 	age int
+}
+
+struct TestTime {
+	id     int       [primary; sql: serial]
+	create time.Time
 }
 
 fn test_orm_sqlite() {
@@ -287,4 +293,24 @@ fn test_orm_sqlite() {
 	}
 
 	assert first.age == 60
+
+	sql db {
+		create table TestTime
+	}
+
+	tnow := time.now()
+
+	time_test := TestTime{
+		create: tnow
+	}
+
+	sql db {
+		insert time_test into TestTime
+	}
+
+	data := sql db {
+		select from TestTime where create == tnow
+	}
+
+	assert data.len == 1
 }
