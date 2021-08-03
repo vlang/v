@@ -1338,13 +1338,6 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					node.left_type = map_info.key_type
 				}
-				.string {
-					c.warn('use `str.contains(substr)` instead of `substr in str`', left_right_pos)
-					c.check_expected(left_type, right_type) or {
-						c.error('left operand to `$node.op` does not match: $err.msg',
-							left_right_pos)
-					}
-				}
 				else {
 					c.error('`$node.op.str()` can only be used with an array/map/string',
 						node.pos)

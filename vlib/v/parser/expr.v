@@ -301,8 +301,6 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
-				p.warn_with_pos("deprecated map syntax, use syntax like `map{'age': 20}`",
-					p.prev_tok.position())
 				node = p.map_init()
 			} else {
 				// it should be a struct
