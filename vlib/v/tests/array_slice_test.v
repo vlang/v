@@ -107,3 +107,23 @@ fn test_predictable_reallocation_parent() {
 	assert a == [i64(-25), 8, 13, -25, 5, -7, 9]
 	assert b == [i64(8), -19]
 }
+
+fn take_slice1(s []int) []int {
+	return s[..1]
+}
+
+fn take_slice2(s []int) []int {
+	return s[1..]
+}
+
+fn test_fn_return_array_slice() {
+	a := [1, 2]
+
+	b1 := take_slice1(a)
+	println(b1)
+	assert b1 == [1]
+
+	b2 := take_slice2(a)
+	println(b2)
+	assert b2 == [2]
+}

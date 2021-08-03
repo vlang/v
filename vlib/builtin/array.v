@@ -10,10 +10,11 @@ pub struct array {
 pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
-	data   voidptr
-	offset int // in bytes (should be `size_t`)
-	len    int // length of the array.
-	cap    int // capacity of the array.
+	data     voidptr
+	is_slice bool // slice cannot free
+	offset   int  // in bytes (should be `size_t`)
+	len      int  // length of the array.
+	cap      int  // capacity of the array.
 }
 
 // array.data uses a void pointer, which allows implementing arrays without generics and without generating
@@ -341,6 +342,7 @@ fn (a array) slice(start int, _end int) array {
 	res := array{
 		element_size: a.element_size
 		data: data
+		is_slice: true
 		offset: a.offset + offset
 		len: l
 		cap: l
@@ -482,9 +484,9 @@ pub fn (a &array) free() {
 	$if prealloc {
 		return
 	}
-	// if a.is_slice {
-	// return
-	// }
+	if a.is_slice {
+		return
+	}
 	unsafe { free(&byte(a.data) - a.offset) }
 }
 
