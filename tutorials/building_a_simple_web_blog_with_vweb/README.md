@@ -415,7 +415,7 @@ pub fn (mut app App) articles() vweb.Result {
 If one wants to persist data they need to use a file instead of memory SQLite Database.
 Replace the db setup code with this instead:
 
-```v oksyntax
+```
 db: sqlite.connect('blog.db') or { panic(err) }
 ```
 
