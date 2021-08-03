@@ -677,7 +677,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			g.expr(node.expr)
-			g.write(node.op.str())
+			if node.op in [.inc, .dec] {
+				g.write('.val $node.op')
+			} else {
+				g.write(node.op.str())
+			}
 		}
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
@@ -699,10 +703,16 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				}
 			} else {
 				g.write(node.op.str())
-				g.write('(')
-				g.expr(node.right)
-				g.write('.valueOf()')
-				g.write(')')
+
+				if node.op in [.inc, .dec] {
+					g.expr(node.right)
+					g.write('.val ')
+				} else {
+					g.write('(')
+					g.expr(node.right)
+					g.write('.valueOf()')
+					g.write(')')
+				}
 			}
 		}
 		ast.RangeExpr {
@@ -820,6 +830,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			if stmt.op == .decl_assign {
 				op = .assign
 			}
+			is_assign := stmt.op in [.plus_assign, .minus_assign, .mult_assign, .div_assign,
+				.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign,
+				.left_shift_assign,
+			]
 			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
@@ -859,7 +873,49 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				}
 				g.write(')')
 			} else {
-				g.write(' $op ')
+				if is_assign {
+					g.write('.val')
+					g.write(' = ')
+					g.expr(left)
+
+					match op {
+						.plus_assign {
+							g.write(' + ')
+						}
+						.minus_assign {
+							g.write(' - ')
+						}
+						.mult_assign {
+							g.write(' * ')
+						}
+						.div_assign {
+							g.write(' / ')
+						}
+						.mod_assign {
+							g.write(' % ')
+						}
+						.xor_assign {
+							g.write(' ^ ')
+						}
+						.and_assign {
+							g.write(' & ')
+						}
+						.right_shift_assign {
+							g.write(' << ')
+						}
+						.left_shift_assign {
+							g.write(' >> ')
+						}
+						.or_assign {
+							g.write(' | ')
+						}
+						else {
+							panic('unexpected op $op')
+						}
+					}
+				} else {
+					g.write(' $op ')
+				}
 				// TODO: Multiple types??
 				should_cast :=
 					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
@@ -1768,6 +1824,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+
 		mut needs_cast := is_arithmetic && it.left_type != it.right_type
 		mut greater_typ := 0
 		// todo(playX): looks like this cast is always required to perform .eq operation on types.
@@ -1785,8 +1842,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('${g.typ(greater_typ)}(')
 			g.cast_stack << greater_typ
 		}
+
 		g.expr(it.left)
+
 		g.write(' $it.op ')
+
 		g.expr(it.right)
 
 		if true || needs_cast {
