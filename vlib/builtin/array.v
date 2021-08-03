@@ -647,25 +647,6 @@ pub fn (mut a array) grow_len(amount int) {
 	a.len += amount
 }
 
-// eq checks if the arrays have the same elements or not.
-// TODO: make it work with all types.
-pub fn (a1 []string) eq(a2 []string) bool {
-	// return array_eq(a, a2)
-	if a1.len != a2.len {
-		return false
-	}
-	size_of_string := int(sizeof(string))
-	for i in 0 .. a1.len {
-		offset := i * size_of_string
-		s1 := unsafe { &string(&byte(a1.data) + offset) }
-		s2 := unsafe { &string(&byte(a2.data) + offset) }
-		if *s1 != *s2 {
-			return false
-		}
-	}
-	return true
-}
-
 // pointers returns a new array, where each element
 // is the address of the corresponding element in the array.
 [unsafe]
