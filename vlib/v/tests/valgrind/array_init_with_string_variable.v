@@ -7,6 +7,5 @@ fn main() {
 
 	d := [a, b, c]
 
-	println(c)
-	println(d)
+	println(d.len)
 }
