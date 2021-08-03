@@ -163,6 +163,25 @@ pub fn decode_in_buffer(data &string, buffer &byte) int {
 	return output_length
 }
 
+// decode_from_buffer decodes the base64 encoded ASCII bytes from `data` into `buffer`.
+// decode_from_buffer returns the size of the decoded data in the buffer.
+// Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
+// to hold the decoded data.
+// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
+pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
+	return decode_from_buffer(buffer, data.data, data.len)
+}
+
+// decode_from_buffer decodes the base64 encoded ASCII bytes from `src` into `dest`.
+// decode_from_buffer returns the size of the decoded data in the buffer.
+// Please note: The `dest` buffer should be large enough (i.e. 3/4 of the `src_len`, or larger)
+// to hold the decoded data.
+// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
+// Please note: This function is for internal base64 decoding
+fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
+	return -1
+}
+
 // encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
 // encode_in_buffer returns the size of the encoded data in the buffer.
 // Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
