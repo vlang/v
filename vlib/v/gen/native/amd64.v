@@ -457,7 +457,7 @@ pub fn (mut g Gen) inline_strlen(r Register) {
 }
 
 // TODO: strlen of string at runtime
-pub fn (mut g Gen) gen_print_reg(r Register, n int) {
+pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
 	mystrlen := true
 	g.mov_reg(.rsi, r)
 	if mystrlen {
@@ -467,16 +467,16 @@ pub fn (mut g Gen) gen_print_reg(r Register, n int) {
 		g.mov(.edx, n)
 	}
 	g.mov(.eax, g.nsyscall_write())
-	g.mov(.edi, 1)
+	g.mov(.edi, fd)
 	g.syscall()
 }
 
-pub fn (mut g Gen) gen_print(s string) {
+pub fn (mut g Gen) gen_print(s string, fd int) {
 	//
 	// qq := s + '\n'
 	//
 	g.mov(.eax, g.nsyscall_write())
-	g.mov(.edi, 1)
+	g.mov(.edi, fd)
 	// segment_start +  0x9f) // str pos // placeholder
 	g.mov64(.rsi, g.allocate_string(s, 2)) // for rsi its 2
 	g.mov(.edx, s.len) // len

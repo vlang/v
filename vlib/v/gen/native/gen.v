@@ -12,7 +12,7 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['println', 'exit']
+pub const builtins = ['print', 'eprint', 'println', 'eprintln', 'exit']
 
 interface CodeGen {
 mut:
@@ -227,22 +227,24 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return offset
 }
 
-pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
+pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
+	newline := name in ['println', 'eprintln']
+	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
 			if newline {
-				g.gen_print(expr.val + '\n')
+				g.gen_print(expr.val + '\n', fd)
 			} else {
-				g.gen_print(expr.val)
+				g.gen_print(expr.val, fd)
 			}
 		}
 		ast.CallExpr {
 			g.call_fn(expr)
-			g.gen_print_reg(.rax, 3)
+			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.Ident {
 			g.expr(expr)
-			g.gen_print_reg(.rax, 3)
+			g.gen_print_reg(.rax, 3, fd)
 		}
 		else {
 			dump(typeof(expr).name)
@@ -389,7 +391,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
-				g.gen_print_from_expr(expr, node.name in ['println', 'eprintln'])
+				g.gen_print_from_expr(expr, node.name)
 				return
 			}
 			g.call_fn(node)
