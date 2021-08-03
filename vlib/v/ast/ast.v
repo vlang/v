@@ -392,12 +392,13 @@ pub:
 	attrs           []Attr
 	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
-	params          []Param
-	stmts           []Stmt
-	defer_stmts     []DeferStmt
-	return_type     Type
-	return_type_pos token.Position // `string` in `fn (u User) name() string` position
-	has_return      bool
+	params            []Param
+	stmts             []Stmt
+	defer_stmts       []DeferStmt
+	return_type       Type
+	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
+	has_return        bool
+	should_be_skipped bool
 	//
 	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
