@@ -3,7 +3,7 @@ import net.http
 const (
 	write_set_cookie_tests = [
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-7=","']
 			}
 			cookies: [

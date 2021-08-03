@@ -1213,7 +1213,7 @@ pub:
 pub const (
 	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
 	// map register size -> register name
-	x86_no_number_register_list = map{
+	x86_no_number_register_list = {
 		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
 		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
 			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
@@ -1240,32 +1240,32 @@ pub const (
 	// st#: floating point numbers
 	// cr#: control/status registers
 	// dr#: debug registers
-	x86_with_number_register_list = map{
-		8:   map{
+	x86_with_number_register_list = {
+		8:   {
 			'r#b': 16
 		}
-		16:  map{
+		16:  {
 			'r#w': 16
 		}
-		32:  map{
+		32:  {
 			'r#d': 16
 		}
-		64:  map{
+		64:  {
 			'r#':  16
 			'mm#': 16
 			'cr#': 16
 			'dr#': 16
 		}
-		80:  map{
+		80:  {
 			'st#': 16
 		}
-		128: map{
+		128: {
 			'xmm#': 32
 		}
-		256: map{
+		256: {
 			'ymm#': 32
 		}
-		512: map{
+		512: {
 			'zmm#': 32
 		}
 	}
@@ -1277,14 +1277,14 @@ pub const (
 		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
 		'pc' /* aka r15 */,
 	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
-	arm_with_number_register_list = map{
+	arm_with_number_register_list = {
 		'r#': 16
 	}
 )
 
 pub const (
 	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
-	riscv_with_number_register_list = map{
+	riscv_with_number_register_list = {
 		'x#': 32
 		't#': 3
 		's#': 12

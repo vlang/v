@@ -1421,7 +1421,7 @@ The code above prints:
 ##### Map `for`
 
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1434,7 +1434,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }

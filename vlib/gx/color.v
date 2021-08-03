@@ -205,7 +205,7 @@ pub fn (c Color) abgr8() int {
 }
 
 const (
-	string_colors = map{
+	string_colors = {
 		'blue':        blue
 		'red':         red
 		'green':       green

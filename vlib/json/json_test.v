@@ -151,7 +151,7 @@ fn test_struct_in_struct() ? {
 
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
-	numbers := map{
+	numbers := {
 		'one':   1
 		'two':   2
 		'three': 3
@@ -163,7 +163,7 @@ fn test_encode_map() {
 }
 
 fn test_parse_map() ? {
-	expected := map{
+	expected := {
 		'one':   1
 		'two':   2
 		'three': 3
@@ -193,7 +193,7 @@ fn test_nested_type() ? {
 				cities: [City{'Donlon'}, City{'Termanches'}]
 			},
 		]
-		users: map{
+		users: {
 			'Foo': User{
 				age: 10
 				nums: [1, 2, 3]
@@ -211,14 +211,14 @@ fn test_nested_type() ? {
 				pets: 'little boo'
 			}
 		}
-		extra: map{
-			'2': map{
+		extra: {
+			'2': {
 				'n1': 2
 				'n2': 4
 				'n3': 8
 				'n4': 16
 			}
-			'3': map{
+			'3': {
 				'n1': 3
 				'n2': 9
 				'n3': 27

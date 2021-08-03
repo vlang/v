@@ -16,7 +16,7 @@ pub const (
 )
 
 pub const (
-	external_module_dependencies_for_tool = map{
+	external_module_dependencies_for_tool = {
 		'vdoc': ['markdown']
 	}
 )

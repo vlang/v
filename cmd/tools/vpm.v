@@ -17,15 +17,15 @@ const (
 	excluded_dirs             = ['cache', 'vlib']
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
-	supported_vcs_update_cmds = map{
+	supported_vcs_update_cmds = {
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds = map{
+	supported_vcs_install_cmds = {
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
-	supported_vcs_outdated_steps = map{
+	supported_vcs_outdated_steps = {
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
@@ -467,7 +467,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
-	mut m := map{
+	mut m := {
 		'name':    ''
 		'version': ''
 		'deps':    ''

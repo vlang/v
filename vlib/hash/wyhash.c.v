@@ -7,7 +7,7 @@ fn C.wyhash(&byte, u64, u64, &u64) u64
 fn C.wyhash64(u64, u64) u64
 
 fn init() {
-	_ := map{
+	_ := {
 		1: 1
 	}
 }

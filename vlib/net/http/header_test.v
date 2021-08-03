@@ -276,7 +276,7 @@ fn test_str() ? {
 }
 
 fn test_header_from_map() ? {
-	h := new_header_from_map(map{
+	h := new_header_from_map({
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'
 	})
@@ -287,7 +287,7 @@ fn test_header_from_map() ? {
 }
 
 fn test_custom_header_from_map() ? {
-	h := new_custom_header_from_map(map{
+	h := new_custom_header_from_map({
 		'Server': 'VWeb'
 		'foo':    'bar'
 	}) ?
@@ -298,11 +298,11 @@ fn test_custom_header_from_map() ? {
 }
 
 fn test_header_join() ? {
-	h1 := new_header_from_map(map{
+	h1 := new_header_from_map({
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'
 	})
-	h2 := new_custom_header_from_map(map{
+	h2 := new_custom_header_from_map({
 		'Server': 'VWeb'
 		'foo':    'bar'
 	}) ?
@@ -329,27 +329,27 @@ fn parse_headers_test(s string, expected map[string]string) ? {
 }
 
 fn test_parse_headers() ? {
-	parse_headers_test('foo: bar', map{
+	parse_headers_test('foo: bar', {
 		'foo': 'bar'
 	}) ?
-	parse_headers_test('foo: \t  bar', map{
+	parse_headers_test('foo: \t  bar', {
 		'foo': 'bar'
 	}) ?
-	parse_headers_test('foo: bar\r\n\tbaz', map{
+	parse_headers_test('foo: bar\r\n\tbaz', {
 		'foo': 'bar baz'
 	}) ?
-	parse_headers_test('foo: bar \r\n\tbaz\r\n   buzz', map{
+	parse_headers_test('foo: bar \r\n\tbaz\r\n   buzz', {
 		'foo': 'bar baz buzz'
 	}) ?
-	parse_headers_test('foo: bar\r\nbar:baz', map{
+	parse_headers_test('foo: bar\r\nbar:baz', {
 		'foo': 'bar'
 		'bar': 'baz'
 	}) ?
-	parse_headers_test('foo: bar\r\nbar:baz\r\n', map{
+	parse_headers_test('foo: bar\r\nbar:baz\r\n', {
 		'foo': 'bar'
 		'bar': 'baz'
 	}) ?
-	parse_headers_test('foo: bar\r\nbar:baz\r\n\r\n', map{
+	parse_headers_test('foo: bar\r\nbar:baz\r\n\r\n', {
 		'foo': 'bar'
 		'bar': 'baz'
 	}) ?

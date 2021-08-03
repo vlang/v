@@ -1,5 +1,5 @@
 fn get_map() ?string {
-	m := map{1: 'a', 2: 'b'}
+	m := {1: 'a', 2: 'b'}
 	return m[1] or { none }
 }
 

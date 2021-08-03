@@ -216,7 +216,7 @@ pub fn (h CommonHeader) str() string {
 	}
 }
 
-const common_header_map = map{
+const common_header_map = {
 	'accept':                              CommonHeader.accept
 	'accept-ch':                           .accept_ch
 	'accept-charset':                      .accept_charset

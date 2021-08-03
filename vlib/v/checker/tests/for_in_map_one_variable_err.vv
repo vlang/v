@@ -1,5 +1,5 @@
 fn main() {
-	kvs := map{'foo':'bar'}
+	kvs := {'foo':'bar'}
 	for k in kvs {
 		println('$k')
 	}

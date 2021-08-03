@@ -59,7 +59,7 @@ fn test_http_fetch_with_params() {
 		return
 	}
 	responses := http_fetch_mock([],
-		params: map{
+		params: {
 			'a': 'b'
 			'c': 'd'
 		}

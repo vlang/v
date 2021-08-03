@@ -11,7 +11,7 @@ fn test_identity() {
 	assert simple<string>('g') + 'h' == 'gh'
 
 	assert simple<[]int>([1])[0] == 1
-	assert simple<map[string]string>(map{
+	assert simple<map[string]string>({
 		'a': 'b'
 	})['a'] == 'b'
 
@@ -399,7 +399,7 @@ fn test_pass_generic_to_nested_function() {
 }
 
 fn generic_return_map<M>() map[string]M {
-	return map{
+	return {
 		'': M{}
 	}
 }
@@ -409,8 +409,8 @@ fn test_generic_return_map() {
 }
 
 fn generic_return_nested_map<M>() map[string]map[string]M {
-	return map{
-		'': map{
+	return {
+		'': {
 			'': M{}
 		}
 	}

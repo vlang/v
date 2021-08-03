@@ -71,27 +71,27 @@ fn test_parse_request_line() {
 }
 
 fn test_parse_form() {
-	assert parse_form('foo=bar&bar=baz') == map{
+	assert parse_form('foo=bar&bar=baz') == {
 		'foo': 'bar'
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar=&bar=baz') == map{
+	assert parse_form('foo=bar=&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar%3D&bar=baz') == map{
+	assert parse_form('foo=bar%3D&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=b%26ar&bar=baz') == map{
+	assert parse_form('foo=b%26ar&bar=baz') == {
 		'foo': 'b&ar'
 		'bar': 'baz'
 	}
-	assert parse_form('a=b& c=d') == map{
+	assert parse_form('a=b& c=d') == {
 		'a':  'b'
 		' c': 'd'
 	}
-	assert parse_form('a=b&c= d ') == map{
+	assert parse_form('a=b&c= d ') == {
 		'a': 'b'
 		'c': ' d '
 	}
@@ -115,7 +115,7 @@ ${contents[1]}
 --------------------------$boundary--
 "
 	form, files := parse_multipart_form(data, boundary)
-	assert files == map{
+	assert files == {
 		names[0]: [FileData{
 			filename: file
 			content_type: ct
@@ -123,7 +123,7 @@ ${contents[1]}
 		}]
 	}
 
-	assert form == map{
+	assert form == {
 		names[1]: contents[1]
 	}
 }

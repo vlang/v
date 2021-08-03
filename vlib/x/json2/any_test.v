@@ -1,7 +1,7 @@
 import x.json2
 
 const (
-	sample_data = map{
+	sample_data = {
 		'int':  json2.Any(int(1))
 		'i64':  json2.Any(i64(128))
 		'f32':  json2.Any(f32(2.0))
@@ -10,7 +10,7 @@ const (
 		'str':  json2.Any('test')
 		'null': json2.Any(json2.null)
 		'arr':  json2.Any([json2.Any('lol')])
-		'obj':  json2.Any(map{
+		'obj':  json2.Any({
 			'foo': json2.Any(10)
 		})
 	}

@@ -18,7 +18,7 @@ fn test_fn_array_direct_call() {
 }
 
 fn test_fn_map_direct_call() {
-	a := map{
+	a := {
 		'aaa': fn () string {
 			return 'aaa'
 		}

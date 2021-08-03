@@ -28,7 +28,7 @@ struct Struct {
 }
 
 fn (s Struct) method(v StructMethodArg) StructMethodRet {
-	return {}
+	return StructMethodRet{}
 }
 
 interface Interface {
@@ -43,7 +43,7 @@ fn f(v FnArg) FnRet {
 
 	println(Enum.val)
 
-	return {}
+	return FnRet{}
 }
 
 struct App {

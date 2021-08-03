@@ -134,7 +134,7 @@ fn (vd VDoc) render_search_index(out Output) {
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
-	vd.assets = map{
+	vd.assets = {
 		'doc_css':       vd.get_resource(css_js_assets[0], out)
 		'normalize_css': vd.get_resource(css_js_assets[1], out)
 		'doc_js':        vd.get_resource(css_js_assets[2], out)

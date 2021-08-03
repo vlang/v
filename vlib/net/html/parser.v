@@ -14,7 +14,7 @@ mut:
 	opened_code_type string
 	line_count       int
 	lexeme_builder   strings.Builder = strings.new_builder(100)
-	code_tags        map[string]bool = map{
+	code_tags        map[string]bool = {
 		'script': true
 		'style':  true
 	}
