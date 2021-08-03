@@ -613,11 +613,6 @@ fn compare_ints_reverse(a &int, b &int) int {
 	return 0
 }
 
-// sort sorts an array of int in place in ascending order.
-pub fn (mut a []int) sort() {
-	a.sort_with_compare(compare_ints)
-}
-
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.
 [direct_array_access]
