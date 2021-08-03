@@ -7,7 +7,7 @@ import sqlite
 struct App {
 	vweb.Context
 pub mut:
-	db      sqlite.DB [server_var]
+	db      sqlite.DB
 	user_id string
 }
 
@@ -25,7 +25,9 @@ fn test_a_vweb_application_compiles() {
 	vweb.run(&App{}, 18081)
 }
 
-pub fn (mut app App) init_server() {
+/*
+/TODO
+pub fn (mut app App) init_server_old() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
 	app.db.create_table('article', [
 		'id integer primary key',
@@ -33,6 +35,7 @@ pub fn (mut app App) init_server() {
 		"text text default ''",
 	])
 }
+*/
 
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
