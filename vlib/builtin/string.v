@@ -340,22 +340,6 @@ struct RepIndex {
 	val_idx int
 }
 
-// compare_rep_index returns the result of comparing RepIndex `a` and `b`.
-fn compare_rep_index(a &RepIndex, b &RepIndex) int {
-	if a.idx < b.idx {
-		return -1
-	}
-	if a.idx > b.idx {
-		return 1
-	}
-	return 0
-}
-
-// sort2 sorts the RepIndex array using `compare_rep_index`.
-fn (mut a []RepIndex) sort2() {
-	a.sort_with_compare(compare_rep_index)
-}
-
 // replace_each replaces all occurences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
@@ -404,7 +388,7 @@ pub fn (s string) replace_each(vals []string) string {
 	if idxs.len == 0 {
 		return s.clone()
 	}
-	idxs.sort2()
+	idxs.sort(a.idx < b.idx)
 	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
