@@ -808,25 +808,17 @@ fn test_fixed_array_literal_eq() {
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
-	assert a[0] == '1'
-	assert a[1] == '3'
-	assert a[2] == '5'
-	assert a[3] == 'hi'
+	assert a == ['1', '3', '5', 'hi']
 
 	mut nums := [67, -3, 108, 42, 7]
 	nums.sort()
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
 
 	nums.sort(a < b)
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
+
+	nums.sort(b < a)
+	assert nums == [108, 67, 42, 7, -3]
 
 	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
@@ -842,6 +834,11 @@ fn test_sort() {
 	assert users[1].age == 22
 	assert users[2].age == 20
 
+	users.sort(b.age > a.age)
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+
 	users.sort(a.name < b.name) // Test sorting by string fields
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
@@ -850,15 +847,15 @@ fn test_rune_sort() {
 	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 	bs.sort()
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 
 	bs.sort(a > b)
 	println(bs)
-	assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+	assert bs == [`f`, `e`, `d`, `c`, `b`, `a`]
 
 	bs.sort(a < b)
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 }
 
 fn test_sort_by_different_order_of_a_b() {
@@ -876,9 +873,19 @@ fn test_sort_by_different_order_of_a_b() {
 fn test_f32_sort() {
 	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
 	f.sort()
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(a < b)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b > a)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b < a)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
+
+	f.sort(a > b)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
 }
 
 fn test_f64_sort() {
