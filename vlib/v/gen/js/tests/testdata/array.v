@@ -15,6 +15,11 @@ struct User {
 	name string
 }
 
+struct Foo {
+mut:
+	bar []int
+}
+
 fn map_test_helper_1(i int) int {
 	return i * i
 }
@@ -767,5 +772,80 @@ fn main() {
 		println(f[0])
 		println(f[1])
 		println(f[6])
+	}
+	{
+		// test f64 sort
+		mut f := [50.0, 15, 1, 79, 38, 0, 27]
+		f.sort()
+		println(f)
+		assert f[0] == 0.0
+		assert f[1] == 1.0
+		assert f[6] == 79.0
+	}
+	{
+		// test i64 sort
+		mut f := [i64(50), 15, 1, 79, 38, 0, 27]
+		f.sort()
+		println(f)
+		assert f[0] == 0
+		assert f[1] == 1
+		assert f[6] == 79
+	}
+	{
+		// test in struct
+
+		mut baz := Foo{
+			bar: [0, 0, 0]
+		}
+		baz.bar[0] += 2
+		baz.bar[0]++
+		println(baz.bar[0])
+	}
+	{
+		// test direct modification
+		mut foo := [2, 0, 5]
+		foo[1] = 3
+		foo[0] *= 7
+		foo[1]--
+		foo[2] -= 2
+		println(foo)
+	}
+	{
+		// test bools
+		println('test b')
+		mut a := [true, false]
+		a << true
+		println(a)
+	}
+	{
+		// test push many self
+		mut actual_arr := [1, 2, 3, 4]
+		actual_arr << actual_arr
+		expected_arr := [1, 2, 3, 4, 1, 2, 3, 4]
+		assert actual_arr.len == expected_arr.len
+		for i in 0 .. actual_arr.len {
+			print(actual_arr[i])
+			print(',')
+			println(expected_arr[i])
+		}
+	}
+	{
+		// test for
+		nums := [1, 2, 3]
+		mut sum := 0
+		for num in nums {
+			sum += num
+		}
+		println(sum)
+	}
+	{
+		// test left shift precedence
+
+		mut arr := []int{}
+		arr << 1 + 1
+		arr << 1 - 1
+		arr << 2 / 1
+		arr << 2 * 1
+		println(arr)
 	}
 }
