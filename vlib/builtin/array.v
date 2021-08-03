@@ -613,18 +613,6 @@ fn compare_ints_reverse(a &int, b &int) int {
 	return 0
 }
 
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-[direct_array_access]
-pub fn (a []string) index(v string) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
