@@ -37,7 +37,7 @@ fn test_ulids_max_start_character_is_ok() {
 }
 
 fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
-	t := time.utc().unix_time_milli()
+	t := u64(time.utc().unix_time_milli())
 	mut ulid1 := ''
 	mut ulid2 := ''
 	mut ulid3 := ''

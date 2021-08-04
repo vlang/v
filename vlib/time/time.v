@@ -50,7 +50,7 @@ pub:
 	minute      int
 	second      int
 	microsecond int
-	unix        u64
+	unix        i64
 }
 
 // FormatDelimiter contains different time formats.
@@ -162,7 +162,7 @@ pub fn new_time(t Time) Time {
 		tm_mon: t.month - 1
 		tm_year: t.year - 1900
 	}
-	utime := u64(make_unix_time(tt))
+	utime := make_unix_time(tt)
 	return Time{
 		...t
 		unix: utime
@@ -171,21 +171,21 @@ pub fn new_time(t Time) Time {
 
 // unix_time returns Unix time.
 [inline]
-pub fn (t Time) unix_time() int {
-	return int(t.unix)
+pub fn (t Time) unix_time() i64 {
+	return t.unix
 }
 
 // unix_time_milli returns Unix time with millisecond resolution.
 [inline]
-pub fn (t Time) unix_time_milli() u64 {
-	return t.unix * 1000 + u64(t.microsecond / 1000)
+pub fn (t Time) unix_time_milli() i64 {
+	return t.unix * 1000 + (t.microsecond / 1000)
 }
 
 // add returns a new time that duration is added
 pub fn (t Time) add(d Duration) Time {
-	microseconds := i64(t.unix) * 1000 * 1000 + t.microsecond + d.microseconds()
-	unix := microseconds / (1000 * 1000)
-	micro := microseconds % (1000 * 1000)
+	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
+	unix := microseconds / 1_000_000
+	micro := microseconds % 1_000_000
 	return unix2(unix, int(micro))
 }
 
@@ -358,6 +358,11 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
+// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
+pub fn (t Time) debug() string {
+	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
+}
+
 // convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
@@ -368,7 +373,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		minute: t.tm_min
 		second: t.tm_sec
 		microsecond: time.microsecond
-		unix: u64(make_unix_time(t))
+		unix: make_unix_time(t)
 	}
 }
 

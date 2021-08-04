@@ -275,7 +275,7 @@ const (
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
-	return ulid_at_millisecond(time.utc().unix_time_milli())
+	return ulid_at_millisecond(u64(time.utc().unix_time_milli()))
 }
 
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
