@@ -5220,6 +5220,18 @@ fn old_function() {
 [deprecated: 'use new_function() instead']
 fn legacy_function() {}
 
+// You can also specify a date, after which the function will be
+// considered deprecated. Before that date, calls to the function
+// will be compiler notices - you will see them, but the compilation
+// is not affected. After that date, calls will become warnings,
+// so ordinary compiling will still work, but compiling with -prod
+// will not (all warnings are treated like errors with -prod).
+// 6 months after the deprecation date, calls will be hard
+// compiler errors.
+[deprecated: 'use new_function2() instead']
+[deprecated_after: '2021-05-27']
+fn legacy_function2() {}
+
 // This function's calls will be inlined.
 [inline]
 fn inlined_function() {
