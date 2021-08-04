@@ -503,7 +503,7 @@ fn main(){
 		gg: 0
 	}
 
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		width:         win_width
 		height:        win_height
 		create_window: true
@@ -514,7 +514,7 @@ fn main(){
 		init_fn:       my_init
 		cleanup_fn:    cleanup
 		event_fn:      my_event_manager
-	})
+	)
 
 	app.ticks = time.ticks()
 	app.gg.run()

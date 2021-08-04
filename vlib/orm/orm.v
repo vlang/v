@@ -8,7 +8,7 @@ pub const (
 	float    = [13, 14]
 	string   = 18
 	time     = -2
-	type_idx = map{
+	type_idx = {
 		'i8':     5
 		'i16':    6
 		'int':    7

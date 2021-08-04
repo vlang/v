@@ -7,7 +7,7 @@ fn test_array_or() {
 }
 
 fn test_map_or() {
-	m := map{
+	m := {
 		'as': 3
 		'qw': 4
 		'kl': 5

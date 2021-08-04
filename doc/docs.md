@@ -1042,7 +1042,7 @@ Maps can have keys of type string, rune, integer, float or voidptr.
 
 The whole map can be initialized using this short syntax:
 ```v
-numbers := map{
+numbers := {
 	'one': 1
 	'two': 2
 }
@@ -1052,14 +1052,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := map{
+sm := {
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
 ```
 ```v
-intm := map{
+intm := {
 	1: 1234
 	2: 5678
 }
@@ -1306,7 +1306,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1421,7 +1421,7 @@ The code above prints:
 ##### Map `for`
 
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1434,7 +1434,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1783,7 +1783,7 @@ mut p := Point{
 	y: 20
 }
 // you can omit the struct name when it's already known
-p = {
+p = Point{
 	x: 30
 	y: 4
 }
@@ -1935,7 +1935,7 @@ clr1 := Rgba32{
 }
 
 clr2 := Rgba32{
-	Rgba32_Component: {
+	Rgba32_Component: Rgba32_Component{
 		a: 128
 	}
 }
@@ -2029,7 +2029,7 @@ struct User {
 }
 
 fn register(u User) User {
-	return {
+	return User{
 		...u
 		is_registered: true
 	}
@@ -2095,7 +2095,7 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println(fns[0](10)) // "100"
-	fns_map := map{
+	fns_map := {
 		'sqr':  sqr
 		'cube': cube
 	}

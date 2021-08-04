@@ -55,7 +55,7 @@ fn test_array_of_strings() {
 }
 
 fn test_map_of_ints() {
-	aa := map{
+	aa := {
 		'a': 1
 		'b': 2
 		'c': 3
@@ -65,7 +65,7 @@ fn test_map_of_ints() {
 }
 
 fn test_map_of_strings() {
-	aa := map{
+	aa := {
 		'a': '1'
 		'b': '2'
 		'c': '3'
@@ -75,7 +75,7 @@ fn test_map_of_strings() {
 }
 
 fn test_map_of_floats() {
-	aa := map{
+	aa := {
 		'a': 1.1
 		'b': 2.2
 		'c': 3.3
@@ -85,7 +85,7 @@ fn test_map_of_floats() {
 }
 
 fn test_map_of_runes() {
-	aa := map{
+	aa := {
 		'a': `a`
 		'b': `b`
 		'c': `c`
@@ -95,7 +95,7 @@ fn test_map_of_runes() {
 }
 
 fn test_map_of_bools() {
-	aa := map{
+	aa := {
 		'a': true
 		'b': false
 		'c': true
@@ -242,7 +242,7 @@ struct MapWithStruct {
 }
 
 fn test_map_with_struct() {
-	a := MapWithStruct{map{
+	a := MapWithStruct{{
 		'test': TestStruct{}
 	}}
 	assert a.str() == "MapWithStruct{\n    foo: {'test': TestStruct{\n        x: 0\n    }}\n}"

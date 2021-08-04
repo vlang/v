@@ -257,7 +257,7 @@ const (
 	]
 	read_set_cookies_tests = [
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['Cookie-1=v1']
 			}
 			cookies: [&http.Cookie{
@@ -292,7 +292,7 @@ const (
 		// 	}]
 		// },
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['ASP.NET_SessionId=foo; path=/; HttpOnly']
 			}
 			cookies: [
@@ -306,7 +306,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitedefault=foo; SameSite']
 			}
 			cookies: [
@@ -319,7 +319,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitelax=foo; SameSite=Lax']
 			}
 			cookies: [
@@ -332,7 +332,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitestrict=foo; SameSite=Strict']
 			}
 			cookies: [
@@ -345,7 +345,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitenone=foo; SameSite=None']
 			}
 			cookies: [
@@ -360,7 +360,7 @@ const (
 		// Make sure we can properly read back the Set-Cookie headers we create
 		// for values containing spaces or commas:
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-1=a z']
 			}
 			cookies: [
@@ -372,7 +372,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-2=" z"']
 			}
 			cookies: [
@@ -384,7 +384,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-3="a "']
 			}
 			cookies: [
@@ -396,7 +396,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-4=" "']
 			}
 			cookies: [
@@ -408,7 +408,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-5=a,z']
 			}
 			cookies: [
@@ -420,7 +420,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-6=",z"']
 			}
 			cookies: [
@@ -432,7 +432,7 @@ const (
 			]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-7=","']
 			}
 			cookies: [

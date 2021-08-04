@@ -12,7 +12,7 @@ import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.new_custom_header_from_map(map{
+	headers_close     = http.new_custom_header_from_map({
 		'Server':          'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
@@ -41,7 +41,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	mime_types        = map{
+	mime_types        = {
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -128,7 +128,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	ctx.done = true
 
 	// build header
-	header := http.new_header_from_map(map{
+	header := http.new_header_from_map({
 		http.CommonHeader.content_type:   mimetype
 		http.CommonHeader.content_length: res.len.str()
 	}).join(ctx.header)

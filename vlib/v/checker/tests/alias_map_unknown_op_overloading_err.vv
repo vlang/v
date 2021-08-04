@@ -1,14 +1,14 @@
 type Map = map[string]string
 
 pub fn new_map() Map {
-	return Map(map{
+	return Map({
 		'23': 'str'
 	})
 }
 
 fn (a Map) + (b Map) Map {
 	str := b['23']
-	return Map(map{
+	return Map({
 		'34': str + '12'
 	})
 }

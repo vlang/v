@@ -25,7 +25,7 @@ fn (dict Dictionary) str() string {
 
 fn test_str_of_sumtype_works() {
 	o := Object(Dictionary{
-		items: map{
+		items: {
 			'abc': Object(Stream{
 				content: 'xyz'
 			})

@@ -745,13 +745,13 @@ fn test_eq() {
 		age: 22
 		name: 'bob'
 	}]
-	assert [map{
+	assert [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
-	}] == [map{
+	}] == [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
 	}]
 	assert [[1, 2, 3], [4]] == [[1, 2, 3], [4]]
@@ -1315,20 +1315,20 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: map{
+		kv: {
 			'bbb': '222'
 		}
 	}]
@@ -1340,20 +1340,20 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: map{
+		kv: {
 			'bbb': '222'
 		}
 	}]

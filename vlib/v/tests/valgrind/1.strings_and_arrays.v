@@ -215,7 +215,7 @@ fn return_if_expr() string {
 }
 
 fn loop_map() {
-	m := map{
+	m := {
 		'UK':     'London'
 		'France': 'Paris'
 	}

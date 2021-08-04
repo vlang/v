@@ -2,7 +2,7 @@ fn one() string {
 	name := 'Peter'
 	age := 25
 	numbers := [1, 2, 3]
-	downloads := map{
+	downloads := {
 		'vlang/ui':  '3201'
 		'vlang/vtl': '123'
 	}
@@ -48,7 +48,7 @@ fn test_tmpl_in_anon_fn() {
 		return $tmpl('tmpl/base.txt')
 	}
 
-	assert anon('Peter', 25, [1, 2, 3], map{
+	assert anon('Peter', 25, [1, 2, 3], {
 		'vlang/ui':  '3201'
 		'vlang/vtl': '123'
 	}, true).trim_space() == "name: Peter

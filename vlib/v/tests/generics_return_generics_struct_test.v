@@ -6,7 +6,7 @@ mut:
 }
 
 pub fn new_some<T>(value T) Optional<T> {
-	return {
+	return Optional{
 		value: value
 		some: true
 	}
@@ -40,7 +40,7 @@ pub struct Foo {
 }
 
 pub fn (f Foo) new_some<T>(value T) Optional<T> {
-	return {
+	return Optional{
 		value: value
 		some: true
 	}

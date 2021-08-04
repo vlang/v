@@ -1970,14 +1970,11 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 			info := sym.info as ast.Map
 			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		} else {
-			// m = map{}
-			f.write('map')
 		}
 		f.write('{}')
 		return
 	}
-	f.writeln('map{')
+	f.writeln('{')
 	f.indent++
 	f.comments(node.pre_cmnts)
 	mut max_field_len := 0

@@ -50,6 +50,8 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				p.inside_match = false
 			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
+				p.warn_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
+					p.tok.position())
 				p.next() // `map`
 				p.next() // `{`
 				node = p.map_init()
@@ -297,33 +299,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		.lcbr {
-			// TODO: remove this when deprecation will be removed, vfmt should handle it for a while
-			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
+			// Map `{"age": 20}`
 			p.next()
-			if p.tok.kind in [.chartoken, .number, .string] {
-				p.warn_with_pos("deprecated map syntax, use syntax like `map{'age': 20}`",
-					p.prev_tok.position())
-				node = p.map_init()
-			} else {
-				// it should be a struct
-				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
-					// TODO: remove deprecated
-					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
-					node = p.assoc()
-				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
-					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
-					node = p.struct_init(true) // short_syntax: true
-					p.warn_with_pos('short struct initalization is deprecated, use explicit struct name',
-						node.position())
-				} else if p.tok.kind == .name {
-					p.next()
-					return p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
-						p.tok.position())
-				} else {
-					return p.error_with_pos('unexpected $p.tok, expecting struct field name',
-						p.tok.position())
-				}
-			}
+			node = p.map_init()
 			p.check(.rcbr)
 		}
 		.key_fn {
