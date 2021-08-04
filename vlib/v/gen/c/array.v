@@ -286,10 +286,16 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
 			} else {
 				field_type := g.typ(infix_expr.left_type)
+				left_name := '$infix_expr.left'
 				left_expr_str := g.expr_string(infix_expr.left)
 				right_expr_str := g.expr_string(infix_expr.right)
-				g.definitions.writeln('\t$field_type a_ = $left_expr_str;')
-				g.definitions.writeln('\t$field_type b_ = $right_expr_str;')
+				if left_name.starts_with('a') {
+					g.definitions.writeln('\t$field_type a_ = $left_expr_str;')
+					g.definitions.writeln('\t$field_type b_ = $right_expr_str;')
+				} else {
+					g.definitions.writeln('\t$field_type a_ = $right_expr_str;')
+					g.definitions.writeln('\t$field_type b_ = $left_expr_str;')
+				}
 				mut op1, mut op2 := '', ''
 				if infix_expr.left_type == ast.string_type {
 					if is_reverse {
