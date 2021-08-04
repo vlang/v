@@ -128,7 +128,7 @@ fn main() {
 		println(*d_arr[1][0]) // 1
 	}
 	{
-		// test assign	
+		// test assign
 		mut arr := [2, 4, 8, 16, 32, 64, 128]
 		arr[0] = 2
 		arr[1] &= 255
@@ -1064,20 +1064,20 @@ fn main() {
 		ivan := Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: map{
+			kv: {
 				'aaa': '111'
 			}
 		}
 		people := [Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: map{
+			kv: {
 				'aaa': '111'
 			}
 		}, Person{
 			name: 'bob'
 			nums: [2]
-			kv: map{
+			kv: {
 				'bbb': '222'
 			}
 		}]
@@ -1088,20 +1088,20 @@ fn main() {
 		ivan := Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: map{
+			kv: {
 				'aaa': '111'
 			}
 		}
 		people := [Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: map{
+			kv: {
 				'aaa': '111'
 			}
 		}, Person{
 			name: 'bob'
 			nums: [2]
-			kv: map{
+			kv: {
 				'bbb': '222'
 			}
 		}]
