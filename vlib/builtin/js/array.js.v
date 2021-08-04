@@ -181,6 +181,10 @@ pub fn (a array) reverse() array {
 	return res
 }
 
+pub fn (mut a array) reverse_in_place() {
+	#a.arr.reverse()
+}
+
 #array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
 
 // reduce executes a given reducer function on each element of the array,
@@ -192,4 +196,37 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	#}
 
 	return accum_
+}
+
+pub fn (mut a array) pop() voidptr {
+	mut res := voidptr(0)
+	#res = a.arr.pop()
+
+	return res
+}
+
+pub fn (a array) first() voidptr {
+	mut res := voidptr(0)
+	#res = a.arr[0]
+
+	return res
+}
+
+#array.prototype.toString = function () {
+#let res = "["
+#for (let i = 0; i < this.arr.length;i++) {
+#res += this.arr[i].toString();
+#if (i != this.arr.length-1)
+#res += ', '
+#}
+#res += ']'
+#return res;
+#
+#}
+
+pub fn (a array) contains(key voidptr) bool {
+	#for (let i = 0; i < a.arr.length;i++)
+	#if (vEq(a.arr[i],key)) return new bool(true);
+
+	return false
 }

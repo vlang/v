@@ -834,6 +834,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign,
 				.left_shift_assign,
 			]
+
 			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
@@ -848,6 +849,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				}
 			}
 			mut styp := g.typ(stmt.left_types[i])
+			l_sym := g.table.get_type_symbol(stmt.left_types[i])
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
@@ -874,7 +876,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				g.write(')')
 			} else {
 				if is_assign {
-					g.write('.val')
+					if l_sym.kind == .string {
+						g.write('.str')
+					} else {
+						g.write('.val')
+					}
 					g.write(' = ')
 					g.expr(left)
 
@@ -901,10 +907,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 							g.write(' & ')
 						}
 						.right_shift_assign {
-							g.write(' << ')
+							g.write(' >> ')
 						}
 						.left_shift_assign {
-							g.write(' >> ')
+							g.write(' << ')
 						}
 						.or_assign {
 							g.write(' | ')
