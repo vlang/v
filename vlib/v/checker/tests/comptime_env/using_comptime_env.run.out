@@ -7,5 +7,5 @@ vlib/v/checker/tests/comptime_env/using_comptime_env.vv:2:1: error: the environm
     1 | #flag -I $env('VAR')/xyz
     2 | #include "$env('VAR')/stdio.h"
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    3 | 
+    3 |
     4 | fn main() {

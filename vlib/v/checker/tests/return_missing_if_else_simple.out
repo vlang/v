@@ -5,7 +5,7 @@ vlib/v/checker/tests/return_missing_if_else_simple.vv:1:1: error: missing return
     3 |         println('no return in then')
 vlib/v/checker/tests/return_missing_if_else_simple.vv:10:1: error: missing return at end of function `if_no_return_in_else`
     8 | }
-    9 | 
+    9 |
    10 | fn if_no_return_in_else() int {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 |     if true {

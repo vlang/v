@@ -23,4 +23,4 @@ Description:    A semi-automated generated/library option parser
 URL:            http://www.gnu.org/software/autogen
 Version:        42.1.17
 Libs:           -lopts
-Cflags:         
+Cflags:

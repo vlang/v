@@ -1,6 +1,6 @@
 module builtin
 
-// NB: this file will be removed soon 
+// NB: this file will be removed soon
 
 // byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]

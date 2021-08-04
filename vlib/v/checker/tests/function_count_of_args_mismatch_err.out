@@ -1,5 +1,5 @@
 vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:8:13: error: expected 1 arguments, but got 3
-    6 | 
+    6 |
     7 | fn main() {
     8 |     test(true, false, 1)
       |                ~~~~~~~~

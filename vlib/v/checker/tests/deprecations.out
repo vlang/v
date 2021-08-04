@@ -1,5 +1,5 @@
 vlib/v/checker/tests/deprecations.vv:54:2: notice: function `future` will be deprecated after 9999-12-30; custom message 4
-   52 | 
+   52 |
    53 | fn main() {
    54 |     future()
       |     ~~~~~~~~

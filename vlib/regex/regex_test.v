@@ -114,7 +114,7 @@ match_test_suite = [
 	TestItem{"12345678", r"^\d{8}$",0,8},
 	TestItem{"12345678", r"^\d{7}$",-1,0},
 	TestItem{"12345678", r"^\d{9}$",-1,0},
-	
+
 	TestItem{"eth", r"(oth)|(eth)",0,3},
 	TestItem{"et", r"(oth)|(eth)",-1,0},
 	TestItem{"et", r".*(oth)|(eth)",-1,0},
@@ -138,7 +138,7 @@ match_test_suite = [
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
 	TestItem{"[ an s. s! ](wiki:something)", r"\[.*\]\( *(\w*:*\w+) *\)",0,28},
-	
+
 	// Crazywulf tests (?:^|[()])(\d+)(*)(\d+)(?:$|[()])
     TestItem{"1*1", r"(\d+)([*])(\d+)",0,3},
     TestItem{"+1*1", r"^(\d+)([*])(\d+)",-1,0},
@@ -234,7 +234,7 @@ cgroups_test_suite = [
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
 		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46]
-		//[8, 0, 0, 4, 1, 7, 10, 1, 11, 15, 1, 16, 21, 1, 22, 27, 1, 28, 36, 1, 37, 41, 1, 42, 46],		
+		//[8, 0, 0, 4, 1, 7, 10, 1, 11, 15, 1, 16, 21, 1, 22, 27, 1, 28, 36, 1, 37, 41, 1, 42, 46],
 		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
@@ -268,7 +268,7 @@ cgroups_test_suite = [
 struct Test_find_all {
 	src string
 	q string
-	res []int // [0,4,5,6...] 
+	res []int // [0,4,5,6...]
 	res_str []string // ['find0','find1'...]
 }
 const (
@@ -344,7 +344,7 @@ find_all_test_suite = [
 )
 
 const (
-	debug = true // true for debug println 
+	debug = true // true for debug println
 )
 
 fn test_regex(){
@@ -352,7 +352,7 @@ fn test_regex(){
 	for c,to in cgroups_test_suite {
 		// debug print
 		if debug {
-			println("$c [${to.src}] [q${to.q}] (${to.s}, ${to.e})") 
+			println("$c [${to.src}] [q${to.q}] (${to.s}, ${to.e})")
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -382,7 +382,7 @@ fn test_regex(){
 			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
-		}	
+		}
 
 		// check cgroups
 		if to.cgn.len > 0 {
@@ -422,7 +422,7 @@ fn test_regex(){
 					eprintln("elaborated : [${re.groups}]")
 					assert false
 				}
-			} 
+			}
 		}
 	}
 
@@ -561,7 +561,7 @@ fn test_regex(){
 // test regex_base function
 fn test_regex_func(){
 	query    := r"\d\dabcd"
-	test_str := "78abcd" 
+	test_str := "78abcd"
 	mut re, re_err, err_pos := regex.regex_base(query)
 	if re_err == regex.compile_ok {
 		start, end := re.match_string(test_str)
@@ -587,10 +587,10 @@ fn test_regex_func_replace(){
 	txt    := r'"content": "They dont necessarily flag "you will be buying these shares on margin!"", "channel_id"'
 	query := r'"(content":\s+")(.*)(, "channel_id")'
 	mut re := regex.regex_opt(query) or { panic(err) }
-	
+
 	mut txt1 := ""
 	mut txt2 := ""
-	
+
 	for _ in 0..3 {
 		rnd := int(10+rand.u32() % 20)
 		txt1 += txt      + filler[0..rnd] + "\n"

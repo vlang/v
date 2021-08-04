@@ -13,7 +13,7 @@ vlib/v/parser/tests/prefix_first.vv:27:3: warning: move infix `&` operator befor
    28 |     }
    29 | }
 vlib/v/parser/tests/prefix_first.vv:13:6: error: `if` expression requires an expression as the last statement of every branch
-   11 | 
+   11 |
    12 |     // later this should compile correctly
    13 |     _ = if true {
       |         ~~~~~~~

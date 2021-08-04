@@ -1,27 +1,27 @@
 vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have exactly 1 argument
     9 | }
-   10 | 
+   10 |
    11 | fn (u User) + () {
       | ~~~~~~~~~~~~~~~~
    12 | }
    13 |
 vlib/v/checker/tests/method_op_err.vv:14:18: error: expected `User` not `Foo` - both operands must be the same type for operator overloading
    12 | }
-   13 | 
+   13 |
    14 | fn (u User) - (f Foo) User {
       |                  ~~~
    15 |     return User{u.a - f.a, u.b-f.a}
    16 | }
 vlib/v/checker/tests/method_op_err.vv:18:9: error: receiver cannot be `mut` for operator overloading
    16 | }
-   17 | 
+   17 |
    18 | fn (mut u User) * (u1 User) User {
       |         ~~~~~~
    19 |     return User{}
    20 | }
 vlib/v/checker/tests/method_op_err.vv:22:1: error: argument cannot be `mut` for operator overloading
    20 | }
-   21 | 
+   21 |
    22 | fn (u User) / (mut u1 User) User {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    23 |     return User{}

@@ -1,5 +1,5 @@
 vlib/v/checker/tests/use_deprecated_function_warning.vv:12:2: error: function `xyz` has been deprecated
-   10 | 
+   10 |
    11 | fn main() {
    12 |     xyz()
       |     ~~~~~

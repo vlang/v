@@ -4,5 +4,5 @@ fn buggy_function() {
 }
 
 fn main(){
-	buggy_function()    
+	buggy_function()
 }

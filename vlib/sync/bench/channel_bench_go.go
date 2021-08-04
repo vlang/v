@@ -45,7 +45,7 @@ func main() {
 		go do_rec(ch, resch, int32(n))
 		no -= n
 	}
-	assert_eq(int64(no), 0)	
+	assert_eq(int64(no), 0)
 	no = nobj
 	for i := 0; i < nsend; i++ {
 		n := no / (nsend - i)
@@ -53,7 +53,7 @@ func main() {
 		no -= n
 		go do_send(ch, int32(no), int32(end))
 	}
-	assert_eq(int64(no), 0)	
+	assert_eq(int64(no), 0)
 	var sum int64
 	for i := 0; i < nrec; i++ {
 		sum += <-resch

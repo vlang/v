@@ -65,7 +65,7 @@ vec3 background(float t, vec3 rd)
 vec4 mainImage(vec2 fragCoord)
 {
  vec2 uv = (fragCoord-vec2(0.4,0.4))*2.0;
- 
+
  //vec2 uv  = (-1.0 + 2.0*fc.xy / text_res.xy) * vec2(text_res.x/text_res.y, 1.0);
  vec3 ro    = vec3(0.0, 0.0, -3.0);
  vec3 rd    = normalize(vec3(uv, 1.0));

@@ -8,7 +8,7 @@ WebAssembly demo: https://v2048.vercel.app
 
 ## Description:
 Merge tiles by moving them.
-After each move, a new random tile is added (2 or 4). 
+After each move, a new random tile is added (2 or 4).
 The goal of the game is to create a tile with a value of 2048.
 
 ## Keys:

@@ -37,7 +37,7 @@ vlib/v/checker/tests/struct_field_type_err.vv:16:3: error: cannot assign to fiel
    18 |
 vlib/v/checker/tests/struct_field_type_err.vv:19:11: error: cannot assign to `data.n`: expected `int`, not `bool`
    17 |     }
-   18 | 
+   18 |
    19 |     data.n = true
       |              ~~~~
    20 | }

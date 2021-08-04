@@ -1,10 +1,10 @@
 /*
  * Copyright (c) 2009, Cybozu Labs, Inc.
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
  * * Redistributions in binary form must reproduce the above copyright notice,
@@ -13,7 +13,7 @@
  * * Neither the name of the <ORGANIZATION> nor the names of its contributors
  *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -91,7 +91,7 @@ picoev_globals picoev;
 picoev_loop* picoev_create_loop(int max_timeout)
 {
   picoev_loop* loop;
-  
+
   assert(PICOEV_IS_INITED);
   if ((loop = (picoev_loop*)malloc(sizeof(picoev_loop))) == NULL) {
     return NULL;
@@ -100,7 +100,7 @@ picoev_loop* picoev_create_loop(int max_timeout)
     free(loop);
     return NULL;
   }
-  
+
   loop->now = time(NULL);
   return loop;
 }
@@ -123,7 +123,7 @@ int picoev_poll_once_internal(picoev_loop* loop, int max_wait)
   fd_set readfds, writefds, errorfds;
   struct timeval tv;
   int i, r, maxfd = 0;
-  
+
   /* setup */
   FD_ZERO(&readfds);
   FD_ZERO(&writefds);
@@ -145,7 +145,7 @@ int picoev_poll_once_internal(picoev_loop* loop, int max_wait)
       }
     }
   }
-  
+
   /* select and handle if any */
   tv.tv_sec = max_wait;
   tv.tv_usec = 0;
@@ -164,6 +164,6 @@ int picoev_poll_once_internal(picoev_loop* loop, int max_wait)
       }
     }
   }
-  
+
   return 0;
 }

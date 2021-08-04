@@ -10,7 +10,7 @@ struct NonEmptyStruct{
   z int
 }
 
-fn check_simple_empty_struct(){  
+fn check_simple_empty_struct(){
   s := SimpleEmptyStruct{}
   addr_s := &s
   str_addr_s := ptr_str( addr_s )
@@ -19,7 +19,7 @@ fn check_simple_empty_struct(){
   println(str_addr_s)
 }
 
-fn check_non_empty_struct(){  
+fn check_non_empty_struct(){
   a := NonEmptyStruct{1,2,3}
   b := NonEmptyStruct{4,5,6}
   assert sizeof(NonEmptyStruct) > 0

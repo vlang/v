@@ -1,5 +1,5 @@
 vlib/v/checker/tests/match_alias_type_err.vv:13:3: error: cannot match alias type `Stmt` with `SelectStmt`
-   11 | 
+   11 |
    12 |     match stmt {
    13 |         SelectStmt { panic('select') }
       |         ~~~~~~~~~~

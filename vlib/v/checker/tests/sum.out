@@ -13,7 +13,7 @@ vlib/v/checker/tests/sum.vv:6:8: error: cannot cast non-sum type `int` using `as
     7 | }
     8 |
 vlib/v/checker/tests/sum.vv:10:7: error: cannot cast `rune` to `Var`
-    8 | 
+    8 |
     9 | fn sum() {
    10 |     _ := Var(`J`)
       |          ~~~~~~~~

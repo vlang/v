@@ -19,8 +19,8 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: |
          make -j4
-         ./v -cc $CC -o v -prod cmd/v 
-         ./v -prod cmd/tools/vup.v 
+         ./v -cc $CC -o v -prod cmd/v
+         ./v -prod cmd/tools/vup.v
          ./v -prod cmd/tools/vdoctor.v
     - name: Create artifact
       uses: actions/upload-artifact@v2
@@ -84,8 +84,8 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: |
          make -j4
-         ./v -cc $CC -o v -prod cmd/v 
-         ./v -prod cmd/tools/vup.v 
+         ./v -cc $CC -o v -prod cmd/v
+         ./v -prod cmd/tools/vup.v
          ./v -prod cmd/tools/vdoctor.v
     - name: Create artifact
       uses: actions/upload-artifact@v2

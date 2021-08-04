@@ -12,4 +12,4 @@ fn foo(i int_literal) int_literal {
 
 fn foo2() int_literal {
     return 1
-} 
+}

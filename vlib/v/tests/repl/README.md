@@ -5,11 +5,11 @@
   - Write the input to be given to REPL
   - Add `===output===`
   - Write the output expected
-  
+
 ### Notes
 Keep in mind, that the way V repl works for now, every non empty line
 would cause a new recompilation of the entire repl content that was
-collected so far. 
+collected so far.
 
 *Longer REPL files would cause measurably*
 *longer recompilation/testing times.*

@@ -2,7 +2,7 @@ These are utility commands that you can also launch through v,
 but which are used less frequently by users:
 
    ast                Generate a json representation of the AST for a given .v file.
-   
+
    bug                Post an issue on the V's issue tracker, including the failing program, and some diagnostic information.
 
    bin2v              Convert a binary file to a v source file,

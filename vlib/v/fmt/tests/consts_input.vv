@@ -17,7 +17,7 @@ another_const = ['a', 'b'
 		]
 multiline_const = [
 		'first line',  'second line','third line',
-  'fourth line']		
+  'fourth line']
 )
 
 const (

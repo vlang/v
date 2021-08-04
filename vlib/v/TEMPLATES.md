@@ -110,8 +110,8 @@ Project root
 ```
 > Note that there shouldn't be a file suffix,
     it is automatically appended and only allows `html` files.
-    
-    
+
+
 ## js
 The js directive consists of two parts, the `@js` tag and `'<path>'` string,
 where you can insert your src

@@ -48,7 +48,7 @@ fn check_string_add_works(){
   assert abc[2] == combined[2]
   assert abc[0] == `a`
   assert abc == combined
-}  
+}
 
 fn main () {
 	mut fails := 0

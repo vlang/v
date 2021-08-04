@@ -1,10 +1,10 @@
 /*
  * Copyright (c) 2009, Cybozu Labs, Inc.
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
  * * Redistributions in binary form must reproduce the above copyright notice,
@@ -13,7 +13,7 @@
  * * Neither the name of the <ORGANIZATION> nor the names of its contributors
  *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -47,7 +47,7 @@ picoev_globals picoev;
 picoev_loop* picoev_create_loop(int max_timeout)
 {
   picoev_loop_epoll* loop;
-  
+
   /* init parent */
   assert(PICOEV_IS_INITED);
   if ((loop = (picoev_loop_epoll*)malloc(sizeof(picoev_loop_epoll))) == NULL) {
@@ -57,14 +57,14 @@ picoev_loop* picoev_create_loop(int max_timeout)
     free(loop);
     return NULL;
   }
-  
+
   /* init myself */
   if ((loop->epfd = epoll_create(picoev.max_fd)) == -1) {
     picoev_deinit_loop_internal(&loop->loop);
     free(loop);
     return NULL;
   }
-  
+
   loop->loop.now = time(NULL);
   return &loop->loop;
 }
@@ -72,7 +72,7 @@ picoev_loop* picoev_create_loop(int max_timeout)
 int picoev_destroy_loop(picoev_loop* _loop)
 {
   picoev_loop_epoll* loop = (picoev_loop_epoll*)_loop;
-  
+
   if (close(loop->epfd) != 0) {
     return -1;
   }
@@ -87,25 +87,25 @@ int picoev_update_events_internal(picoev_loop* _loop, int fd, int events)
   picoev_fd* target = picoev.fds + fd;
   struct epoll_event ev;
   int epoll_ret;
-  
+
   memset( &ev, 0, sizeof( ev ) );
   assert(PICOEV_FD_BELONGS_TO_LOOP(&loop->loop, fd));
-  
+
   if ((events & PICOEV_READWRITE) == target->events) {
     return 0;
   }
-  
+
   ev.events = ((events & PICOEV_READ) != 0 ? EPOLLIN : 0)
     | ((events & PICOEV_WRITE) != 0 ? EPOLLOUT : 0);
   ev.data.fd = fd;
-  
+
 #define SET(op, check_error) do {		    \
     epoll_ret = epoll_ctl(loop->epfd, op, fd, &ev); \
     assert(! check_error || epoll_ret == 0);	    \
   } while (0)
-  
+
 #if PICOEV_EPOLL_DEFER_DELETES
-  
+
   if ((events & PICOEV_DEL) != 0) {
     /* nothing to do */
   } else if ((events & PICOEV_READWRITE) == 0) {
@@ -117,21 +117,21 @@ int picoev_update_events_internal(picoev_loop* _loop, int fd, int events)
       SET(EPOLL_CTL_ADD, 1);
     }
   }
-  
+
 #else
-  
+
   if ((events & PICOEV_READWRITE) == 0) {
     SET(EPOLL_CTL_DEL, 1);
   } else {
     SET(target->events == 0 ? EPOLL_CTL_ADD : EPOLL_CTL_MOD, 1);
   }
-  
+
 #endif
-  
+
 #undef SET
-  
+
   target->events = events;
-  
+
   return 0;
 }
 
@@ -139,7 +139,7 @@ int picoev_poll_once_internal(picoev_loop* _loop, int max_wait)
 {
   picoev_loop_epoll* loop = (picoev_loop_epoll*)_loop;
   int i, nevents;
-  
+
   nevents = epoll_wait(loop->epfd, loop->events,
 		       sizeof(loop->events) / sizeof(loop->events[0]),
 		       max_wait * 1000);

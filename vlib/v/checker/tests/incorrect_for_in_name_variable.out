@@ -5,4 +5,4 @@ vlib/v/checker/tests/incorrect_for_in_name_variable.vv:3:6: error: variable name
       |         ~~~
     4 |         println(_aa)
     5 |     }
-	
+

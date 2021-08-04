@@ -3,10 +3,10 @@ vlib/v/checker/tests/index_expr.vv:3:7: error: type `int` does not support index
     2 |     v := 4
     3 |     _ = v[0]
       |          ~~~
-    4 | 
+    4 |
     5 |     a := [2]
 vlib/v/checker/tests/index_expr.vv:6:7: error: non-integer index `[]int` (array type `[]int`)
-    4 | 
+    4 |
     5 |     a := [2]
     6 |     _ = a[a]
       |          ~~~
@@ -31,10 +31,10 @@ vlib/v/checker/tests/index_expr.vv:13:7: error: type `int` does not support inde
    12 |     _ = v[1..]
    13 |     _ = v[..1]
       |          ~~~~~
-   14 | 
+   14 |
    15 |     a := [2]
 vlib/v/checker/tests/index_expr.vv:16:7: error: non-integer index `[]int` (array type `[]int`)
-   14 | 
+   14 |
    15 |     a := [2]
    16 |     _ = a[a..]
       |          ~~~~~

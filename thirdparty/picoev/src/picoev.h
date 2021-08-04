@@ -1,10 +1,10 @@
 /*
  * Copyright (c) 2009, Cybozu Labs, Inc.
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
  * * Redistributions in binary form must reproduce the above copyright notice,
@@ -13,7 +13,7 @@
  * * Neither the name of the <ORGANIZATION> nor the names of its contributors
  *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -43,7 +43,7 @@ extern "C" {
 #include <string.h>
 #include <time.h>
 
-#define PICOEV_IS_INITED (picoev.max_fd != 0)  
+#define PICOEV_IS_INITED (picoev.max_fd != 0)
 #define PICOEV_IS_INITED_AND_FD_IN_RANGE(fd) \
   (((unsigned)fd) < (unsigned)picoev.max_fd)
 #define PICOEV_TOO_MANY_LOOPS (picoev.num_loops != 0) /* use after ++ */
@@ -68,16 +68,16 @@ extern "C" {
 #define PICOEV_ADD 0x40000000
 #define PICOEV_DEL 0x20000000
 #define PICOEV_READWRITE (PICOEV_READ | PICOEV_WRITE)
-  
+
 #define PICOEV_TIMEOUT_IDX_UNUSED (UCHAR_MAX)
-  
+
   typedef unsigned short picoev_loop_id_t;
-  
+
   typedef struct picoev_loop_st picoev_loop;
-  
+
   typedef void picoev_handler(picoev_loop* loop, int fd, int revents,
 			      void* cb_arg);
-  
+
   typedef struct picoev_fd_st {
     /* use accessors! */
     /* TODO adjust the size to match that of a cache line */
@@ -88,7 +88,7 @@ extern "C" {
     unsigned char timeout_idx; /* PICOEV_TIMEOUT_IDX_UNUSED if not used */
     int _backend; /* can be used by backends (never modified by core) */
   } picoev_fd;
-  
+
   struct picoev_loop_st {
     /* read only */
     picoev_loop_id_t loop_id;
@@ -102,7 +102,7 @@ extern "C" {
     } timeout;
     time_t now;
   };
-  
+
   typedef struct picoev_globals_st {
     /* read only */
     picoev_fd* fds;
@@ -112,21 +112,21 @@ extern "C" {
     size_t timeout_vec_size; /* # of elements in picoev_loop.timeout.vec[0] */
     size_t timeout_vec_of_vec_size; /* ... in timeout.vec_of_vec[0] */
   } picoev_globals;
-  
+
   extern picoev_globals picoev;
-  
+
   /* creates a new event loop (defined by each backend) */
   picoev_loop* picoev_create_loop(int max_timeout);
-  
+
   /* destroys a loop (defined by each backend) */
   int picoev_destroy_loop(picoev_loop* loop);
-  
+
   /* internal: updates events to be watched (defined by each backend) */
   int picoev_update_events_internal(picoev_loop* loop, int fd, int events);
-  
+
   /* internal: poll once and call the handlers (defined by each backend) */
   int picoev_poll_once_internal(picoev_loop* loop, int max_wait);
-  
+
   /* internal, aligned allocator with address scrambling to avoid cache
      line contention */
   PICOEV_INLINE
@@ -143,7 +143,7 @@ extern "C" {
 			   + (rand() % PICOEV_PAGE_SIZE),
 			   PICOEV_CACHE_LINE_SIZE);
   }
-  
+
   /* initializes picoev */
   PICOEV_INLINE
   int picoev_init(int max_fd) {
@@ -163,7 +163,7 @@ extern "C" {
       / PICOEV_SHORT_BITS;
     return 0;
   }
-  
+
   /* deinitializes picoev */
   PICOEV_INLINE
   int picoev_deinit(void) {
@@ -175,7 +175,7 @@ extern "C" {
     picoev.num_loops = 0;
     return 0;
   }
-  
+
   /* updates timeout */
   PICOEV_INLINE
   void picoev_set_timeout(picoev_loop* loop, int fd, int secs) {
@@ -211,7 +211,7 @@ extern "C" {
 	|= (unsigned short)SHRT_MIN >> (vi % PICOEV_SHORT_BITS);
     }
   }
-  
+
   /* registers a file descriptor and callback argument to a event loop */
   PICOEV_INLINE
   int picoev_add(picoev_loop* loop, int fd, int events, int timeout_in_secs,
@@ -232,7 +232,7 @@ extern "C" {
     picoev_set_timeout(loop, fd, timeout_in_secs);
     return 0;
   }
-  
+
   /* unregisters a file descriptor from event loop */
   PICOEV_INLINE
   int picoev_del(picoev_loop* loop, int fd) {
@@ -246,7 +246,7 @@ extern "C" {
     target->loop_id = 0;
     return 0;
   }
-  
+
   /* check if fd is registered (checks all loops if loop == NULL) */
   PICOEV_INLINE
   int picoev_is_active(picoev_loop* loop, int fd) {
@@ -255,14 +255,14 @@ extern "C" {
       ? picoev.fds[fd].loop_id == loop->loop_id
       : picoev.fds[fd].loop_id != 0;
   }
-  
+
   /* returns events being watched for given descriptor */
   PICOEV_INLINE
   int picoev_get_events(picoev_loop* loop __attribute__((unused)), int fd) {
     assert(PICOEV_IS_INITED_AND_FD_IN_RANGE(fd));
     return picoev.fds[fd].events & PICOEV_READWRITE;
   }
-  
+
   /* sets events to be watched for given desriptor */
   PICOEV_INLINE
   int picoev_set_events(picoev_loop* loop, int fd, int events) {
@@ -273,7 +273,7 @@ extern "C" {
     }
     return 0;
   }
-  
+
   /* returns callback for given descriptor */
   PICOEV_INLINE
   picoev_handler* picoev_get_callback(picoev_loop* loop __attribute__((unused)),
@@ -284,7 +284,7 @@ extern "C" {
     }
     return picoev.fds[fd].callback;
   }
-  
+
   /* sets callback for given descriptor */
   PICOEV_INLINE
   void picoev_set_callback(picoev_loop* loop __attribute__((unused)), int fd,
@@ -295,7 +295,7 @@ extern "C" {
     }
     picoev.fds[fd].callback = callback;
   }
-  
+
   /* function to iterate registered information. To start iteration, set curfd
      to -1 and call the function until -1 is returned */
   PICOEV_INLINE
@@ -310,7 +310,7 @@ extern "C" {
     }
     return -1;
   }
-  
+
   /* internal function */
   PICOEV_INLINE
   int picoev_init_loop_internal(picoev_loop* loop, int max_timeout) {
@@ -334,19 +334,19 @@ extern "C" {
       / PICOEV_TIMEOUT_VEC_SIZE;
     return 0;
   }
-  
+
   /* internal function */
   PICOEV_INLINE
   void picoev_deinit_loop_internal(picoev_loop* loop) {
     free(loop->timeout._free_addr);
   }
-  
+
   /* internal function */
   PICOEV_INLINE
   void picoev_handle_timeout_internal(picoev_loop* loop) {
     size_t i, j, k;
     for (;
-	 loop->timeout.base_time <= loop->now - loop->timeout.resolution; 
+	 loop->timeout.base_time <= loop->now - loop->timeout.resolution;
 	 loop->timeout.base_idx
 	   = (loop->timeout.base_idx + 1) % PICOEV_TIMEOUT_VEC_SIZE,
 	   loop->timeout.base_time += loop->timeout.resolution) {
@@ -377,7 +377,7 @@ extern "C" {
       }
     }
   }
-  
+
   /* loop once */
   PICOEV_INLINE
   int picoev_loop_once(picoev_loop* loop, int max_wait) {
@@ -394,7 +394,7 @@ extern "C" {
     picoev_handle_timeout_internal(loop);
     return 0;
   }
-  
+
 #undef PICOEV_INLINE
 
 #ifdef __cplusplus
