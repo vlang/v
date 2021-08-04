@@ -1,6 +1,8 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+// Based off:   https://github.com/golang/go/blob/master/src/encoding/base64/base64.go
+// Last commit: https://github.com/golang/go/commit/9a93baf4d7d13d7d5c67388c93960d78abc8e11e
 module base64
 
 const (
@@ -115,7 +117,7 @@ fn assemble64(n1 byte, n2 byte, n3 byte, n4 byte, n5 byte, n6 byte, n7 byte, n8 
 // Each digit comes from the decode map.
 // Please note: Invalid base64 digits are not expected and not handled.
 fn assemble32(n1 byte, n2 byte, n3 byte, n4 byte) u32 {
-	return u32(n1)<<26 | u32(n2)<<20 | u32(n3)<<14 | u32(n4)<<8
+	return u32(n1) << 26 | u32(n2) << 20 | u32(n3) << 14 | u32(n4) << 8
 }
 
 // decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.
@@ -159,7 +161,7 @@ fn decode_micro(dest &byte, src &byte, src_len int, si int) int {
 	mut j := 0 + si
 	mut d := unsafe { src }
 	mut b := unsafe { dest }
-	
+
 	for i < input_length {
 		mut char_a := 0
 		mut char_b := 0
@@ -221,15 +223,10 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 		mut si := 0
 
 		for src_len - si >= 8 {
-			dn := assemble64(
-				byte(base64.index[d[si+0]]),
-				byte(base64.index[d[si+1]]),
-				byte(base64.index[d[si+2]]),
-				byte(base64.index[d[si+3]]),
-				byte(base64.index[d[si+4]]),
-				byte(base64.index[d[si+5]]),
-				byte(base64.index[d[si+6]]),
-				byte(base64.index[d[si+7]]))
+			dn := assemble64(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]), byte(base64.index[d[
+				si + 4]]), byte(base64.index[d[si + 5]]), byte(base64.index[d[si + 6]]),
+				byte(base64.index[d[si + 7]]))
 			// binary.big_endian_put_u64(mut b[n_decoded_bytes..(n_decoded_bytes+8)], dn)
 			_ = b[n_decoded_bytes + 7] // bounds check
 			b[n_decoded_bytes + 0] = byte(dn >> u64(56))
@@ -246,11 +243,8 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 		}
 
 		for src_len - si >= 4 {
-			dn := assemble32(
-				byte(base64.index[d[si+0]]),
-				byte(base64.index[d[si+1]]),
-				byte(base64.index[d[si+2]]),
-				byte(base64.index[d[si+3]]))
+			dn := assemble32(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]))
 			// binary.big_endian_put_u32(mut b []byte, v u32)
 			_ = b[n_decoded_bytes + 3] // bounds check
 			b[n_decoded_bytes + 0] = byte(dn >> u32(24))
