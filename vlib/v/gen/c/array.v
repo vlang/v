@@ -110,7 +110,14 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('\t\t')
 	}
 	for i, expr in node.exprs {
-		g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+		if node.expr_types[i] == ast.string_type && expr !is ast.StringLiteral
+			&& expr !is ast.StringInterLiteral {
+			g.write('string_clone(')
+			g.expr(expr)
+			g.write(')')
+		} else {
+			g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+		}
 		if i != len - 1 {
 			if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
 				g.writeln(',')
