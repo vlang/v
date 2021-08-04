@@ -2466,7 +2466,8 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
 	} else if method_name == 'sort' {
 		if call_expr.left is ast.CallExpr {
-			c.error('the `sort()` method can be called only on mutable receivers, but `$call_expr.left` is a call expression', call_expr.pos)
+			c.error('the `sort()` method can be called only on mutable receivers, but `$call_expr.left` is a call expression',
+				call_expr.pos)
 		}
 		c.fail_if_immutable(call_expr.left)
 		// position of `a` and `b` doesn't matter, they're the same
