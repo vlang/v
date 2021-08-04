@@ -3,6 +3,8 @@ import time
 fn test_add_to_day_in_the_previous_century() ? {
 	a := time.parse_iso8601('1900-01-01') ?
 	aa := a.add_days(180)
+	dump(a.debug())
+	dump(aa.debug())
 	assert aa.ymmdd() == '1900-06-29'
 }
 

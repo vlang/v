@@ -358,6 +358,11 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
+// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
+pub fn (t Time) debug() string {
+	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
+}
+
 // convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
