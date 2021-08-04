@@ -16,7 +16,7 @@ import v.pref
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericInst |
 	Interface | Map | MultiReturn | Struct | SumType | Thread
 
 pub enum Language {
@@ -517,7 +517,7 @@ pub enum Kind {
 	chan
 	any
 	struct_
-	generic_struct_inst
+	generic_inst
 	multi_return
 	sum_type
 	alias
@@ -750,7 +750,7 @@ pub fn (k Kind) str() string {
 		.any { 'any' }
 		.function { 'function' }
 		.interface_ { 'interface' }
-		.generic_struct_inst { 'generic_struct_inst' }
+		.generic_inst { 'generic_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
 		.thread { 'thread' }
@@ -785,7 +785,7 @@ pub mut:
 }
 
 // instantiation of a generic struct
-pub struct GenericStructInst {
+pub struct GenericInst {
 pub mut:
 	parent_idx     int    // idx of the base generic struct
 	concrete_types []Type // concrete types, e.g. <int, string>
@@ -1030,8 +1030,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
-		.generic_struct_inst {
-			info := sym.info as GenericStructInst
+		.generic_inst {
+			info := sym.info as GenericInst
 			res = sym.name.all_before('<')
 			res += '<'
 			for i, ctyp in info.concrete_types {

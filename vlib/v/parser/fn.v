@@ -912,8 +912,9 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_,
-		.generic_struct_inst, .sum_type] {
+	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .generic_inst,
+		.sum_type,
+	] {
 		return
 	}
 	if typ.is_ptr() || typ.is_pointer() {
