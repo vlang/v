@@ -2465,6 +2465,9 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 		// position of `it` doesn't matter
 		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
 	} else if method_name == 'sort' {
+		if call_expr.left is ast.CallExpr {
+			c.error('`$call_expr.left` cannot call `sort()` method directly', call_expr.pos)
+		}
 		c.fail_if_immutable(call_expr.left)
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut call_expr.scope, call_expr.pos, elem_typ)

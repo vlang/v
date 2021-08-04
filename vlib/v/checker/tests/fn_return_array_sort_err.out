@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_return_array_sort_err.vv:6:14: error: `ret_array()` cannot call `sort()` method directly
+    4 |
+    5 | fn main() {
+    6 |     ret_array().sort()
+      |                 ~~~~~~
+    7 | }
