@@ -52,14 +52,12 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C._mkgmtime(&C.tm) C.time_t
-
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 fn C.QueryPerformanceFrequency(&u64) C.BOOL
 
 fn make_unix_time(t C.tm) i64 {
-	return i64(C._mkgmtime(&t))
+	return portable_timegm(&t)
 }
 
 fn init_win_time_freq() u64 {
