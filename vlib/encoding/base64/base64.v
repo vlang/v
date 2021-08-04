@@ -200,7 +200,75 @@ fn decode_micro(dest &byte, src &byte, src_len int, si int) int {
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
 // Please note: This function is for internal base64 decoding
 fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
-	return -1
+	if src_len == 0 {
+		return 0
+	}
+
+	mut padding := 0
+	if unsafe { src[src_len - 1] == `=` } {
+		if unsafe { src[src_len - 2] == `=` } {
+			padding = 2
+		} else {
+			padding = 1
+		}
+	}
+
+	mut d := unsafe { src }
+	mut b := unsafe { dest }
+
+	unsafe {
+		mut n_decoded_bytes := 0 // padding bytes are also counted towards this.
+		mut si := 0
+
+		for src_len - si >= 8 {
+			dn := assemble64(
+				byte(base64.index[d[si+0]]),
+				byte(base64.index[d[si+1]]),
+				byte(base64.index[d[si+2]]),
+				byte(base64.index[d[si+3]]),
+				byte(base64.index[d[si+4]]),
+				byte(base64.index[d[si+5]]),
+				byte(base64.index[d[si+6]]),
+				byte(base64.index[d[si+7]]))
+			// binary.big_endian_put_u64(mut b[n_decoded_bytes..(n_decoded_bytes+8)], dn)
+			_ = b[n_decoded_bytes + 7] // bounds check
+			b[n_decoded_bytes + 0] = byte(dn >> u64(56))
+			b[n_decoded_bytes + 1] = byte(dn >> u64(48))
+			b[n_decoded_bytes + 2] = byte(dn >> u64(40))
+			b[n_decoded_bytes + 3] = byte(dn >> u64(32))
+			b[n_decoded_bytes + 4] = byte(dn >> u64(24))
+			b[n_decoded_bytes + 5] = byte(dn >> u64(16))
+			b[n_decoded_bytes + 6] = byte(dn >> u64(8))
+			b[n_decoded_bytes + 7] = byte(dn)
+
+			n_decoded_bytes += 6
+			si += 8
+		}
+
+		for src_len - si >= 4 {
+			dn := assemble32(
+				byte(base64.index[d[si+0]]),
+				byte(base64.index[d[si+1]]),
+				byte(base64.index[d[si+2]]),
+				byte(base64.index[d[si+3]]))
+			// binary.big_endian_put_u32(mut b []byte, v u32)
+			_ = b[n_decoded_bytes + 3] // bounds check
+			b[n_decoded_bytes + 0] = byte(dn >> u32(24))
+			b[n_decoded_bytes + 1] = byte(dn >> u32(16))
+			b[n_decoded_bytes + 2] = byte(dn >> u32(8))
+			b[n_decoded_bytes + 3] = byte(dn)
+
+			n_decoded_bytes += 3
+			si += 4
+		}
+
+		if si < src_len {
+			n_micro := decode_micro(dest, src, src_len, si)
+			return n_decoded_bytes + n_micro - padding
+		}
+
+		return n_decoded_bytes - padding
+	}
 }
 
 // encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
