@@ -104,32 +104,62 @@ pub fn url_encode_str(data string) string {
 	return encode_str(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 
+// assemble64 assembles 8 base64 digits into 6 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble64(n1 byte, n2 byte, n3 byte, n4 byte, n5 byte, n6 byte, n7 byte, n8 byte) u64 {
+	return u64(n1) << 58 | u64(n2) << 52 | u64(n3) << 46 | u64(n4) << 40 | u64(n5) << 34 | u64(n6) << 28 | u64(n7) << 22 | u64(n8) << 16
+}
+
+// assemble32 assembles 4 base64 digits into 3 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble32(n1 byte, n2 byte, n3 byte, n4 byte) u32 {
+	return u32(n1)<<26 | u32(n2)<<20 | u32(n3)<<14 | u32(n4)<<8
+}
+
 // decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.
 // decode_in_buffer returns the size of the decoded data in the buffer.
 // Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
 pub fn decode_in_buffer(data &string, buffer &byte) int {
+	return decode_from_buffer(buffer, data.str, data.len)
+}
+
+// decode_from_buffer decodes the base64 encoded ASCII bytes from `data` into `buffer`.
+// decode_from_buffer returns the size of the decoded data in the buffer.
+// Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
+// to hold the decoded data.
+// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
+pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
+	return decode_from_buffer(buffer, data.data, data.len)
+}
+
+// decode_micro is used internally for decoding small amounts of base64 data. Returns the number of decoded bytes.
+// decode_micro takes a `dest` buffer a `src` buffer, the lenght of the input data `src_len`
+// and `si`, which is the source index if decoding is continued somewhere in the middle the source buffer.
+// Please note: The `buffer` should be large enough (i.e. 3/4 of the src_len, or larger)
+// to hold the decoded data.
+fn decode_micro(dest &byte, src &byte, src_len int, si int) int {
 	mut padding := 0
-	if data.ends_with('=') {
-		if data.ends_with('==') {
+	if unsafe { src[src_len - 1] == `=` } {
+		if unsafe { src[src_len - 2] == `=` } {
 			padding = 2
 		} else {
 			padding = 1
 		}
 	}
-	// input_length is the length of meaningful data
-	input_length := data.len - padding
+
+	// input_length is the length of meaningful (leftover) data
+	input_length := src_len - padding - si
 	output_length := input_length * 3 / 4
 
-	mut i := 0
-	mut j := 0
-	mut b := &byte(0)
-	mut d := &byte(0)
-	unsafe {
-		d = &byte(data.str)
-		b = &byte(buffer)
-	}
+	mut i := 0 + si
+	mut j := 0 + si
+	mut d := unsafe { src }
+	mut b := unsafe { dest }
+	
 	for i < input_length {
 		mut char_a := 0
 		mut char_b := 0
@@ -161,15 +191,6 @@ pub fn decode_in_buffer(data &string, buffer &byte) int {
 		j += 3
 	}
 	return output_length
-}
-
-// decode_from_buffer decodes the base64 encoded ASCII bytes from `data` into `buffer`.
-// decode_from_buffer returns the size of the decoded data in the buffer.
-// Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
-// to hold the decoded data.
-// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
-pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
-	return decode_from_buffer(buffer, data.data, data.len)
 }
 
 // decode_from_buffer decodes the base64 encoded ASCII bytes from `src` into `dest`.
