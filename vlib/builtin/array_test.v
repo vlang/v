@@ -907,12 +907,14 @@ fn test_i64_sort() {
 }
 
 fn test_sort_index_expr() {
-	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)], [i64(0)], [i64(27)]]
+	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)],
+		[i64(0)], [i64(27)]]
 	// TODO This currently gives "indexing pointer" error without unsafe
 	unsafe {
 		f.sort(a[0] < b[0])
 	}
-	assert f == [[i64(0)], [i64(1)], [i64(15)], [i64(27)], [i64(38)], [i64(50), 48], [i64(79)]]
+	assert f == [[i64(0)], [i64(1)], [i64(15)], [i64(27)], [i64(38)],
+		[i64(50), 48], [i64(79)]]
 }
 
 fn test_a_b_paras_sort() {
