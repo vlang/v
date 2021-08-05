@@ -5924,6 +5924,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 	}
 	g.writeln('}')
+	g.stmt_path_pos << g.out.len
 }
 
 [inline]
