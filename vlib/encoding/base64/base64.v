@@ -138,63 +138,6 @@ pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
 	return decode_from_buffer(buffer, data.data, data.len)
 }
 
-// decode_micro is used internally for decoding small amounts of base64 data. Returns the number of decoded bytes.
-// decode_micro takes a `dest` buffer a `src` buffer, the lenght of the input data `src_len`
-// and `si`, which is the source index if decoding is continued somewhere in the middle the source buffer.
-// Please note: The `buffer` should be large enough (i.e. 3/4 of the src_len, or larger)
-// to hold the decoded data.
-fn decode_micro(dest &byte, src &byte, src_len int, si int) int {
-	mut padding := 0
-	if unsafe { src[src_len - 1] == `=` } {
-		if unsafe { src[src_len - 2] == `=` } {
-			padding = 2
-		} else {
-			padding = 1
-		}
-	}
-
-	// input_length is the length of meaningful (leftover) data
-	input_length := src_len - padding - si
-	output_length := input_length * 3 / 4
-
-	mut i := 0 + si
-	mut j := 0 + si
-	mut d := unsafe { src }
-	mut b := unsafe { dest }
-
-	for i < input_length {
-		mut char_a := 0
-		mut char_b := 0
-		mut char_c := 0
-		mut char_d := 0
-		if i < input_length {
-			char_a = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_b = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_c = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_d = base64.index[unsafe { d[i] }]
-			i++
-		}
-
-		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		unsafe {
-			b[j] = byte(decoded_bytes >> 16)
-			b[j + 1] = byte((decoded_bytes >> 8) & 0xff)
-			b[j + 2] = byte((decoded_bytes >> 0) & 0xff)
-		}
-		j += 3
-	}
-	return output_length
-}
-
 // decode_from_buffer decodes the base64 encoded ASCII bytes from `src` into `dest`.
 // decode_from_buffer returns the size of the decoded data in the buffer.
 // Please note: The `dest` buffer should be large enough (i.e. 3/4 of the `src_len`, or larger)
@@ -256,11 +199,6 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 
 			n_decoded_bytes += 3
 			si += 4
-		}
-
-		if si < src_len {
-			n_micro := decode_micro(dest, src, src_len, si)
-			return n_decoded_bytes + n_micro - padding
 		}
 
 		return n_decoded_bytes - padding
