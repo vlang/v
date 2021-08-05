@@ -15,6 +15,18 @@ const (
 	enc_table    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
+union B64_64_datablock {
+mut:
+	data      u64
+	data_byte [8]byte
+}
+
+union B64_32_datablock {
+mut:
+	data      u32
+	data_byte [4]byte
+}
+
 // decode decodes the base64 encoded `string` value passed in `data`.
 // Please note: If you need to decode many strings repeatedly, take a look at `decode_in_buffer`.
 // Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
@@ -165,37 +177,56 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 		mut n_decoded_bytes := 0 // padding bytes are also counted towards this.
 		mut si := 0
 
+		mut datablock_64 := B64_64_datablock{
+			data: 0
+		}
+		mut datablock_32 := B64_32_datablock{
+			data: 0
+		}
+
 		for src_len - si >= 8 {
-			dn := assemble64(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+			// Converting 8 bytes of input into 6 bytes of output. Storing these in the upper bytes of an u64.
+			datablock_64.data = assemble64(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
 				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]), byte(base64.index[d[
 				si + 4]]), byte(base64.index[d[si + 5]]), byte(base64.index[d[si + 6]]),
 				byte(base64.index[d[si + 7]]))
 
-			// binary.big_endian_put_u64(mut b[n_decoded_bytes..(n_decoded_bytes+8)], dn)
-			//			_ = b[n_decoded_bytes + 7] // bounds check
-			b[n_decoded_bytes + 0] = byte(dn >> u64(56))
-			b[n_decoded_bytes + 1] = byte(dn >> u64(48))
-			b[n_decoded_bytes + 2] = byte(dn >> u64(40))
-			b[n_decoded_bytes + 3] = byte(dn >> u64(32))
-			b[n_decoded_bytes + 4] = byte(dn >> u64(24))
-			b[n_decoded_bytes + 5] = byte(dn >> u64(16))
-			//			b[n_decoded_bytes + 6] = byte(dn >> u64(8))
-			//			b[n_decoded_bytes + 7] = byte(dn)
+			// Reading out the individual bytes from the u64. Watch out with endianess.
+			$if little_endian {
+				b[n_decoded_bytes + 0] = datablock_64.data_byte[7]
+				b[n_decoded_bytes + 1] = datablock_64.data_byte[6]
+				b[n_decoded_bytes + 2] = datablock_64.data_byte[5]
+				b[n_decoded_bytes + 3] = datablock_64.data_byte[4]
+				b[n_decoded_bytes + 4] = datablock_64.data_byte[3]
+				b[n_decoded_bytes + 5] = datablock_64.data_byte[2]
+			} $else {
+				b[n_decoded_bytes + 0] = datablock_64.data_byte[0]
+				b[n_decoded_bytes + 1] = datablock_64.data_byte[1]
+				b[n_decoded_bytes + 2] = datablock_64.data_byte[2]
+				b[n_decoded_bytes + 3] = datablock_64.data_byte[3]
+				b[n_decoded_bytes + 4] = datablock_64.data_byte[4]
+				b[n_decoded_bytes + 5] = datablock_64.data_byte[5]
+			}
 
 			n_decoded_bytes += 6
 			si += 8
 		}
 
 		for src_len - si >= 4 {
-			dn := assemble32(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+			datablock_32.data = assemble32(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
 				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]))
 
-			// binary.big_endian_put_u32(mut b []byte, v u32)
-			_ = b[n_decoded_bytes + 3] // bounds check
-			b[n_decoded_bytes + 0] = byte(dn >> u32(24))
-			b[n_decoded_bytes + 1] = byte(dn >> u32(16))
-			b[n_decoded_bytes + 2] = byte(dn >> u32(8))
-			b[n_decoded_bytes + 3] = byte(dn)
+			$if little_endian {
+				b[n_decoded_bytes + 0] = datablock_32.data_byte[3]
+				b[n_decoded_bytes + 1] = datablock_32.data_byte[2]
+				b[n_decoded_bytes + 2] = datablock_32.data_byte[1]
+				b[n_decoded_bytes + 3] = datablock_32.data_byte[0]
+			} $else {
+				b[n_decoded_bytes + 0] = datablock_32.data_byte[0]
+				b[n_decoded_bytes + 1] = datablock_32.data_byte[1]
+				b[n_decoded_bytes + 2] = datablock_32.data_byte[2]
+				b[n_decoded_bytes + 3] = datablock_32.data_byte[3]
+			}
 
 			n_decoded_bytes += 3
 			si += 4
