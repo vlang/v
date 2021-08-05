@@ -5241,8 +5241,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	// User set fields
 	mut initialized := false
+	mut old_is_shared := g.is_shared
 	for i, field in struct_init.fields {
-		mut old_is_shared := g.is_shared
 		if !field.typ.has_flag(.shared_f) {
 			g.is_shared = false
 		}
@@ -5279,6 +5279,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		g.is_shared = old_is_shared
 	}
+	g.is_shared = old_is_shared
 	// The rest of the fields are zeroed.
 	// `inited_fields` is a list of fields that have been init'ed, they are skipped
 	mut nr_fields := 1
@@ -5289,7 +5290,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
-			old_is_shared := g.is_shared
+			old_is_shared = g.is_shared
 			mut used_embed_fields := []string{}
 			init_field_names := info.fields.map(it.name)
 			// fields that are initialized but belong to the embedding
@@ -5322,7 +5323,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for mut field in info.fields {
-			mut old_is_shared := g.is_shared
 			if !field.typ.has_flag(.shared_f) {
 				g.is_shared = false
 			}
@@ -5404,6 +5404,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			initialized = true
 			g.is_shared = old_is_shared
 		}
+		g.is_shared = old_is_shared
 	}
 	if is_multiline {
 		g.indent--
