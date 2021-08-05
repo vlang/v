@@ -145,7 +145,7 @@ pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
 // Please note: This function is for internal base64 decoding
 fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
-	if src_len == 0 {
+	if src_len < 4 {
 		return 0
 	}
 
