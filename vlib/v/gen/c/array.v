@@ -224,20 +224,34 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	info := rec_sym.info as ast.Array
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
-	mut compare_fn := 'compare_${g.new_global_tmp_var()}_${g.typ(info.elem_type.set_nr_muls(0))}'
-
-	mut sort_type := g.unwrap(ast.void_type)
+	elem_stype := g.typ(info.elem_type)
+	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
+	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
-		sort_type = g.unwrap(info.elem_type)
+		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
+		if compare_fn in g.array_sort_fn {
+			g.gen_array_sort_call(node, compare_fn)
+			return
+		}
 		left_expr = '*a'
 		right_expr = '*b'
 	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
+		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
 		left_name := infix_expr.left.str()
-		sort_type = g.unwrap(infix_expr.left_type)
-		if left_name.starts_with('a') {
+		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
+		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
+			|| (left_name.starts_with('b') && infix_expr.op == .lt)
+		if is_reverse {
+			compare_fn += '_reverse'
+		}
+		if compare_fn in g.array_sort_fn {
+			g.gen_array_sort_call(node, compare_fn)
+			return
+		}
+		if left_name.starts_with('a') != is_reverse {
 			left_expr = g.expr_string(infix_expr.left)
 			right_expr = g.expr_string(infix_expr.right)
 			if infix_expr.left is ast.Ident {
@@ -256,26 +270,19 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				left_expr = '*' + left_expr
 			}
 		}
-
-		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
-		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
-			|| (left_name.starts_with('b') && infix_expr.op == .lt)
-		if is_reverse {
-			compare_fn += '_reverse'
-			left_expr, right_expr = right_expr, left_expr
-		}
 	}
 
 	// Register a new custom `compare_xxx` function for qsort()
 	// TODO: move to checker
 	g.table.register_fn(name: compare_fn, return_type: ast.int_type)
+	g.array_sort_fn[compare_fn] = true
 
 	stype_arg := g.typ(info.elem_type)
 	g.definitions.writeln('int ${compare_fn}($stype_arg* a, $stype_arg* b) {')
-	c_condition := if sort_type.sym.has_method('<') {
-		'${g.typ(sort_type.typ)}__lt($left_expr, $right_expr)'
-	} else if sort_type.unaliased_sym.has_method('<') {
-		'${g.typ(sort_type.unaliased)}__lt($left_expr, $right_expr)'
+	c_condition := if comparison_type.sym.has_method('<') {
+		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
+	} else if comparison_type.unaliased_sym.has_method('<') {
+		'${g.typ(comparison_type.unaliased)}__lt($left_expr, $right_expr)'
 	} else {
 		'$left_expr < $right_expr'
 	}
@@ -284,6 +291,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.definitions.writeln('}\n')
 
 	// write call to the generated function
+	g.gen_array_sort_call(node, compare_fn)
+}
+
+fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	deref_field := if node.left_type.is_ptr() || node.left_type.is_pointer() { '->' } else { '.' }
 	// eprintln('> qsort: pointer $node.left_type | deref: `$deref`')
 	g.empty_line = true
