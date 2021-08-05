@@ -225,7 +225,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
 	elem_stype := g.typ(info.elem_type)
-	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_$elem_stype'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
@@ -241,6 +241,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		infix_expr := node.args[0].expr as ast.InfixExpr
 		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
 		left_name := infix_expr.left.str()
+		if left_name.len > 1 {
+			compare_fn += '_by' + left_name[1..].replace_each(['.', '_', '[', '_', ']', '_'])
+		}
 		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
 		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
 			|| (left_name.starts_with('b') && infix_expr.op == .lt)

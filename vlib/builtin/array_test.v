@@ -839,8 +839,10 @@ fn test_sort() {
 	assert users[1].age == 22
 	assert users[2].age == 25
 
-	users.sort(a.name < b.name) // Test sorting by string fields
-	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
+	users.sort(a.name < b.name)
+	assert users[0].name == 'Alice'
+	assert users[1].name == 'Bob'
+	assert users[2].name == 'Peter'
 }
 
 fn test_rune_sort() {
@@ -902,6 +904,15 @@ fn test_i64_sort() {
 	assert f[0] == 0
 	assert f[1] == 1
 	assert f[6] == 79
+}
+
+fn test_sort_index_expr() {
+	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)], [i64(0)], [i64(27)]]
+	// TODO This currently gives "indexing pointer" error without unsafe
+	unsafe {
+		f.sort(a[0] < b[0])
+	}
+	assert f == [[i64(0)], [i64(1)], [i64(15)], [i64(27)], [i64(38)], [i64(50), 48], [i64(79)]]
 }
 
 fn test_a_b_paras_sort() {
