@@ -83,7 +83,7 @@ int bignum_to_int(struct bn* n)
   ret += n->array[0];
   ret += n->array[1] << 8;
   ret += n->array[2] << 16;
-  ret += n->array[3] << 24;  
+  ret += n->array[3] << 24;
 #elif (WORD_SIZE == 2)
   ret += n->array[0];
   ret += n->array[1] << 16;
@@ -145,8 +145,8 @@ void bignum_to_string(struct bn* n, char* str, int nbytes)
   {
     j += 1;
   }
- 
-  /* Move string j places ahead, effectively skipping leading zeros */ 
+
+  /* Move string j places ahead, effectively skipping leading zeros */
   for (i = 0; i < (nbytes - j); ++i)
   {
     str[i] = str[i + j];
@@ -352,7 +352,7 @@ void bignum_rshift(struct bn* a, struct bn* b, int nbits)
   require(a, "a is null");
   require(b, "b is null");
   require(nbits >= 0, "no negative shifts");
-  
+
   bignum_assign(b, a);
   /* Handle shift in multiples of word-size */
   const int nbits_pr_word = (WORD_SIZE * 8);
@@ -372,7 +372,7 @@ void bignum_rshift(struct bn* a, struct bn* b, int nbits)
     }
     b->array[i] >>= nbits;
   }
-  
+
 }
 
 
@@ -525,7 +525,7 @@ void bignum_pow(struct bn* a, struct bn* b, struct bn* c)
     bignum_assign(&tmp, a);
 
     bignum_dec(&bcopy);
- 
+
     /* Begin summing products: */
     while (!bignum_is_zero(&bcopy))
     {
@@ -555,15 +555,15 @@ void bignum_isqrt(struct bn *a, struct bn* b)
   bignum_rshift(&high, &mid, 1);
   bignum_inc(&mid);
 
-  while (bignum_cmp(&high, &low) > 0) 
+  while (bignum_cmp(&high, &low) > 0)
   {
     bignum_mul(&mid, &mid, &tmp);
-    if (bignum_cmp(&tmp, a) > 0) 
+    if (bignum_cmp(&tmp, a) > 0)
     {
       bignum_assign(&high, &mid);
       bignum_dec(&high);
     }
-    else 
+    else
     {
       bignum_assign(&low, &mid);
     }
@@ -632,7 +632,7 @@ static void _lshift_word(struct bn* a, int nwords)
   for (; i >= 0; --i)
   {
     a->array[i] = 0;
-  }  
+  }
 }
 
 

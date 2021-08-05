@@ -285,7 +285,7 @@ fn ensure_same_output(mut rng rand.PRNG) {
 fn test_new_global_rng() {
 	old := rand.get_current_rng()
 
-	// MuslRNG	
+	// MuslRNG
 	mut rng1a := musl.MuslRNG{}
 	mut rng1b := musl.MuslRNG{}
 	seed1 := [u32(1234)]

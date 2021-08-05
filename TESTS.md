@@ -97,7 +97,7 @@ This runs tests for:
 ### Special folders that compiler_errors_test.v will try to
 run/compile with specific options:
 
-vlib/v/checker/tests/globals_run/ - `-enable-globals run`; 
+vlib/v/checker/tests/globals_run/ - `-enable-globals run`;
 results stored in `.run.out` files, matching the .vv ones.
 
 ## `v test-all`

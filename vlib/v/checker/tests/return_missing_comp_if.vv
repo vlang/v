@@ -4,6 +4,6 @@ fn foo() string {
     $if windows {
 
     } $else {
-        
+
     }
 }

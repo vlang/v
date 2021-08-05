@@ -1,6 +1,6 @@
 # get_weather
 get_weather is a very simple web crawler.
-Its goal is to get a weather forecast from caiyunapp.com.  
+Its goal is to get a weather forecast from caiyunapp.com.
 
 # Compile and Run
 
@@ -16,7 +16,7 @@ v run get_weather.v
 ```
 
 In this project we use http.fetch() to get a http.Response, with a
-custom user-agent and then we use json.decode() to decode the json 
+custom user-agent and then we use json.decode() to decode the json
 response to struct.
 We also use a `[skip]` attribute to skip certain fields in the response,
 that we don't need and use a `[json: result]` attribute to specify that

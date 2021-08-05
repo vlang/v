@@ -42,7 +42,7 @@ for Visual Studio Code provides visual conditional debugging.
 [more Features & Documentation](https://code.visualstudio.com/docs/cpp/cpp-debug)
 
 **Hint:** Not all types (e.g. Array) in V currently create the required
-[DWARF](https://en.wikipedia.org/wiki/DWARF) information to show and 
+[DWARF](https://en.wikipedia.org/wiki/DWARF) information to show and
 edit the variable.
 
 ### Setup Debugging
@@ -61,7 +61,7 @@ or create the file `.vscode/launch.json`:
 {
     // Use IntelliSense to learn about possible attributes.
     // Hover to view descriptions of existing attributes.
-    // For more information, visit: 
+    // For more information, visit:
 	// https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
@@ -81,7 +81,7 @@ or create the file `.vscode/launch.json`:
 }
 ```
 
-**Optional:** use `"program": "${fileDirname}/${fileBasenameNoExtension}"` to debug 
+**Optional:** use `"program": "${fileDirname}/${fileBasenameNoExtension}"` to debug
 any current open source file with an existing binary with the same name but without any extension.
 
 ### Usage
@@ -103,5 +103,5 @@ More Options are explained in the [docs](docs.md#debugging).
 2. Click on the Debug Icon in the left Icon panel and click
 `> (lldb) Start`, or use `F5` to launch your application in debug mode.
 
-For all options look at the official 
+For all options look at the official
 [C/C++ Extention documentation](https://code.visualstudio.com/docs/cpp/cpp-debug).

@@ -1,4 +1,4 @@
-@for i in 0..10 
+@for i in 0..10
 ${i*2} - $i
 @end
 

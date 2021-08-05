@@ -13,7 +13,7 @@ Name: ncurses
 Description: ncurses 6.2 library
 Version: ${version}
 URL: https://invisible-island.net/ncurses
-Requires.private: 
+Requires.private:
 Libs:  -Wl,-Bsymbolic-functions -lncurses -ltinfo
-Libs.private:  -ldl 
+Libs.private:  -ldl
 Cflags:  -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600

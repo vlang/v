@@ -15,5 +15,5 @@ Version: ${version}
 URL: https://invisible-island.net/ncurses
 Requires.private: ncurses
 Libs:  -Wl,-Bsymbolic-functions -lform
-Libs.private:  
+Libs.private:
 Cflags:  -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600

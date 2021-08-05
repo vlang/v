@@ -9,5 +9,5 @@ Name: libpcre
 Description: PCRE - Perl compatible regular expressions C library with 8 bit character support
 Version: 8.39
 Libs: -L${libdir} -lpcre
-Libs.private: -pthread 
-Cflags: -I${includedir} 
+Libs.private: -pthread
+Cflags: -I${includedir}

@@ -20,7 +20,7 @@ struct TlsContext {
 	HCERTSTORE             cert_store;
 	SCHANNEL_CRED          schannel_cred;
 	// Socket
-	SOCKET                 socket;	
+	SOCKET                 socket;
 	CredHandle             h_client_creds;
 	CtxtHandle             h_context;
 	PCCERT_CONTEXT         p_pemote_cert_context;
@@ -56,13 +56,13 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 		tls_ctx->sspi->FreeCredentialsHandle(&tls_ctx->h_client_creds);
 		tls_ctx->creds_initialized = FALSE;
 	}
-	
+
 	// Close socket.
 	if(tls_ctx->socket != INVALID_SOCKET) {
 		closesocket(tls_ctx->socket);
 		tls_ctx->socket = INVALID_SOCKET;
 	}
-	
+
 	// Close "MY" certificate store.
 	if(tls_ctx->cert_store) {
 		CertCloseStore(tls_ctx->cert_store, 0);
@@ -133,8 +133,8 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 	Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
 	if(Status) {
 		// The server certificate did not validate correctly. At this
-		// point, we cannot tell if we are connecting to the correct 
-		// server, or if we are connecting to a "man in the middle" 
+		// point, we cannot tell if we are connecting to the correct
+		// server, or if we are connecting to a "man in the middle"
 		// attack server.
 
 		// It is therefore best if we abort the connection.
@@ -153,7 +153,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
-	
+
 	// Send a close_notify alert to the server and
 	// close down the connection.
 	if(disconnect_from_server(tls_ctx)) {
@@ -183,15 +183,15 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 		tls_ctx->cert_store = CertOpenSystemStore(0, L"MY");
 
 		if(!tls_ctx->cert_store) {
-			wprintf(L"Error 0x%x returned by CertOpenSystemStore\n", 
+			wprintf(L"Error 0x%x returned by CertOpenSystemStore\n",
 			GetLastError());
 			return SEC_E_NO_CREDENTIALS;
 		}
 	}
 
 	// Build Schannel credential structure. Currently, this sample only
-	// specifies the protocol to be used (and optionally the certificate, 
-	// of course). Real applications may wish to specify other parameters 
+	// specifies the protocol to be used (and optionally the certificate,
+	// of course). Real applications may wish to specify other parameters
 	// as well.
 
 	ZeroMemory(&tls_ctx->schannel_cred, sizeof(tls_ctx->schannel_cred));
@@ -219,8 +219,8 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
 
 	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
-	// this sample verifies the server certificate manually. 
-	// Applications that expect to run on WinNT, Win9x, or WinME 
+	// this sample verifies the server certificate manually.
+	// Applications that expect to run on WinNT, Win9x, or WinME
 	// should specify this flag and also manually verify the server
 	// certificate. Applications running on newer versions of Windows can
 	// leave off this flag, in which case the InitializeSecurityContext
@@ -230,7 +230,7 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	// Create an SSPI credential.
 
 	Status = tls_ctx->sspi->AcquireCredentialsHandle(
-						NULL,                   // Name of principal    
+						NULL,                   // Name of principal
 						UNISP_NAME_W,           // Name of package
 						SECPKG_CRED_OUTBOUND,   // Flags indicating use
 						NULL,                   // Pointer to logon ID
@@ -259,7 +259,7 @@ cleanup:
 
 static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) {
 	SOCKET Socket;
-	
+
 	SOCKADDR_STORAGE local_address = { 0 };
 	SOCKADDR_STORAGE remote_address = { 0 };
 
@@ -281,18 +281,18 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
-	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
+	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length,
 		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
-		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
+		wprintf(L"Error %d connecting to \"%s\" (%s)\n",
 			WSAGetLastError(),
-			connect_name, 
+			connect_name,
 			service_name);
 		closesocket(Socket);
 		return WSAGetLastError();
 	}
 
 	if(use_proxy) {
-		BYTE  pbMessage[200]; 
+		BYTE  pbMessage[200];
 		DWORD cbMessage;
 
 		// Build message for proxy server
@@ -316,7 +316,7 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 			return WSAGetLastError();
 		}
 
-		// this sample is limited but in normal use it 
+		// this sample is limited but in normal use it
 		// should continue to receive until CR LF CR LF is received
 	}
 
@@ -400,7 +400,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		// Free output buffer.
 		tls_ctx->sspi->FreeContextBuffer(pbMessage);
 	}
-	
+
 
 cleanup:
 
@@ -520,7 +520,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	fDoRead = fDoInitialRead;
 
 
-	// 
+	//
 	// Loop until the handshake is finished or an error occurs.
 	//
 
@@ -529,13 +529,13 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	while(scRet == SEC_I_CONTINUE_NEEDED ||
 		  scRet == SEC_E_INCOMPLETE_MESSAGE ||
 		  scRet == SEC_I_INCOMPLETE_CREDENTIALS) {
-		
+
 		// Read data from server.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			if(fDoRead) {
-				cbData = recv(tls_ctx->socket, 
-							  IoBuffer + cbIoBuffer, 
-							  IO_BUFFER_SIZE - cbIoBuffer, 
+				cbData = recv(tls_ctx->socket,
+							  IoBuffer + cbIoBuffer,
+							  IO_BUFFER_SIZE - cbIoBuffer,
 							  0);
 				if(cbData == SOCKET_ERROR) {
 					wprintf(L"Error %d reading data from server\n", WSAGetLastError());
@@ -590,7 +590,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 			&tls_ctx->h_client_creds, &tls_ctx->h_context,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 			&InBuffer, 0, NULL, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
-		// If InitializeSecurityContext was successful (or if the error was 
+		// If InitializeSecurityContext was successful (or if the error was
 		// one of the special extended ones), send the contends of the output
 		// buffer to the server.
 
@@ -603,7 +603,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 							  OutBuffers[0].cbBuffer,
 							  0);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
-					wprintf(L"Error %d sending data to server (2)\n", 
+					wprintf(L"Error %d sending data to server (2)\n",
 						WSAGetLastError());
 					tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 					tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
@@ -622,7 +622,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 			continue;
 		}
 
-		// If InitializeSecurityContext returned SEC_E_OK, then the 
+		// If InitializeSecurityContext returned SEC_E_OK, then the
 		// handshake completed successfully.
 
 		if(scRet == SEC_E_OK) {
@@ -664,7 +664,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 		}
 
 		// If InitializeSecurityContext returned SEC_I_INCOMPLETE_CREDENTIALS,
-		// then the server just requested client authentication. 
+		// then the server just requested client authentication.
 		if(scRet == SEC_I_INCOMPLETE_CREDENTIALS) {
 			// Busted. The server has requested client authentication and
 			// the credential we supplied didn't contain a client certificate.
@@ -672,11 +672,11 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 			// This function will read the list of trusted certificate
 			// authorities ("issuers") that was received from the server
 			// and attempt to find a suitable client certificate that
-			// was issued by one of these. If this function is successful, 
+			// was issued by one of these. If this function is successful,
 			// then we will connect using the new certificate. Otherwise,
 			// we will attempt to connect anonymously (using our current
 			// credentials).
-			
+
 			get_new_client_credentials(tls_ctx);
 
 			// Go around again.
@@ -738,7 +738,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 	}
 
 	// Allocate a working buffer. The plaintext sent to EncryptMessage
-	// should never be more than 'Sizes.cbMaximumMessage', so a buffer 
+	// should never be more than 'Sizes.cbMaximumMessage', so a buffer
 	// size of this plus the header and trailer sizes should be safe enough.
 	cbIoBufferLength = Sizes.cbHeader +  Sizes.cbMaximumMessage + Sizes.cbTrailer;
 
@@ -747,7 +747,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 		wprintf(L"Out of memory (2)\n");
 		return SEC_E_INTERNAL_ERROR;
 	}
-	
+
 	// Build an HTTP request to send to the server.
 
 	// Build the HTTP request offset into the data buffer by "header size"
@@ -851,8 +851,8 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 			break;
 		}
 
-		if( scRet != SEC_E_OK && 
-			scRet != SEC_I_RENEGOTIATE && 
+		if( scRet != SEC_E_OK &&
+			scRet != SEC_I_RENEGOTIATE &&
 			scRet != SEC_I_CONTEXT_EXPIRED)
 		{
 			wprintf(L"Error 0x%x returned by DecryptMessage\n", scRet);
@@ -888,7 +888,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 		// Copy the decrypted data to our output buffer
 		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		
+
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
 			MoveMemory(pbIoBuffer, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
@@ -1080,7 +1080,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 		// Many applications maintain a global credential handle that's
 		// anonymous (that is, it doesn't contain a client certificate),
 		// which is used to connect to all servers. If a particular server
-		// should require client authentication, then a new credential 
+		// should require client authentication, then a new credential
 		// is created for use when connecting to that server. The global
 		// anonymous credential is retained for future connections to
 		// other servers.

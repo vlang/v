@@ -11,13 +11,13 @@ assignees: ''
      It's also advisable to update all relevant modules using `v outdated` and `v install` -->
 
 <!-- You can use `v doctor` to fill up the next fields -->
-**V version:** 
-**OS:** 
+**V version:**
+**OS:**
 
 **What did you do?**
 
 
 **What did you expect to see?**
 
- 
+
 **What did you see instead?**

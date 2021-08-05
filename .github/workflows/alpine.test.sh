@@ -8,7 +8,7 @@ uname -a
 
 du -s .
 
-ls -lat 
+ls -lat
 
 ##./v test-all
 

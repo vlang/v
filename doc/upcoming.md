@@ -47,7 +47,7 @@ atomic d := ...
       ...
   }
   ```
-  
+
   ```v ignore
   rlock c {
       // read c
@@ -110,9 +110,9 @@ different capabilities:
 - very difficult to handle correctly
 
 <sup>1</sup> The owning coroutine will also free the memory space used
-for the object when it is no longer needed.  
+for the object when it is no longer needed.
 <sup>2</sup> For `shared` objects the compiler adds code for reference
-counting. Once the counter reaches 0 the object is automatically freed.  
+counting. Once the counter reaches 0 the object is automatically freed.
 <sup>3</sup> Since an `atomic` variable is only a few bytes in size
 allocation would be an unnecessary overhead. Instead the compiler
 creates a global.

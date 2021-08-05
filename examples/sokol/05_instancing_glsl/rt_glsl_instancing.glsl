@@ -55,7 +55,7 @@ out vec4 frag_color;
 void main() {
 	vec4 c = color;
 	vec4 txt = texture(tex, uv);
-	c = txt * c * color_inst;	
+	c = txt * c * color_inst;
 	frag_color = c ;
 }
 

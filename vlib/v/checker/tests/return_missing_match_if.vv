@@ -5,7 +5,7 @@ fn foo() string {
         1 { return '' }
         2 {
             if true {
-                
+
             } else {
                 return ''
             }

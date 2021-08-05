@@ -562,7 +562,7 @@ pub fn tst() {
 	//fname := "Forklift.obj"
 	fname := "cube.obj"
 	//fname := "Orange Robot 3D ObjPart.obj"
-	
+
 	mut obj := ObjPart{}
 	buf := os.read_lines(fname) or { panic(err.msg) }
 	obj.parse_obj_buffer(buf)

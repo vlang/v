@@ -40,7 +40,7 @@ pub fn ortho(left f32, right f32, bottom f32, top f32, z_near f32, z_far f32) Ma
 				0      ,       0,       0,            1,
 			]!
 		}
-	} 
+	}
 	return Mat4{ e: [
 			2 / rml, 0      ,       0, -(rpl / rml),
 			0      , 2 / tmb,       0, -(tpb / tmb),
