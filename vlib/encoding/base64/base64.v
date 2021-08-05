@@ -234,15 +234,15 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 				byte(base64.index[d[si+7]]))
 
 			// binary.big_endian_put_u64(mut b[n_decoded_bytes..(n_decoded_bytes+8)], dn)
-			_ = b[n_decoded_bytes + 7] // bounds check
+//			_ = b[n_decoded_bytes + 7] // bounds check
 			b[n_decoded_bytes + 0] = byte(dn >> u64(56))
 			b[n_decoded_bytes + 1] = byte(dn >> u64(48))
 			b[n_decoded_bytes + 2] = byte(dn >> u64(40))
 			b[n_decoded_bytes + 3] = byte(dn >> u64(32))
 			b[n_decoded_bytes + 4] = byte(dn >> u64(24))
 			b[n_decoded_bytes + 5] = byte(dn >> u64(16))
-			b[n_decoded_bytes + 6] = byte(dn >> u64(8))
-			b[n_decoded_bytes + 7] = byte(dn)
+//			b[n_decoded_bytes + 6] = byte(dn >> u64(8))
+//			b[n_decoded_bytes + 7] = byte(dn)
 
 			n_decoded_bytes += 6
 			si += 8
