@@ -290,16 +290,17 @@ pub fn (x Expr) str() string {
 		}
 		CallExpr {
 			sargs := args2str(x.args)
+			propagate_suffix := if x.or_block.kind == .propagate { ' ?' } else { '' }
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)'
+				return '${x.left.str()}.${x.name}($sargs)$propagate_suffix'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)')
+				return util.strip_main_name('${x.name}($sargs)$propagate_suffix')
 			}
 			if x.mod == '' && x.name == '' {
-				return x.left.str() + '($sargs)'
+				return x.left.str() + '($sargs)$propagate_suffix'
 			}
-			return '${x.mod}.${x.name}($sargs)'
+			return '${x.mod}.${x.name}($sargs)$propagate_suffix'
 		}
 		CharLiteral {
 			return '`$x.val`'

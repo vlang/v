@@ -55,6 +55,21 @@ pub:
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
 
+// free allows for manually freeing the memory occupied by the string
+[manualfree; unsafe]
+pub fn (ami &VAssertMetaInfo) free() {
+	unsafe {
+		ami.fpath.free()
+		ami.fn_name.free()
+		ami.src.free()
+		ami.op.free()
+		ami.llabel.free()
+		ami.rlabel.free()
+		ami.lvalue.free()
+		ami.rvalue.free()
+	}
+}
+
 fn __print_assert_failure(i &VAssertMetaInfo) {
 	eprintln('$i.fpath:${i.line_nr + 1}: FAIL: fn $i.fn_name: assert $i.src')
 	if i.op.len > 0 && i.op != 'call' {
