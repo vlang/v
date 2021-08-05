@@ -521,7 +521,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.chan_init(mut node)
 		}
 		ast.CharLiteral {
-			f.write('`$node.val`')
+			if node.val == r"\'" {
+				f.write("`'`")
+			} else {
+				f.write('`$node.val`')
+			}
 		}
 		ast.Comment {
 			f.comment(node, inline: true)
