@@ -2003,9 +2003,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		} else {
 			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
 		}
+		old_is_shared := g.is_shared
 		g.is_shared = false
 		g.expr(expr)
-		g.is_shared = true
+		g.is_shared = old_is_shared
 		g.writeln('}, sizeof($shared_styp))')
 		return
 	}
@@ -5290,7 +5291,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
-			old_is_shared = g.is_shared
+			old_is_shared2 := g.is_shared
 			mut used_embed_fields := []string{}
 			init_field_names := info.fields.map(it.name)
 			// fields that are initialized but belong to the embedding
@@ -5318,7 +5319,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					initialized = true
 				}
 			}
-			g.is_shared = old_is_shared
+			g.is_shared = old_is_shared2
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len

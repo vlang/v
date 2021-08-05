@@ -70,5 +70,20 @@ struct AppData {
 fn test_shared_field_init() {
 	mut app1 := App{}
 	app1.init_server_direct()
-	assert app1.app_data.id == 'foo'
+	id := rlock app1.app_data { app1.app_data.id }
+	assert id == 'foo'
+}
+
+fn (shared a App) init_server_direct2() {
+	lock a, a.app_data {
+		a = App{
+			app_data: AppData{}
+		}
+	}
+}
+
+fn test_shared_field_init2() {
+	shared app2 := App{}
+	app2.init_server_direct2()
+	assert rlock app2, app2.app_data { app2.app_data.id } == 'foo'
 }
