@@ -962,12 +962,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
-		mut sym := g.table.get_type_symbol(typ)
-		if mut sym.info is ast.Alias {
-			typ = sym.info.parent_type
-			sym = g.table.get_type_symbol(typ)
-		}
-		// check if alias parent also not a string
 		if typ != ast.string_type {
 			expr := node.args[0].expr
 			if g.is_autofree && !typ.has_flag(.optional) {
