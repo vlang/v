@@ -1901,7 +1901,7 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 	}
 }
 
-// return all the registers for a give architecture
+// return all the registers for the given architecture
 pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	match arch {

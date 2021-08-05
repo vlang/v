@@ -12,7 +12,7 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['print', 'eprint', 'println', 'eprintln', 'exit']
+pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit']
 
 interface CodeGen {
 mut:
@@ -369,6 +369,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.pop(.rbp)
 			g.ret()
 		}
+		ast.AssertStmt {
+			g.gen_assert(node)
+		}
 		ast.StructDecl {}
 		else {
 			println('native.stmt(): bad node: ' + node.type_name())
@@ -380,6 +383,9 @@ fn C.strtol(str &char, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
+		ast.ParExpr {
+			g.expr(node.expr)
+		}
 		ast.ArrayInit {
 			verror('array init expr not supported yet')
 		}
@@ -387,14 +393,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.CallExpr {
 			if node.name == 'exit' {
 				g.gen_exit(node.args[0].expr)
-				return
-			}
-			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
+			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
 				g.gen_print_from_expr(expr, node.name)
-				return
+			} else {
+				g.call_fn(node)
 			}
-			g.call_fn(node)
 		}
 		ast.FloatLiteral {}
 		ast.Ident {}

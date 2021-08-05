@@ -2,6 +2,7 @@ module native
 
 import term
 import v.ast
+import v.token
 
 pub struct Amd64 {
 mut:
@@ -132,7 +133,9 @@ fn (mut g Gen) inc_var(var_name string) {
 enum JumpOp {
 	je = 0x840f
 	jne = 0x850f
+	jg = 0x8f0f
 	jge = 0x8d0f
+	lt = 0x8c0f
 	jle = 0x8e0f
 }
 
@@ -907,8 +910,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			ast.StructInit {
 				sym := g.table.get_type_symbol(right.typ)
-				// println(sym)
-				// println(typeof(sym.info))
 				info := sym.info as ast.Struct
 				for field in info.fields {
 					field_name := name + '.' + field.name
@@ -1012,10 +1013,70 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 }
 
-fn (mut g Gen) if_expr(node ast.IfExpr) {
-	branch := node.branches[0]
-	infix_expr := branch.cond as ast.InfixExpr
-	mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
+fn (mut g Gen) trap() {
+	// funnily works on x86 and arm64
+	g.write32(0xcccccccc)
+	g.println('trap')
+}
+
+fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
+	mut cjmp_addr := 0
+	mut ine := ast.InfixExpr{}
+	ane := assert_node.expr
+	if ane is ast.ParExpr { // assert(1==1)
+		ine = ane.expr as ast.InfixExpr
+	} else if ane is ast.InfixExpr { // assert 1==1
+		ine = ane
+	} else {
+		verror('Unsupported expression in assert')
+	}
+	cjmp_addr = g.condition(ine, true)
+	g.expr(assert_node.expr)
+	g.trap()
+	g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
+}
+
+fn (mut g Gen) cjmp_notop(op token.Kind) int {
+	return match op {
+		.gt {
+			g.cjmp(.jle)
+		}
+		.lt {
+			g.cjmp(.jge)
+		}
+		.ne {
+			g.cjmp(.je)
+		}
+		.eq {
+			g.cjmp(.jne)
+		}
+		else {
+			g.cjmp(.je)
+		}
+	}
+}
+
+fn (mut g Gen) cjmp_op(op token.Kind) int {
+	return match op {
+		.gt {
+			g.cjmp(.jg)
+		}
+		.lt {
+			g.cjmp(.lt)
+		}
+		.ne {
+			g.cjmp(.jne)
+		}
+		.eq {
+			g.cjmp(.je)
+		}
+		else {
+			g.cjmp(.jne)
+		}
+	}
+}
+
+fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 	match mut infix_expr.left {
 		ast.IntegerLiteral {
 			match mut infix_expr.right {
@@ -1057,27 +1118,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 		}
 		else {
-			dump(node)
+			dump(infix_expr)
 			verror('unhandled infix.left')
 		}
 	}
-	cjmp_addr = match infix_expr.op {
-		.gt {
-			g.cjmp(.jle)
-		}
-		.lt {
-			g.cjmp(.jge)
-		}
-		.ne {
-			g.cjmp(.je)
-		}
-		.eq {
-			g.cjmp(.jne)
-		}
-		else {
-			g.cjmp(.je)
-		}
-	}
+
+	// mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
+	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }
+}
+
+fn (mut g Gen) if_expr(node ast.IfExpr) {
+	branch := node.branches[0]
+	infix_expr := branch.cond as ast.InfixExpr
+	cjmp_addr := g.condition(infix_expr, false)
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
 	// The value is the relative address, difference between current position and the location
