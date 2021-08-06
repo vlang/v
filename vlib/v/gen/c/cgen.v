@@ -52,6 +52,7 @@ mut:
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	global_inits           map[string]strings.Builder // default initializers for globals (goes in _vinit())
+	global_init            strings.Builder // thread local of the above
 	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
 	init                   strings.Builder
 	cleanup                strings.Builder
@@ -89,16 +90,16 @@ mut:
 	arraymap_set_pos       int    // map or array set value position
 	vlines_path            string // set to the proper path for generating #line directives
 	optionals              map[string]string // to avoid duplicates
-	chan_pop_optionals     []string // types for `x := <-ch or {...}`
-	chan_push_optionals    []string // types for `ch <- x or {...}`
+	chan_pop_optionals     map[string]string // types for `x := <-ch or {...}`
+	chan_push_optionals    map[string]string // types for `ch <- x or {...}`
 	cur_lock               ast.LockExpr
 	mtxs                   string // array of mutexes if the `lock` has multiple variables
 	labeled_loops          map[string]&ast.Stmt
 	inner_loop             &ast.Stmt
-	shareds                []int // types with hidden mutex for which decl has been emitted
-	inside_ternary         int   // ?: comma separated statements on a single line
-	inside_map_postfix     bool  // inside map++/-- postfix expr
-	inside_map_infix       bool  // inside map<</+=/-= infix expr
+	shareds                map[int]string // types with hidden mutex for which decl has been emitted
+	inside_ternary         int  // ?: comma separated statements on a single line
+	inside_map_postfix     bool // inside map++/-- postfix expr
+	inside_map_infix       bool // inside map<</+=/-= infix expr
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
@@ -110,12 +111,12 @@ mut:
 	is_autofree            bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	indent                 int
 	empty_line             bool
-	is_test                bool
 	assign_op              token.Kind // *=, =, etc (for array_set)
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
 	str_types              []StrType // types that need automatic str() generation
+	generated_str_fns      []StrType // types that already have a str() function
 	threaded_fns           []string  // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns             []string  // functions that wait for `go xxx()` to finish
 	auto_fn_definitions    []string  // auto generated functions defination list
@@ -239,6 +240,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 	}
+	// anon fn may include assert and thus this needs
+	// to be included before any test contents are written
+	if pref.is_test {
+		global_g.write_tests_definitions()
+	}
 	// lock global_g {
 	global_g.timers.start('cgen init')
 	for mod in global_g.table.modules {
@@ -281,6 +287,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				enum_typedefs: strings.new_builder(100)
 				sql_buf: strings.new_builder(100)
 				init: strings.new_builder(100)
+				global_init: strings.new_builder(0)
 				cleanup: strings.new_builder(100)
 				table: global_g.table
 				pref: global_g.pref
@@ -289,6 +296,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				module_built: global_g.module_built
 				timers: local_timers
 				inner_loop: &ast.EmptyStmt{}
+				field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 			}
 
 			if g.pref.is_vlines {
@@ -296,7 +304,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			}
 			// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 			// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-			g.is_test = g.pref.is_test
 			if g.file.path == '' || !g.pref.autofree {
 				// cgen test or building V
 				// println('autofree=false')
@@ -304,12 +311,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			} else {
 				g.is_autofree = true
 				global_g.autofree_used = true
-			}
-			// anon fn may include assert and thus this needs
-			// to be included before any test contents are written
-			if g.is_test && !global_g.tests_inited {
-				g.write_tests_definitions()
-				global_g.tests_inited = true
 			}
 			g.stmts(file.stmts)
 			// Transfer embedded files
@@ -330,6 +331,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	pp.work_on_items(files)
 	mut g := global_g
 	g.timers.start('cgen unification')
+	// tg = thread gen
 	for tg in pp.get_results<Gen>() {
 		g.out.write(tg.out) or { panic(err) } // strings.Builder.write() never fails
 		g.cheaders.write(tg.cheaders) or { panic(err) }
@@ -347,8 +349,18 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.embedded_data.write(tg.embedded_data) or { panic(err) }
 		g.shared_types.write(tg.shared_types) or { panic(err) }
 		g.shared_functions.write(tg.channel_definitions) or { panic(err) }
-		for styp, base in tg.optionals { // merge map
-			g.optionals[styp] = base
+		// merge maps
+		for k, v in tg.shareds {
+			g.shareds[k] = v
+		}
+		for k, v in tg.chan_pop_optionals {
+			g.chan_pop_optionals[k] = v
+		}
+		for k, v in tg.chan_push_optionals {
+			g.chan_push_optionals[k] = v
+		}
+		for k, v in tg.optionals {
+			g.optionals[k] = v
 		}
 		g.json_forward_decls.write(tg.json_forward_decls) or { panic(err) }
 		g.enum_typedefs.write(tg.enum_typedefs) or { panic(err) }
@@ -357,11 +369,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 		g.cleanups[tg.file.mod.name].write(tg.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
 		g.inits[tg.file.mod.name].write(tg.init) or { panic(err) }
+		g.global_inits[tg.file.mod.name].write(tg.global_init) or { panic(err) }
 
 		for str_type in tg.str_types {
-			if str_type !in g.str_types {
-				g.str_types << str_type
-			}
+			g.str_types << str_type
 		}
 		for scf in tg.sumtype_casting_fns {
 			if scf !in g.sumtype_casting_fns {
@@ -380,18 +391,21 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 
 	g.write_optionals()
-	g.dump_expr_definitions() // this uses gen_str_for_type, so it has to go before the below for loop
-	for str_type in g.str_types {
-		g.final_gen_str(str_type)
+	g.dump_expr_definitions() // this uses g.get_str_fn, so it has to go before the below for loop
+	for i := 0; i < g.str_types.len; i++ {
+		g.final_gen_str(g.str_types[i])
 	}
 	for sumtype_casting_fn in g.sumtype_casting_fns {
 		g.write_sumtype_casting_fn(sumtype_casting_fn)
 	}
 	g.gen_equality_fns()
+	g.write_shareds()
+	g.write_chan_pop_optional_fns()
+	g.write_chan_push_optional_fns()
 	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
 	if global_g.autofree_used {
-		g.is_autofree = true // so that void _vcleanup is generated
+		g.is_autofree = true // so that _vcleanup is generated
 	}
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
@@ -794,7 +808,7 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
-fn (g &Gen) optional_type_text(styp string, base string) string {
+fn (g Gen) optional_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' { 'byte' } else { base }
 	ret := 'struct $styp {
@@ -807,34 +821,44 @@ fn (g &Gen) optional_type_text(styp string, base string) string {
 
 fn (mut g Gen) register_optional(t ast.Type) string {
 	styp, base := g.optional_type_name(t)
-	g.optionals[styp] = base
+	g.optionals[base] = styp
 	return styp
 }
 
 fn (mut g Gen) write_optionals() {
-	for styp, base in g.optionals {
+	// mut done := []string{}
+	for base, styp in g.optionals {
+		//	if base in done {
+		//		continue
+		//	}
+		//	done << base
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
 	}
 }
 
 fn (mut g Gen) find_or_register_shared(t ast.Type, base string) string {
-	sh_typ := '__shared__$base'
-	t_idx := t.idx()
-	if t_idx in g.shareds {
-		return sh_typ
+	g.shareds[t.idx()] = base
+	return '__shared__$base'
+}
+
+fn (mut g Gen) write_shareds() {
+	mut done_types := []int{}
+	for typ, base in g.shareds {
+		if typ in done_types {
+			continue
+		}
+		done_types << typ
+		sh_typ := '__shared__$base'
+		mtx_typ := 'sync__RwMutex'
+		g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
+		g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
+		g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
+		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
+		g.shared_functions.writeln('\treturn dest;')
+		g.shared_functions.writeln('}')
+		g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	}
-	mtx_typ := 'sync__RwMutex'
-	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
-	g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
-	g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
-	g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
-	g.shared_functions.writeln('\treturn dest;')
-	g.shared_functions.writeln('}')
-	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
-	// println('registered shared type $sh_typ')
-	g.shareds << t_idx
-	return sh_typ
 }
 
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
@@ -869,8 +893,16 @@ $ret_typ ${fn_name}($thread_arr_typ a) {
 }
 
 fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) {
-	if opt_el_type !in g.chan_pop_optionals {
-		g.chan_pop_optionals << opt_el_type
+	g.chan_pop_optionals[opt_el_type] = styp
+}
+
+fn (mut g Gen) write_chan_pop_optional_fns() {
+	mut done := []string{}
+	for opt_el_type, styp in g.chan_pop_optionals {
+		if opt_el_type in done {
+			continue
+		}
+		done << opt_el_type
 		g.channel_definitions.writeln('
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
@@ -882,9 +914,17 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	}
 }
 
-fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
-	if styp !in g.chan_push_optionals {
-		g.chan_push_optionals << styp
+fn (mut g Gen) register_chan_push_optional_fn(el_type string, styp string) {
+	g.chan_push_optionals[styp] = el_type
+}
+
+fn (mut g Gen) write_chan_push_optional_fns() {
+	mut done := []string{}
+	for styp, el_type in g.chan_push_optionals {
+		if styp in done {
+			continue
+		}
+		done << styp
 		g.register_optional(ast.void_type.set_flag(.optional))
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
@@ -5422,7 +5462,6 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
-	key := node.mod // module name
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {
@@ -5439,7 +5478,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				g.definitions.writeln(' = ${g.expr_string(field.expr)}; // global')
 			} else {
 				g.definitions.writeln(';')
-				g.global_inits[key].writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+				g.global_init.writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
 			}
 		} else {
 			default_initializer := g.type_default(field.typ)
@@ -5448,7 +5487,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			} else {
 				g.definitions.writeln('$mod$styp $field.name; // global')
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
-					g.global_inits[key].writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
+					g.global_init.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
 				}
 			}
 		}
@@ -5943,6 +5982,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						// if this is the case then we are going to
 						// buffer manip out in front of the struct
 						// write the optional in and then continue
+						// FIXME: for parallel cgen (two different files using the same optional in struct fields)
 						if field.typ.has_flag(.optional) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that

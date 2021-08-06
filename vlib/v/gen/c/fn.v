@@ -288,7 +288,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
-		&& !g.is_test) || skip {
+		&& !g.pref.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -673,7 +673,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
-			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name')
+			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
@@ -797,7 +797,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if rec_type.has_flag(.shared_f) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
-		g.gen_str_method_for_type(rec_type)
+		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
 		mut rec_type := node.receiver_type
 		if rec_type.has_flag(.shared_f) {
