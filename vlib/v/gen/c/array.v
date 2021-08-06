@@ -300,8 +300,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 
 	// Register a new custom `compare_xxx` function for qsort()
 	// TODO: move to checker
-	g.table.register_fn(name: compare_fn, return_type: ast.int_type)
-	g.array_sort_fn[compare_fn] = true
+	lock g.array_sort_fn {
+		g.array_sort_fn[compare_fn] = true
+	}
 
 	stype_arg := g.typ(info.elem_type)
 	g.definitions.writeln('int ${compare_fn}($stype_arg* a, $stype_arg* b) {')

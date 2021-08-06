@@ -297,6 +297,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				timers: local_timers
 				inner_loop: &ast.EmptyStmt{}
 				field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+				array_sort_fn: global_g.array_sort_fn
 			}
 
 			if g.pref.is_vlines {
