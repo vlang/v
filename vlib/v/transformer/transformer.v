@@ -21,10 +21,8 @@ pub fn (t Transformer) transform_files(ast_files []&ast.File) {
 }
 
 pub fn (t Transformer) transform(ast_file &ast.File) {
-	if pref.constant_folding {
-		for mut stmt in ast_file.stmts {
-			t.stmt(mut stmt)
-		}
+	for mut stmt in ast_file.stmts {
+		t.stmt(mut stmt)
 	}
 }
 
@@ -202,18 +200,6 @@ fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 						.amp {
 							return ast.IntegerLiteral{
 								val: (left_val & right_val).str()
-								pos: pos
-							}
-						}
-						.left_shift {
-							return ast.IntegerLiteral{
-								val: (left_val << right_val).str()
-								pos: pos
-							}
-						}
-						.right_shift {
-							return ast.IntegerLiteral{
-								val: (left_val >> right_val).str()
 								pos: pos
 							}
 						}
