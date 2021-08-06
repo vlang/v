@@ -579,7 +579,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
-	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+	mut typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+	// alias type that undefined this method (not include `str`) need to use parent type
+	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
+		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
+		typ_sym = g.table.get_type_symbol(unwrapped_rec_type)
+	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
