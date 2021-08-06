@@ -190,7 +190,7 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 // total_message returns a string with total summary of the benchmark run.
 pub fn (b &Benchmark) total_message(msg string) string {
 	the_label := term.colorize(term.gray, msg)
-	mut tmsg := '${term.colorize(term.bold, 'Summary for ${the_label}:')} '
+	mut tmsg := term.colorize(term.bold, 'Summary for ${the_label}:') + ' '
 	if b.nfail > 0 {
 		tmsg += term.colorize(term.bold, term.colorize(term.red, '${b.nfail} failed')) + ', '
 	}

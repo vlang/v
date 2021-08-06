@@ -9,5 +9,5 @@ fn main() {
 	if os.exists(cpath) && os.is_dir(cpath) {
 		os.rmdir_all(cpath) or {}
 	}
-	println('V cache folder $cpath was wiped.')
+	println('V cache folder ${cpath} was wiped.')
 }

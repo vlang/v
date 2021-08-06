@@ -2,9 +2,9 @@ import time
 
 // Simulate expensive computing using sleep function
 fn expensive_computing(id int, duration int) {
-	println('Executing expensive computing task ($id)...')
+	println('Executing expensive computing task (${id})...')
 	time.sleep(duration * time.millisecond)
-	println('Finish task $id on $duration ms')
+	println('Finish task ${id} on ${duration} ms')
 }
 
 fn main() {
