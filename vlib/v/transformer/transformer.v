@@ -1,32 +1,32 @@
-module optimizer
+module transformer
 
 import v.pref
 import v.ast
 
-pub struct Optimizer {
+pub struct Transformer {
 	pref &pref.Preferences
 }
 
-pub fn new_optimizer(pref &pref.Preferences) &Optimizer {
-	return &Optimizer{
+pub fn new_transformer(pref &pref.Preferences) &Transformer {
+	return &Transformer{
 		pref: pref
 	}
 }
 
-pub fn (o Optimizer) optimize_files(ast_files []&ast.File) {
+pub fn (t Transformer) transform_files(ast_files []&ast.File) {
 	for i in 0 .. ast_files.len {
 		file := unsafe { ast_files[i] }
-		o.optimize(file)
+		t.transform(file)
 	}
 }
 
-pub fn (o Optimizer) optimize(ast_file &ast.File) {
+pub fn (t Transformer) transform(ast_file &ast.File) {
 	for mut stmt in ast_file.stmts {
-		o.stmt(mut stmt)
+		t.stmt(mut stmt)
 	}
 }
 
-fn (o Optimizer) stmt(mut node ast.Stmt) {
+fn (t Transformer) stmt(mut node ast.Stmt) {
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
@@ -34,19 +34,19 @@ fn (o Optimizer) stmt(mut node ast.Stmt) {
 		ast.AssertStmt {}
 		ast.AssignStmt {
 			for mut right in node.right {
-				right = o.expr(right)
+				right = t.expr(right)
 			}
 		}
 		ast.Block {
 			for mut stmt in node.stmts {
-				o.stmt(mut stmt)
+				t.stmt(mut stmt)
 			}
 		}
 		ast.BranchStmt {}
 		ast.CompFor {}
 		ast.ConstDecl {
 			for mut field in node.fields {
-				expr := o.expr(field.expr)
+				expr := t.expr(field.expr)
 				field = ast.ConstField{
 					...(*field)
 					expr: expr
@@ -56,7 +56,7 @@ fn (o Optimizer) stmt(mut node ast.Stmt) {
 		ast.DeferStmt {}
 		ast.EnumDecl {}
 		ast.ExprStmt {
-			expr := o.expr(node.expr)
+			expr := t.expr(node.expr)
 			node = &ast.ExprStmt{
 				...node
 				expr: expr
@@ -64,7 +64,7 @@ fn (o Optimizer) stmt(mut node ast.Stmt) {
 		}
 		ast.FnDecl {
 			for mut stmt in node.stmts {
-				o.stmt(mut stmt)
+				t.stmt(mut stmt)
 			}
 		}
 		ast.ForCStmt {}
@@ -79,7 +79,7 @@ fn (o Optimizer) stmt(mut node ast.Stmt) {
 		ast.Module {}
 		ast.Return {
 			for mut expr in node.exprs {
-				expr = o.expr(expr)
+				expr = t.expr(expr)
 			}
 		}
 		ast.SqlStmt {}
@@ -88,44 +88,17 @@ fn (o Optimizer) stmt(mut node ast.Stmt) {
 	}
 }
 
-fn (o Optimizer) expr(node ast.Expr) ast.Expr {
+fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match node {
-		ast.InfixExpr { return o.infix_expr(node) }
-		ast.PrefixExpr { return o.prefix_expr(node) }
+		ast.InfixExpr { return t.infix_expr(node) }
 		else { return node }
 	}
 }
 
-fn (o Optimizer) prefix_expr(original ast.PrefixExpr) ast.Expr {
+fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 	mut node := original
-	node.right = o.expr(node.right)
-	mut pos := node.pos
-	pos.extend(node.right.position())
-	right_node := node.right
-	match right_node {
-		ast.BoolLiteral {
-			match node.op {
-				.not {
-					return ast.BoolLiteral{
-						val: !right_node.val
-						pos: pos
-					}
-				}
-				else {
-					return node
-				}
-			}
-		}
-		else {
-			return node
-		}
-	}
-}
-
-fn (o Optimizer) infix_expr(original ast.InfixExpr) ast.Expr {
-	mut node := original
-	node.left = o.expr(node.left)
-	node.right = o.expr(node.right)
+	node.left = t.expr(node.left)
+	node.right = t.expr(node.right)
 	mut pos := node.left.position()
 	pos.extend(node.pos)
 	pos.extend(node.right.position())
@@ -156,6 +129,7 @@ fn (o Optimizer) infix_expr(original ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
+		/*
 		ast.StringLiteral {
 			match right_node {
 				ast.StringLiteral {
@@ -176,6 +150,7 @@ fn (o Optimizer) infix_expr(original ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
+		*/
 		ast.IntegerLiteral {
 			match right_node {
 				ast.IntegerLiteral {

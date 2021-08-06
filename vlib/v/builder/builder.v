@@ -7,7 +7,7 @@ import v.util
 import v.ast
 import v.vmod
 import v.checker
-import v.optimizer
+import v.transformer
 import v.parser
 import v.markused
 import v.depgraph
@@ -21,7 +21,7 @@ pub:
 mut:
 	pref          &pref.Preferences
 	checker       &checker.Checker
-	optimizer     &optimizer.Optimizer
+	transformer     &transformer.Transformer
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
@@ -62,7 +62,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
-		optimizer: optimizer.new_optimizer(pref)
+		transformer: transformer.new_transformer(pref)
 		compiled_dir: compiled_dir
 		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
@@ -89,9 +89,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
-	util.timing_start('OPTIMIZE')
-	b.optimizer.optimize_files(b.parsed_files)
-	util.timing_measure('OPTIMIZE')
+	util.timing_start('TRANSFORM')
+	b.transformer.transform_files(b.parsed_files)
+	util.timing_measure('TRANSFORM')
 	//
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
