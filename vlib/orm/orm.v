@@ -355,7 +355,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE KEY($para$field.name$para'
+			mut f := 'UNIQUE($para$field.name$para'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '($unique_len)'
