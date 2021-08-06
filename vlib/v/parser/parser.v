@@ -2208,7 +2208,12 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		has_low = false
 		// [..end]
 		p.next()
-		high := p.expr(0)
+		mut high := ast.empty_expr()
+		mut has_high := false
+		if p.tok.kind != .rsbr {
+			high = p.expr(0)
+			has_high = true
+		}
 		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
@@ -2217,7 +2222,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			index: ast.RangeExpr{
 				low: ast.empty_expr()
 				high: high
-				has_high: true
+				has_high: has_high
 				pos: pos
 			}
 		}
