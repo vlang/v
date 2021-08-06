@@ -222,6 +222,8 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			g.write('orm__${typ}_to_primitive(${node.object_var_name}.$f.name),')
 		}
 		g.write('})')
+	} else {
+		g.write('NULL')
 	}
 	g.write('),')
 	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
