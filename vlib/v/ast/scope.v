@@ -45,7 +45,7 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 	mut sc := s
 	for {
 		if name in sc.objects {
-			return sc.objects[name], sc
+			return unsafe { sc.objects[name] }, sc
 		}
 		if sc.dont_lookup_parent() {
 			break
@@ -58,7 +58,7 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 pub fn (s &Scope) find(name string) ?ScopeObject {
 	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
-			return sc.objects[name]
+			return unsafe { sc.objects[name] }
 		}
 		if sc.dont_lookup_parent() {
 			break
@@ -129,7 +129,7 @@ pub fn (s &Scope) known_var(name string) bool {
 
 pub fn (mut s Scope) update_var_type(name string, typ Type) {
 	s.end_pos = s.end_pos // TODO mut bug
-	mut obj := s.objects[name]
+	mut obj := unsafe { s.objects[name] }
 	match mut obj {
 		Var {
 			if obj.typ == typ {

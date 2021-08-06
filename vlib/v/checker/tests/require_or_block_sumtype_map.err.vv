@@ -1,0 +1,6 @@
+type Abc = string | int
+
+fn main() {
+	x := map[string]Abc{}
+	_ := x['nonexisting']
+}

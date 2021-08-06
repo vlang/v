@@ -292,6 +292,9 @@ fn (mut task TaskDescription) execute() {
 	if should_autofix && !os.exists(expected_out_path) {
 		os.write_file(expected_out_path, '') or { panic(err) }
 	}
+	if !os.exists(expected_out_path) {
+		os.create(expected_out_path) or { panic(err) }
+	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)

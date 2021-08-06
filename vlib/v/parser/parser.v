@@ -1078,7 +1078,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	p.check(.name)
 	if p.prev_tok.lit in p.scope.objects {
-		x := p.scope.objects[p.prev_tok.lit]
+		x := unsafe { p.scope.objects[p.prev_tok.lit] }
 		if x is ast.AsmRegister {
 			return ast.AsmArg(x as ast.AsmRegister)
 		} else {
