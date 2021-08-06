@@ -3,17 +3,17 @@ fn has_anon_fn() {
 		println('Hello there !')
 	}
 	an_fn_w_param := fn (s string) {
-		println('I received $s')
+		println('I received ${s}')
 	}
 	an_fn_w_multi_params := fn (s1 string, s2 string, s3 string) {
-		println('I received $s1, $s2, $s3')
+		println('I received ${s1}, ${s2}, ${s3}')
 	}
 	an_fn_w_multi_params2 := fn (s string, i int) {
-		println('I received $s, $i')
+		println('I received ${s}, ${i}')
 	}
 	fn_w_var_args := fn (ss ...string) {
 		for s in ss {
-			println('yo $s')
+			println('yo ${s}')
 		}
 	}
 	an_fn()

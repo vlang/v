@@ -20,7 +20,7 @@ fn main() {
 	nr_customers := sql db {
 		select count from Customer
 	}
-	println('number of all customers: $nr_customers')
+	println('number of all customers: ${nr_customers}')
 	// V syntax can be used to build queries
 	// db.select returns an array
 	uk_customers := sql db {
@@ -28,7 +28,7 @@ fn main() {
 	}
 	println(uk_customers.len)
 	for customer in uk_customers {
-		println('$customer.id - $customer.name')
+		println('${customer.id} - ${customer.name}')
 	}
 	// by adding `limit 1` we tell V that there will be only one object
 	customer := sql db {
@@ -40,7 +40,7 @@ fn main() {
 	second_best := sql db {
 		select from UCustomerser order by nr_orders desc limit 1 offset 1
 	}
-	println('$customer.id - $customer.name')
+	println('${customer.id} - ${customer.name}')
 	// insert a new customer
 	new_customer := Customer{
 		name: 'Bob'

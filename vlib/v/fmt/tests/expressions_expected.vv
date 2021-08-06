@@ -48,7 +48,7 @@ fn main() {
 	}
 	v_str := 'v'
 	s := []string{}
-	s << '	`$v_str`'
+	s << '	`${v_str}`'
 	println(s)
 	println('this is quite a long string' +
 		' that is followd by an even longer part that should go to another line')
@@ -60,7 +60,7 @@ fn main() {
 
 fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp string, str_fn_name string) {
 	for i, _ in info.types {
-		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg${i}));')
 	}
 }
 

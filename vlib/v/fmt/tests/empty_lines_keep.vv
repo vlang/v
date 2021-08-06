@@ -21,7 +21,7 @@ const (
 	// This comment doesn't really belong anywhere
 
 	_ = 'A multiline string with a StringInterLiteral...
-	$foo
+	${foo}
 	...and the ending brace on a newline had a wrong pos.last_line.
 	'
 	_ = 4
@@ -85,9 +85,9 @@ bar'
 		typ: params[0].typ.set_nr_muls(1)
 	}
 	env_value = environ()[env_lit] or {
-		return error('the environment variable "$env_lit" does not exist.')
+		return error('the environment variable "${env_lit}" does not exist.')
 	}
-	assert '$mr_one_two()' == "(One{
+	assert '${mr_one_two()}' == "(One{
     value: 'one'
 }, Two{
     value: 'two'
