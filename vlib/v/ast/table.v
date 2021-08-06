@@ -344,6 +344,28 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	return none
 }
 
+pub struct GetEmbedsOptions {
+	preceding []Type
+}
+
+// get_embeds returns all nested embedded structs
+// the hierarchy of embeds is returned as a list
+pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type {
+	mut embeds := [][]Type{}
+	if sym.info is Struct {
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			mut preceding := options.preceding
+			preceding << embed
+			embeds << t.get_embeds(embed_sym, preceding: preceding)
+		}
+		if sym.info.embeds.len == 0 && options.preceding.len > 0 {
+			embeds << options.preceding
+		}
+	}
+	return embeds
+}
+
 pub fn (t &Table) type_find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, Type) {
 	if sym.info is Struct {
 		mut found_methods := []Fn{}
@@ -407,6 +429,20 @@ pub fn (t &Table) struct_has_field(struct_ &TypeSymbol, name string) bool {
 	return false
 }
 
+// struct_fields returns all fields including fields from embeds
+// use this instead symbol.info.fields to get all fields
+pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
+	mut fields := []StructField{}
+	if sym.info is Struct {
+		fields << sym.info.fields
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			fields << t.struct_fields(embed_sym)
+		}
+	}
+	return fields
+}
+
 // search from current type up through each parent looking for field
 pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	// println('find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
@@ -443,6 +479,43 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 			break
 		}
 		ts = unsafe { &t.type_symbols[ts.parent_idx] }
+	}
+	return none
+}
+
+// find_field_from_embeds is the same as find_field_from_embeds but also looks into nested embeds
+pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
+	if sym.info is Struct {
+		mut found_fields := []StructField{}
+		mut embeds_of_found_fields := [][]Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if field := t.find_field(embed_sym, field_name) {
+				found_fields << field
+				embeds_of_found_fields << [embed]
+			} else {
+				field, types := t.find_field_from_embeds_recursive(embed_sym, field_name) or {
+					StructField{}, []Type{}
+				}
+				found_fields << field
+				embeds_of_found_fields << types
+			}
+		}
+		if found_fields.len == 1 {
+			return found_fields[0], embeds_of_found_fields[0]
+		} else if found_fields.len > 1 {
+			return error('ambiguous field `$field_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or {
+				return err
+			}
+			if embed_types.len > 0 {
+				return field, embed_types
+			}
+		}
 	}
 	return none
 }
@@ -500,7 +573,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 		mut v_sym := t.get_type_symbol(variant)
 		fields := match mut v_sym.info {
 			Struct {
-				v_sym.info.fields
+				t.struct_fields(v_sym)
 			}
 			SumType {
 				t.resolve_common_sumtype_fields(v_sym)
