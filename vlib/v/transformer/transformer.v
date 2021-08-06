@@ -21,8 +21,10 @@ pub fn (t Transformer) transform_files(ast_files []&ast.File) {
 }
 
 pub fn (t Transformer) transform(ast_file &ast.File) {
-	for mut stmt in ast_file.stmts {
-		t.stmt(mut stmt)
+	if pref.constant_folding {
+		for mut stmt in ast_file.stmts {
+			t.stmt(mut stmt)
+		}
 	}
 }
 
@@ -129,13 +131,12 @@ fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
-		/*
 		ast.StringLiteral {
 			match right_node {
 				ast.StringLiteral {
 					match node.op {
 						.plus {
-							return ast.IntegerLiteral{
+							return ast.StringLiteral{
 								val: left_node.val + right_node.val
 								pos: pos
 							}
@@ -150,7 +151,6 @@ fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
-		*/
 		ast.IntegerLiteral {
 			match right_node {
 				ast.IntegerLiteral {

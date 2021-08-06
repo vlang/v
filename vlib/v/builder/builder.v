@@ -21,7 +21,7 @@ pub:
 mut:
 	pref          &pref.Preferences
 	checker       &checker.Checker
-	transformer     &transformer.Transformer
+	transformer   &transformer.Transformer
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
