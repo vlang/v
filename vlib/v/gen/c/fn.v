@@ -426,6 +426,8 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 			g.fn_args(func.params, func.is_variadic, voidptr(0))
 			g.write(')')
 			g.definitions.write_string(')')
+			fargs << caname
+			fargtypes << arg_type_name
 		} else {
 			mut heap_prom := false
 			if scope != voidptr(0) {
