@@ -156,8 +156,8 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 
 // Expressions in string interpolations need to be put in braces
 // This method creates the format specifier (including the colon) or an empty
-// string if none is needed .
-// Examples: '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
+// string if none is needed.
+// Examples: '${z} ${z.b} ${z.c.x} ${x[4]} ${z:8.3f} ${a:-20} ${a > b+2}'
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) string {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
