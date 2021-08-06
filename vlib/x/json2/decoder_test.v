@@ -13,8 +13,8 @@ fn test_raw_decode_number() ? {
 fn test_raw_decode_array() ? {
 	raw_arr := raw_decode('["Foo", 1]') ?
 	arr := raw_arr.arr()
-	assert arr[0].str() == 'Foo'
-	assert arr[1].int() == 1
+	assert arr[0] or { 0 }.str() == 'Foo'
+	assert arr[1] or { 0 }.int() == 1
 }
 
 fn test_raw_decode_bool() ? {
@@ -25,8 +25,8 @@ fn test_raw_decode_bool() ? {
 fn test_raw_decode_map() ? {
 	raw_mp := raw_decode('{"name":"Bob","age":20}') ?
 	mp := raw_mp.as_map()
-	assert mp['name'].str() == 'Bob'
-	assert mp['age'].int() == 20
+	assert mp['name'] or { 0 }.str() == 'Bob'
+	assert mp['age'] or { 0 }.int() == 20
 }
 
 fn test_raw_decode_null() ? {
@@ -50,8 +50,8 @@ fn test_raw_decode_string_with_dollarsign() ? {
 fn test_raw_decode_map_with_whitespaces() ? {
 	raw_mp := raw_decode(' \n\t{"name":"Bob","age":20}\n\t') ?
 	mp := raw_mp.as_map()
-	assert mp['name'].str() == 'Bob'
-	assert mp['age'].int() == 20
+	assert mp['name'] or { 0 }.str() == 'Bob'
+	assert mp['age'] or { 0 }.int() == 20
 }
 
 fn test_nested_array_object() ? {
