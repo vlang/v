@@ -530,14 +530,17 @@ hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l
 
 ### String interpolation
 
-Basic interpolation syntax is pretty simple - use `$` before a variable name.
-The variable will be converted to a string and embedded into the literal:
+Interpolation syntax is pretty simple - use `${<expression>}`.
+The expression will be converted to a string and embedded into the literal:
 ```v
 name := 'Bob'
 println('Hello, ${name}!') // Hello, Bob!
 ```
-It also works with fields: `'age = ${user.age}'`.
-If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
+It also works with fields and more complex expressions:
+```v oksyntax
+'age = ${user.age}'
+'can register = ${user.age > 13}'
+```
 
 Format specifiers similar to those in C's `printf()` are also supported.
 `f`, `g`, `x`, etc. are optional and specify the output format.
