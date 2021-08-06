@@ -75,7 +75,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
-			if !(ch == `\'` || ch == `)`) {
+			if !(ch == `'` || ch == `)`) {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}

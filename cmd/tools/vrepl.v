@@ -44,7 +44,7 @@ fn (mut r Repl) checks() bool {
 	mut in_string := false
 	was_indent := r.indent > 0
 	for i := 0; i < r.line.len; i++ {
-		if r.line[i] == `\'` && (i == 0 || r.line[i - 1] != `\\`) {
+		if r.line[i] == `'` && (i == 0 || r.line[i - 1] != `\\`) {
 			in_string = !in_string
 		}
 		if r.line[i] == `{` && !in_string {

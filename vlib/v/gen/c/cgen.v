@@ -5069,7 +5069,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		rune {
 			rune_code := u32(ct_value)
 			if rune_code <= 255 {
-				if rune_code in [`"`, `\\`, `\'`] {
+				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}
 				escval := util.smart_quote(byte(rune_code).ascii_str(), false)

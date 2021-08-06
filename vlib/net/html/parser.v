@@ -111,10 +111,10 @@ pub fn (mut parser Parser) split_parse(data string) {
 	parser.init()
 	for chr in data {
 		// returns true if byte is a " or '
-		is_quote := chr == `"` || chr == `\'`
+		is_quote := chr == `"` || chr == `'`
 		string_code := match chr {
 			`"` { 1 } // "
-			`\'` { 2 } // '
+			`'` { 2 } // '
 			else { 0 }
 		}
 		if parser.lexical_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
