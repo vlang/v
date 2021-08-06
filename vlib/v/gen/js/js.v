@@ -1831,17 +1831,16 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 
-		mut needs_cast := is_arithmetic && it.left_type != it.right_type
 		mut greater_typ := 0
 		// todo(playX): looks like this cast is always required to perform .eq operation on types.
-		if true || needs_cast {
+		if is_arithmetic {
 			greater_typ = g.greater_typ(it.left_type, it.right_type)
 			if g.cast_stack.len > 0 {
-				needs_cast = g.cast_stack.last() != greater_typ
+				// needs_cast = g.cast_stack.last() != greater_typ
 			}
 		}
 
-		if true || needs_cast {
+		if is_arithmetic {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
 			}
@@ -1855,7 +1854,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 
 		g.expr(it.right)
 
-		if true || needs_cast {
+		if is_arithmetic {
 			g.cast_stack.delete_last()
 			g.write(')')
 		}
