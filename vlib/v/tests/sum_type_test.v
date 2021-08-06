@@ -743,11 +743,17 @@ struct Dd {
 type MySum = Aa | Bb | Cc | Dd
 
 fn test_sumtype_access_embed_fields() {
-	a := MySum(Aa{a: 1})
+	a := MySum(Aa{
+		a: 1
+	})
 	assert a.a == 1
 }
 
 fn test_sumtype_access_nested_embed_fields() {
-	a := MySum(Dd{Common2: Common2{a: 2}})
+	a := MySum(Dd{
+		Common2: Common2{
+			a: 2
+		}
+	})
 	assert a.a == 2
 }

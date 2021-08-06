@@ -509,7 +509,9 @@ pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name s
 	} else if sym.info is Aggregate {
 		for typ in sym.info.types {
 			agg_sym := t.get_type_symbol(typ)
-			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or { return err }
+			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or {
+				return err
+			}
 			if embed_types.len > 0 {
 				return field, embed_types
 			}
