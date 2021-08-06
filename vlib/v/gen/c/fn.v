@@ -644,7 +644,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	mut unwrapped_rec_type := node.receiver_type
-	if g.table.cur_fn.generic_names.len > 0 { // in generic fn
+	if g.cur_fn != 0 && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
 		sym := g.table.get_type_symbol(node.receiver_type)
