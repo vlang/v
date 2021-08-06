@@ -1,6 +1,8 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+// Based off:   https://github.com/golang/go/blob/master/src/encoding/base64/base64.go
+// Last commit: https://github.com/golang/go/commit/9a93baf4d7d13d7d5c67388c93960d78abc8e11e
 module base64
 
 const (
@@ -12,6 +14,18 @@ const (
 	ending_table = [0, 2, 1]!
 	enc_table    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
+
+union B64_64_datablock {
+mut:
+	data      u64
+	data_byte [8]byte
+}
+
+union B64_32_datablock {
+mut:
+	data      u32
+	data_byte [4]byte
+}
 
 // decode decodes the base64 encoded `string` value passed in `data`.
 // Please note: If you need to decode many strings repeatedly, take a look at `decode_in_buffer`.
@@ -104,63 +118,122 @@ pub fn url_encode_str(data string) string {
 	return encode_str(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 
+// assemble64 assembles 8 base64 digits into 6 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble64(n1 byte, n2 byte, n3 byte, n4 byte, n5 byte, n6 byte, n7 byte, n8 byte) u64 {
+	return u64(n1) << 58 | u64(n2) << 52 | u64(n3) << 46 | u64(n4) << 40 | u64(n5) << 34 | u64(n6) << 28 | u64(n7) << 22 | u64(n8) << 16
+}
+
+// assemble32 assembles 4 base64 digits into 3 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble32(n1 byte, n2 byte, n3 byte, n4 byte) u32 {
+	return u32(n1) << 26 | u32(n2) << 20 | u32(n3) << 14 | u32(n4) << 8
+}
+
 // decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.
 // decode_in_buffer returns the size of the decoded data in the buffer.
 // Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
 pub fn decode_in_buffer(data &string, buffer &byte) int {
+	return decode_from_buffer(buffer, data.str, data.len)
+}
+
+// decode_from_buffer decodes the base64 encoded ASCII bytes from `data` into `buffer`.
+// decode_from_buffer returns the size of the decoded data in the buffer.
+// Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
+// to hold the decoded data.
+// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
+pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
+	return decode_from_buffer(buffer, data.data, data.len)
+}
+
+// decode_from_buffer decodes the base64 encoded ASCII bytes from `src` into `dest`.
+// decode_from_buffer returns the size of the decoded data in the buffer.
+// Please note: The `dest` buffer should be large enough (i.e. 3/4 of the `src_len`, or larger)
+// to hold the decoded data.
+// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
+// Please note: This function is for internal base64 decoding
+fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
+	if src_len < 4 {
+		return 0
+	}
+
 	mut padding := 0
-	if data.ends_with('=') {
-		if data.ends_with('==') {
+	if unsafe { src[src_len - 1] == `=` } {
+		if unsafe { src[src_len - 2] == `=` } {
 			padding = 2
 		} else {
 			padding = 1
 		}
 	}
-	// input_length is the length of meaningful data
-	input_length := data.len - padding
-	output_length := input_length * 3 / 4
 
-	mut i := 0
-	mut j := 0
-	mut b := &byte(0)
-	mut d := &byte(0)
+	mut d := unsafe { src }
+	mut b := unsafe { dest }
+
 	unsafe {
-		d = &byte(data.str)
-		b = &byte(buffer)
-	}
-	for i < input_length {
-		mut char_a := 0
-		mut char_b := 0
-		mut char_c := 0
-		mut char_d := 0
-		if i < input_length {
-			char_a = base64.index[unsafe { d[i] }]
-			i++
+		mut n_decoded_bytes := 0 // padding bytes are also counted towards this.
+		mut si := 0
+
+		mut datablock_64 := B64_64_datablock{
+			data: 0
 		}
-		if i < input_length {
-			char_b = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_c = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_d = base64.index[unsafe { d[i] }]
-			i++
+		mut datablock_32 := B64_32_datablock{
+			data: 0
 		}
 
-		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		unsafe {
-			b[j] = byte(decoded_bytes >> 16)
-			b[j + 1] = byte((decoded_bytes >> 8) & 0xff)
-			b[j + 2] = byte((decoded_bytes >> 0) & 0xff)
+		for src_len - si >= 8 {
+			// Converting 8 bytes of input into 6 bytes of output. Storing these in the upper bytes of an u64.
+			datablock_64.data = assemble64(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]), byte(base64.index[d[
+				si + 4]]), byte(base64.index[d[si + 5]]), byte(base64.index[d[si + 6]]),
+				byte(base64.index[d[si + 7]]))
+
+			// Reading out the individual bytes from the u64. Watch out with endianess.
+			$if little_endian {
+				b[n_decoded_bytes + 0] = datablock_64.data_byte[7]
+				b[n_decoded_bytes + 1] = datablock_64.data_byte[6]
+				b[n_decoded_bytes + 2] = datablock_64.data_byte[5]
+				b[n_decoded_bytes + 3] = datablock_64.data_byte[4]
+				b[n_decoded_bytes + 4] = datablock_64.data_byte[3]
+				b[n_decoded_bytes + 5] = datablock_64.data_byte[2]
+			} $else {
+				b[n_decoded_bytes + 0] = datablock_64.data_byte[0]
+				b[n_decoded_bytes + 1] = datablock_64.data_byte[1]
+				b[n_decoded_bytes + 2] = datablock_64.data_byte[2]
+				b[n_decoded_bytes + 3] = datablock_64.data_byte[3]
+				b[n_decoded_bytes + 4] = datablock_64.data_byte[4]
+				b[n_decoded_bytes + 5] = datablock_64.data_byte[5]
+			}
+
+			n_decoded_bytes += 6
+			si += 8
 		}
-		j += 3
+
+		for src_len - si >= 4 {
+			datablock_32.data = assemble32(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
+				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]))
+
+			$if little_endian {
+				b[n_decoded_bytes + 0] = datablock_32.data_byte[3]
+				b[n_decoded_bytes + 1] = datablock_32.data_byte[2]
+				b[n_decoded_bytes + 2] = datablock_32.data_byte[1]
+				b[n_decoded_bytes + 3] = datablock_32.data_byte[0]
+			} $else {
+				b[n_decoded_bytes + 0] = datablock_32.data_byte[0]
+				b[n_decoded_bytes + 1] = datablock_32.data_byte[1]
+				b[n_decoded_bytes + 2] = datablock_32.data_byte[2]
+				b[n_decoded_bytes + 3] = datablock_32.data_byte[3]
+			}
+
+			n_decoded_bytes += 3
+			si += 4
+		}
+
+		return n_decoded_bytes - padding
 	}
-	return output_length
 }
 
 // encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
@@ -176,48 +249,59 @@ pub fn encode_in_buffer(data []byte, buffer &byte) int {
 // Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
 // Please note: This function is for internal base64 encoding
 fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
-	input_length := src_len
-	output_length := 4 * ((input_length + 2) / 3)
-
-	mut i := 0
-	mut j := 0
+	if src_len == 0 {
+		return 0
+	}
+	output_length := 4 * ((src_len + 2) / 3)
 
 	mut d := unsafe { src }
 	mut b := unsafe { dest }
-	mut etable := base64.enc_table.str
-	for i < input_length {
-		mut octet_a := 0
-		mut octet_b := 0
-		mut octet_c := 0
+	etable := base64.enc_table.str
 
-		if i < input_length {
-			octet_a = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_b = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_c = int(unsafe { d[i] })
-			i++
-		}
-
-		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
-
+	mut di := 0
+	mut si := 0
+	n := (src_len / 3) * 3
+	for si < n {
+		// Convert 3x 8bit source bytes into 4 bytes
 		unsafe {
-			b[j] = etable[(triple >> 3 * 6) & 63] // 63 is 0x3F
-			b[j + 1] = etable[(triple >> 2 * 6) & 63]
-			b[j + 2] = etable[(triple >> 1 * 6) & 63]
-			b[j + 3] = etable[(triple >> 0 * 6) & 63]
+			val := u32(d[si + 0]) << 16 | u32(d[si + 1]) << 8 | u32(d[si + 2])
+
+			b[di + 0] = etable[val >> 18 & 0x3F]
+			b[di + 1] = etable[val >> 12 & 0x3F]
+			b[di + 2] = etable[val >> 6 & 0x3F]
+			b[di + 3] = etable[val & 0x3F]
 		}
-		j += 4
+		si += 3
+		di += 4
 	}
 
-	padding_length := base64.ending_table[input_length % 3]
-	for i = 0; i < padding_length; i++ {
-		unsafe {
-			b[output_length - 1 - i] = `=`
+	remain := src_len - si
+	if remain == 0 {
+		return output_length
+	}
+
+	// Add the remaining small block and padding
+	unsafe {
+		mut val := u32(d[si + 0]) << 16
+		if remain == 2 {
+			val |= u32(d[si + 1]) << 8
+		}
+
+		b[di + 0] = etable[val >> 18 & 0x3F]
+		b[di + 1] = etable[val >> 12 & 0x3F]
+
+		match remain {
+			2 {
+				b[di + 2] = etable[val >> 6 & 0x3F]
+				b[di + 3] = byte(`=`)
+			}
+			1 {
+				b[di + 2] = byte(`=`)
+				b[di + 3] = byte(`=`)
+			}
+			else {
+				panic('base64: This case should never occur.')
+			}
 		}
 	}
 	return output_length
