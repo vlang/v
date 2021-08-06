@@ -13,8 +13,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `v self` .')
 	os.chdir(vroot)
 	os.setenv('VCOLORS', 'always', true)
-	self_idx := os.args.index('self')
-	args := os.args[1..self_idx]
+	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '$jargs -o v2' }
