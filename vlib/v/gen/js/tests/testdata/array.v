@@ -608,7 +608,7 @@ fn main() {
 		// type switch
 		println(nums.map(it * 10))
 		println(nums.map(it * it))
-		println(nums.map('$it'))
+		println(nums.map('${it}'))
 		println(nums.map(it % 2 == 0))
 		println(strs.map(it.to_upper()))
 		println(strs.map(it == 'awesome'))
@@ -622,14 +622,14 @@ fn main() {
 		println([]int{len: 0}.map(it * 2))
 		// nested maps (where it is of same type)
 		println(nums.map(strs.map(int(7)) == [7, 7, 7]))
-		println(nums.map('$it' + strs.map('a')[0]))
+		println(nums.map('${it}' + strs.map('a')[0]))
 		// assert nums.map(it + strs.map(int(7))[0]) == [8, 9, 10, 11, 12, 13]
 		println(nums.map(it + strs.map(it.len)[0]))
 		println(strs.map(it.len + strs.map(it.len)[0]))
 		// nested (different it types)
 		// todo(playX): this one produces invalid JS code.
 		// assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
-		println(nums[0..3].map('$it' + strs.map(it)[it - 1]))
+		println(nums[0..3].map('${it}' + strs.map(it)[it - 1]))
 		println(nums.map(map_test_helper_1))
 		println([1, 5, 10].map(map_test_helper_1))
 		println(nums)
@@ -913,10 +913,10 @@ fn main() {
 		// test multi array index
 		mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 		a[0][0] = 1
-		println('$a')
+		println('${a}')
 		mut b := [[0].repeat(3)].repeat(2)
 		b[0][0] = 1
-		println('$b')
+		println('${b}')
 	}
 	{
 		// test plus assign string
@@ -960,7 +960,7 @@ fn main() {
 		assert a.len == 5
 		x := a.last()
 		y := a.pop()
-		println('$x,$y')
+		println('${x},${y}')
 		assert a.len == 4
 		z := a.pop()
 		assert a.len == 3

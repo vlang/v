@@ -60,7 +60,7 @@ fn main() {
 		}
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
-			println('"$file_path" does not exist')
+			println('"${file_path}" does not exist')
 			res.warnings++
 			continue
 		}
@@ -74,7 +74,7 @@ fn main() {
 		term.clear_previous_line()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
-		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
+		println('\nWarnings: ${res.warnings} | Errors: ${res.errors} | OKs: ${res.oks}')
 	}
 	if res.errors > 0 {
 		exit(1)
@@ -119,12 +119,12 @@ fn rtext(s string) string {
 }
 
 fn wline(file_path string, lnumber int, column int, message string) string {
-	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) +
-		rtext(' $message')
+	return btext('${file_path}:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) +
+		rtext(' ${message}')
 }
 
 fn eline(file_path string, lnumber int, column int, message string) string {
-	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: $message'))
+	return btext('${file_path}:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: ${message}'))
 }
 
 const (
@@ -157,7 +157,7 @@ mut:
 fn (mut f MDFile) progress(message string) {
 	if show_progress {
 		term.clear_previous_line()
-		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, $message')
+		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, ${message}')
 	}
 }
 
@@ -209,7 +209,7 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 			if command == '' {
 				command = default_command
 			} else if command == 'nofmt' {
-				command += ' $default_command'
+				command += ' ${default_command}'
 			}
 			f.current = VCodeExample{
 				sline: lnumber
@@ -316,14 +316,14 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 				found_error_warning = true
 				res.errors++
 				for anchordata in ad.anchors[link] {
-					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#$link)'))
+					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#${link})'))
 				}
 			}
 		} else {
 			found_error_warning = true
 			res.errors++
 			for brokenlink in linkdata {
-				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [$brokenlink.lable](#$link)'))
+				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [${brokenlink.lable}](#${link})'))
 			}
 		}
 	}
@@ -339,7 +339,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 							anchor.line
 						}
 					}
-					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#$link)'))
+					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#${link})'))
 					found_error_warning = true
 					res.warnings++
 				}
@@ -379,7 +379,7 @@ fn create_ref_link(s string) string {
 
 fn (mut f MDFile) debug() {
 	for e in f.examples {
-		eprintln('f.path: $f.path | example: $e')
+		eprintln('f.path: ${f.path} | example: ${e}')
 	}
 }
 
@@ -400,7 +400,7 @@ fn silent_cmdexecute(cmd string) int {
 }
 
 fn get_fmt_exit_code(vfile string, vexe string) int {
-	return silent_cmdexecute('"$vexe" fmt -verify $vfile')
+	return silent_cmdexecute('"${vexe}" fmt -verify ${vfile}')
 }
 
 fn (mut f MDFile) check_examples() CheckResult {
@@ -424,11 +424,11 @@ fn (mut f MDFile) check_examples() CheckResult {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
-			f.progress('example from $e.sline to $e.eline, command: $command')
+			f.progress('example from ${e.sline} to ${e.eline}, command: ${command}')
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := cmdexecute('"${vexe}" -w -Wfatal-errors -o x.c ${vfile}')
 					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
@@ -445,7 +445,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'globals' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals -o x.c $vfile')
+					res := cmdexecute('"${vexe}" -w -Wfatal-errors -enable-globals -o x.c ${vfile}')
 					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
@@ -462,7 +462,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'live' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
+					res := cmdexecute('"${vexe}" -w -Wfatal-errors -live -o x.c ${vfile}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -478,7 +478,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'failcompile' {
-					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := silent_cmdexecute('"${vexe}" -w -Wfatal-errors -o x.c ${vfile}')
 					os.rm('x.c') or {}
 					if res == 0 || fmt_res != 0 {
 						if res == 0 {
@@ -495,7 +495,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'oksyntax' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
+					res := cmdexecute('"${vexe}" -w -Wfatal-errors -check-syntax ${vfile}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
@@ -511,7 +511,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'badsyntax' {
-					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
+					res := silent_cmdexecute('"${vexe}" -w -Wfatal-errors -check-syntax ${vfile}')
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`badsyntax` example can be parsed fine'))
 						eprintln(vcontent)
@@ -523,7 +523,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'nofmt' {}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "${command}", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
 					should_cleanup_vfile = false
 					errors++
 				}

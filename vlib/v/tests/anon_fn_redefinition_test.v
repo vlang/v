@@ -6,7 +6,7 @@ struct Example {
 
 pub struct Another {
 	function fn (string) = fn (value string) {
-		println('$value')
+		println('${value}')
 	}
 }
 

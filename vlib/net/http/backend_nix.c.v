@@ -38,7 +38,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	// /////
 	req_headers := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
-		eprintln('> $req_headers')
+		eprintln('> ${req_headers}')
 	}
 	// println(req_headers)
 	C.BIO_puts(web, &char(req_headers.str))
@@ -53,7 +53,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 			break
 		}
 		$if debug_http ? {
-			eprintln('ssl_do, read ${readcounter:4d} | len: $len')
+			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
 			eprintln('-'.repeat(20))
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
@@ -68,7 +68,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	}
 	response_text := content.str()
 	$if trace_http_response ? {
-		eprintln('< $response_text')
+		eprintln('< ${response_text}')
 	}
 	return parse_response(response_text)
 }

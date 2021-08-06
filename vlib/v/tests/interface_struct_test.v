@@ -8,7 +8,7 @@ struct Boss {
 }
 
 fn (b Boss) say_hello() string {
-	return 'Hello, My name is $b.name and I\'m the bawz'
+	return 'Hello, My name is ${b.name} and I\'m the bawz'
 }
 
 fn (b Boss) speak(msg string) {
@@ -21,11 +21,11 @@ struct Cat {
 }
 
 fn (c Cat) say_hello() string {
-	return 'Meow meow $c.name the $c.breed meow'
+	return 'Meow meow ${c.name} the ${c.breed} meow'
 }
 
 fn (c Cat) speak(msg string) {
-	println('Meow $msg')
+	println('Meow ${msg}')
 }
 
 struct Baz {

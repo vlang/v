@@ -17,7 +17,7 @@ fn get_vexe_path() string {
 		return env_vexe
 	}
 	me := os.executable()
-	eprintln('me: $me')
+	eprintln('me: ${me}')
 	mut vexe_ := os.join_path(os.dir(os.dir(os.dir(me))), 'v')
 	if os.user_os() == 'windows' {
 		vexe_ += '.exe'
@@ -36,38 +36,38 @@ fn new_tdir() string {
 }
 
 fn cleanup_tdir() {
-	println('... removing tdir: $tdir')
+	println('... removing tdir: ${tdir}')
 	os.rmdir_all(tdir) or { panic(err) }
 }
 
 fn main() {
-	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
+	println('> vroot: ${vroot} | vexe: ${vexe} | tdir: ${tdir}')
 	ok_fpath := os.join_path(tdir, 'single_test.v')
 	os.write_file(ok_fpath, 'fn test_ok(){ assert true }') ?
-	check_ok('"$vexe" $ok_fpath')
-	check_ok('"$vexe" test $ok_fpath')
+	check_ok('"${vexe}" ${ok_fpath}')
+	check_ok('"${vexe}" test ${ok_fpath}')
 	fail_fpath := os.join_path(tdir, 'failing_test.v')
 	os.write_file(fail_fpath, 'fn test_fail(){ assert 1 == 2 }') ?
-	check_fail('"$vexe" $fail_fpath')
-	check_fail('"$vexe" test $fail_fpath')
-	check_fail('"$vexe" test $tdir')
+	check_fail('"${vexe}" ${fail_fpath}')
+	check_fail('"${vexe}" test ${fail_fpath}')
+	check_fail('"${vexe}" test ${tdir}')
 }
 
 fn check_ok(cmd string) string {
-	println('>   check_ok cmd: $cmd')
+	println('>   check_ok cmd: ${cmd}')
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('>   check_ok failed.\n$res.output')
+		eprintln('>   check_ok failed.\n${res.output}')
 		exit(1)
 	}
 	return res.output
 }
 
 fn check_fail(cmd string) string {
-	println('> check_fail cmd: $cmd')
+	println('> check_fail cmd: ${cmd}')
 	res := os.execute(cmd)
 	if res.exit_code == 0 {
-		eprintln('> check_fail succeeded, but it should have failed.\n$res.output')
+		eprintln('> check_fail succeeded, but it should have failed.\n${res.output}')
 		exit(1)
 	}
 	return res.output

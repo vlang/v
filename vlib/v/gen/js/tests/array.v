@@ -1,5 +1,5 @@
 fn map_cb(s string) string {
-	return 'CB: $s'
+	return 'CB: ${s}'
 }
 
 fn filter_cb(n int) bool {
@@ -90,11 +90,11 @@ fn main() {
 	println('\n\n')
 
 	// map
-	a := arr1.map('VAL: $it')
+	a := arr1.map('VAL: ${it}')
 	b := arr1.map(map_cb)
 	c := arr1.map(map_cb(it))
 	d := arr1.map(fn (a string) string {
-		return 'ANON: $a'
+		return 'ANON: ${a}'
 	})
 	// I don't know when this would ever be used,
 	// but it's what the C backend does ¯\_(ツ)_/¯
@@ -129,8 +129,8 @@ fn main() {
 	f4 := [u64(0xffffffffffffffff), 0xdeadface]!
 
 	println('
-$f1
-$f2
-$f3
-$f4')
+${f1}
+${f2}
+${f3}
+${f4}')
 }

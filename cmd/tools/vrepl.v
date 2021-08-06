@@ -69,7 +69,7 @@ fn (mut r Repl) checks() bool {
 
 fn (r &Repl) function_call(line string) bool {
 	for function in r.functions_name {
-		is_function_definition := line.replace(' ', '').starts_with('$function:=')
+		is_function_definition := line.replace(' ', '').starts_with('${function}:=')
 		if line.starts_with(function) && !is_function_definition {
 			return true
 		}
@@ -80,7 +80,7 @@ fn (r &Repl) function_call(line string) bool {
 fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
 	mut all_lines := []string{}
 	for mod in r.modules {
-		all_lines << 'import $mod\n'
+		all_lines << 'import ${mod}\n'
 	}
 	if vstartup != '' {
 		mut lines := []string{}
@@ -121,7 +121,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 	if vstartup != '' {
 		result := repl_run_vfile(vstartup) or {
 			os.Result{
-				output: '$vstartup file not found'
+				output: '${vstartup} file not found'
 			}
 		}
 		print('\n')
@@ -187,7 +187,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			r.line = ''
 		}
 		if r.line == 'debug_repl' {
-			eprintln('repl: $r')
+			eprintln('repl: ${r}')
 			continue
 		}
 		if r.line == 'reset' {
@@ -208,7 +208,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
 		if r.line.starts_with('print') {
-			source_code := r.current_source_code(false, false) + '\n$r.line\n'
+			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(file, source_code) or { panic(err) }
 			s := repl_run_vfile(file) or { return }
 			print_output(s)
@@ -258,17 +258,17 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				is_statement = true
 			}
 			if !is_statement && !func_call && r.line != '' {
-				temp_line = 'println($r.line)'
+				temp_line = 'println(${r.line})'
 				temp_flag = true
 			}
 			mut temp_source_code := ''
 			if temp_line.starts_with('import ') {
 				mod := r.line.fields()[1]
 				if mod !in r.modules {
-					temp_source_code = '$temp_line\n' + r.current_source_code(false, true)
+					temp_source_code = '${temp_line}\n' + r.current_source_code(false, true)
 				}
 			} else if temp_line.starts_with('#include ') {
-				temp_source_code = '$temp_line\n' + r.current_source_code(false, false)
+				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
 			} else {
 				for i, l in r.lines {
 					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
@@ -276,7 +276,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 						break
 					}
 				}
-				temp_source_code = r.current_source_code(true, false) + '\n$temp_line\n'
+				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return }
@@ -346,7 +346,7 @@ fn main() {
 }
 
 fn rerror(s string) {
-	println('V repl error: $s')
+	println('V repl error: ${s}')
 	os.flush()
 }
 
@@ -379,9 +379,9 @@ fn cleanup_files(files []string) {
 
 fn repl_run_vfile(file string) ?os.Result {
 	$if trace_repl_temp_files ? {
-		eprintln('>> repl_run_vfile file: $file')
+		eprintln('>> repl_run_vfile file: ${file}')
 	}
-	s := os.execute('"$vexe" -repl run "$file"')
+	s := os.execute('"${vexe}" -repl run "${file}"')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

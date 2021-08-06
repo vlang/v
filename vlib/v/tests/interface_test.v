@@ -27,7 +27,7 @@ fn (c &Cat) speak(s string) {
 }
 
 fn (c Cat) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(c).name}, breed:$c.breed'
+	return '${pet_name} the ${typeof(c).name}, breed:${c.breed}'
 }
 
 fn (mut c Cat) set_breed(new string) {
@@ -36,7 +36,7 @@ fn (mut c Cat) set_breed(new string) {
 
 // utility function to override default conversion to string, as a sample
 fn (c Cat) str() string {
-	return 'Custom string conversion for Cat: $c.breed'
+	return 'Custom string conversion for Cat: ${c.breed}'
 }
 
 fn (d Dog) speak(s string) {
@@ -50,7 +50,7 @@ fn (d Dog) name() string {
 }
 
 fn (d Dog) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(d).name}, breed:$d.breed'
+	return '${pet_name} the ${typeof(d).name}, breed:${d.breed}'
 }
 
 fn (mut d Dog) set_breed(new string) {
@@ -142,10 +142,10 @@ fn test_perform_name_detailed() {
 	dog := Dog{
 		breed: 'Labrador Retriever'
 	}
-	println('Test on Dog: $dog ...') // using default conversion to string
+	println('Test on Dog: ${dog} ...') // using default conversion to string
 	perform_name_detailed(dog)
 	cat := Cat{}
-	println('Test on empty Cat: $cat ...')
+	println('Test on empty Cat: ${cat} ...')
 	perform_speak(cat)
 	println('Test on a Persian Cat: ...')
 	perform_speak(Cat{
@@ -154,10 +154,10 @@ fn test_perform_name_detailed() {
 	cat_persian2 := Cat{
 		breed: 'Persian'
 	}
-	println('Test on another Persian Cat: "$cat_persian2" ...')
+	println('Test on another Persian Cat: "${cat_persian2}" ...')
 	perform_speak(cat_persian2)
 	cat_persian2_str := cat_persian2.str()
-	println("Persian Cat 2: '$cat_persian2_str' ...")
+	println("Persian Cat 2: '${cat_persian2_str}' ...")
 	assert cat_persian2_str == 'Custom string conversion for Cat: Persian'
 	println('Test (dummy/empty) on array of animals ...')
 	handle_animals([dog, cat])
@@ -209,7 +209,7 @@ fn (b Boss) name() string {
 }
 
 fn (b Boss) speak() {
-	println("i'm $b.name")
+	println("i'm ${b.name}")
 }
 
 fn (b &Boss) return_speaker() Speaker2 {

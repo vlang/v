@@ -180,7 +180,7 @@ pub fn (c Color) eq(c2 Color) bool {
 }
 
 pub fn (c Color) str() string {
-	return 'Color{$c.r, $c.g, $c.b, $c.a}'
+	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
 // rgba8 - convert a color value to an int in the RGBA8 order.

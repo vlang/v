@@ -24,7 +24,7 @@ fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 	mut benched_tests_res := BenchedTests{}
 	benched_tests_res.total_number_of_tests = total_number_of_tests
 	benched_tests_res.test_suit_file = vfilename
-	println('running tests in: $benched_tests_res.test_suit_file')
+	println('running tests in: ${benched_tests_res.test_suit_file}')
 	return benched_tests_res
 }
 

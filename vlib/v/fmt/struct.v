@@ -58,9 +58,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
 		if embed.comments.len == 0 {
-			f.writeln('\t$styp')
+			f.writeln('\t${styp}')
 		} else {
-			f.write('\t$styp')
+			f.write('\t${styp}')
 			f.comments(embed.comments, level: .indent)
 		}
 	}
@@ -103,7 +103,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
 		// Handle comments before the field
 		f.comments_before_field(before_comments)
-		f.write('\t$field.name ')
+		f.write('\t${field.name} ')
 		// Handle comments between field name and type
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
@@ -185,16 +185,16 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('$name{}')
+			f.write('${name}{}')
 		} else {
-			f.writeln('$name{')
+			f.writeln('${name}{')
 			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
 	} else if node.is_short {
 		// `Foo{1,2,3}` (short syntax )
-		f.write('$name{')
+		f.write('${name}{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {
 			f.write('...')
@@ -217,7 +217,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args {
-			f.write('$name{')
+			f.write('${name}{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
@@ -251,7 +251,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
 			for i, field in node.fields {
-				f.write('$field.name: ')
+				f.write('${field.name}: ')
 				f.prefix_expr_cast_expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {

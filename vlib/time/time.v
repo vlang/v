@@ -223,21 +223,21 @@ pub fn (t Time) relative() string {
 		if m == 1 {
 			return '1 minute ago'
 		}
-		return '$m minutes ago'
+		return '${m} minutes ago'
 	}
 	if secs < 3600 * 24 {
 		h := secs / 3600
 		if h == 1 {
 			return '1 hour ago'
 		}
-		return '$h hours ago'
+		return '${h} hours ago'
 	}
 	if secs < 3600 * 24 * 5 {
 		d := secs / 3600 / 24
 		if d == 1 {
 			return '1 day ago'
 		}
-		return '$d days ago'
+		return '${d} days ago'
 	}
 	if secs > 3600 * 24 * 10000 {
 		return ''
@@ -344,7 +344,7 @@ pub fn is_leap_year(year int) bool {
 // days_in_month returns a number of days in a given month.
 pub fn days_in_month(month int, year int) ?int {
 	if month > 12 || month < 1 {
-		return error('Invalid month: $month')
+		return error('Invalid month: ${month}')
 	}
 	extra := if month == 2 && is_leap_year(year) { 1 } else { 0 }
 	res := time.month_days[month - 1] + extra

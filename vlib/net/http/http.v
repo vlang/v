@@ -98,7 +98,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 	if _url == '' {
 		return error('http.fetch: empty url')
 	}
-	url := build_url_from_fetch(_url, config) or { return error('http.fetch: invalid url $_url') }
+	url := build_url_from_fetch(_url, config) or { return error('http.fetch: invalid url ${_url}') }
 	data := config.data
 	req := Request{
 		method: config.method
@@ -126,7 +126,7 @@ pub fn url_encode_form_data(data map[string]string) string {
 	for key_, value_ in data {
 		key := urllib.query_escape(key_)
 		value := urllib.query_escape(value_)
-		pieces << '$key=$value'
+		pieces << '${key}=${value}'
 	}
 	return pieces.join('&')
 }
@@ -144,7 +144,7 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	}
 	mut pieces := []string{cap: config.params.len}
 	for key, val in config.params {
-		pieces << '$key=$val'
+		pieces << '${key}=${val}'
 	}
 	mut query := pieces.join('&')
 	if url.raw_query.len > 1 {

@@ -48,7 +48,7 @@ pub fn load(path string) ?Image {
 		res.nr_channels = 4
 	}
 	if isnil(res.data) {
-		return error('stbi image failed to load from "$path"')
+		return error('stbi image failed to load from "${path}"')
 	}
 	return res
 }

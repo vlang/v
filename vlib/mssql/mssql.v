@@ -117,7 +117,7 @@ fn extract_error(fnName string, handle C.SQLHANDLE, tp C.SQLSMALLINT) string {
 				state_str := (&sql_state[0]).vstring()
 				native_error_code := int(native_error)
 				txt_str := (&message_text[0]).vstring()
-				err_str += '\n\todbc=$state_str:$i:$native_error_code:$txt_str'
+				err_str += '\n\todbc=${state_str}:${i}:${native_error_code}:${txt_str}'
 			}
 		}
 	}

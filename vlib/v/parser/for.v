@@ -52,7 +52,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		if p.tok.kind != .semicolon {
 			// Disallow `for i := 0; i++; i < ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.inc, .dec] {
-				return p.error('cannot use $p.tok.lit$p.peek_tok.kind as value')
+				return p.error('cannot use ${p.tok.lit}${p.peek_tok.kind} as value')
 			}
 			cond = p.expr(0)
 			has_cond = true
@@ -112,10 +112,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					val_var_pos)
 			}
 			if p.scope.known_var(key_var_name) {
-				return p.error('redefinition of key iteration variable `$key_var_name`')
+				return p.error('redefinition of key iteration variable `${key_var_name}`')
 			}
 			if p.scope.known_var(val_var_name) {
-				return p.error('redefinition of value iteration variable `$val_var_name`')
+				return p.error('redefinition of value iteration variable `${val_var_name}`')
 			}
 			p.scope.register(ast.Var{
 				name: key_var_name
@@ -125,11 +125,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_stack_obj: true
 			})
 		} else if p.scope.known_var(val_var_name) {
-			return p.error('redefinition of value iteration variable `$val_var_name`')
+			return p.error('redefinition of value iteration variable `${val_var_name}`')
 		}
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
-			return p.error('in a `for x in array` loop, the key or value iteration variable `$p.tok.lit` can not be the same as the array variable')
+			return p.error('in a `for x in array` loop, the key or value iteration variable `${p.tok.lit}` can not be the same as the array variable')
 		}
 		// arr_expr
 		cond := p.expr(0)

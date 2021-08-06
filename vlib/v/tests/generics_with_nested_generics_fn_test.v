@@ -22,6 +22,6 @@ fn method_test<T>(mut app T) int {
 fn test_generics_with_generics_fn() {
 	mut app := App{}
 	ret := method_test(mut app)
-	println('result = $ret')
+	println('result = ${ret}')
 	assert ret == 22
 }

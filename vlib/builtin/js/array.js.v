@@ -40,7 +40,7 @@ pub:
 [unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut arr := empty_array()
 	#let tmp = new Array(a.arr.length * +count);

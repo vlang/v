@@ -85,7 +85,7 @@ fn new_ft(c FTConfig) ?&FT {
 
 	if c.font_path == '' || !os.exists(c.font_path) {
 		$if !android {
-			println('failed to load font "$c.font_path"')
+			println('failed to load font "${c.font_path}"')
 			return none
 		}
 	}
@@ -97,13 +97,13 @@ fn new_ft(c FTConfig) ?&FT {
 		if bytes.len == 0 {
 			// ... then try the APK asset path
 			bytes = os.read_apk_asset(c.font_path) or {
-				println('failed to load font "$c.font_path"')
+				println('failed to load font "${c.font_path}"')
 				return none
 			}
 		}
 	} $else {
 		bytes = os.read_bytes(c.font_path) or {
-			println('failed to load font "$c.font_path"')
+			println('failed to load font "${c.font_path}"')
 			return none
 		}
 	}
@@ -113,17 +113,17 @@ fn new_ft(c FTConfig) ?&FT {
 		get_font_path_variant(c.font_path, .bold)
 	}
 	bytes_bold := os.read_bytes(bold_path) or {
-		debug_font_println('failed to load font "$bold_path"')
+		debug_font_println('failed to load font "${bold_path}"')
 		bytes
 	}
 	mono_path := get_font_path_variant(c.font_path, .mono)
 	bytes_mono := os.read_bytes(mono_path) or {
-		debug_font_println('failed to load font "$mono_path"')
+		debug_font_println('failed to load font "${mono_path}"')
 		bytes
 	}
 	italic_path := get_font_path_variant(c.font_path, .italic)
 	bytes_italic := os.read_bytes(italic_path) or {
-		debug_font_println('failed to load font "$italic_path"')
+		debug_font_println('failed to load font "${italic_path}"')
 		bytes
 	}
 	fons := sfons.create(512, 512, 1)
@@ -306,7 +306,7 @@ pub fn system_font_path() string {
 		for font in fonts {
 			if line.contains(font) && line.contains(':') {
 				res := line.all_before(':')
-				println('Using font $res')
+				println('Using font ${res}')
 				return res
 			}
 		}

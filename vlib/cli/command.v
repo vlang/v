@@ -34,27 +34,27 @@ pub mut:
 pub fn (cmd Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
-	res << '	name: "$cmd.name"'
-	res << '	usage: "$cmd.usage"'
-	res << '	version: "$cmd.version"'
-	res << '	description: "$cmd.description"'
-	res << '	disable_help: $cmd.disable_help'
-	res << '	disable_flags: $cmd.disable_flags'
-	res << '	disable_version: $cmd.disable_version'
-	res << '	sort_flags: $cmd.sort_flags'
-	res << '	sort_commands: $cmd.sort_commands'
-	res << '	cb execute: $cmd.execute'
-	res << '	cb pre_execute: $cmd.pre_execute'
-	res << '	cb post_execute: $cmd.post_execute'
+	res << '	name: "${cmd.name}"'
+	res << '	usage: "${cmd.usage}"'
+	res << '	version: "${cmd.version}"'
+	res << '	description: "${cmd.description}"'
+	res << '	disable_help: ${cmd.disable_help}'
+	res << '	disable_flags: ${cmd.disable_flags}'
+	res << '	disable_version: ${cmd.disable_version}'
+	res << '	sort_flags: ${cmd.sort_flags}'
+	res << '	sort_commands: ${cmd.sort_commands}'
+	res << '	cb execute: ${cmd.execute}'
+	res << '	cb pre_execute: ${cmd.pre_execute}'
+	res << '	cb post_execute: ${cmd.post_execute}'
 	if cmd.parent == 0 {
 		res << '	parent: &Command(0)'
 	} else {
-		res << '	parent: &Command{$cmd.parent.name ...}'
+		res << '	parent: &Command{${cmd.parent.name} ...}'
 	}
-	res << '	commands: $cmd.commands'
-	res << '	flags: $cmd.flags'
-	res << '	required_args: $cmd.required_args'
-	res << '	args: $cmd.args'
+	res << '	commands: ${cmd.commands}'
+	res << '	flags: ${cmd.flags}'
+	res << '	required_args: ${cmd.required_args}'
+	res << '	args: ${cmd.args}'
 	res << '}'
 	return res.join('\n')
 }
@@ -77,7 +77,7 @@ pub fn (cmd Command) full_name() string {
 	if cmd.is_root() {
 		return cmd.name
 	}
-	return cmd.parent.full_name() + ' $cmd.name'
+	return cmd.parent.full_name() + ' ${cmd.name}'
 }
 
 // add_commands adds the `commands` array of `Command`s as sub-commands.
@@ -91,7 +91,7 @@ pub fn (mut cmd Command) add_commands(commands []Command) {
 pub fn (mut cmd Command) add_command(command Command) {
 	mut subcmd := command
 	if cmd.commands.contains(subcmd.name) {
-		println('Command with the name `$subcmd.name` already exists')
+		println('Command with the name `${subcmd.name}` already exists')
 		exit(1)
 	}
 	subcmd.parent = unsafe { cmd }
@@ -117,7 +117,7 @@ pub fn (mut cmd Command) add_flags(flags []Flag) {
 // add_flag adds `flag` to this `Command`.
 pub fn (mut cmd Command) add_flag(flag Flag) {
 	if cmd.flags.contains(flag.name) {
-		println('Flag with the name `$flag.name` already exists')
+		println('Flag with the name `${flag.name}` already exists')
 		exit(1)
 	}
 	cmd.flags << flag
@@ -179,7 +179,7 @@ fn (mut cmd Command) parse_flags() {
 					found = true
 					flag.found = true
 					cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
-						println('Failed to parse flag `${cmd.args[0]}`: $err')
+						println('Failed to parse flag `${cmd.args[0]}`: ${err}')
 						exit(1)
 					}
 					break
@@ -187,7 +187,7 @@ fn (mut cmd Command) parse_flags() {
 			}
 		}
 		if !found {
-			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
+			println('Command `${cmd.name}` has no flag `${cmd.args[0]}`')
 			exit(1)
 		}
 	}
@@ -219,26 +219,26 @@ fn (mut cmd Command) parse_commands() {
 	// if no further command was found, execute current command
 	if cmd.required_args > 0 {
 		if cmd.required_args > cmd.args.len {
-			eprintln('Command `$cmd.name` needs at least $cmd.required_args arguments')
+			eprintln('Command `${cmd.name}` needs at least ${cmd.required_args} arguments')
 			exit(1)
 		}
 	}
 	cmd.check_required_flags()
 	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
-			eprintln('cli preexecution error: $err')
+			eprintln('cli preexecution error: ${err}')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
-			eprintln('cli execution error: $err')
+			eprintln('cli execution error: ${err}')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
-			eprintln('cli postexecution error: $err')
+			eprintln('cli postexecution error: ${err}')
 			exit(1)
 		}
 	}
@@ -269,7 +269,7 @@ fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
-			println('Flag `$flag.name` is required by `$full_name`')
+			println('Flag `${flag.name}` is required by `${full_name}`')
 			exit(1)
 		}
 	}
@@ -292,7 +292,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error('Command `$name` not found in $cmds')
+	return error('Command `${name}` not found in ${cmds}')
 }
 
 fn (cmds []Command) contains(name string) bool {

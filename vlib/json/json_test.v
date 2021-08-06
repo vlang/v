@@ -17,10 +17,10 @@ struct Employee {
 fn test_simple() ? {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
-	eprintln('Employee x: $s')
+	eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json.decode(Employee, s) ?
-	eprintln('Employee y: $y')
+	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -342,8 +342,8 @@ struct Info {
 fn test_decode_null_object() ? {
 	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') ?
 	assert info.id == 22
-	assert '$info.items' == '[]'
-	assert '$info.maps' == '{}'
+	assert '${info.items}' == '[]'
+	assert '${info.maps}' == '{}'
 }
 
 struct Foo2 {

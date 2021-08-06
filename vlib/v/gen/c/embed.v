@@ -26,8 +26,8 @@ fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('\t\t.uncompressed = NULL,')
 	g.writeln('\t\t.free_compressed = 0,')
 	g.writeln('\t\t.free_uncompressed = 0,')
-	g.writeln('\t\t.len = $file_size')
-	g.writeln('} // \$embed_file("$node.embed_file.apath")')
+	g.writeln('\t\t.len = ${file_size}')
+	g.writeln('} // \$embed_file("${node.embed_file.apath}")')
 }
 
 // gen_embedded_data embeds data into the V target executable.
@@ -43,14 +43,14 @@ fn (mut g Gen) gen_embedded_data() {
 	// like the `rcc` tool in Qt?
 	*/
 	for i, emfile in g.embedded_files {
-		fbytes := os.read_bytes(emfile.apath) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write_string('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
+		fbytes := os.read_bytes(emfile.apath) or { panic('Error while embedding file: ${err}') }
+		g.embedded_data.write_string('static const unsigned char _v_embed_blob_${i}[${fbytes.len}] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
 			if j < fbytes.len - 1 {
-				g.embedded_data.write_string('0x$b,')
+				g.embedded_data.write_string('0x${b},')
 			} else {
-				g.embedded_data.write_string('0x$b')
+				g.embedded_data.write_string('0x${b}')
 			}
 			if 0 == ((j + 1) % 16) {
 				g.embedded_data.write_string('\n    ')
@@ -61,7 +61,7 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{${i}, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_${i}},')
 	}
 	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')

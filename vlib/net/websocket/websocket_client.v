@@ -95,24 +95,24 @@ pub fn new_client(address string) ?&Client {
 pub fn (mut ws Client) connect() ? {
 	ws.assert_not_connected() ?
 	ws.set_state(.connecting)
-	ws.logger.info('connecting to host $ws.uri')
+	ws.logger.info('connecting to host ${ws.uri}')
 	ws.conn = ws.dial_socket() ?
 	// Todo: make setting configurable
 	ws.conn.set_read_timeout(time.second * 30)
 	ws.conn.set_write_timeout(time.second * 30)
 	ws.handshake() ?
 	ws.set_state(.open)
-	ws.logger.info('successfully connected to host $ws.uri')
+	ws.logger.info('successfully connected to host ${ws.uri}')
 	ws.send_open_event()
 }
 
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ? {
-	mut log := 'Starting client listener, server($ws.is_server)...'
+	mut log := 'Starting client listener, server(${ws.is_server})...'
 	ws.logger.info(log)
 	unsafe { log.free() }
 	defer {
-		ws.logger.info('Quit client listener, server($ws.is_server)...')
+		ws.logger.info('Quit client listener, server(${ws.is_server})...')
 		if ws.state == .open {
 			ws.close(1000, 'closed by client') or {}
 		}
@@ -122,14 +122,14 @@ pub fn (mut ws Client) listen() ? {
 			if ws.state in [.closed, .closing] {
 				return
 			}
-			ws.debug_log('failed to read next message: $err')
-			ws.send_error_event('failed to read next message: $err')
+			ws.debug_log('failed to read next message: ${err}')
+			ws.send_error_event('failed to read next message: ${err}')
 			return err
 		}
 		if ws.state in [.closed, .closing] {
 			return
 		}
-		ws.debug_log('got message: $msg.opcode')
+		ws.debug_log('got message: ${msg.opcode}')
 		match msg.opcode {
 			.text_frame {
 				log = 'read: text'
@@ -146,8 +146,8 @@ pub fn (mut ws Client) listen() ? {
 			.ping {
 				ws.debug_log('read: ping, sending pong')
 				ws.send_control_frame(.pong, 'PONG', msg.payload) or {
-					ws.logger.error('error in message callback sending PONG: $err')
-					ws.send_error_event('error in message callback sending PONG: $err')
+					ws.logger.error('error in message callback sending PONG: ${err}')
+					ws.send_error_event('error in message callback sending PONG: ${err}')
 					if ws.panic_on_callback {
 						panic(err)
 					}
@@ -179,8 +179,8 @@ pub fn (mut ws Client) listen() ? {
 					}
 					code := (int(msg.payload[0]) << 8) + int(msg.payload[1])
 					if code in invalid_close_codes {
-						ws.close(1002, 'invalid close code: $code') ?
-						return error('invalid close code: $code')
+						ws.close(1002, 'invalid close code: ${code}') ?
+						return error('invalid close code: ${code}')
 					}
 					reason := if msg.payload.len > 2 { msg.payload[2..] } else { []byte{} }
 					if reason.len > 0 {
@@ -188,7 +188,7 @@ pub fn (mut ws Client) listen() ? {
 					}
 					if ws.state !in [.closing, .closed] {
 						// sending close back according to spec
-						ws.debug_log('close with reason, code: $code, reason: $reason')
+						ws.debug_log('close with reason, code: ${code}, reason: ${reason}')
 						r := reason.bytestr()
 						ws.close(code, r) ?
 					}
@@ -317,10 +317,10 @@ pub fn (mut ws Client) write_string(str string) ?int {
 
 // close closes the websocket connection
 pub fn (mut ws Client) close(code int, message string) ? {
-	ws.debug_log('sending close, $code, $message')
+	ws.debug_log('sending close, ${code}, ${message}')
 	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
-		err_msg := 'Socket allready closed: $code'
+		ws.debug_log('close: Websocket allready closed (${ws.state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
+		err_msg := 'Socket allready closed: ${code}'
 		return error(err_msg)
 	}
 	defer {
@@ -349,7 +349,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) ? {
-	ws.debug_log('send control frame $code, frame_type: $frame_typ')
+	ws.debug_log('send control frame ${code}, frame_type: ${frame_typ}')
 	if ws.state !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
@@ -403,7 +403,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 		}
 	}
 	ws.socket_write(control_frame) or {
-		return error('send_control_frame: error sending $frame_typ control frame.')
+		return error('send_control_frame: error sending ${frame_typ} control frame.')
 	}
 }
 
@@ -463,9 +463,9 @@ fn (mut ws Client) reset_state() {
 // debug_log handles debug logging output for client and server
 fn (mut ws Client) debug_log(text string) {
 	if ws.is_server {
-		ws.logger.debug('server-> $text')
+		ws.logger.debug('server-> ${text}')
 	} else {
-		ws.logger.debug('client-> $text')
+		ws.logger.debug('client-> ${text}')
 	}
 }
 

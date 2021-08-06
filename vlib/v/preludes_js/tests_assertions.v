@@ -44,26 +44,26 @@ fn cb_assertion_failed(i VAssertMetaInfo) {
 	mut final_filepath := filepath + ':${i.line_nr + 1}:'
 	mut final_funcname := 'fn ' + i.fn_name.replace('main.', '').replace('__', '.')
 	final_src := 'assert ' + i.src
-	myeprintln('$final_filepath $final_funcname')
+	myeprintln('${final_filepath} ${final_funcname}')
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
-		mut slvalue := '$i.lvalue'
-		mut srvalue := '$i.rvalue'
+		mut slvalue := '${i.lvalue}'
+		mut srvalue := '${i.rvalue}'
 		cutoff_limit := 30
 		if slvalue.len > cutoff_limit || srvalue.len > cutoff_limit {
-			myeprintln('  > $final_src')
+			myeprintln('  > ${final_src}')
 			myeprintln(lvtitle)
-			myeprintln('      $slvalue')
+			myeprintln('      ${slvalue}')
 			myeprintln(rvtitle)
-			myeprintln('      $srvalue')
+			myeprintln('      ${srvalue}')
 		} else {
-			myeprintln('   > $final_src')
-			myeprintln(' $lvtitle $slvalue')
-			myeprintln('$rvtitle $srvalue')
+			myeprintln('   > ${final_src}')
+			myeprintln(' ${lvtitle} ${slvalue}')
+			myeprintln('${rvtitle} ${srvalue}')
 		}
 	} else {
-		myeprintln('    $final_src')
+		myeprintln('    ${final_src}')
 	}
 	myeprintln('')
 }
@@ -73,10 +73,10 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 
 fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
 	filepath := if use_relative_paths { file } else { os_js.real_path(file) }
-	mut final_filepath := filepath + ':$line_nr:'
+	mut final_filepath := filepath + ':${line_nr}:'
 	mut final_funcname := 'fn ' + fn_name.replace('main.', '').replace('__', '.')
 	final_msg := errmsg
-	myeprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
+	myeprintln('${final_filepath} ${final_funcname} failed propagation with error: ${final_msg}')
 	// TODO: implement os_js.is_file and os_js.read_lines:
 	/*
 	if os_js.is_file(file) {

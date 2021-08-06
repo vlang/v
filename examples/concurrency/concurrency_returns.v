@@ -9,5 +9,5 @@ fn main() {
 	}
 	// Join all tasks
 	r := threads.wait()
-	println('All jobs finished: $r')
+	println('All jobs finished: ${r}')
 }

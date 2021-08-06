@@ -119,7 +119,7 @@ pub fn (mut g Gen) create_executable() {
 	os.write_file_array(g.out_name, g.buf) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it executable
 	if g.pref.is_verbose {
-		println('\n$g.out_name: native binary has been successfully generated')
+		println('\n${g.out_name}: native binary has been successfully generated')
 	}
 }
 
@@ -222,7 +222,7 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 fn (mut g Gen) get_var_offset(var_name string) int {
 	offset := g.var_offset[var_name]
 	if offset == 0 {
-		verror('unknown variable `$var_name`')
+		verror('unknown variable `${var_name}`')
 	}
 	return offset
 }
@@ -356,7 +356,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 				ast.StringLiteral {
 					s = e0.val.str()
-					eprintln('jlalala $s')
+					eprintln('jlalala ${s}')
 				}
 				else {
 					verror('unknown return type')

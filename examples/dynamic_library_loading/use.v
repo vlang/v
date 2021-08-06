@@ -13,5 +13,5 @@ fn main() {
 	f = dl.sym_opt(handle, 'add_1') ?
 	eprintln('f: ${ptr_str(f)}')
 	res := f(1, 2)
-	eprintln('res: $res')
+	eprintln('res: ${res}')
 }

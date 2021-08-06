@@ -26,7 +26,7 @@ fn main() {
 ['/users/:user']
 pub fn (mut app App) user_endpoint(user string) vweb.Result {
 	id := rand.intn(100)
-	return app.json('{"$user": $id}')
+	return app.json('{"${user}": ${id}}')
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -45,10 +45,10 @@ pub fn (mut app App) show_text() vweb.Result {
 
 pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
-	return app.text('Response Headers\n$app.header')
+	return app.text('Response Headers\n${app.header}')
 }
 
 [post]
 pub fn (mut app App) post() vweb.Result {
-	return app.text('Post body: $app.req.data')
+	return app.text('Post body: ${app.req.data}')
 }

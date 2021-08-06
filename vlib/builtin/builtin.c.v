@@ -34,11 +34,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		bare_panic(s)
 	} $else {
 		eprintln('================ V panic ================')
-		eprintln('   module: $mod')
+		eprintln('   module: ${mod}')
 		eprintln(' function: ${fn_name}()')
-		eprintln('  message: $s')
-		eprintln('     file: $file:$line_no')
-		eprintln('   v hash: $vcommithash()')
+		eprintln('  message: ${s}')
+		eprintln('     file: ${file}:${line_no}')
+		eprintln('   v hash: ${vcommithash()}')
 		eprintln('=========================================')
 		$if exit_after_panic_message ? {
 			C.exit(1)
@@ -65,7 +65,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 
 [noreturn]
 pub fn panic_optional_not_set(s string) {
-	panic('optional not set ($s)')
+	panic('optional not set (${s})')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -77,7 +77,7 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: $vcommithash()')
+		eprintln('v hash: ${vcommithash()}')
 		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
@@ -105,7 +105,7 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error $errnum'
+		err_msg = 'error ${errnum}'
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
@@ -285,7 +285,7 @@ pub fn malloc(n int) &byte {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0, so it is easier to spot
@@ -338,7 +338,7 @@ pub fn malloc_noscan(n int) &byte {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0, so it is easier to spot
@@ -370,7 +370,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 		new_ptr = unsafe { C.realloc(b, n) }
 	}
 	if new_ptr == 0 {
-		panic('realloc($n) failed')
+		panic('realloc(${n}) failed')
 	}
 	return new_ptr
 }
@@ -416,7 +416,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 		nptr = unsafe { C.realloc(old_data, new_size) }
 	}
 	if nptr == 0 {
-		panic('realloc_data($old_data, $old_size, $new_size) failed')
+		panic('realloc_data(${old_data}, ${old_size}, ${new_size}) failed')
 	}
 	return nptr
 }
@@ -519,7 +519,7 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking ? {
 		if i < 0 || i >= len {
-			s := 'fixed array index out of range (index: $i, len: $len)'
+			s := 'fixed array index out of range (index: ${i}, len: ${len})'
 			panic(s)
 		}
 	}

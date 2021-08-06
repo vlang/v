@@ -17,12 +17,12 @@ fn main() {
 	dump(fast_dir)
 	dump(vdir)
 	os.chdir(fast_dir)
-	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
+	if !os.exists('${vdir}/v') && !os.is_dir('${vdir}/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
 	println('Fetching updates...')
-	ret := os.system('$vdir/v up')
+	ret := os.system('${vdir}/v up')
 	if ret != 0 {
 		println('failed to update V')
 		return
@@ -33,15 +33,15 @@ fn main() {
 		os.create('table.html') ?
 	}
 	mut table := os.read_file('table.html') ?
-	if table.contains('>$commit<') {
+	if table.contains('>${commit}<') {
 		println('nothing to benchmark')
 		exit(1)
 		return
 	}
 	// for i, commit in commits {
-	message := exec('git log --pretty=format:"%s" -n1 $commit')
+	message := exec('git log --pretty=format:"%s" -n1 ${commit}')
 	// println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
-	println('\nBenchmarking commit $commit "$message"')
+	println('\nBenchmarking commit ${commit} "${message}"')
 	// Build an optimized V
 	// println('Checking out ${commit}...')
 	// exec('git checkout $commit')
@@ -51,23 +51,23 @@ fn main() {
 	// println('cur vdir="$vdir"')
 	// exec('v -o vprod cmd/v') // for faster debugging
 	// cache vlib modules
-	exec('$vdir/v wipe-cache')
-	exec('$vdir/v -o v2 -prod cmd/v')
+	exec('${vdir}/v wipe-cache')
+	exec('${vdir}/v -o v2 -prod cmd/v')
 	// measure
-	diff1 := measure('$vdir/vprod $voptions -o v.c cmd/v', 'v.c')
+	diff1 := measure('${vdir}/vprod ${voptions} -o v.c cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
 	}
-	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 cmd/v', 'v2')
+	diff2 := measure('${vdir}/vprod ${voptions} -cc ${tcc_path} -o v2 cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
-	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang examples/hello_world.v',
+	diff4 := measure('${vdir}/vprod -usecache ${voptions} -cc clang examples/hello_world.v',
 		'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen
 	scan, parse, check, cgen, vlines := measure_steps(vdir)
 	// println('Building V took ${diff}ms')
-	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
+	commit_date := exec('git log -n1 --pretty="format:%at" ${commit}')
 	date := time.unix(commit_date.int())
 	//
 	os.chdir(fast_dir)
@@ -76,19 +76,19 @@ fn main() {
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
 	table =
 		'<tr>
-		<td>$date.format()</td>
-		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
-		<td>$html_message</td>
+		<td>${date.format()}</td>
+		<td><a target=_blank href="https://github.com/vlang/v/commit/${commit}">${commit}</a></td>
+		<td>${html_message}</td>
 		<td>${diff1}ms</td>
 		<td>${diff2}ms</td>
 		<td>${diff3}ms</td>
 		<td>${diff4}ms</td>
-		<td>$vc_size KB</td>
+		<td>${vc_size} KB</td>
 		<td>${parse}ms</td>
 		<td>${check}ms</td>
 		<td>${cgen}ms</td>
 		<td>${scan}ms</td>
-		<td>$vlines</td>
+		<td>${vlines}</td>
 		<td>${int(f64(vlines) / f64(diff1) * 1000.0)}</td>
 	</tr>\n' +
 		table.trim_space()
@@ -114,7 +114,7 @@ fn exec(s string) string {
 
 // returns milliseconds
 fn measure(cmd string, description string) int {
-	println('  Measuring $description')
+	println('  Measuring ${description}')
 	println('  Warming up...')
 	println(cmd)
 	for _ in 0 .. 3 {
@@ -139,7 +139,7 @@ fn measure(cmd string, description string) int {
 }
 
 fn measure_steps(vdir string) (int, int, int, int, int) {
-	resp := os.execute_or_exit('$vdir/vprod $voptions -o v.c cmd/v')
+	resp := os.execute_or_exit('${vdir}/vprod ${voptions} -o v.c cmd/v')
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()

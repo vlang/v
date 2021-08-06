@@ -17,7 +17,7 @@ fn test_for_in_alias() {
 	mut ret := []string{}
 	for cdn in gene {
 		println(cdn)
-		ret << '$cdn'
+		ret << '${cdn}'
 	}
 
 	assert ret.len == 2

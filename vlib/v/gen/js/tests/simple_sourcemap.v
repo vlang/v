@@ -12,7 +12,7 @@ fn main() {
 			println('source map is working')
 		}
 	} else {
-		println('skiping test! node version >=12.12.0 required. Current Version is $node_version')
+		println('skiping test! node version >=12.12.0 required. Current Version is ${node_version}')
 	}
 }
 

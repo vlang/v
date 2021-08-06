@@ -162,7 +162,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			c.add_error_detail('`${exp_fn.name}`\'s expected fn argument: `${exp_arg.name}` is ${exp_arg_pointedness}, but the passed fn argument: `${got_arg.name}` is ${got_arg_pointedness}')
 			return false
 		}
 		if !c.check_basic(got_arg.typ, exp_arg.typ) {
@@ -184,7 +184,7 @@ fn (mut c Checker) check_shift(left_type ast.Type, right_type ast.Type, left_pos
 			// allow `bool << 2` in translated C code
 			return ast.int_type
 		}
-		c.error('invalid operation: shift on type `$sym.name`', left_pos)
+		c.error('invalid operation: shift on type `${sym.name}`', left_pos)
 		return ast.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type `${c.table.get_type_symbol(right_type).name}` into type `${c.table.get_type_symbol(left_type).name}`',
@@ -339,7 +339,7 @@ pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
 fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return 'expected `$exps`, not `$gots`'
+	return 'expected `${exps}`, not `${gots}`'
 }
 
 pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
@@ -400,7 +400,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			if typ.has_flag(.shared_f) {
 				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
 					action := if what == 'argument' { 'passed' } else { 'used' }
-					c.error('`$expr.name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+					c.error('`${expr.name}` is `shared` and must be `rlock`ed or `lock`ed to be ${action} as non-mut ${what}',
 						expr.pos)
 				}
 			}
@@ -409,10 +409,10 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		ast.SelectorExpr {
 			pos = expr.pos
 			if typ.has_flag(.shared_f) {
-				expr_name := '${expr.expr}.$expr.field_name'
+				expr_name := '${expr.expr}.${expr.field_name}'
 				if expr_name !in c.rlocked_names && expr_name !in c.locked_names {
 					action := if what == 'argument' { 'passed' } else { 'used' }
-					c.error('`$expr_name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+					c.error('`${expr_name}` is `shared` and must be `rlock`ed or `lock`ed to be ${action} as non-mut ${what}',
 						expr.pos)
 				}
 				return
@@ -427,7 +427,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		else {}
 	}
 	if typ.has_flag(.shared_f) {
-		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
+		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut ${what}',
 			pos)
 	}
 }
@@ -553,7 +553,7 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-')
 	is_neg := node.val.starts_with('-')
 	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
-	message := 'integer literal $node.val overflows int'
+	message := 'integer literal ${node.val} overflows int'
 
 	if lit.len > limit.len {
 		c.error(message, node.pos)
@@ -709,7 +709,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 						}
 					}
 					if !c.check_types(typ, to_set) {
-						c.error('inferred generic type `$gt_name` is ambiguous: got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
+						c.error('inferred generic type `${gt_name}` is ambiguous: got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
 							arg.pos)
 					}
 				}
@@ -717,12 +717,13 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+			c.error('could not infer generic type `${gt_name}` in call to `${f.name}`',
+				call_expr.pos)
 			return
 		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
-			println('inferred `$f.name<$s>`')
+			println('inferred `${f.name}<${s}>`')
 		}
 		inferred_types << typ
 		call_expr.concrete_types << typ

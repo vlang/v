@@ -24,27 +24,27 @@ fn test_clash_var_name_of_array() {
 	a_rune := []rune{}
 
 	println(a_f32)
-	assert '$a_f32' == '[]'
+	assert '${a_f32}' == '[]'
 	println(a_f64)
-	assert '$a_f64' == '[]'
+	assert '${a_f64}' == '[]'
 	println(a_bool)
-	assert '$a_bool' == '[]'
+	assert '${a_bool}' == '[]'
 	println(a_i8)
-	assert '$a_i8' == '[]'
+	assert '${a_i8}' == '[]'
 	println(a_byte)
-	assert '$a_byte' == '[]'
+	assert '${a_byte}' == '[]'
 	println(a_i16)
-	assert '$a_i16' == '[]'
+	assert '${a_i16}' == '[]'
 	println(a_u16)
-	assert '$a_u16' == '[]'
+	assert '${a_u16}' == '[]'
 	println(a_int)
-	assert '$a_int' == '[]'
+	assert '${a_int}' == '[]'
 	println(a_u32)
-	assert '$a_u32' == '[]'
+	assert '${a_u32}' == '[]'
 	println(a_string)
-	assert '$a_string' == '[]'
+	assert '${a_string}' == '[]'
 	println(a_rune)
-	assert '$a_rune' == '[]'
+	assert '${a_rune}' == '[]'
 
 	println(array_f32)
 	assert array_f32 == 1
@@ -73,6 +73,6 @@ fn test_clash_var_name_of_array() {
 fn test_clash_var_name_of_map() {
 	map_string_int := 1
 	a := map[string]int{}
-	assert '$a' == '{}'
+	assert '${a}' == '{}'
 	assert map_string_int == 1
 }

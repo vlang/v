@@ -26,9 +26,9 @@ const (
 )
 
 fn error_msg(message string, val string) string {
-	mut msg := 'net.urllib.$message'
+	mut msg := 'net.urllib.${message}'
 	if val != '' {
-		msg = '$msg ($val)'
+		msg = '${msg} (${val})'
 	}
 	return msg
 }
@@ -590,7 +590,7 @@ fn parse_host(host string) ?string {
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port $colon_port after host ',
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
 				''))
 		}
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -608,7 +608,7 @@ fn parse_host(host string) ?string {
 		if idx := host.last_index(':') {
 			colon_port = host[idx..]
 			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port $colon_port after host ',
+				return error(error_msg('parse_host: invalid port ${colon_port} after host ',
 					''))
 			}
 		}

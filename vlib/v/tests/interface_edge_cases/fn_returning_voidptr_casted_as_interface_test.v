@@ -4,7 +4,7 @@ interface IAbc {
 }
 
 fn f(i &IAbc) string {
-	return '$i'
+	return '${i}'
 }
 
 struct Abc {

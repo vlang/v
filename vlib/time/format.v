@@ -101,13 +101,13 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 		t.hour
 	}
 	return match fmt_time {
-		.hhmm12 { '$hour_:${t.minute:02d} $tp' }
+		.hhmm12 { '${hour_}:${t.minute:02d} ${tp}' }
 		.hhmm24 { '${t.hour:02d}:${t.minute:02d}' }
-		.hhmmss12 { '$hour_:${t.minute:02d}:${t.second:02d} $tp' }
+		.hhmmss12 { '${hour_}:${t.minute:02d}:${t.second:02d} ${tp}' }
 		.hhmmss24 { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
 		.hhmmss24_milli { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}' }
 		.hhmmss24_micro { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}' }
-		else { 'unknown enumeration $fmt_time' }
+		else { 'unknown enumeration ${fmt_time}' }
 	}
 }
 
@@ -117,20 +117,20 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	if fmt_date == .no_date {
 		return ''
 	}
-	month := '$t.smonth()'
+	month := '${t.smonth()}'
 	year := '${(t.year % 100):02d}'
 	mut res := match fmt_date {
-		.ddmmyy { '${t.day:02d}|${t.month:02d}|$year' }
+		.ddmmyy { '${t.day:02d}|${t.month:02d}|${year}' }
 		.ddmmyyyy { '${t.day:02d}|${t.month:02d}|${t.year:04d}' }
-		.mmddyy { '${t.month:02d}|${t.day:02d}|$year' }
+		.mmddyy { '${t.month:02d}|${t.day:02d}|${year}' }
 		.mmddyyyy { '${t.month:02d}|${t.day:02d}|${t.year:04d}' }
-		.mmmd { '$month|$t.day' }
-		.mmmdd { '$month|${t.day:02d}' }
-		.mmmddyy { '$month|${t.day:02d}|$year' }
-		.mmmddyyyy { '$month|${t.day:02d}|${t.year:04d}' }
+		.mmmd { '${month}|${t.day}' }
+		.mmmdd { '${month}|${t.day:02d}' }
+		.mmmddyy { '${month}|${t.day:02d}|${year}' }
+		.mmmddyyyy { '${month}|${t.day:02d}|${t.year:04d}' }
 		.yyyymmdd { '${t.year:04d}|${t.month:02d}|${t.day:02d}' }
-		.yymmdd { '$year|${t.month:02d}|${t.day:02d}' }
-		else { 'unknown enumeration $fmt_date' }
+		.yymmdd { '${year}|${t.month:02d}|${t.day:02d}' }
+		else { 'unknown enumeration ${fmt_date}' }
 	}
 	del := match fmt_dlmtr {
 		.dot { '.' }
@@ -167,6 +167,6 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
-	utc_string := '$day_str, $t.day $month_str $t.year ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
+	utc_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
 	return utc_string
 }

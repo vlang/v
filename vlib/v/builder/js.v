@@ -15,7 +15,7 @@ pub fn (mut b Builder) gen_js(v_files []string) string {
 
 pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 	b.out_name_js = out_file
-	b.info('build_js($out_file)')
+	b.info('build_js(${out_file})')
 	output := b.gen_js(v_files)
 	os.write_file(out_file, output) or { panic(err) }
 	if b.pref.is_stats {

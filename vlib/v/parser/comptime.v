@@ -20,7 +20,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	p.next()
 	mut main_str := ''
 	mut msg := ''
-	content := val.all_after('$kind ').all_before('//')
+	content := val.all_after('${kind} ').all_before('//')
 	if content.contains(' #') {
 		main_str = content.all_before(' #').trim_space()
 		msg = content.all_after(' #').trim_space()
@@ -112,12 +112,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				// ... look relative to the source file:
 				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
 				if !os.exists(epath) {
-					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
+					p.error_with_pos('"${epath}" does not exist so it cannot be embedded',
 						spos)
 					return err_node
 				}
 				if !os.is_file(epath) {
-					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
+					p.error_with_pos('"${epath}" is not a file so it cannot be embedded',
 						spos)
 					return err_node
 				}
@@ -167,9 +167,9 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				}
 			}
 			if is_html {
-				p.error('vweb HTML template "$path" not found')
+				p.error('vweb HTML template "${path}" not found')
 			} else {
-				p.error('template file "$path" not found')
+				p.error('template file "${path}" not found')
 			}
 			return err_node
 		}
@@ -177,13 +177,13 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	$if trace_comptime ? {
-		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
+		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}
 	v_code := p.compile_template_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
-			println('$path:${i + 1}: $line')
+			println('${path}:${i + 1}: ${line}')
 		}
 	}
 	mut scope := &ast.Scope{
@@ -192,7 +192,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	$if trace_comptime ? {
 		println('')
-		println('>>> template for $path:')
+		println('>>> template for ${path}:')
 		println(v_code)
 		println('>>> end of template END')
 		println('')
@@ -202,7 +202,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
-			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
+			if stmt.name == 'main.vweb_tmpl_${tmp_fn_name}' {
 				// mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				mut tmpl_scope := stmt.scope
 				for _, obj in p.scope.objects {
@@ -270,7 +270,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		})
 		kind = .attributes
 	} else {
-		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
+		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields` or `attributes`',
 			p.prev_tok.position())
 		return ast.CompFor{}
 	}

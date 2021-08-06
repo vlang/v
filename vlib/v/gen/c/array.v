@@ -17,10 +17,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	if g.is_shared {
 		shared_styp = g.typ(array_type.typ.set_flag(.shared_f))
-		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+		g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
 	} else if is_amp {
 		array_styp = g.typ(array_type.typ)
-		g.write('HEAP($array_styp, ')
+		g.write('HEAP(${array_styp}, ')
 	}
 	if array_type.unaliased_sym.kind == .array_fixed {
 		g.write('{')
@@ -71,29 +71,29 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		if elem_type.unaliased_sym.kind == .function {
 			g.write('sizeof(voidptr), ')
 		} else {
-			g.write('sizeof($elem_styp), ')
+			g.write('sizeof(${elem_styp}), ')
 		}
 		if is_default_array {
-			g.write('($elem_styp[]){')
+			g.write('(${elem_styp}[]){')
 			g.expr(node.default_expr)
 			g.write('}[0])')
 		} else if node.has_default {
-			g.write('&($elem_styp[]){')
+			g.write('&(${elem_styp}[]){')
 			g.expr(node.default_expr)
 			g.write('})')
 		} else if node.has_len && node.elem_type == ast.string_type {
-			g.write('&($elem_styp[]){')
+			g.write('&(${elem_styp}[]){')
 			g.write('_SLIT("")')
 			g.write('})')
 		} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
-			g.write('(voidptr)&($elem_styp[]){')
+			g.write('(voidptr)&(${elem_styp}[]){')
 			g.write(g.type_default(node.elem_type))
 			g.write('}[0])')
 		} else {
 			g.write('0)')
 		}
 		if g.is_shared {
-			g.write('}, sizeof($shared_styp))')
+			g.write('}, sizeof(${shared_styp}))')
 		} else if is_amp {
 			g.write(')')
 		}
@@ -101,9 +101,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	len := node.exprs.len
 	if elem_type.unaliased_sym.kind == .function {
-		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
+		g.write('new_array_from_c_array(${len}, ${len}, sizeof(voidptr), _MOV((voidptr[${len}]){')
 	} else {
-		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_styp), _MOV(($elem_styp[$len]){')
+		g.write('new_array_from_c_array${noscan}(${len}, ${len}, sizeof(${elem_styp}), _MOV((${elem_styp}[${len}]){')
 	}
 	if len > 8 {
 		g.writeln('')
@@ -129,9 +129,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	g.write('}))')
 	if g.is_shared {
-		g.write('}, sizeof($shared_styp))')
+		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp {
-		g.write('), sizeof($array_styp))')
+		g.write('), sizeof(${array_styp}))')
 	}
 }
 
@@ -158,20 +158,20 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
 	noscan := g.check_noscan(ret_info.elem_type)
-	g.writeln('$ret_typ $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($ret_elem_type));\n')
+	g.writeln('${ret_typ} ${tmp} = __new_array${noscan}(0, ${tmp}_len, sizeof(${ret_elem_type}));\n')
 	i := g.new_tmp_var()
-	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.writeln('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	g.writeln('for (int ${i} = 0; ${i} < ${tmp}_len; ++${i}) {')
+	g.writeln('\t${inp_elem_type} it = ((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
 		ast.AnonFn {
-			g.write('\t$ret_elem_type ti = ')
+			g.write('\t${ret_elem_type} ti = ')
 			g.gen_anon_fn_decl(mut expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
-			g.write('\t$ret_elem_type ti = ')
+			g.write('\t${ret_elem_type} ti = ')
 			if expr.kind == .function {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
@@ -191,16 +191,16 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
-			g.write('\t$ret_elem_type ti = ')
+			g.write('\t${ret_elem_type} ti = ')
 			g.expr(node.args[0].expr)
 		}
 		else {
-			g.write('\t$ret_elem_type ti = ')
+			g.write('\t${ret_elem_type} ti = ')
 			g.expr(node.args[0].expr)
 		}
 	}
 	g.writeln(';')
-	g.writeln('\tarray_push${noscan}((array*)&$tmp, &ti);')
+	g.writeln('\tarray_push${noscan}((array*)&${tmp}, &ti);')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -281,15 +281,15 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.array_sort_fn[compare_fn] = true
 
 	stype_arg := g.typ(info.elem_type)
-	g.definitions.writeln('int ${compare_fn}($stype_arg* a, $stype_arg* b) {')
+	g.definitions.writeln('int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
-		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
+		'${g.typ(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
-		'${g.typ(comparison_type.unaliased)}__lt($left_expr, $right_expr)'
+		'${g.typ(comparison_type.unaliased)}__lt(${left_expr}, ${right_expr})'
 	} else {
-		'$left_expr < $right_expr'
+		'${left_expr} < ${right_expr}'
 	}
-	g.definitions.writeln('\tif ($c_condition) return -1;')
+	g.definitions.writeln('\tif (${c_condition}) return -1;')
 	g.definitions.writeln('\telse return 1;')
 	g.definitions.writeln('}\n')
 
@@ -307,7 +307,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	g.expr(node.left)
 	g.write('${deref_field}len, ')
 	g.expr(node.left)
-	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&$compare_fn)')
+	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn})')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -328,10 +328,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
 	noscan := g.check_noscan(info.elem_type)
-	g.writeln('$styp $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
+	g.writeln('${styp} ${tmp} = __new_array${noscan}(0, ${tmp}_len, sizeof(${elem_type_str}));\n')
 	i := g.new_tmp_var()
-	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.writeln('for (int ${i} = 0; ${i} < ${tmp}_len; ++${i}) {')
+	g.writeln('\t${elem_type_str} it = ((${elem_type_str}*) ${tmp}_orig.data)[${i}];')
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -370,7 +370,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\tarray_push${noscan}((array*)&$tmp, &it); \n\t\t}')
+	g.writeln('\t\tarray_push${noscan}((array*)&${tmp}, &it); \n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -403,7 +403,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.expr(node.args[1].expr)
 		g.write('.len)')
 	} else {
-		g.write(', &($elem_type_str[]){')
+		g.write(', &(${elem_type_str}[]){')
 		if left_info.elem_type == ast.string_type {
 			g.write('string_clone(')
 		}
@@ -436,7 +436,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('.len)')
 	} else {
-		g.write(', &($elem_type_str[]){')
+		g.write(', &(${elem_type_str}[]){')
 		g.expr(node.args[0].expr)
 		g.write('})')
 	}
@@ -456,25 +456,25 @@ fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
-		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+		g.type_definitions.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
 		mut fn_builder := strings.new_builder(512)
-		fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+		fn_builder.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
 			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(((${elem_type_str}*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .function {
 			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
 		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(((${elem_type_str}*)a.data)[i], v)) {')
 		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(((${elem_type_str}*)a.data)[i], v)) {')
 		} else {
-			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
+			fn_builder.writeln('\t\tif (((${elem_type_str}*)a.data)[i] == v) {')
 		}
 		fn_builder.writeln('\t\t\treturn true;')
 		fn_builder.writeln('\t\t}')
@@ -520,10 +520,10 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
-		g.type_definitions.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+		g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
 		mut fn_builder := strings.new_builder(512)
-		fn_builder.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v) {')
-		fn_builder.writeln('\t$elem_type_str* pelem = a.data;')
+		fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+		fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 		if elem_sym.kind == .string {
 			fn_builder.writeln('\t\tif (fast_string_eq(( *pelem, v))) {')
@@ -596,10 +596,10 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('bool $tmp = false;')
+	g.writeln('bool ${tmp} = false;')
 	i := g.new_tmp_var()
-	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.writeln('for (int ${i} = 0; ${i} < ${tmp}_len; ++${i}) {')
+	g.writeln('\t${elem_type_str} it = ((${elem_type_str}*) ${tmp}_orig.data)[${i}];')
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -638,7 +638,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\t$tmp = true;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('\t\t${tmp} = true;\n\t\t\tbreak;\n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -660,10 +660,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('bool $tmp = true;')
+	g.writeln('bool ${tmp} = true;')
 	i := g.new_tmp_var()
-	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.writeln('for (int ${i} = 0; ${i} < ${tmp}_len; ++${i}) {')
+	g.writeln('\t${elem_type_str} it = ((${elem_type_str}*) ${tmp}_orig.data)[${i}];')
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -702,7 +702,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		}
 	}
 	g.writeln(')) {')
-	g.writeln('\t\t$tmp = false;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('\t\t${tmp} = false;\n\t\t\tbreak;\n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len

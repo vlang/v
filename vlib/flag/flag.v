@@ -40,9 +40,9 @@ fn (mut f Flag) free() {
 }
 
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' +
-		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
-		'            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: ${f.name}\n' +
+		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usag: ${f.usage}\n' +
+		'            desc: ${f.val_desc}'
 }
 
 pub fn (af []Flag) str() string {
@@ -159,7 +159,7 @@ pub fn (mut fs FlagParser) description(desc string) {
 	if fs.application_description.len == 0 {
 		fs.application_description = desc
 	} else {
-		fs.application_description += '\n$desc'
+		fs.application_description += '\n${desc}'
 	}
 }
 
@@ -197,7 +197,7 @@ fn (mut fs FlagParser) add_flag(name string, abbr byte, usage string, desc strin
 // - found arguments and corresponding values are removed from args list
 [manualfree]
 fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
-	full := '--$longhand'
+	full := '--${longhand}'
 	defer {
 		unsafe { full.free() }
 	}
@@ -236,7 +236,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 			should_skip_one = true
 			continue
 		}
-		if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
+		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
 			found_entries << arg[full.len + 1..]
 			to_delete << i
 			continue
@@ -257,7 +257,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 // -> '--flag' is equal to '--flag=true'
 fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string {
 	{
-		full := '--$longhand'
+		full := '--${longhand}'
 		for i, arg in fs.args {
 			if arg.len == 0 {
 				continue
@@ -276,7 +276,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 					return 'true'
 				}
 			}
-			if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
+			if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
 				// Flag abc=true
 				val := arg[full.len + 1..]
 				fs.args.delete(i)
@@ -288,7 +288,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 			}
 		}
 	}
-	return error("parameter '$longhand' not found")
+	return error("parameter '${longhand}' not found")
 }
 
 // bool_opt returns an optional that returns the value associated with the flag.
@@ -298,7 +298,7 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool 
 	{
 		fs.add_flag(name, abbr, usage, '<bool>')
 		parsed := fs.parse_bool_value(name, abbr) or {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed == 'true'
 	}
@@ -337,7 +337,7 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
 		fs.add_flag(name, abbr, usage, '<int>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		parsed0 := parsed[0]
 		res = parsed0.int()
@@ -377,7 +377,7 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 
 		fs.add_flag(name, abbr, usage, '<float>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed[0].f64()
 	}
@@ -411,7 +411,7 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?str
 		fs.add_flag(name, abbr, usage, '<string>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed[0]
 	}
@@ -431,7 +431,7 @@ pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage
 
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
 	if n > flag.max_args_number {
-		panic('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
+		panic('flag.limit_free_args_to_at_least expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n <= 0 {
 		panic('flag.limit_free_args_to_at_least expect n to be a positive number')
@@ -441,7 +441,7 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
 
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
 	if n > flag.max_args_number {
-		panic('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
+		panic('flag.limit_free_args_to_exactly expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n < 0 {
 		panic('flag.limit_free_args_to_exactly expect n to be a non negative number')
@@ -454,7 +454,7 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
 // (min, ..., max)
 pub fn (mut fs FlagParser) limit_free_args(min int, max int) {
 	if min > max {
-		panic('flag.limit_free_args expect min < max, got $min >= $max')
+		panic('flag.limit_free_args expect min < max, got ${min} >= ${max}')
 	}
 	fs.min_free_args = min
 	fs.max_free_args = max
@@ -475,23 +475,23 @@ pub fn (fs FlagParser) usage() string {
 	}
 	mut use := []string{}
 	if fs.application_version != '' {
-		use << '$fs.application_name $fs.application_version'
-		use << '$flag.underline'
+		use << '${fs.application_name} ${fs.application_version}'
+		use << '${flag.underline}'
 	}
 	if fs.usage_examples.len == 0 {
-		use << 'Usage: $fs.application_name [options] $adesc'
+		use << 'Usage: ${fs.application_name} [options] ${adesc}'
 	} else {
 		for i, example in fs.usage_examples {
 			if i == 0 {
-				use << 'Usage: $fs.application_name $example'
+				use << 'Usage: ${fs.application_name} ${example}'
 			} else {
-				use << '   or: $fs.application_name $example'
+				use << '   or: ${fs.application_name} ${example}'
 			}
 		}
 	}
 	use << ''
 	if fs.application_description != '' {
-		use << 'Description: $fs.application_description'
+		use << 'Description: ${fs.application_description}'
 		use << ''
 	}
 	// show a message about the [ARGS]:
@@ -502,16 +502,16 @@ pub fn (fs FlagParser) usage() string {
 		} else {
 			mut s := []string{}
 			if positive_min_arg {
-				s << 'at least $fs.min_free_args'
+				s << 'at least ${fs.min_free_args}'
 			}
 			if positive_max_arg {
-				s << 'at most $fs.max_free_args'
+				s << 'at most ${fs.max_free_args}'
 			}
 			if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {
-				s = ['exactly $fs.min_free_args']
+				s = ['exactly ${fs.min_free_args}']
 			}
 			sargs := s.join(' and ')
-			use << 'The arguments should be $sargs in number.'
+			use << 'The arguments should be ${sargs} in number.'
 			use << ''
 		}
 	}
@@ -520,23 +520,23 @@ pub fn (fs FlagParser) usage() string {
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
-				onames << '-$f.abbr.ascii_str()'
+				onames << '-${f.abbr.ascii_str()}'
 			}
 			if f.name != '' {
 				if !f.val_desc.contains('<bool>') {
-					onames << '--$f.name $f.val_desc'
+					onames << '--${f.name} ${f.val_desc}'
 				} else {
-					onames << '--$f.name'
+					onames << '--${f.name}'
 				}
 			}
 			option_names := '  ' + onames.join(', ')
 			mut xspace := ''
 			if option_names.len > flag.space.len - 2 {
-				xspace = '\n$flag.space'
+				xspace = '\n${flag.space}'
 			} else {
 				xspace = flag.space[option_names.len..]
 			}
-			fdesc := '$option_names$xspace$f.usage'
+			fdesc := '${option_names}${xspace}${f.usage}'
 			use << fdesc
 		}
 	}
@@ -569,7 +569,7 @@ fn (mut fs FlagParser) handle_builtin_options() {
 		exit(0)
 	}
 	if show_version {
-		println('$fs.application_name $fs.application_version')
+		println('${fs.application_name} ${fs.application_version}')
 		exit(0)
 	}
 }
@@ -586,24 +586,24 @@ pub fn (mut fs FlagParser) finalize() ?[]string {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return IError(&UnkownFlagError{
-					msg: 'Unknown flag `$a`'
+					msg: 'Unknown flag `${a}`'
 				})
 			}
 		}
 	}
 	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
 		return IError(&MinimumArgsCountError{
-			msg: 'Expected at least $fs.min_free_args arguments, but given $remaining.len'
+			msg: 'Expected at least ${fs.min_free_args} arguments, but given ${remaining.len}'
 		})
 	}
 	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
 		return IError(&MaximumArgsCountError{
-			msg: 'Expected at most $fs.max_free_args arguments, but given $remaining.len'
+			msg: 'Expected at most ${fs.max_free_args} arguments, but given ${remaining.len}'
 		})
 	}
 	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
 		return IError(&NoArgsExpectedError{
-			msg: 'Expected no arguments, but given $remaining.len'
+			msg: 'Expected no arguments, but given ${remaining.len}'
 		})
 	}
 	remaining << fs.all_after_dashdash

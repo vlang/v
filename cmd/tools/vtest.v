@@ -44,7 +44,7 @@ fn main() {
 				.ignore {}
 			}
 		} else {
-			eprintln('\nUnrecognized test file `$targ`.\n `v test` can only be used with folders and/or _test.v files.\n')
+			eprintln('\nUnrecognized test file `${targ}`.\n `v test` can only be used with folders and/or _test.v files.\n')
 			show_usage()
 			exit(1)
 		}

@@ -9,7 +9,7 @@ import rand
 pub fn sample_nr<T>(array []T, k int) []T {
 	n := array.len
 	if k > n {
-		panic('Cannot sample $k elements without replacement from a $n-element array.')
+		panic('Cannot sample ${k} elements without replacement from a ${n}-element array.')
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n}

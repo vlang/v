@@ -208,8 +208,8 @@ struct Pixel {
 }
 
 fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSettings) {
-	writer.file = os.create(fname) or { panic("can't create file $fname") }
-	writer.file.writeln('P6 $settings.width $settings.height 255') or {}
+	writer.file = os.create(fname) or { panic("can't create file ${fname}") }
+	writer.file.writeln('P6 ${settings.width} ${settings.height} 255') or {}
 }
 
 fn (mut writer PPMWriter) next_pixel(p Pixel) {
@@ -340,7 +340,7 @@ fn main() {
 		println('')
 		for y in 0 .. height {
 			term.clear_previous_line()
-			println('Line: $y')
+			println('Line: ${y}')
 			for x in 0 .. width {
 				// setup initial conditions
 				mut state := SimState{}

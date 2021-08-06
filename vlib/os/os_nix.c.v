@@ -99,8 +99,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 		mode = GlobMatch.any
 		if next_pattern != pattern && next_pattern != '' {
 			for file in files {
-				if is_dir('$dir/$file') {
-					subdirs << '$dir/$file'
+				if is_dir('${dir}/${file}') {
+					subdirs << '${dir}/${file}'
 				}
 			}
 			return subdirs
@@ -127,7 +127,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			pathwalk := file.split(os.path_separator)
 			pathwalk[pathwalk.len - 1]
 		} else {
-			fpath = if dir == '.' { file } else { '$dir/$file' }
+			fpath = if dir == '.' { file } else { '${dir}/${file}' }
 			file
 		}
 		if f in ['.', '..'] || f == '' {
@@ -158,7 +158,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			if is_dir(fpath) {
 				subdirs << fpath
 				if next_pattern == pattern && next_pattern != '' {
-					matches << '$fpath$os.path_separator'
+					matches << '${fpath}${os.path_separator}'
 				}
 			} else {
 				matches << fpath
@@ -178,14 +178,14 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 		if step == '' {
 			continue
 		}
-		if is_dir('$cwd$os.path_separator$step') {
+		if is_dir('${cwd}${os.path_separator}${step}') {
 			dd := if cwd == '/' {
 				step
 			} else {
 				if cwd == '.' || cwd == '' {
 					step
 				} else {
-					if step == '.' || step == '/' { cwd } else { '$cwd/$step' }
+					if step == '.' || step == '/' { cwd } else { '${cwd}/${step}' }
 				}
 			}
 			if i + 1 != steps.len {
@@ -202,7 +202,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 				if cwd == '.' || cwd == '' {
 					sd
 				} else {
-					if sd == '.' || sd == '/' { cwd } else { '$cwd/$sd' }
+					if sd == '.' || sd == '/' { cwd } else { '${cwd}/${sd}' }
 				}
 			}
 			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
@@ -271,7 +271,7 @@ pub fn ls(path string) ?[]string {
 	mut res := []string{}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
-		return error('ls() couldnt open dir "$path"')
+		return error('ls() couldnt open dir "${path}"')
 	}
 	mut ent := &C.dirent(0)
 	// mut ent := &C.dirent{!}
@@ -346,12 +346,12 @@ pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
-	pcmd := if cmd.contains('2>') { cmd } else { '$cmd 2>&1' }
+	pcmd := if cmd.contains('2>') { cmd } else { '${cmd} 2>&1' }
 	f := vpopen(pcmd)
 	if isnil(f) {
 		return Result{
 			exit_code: -1
-			output: 'exec("$cmd") failed'
+			output: 'exec("${cmd}") failed'
 		}
 	}
 	buf := unsafe { malloc_noscan(4096) }
@@ -393,7 +393,7 @@ pub fn (mut c Command) start() ? {
 	}
 	c.f = vpopen(pcmd)
 	if isnil(c.f) {
-		return error('exec("$c.path") failed')
+		return error('exec("${c.path}") failed')
 	}
 }
 
@@ -485,7 +485,7 @@ fn C.mkstemp(stemplate &byte) int
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error('`${folder}` does not exist')
 	}
 	if !is_dir(folder) {
 		return error('`folder` is not a folder')
@@ -494,7 +494,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	unsafe {
 		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {
-			return error('folder `$folder` is not writable')
+			return error('folder `${folder}` is not writable')
 		}
 		C.close(x)
 	}

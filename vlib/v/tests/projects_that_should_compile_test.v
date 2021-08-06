@@ -9,11 +9,11 @@ fn vroot_path(relpath string) string {
 }
 
 fn vrun_ok(options string, path string) string {
-	cmd := '${@VEXE} $options $path'
+	cmd := '${@VEXE} ${options} ${path}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('> failing vrun cmd: $cmd')
-		eprintln('> output:\n$res.output')
+		eprintln('> failing vrun cmd: ${cmd}')
+		eprintln('> output:\n${res.output}')
 		assert res.exit_code == 0
 	}
 	return res.output

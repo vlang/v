@@ -173,7 +173,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 				break
 			}
 			else {
-				return error('vmod: invalid token "$tok.val"')
+				return error('vmod: invalid token "${tok.val}"')
 			}
 		}
 	}
@@ -183,7 +183,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 fn (mut p Parser) parse() ?Manifest {
 	err_label := 'vmod:'
 	if p.scanner.text.len == 0 {
-		return error('$err_label no content.')
+		return error('${err_label} no content.')
 	}
 	p.scanner.scan_all()
 	tokens := p.scanner.tokens
@@ -197,7 +197,7 @@ fn (mut p Parser) parse() ?Manifest {
 		match tok.typ {
 			.lcbr {
 				if tokens[i + 1].typ !in [.field_key, .rcbr] {
-					return error('$err_label invalid content after opening brace')
+					return error('${err_label} invalid content after opening brace')
 				}
 				i++
 				continue
@@ -208,7 +208,7 @@ fn (mut p Parser) parse() ?Manifest {
 			.field_key {
 				field_name := tok.val.trim_right(':')
 				if tokens[i + 1].typ !in [.str, .labr] {
-					return error('$err_label value of field "$field_name" must be either string or an array of strings')
+					return error('${err_label} value of field "${field_name}" must be either string or an array of strings')
 				}
 				field_value := tokens[i + 1].val
 				match field_name {
@@ -251,13 +251,13 @@ fn (mut p Parser) parse() ?Manifest {
 			}
 			.comma {
 				if tokens[i - 1].typ !in [.str, .rabr] || tokens[i + 1].typ != .field_key {
-					return error('$err_label invalid comma placement')
+					return error('${err_label} invalid comma placement')
 				}
 				i++
 				continue
 			}
 			else {
-				return error('$err_label invalid token "$tok.val"')
+				return error('${err_label} invalid token "${tok.val}"')
 			}
 		}
 	}

@@ -17,8 +17,8 @@ fn main() {
 	for tag in tags {
 		href := tag.children[0].attributes['href'] or { panic('key not found') }
 		title := tag.children[0].attributes['title'] or { panic('key not found') }
-		println('href: $href')
-		println('title: $title')
+		println('href: ${href}')
+		println('title: ${title}')
 		println('')
 	}
 }

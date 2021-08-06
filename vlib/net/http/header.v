@@ -597,7 +597,7 @@ pub fn (h Header) join(other Header) Header {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: $err')
+				panic('unexpected error: ${err}')
 			}
 		}
 	}
@@ -637,7 +637,7 @@ fn is_valid(header string) ? {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
 			return IError(HeaderKeyError{
-				msg: "Invalid header key: '$header'"
+				msg: "Invalid header key: '${header}'"
 				code: 1
 				header: header
 				invalid_char: c
@@ -646,7 +646,7 @@ fn is_valid(header string) ? {
 	}
 	if header.len == 0 {
 		return IError(HeaderKeyError{
-			msg: "Invalid header key: '$header'"
+			msg: "Invalid header key: '${header}'"
 			code: 2
 			header: header
 			invalid_char: 0

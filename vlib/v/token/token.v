@@ -345,14 +345,14 @@ pub fn (t Token) str() string {
 		eprintln('missing token kind string')
 	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return 'token `$s`'
+		return 'token `${s}`'
 	}
 	if is_key(t.lit) {
 		s = 'keyword'
 	}
 	if t.lit != '' {
 		// string contents etc
-		s += ' `$t.lit`'
+		s += ' `${t.lit}`'
 	}
 	return s
 }

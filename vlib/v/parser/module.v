@@ -18,7 +18,7 @@ fn (p &Parser) prepend_mod(name string) string {
 	if p.builtin_mod {
 		return name
 	}
-	return '${p.mod}.$name'
+	return '${p.mod}.${name}'
 }
 
 fn (p &Parser) is_used_import(alias string) bool {
@@ -59,8 +59,8 @@ fn (mut p Parser) check_unused_imports() {
 		alias := import_m.alias
 		mod := import_m.mod
 		if !p.is_used_import(alias) {
-			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.mod_pos)
+			mod_alias := if alias == mod { alias } else { '${alias} (${mod})' }
+			p.warn_with_pos("module '${mod_alias}' is imported but never used", import_m.mod_pos)
 		}
 	}
 }

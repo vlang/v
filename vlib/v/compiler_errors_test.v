@@ -55,10 +55,10 @@ fn test_all() {
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
 	scanner_dir := 'vlib/v/scanner/tests'
-	module_dir := '$checker_dir/modules'
-	global_dir := '$checker_dir/globals'
-	global_run_dir := '$checker_dir/globals_run'
-	run_dir := '$checker_dir/run'
+	module_dir := '${checker_dir}/modules'
+	global_dir := '${checker_dir}/globals'
+	global_run_dir := '${checker_dir}/globals_run'
+	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false)
@@ -108,12 +108,12 @@ fn test_all() {
 			parallel_jobs: 1
 			label: 'comptime env tests'
 		}
-		cte_dir := '$checker_dir/comptime_env'
+		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
-		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add('VAR=/usr/include ${vexe}', cte_dir, '-no-retry-compilation run',
 			'.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add('VAR=/opt/invalid/path ${vexe}', cte_dir, '-no-retry-compilation run',
 			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
@@ -227,8 +227,8 @@ fn (mut tasks Tasks) run() {
 			bench.fail()
 			eprintln(bstep_message(mut bench, benchmark.b_fail, task.path, task.took))
 			println('============')
-			println('failed cmd: $task.cli_cmd')
-			println('expected_out_path: $task.expected_out_path')
+			println('failed cmd: ${task.cli_cmd}')
+			println('expected_out_path: ${task.expected_out_path}')
 			println('============')
 			println('expected:')
 			println(task.expected)
@@ -241,7 +241,7 @@ fn (mut tasks Tasks) run() {
 		} else {
 			bench.ok()
 			if tasks.show_cmd {
-				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
+				eprintln(bstep_message(mut bench, benchmark.b_ok, '${task.cli_cmd} ${task.path}',
 					task.took))
 			} else {
 				if github_job == '' {
@@ -284,7 +284,7 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cli_cmd := '$task.vexe $task.voptions $program'
+	cli_cmd := '${task.vexe} ${task.voptions} ${program}'
 	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path

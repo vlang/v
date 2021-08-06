@@ -20,11 +20,11 @@ fn exec(path string, redirect bool) {
 	if cmd.is_alive() {
 		for {
 			line = cmd.stdout_read()
-			println('STDOUT: $line')
+			println('STDOUT: ${line}')
 
 			if !redirect {
 				line_err = cmd.stderr_read()
-				println('STDERR: $line_err')
+				println('STDERR: ${line_err}')
 			}
 
 			if !cmd.is_alive() {

@@ -8,7 +8,7 @@ fn test_match_array_or_map_cond() {
 		y1 { true }
 		else { false }
 	}
-	println('ret1 is $ret1')
+	println('ret1 is ${ret1}')
 	assert ret1
 
 	// fixed array
@@ -18,7 +18,7 @@ fn test_match_array_or_map_cond() {
 		y2 { true }
 		else { false }
 	}
-	println('ret2 is $ret2')
+	println('ret2 is ${ret2}')
 	assert ret2
 
 	// map
@@ -34,7 +34,7 @@ fn test_match_array_or_map_cond() {
 		y3 { true }
 		else { false }
 	}
-	println('ret3 is $ret3')
+	println('ret3 is ${ret3}')
 	assert ret3
 
 	// struct
@@ -44,6 +44,6 @@ fn test_match_array_or_map_cond() {
 		y4 { true }
 		else { false }
 	}
-	println('ret4 is $ret4')
+	println('ret4 is ${ret4}')
 	assert ret4
 }

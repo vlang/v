@@ -24,7 +24,7 @@ fn failed_cfn_report_error(ok bool, label string) {
 	}
 	error_num := int(C.GetLastError())
 	error_msg := get_error_msg(error_num)
-	eprintln('failed $label: $error_msg')
+	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
 }
 
@@ -93,7 +93,7 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
-	cmd := '$p.filename ' + p.args.join(' ')
+	cmd := '${p.filename} ' + p.args.join(' ')
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
 
 	mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
@@ -170,11 +170,11 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, s string) {
-	panic('Process.write_string $idx is not implemented yet')
+	panic('Process.write_string ${idx} is not implemented yet')
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
-	panic('WProcess.read_string $idx is not implemented yet')
+	panic('WProcess.read_string ${idx} is not implemented yet')
 	return '', 0
 }
 

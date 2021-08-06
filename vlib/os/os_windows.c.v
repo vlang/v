@@ -162,11 +162,11 @@ pub fn ls(path string) ?[]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "$path": directory does not exist')
+		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '$path\\*'
+	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
@@ -204,7 +204,7 @@ pub fn mkdir(path string) ?bool {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
+		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
 	return true
@@ -310,7 +310,7 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): $error_msg'
+			output: 'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -320,7 +320,7 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): $error_msg'
+			output: 'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
@@ -344,7 +344,7 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -495,14 +495,14 @@ pub fn loginname() string {
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error('`${folder}` does not exist')
 	}
 	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
 	tmp_perm_check := join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
 	mut f := open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder $folder: $err')
+		return error('cannot write to folder ${folder}: ${err}')
 	}
 	f.close()
 	rm(tmp_perm_check) ?

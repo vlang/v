@@ -65,7 +65,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
+		return error('Failed to open or create file "${path}"')
 	}
 	return File{
 		cfile: cfile

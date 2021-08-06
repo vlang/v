@@ -2,7 +2,7 @@ fn main() {
 	for i in 0 .. 100000 {
 		println('
 fn foo${i}() {
-	x := $i
+	x := ${i}
 	mut a := 1
 	a += 2
 	print(a)

@@ -47,10 +47,10 @@ fn test_channel_polling() {
 	mut sum := i64(0)
 	for _ in 0 .. nrec {
 		sum += <-resch
-		println('> running sum: $sum')
+		println('> running sum: ${sum}')
 	}
 	// use sum formula by Gauß to calculate the expected result
 	expected_sum := i64(nobj) * (nobj - 1) / 2
-	println('expected sum: $expected_sum | sum: $sum')
+	println('expected sum: ${expected_sum} | sum: ${sum}')
 	assert sum == expected_sum
 }

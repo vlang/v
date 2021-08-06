@@ -456,7 +456,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
-				int { return "it's an int: $bar" }
+				int { return "it's an int: ${bar}" }
 				string { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 			}
@@ -464,7 +464,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 		2 {
 			bar := CommonType('hello')
 			match bar {
-				string { return "it's a string: $bar" }
+				string { return "it's a string: ${bar}" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
@@ -492,9 +492,9 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				}
 				Color {
 					match bar {
-						.red { return 'red_$bar' }
-						.green { return 'green_$bar' }
-						.blue { return 'blue_$bar' }
+						.red { return 'red_${bar}' }
+						.green { return 'green_${bar}' }
+						.blue { return 'blue_${bar}' }
 					}
 				}
 			}
@@ -505,7 +505,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
-				f64 { return "it's a f64: $bar" }
+				f64 { return "it's a f64: ${bar}" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
 			}
@@ -518,7 +518,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
-				bool { return "it's a bool: $bar" }
+				bool { return "it's a bool: ${bar}" }
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
@@ -541,7 +541,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_$bar.baz.bar" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
 			}
 		}
 		else {

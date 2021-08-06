@@ -13,7 +13,7 @@ const (
 const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $tfolder')
+	eprintln('testsuite_begin, tfolder = ${tfolder}')
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
@@ -42,7 +42,7 @@ fn test_open_file() {
 	file.write_string(hello) or { panic(err) }
 	file.close()
 	assert hello.len == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -59,7 +59,7 @@ fn test_open_file_binary() {
 	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
 	assert hello.len == os.file_size(filename)
-	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_bytes(filename) or { panic('error reading file ${filename}') }
 	assert bytes == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -129,7 +129,7 @@ fn test_write_and_read_string_to_file() {
 	hello := 'hello world!'
 	os.write_file(filename, hello) or { panic(err) }
 	assert hello.len == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -140,7 +140,7 @@ fn test_write_and_read_bytes() {
 	file_name := './byte_reader_writer.tst'
 	payload := [byte(`I`), `D`, `D`, `Q`, `D`]
 	mut file_write := os.create(os.real_path(file_name)) or {
-		eprintln('failed to create file $file_name')
+		eprintln('failed to create file ${file_name}')
 		return
 	}
 	// We use the standard write_bytes function to write the payload and
@@ -149,7 +149,7 @@ fn test_write_and_read_bytes() {
 	file_write.close()
 	assert payload.len == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
-		eprintln('failed to open file $file_name')
+		eprintln('failed to open file ${file_name}')
 		return
 	}
 	// We only need to test read_bytes because this function calls
@@ -207,7 +207,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err') }
+	os.cp(old_file_name, new_file_name) or { panic('${err}') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file
@@ -373,7 +373,7 @@ fn test_tmpdir() {
 fn test_is_writable_folder() {
 	tmp := os.temp_dir()
 	f := os.is_writable_folder(tmp) or {
-		eprintln('err: $err')
+		eprintln('err: ${err}')
 		false
 	}
 	assert f
@@ -473,7 +473,7 @@ fn test_symlink() {
 fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	mut f := os.create(file_name) or {
-		eprintln('failed to create file $file_name')
+		eprintln('failed to create file ${file_name}')
 		return
 	}
 	f.close()

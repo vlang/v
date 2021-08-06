@@ -11,8 +11,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.expr(node.expr)
 		return
 	}
-	dump_fn_name := '_v_dump_expr_$node.cname' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
-	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
+	dump_fn_name := '_v_dump_expr_${node.cname}' +
+		(if node.expr_type.is_ptr() { '_ptr' } else { '' })
+	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	g.expr(node.expr)
 	g.write(' )')
 }
@@ -25,18 +26,18 @@ fn (mut g Gen) dump_expr_definitions() {
 		is_ptr := ast.Type(dump_type).is_ptr()
 		ptr_asterisk := if is_ptr { '*' } else { '' }
 		dump_sym := g.table.get_type_symbol(dump_type)
-		mut str_dumparg_type := '$cname$ptr_asterisk'
+		mut str_dumparg_type := '${cname}${ptr_asterisk}'
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
-			str_dumparg_type = 'DumpFNType_$cname'
+			str_dumparg_type = 'DumpFNType_${cname}'
 			tdef_pos := g.out.len
 			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.out.go_back(str_tdef.len)
-			dump_typedefs['typedef $str_tdef;'] = true
+			dump_typedefs['typedef ${str_tdef};'] = true
 		}
-		dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
-		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type x)', mut
+		dump_fn_name := '_v_dump_expr_${cname}' + (if is_ptr { '_ptr' } else { '' })
+		if g.writeln_fn_header('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} x)', mut
 			dump_fns)
 		{
 			continue
@@ -64,9 +65,9 @@ fn (mut g Gen) dump_expr_definitions() {
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {
 	if g.pref.build_mode == .build_module {
-		sb.writeln('$s;')
+		sb.writeln('${s};')
 		return true
 	}
-	sb.writeln('$s {')
+	sb.writeln('${s} {')
 	return false
 }

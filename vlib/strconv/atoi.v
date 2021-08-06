@@ -23,10 +23,10 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	// TODO: error_on_non_digit and error_on_high_digit have no difference
 	if err != 0 && (error_on_non_digit || error_on_high_digit) {
 		match err {
-			-1 { return error('common_parse_uint: wrong base $_base for $s') }
-			-2 { return error('common_parse_uint: wrong bit size $_bit_size for $s') }
-			-3 { return error('common_parse_uint: integer overflow $s') }
-			else { return error('common_parse_uint: syntax error $s') }
+			-1 { return error('common_parse_uint: wrong base ${_base} for ${s}') }
+			-2 { return error('common_parse_uint: wrong bit size ${_bit_size} for ${s}') }
+			-3 { return error('common_parse_uint: integer overflow ${s}') }
+			else { return error('common_parse_uint: syntax error ${s}') }
 		}
 	}
 	return result
@@ -182,7 +182,7 @@ pub fn parse_int(_s string, base int, _bit_size int) ?i64 {
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 pub fn atoi(s string) ?int {
 	if s == '' {
-		return error('strconv.atoi: parsing "$s": invalid syntax ')
+		return error('strconv.atoi: parsing "${s}": invalid syntax ')
 	}
 	if (strconv.int_size == 32 && (0 < s.len && s.len < 10))
 		|| (strconv.int_size == 64 && (0 < s.len && s.len < 19)) {
@@ -192,7 +192,7 @@ pub fn atoi(s string) ?int {
 			start_idx++
 			if s.len - start_idx < 1 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax ')
+				return error('strconv.atoi: parsing "${s}": invalid syntax ')
 			}
 		}
 		mut n := 0
@@ -200,7 +200,7 @@ pub fn atoi(s string) ?int {
 			ch := s[i] - `0`
 			if ch > 9 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax ')
+				return error('strconv.atoi: parsing "${s}": invalid syntax ')
 			}
 			n = n * 10 + int(ch)
 		}

@@ -44,7 +44,7 @@ fn test_decode() {
 	for i, p in pairs {
 		got := base64.decode(p.encoded)
 		if got != p.decoded.bytes() {
-			eprintln('pairs[$i]: expected = $p.decoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -61,7 +61,7 @@ fn test_decode_str() {
 	for i, p in pairs {
 		got := base64.decode_str(p.encoded)
 		if got != p.decoded {
-			eprintln('pairs[$i]: expected = $p.decoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -73,7 +73,7 @@ fn test_encode() {
 	for i, p in pairs {
 		got := base64.encode(p.decoded.bytes())
 		if got != p.encoded {
-			eprintln('pairs[$i]: expected = $p.encoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -85,7 +85,7 @@ fn test_encode_str() {
 	for i, p in pairs {
 		got := base64.encode_str(p.decoded)
 		if got != p.encoded {
-			eprintln('pairs[$i]: expected = $p.encoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
 		}
 	}

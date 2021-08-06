@@ -49,7 +49,7 @@ pub fn (mut c TcpConn) close() ? {
 pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 	$if trace_tcp ? {
 		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -87,7 +87,7 @@ pub fn (mut c TcpConn) write_string(s string) ?int {
 pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 	}
 	if res > 0 {
 		return res
@@ -97,7 +97,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 		c.wait_for_read() ?
 		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 		}
 		return socket_error(res)
 	} else {
@@ -179,7 +179,7 @@ pub fn (c &TcpConn) addr() ?Addr {
 
 pub fn (c TcpConn) str() string {
 	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
-	return 'TcpConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
+	return 'TcpConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
 }
 
 pub struct TcpListener {

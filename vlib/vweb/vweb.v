@@ -170,7 +170,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 // Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
-		eprintln('> ctx.server_error ecode: $ecode')
+		eprintln('> ctx.server_error ecode: ${ecode}')
 	}
 	if ctx.done {
 		return Result{}
@@ -185,7 +185,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.header}\r\n${vweb.headers_close}\r\n') or {
 		return Result{}
 	}
 	return Result{}
@@ -208,10 +208,10 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
 	cookie_data << secure
 	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=$cookie.expires.utc_string()'
+		cookie_data << 'expires=${cookie.expires.utc_string()}'
 	}
 	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
+	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; ${data}')
 }
 
 // Sets the response content type
@@ -221,7 +221,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 
 // Sets a cookie with a `expire_data`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=$expire_date.utc_string()')
+	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly; expires=${expire_date.utc_string()}')
 }
 
 // Gets a cookie by a key
@@ -234,9 +234,9 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	// println('cookie_header="$cookie_header"')
 	// println(ctx.req.header)
 	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between(' $key=', ';')
+		cookie_header.find_between(' ${key}=', ';')
 	} else {
-		cookie_header.find_between(' $key=', '\r')
+		cookie_header.find_between(' ${key}=', '\r')
 	}
 	if cookie != '' {
 		return cookie.trim_space()
@@ -249,7 +249,7 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
 		ctx.status = '500 Internal Server Error'
 	} else {
-		ctx.status = '$code $desc'
+		ctx.status = '${code} ${desc}'
 	}
 }
 
@@ -281,9 +281,9 @@ pub fn run<T>(global_app &T, port int) {
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
 
-	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code $err') }
+	mut l := net.listen_tcp(.ip6, ':${port}') or { panic('failed to listen ${err.code} ${err}') }
 
-	println('[Vweb] Running app on http://localhost:$port')
+	println('[Vweb] Running app on http://localhost:${port}')
 	// app.Context = Context{
 	// conn: 0
 	//}
@@ -315,7 +315,7 @@ pub fn run<T>(global_app &T, port int) {
 		//}
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg')
+			eprintln('accept() failed with error: ${err.msg}')
 			continue
 		}
 		go handle_conn<T>(mut conn, mut request_app)
@@ -339,8 +339,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	req := parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
-		if '$err' != 'none' {
-			eprintln('error parsing request: $err')
+		if '${err}' != 'none' {
+			eprintln('error parsing request: ${err}')
 		}
 		return
 	}
@@ -377,7 +377,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	// Serve a static file if it is one
 	// TODO: get the real path
 	url := urllib.parse(app.req.url) or {
-		eprintln('error parsing path: $err')
+		eprintln('error parsing path: ${err}')
 		return
 	}
 	if serve_if_static<T>(mut app, url) {
@@ -401,7 +401,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			mut method_args := []string{}
 			// TODO: move to server start
 			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-				eprintln('error parsing method attributes: $err')
+				eprintln('error parsing method attributes: ${err}')
 				return
 			}
 
@@ -427,7 +427,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				if params := route_matches(url_words, route_words) {
 					method_args = params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
+						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
 					app.$method(method_args)
 					return
@@ -480,7 +480,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // parse function attribute list for methods and a path
 fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	if attrs.len == 0 {
-		return [http.Method.get], '/$name'
+		return [http.Method.get], '/${name}'
 	}
 
 	mut x := attrs.clone()
@@ -508,14 +508,14 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	}
 	if x.len > 0 {
 		return IError(&UnexpectedExtraAttributeError{
-			msg: 'Encountered unexpected extra attributes: $x'
+			msg: 'Encountered unexpected extra attributes: ${x}'
 		})
 	}
 	if methods.len == 0 {
 		methods = [http.Method.get]
 	}
 	if path == '' {
-		path = '/$name'
+		path = '/${name}'
 	}
 	// Make path lowercase for case-insensitive comparisons
 	return methods, path.to_lower()
@@ -615,7 +615,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	println('vweb error: $s')
+	println('vweb error: ${s}')
 	ctx.form_error = s
 }
 

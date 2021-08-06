@@ -48,7 +48,7 @@ fn (mut p Parser) next_with_err() ? {
 fn (p Parser) emit_error(msg string) string {
 	line := p.tok.line
 	column := p.tok.col + p.tok.lit.len
-	return '[x.json2] $msg ($line:$column)'
+	return '[x.json2] ${msg} (${line}:${column})'
 }
 
 // TODO: copied from v.util to avoid the entire module and its functions
@@ -85,7 +85,7 @@ fn (mut p Parser) decode() ?Any {
 	fi := p.decode_value() ?
 	if p.tok.kind != .eof {
 		return IError(&InvalidTokenError{
-			msg: p.emit_error('invalid token `$p.tok.kind`')
+			msg: p.emit_error('invalid token `${p.tok.kind}`')
 		})
 	}
 	return fi
@@ -136,7 +136,7 @@ fn (mut p Parser) decode_value() ?Any {
 		}
 		else {
 			return IError(&InvalidTokenError{
-				msg: p.emit_error('invalid token `$p.tok.kind`')
+				msg: p.emit_error('invalid token `${p.tok.kind}`')
 			})
 		}
 	}
@@ -154,14 +154,14 @@ fn (mut p Parser) decode_array() ?Any {
 			p.next_with_err() ?
 			if p.tok.kind == .rsbr || p.tok.kind == .rcbr {
 				return IError(&InvalidTokenError{
-					msg: p.emit_error('invalid token `$p.tok.lit')
+					msg: p.emit_error('invalid token `${p.tok.lit}')
 				})
 			}
 		} else if p.tok.kind == .rsbr {
 			break
 		} else {
 			return IError(&UnknownTokenError{
-				msg: p.emit_error("unknown token '$p.tok.lit' when decoding array.")
+				msg: p.emit_error("unknown token '${p.tok.lit}' when decoding array.")
 			})
 		}
 	}
@@ -178,7 +178,7 @@ fn (mut p Parser) decode_object() ?Any {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
 		if !is_key {
 			return IError(&InvalidTokenError{
-				msg: p.emit_error('invalid token `$p.tok.kind`, expecting `str_`')
+				msg: p.emit_error('invalid token `${p.tok.kind}`, expecting `str_`')
 			})
 		}
 		cur_key := p.tok.lit.bytestr()
@@ -189,7 +189,7 @@ fn (mut p Parser) decode_object() ?Any {
 			p.next_with_err() ?
 			if p.tok.kind != .str_ {
 				return IError(&UnknownTokenError{
-					msg: p.emit_error("unknown token '$p.tok.lit' when decoding object.")
+					msg: p.emit_error("unknown token '${p.tok.lit}' when decoding object.")
 				})
 			}
 		}

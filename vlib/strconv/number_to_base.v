@@ -8,7 +8,7 @@ const base_digits = '0123456789abcdefghijklmnopqrstuvwxyz'
 pub fn format_int(n i64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
-			panic('invalid radix: $radix . It should be => 2 and <= 36')
+			panic('invalid radix: ${radix} . It should be => 2 and <= 36')
 		}
 		if n == 0 {
 			return '0'
@@ -29,7 +29,7 @@ pub fn format_int(n i64, radix int) string {
 			// res = base_digits[n_copy % radix].ascii_str() + res
 			n_copy /= radix
 		}
-		return '$sign$res'
+		return '${sign}${res}'
 	}
 }
 
@@ -39,7 +39,7 @@ pub fn format_int(n i64, radix int) string {
 pub fn format_uint(n u64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
-			panic('invalid radix: $radix . It should be => 2 and <= 36')
+			panic('invalid radix: ${radix} . It should be => 2 and <= 36')
 		}
 		if n == 0 {
 			return '0'

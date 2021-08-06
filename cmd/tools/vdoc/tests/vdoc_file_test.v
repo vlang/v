@@ -35,7 +35,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 	for path in paths {
 		program := path
 		print(path + ' ')
-		res := os.execute('$vexe doc $program')
+		res := os.execute('${vexe} doc ${program}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

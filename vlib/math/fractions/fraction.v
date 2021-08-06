@@ -42,7 +42,7 @@ pub fn fraction(n i64, d i64) Fraction {
 
 // To String method
 pub fn (f Fraction) str() string {
-	return '$f.n/$f.d'
+	return '${f.n}/${f.d}'
 }
 
 //

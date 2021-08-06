@@ -59,7 +59,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 					if s.sslctx != 0 {
 						C.SSL_CTX_free(s.sslctx)
 					}
-					return error('unexepedted ssl error $err_res')
+					return error('unexepedted ssl error ${err_res}')
 				}
 				if s.ssl != 0 {
 					unsafe { C.SSL_free(voidptr(s.ssl)) }
@@ -67,7 +67,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 				if s.sslctx != 0 {
 					C.SSL_CTX_free(s.sslctx)
 				}
-				return error('Could not connect using SSL. ($err_res),err')
+				return error('Could not connect using SSL. (${err_res}),err')
 			} else if res == 0 {
 				continue
 			} else if res == 1 {
@@ -141,7 +141,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 				}
 				continue
 			}
-			return error('Could not connect using SSL. ($err_res),err')
+			return error('Could not connect using SSL. (${err_res}),err')
 		}
 		break
 	}
@@ -172,7 +172,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 			} else if err_res == .ssl_error_zero_return {
 				return 0
 			}
-			return error('Could not read using SSL. ($err_res)')
+			return error('Could not read using SSL. (${err_res})')
 		}
 		break
 	}
@@ -213,7 +213,7 @@ pub fn (mut s SSLConn) write(bytes []byte) ?int {
 				} else if err_res == .ssl_error_zero_return {
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', int(err_res))
+				return error_with_code('Could not write SSL. (${err_res}),err', int(err_res))
 			}
 			total_sent += sent
 		}

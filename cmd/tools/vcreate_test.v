@@ -4,7 +4,7 @@ const test_path = 'vcreate_test'
 
 fn init_and_check() ? {
 	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${vexe} init')
 
 	assert os.read_file('vcreate_test.v') ? == [
 		'module main\n',
@@ -66,14 +66,14 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	dir := os.join_path(os.temp_dir(), test_path)
 	os.rmdir_all(dir) or {}
 	os.mkdir(dir) or {}
-	os.write_file('$dir/.gitignore', 'blah') ?
+	os.write_file('${dir}/.gitignore', 'blah') ?
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	os.chdir(dir)
 
 	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${vexe} init')
 
 	assert os.read_file('.gitignore') ? == 'blah'
 }

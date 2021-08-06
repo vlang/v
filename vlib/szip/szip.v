@@ -116,7 +116,7 @@ pub fn (mut zentry Zip) open_entry(name string) ? {
 pub fn (mut z Zip) open_entry_by_index(index int) ? {
 	res := C.zip_entry_openbyindex(z, index)
 	if res == -1 {
-		return error('szip: cannot open archive entry at index $index')
+		return error('szip: cannot open archive entry at index ${index}')
 	}
 }
 
@@ -217,7 +217,7 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
 // extract_entry extracts the current zip entry into output file.
 pub fn (mut zentry Zip) extract_entry(path string) ? {
 	if !os.is_file(path) {
-		return error('szip: cannot open file for extracting, "$path" not exists')
+		return error('szip: cannot open file for extracting, "${path}" not exists')
 	}
 	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {

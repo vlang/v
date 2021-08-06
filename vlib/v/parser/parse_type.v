@@ -22,7 +22,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 				}
 				ast.Ident {
 					mut show_non_const_error := false
-					if const_field := p.table.global_scope.find_const('${p.mod}.$size_expr.name') {
+					if const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
 						if const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 						} else {
@@ -38,7 +38,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 						}
 					}
 					if show_non_const_error {
-						p.error_with_pos('non-constant array bound `$size_expr.name`',
+						p.error_with_pos('non-constant array bound `${size_expr.name}`',
 							size_expr.pos)
 					}
 				}
@@ -107,7 +107,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 			return 0
 		}
 		s := p.table.type_to_str(key_type)
-		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
+		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `${s}`)',
 			p.tok.position())
 		return 0
 	}
@@ -343,9 +343,9 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
@@ -357,14 +357,14 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.position())
 			mod_last_part = p.tok.lit
-			mod += '.$mod_last_part'
+			mod += '.${mod_last_part}'
 			p.next()
 			p.check(.dot)
 		}
 		if !p.known_import(mod) && !p.pref.is_fmt {
-			mut msg := 'unknown module `$mod`'
+			mut msg := 'unknown module `${mod}`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
-				msg += '; did you mean `$mod_last_part`?'
+				msg += '; did you mean `${mod_last_part}`?'
 			}
 			p.error_with_pos(msg, mod_pos)
 			return 0
@@ -374,7 +374,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			mod = p.imports[mod]
 		}
 		// prefix with full module
-		name = '${mod}.$p.tok.lit'
+		name = '${mod}.${p.tok.lit}'
 		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0

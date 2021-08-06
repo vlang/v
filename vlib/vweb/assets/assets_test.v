@@ -124,7 +124,7 @@ fn test_include_css() {
 	mut am := assets.new_manager()
 	file1 := get_test_file_path('test1.css')
 	am.add_css(file1)
-	expected := '<link rel="stylesheet" href="$file1">\n'
+	expected := '<link rel="stylesheet" href="${file1}">\n'
 	actual := am.include_css(false)
 	assert actual == expected
 	assert actual.contains(expected)
@@ -133,7 +133,7 @@ fn test_include_css() {
 	am.add_css(file2)
 	am.cache_dir = cache_dir('test_include_css')
 	clean_cache_dir(am.cache_dir)
-	expected2 := expected + '<link rel="stylesheet" href="$file2">\n'
+	expected2 := expected + '<link rel="stylesheet" href="${file2}">\n'
 	actual2 := am.include_css(false)
 	assert actual2 == expected2
 	assert actual2.contains(expected2)
@@ -141,7 +141,7 @@ fn test_include_css() {
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_css(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<link rel="stylesheet" href="$am.cache_dir/') == true
+	assert actual3.starts_with('<link rel="stylesheet" href="${am.cache_dir}/') == true
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_css(true)
@@ -153,7 +153,7 @@ fn test_include_js() {
 	mut am := assets.new_manager()
 	file1 := get_test_file_path('test1.js')
 	am.add_js(file1)
-	expected := '<script type="text/javascript" src="$file1"></script>\n'
+	expected := '<script type="text/javascript" src="${file1}"></script>\n'
 	actual := am.include_js(false)
 	assert actual == expected
 	assert actual.contains(expected)
@@ -162,7 +162,7 @@ fn test_include_js() {
 	am.add_js(file2)
 	am.cache_dir = cache_dir('test_include_js')
 	clean_cache_dir(am.cache_dir)
-	expected2 := expected + '<script type="text/javascript" src="$file2"></script>\n'
+	expected2 := expected + '<script type="text/javascript" src="${file2}"></script>\n'
 	actual2 := am.include_js(false)
 	assert actual2 == expected2
 	assert actual2.contains(expected2)
@@ -170,7 +170,7 @@ fn test_include_js() {
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_js(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<script type="text/javascript" src="$am.cache_dir/')
+	assert actual3.starts_with('<script type="text/javascript" src="${am.cache_dir}/')
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_js(true)

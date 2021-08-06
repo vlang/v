@@ -61,7 +61,7 @@ fn test_extract_basic() {
 	aa := extract_basic(a)
 	bb := extract_basic(b)
 	cc := extract_basic(c)
-	assert '$aa | $bb | $cc' == '123 | 456 | 789'
+	assert '${aa} | ${bb} | ${cc}' == '123 | 456 | 789'
 }
 
 //////

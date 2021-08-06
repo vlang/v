@@ -5,7 +5,7 @@ fn echo_server(mut c net.UdpConn) {
 		mut buf := []byte{len: 100, init: 0}
 		read, addr := c.read(mut buf) or { continue }
 
-		println('Server got addr $addr')
+		println('Server got addr ${addr}')
 
 		c.write_to(addr, buf[..read]) or {
 			println('Server: connection dropped')
@@ -32,7 +32,7 @@ fn echo() ? {
 	read, addr := c.read(mut buf) ?
 
 	assert read == data.len
-	println('Got address $addr')
+	println('Got address ${addr}')
 	// Can't test this here because loopback addresses
 	// are mapped to other addresses
 	// assert addr.str() == '127.0.0.1:30001'
@@ -41,7 +41,7 @@ fn echo() ? {
 		assert buf[i] == data[i]
 	}
 
-	println('Got "$buf.bytestr()"')
+	println('Got "${buf.bytestr()}"')
 
 	c.close() ?
 }

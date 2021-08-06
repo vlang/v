@@ -195,5 +195,5 @@ pub fn bright_yellow(msg string) string {
 // highlight_command highlights the command with an on-brand background
 // to make CLI commands immediately recognizable.
 pub fn highlight_command(command string) string {
-	return bright_white(bg_cyan(' $command '))
+	return bright_white(bg_cyan(' ${command} '))
 }

@@ -66,9 +66,9 @@ fn main() {
 				cmd_help := term.highlight_command('v help')
 				file_main := term.highlight_command('main.v')
 				cmd_run := term.highlight_command('v run main.v')
-				println('Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
+				println('Welcome to the V REPL (for help with V itself, type ${cmd_exit}, then run ${cmd_help}).')
 				eprintln('  NB: the REPL is highly experimental. For best V experience, use a text editor,')
-				eprintln('  save your code in a $file_main file and execute: $cmd_run')
+				eprintln('  save your code in a ${file_main} file and execute: ${cmd_run}')
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
@@ -130,7 +130,7 @@ fn main() {
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
-	eprintln('v $command: unknown command\nRun ${term.highlight_command('v help')} for usage.')
+	eprintln('v ${command}: unknown command\nRun ${term.highlight_command('v help')} for usage.')
 	exit(1)
 }
 

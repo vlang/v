@@ -18,7 +18,7 @@ mut:
 fn (dict Dictionary) str() string {
 	mut temp := []string{}
 	for k, v in dict.items {
-		temp << '    << "$k": ' + v.str().replace('\n', ' ')
+		temp << '    << "${k}": ' + v.str().replace('\n', ' ')
 	}
 	return '\n' + temp.join('\n') + '\n'
 }

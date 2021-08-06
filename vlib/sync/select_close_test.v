@@ -76,7 +76,7 @@ fn test_select() {
 				assert j == 1100
 			}
 			else {
-				println('got $idx (timeout)')
+				println('got ${idx} (timeout)')
 				assert false
 			}
 		}

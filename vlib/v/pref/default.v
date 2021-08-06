@@ -74,7 +74,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// If you do decide to break it, please *at the very least*, test it
 		// extensively, and make a PR about it, instead of commiting directly
 		// and breaking the CI, VC, and users doing `v up`.
-		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
+		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
 			// executable on Windows + the precompiled V is more
 			// optimized.
@@ -113,12 +113,12 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.cache_manager = vcache.new_cache_manager([
 		@VHASH,
 		// ensure that different v versions use separate build artefacts
-		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
+		'${p.backend} | ${p.os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		'$p.compile_defines_all',
-		'$p.compile_defines',
-		'$p.lookup_path',
+		'${p.compile_defines_all}',
+		'${p.compile_defines}',
+		'${p.lookup_path}',
 	])
 	// eprintln('prefs.cache_manager: $p')
 	// disable use_cache for specific cases:

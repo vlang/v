@@ -1655,11 +1655,11 @@ pub fn (stmt Stmt) check_c_expr() ? {
 			if stmt.expr.is_expr() {
 				return
 			}
-			return error('unsupported statement (`$stmt.expr.type_name()`)')
+			return error('unsupported statement (`${stmt.expr.type_name()}`)')
 		}
 		else {}
 	}
-	return error('unsupported statement (`$stmt.type_name()`)')
+	return error('unsupported statement (`${stmt.type_name()}`)')
 }
 
 // CTempVar is used in cgen only, to hold nodes for temporary variables
@@ -1921,7 +1921,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 						hash_index := name.index('#') or {
 							panic('all_registers: no hashtag found')
 						}
-						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
 							typ: t.bitsize_to_type(bit_size)
@@ -1980,7 +1980,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	for name, max_num in with_numbers {
 		for i in 0 .. max_num {
 			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
-			assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name
 				typ: t.bitsize_to_type(bit_size)

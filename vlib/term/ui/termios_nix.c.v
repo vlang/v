@@ -87,7 +87,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
 	}
 
 	if !ctx.cfg.skip_init_checks {
@@ -98,7 +98,7 @@ fn (mut ctx Context) termios_setup() ? {
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
-		print('$bsu$esu')
+		print('${bsu}${esu}')
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
 			// the terminal either ignored or handled the sequence properly, enable SU

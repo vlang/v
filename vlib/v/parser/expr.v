@@ -9,14 +9,14 @@ import v.token
 
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
-		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
+		p.error_with_pos('invalid expression: unexpected ${p.tok}', p.tok.position())
 	}
 }
 
 pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	$if trace_parser ? {
 		tok_pos := p.tok.position()
-		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr($precedence)')
+		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr(${precedence})')
 	}
 	// println('\n\nparser.expr()')
 	mut node := ast.empty_expr()
@@ -273,7 +273,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field',
+				return p.error_with_pos('unexpected `${p.tok.lit}`, expecting struct field',
 					p.tok.position())
 			}
 			field := p.tok.lit
@@ -419,7 +419,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 					return node
 				}
 				// added 10/2020: LATER this will be parsed as PrefixExpr instead
-				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression',
+				p.warn_with_pos('move infix `${p.tok.kind}` operator before new line (if infix intended) or use brackets for a prefix expression',
 					p.tok.position())
 			}
 			// continue on infix expr
@@ -433,12 +433,12 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
+					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
 						p.peek_tok.position())
 				}
 			}
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
-				p.error_with_pos('$p.tok must be on the same line as the previous token',
+				p.error_with_pos('${p.tok} must be on the same line as the previous token',
 					p.tok.position())
 			}
 			if mut node is ast.IndexExpr {

@@ -10,7 +10,7 @@ struct Point {
 }
 
 fn (p Point) draw() string {
-	return 'Point($p.x,$p.y)'
+	return 'Point(${p.x},${p.y})'
 }
 
 fn to_string(d Drawer) {

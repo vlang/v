@@ -504,7 +504,7 @@ pub fn mkdir_all(path string) ? {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p) or { return error('folder: $p, error: $err') }
+		mkdir(p) or { return error('folder: ${p}, error: ${err}') }
 	}
 }
 
@@ -622,8 +622,8 @@ pub mut:
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
 	return res
@@ -632,8 +632,8 @@ pub fn execute_or_panic(cmd string) Result {
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		eprintln(res.output)
 		exit(1)
 	}

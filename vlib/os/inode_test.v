@@ -8,7 +8,7 @@ const (
 )
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $os.tfolder')
+	eprintln('testsuite_begin, tfolder = ${os.tfolder}')
 	rmdir_all(os.tfolder) or {}
 	assert !is_dir(os.tfolder)
 	mkdir_all(os.tfolder) or { panic(err) }

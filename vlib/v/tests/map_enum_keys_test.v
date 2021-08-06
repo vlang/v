@@ -14,7 +14,7 @@ fn test_map_with_enum_keys() {
 	m[Token.bb] = 'def'
 	assert m[Token.aa] == 'abc'
 	assert m[.bb] == 'def'
-	s := '$m'
+	s := '${m}'
 	assert s == "{aa: 'abc', bb: 'def'}"
 	println(m)
 }

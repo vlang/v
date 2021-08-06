@@ -7,10 +7,10 @@ fn test_function_interpolation() {
 		return 'aaa', true
 	}
 	println(f)
-	assert '$f' == 'fn () (string, bool)'
+	assert '${f}' == 'fn () (string, bool)'
 
 	println(show)
-	assert '$show' == 'fn (string) string'
+	assert '${show}' == 'fn (string) string'
 }
 
 struct Info {
@@ -26,7 +26,7 @@ fn test_function_interpolation_in_struct() {
 		bb: 22
 	}
 	println(a)
-	assert '$a'.contains(': fn () string')
+	assert '${a}'.contains(': fn () string')
 }
 
 fn test_function_interpolation_in_array() {
@@ -36,7 +36,7 @@ fn test_function_interpolation_in_array() {
 		return 'bbb'
 	}]
 	println(f)
-	assert '$f' == '[fn () string, fn () string]'
+	assert '${f}' == '[fn () string, fn () string]'
 }
 
 fn test_function_interpolation_in_map() {
@@ -49,5 +49,5 @@ fn test_function_interpolation_in_map() {
 		}
 	}
 	println(m)
-	assert '$m'.contains(': fn () string')
+	assert '${m}'.contains(': fn () string')
 }

@@ -25,7 +25,7 @@ pub fn read_apk_asset(file string) ?[]byte {
 	}
 	asset := C.AAssetManager_open(&C.AAssetManager(act.assetManager), file.str, C.AASSET_MODE_STREAMING)
 	if isnil(asset) {
-		return error('File `$file` not found')
+		return error('File `${file}` not found')
 	}
 	len := C.AAsset_getLength(asset)
 	buf := []byte{len: len}

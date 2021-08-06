@@ -57,7 +57,7 @@ pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 
 pub fn (mut ts TestSession) show_list_of_failed_tests() {
 	for i, cmd in ts.failed_cmds {
-		eprintln(term.failed('Failed command ${i + 1}:') + '    $cmd')
+		eprintln(term.failed('Failed command ${i + 1}:') + '    ${cmd}')
 	}
 }
 
@@ -109,11 +109,11 @@ pub fn (mut ts TestSession) print_messages() {
 		if ts.progress_mode {
 			// progress mode, the last line is rewritten many times:
 			if is_ok && !ts.silent_mode {
-				print('\r$empty\r$msg')
+				print('\r${empty}\r${msg}')
 			} else {
 				// the last \n is needed, so SKIP/FAIL messages
 				// will not get overwritten by the OK ones
-				eprint('\r$empty\r$msg\n')
+				eprint('\r${empty}\r${msg}\n')
 			}
 			continue
 		}
@@ -293,9 +293,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	if !ts.vargs.contains('fmt') {
-		cmd_options << ' -o "$generated_binary_fpath"'
+		cmd_options << ' -o "${generated_binary_fpath}"'
 	}
-	cmd := '"$ts.vexe" ' + cmd_options.join(' ') + ' "$file"'
+	cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
@@ -321,7 +321,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	} else {
 		if testing.show_start {
-			ts.append_message(.info, '                 starting $relative_file ...')
+			ts.append_message(.info, '                 starting ${relative_file} ...')
 		}
 		r := os.execute(cmd)
 		if r.exit_code < 0 {
@@ -337,7 +337,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
+			ts.append_message(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'))
 			ts.add_failed_cmd(cmd)
 		} else {
 			ts.benchmark.ok()
@@ -358,7 +358,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 pub fn vlib_should_be_present(parent_dir string) {
 	vlib_dir := os.join_path(parent_dir, 'vlib')
 	if !os.is_dir(vlib_dir) {
-		eprintln('$vlib_dir is missing, it must be next to the V executable')
+		eprintln('${vlib_dir} is missing, it must be next to the V executable')
 		exit(1)
 	}
 }
@@ -374,7 +374,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
 	if vargs.len > 0 {
-		eprintln('v compiler args: "$vargs"')
+		eprintln('v compiler args: "${vargs}"')
 	}
 	mut session := new_test_session(vargs, true)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
@@ -417,8 +417,8 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 }
 
 pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
-	main_label := 'Building $folder ...'
-	finish_label := 'building $folder'
+	main_label := 'Building ${folder} ...'
+	finish_label := 'building ${folder}'
 	mut session := prepare_test_session(zargs, folder, oskipped, main_label)
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
@@ -446,23 +446,22 @@ pub fn building_any_v_binaries_failed() bool {
 	vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false
-	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
-		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',
-		'$vexe -o v_prod    -prod     cmd/v',
-	]
+	v_build_commands := ['${vexe} -o v_g             -g  cmd/v',
+		'${vexe} -o v_prod_g  -prod -g  cmd/v', '${vexe} -o v_cg            -cg cmd/v',
+		'${vexe} -o v_prod_cg -prod -cg cmd/v', '${vexe} -o v_prod    -prod     cmd/v']
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message_fail('command: $cmd . See details above ^^^^^^^'))
+			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
 		if !testing.hide_oks {
-			eprintln(bmark.step_message_ok('command: $cmd'))
+			eprintln(bmark.step_message_ok('command: ${cmd}'))
 		}
 	}
 	bmark.stop()
@@ -481,7 +480,7 @@ pub fn header(msg string) {
 
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
+	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_${now}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir

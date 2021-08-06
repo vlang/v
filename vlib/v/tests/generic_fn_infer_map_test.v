@@ -1,6 +1,6 @@
 fn print_map<K, V>(x map[K]V) string {
 	println(x)
-	return '$x'
+	return '${x}'
 }
 
 fn test_generics_infer_map_type() {

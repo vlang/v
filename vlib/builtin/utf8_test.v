@@ -12,10 +12,10 @@ fn test_utf8_wide_char() {
 	}
 	r := `✔`
 	s := '✔'
-	println('r: $r')
-	println('s: $s')
+	println('r: ${r}')
+	println('s: ${s}')
 	rstr := r.str()
-	println('rstr: $rstr')
+	println('rstr: ${rstr}')
 	assert utf8_char_len(r) == 1
 	assert utf8_char_len(s[0]) == 3
 	assert s == rstr

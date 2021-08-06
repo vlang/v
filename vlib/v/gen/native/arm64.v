@@ -29,7 +29,7 @@ mut:
 }
 
 pub fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
-	eprintln('TODO: allocating var on arm64 ($name) = $size = $initial_val')
+	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 }
 
 fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
@@ -45,7 +45,7 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 		g.println('mov x0, 1')
 	} else if r >= 0 && r <= 16 {
 		g.write32(0xd2800000 + int(r) + (int(val) << 5))
-		g.println('mov x$r, $val')
+		g.println('mov x${r}, ${val}')
 	} else {
 		verror('mov_arm unsupported values')
 	}
@@ -73,7 +73,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 	// println('call fn $name')
 	addr := g.fn_addr[name]
 	if addr == 0 {
-		verror('fn addr of `$name` = 0')
+		verror('fn addr of `${name}` = 0')
 	}
 	// Copy values to registers (calling convention)
 	// g.mov_arm(.eax, 0)
@@ -96,7 +96,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 			}
 			*/
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
+				verror('unhandled call_fn (name=${name}) node: ' + expr.type_name())
 			}
 		}
 	}
@@ -130,7 +130,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 
 fn (mut g Gen) adr(r Arm64Register, delta int) {
 	g.write32(0x10000000 | int(r) | (delta << 4))
-	g.println('adr $r, $delta')
+	g.println('adr ${r}, ${delta}')
 }
 
 fn (mut g Gen) bl() {
@@ -165,7 +165,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			verror('unsupported os $c.g.pref.os')
+			verror('unsupported os ${c.g.pref.os}')
 		}
 	}
 	g.svc()

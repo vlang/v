@@ -206,7 +206,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		} else {
 			sfont := system_font_path()
 			if g.config.font_path != '' {
-				eprintln('font file "$g.config.font_path" does not exist, the system font ($sfont) was used instead.')
+				eprintln('font file "${g.config.font_path}" does not exist, the system font (${sfont}) was used instead.')
 			}
 
 			g.ft = new_ft(
@@ -398,7 +398,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)
 	} else {
-		eprintln('gg error: $vmsg')
+		eprintln('gg error: ${vmsg}')
 	}
 }
 

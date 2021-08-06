@@ -8,7 +8,7 @@ import rand
 
 fn check_probability_range(p f64) {
 	if p < 0 || p > 1 {
-		panic('$p is not a valid probability value.')
+		panic('${p} is not a valid probability value.')
 	}
 }
 

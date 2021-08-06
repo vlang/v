@@ -71,7 +71,7 @@ pub fn (mut g Gen) generate_elf_header() {
 	// user code starts here at
 	// address: 00070 and a half
 	if g.pref.is_verbose {
-		eprintln('code_start_pos = $g.buf.len.hex()')
+		eprintln('code_start_pos = ${g.buf.len.hex()}')
 	}
 	g.code_start_pos = i64(g.buf.len)
 	g.debug_pos = g.buf.len

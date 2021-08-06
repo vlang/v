@@ -5,7 +5,7 @@ import v.pref
 
 [if trace_mod_path_to_full_name ?]
 fn trace_mod_path_to_full_name(line string, mod string, file_path string, res string) {
-	eprintln('> $line ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: $res')
+	eprintln('> ${line} ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: ${res}')
 }
 
 pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) string {

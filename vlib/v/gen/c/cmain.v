@@ -39,7 +39,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
+		g.writeln('\n#line ${lines_so_far} "${g.vlines_path}"')
 		g.writeln('')
 	}
 }
@@ -155,7 +155,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	g.writeln('\tmain__cb_propagate_test_error(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), *(${cvar_name}.err.msg) );')
 	g.writeln('\tg_test_fails++;')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
@@ -165,7 +165,7 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	g.writeln('\tmain__cb_propagate_test_error(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), *(${cvar_name}.err.msg) );')
 	g.writeln('\tg_test_fails++;')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
@@ -188,13 +188,13 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, _SLIT("${g.pref.path}"));')
 	}
 	g.writeln('')
 	for tname in all_tfuncs {
 		tcname := util.no_dots(tname)
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("${tcname}"));')
 		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) ${tcname}();')
 		if g.pref.is_stats {

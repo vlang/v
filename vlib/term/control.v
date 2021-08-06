@@ -15,7 +15,7 @@ module term
 // x is the x coordinate
 // y is the y coordinate
 pub fn set_cursor_position(c Coord) {
-	print('\x1b[$c.y;$c.x' + 'H')
+	print('\x1b[${c.y};${c.x}' + 'H')
 }
 
 // n is number of cells
@@ -24,7 +24,7 @@ pub fn set_cursor_position(c Coord) {
 // direction: C is forward / East
 // direction: D is backward / West
 pub fn move(n int, direction string) {
-	print('\x1b[$n$direction')
+	print('\x1b[${n}${direction}')
 }
 
 pub fn cursor_up(n int) {

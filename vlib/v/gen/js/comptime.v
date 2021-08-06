@@ -25,21 +25,21 @@ fn (mut g JsGen) comp_if(node ast.IfExpr) {
 		}
 
 		if node.is_expr {
-			print('$branch.stmts')
+			print('${branch.stmts}')
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts[len - 1] as ast.ExprStmt
 				if len > 1 {
 					tmp := g.new_tmp_var()
 					g.inc_indent()
-					g.writeln('let $tmp;')
+					g.writeln('let ${tmp};')
 					g.writeln('{')
 					g.stmts(branch.stmts[0..len - 1])
-					g.write('\t$tmp = ')
+					g.write('\t${tmp} = ')
 					g.stmt(last)
 					g.writeln('}')
 					g.dec_indent()
-					g.writeln('$tmp;')
+					g.writeln('${tmp};')
 				} else {
 					g.stmt(last)
 				}
@@ -77,14 +77,14 @@ fn (mut g JsGen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				verror(err.msg)
 				return false
 			}
-			g.write('$ifdef')
+			g.write('${ifdef}')
 			return true
 		}
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
 					l := g.comp_if_cond(cond.left, pkg_exist)
-					g.write(' $cond.op ')
+					g.write(' ${cond.op} ')
 					r := g.comp_if_cond(cond.right, pkg_exist)
 					return if cond.op == .and { l && r } else { l || r }
 				}
@@ -126,7 +126,7 @@ fn (mut g JsGen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 							//}
 						}
 					} else if left is ast.SelectorExpr {
-						name = '${left.expr}.$left.field_name'
+						name = '${left.expr}.${left.field_name}'
 						exp_type = g.comptime_var_type_map[name]
 					} else if left is ast.TypeNode {
 						name = left.str()
@@ -135,10 +135,10 @@ fn (mut g JsGen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					}
 
 					if cond.op == .key_is {
-						g.write('$exp_type == $got_type')
+						g.write('${exp_type} == ${got_type}')
 						return exp_type == got_type
 					} else {
-						g.write('$exp_type != $got_type')
+						g.write('${exp_type} != ${got_type}')
 						return exp_type != got_type
 					}
 				}
@@ -154,11 +154,11 @@ fn (mut g JsGen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		}
 		ast.Ident {
 			ifdef := g.comp_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
-			g.write('$ifdef')
+			g.write('${ifdef}')
 			return true
 		}
 		ast.ComptimeCall {
-			g.write('$pkg_exist')
+			g.write('${pkg_exist}')
 			return true
 		}
 		else {
@@ -302,9 +302,9 @@ fn (mut g JsGen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?strin
 		else {
 			if is_comptime_optional
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				return 'CUSTOM_DEFINE_$name'
+				return 'CUSTOM_DEFINE_${name}'
 			}
-			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
+			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
 		}
 	}
 	return none

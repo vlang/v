@@ -12,7 +12,7 @@ fn imin(a int, b int) int {
 
 fn (mut s StringReader) read(mut buf []byte) ?int {
 	$if debug {
-		eprintln('>>>> StringReader.read output buf.len: $buf.len')
+		eprintln('>>>> StringReader.read output buf.len: ${buf.len}')
 	}
 	if s.place > s.text.len + 1 {
 		return none
@@ -37,7 +37,7 @@ fn read_from_string(text string, capacity int) []byte {
 		z := stream.read(mut buf) or { break }
 		res << buf
 		$if debug {
-			println('capacity: $capacity, i: $i, buf: $buf | z: $z')
+			println('capacity: ${capacity}, i: ${i}, buf: ${buf} | z: ${z}')
 		}
 		i++
 	}

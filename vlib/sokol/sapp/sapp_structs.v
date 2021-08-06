@@ -92,7 +92,7 @@ pub:
 
 pub fn (e &C.sapp_event) str() string {
 	t := e.@type
-	return 'evt: frame_count=$e.frame_count, type=$t'
+	return 'evt: frame_count=${e.frame_count}, type=${t}'
 }
 
 pub struct C.sapp_touchpoint {

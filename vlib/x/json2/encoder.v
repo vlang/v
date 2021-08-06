@@ -8,7 +8,7 @@ import strings
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	str := v.json_str()
 	if v is string {
-		wr.write_string('"$str"')
+		wr.write_string('"${str}"')
 	} else {
 		wr.write_string(str)
 	}
@@ -24,7 +24,7 @@ pub fn (flds map[string]Any) str() string {
 	wr.write_b(`{`)
 	mut i := 0
 	for k, v in flds {
-		wr.write_string('"$k":')
+		wr.write_string('"${k}":')
 		write_value(v, i, flds.len, mut wr)
 		i++
 	}
@@ -160,7 +160,7 @@ fn json_string(s string) string {
 				// an utf8 codepoint
 				sb.write_string(slice)
 			} else if hex_code.len == 4 {
-				sb.write_string('\\u$hex_code')
+				sb.write_string('\\u${hex_code}')
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars

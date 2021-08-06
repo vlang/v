@@ -7,12 +7,12 @@ fn main() {
 	mut path := 'cinderella.txt'
 	if os.args.len != 2 {
 		println('usage: word_counter [text_file]')
-		println('using $path')
+		println('using ${path}')
 	} else {
 		path = os.args[1]
 	}
 	contents := os.read_file(path.trim_space()) or {
-		println('failed to open $path')
+		println('failed to open ${path}')
 		return
 	}
 	mut m := map[string]int{}
@@ -25,7 +25,7 @@ fn main() {
 	// Print the map
 	for key in keys {
 		val := m[key]
-		println('$key => $val')
+		println('${key} => ${val}')
 	}
 }
 

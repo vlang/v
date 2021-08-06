@@ -90,15 +90,15 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	if info.len > 0 {
 		for undocumented_fn in info {
 			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
-				'$undocumented_fn.tags'
+				'${undocumented_fn.tags}'
 			} else {
 				''
 			}
 			if opt.deprecated {
-				println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+				println('${file}:${undocumented_fn.line}:0:${undocumented_fn.signature} ${tags_str}')
 			} else {
 				if 'deprecated' !in undocumented_fn.tags {
-					println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+					println('${file}:${undocumented_fn.line}:0:${undocumented_fn.signature} ${tags_str}')
 				}
 			}
 		}
@@ -113,7 +113,7 @@ fn collect_tags(line string) []string {
 
 fn main() {
 	if os.args.len == 1 {
-		println('Usage: $tool_name PATH \n$tool_description\n$tool_name -h for more help...')
+		println('Usage: ${tool_name} PATH \n${tool_description}\n${tool_name} -h for more help...')
 		exit(1)
 	}
 	mut fp := flag.new_flag_parser(os.args[1..])

@@ -48,5 +48,5 @@ fn test_enum_bitfield() {
 	assert c.has(.read | .write | .execute)
 	assert !c.has(.other)
 	c.toggle(.write | .other)
-	assert '$c' == 'BfPermission{.read | .execute | .other}'
+	assert '${c}' == 'BfPermission{.read | .execute | .other}'
 }

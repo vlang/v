@@ -28,17 +28,17 @@ fn (mut d JsDoc) writeln(s string) {
 }
 
 fn (mut d JsDoc) gen_typ(typ string) {
-	d.writeln('/** @type {$typ} */')
+	d.writeln('/** @type {${typ}} */')
 }
 
 fn (mut d JsDoc) gen_const(typ string) {
-	d.writeln('/** @constant {$typ} */')
+	d.writeln('/** @constant {${typ}} */')
 }
 
 fn (mut d JsDoc) gen_enum() {
 	// Enum values can only be ints for now
 	typ := 'number'
-	d.writeln('/** @enum {$typ} */')
+	d.writeln('/** @enum {${typ}} */')
 }
 
 fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
@@ -48,7 +48,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 	for i, field in fields {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
-		d.write('$field.name?: ${d.gen.typ(field.typ)}')
+		d.write('${field.name}?: ${d.gen.typ(field.typ)}')
 		if i < fields.len - 1 {
 			d.write(', ')
 		}
@@ -72,25 +72,25 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 		is_varg := i == it.params.len - 1 && it.is_variadic
 		name := d.gen.js_name(arg.name)
 		if is_varg {
-			d.writeln(' * @param {...$arg_type_name} $name')
+			d.writeln(' * @param {...${arg_type_name}} ${name}')
 		} else {
-			d.writeln(' * @param {$arg_type_name} $name')
+			d.writeln(' * @param {${arg_type_name}} ${name}')
 		}
 	}
-	d.writeln(' * @returns {$type_name}')
+	d.writeln(' * @returns {${type_name}}')
 	d.writeln('*/')
 }
 
 fn (mut d JsDoc) gen_interface(it ast.InterfaceDecl) {
 	name := d.gen.js_name(it.name)
 	d.writeln('/**')
-	d.writeln(' * @interface $name')
-	d.writeln(' * @typedef $name')
+	d.writeln(' * @interface ${name}')
+	d.writeln(' * @typedef ${name}')
 	for method in it.methods {
 		// Skip receiver
 		typ := d.gen.fn_typ(method.params[1..], method.return_type)
 		method_name := d.gen.js_name(method.name)
-		d.writeln(' * @property {$typ} $method_name')
+		d.writeln(' * @property {${typ}} ${method_name}')
 	}
 	d.writeln(' */\n')
 }

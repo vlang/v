@@ -34,9 +34,9 @@ fn test_native() {
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
-		work_test_path := '$wrkdir/$test_file_name'
-		exe_test_path := '$wrkdir/${test_file_name}.exe'
-		cmd := '"$vexe" -o "$exe_test_path" -b native "$full_test_path"'
+		work_test_path := '${wrkdir}/${test_file_name}'
+		exe_test_path := '${wrkdir}/${test_file_name}.exe'
+		cmd := '"${vexe}" -o "${exe_test_path}" -b native "${full_test_path}"'
 		if is_verbose {
 			println(cmd)
 		}
@@ -46,27 +46,27 @@ fn test_native() {
 			eprintln(bench.step_message_fail(cmd))
 			continue
 		}
-		tmperrfile := '$dir/${test}.tmperr'
-		res := os.execute('$exe_test_path 2> $tmperrfile')
+		tmperrfile := '${dir}/${test}.tmperr'
+		res := os.execute('${exe_test_path} 2> ${tmperrfile}')
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('$full_test_path failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('$dir/${test}.out') or { panic(err) }
-		errfile := '$dir/${test}.err'
+		mut expected := os.read_file('${dir}/${test}.out') or { panic(err) }
+		errfile := '${dir}/${test}.err'
 		if os.exists(errfile) {
-			mut err_expected := os.read_file('$dir/${test}.err') or { panic(err) }
+			mut err_expected := os.read_file('${dir}/${test}.err') or { panic(err) }
 			err_expected = err_expected.trim_right('\r\n').replace('\r\n', '\n')
 			errstr := os.read_file(tmperrfile) or { panic(err) }
 			mut err_found := errstr.trim_right('\r\n').replace('\r\n', '\n')
 			if err_expected != err_found {
 				println(term.red('FAIL'))
 				println('============')
-				println('stderr expected: "$err_expected" len=$err_expected.len')
+				println('stderr expected: "${err_expected}" len=${err_expected.len}')
 				println('============')
-				println('stderr found:"$err_found" len=$err_found.len')
+				println('stderr found:"${err_found}" len=${err_found.len}')
 				println('============\n')
 				bench.fail()
 				continue
@@ -79,9 +79,9 @@ fn test_native() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected: "$expected" len=$expected.len')
+			println('expected: "${expected}" len=${expected.len}')
 			println('============')
-			println('found:"$found" len=$found.len')
+			println('found:"${found}" len=${found.len}')
 			println('============\n')
 			bench.fail()
 			continue

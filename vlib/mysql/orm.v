@@ -123,7 +123,7 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ? {
 }
 
 pub fn (db Connection) drop(table string) ? {
-	query := 'DROP TABLE `$table`;'
+	query := 'DROP TABLE `${table}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
 }
 
@@ -279,7 +279,7 @@ fn mysql_type_from_v(typ int) ?string {
 		}
 	}
 	if str == '' {
-		return error('Unknown type $typ')
+		return error('Unknown type ${typ}')
 	}
 	return str
 }

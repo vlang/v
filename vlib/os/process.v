@@ -64,7 +64,7 @@ pub fn (mut p Process) set_environment(envs map[string]string) {
 	p.env_is_custom = true
 	p.env = []string{}
 	for k, v in envs {
-		p.env << '$k=$v'
+		p.env << '${k}=${v}'
 	}
 	return
 }
@@ -171,7 +171,7 @@ fn (mut p Process) _spawn() int {
 		p.env = []string{}
 		current_environment := environ()
 		for k, v in current_environment {
-			p.env << '$k=$v'
+			p.env << '${k}=${v}'
 		}
 	}
 	mut pid := 0
@@ -255,7 +255,7 @@ pub fn (mut p Process) stderr_read() string {
 // _check_redirection_call - should be called just by stdxxx methods
 fn (mut p Process) _check_redirection_call(fn_name string) {
 	if !p.use_stdio_ctl {
-		panic('Call p.set_redirect_stdio() before calling p.$fn_name')
+		panic('Call p.set_redirect_stdio() before calling p.${fn_name}')
 	}
 	if p.status == .not_started {
 		panic('Call p.${fn_name}() after you have called p.run()')

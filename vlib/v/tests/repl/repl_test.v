@@ -9,13 +9,13 @@ const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
-	println('vexecutable: $vexec')
+	println('vexecutable: ${vexec}')
 	assert vexec != ''
-	vcmd := '"$vexec" -version'
+	vcmd := '"${vexec}" -version'
 	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
-	vcmd_error := '"$vexec" nonexisting.v'
+	vcmd_error := '"${vexec}" nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)
@@ -63,7 +63,7 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
+	tfolder := os.join_path(cdir, 'vrepl_tests_${idx}')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder) or { panic(err) }
 	}

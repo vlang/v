@@ -136,9 +136,9 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 
 	match kind {
 		.insert {
-			str += 'INSERT INTO $para$table$para ('
+			str += 'INSERT INTO ${para}${table}${para} ('
 			for i, field in data.fields {
-				str += '$para$field$para'
+				str += '${para}${field}${para}'
 				if i < data.fields.len - 1 {
 					str += ', '
 				}
@@ -147,7 +147,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 			for i, _ in data.fields {
 				str += qm
 				if num {
-					str += '$c'
+					str += '${c}'
 					c++
 				}
 				if i < data.fields.len - 1 {
@@ -157,9 +157,9 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 			str += ')'
 		}
 		.update {
-			str += 'UPDATE $para$table$para SET '
+			str += 'UPDATE ${para}${table}${para} SET '
 			for i, field in data.fields {
-				str += '$para$field$para = '
+				str += '${para}${field}${para} = '
 				if data.data.len > i {
 					d := data.data[i]
 					if d is InfixType {
@@ -177,15 +177,15 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 								'/'
 							}
 						}
-						str += '$d.name $op $qm'
+						str += '${d.name} ${op} ${qm}'
 					} else {
-						str += '$qm'
+						str += '${qm}'
 					}
 				} else {
-					str += '$qm'
+					str += '${qm}'
 				}
 				if num {
-					str += '$c'
+					str += '${c}'
 					c++
 				}
 				if i < data.fields.len - 1 {
@@ -195,14 +195,14 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 			str += ' WHERE '
 		}
 		.delete {
-			str += 'DELETE FROM $para$table$para WHERE '
+			str += 'DELETE FROM ${para}${table}${para} WHERE '
 		}
 	}
 	if kind == .update || kind == .delete {
 		for i, field in where.fields {
-			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
+			str += '${para}${field}${para} ${where.kinds[i].to_str()} ${qm}'
 			if num {
-				str += '$c'
+				str += '${c}'
 				c++
 			}
 			if i < where.fields.len - 1 {
@@ -221,23 +221,23 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 		str += 'COUNT(*)'
 	} else {
 		for i, field in orm.fields {
-			str += '$para$field$para'
+			str += '${para}${field}${para}'
 			if i < orm.fields.len - 1 {
 				str += ', '
 			}
 		}
 	}
 
-	str += ' FROM $para$orm.table$para'
+	str += ' FROM ${para}${orm.table}${para}'
 
 	mut c := start_pos
 
 	if orm.has_where {
 		str += ' WHERE '
 		for i, field in where.fields {
-			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
+			str += '${para}${field}${para} ${where.kinds[i].to_str()} ${qm}'
 			if num {
-				str += '$c'
+				str += '${c}'
 				c++
 			}
 			if i < where.fields.len - 1 {
@@ -252,17 +252,17 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 
 	str += ' ORDER BY '
 	if orm.has_order {
-		str += '$para$orm.order$para '
+		str += '${para}${orm.order}${para} '
 		str += orm.order_type.to_str()
 	} else {
-		str += '$para$orm.primary$para '
+		str += '${para}${orm.primary}${para} '
 		str += orm.order_type.to_str()
 	}
 
 	if orm.has_limit {
 		str += ' LIMIT ?'
 		if num {
-			str += '$c'
+			str += '${c}'
 			c++
 		}
 	}
@@ -270,7 +270,7 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 	if orm.has_offset {
 		str += ' OFFSET ?'
 		if num {
-			str += '$c'
+			str += '${c}'
 			c++
 		}
 	}
@@ -280,10 +280,10 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 }
 
 pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) ?string, alternative bool) ?string {
-	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
+	mut str := 'CREATE TABLE IF NOT EXISTS ${para}${table}${para} ('
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$para$table$para and xtype=${para}U$para) CREATE TABLE $para$table$para ('
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${para}${table}${para} and xtype=${para}U${para}) CREATE TABLE ${para}${table}${para} ('
 	}
 
 	mut fs := []string{}
@@ -345,22 +345,22 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			sql_from_v(7) ?
 		}
 		if ctyp == '' {
-			return error('Unknown type ($field.typ) for field $field.name in struct $table')
+			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table}')
 		}
-		stmt = '$para$field_name$para $ctyp'
+		stmt = '${para}${field_name}${para} ${ctyp}'
 		if defaults && field.default_val != '' {
-			stmt += ' DEFAULT $field.default_val'
+			stmt += ' DEFAULT ${field.default_val}'
 		}
 		if no_null {
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE($para$field.name$para'
+			mut f := 'UNIQUE(${para}${field.name}${para}'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
-					f += '($unique_len)'
+					f += '(${unique_len})'
 				} else {
-					f += '($def_unique_len)'
+					f += '(${def_unique_len})'
 				}
 			}
 			f += ')'
@@ -369,18 +369,18 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		fs << stmt
 	}
 	if primary == '' {
-		return error('A primary key is required for $table')
+		return error('A primary key is required for ${table}')
 	}
 	if unique.len > 0 {
 		for k, v in unique {
 			mut tmp := []string{}
 			for f in v {
-				tmp << '$para$f$para'
+				tmp << '${para}${f}${para}'
 			}
-			fs << '/* $k */UNIQUE(${tmp.join(', ')})'
+			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	fs << 'PRIMARY KEY($para$primary$para)'
+	fs << 'PRIMARY KEY(${para}${primary}${para})'
 	fs << unique_fields
 	str += fs.join(', ')
 	str += ');'

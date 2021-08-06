@@ -54,6 +54,6 @@ fn test_shared_receiver_lock() {
 		assert x.a > 10000
 		assert y.a > 10000
 		assert z.a > 10000
-		println('$x.a $y.a $z.a')
+		println('${x.a} ${y.a} ${z.a}')
 	}
 }

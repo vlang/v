@@ -23,5 +23,5 @@ fn test_string_alias_of_struct() {
 	}
 	a.add(3)
 	println(a)
-	assert '$a'.contains('Alias')
+	assert '${a}'.contains('Alias')
 }

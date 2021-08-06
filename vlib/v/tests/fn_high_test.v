@@ -5,7 +5,7 @@ fn sqr(x int) int {
 
 fn high_fn(f fn (int) int) {
 	x := f(111)
-	println('x == $x')
+	println('x == ${x}')
 }
 
 fn high_fn_no_ret(f fn (int)) {
@@ -32,7 +32,7 @@ fn high_fn_return_multi_anons() (fn (int) f32, fn (int) string) {
 		return 0x00
 	}
 	correct_second := fn (n int) string {
-		return '$n'
+		return '${n}'
 	}
 	correct_first := fn (n int) f32 {
 		return f32(n * n)
@@ -55,7 +55,7 @@ fn test_high_fn_ret_anons() {
 
 	func_sqr2, func_repr := high_fn_return_multi_anons()
 	assert func_sqr2(param) == (param * param)
-	assert func_repr(param) == '$param'
+	assert func_repr(param) == '${param}'
 
 	top_lvl_sqr := high_fn_return_named_fn()
 	assert top_lvl_sqr(param) == param * param
@@ -67,9 +67,9 @@ fn high_fn_applier(arg int, func fn (a int) string) string {
 
 fn test_high_fn_applier() {
 	arg := 13
-	expect := '$arg $arg'
+	expect := '${arg} ${arg}'
 	func := fn (arg int) string {
-		return '$arg $arg'
+		return '${arg} ${arg}'
 	}
 	assert expect == high_fn_applier(arg, func)
 }
@@ -90,7 +90,7 @@ fn test_anon_fn() {
 		return 10
 	}
 	f2res := f2(1)
-	println('f2res == $f2res')
+	println('f2res == ${f2res}')
 	// TODO/FIXME: assert bug? uncomment to see
 	// assert f2res == 10
 
@@ -99,13 +99,13 @@ fn test_anon_fn() {
 	})
 
 	high_fn_no_ret(fn (x int) {
-		println('hello $x')
+		println('hello ${x}')
 	})
 }
 
 fn test_anon_fn_direct_call() {
 	fn (name string) {
-		println('hello $name')
+		println('hello ${name}')
 	}('from anon')
 
 	b := fn (n int) int {

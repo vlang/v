@@ -26,12 +26,12 @@ fn test_all() {
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		compilation := os.execute('${vexe} -o test -cflags "-w" -cg ${program}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
-			panic('compilation failed: $compilation.output')
+			panic('compilation failed: ${compilation.output}')
 		}
 		res := os.execute('./test')
 		if res.exit_code < 0 {

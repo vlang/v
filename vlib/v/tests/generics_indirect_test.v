@@ -9,7 +9,7 @@ pub fn current() &Local {
 }
 
 pub fn store<T>(var &T, value T) {
-	eprintln('store ${voidptr(var)} <- $value')
+	eprintln('store ${voidptr(var)} <- ${value}')
 	unsafe {
 		*var = value
 	}

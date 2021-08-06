@@ -36,7 +36,7 @@ fn test_fn_mut_val_of_map() {
 	}
 	foo3(mut m)
 	println(m)
-	assert '$m' == "{'hello': [2, 4, 6]}"
+	assert '${m}' == "{'hello': [2, 4, 6]}"
 }
 
 fn foo4(mut m map[string][3]int) {
@@ -51,7 +51,7 @@ fn test_for_in_mut_val_of_map() {
 	}
 	foo4(mut m)
 	println(m)
-	assert '$m' == "{'hello': [2, 4, 6]}"
+	assert '${m}' == "{'hello': [2, 4, 6]}"
 }
 
 fn test_for_in_mut_val_of_map_direct() {
@@ -63,7 +63,7 @@ fn test_for_in_mut_val_of_map_direct() {
 		j = 3
 	}
 	println(m)
-	assert '$m' == "{'foo': 3, 'bar': 3}"
+	assert '${m}' == "{'foo': 3, 'bar': 3}"
 }
 
 fn test_for_in_mut_val_of_map_fixed_array() {
@@ -81,7 +81,7 @@ fn test_for_in_mut_val_of_map_fixed_array() {
 		}]!
 	}
 	println(m)
-	assert '$m' == "{'foo': [{'c': 3}], 'bar': [{'c': 3}]}"
+	assert '${m}' == "{'foo': [{'c': 3}], 'bar': [{'c': 3}]}"
 }
 
 fn test_for_in_mut_val_of_string() {

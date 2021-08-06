@@ -48,7 +48,7 @@ fn is_html_open_tag(name string, s string) bool {
 		if sub.len <= len { // `<nam>` or `<meme>`
 			return false
 		}
-		if sub[..len + 1] != '$name ' { // not `<name ...>`
+		if sub[..len + 1] != '${name} ' { // not `<name ...>`
 			return false
 		}
 		return true
@@ -58,7 +58,7 @@ fn is_html_open_tag(name string, s string) bool {
 // compile_file compiles the content of a file by the given path as a template
 pub fn (mut p Parser) compile_template_file(template_file string, fn_name string) string {
 	mut lines := os.read_lines(template_file) or {
-		p.error('reading from $template_file failed')
+		p.error('reading from ${template_file} failed')
 		return ''
 	}
 	basepath := os.dir(template_file)
@@ -68,7 +68,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() {
-mut sb := strings.new_builder($lstartlength)\n
+mut sb := strings.new_builder(${lstartlength})\n
 
 ')
 	source.write_string(parser.tmpl_str_start)
@@ -83,7 +83,7 @@ mut sb := strings.new_builder($lstartlength)\n
 		start_of_line_pos = end_of_line_pos
 		end_of_line_pos += oline.len + 1
 		$if trace_tmpl ? {
-			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $oline')
+			eprintln('>>> tfile: ${template_file}, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: ${oline}')
 		}
 		line := oline.trim_space()
 		if is_html_open_tag('style', line) {
@@ -136,15 +136,15 @@ mut sb := strings.new_builder($lstartlength)\n
 				// an absolute path
 				templates_folder = ''
 			}
-			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
+			file_path := os.real_path(os.join_path(templates_folder, '${file_name}${file_ext}'))
 			$if trace_tmpl ? {
-				eprintln('>>> basepath: "$basepath" , template_file: "$template_file" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
+				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
 			file_content := os.read_file(file_path) or {
 				position := line.index('@include ') or { 0 } + '@include '.len
 				p.error_with_error(errors.Error{
-					message: 'Reading file $file_name from path: $file_path failed'
-					details: "Failed to @include '$file_name'"
+					message: 'Reading file ${file_name} from path: ${file_path} failed'
+					details: "Failed to @include '${file_name}'"
 					file_path: template_file
 					pos: token.Position{
 						len: '@include '.len + file_name.len
@@ -197,16 +197,16 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
-			source.writeln('<span class="$class">')
+			source.writeln('<span class="${class}">')
 			in_span = true
 		} else if state == .html && line.contains('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
-			source.writeln('<div class="$class">')
+			source.writeln('<div class="${class}">')
 		} else if state == .html && line.contains('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
-			source.writeln('<div id="$class">')
+			source.writeln('<div id="${class}">')
 		} else if state == .html && line == '}' {
 			if in_span {
 				source.writeln('</span>')
@@ -230,7 +230,7 @@ mut sb := strings.new_builder($lstartlength)\n
 		}
 	}
 	source.writeln(parser.tmpl_str_end)
-	source.writeln('_tmpl_res_$fn_name := sb.str() ')
+	source.writeln('_tmpl_res_${fn_name} := sb.str() ')
 	source.writeln('}')
 	source.writeln('// === end of vweb html template ===')
 	result := source.str()

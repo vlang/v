@@ -34,12 +34,12 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
 	final_src := if use_color { term.dim('assert ${term.bold(i.src)}') } else { 'assert ' + i.src }
-	eprintln('$final_filepath $final_funcname')
+	eprintln('${final_filepath} ${final_funcname}')
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
-		mut slvalue := '$i.lvalue'
-		mut srvalue := '$i.rvalue'
+		mut slvalue := '${i.lvalue}'
+		mut srvalue := '${i.rvalue}'
 		if use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
@@ -48,18 +48,18 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		}
 		cutoff_limit := 30
 		if slvalue.len > cutoff_limit || srvalue.len > cutoff_limit {
-			eprintln('  > $final_src')
+			eprintln('  > ${final_src}')
 			eprintln(lvtitle)
-			eprintln('      $slvalue')
+			eprintln('      ${slvalue}')
 			eprintln(rvtitle)
-			eprintln('      $srvalue')
+			eprintln('      ${srvalue}')
 		} else {
-			eprintln('   > $final_src')
-			eprintln(' $lvtitle $slvalue')
-			eprintln('$rvtitle $srvalue')
+			eprintln('   > ${final_src}')
+			eprintln(' ${lvtitle} ${slvalue}')
+			eprintln('${rvtitle} ${srvalue}')
 		}
 	} else {
-		eprintln('    $final_src')
+		eprintln('    ${final_src}')
 	}
 	eprintln('')
 }
@@ -89,7 +89,7 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 
 fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
 	filepath := if use_relative_paths { file } else { os.real_path(file) }
-	mut final_filepath := filepath + ':$line_nr:'
+	mut final_filepath := filepath + ':${line_nr}:'
 	if use_color {
 		final_filepath = term.gray(final_filepath)
 	}
@@ -98,7 +98,7 @@ fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string,
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
 	final_msg := if use_color { term.dim(errmsg) } else { errmsg }
-	eprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
+	eprintln('${final_filepath} ${final_funcname} failed propagation with error: ${final_msg}')
 	if os.is_file(file) {
 		source_lines := os.read_lines(file) or { []string{len: line_nr + 1} }
 		eprintln('${line_nr:5} | ${source_lines[line_nr - 1]}')

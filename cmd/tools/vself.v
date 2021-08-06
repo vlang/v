@@ -16,9 +16,9 @@ fn main() {
 	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
-	sargs := if obinary != '' { jargs } else { '$jargs -o v2' }
-	cmd := '$vexe $sargs cmd/v'
-	options := if args.len > 0 { '($sargs)' } else { '' }
+	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }
+	cmd := '${vexe} ${sargs} cmd/v'
+	options := if args.len > 0 { '(${sargs})' } else { '' }
 	println('V self compiling ${options}...')
 	compile(vroot, cmd)
 	if obinary != '' {
@@ -33,7 +33,7 @@ fn main() {
 fn compile(vroot string, cmd string) {
 	result := os.execute_or_exit(cmd)
 	if result.exit_code != 0 {
-		eprintln('cannot compile to `$vroot`: \n$result.output')
+		eprintln('cannot compile to `${vroot}`: \n${result.output}')
 		exit(1)
 	}
 	if result.output.len > 0 {
@@ -65,18 +65,18 @@ fn backup_old_version_and_rename_newer() ?bool {
 	v2_file := os.real_path(short_v2_file)
 	bak_file := os.real_path(short_bak_file)
 
-	list_folder('before:', 'removing $bak_file ...')
+	list_folder('before:', 'removing ${bak_file} ...')
 	if os.exists(bak_file) {
-		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
+		os.rm(bak_file) or { errors << 'failed removing ${bak_file}: ${err.msg}' }
 	}
 
-	list_folder('', 'moving $v_file to $bak_file ...')
+	list_folder('', 'moving ${v_file} to ${bak_file} ...')
 	os.mv(v_file, bak_file) or { errors << err.msg }
 
-	list_folder('', 'removing $v_file ...')
+	list_folder('', 'removing ${v_file} ...')
 	os.rm(v_file) or {}
 
-	list_folder('', 'moving $v2_file to $v_file ...')
+	list_folder('', 'moving ${v2_file} to ${v_file} ...')
 	os.mv_by_cp(v2_file, v_file) or { panic(err.msg) }
 
 	list_folder('after:', '')

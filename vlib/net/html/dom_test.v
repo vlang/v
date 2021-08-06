@@ -6,8 +6,8 @@ fn generate_temp_html() string {
 	mut temp_html := strings.new_builder(200)
 	temp_html.write_string('<!doctype html><html><head><title>Giant String</title></head><body>')
 	for counter := 0; counter < 4; counter++ {
-		temp_html.write_string("<div id='name_$counter' ")
-		temp_html.write_string("class='several-$counter'>Look at $counter</div>")
+		temp_html.write_string("<div id='name_${counter}' ")
+		temp_html.write_string("class='several-${counter}'>Look at ${counter}</div>")
 	}
 	temp_html.write_string('</body></html>')
 	return temp_html.str()

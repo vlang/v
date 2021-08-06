@@ -17,7 +17,7 @@ pub:
 }
 
 pub fn (ed EmbedFileData) str() string {
-	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", path: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
+	return 'embed_file.EmbedFileData{ len: ${ed.len}, path: "${ed.path}", path: "${ed.apath}", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
 [unsafe]
@@ -65,11 +65,11 @@ pub fn (mut ed EmbedFileData) data() &byte {
 			if !os.is_file(path) {
 				path = ed.apath
 				if !os.is_file(path) {
-					panic('EmbedFileData error: files "$ed.path" and "$ed.apath" do not exist')
+					panic('EmbedFileData error: files "${ed.path}" and "${ed.apath}" do not exist')
 				}
 			}
 			bytes := os.read_bytes(path) or {
-				panic('EmbedFileData error: "$path" could not be read: $err')
+				panic('EmbedFileData error: "${path}" could not be read: ${err}')
 			}
 			ed.uncompressed = bytes.data
 			ed.free_uncompressed = true
@@ -99,7 +99,7 @@ pub fn find_index_entry_by_path(start voidptr, path string) &EmbedFileIndexEntry
 		}
 	}
 	$if debug_embed_file_in_prod ? {
-		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, path: "$path" => ${ptr_str(x)}')
+		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, path: "${path}" => ${ptr_str(x)}')
 	}
 	return x
 }

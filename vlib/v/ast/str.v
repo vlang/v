@@ -21,14 +21,14 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.$node.name'
+		return '${int(node.receiver.typ)}.${node.name}'
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.$node.name'
+		return '${int(node.receiver_type)}.${node.name}'
 	}
 	return node.name
 }
@@ -51,7 +51,7 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 		if node.params[0].is_auto_rec {
 			styp = styp.trim('&')
 		}
-		receiver = '($m$node.receiver.name $styp) '
+		receiver = '(${m}${node.receiver.name} ${styp}) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
@@ -74,7 +74,7 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 	// 		name = 'JS.$name'
 	// 	}
 	// }
-	f.write_string('fn $receiver$name')
+	f.write_string('fn ${receiver}${name}')
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
@@ -191,18 +191,18 @@ pub fn (x Expr) str() string {
 			return 'anon_fn'
 		}
 		DumpExpr {
-			return 'dump($x.expr.str())'
+			return 'dump(${x.expr.str()})'
 		}
 		ArrayInit {
 			mut fields := []string{}
 			if x.has_len {
-				fields << 'len: $x.len_expr.str()'
+				fields << 'len: ${x.len_expr.str()}'
 			}
 			if x.has_cap {
-				fields << 'cap: $x.cap_expr.str()'
+				fields << 'cap: ${x.cap_expr.str()}'
 			}
 			if x.has_default {
-				fields << 'init: $x.default_expr.str()'
+				fields << 'init: ${x.default_expr.str()}'
 			}
 			if fields.len > 0 {
 				return '[]T{${fields.join(', ')}}'
@@ -211,10 +211,10 @@ pub fn (x Expr) str() string {
 			}
 		}
 		AsCast {
-			return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
+			return '${x.expr.str()} as ${global_table.type_to_str(x.typ)}'
 		}
 		AtExpr {
-			return '$x.val'
+			return '${x.val}'
 		}
 		CTempVar {
 			return x.orig.str()
@@ -223,47 +223,47 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}($x.expr.str())'
+			return '${x.typname}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)'
+				return '${x.left.str()}.${x.name}(${sargs})'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)')
+				return util.strip_main_name('${x.name}(${sargs})')
 			}
 			if x.mod == '' && x.name == '' {
-				return x.left.str() + '($sargs)'
+				return x.left.str() + '(${sargs})'
 			}
-			return '${x.mod}.${x.name}($sargs)'
+			return '${x.mod}.${x.name}(${sargs})'
 		}
 		CharLiteral {
-			return '`$x.val`'
+			return '`${x.val}`'
 		}
 		Comment {
 			if x.is_multi {
 				lines := x.text.split_into_lines()
-				return '/* $lines.len lines comment */'
+				return '/* ${lines.len} lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '´// $text´'
+				return '´// ${text}´'
 			}
 		}
 		ComptimeSelector {
-			return '${x.left}.$$x.field_expr'
+			return '${x.left}.$${x.field_expr}'
 		}
 		ConcatExpr {
 			return x.vals.map(it.str()).join(',')
 		}
 		EnumVal {
-			return '.$x.val'
+			return '.${x.val}'
 		}
 		FloatLiteral, IntegerLiteral {
 			return x.val
 		}
 		GoExpr {
-			return 'go $x.call_expr'
+			return 'go ${x.call_expr}'
 		}
 		Ident {
 			return x.name
@@ -286,27 +286,27 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '$x.left.str()[$x.index.str()]'
+			return '${x.left.str()}[${x.index.str()}]'
 		}
 		InfixExpr {
-			return '$x.left.str() $x.op.str() $x.right.str()'
+			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 		}
 		MapInit {
 			mut pairs := []string{}
 			for ik, kv in x.keys {
 				mv := x.vals[ik].str()
-				pairs << '$kv: $mv'
+				pairs << '${kv}: ${mv}'
 			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
 		ParExpr {
-			return '($x.expr)'
+			return '(${x.expr})'
 		}
 		PostfixExpr {
 			if x.op == .question {
-				return '$x.expr ?'
+				return '${x.expr} ?'
 			}
-			return '$x.expr$x.op'
+			return '${x.expr}${x.op}'
 		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
@@ -314,10 +314,10 @@ pub fn (x Expr) str() string {
 		RangeExpr {
 			mut s := '..'
 			if x.has_low {
-				s = '$x.low ' + s
+				s = '${x.low} ' + s
 			}
 			if x.has_high {
-				s = s + ' $x.high'
+				s = s + ' ${x.high}'
 			}
 			return s
 		}
@@ -325,16 +325,16 @@ pub fn (x Expr) str() string {
 			return 'ast.SelectExpr'
 		}
 		SelectorExpr {
-			return '${x.expr.str()}.$x.field_name'
+			return '${x.expr.str()}.${x.field_name}'
 		}
 		SizeOf {
 			if x.is_type {
 				return 'sizeof(${global_table.type_to_str(x.typ)})'
 			}
-			return 'sizeof($x.expr)'
+			return 'sizeof(${x.expr})'
 		}
 		OffsetOf {
-			return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
+			return '__offsetof(${global_table.type_to_str(x.struct_type)}, ${x.field})'
 		}
 		StringInterLiteral {
 			mut res := strings.new_builder(50)
@@ -355,19 +355,19 @@ pub fn (x Expr) str() string {
 			return res.str()
 		}
 		StringLiteral {
-			return "'$x.val'"
+			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode($x.typ)'
+			return 'TypeNode(${x.typ})'
 		}
 		TypeOf {
-			return 'typeof($x.expr.str())'
+			return 'typeof(${x.expr.str()})'
 		}
 		Likely {
-			return '_likely_($x.expr.str())'
+			return '_likely_(${x.expr.str()})'
 		}
 		UnsafeExpr {
-			return 'unsafe { $x.expr }'
+			return 'unsafe { ${x.expr} }'
 		}
 		None {
 			return 'none'
@@ -384,7 +384,7 @@ pub fn (x Expr) str() string {
 		}
 		StructInit {
 			sname := global_table.get_type_symbol(x.typ).name
-			return '$sname{....}'
+			return '${sname}{....}'
 		}
 		ArrayDecompose {
 			return 'ast.ArrayDecompose'
@@ -417,14 +417,14 @@ pub fn (x Expr) str() string {
 			return 'ast.SqlExpr'
 		}
 	}
-	return '[unhandled expr type $x.type_name()]'
+	return '[unhandled expr type ${x.type_name()}]'
 }
 
 pub fn (a CallArg) str() string {
 	if a.is_mut {
-		return 'mut $a.expr.str()'
+		return 'mut ${a.expr.str()}'
 	}
-	return '$a.expr.str()'
+	return '${a.expr.str()}'
 }
 
 pub fn args2str(args []CallArg) string {
@@ -436,9 +436,9 @@ pub fn args2str(args []CallArg) string {
 }
 
 pub fn (node &BranchStmt) str() string {
-	mut s := '$node.kind'
+	mut s := '${node.kind}'
 	if node.label.len > 0 {
-		s += ' $node.label'
+		s += ' ${node.label}'
 	}
 	return s
 }
@@ -446,7 +446,7 @@ pub fn (node &BranchStmt) str() string {
 pub fn (node Stmt) str() string {
 	match node {
 		AssertStmt {
-			return 'assert $node.expr'
+			return 'assert ${node.expr}'
 		}
 		AssignStmt {
 			mut out := ''
@@ -462,7 +462,7 @@ pub fn (node Stmt) str() string {
 					out += ','
 				}
 			}
-			out += ' $node.op.str() '
+			out += ' ${node.op.str()} '
 			for i, val in node.right {
 				out += val.str()
 				if i < node.right.len - 1 {
@@ -482,33 +482,33 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
+			return 'fn ${node.name}( ${node.params.len} params ) { ${node.stmts.len} stmts }'
 		}
 		EnumDecl {
-			return 'enum $node.name { $node.fields.len fields }'
+			return 'enum ${node.name} { ${node.fields.len} fields }'
 		}
 		Module {
-			return 'module $node.name'
+			return 'module ${node.name}'
 		}
 		Import {
-			mut out := 'import $node.mod'
+			mut out := 'import ${node.mod}'
 			if node.alias.len > 0 {
-				out += ' as $node.alias'
+				out += ' as ${node.alias}'
 			}
 			return out
 		}
 		StructDecl {
-			return 'struct $node.name { $node.fields.len fields }'
+			return 'struct ${node.name} { ${node.fields.len} fields }'
 		}
 		else {
-			return '[unhandled stmt str type: $node.type_name() ]'
+			return '[unhandled stmt str type: ${node.type_name()} ]'
 		}
 	}
 }
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_prefix(f.mod + '.')
-	return '$x = $f.expr'
+	return '${x} = ${f.expr}'
 }
 
 pub fn (e CompForKind) str() string {

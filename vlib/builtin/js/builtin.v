@@ -39,7 +39,7 @@ pub fn eprint(s any) {
 // a 'real' way to exit in the browser.
 pub fn exit(c int) {
 	JS.process.exit(c)
-	js_throw('exit($c)')
+	js_throw('exit(${c})')
 }
 
 pub fn unwrap(opt any) any {
@@ -51,7 +51,7 @@ pub fn unwrap(opt any) any {
 }
 
 pub fn panic(s string) {
-	eprintln('V panic: $s')
+	eprintln('V panic: ${s}')
 	exit(1)
 }
 
@@ -73,7 +73,7 @@ pub fn (o Option) str() string {
 	if o.state == 1 {
 		return 'Option{ none }'
 	}
-	return 'Option{ error: "$o.err" }'
+	return 'Option{ error: "${o.err}" }'
 }
 
 pub fn error(s string) Option {

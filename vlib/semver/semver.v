@@ -38,7 +38,7 @@ pub fn from(input string) ?Version {
 	raw_version := parse(input)
 	version := raw_version.validate() or {
 		return IError(&InvalidVersionFormatError{
-			msg: 'Invalid version format for input "$input"'
+			msg: 'Invalid version format for input "${input}"'
 		})
 	}
 	return version

@@ -24,7 +24,7 @@ fn test_anon_fn_with_optional() {
 		]
 	}
 	println(app)
-	app_str := '$app'
+	app_str := '${app}'
 	assert app_str.contains('handler: fn (mut App) Response')
 	assert app_str.contains('middlewares: [fn (mut App) ?Response]')
 }

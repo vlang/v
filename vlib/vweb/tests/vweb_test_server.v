@@ -43,7 +43,7 @@ fn main() {
 		timeout: timeout
 		global_config: config
 	}
-	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
+	eprintln('>> webserver: started on http://127.0.0.1:${app.port}/ , with maximum runtime of ${app.timeout} milliseconds.')
 	// vweb.run<App>(mut app, http_port)
 	vweb.run(app, http_port)
 }
@@ -70,7 +70,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username')
+	return app.html('username: ${username}')
 }
 
 ['/:user/:repo/settings']
@@ -78,7 +78,7 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username | repository: $repository')
+	return app.html('username: ${username} | repository: ${repository}')
 }
 
 ['/json_echo'; post]

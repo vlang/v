@@ -29,5 +29,5 @@ pub fn debugger() string {
 }
 
 pub fn excited() string {
-	return '$hello1.nested() $debugger()!'
+	return '${hello1.nested()} ${debugger()}!'
 }

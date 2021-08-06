@@ -80,7 +80,7 @@ pub fn get_cursor_position() Coord {
 		}
 	}
 	// restore the old terminal settings:
-	os.system('stty $oldsettings.output')
+	os.system('stty ${oldsettings.output}')
 	return Coord{
 		x: x
 		y: y

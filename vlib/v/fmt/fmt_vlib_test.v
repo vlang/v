@@ -43,7 +43,7 @@ fn test_vlib_fmt() {
 		opath := ipath
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('cannot read from $opath'))
+			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
 			continue
 		}
 		table := ast.new_table()
@@ -51,18 +51,18 @@ fn test_vlib_fmt() {
 		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file $ipath after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
 			if diff_cmd == '' {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('$ipath'))
+		eprintln(fmt_bench.step_message_ok('${ipath}'))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
