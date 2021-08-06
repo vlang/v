@@ -2004,7 +2004,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		} else {
 			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
 		}
+		old_is_shared := g.is_shared
+		g.is_shared = false
 		g.expr(expr)
+		g.is_shared = old_is_shared
 		g.writeln('}, sizeof($shared_styp))')
 		return
 	}
@@ -5241,7 +5244,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	// User set fields
 	mut initialized := false
+	mut old_is_shared := g.is_shared
 	for i, field in struct_init.fields {
+		if !field.typ.has_flag(.shared_f) {
+			g.is_shared = false
+		}
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
 			field_name := if sym.language == .v { c_name(field.name) } else { field.name }
@@ -5273,7 +5280,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			initialized = true
 		}
+		g.is_shared = old_is_shared
 	}
+	g.is_shared = old_is_shared
 	// The rest of the fields are zeroed.
 	// `inited_fields` is a list of fields that have been init'ed, they are skipped
 	mut nr_fields := 1
@@ -5284,6 +5293,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
+			old_is_shared2 := g.is_shared
 			mut used_embed_fields := []string{}
 			init_field_names := info.fields.map(it.name)
 			// fields that are initialized but belong to the embedding
@@ -5311,10 +5321,14 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					initialized = true
 				}
 			}
+			g.is_shared = old_is_shared2
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for mut field in info.fields {
+			if !field.typ.has_flag(.shared_f) {
+				g.is_shared = false
+			}
 			if mut sym.info is ast.Struct {
 				mut found_equal_fields := 0
 				for mut sifield in sym.info.fields {
@@ -5391,7 +5405,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.write(',')
 			}
 			initialized = true
+			g.is_shared = old_is_shared
 		}
+		g.is_shared = old_is_shared
 	}
 	if is_multiline {
 		g.indent--
