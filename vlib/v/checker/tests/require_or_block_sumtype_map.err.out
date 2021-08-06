@@ -1,0 +1,6 @@
+vlib/v/checker/tests/require_or_block_sumtype_map.err.vv:5:8: error: `or {}` block required when indexing a map with sum type value
+    3 | fn main() {
+    4 |     x := map[string]Abc{}
+    5 |     _ := x['nonexisting']
+      |           ~~~~~~~~~~~~~~~
+    6 | }
