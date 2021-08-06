@@ -538,8 +538,8 @@ println('Hello, ${name}!') // Hello, Bob!
 ```
 It also works with fields and more complex expressions:
 ```v oksyntax
-'age = ${user.age}'
-'can register = ${user.age > 13}'
+println('age = ${user.age}')
+println('can register = ${user.age > 13}')
 ```
 
 Format specifiers similar to those in C's `printf()` are also supported.
