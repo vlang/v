@@ -191,6 +191,7 @@ pub mut:
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
+	constant_folding		bool
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -570,6 +571,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				res.custom_prelude = prelude
 				i++
+			}
+			'-constant-folding' {
+				res.constant_folding = true
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {
