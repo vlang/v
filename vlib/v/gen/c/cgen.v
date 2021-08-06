@@ -1875,14 +1875,41 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
 	got_cname, exp_cname := got_sym.cname, exp_sym.cname
 	sb.writeln('static inline $exp_cname ${got_cname}_to_sumtype_${exp_cname}($got_cname* x) {')
 	sb.writeln('\t$got_cname* ptr = memdup(x, sizeof($got_cname));')
+	for embed_hierarchy in g.table.get_embeds(got_sym) {
+		// last embed in the hierarchy
+		mut embed_cname := ''
+		mut embed_name := ''
+		mut accessor := '&x->'
+		for j, embed in embed_hierarchy {
+			embed_sym := g.table.get_type_symbol(embed)
+			embed_cname = embed_sym.cname
+			embed_name = embed_sym.embed_name()
+			if j > 0 {
+				accessor += '.'
+			}
+			accessor += embed_name
+		}
+		// if the variable is not used, the C compiler will optimize it away
+		sb.writeln('\t$embed_cname* ${embed_name}_ptr = memdup($accessor, sizeof($embed_cname));')
+	}
 	sb.write_string('\treturn ($exp_cname){ ._$got_cname = ptr, ._typ = ${g.type_sidx(got)}')
 	for field in (exp_sym.info as ast.SumType).fields {
+		mut ptr := 'ptr'
+		mut type_cname := got_cname
+		_, embed_types := g.table.find_field_from_embeds_recursive(got_sym, field.name) or {
+			ast.StructField{}, []ast.Type{}
+		}
+		if embed_types.len > 0 {
+			embed_sym := g.table.get_type_symbol(embed_types.last())
+			ptr = '${embed_sym.embed_name()}_ptr'
+			type_cname = embed_sym.cname
+		}
 		field_styp := g.typ(field.typ)
 		if got_sym.kind in [.sum_type, .interface_] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
 			sb.write_string(', .$field.name = ptr->$field.name')
 		} else {
-			sb.write_string(', .$field.name = ($field_styp*)((char*)ptr + __offsetof_ptr(ptr, $got_cname, $field.name))')
+			sb.write_string(', .$field.name = ($field_styp*)((char*)$ptr + __offsetof_ptr($ptr, $type_cname, $field.name))')
 		}
 	}
 	sb.writeln('};\n}')
