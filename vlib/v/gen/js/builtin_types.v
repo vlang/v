@@ -30,7 +30,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = '$prefix${g.sym_to_js_typ(sym)}("")'
 		}
 		.map {
-			styp = 'new Map()'
+			styp = 'new map(new Map())'
 		}
 		.array {
 			styp = '$prefix${g.sym_to_js_typ(sym)}()'
@@ -335,6 +335,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
 					to_jsval: '+this != 0'
+					eq: 'this.val === other.valueOf()'
 				)
 			}
 			'string' {
@@ -354,7 +355,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					val_name: 'map'
-					default_value: 'new Map()'
+					default_value: 'new map(new Map())'
 					constructor: 'this.map = map'
 					value_of: 'this'
 					to_string: 'this.map.toString()'

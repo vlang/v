@@ -16,6 +16,11 @@ struct Coord {
 	z int
 }
 
+struct Numbers {
+	odds  []int
+	evens []int
+}
+
 struct Person {
 	name string
 	nums []int
@@ -672,15 +677,13 @@ fn main() {
 	}
 	{
 		// test array str
-		// todo(playX): JS array formatting should match what default builtin impl has.
-		/*
+
 		numbers := [1, 2, 3]
 		assert numbers == [1, 2, 3]
 		numbers2 := [numbers, [4, 5, 6]] // dup str() bug
 		println(numbers2)
 		assert true
 		assert numbers.str() == '[1, 2, 3]'
-		*/
 	}
 	{
 		// test eq
@@ -1110,8 +1113,7 @@ fn main() {
 	}
 	{
 		// test array struct contains
-		/*
-		todo: does not work
+
 		mut coords := []Coord{}
 		coord_1 := Coord{
 			x: 1
@@ -1124,7 +1126,6 @@ fn main() {
 		println('`exists`: $exists and `not exists`: $not_exists')
 		assert exists == true
 		assert not_exists == false
-		*/
 	}
 	{
 		// test array of array append
@@ -1132,5 +1133,48 @@ fn main() {
 		println(x) // OK
 		x[2] << 123 // RTE
 		println(x)
+	}
+	{
+		// test array of map insert
+		mut x := []map[string]int{len: 4}
+		println(x) // OK
+		x[2]['123'] = 123 // RTE
+		println(x)
+	}
+	{
+		// todo(playX): does not work
+		/*
+		// test multi fixed array init
+		a := [3][3]int{}
+		println(a)
+		*/
+	}
+	{
+		// test array of multi filter
+		arr := [1, 2, 3, 4, 5]
+		nums := Numbers{
+			odds: arr.filter(it % 2 == 1)
+			evens: arr.filter(it % 2 == 0)
+		}
+		println(nums)
+		assert nums.odds == [1, 3, 5]
+		assert nums.evens == [2, 4]
+	}
+	{
+		// test array of multi map
+		arr := [1, 3, 5]
+		nums := Numbers{
+			odds: arr.map(it + 2)
+			evens: arr.map(it * 2)
+		}
+		println(nums)
+		assert nums.odds == [3, 5, 7]
+		assert nums.evens == [2, 6, 10]
+	}
+	{
+		// test multi fixed array with default init
+		a := [3][3]int{init: [3]int{init: 10}}
+		println(a)
+		assert a == [[10, 10, 10]!, [10, 10, 10]!, [10, 10, 10]!]!
 	}
 }
