@@ -55,7 +55,9 @@ pub:
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
 
-// free allows for manually freeing the memory occupied by the string
+// free is used to free the memory occupied by the assertion meta data.
+// It is called by cb_assertion_failed, and cb_assertion_ok in the preludes,
+// once they are done with reporting/formatting the meta data.
 [manualfree; unsafe]
 pub fn (ami &VAssertMetaInfo) free() {
 	unsafe {
