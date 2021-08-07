@@ -834,6 +834,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			if field.typ in ast.charptr_types {
 				fn_builder.write_string('tos2((byteptr)$func)')
 			} else {
+				if field.typ.is_ptr() && sym.kind == .struct_ {
+					fn_builder.write_string('(indent_count > 25) ? _SLIT("<probably circular>") : ')
+				}
 				fn_builder.write_string(func)
 			}
 		}
