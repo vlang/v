@@ -2147,6 +2147,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return map_init
 		}
 		return p.struct_init(false) // short_syntax: false
+	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
+		&& language == .v {
+		// if a == Foo{} {...}
+		return p.struct_init(false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
