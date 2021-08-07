@@ -31,12 +31,13 @@ mut:
 // Please note: If you need to decode many strings repeatedly, take a look at `decode_in_buffer`.
 // Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
 pub fn decode(data string) []byte {
-	size := data.len * 3 / 4
+	mut size := i64(data.len) * 3 / 4
 	if size <= 0 || data.len % 4 != 0 {
 		return []
 	}
+	size = (size + 3) & ~0x03 // round to the next multiple of 4 (the decoding loop writes multiples of 4 bytes)
 	unsafe {
-		buffer := malloc(size)
+		buffer := malloc(int(size))
 		n := decode_in_buffer(data, buffer)
 		return buffer.vbytes(n)
 	}
@@ -215,7 +216,6 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 		for src_len - si >= 4 {
 			datablock_32.data = assemble32(byte(base64.index[d[si + 0]]), byte(base64.index[d[si + 1]]),
 				byte(base64.index[d[si + 2]]), byte(base64.index[d[si + 3]]))
-
 			$if little_endian {
 				b[n_decoded_bytes + 0] = datablock_32.data_byte[3]
 				b[n_decoded_bytes + 1] = datablock_32.data_byte[2]
