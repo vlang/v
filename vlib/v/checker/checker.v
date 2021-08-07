@@ -3834,11 +3834,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			left_type = c.expr(left)
 			c.expected_type = c.unwrap_generic(left_type)
 			// `map = {}`
-			sym := c.table.get_type_symbol(left_type)
-			if sym.kind == .map && node.right[i] is ast.StructInit {
-				c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
-					node.right[i].position())
-				node.right[i] = ast.MapInit{}
+			if left_type != 0 {
+				sym := c.table.get_type_symbol(left_type)
+				if sym.kind == .map && node.right[i] is ast.StructInit {
+					c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
+						node.right[i].position())
+					node.right[i] = ast.MapInit{}
+				}
 			}
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -4038,14 +4040,16 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// right type was a generic `T`
 			continue
 		}
-		left_sym := c.table.get_type_symbol(left_type_unwrapped)
-		right_sym := c.table.get_type_symbol(right_type_unwrapped)
-
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
+		if left_type_unwrapped == 0 {
+			continue
+		}
+		left_sym := c.table.get_type_symbol(left_type_unwrapped)
+		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
