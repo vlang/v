@@ -385,19 +385,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				return
 			}
 		}
-		fn_name := g.gen_array_contains_method(node.right_type)
-		g.write('(${fn_name}(')
-		if right.typ.is_ptr() && right.typ.share() != .shared_t {
-			g.write('*')
-		}
-		g.expr(node.right)
-		if right.typ.share() == .shared_t {
-			g.write('->val')
-		}
-		g.write(', ')
-		g.expr(node.left)
-		g.write('))')
-		return
+		g.gen_array_contains(node.right_type, node.right, node.left)
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {

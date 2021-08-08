@@ -90,6 +90,7 @@ mut:
 	arraymap_set_pos       int    // map or array set value position
 	vlines_path            string // set to the proper path for generating #line directives
 	optionals              map[string]string // to avoid duplicates
+	done_optionals         shared []string   // to avoid duplicates
 	chan_pop_optionals     map[string]string // types for `x := <-ch or {...}`
 	chan_push_optionals    map[string]string // types for `ch <- x or {...}`
 	cur_lock               ast.LockExpr
@@ -177,17 +178,19 @@ mut:
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
 	// main_fn_decl_node  ast.FnDecl
-	nr_closures         int
-	array_sort_fn       map[string]bool
-	expected_cast_type  ast.Type // for match expr of sumtypes
-	defer_vars          []string
-	anon_fn             bool
-	tests_inited        bool
-	autofree_used       bool
-	cur_concrete_types  []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
-	cur_fn              &ast.FnDecl = 0 // same here
-	needed_equality_fns []ast.Type
-	generated_eq_fns    []ast.Type
+	nr_closures          int
+	array_sort_fn        shared map[string]bool
+	expected_cast_type   ast.Type // for match expr of sumtypes
+	defer_vars           []string
+	anon_fn              bool
+	tests_inited         bool
+	autofree_used        bool
+	cur_concrete_types   []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
+	cur_fn               &ast.FnDecl = 0 // same here
+	needed_equality_fns  []ast.Type
+	generated_eq_fns     []ast.Type
+	array_contains_types []ast.Type
+	array_index_types    []ast.Type
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -298,6 +301,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				inner_loop: &ast.EmptyStmt{}
 				field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 				array_sort_fn: global_g.array_sort_fn
+				done_optionals: global_g.done_optionals
 			}
 
 			if g.pref.is_vlines {
@@ -389,6 +393,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.auto_fn_definitions << tg.auto_fn_definitions
 		g.anon_fn_definitions << tg.anon_fn_definitions
 		g.needed_equality_fns << tg.needed_equality_fns // duplicates are resolved later in gen_equality_fns
+		g.array_contains_types << tg.array_contains_types
+		g.array_index_types << tg.array_index_types
 	}
 
 	g.write_optionals()
@@ -399,10 +405,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	for sumtype_casting_fn in g.sumtype_casting_fns {
 		g.write_sumtype_casting_fn(sumtype_casting_fn)
 	}
-	g.gen_equality_fns()
 	g.write_shareds()
 	g.write_chan_pop_optional_fns()
 	g.write_chan_push_optional_fns()
+	g.gen_array_contains_methods()
+	g.gen_array_index_methods()
+	g.gen_equality_fns()
 	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
 	if global_g.autofree_used {
@@ -827,12 +835,13 @@ fn (mut g Gen) register_optional(t ast.Type) string {
 }
 
 fn (mut g Gen) write_optionals() {
-	// mut done := []string{}
+	shared a := g.done_optionals
+	mut done := a.clone()
 	for base, styp in g.optionals {
-		//	if base in done {
-		//		continue
-		//	}
-		//	done << base
+		if base in done {
+			continue
+		}
+		done << base
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
 	}
@@ -5988,13 +5997,19 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
 							styp, base := g.optional_type_name(field.typ)
-							if styp !in g.optionals {
-								last_text := g.type_definitions.cut_to(start_pos).clone()
-								g.optionals[styp] = base
-								g.typedefs2.writeln('typedef struct $styp $styp;')
-								g.type_definitions.writeln('${g.optional_type_text(styp,
-									base)};')
-								g.type_definitions.write_string(last_text)
+							// temporary hack because `elmnt in shared_map` doesn't work
+							shared a := g.done_optionals
+							done_optionals := a.clone()
+							lock g.done_optionals {
+								if base !in done_optionals {
+									g.done_optionals << base
+									last_text := g.type_definitions.after(start_pos).clone()
+									g.type_definitions.go_back_to(start_pos)
+									g.typedefs2.writeln('typedef struct $styp $styp;')
+									g.type_definitions.writeln('${g.optional_type_text(styp,
+										base)};')
+									g.type_definitions.write_string(last_text)
+								}
 							}
 						}
 						type_name := g.typ(field.typ)
