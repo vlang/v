@@ -74,5 +74,16 @@ function vEq(a, b) {
 	// true if both NaN, false otherwise
 	return a!==a && b!==b;
 };
+
+function \$sortComparator(a, b)
+{
+a = a.\$toJS();
+b = b.\$toJS();
+if (a > b) return 1;
+if (a < b) return -1;
+return 0;
+
+
+}
 "
 )
