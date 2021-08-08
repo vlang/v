@@ -111,10 +111,10 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
 		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
 	} else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
 		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)

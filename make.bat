@@ -175,10 +175,10 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with TCC
 if !flag_verbose! EQU 1 (
-    echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
-    echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
+    echo [Debug] "!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+    echo    "!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c
 )
-"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+"!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
@@ -202,8 +202,8 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo  ^> Attempting to build v_win.c with Clang
 if !flag_verbose! EQU 1 (
-    echo [Debug] clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
-    echo    clang -std=c99 -municode -w -o v.exe .\vc\v_win.c
+    echo [Debug] clang -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
+    echo    clang -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c
 )
 clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (
@@ -231,10 +231,10 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo  ^> Attempting to build v_win.c with GCC
 if !flag_verbose! EQU 1 (
-    echo [Debug] gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
-    echo    gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c
+    echo [Debug] gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
+    echo    gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c
 )
-gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!"
+gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version>>"!log_File!"
@@ -279,8 +279,8 @@ set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v_win.c with MSVC
 if !flag_verbose! EQU 1 (
-    echo [Debug] cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
-    echo         cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
+    echo [Debug] cl.exe /volatile:ms /Fo%ObjFile% /I .\thirdparty\stdatomic\win /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
+    echo         cl.exe /volatile:ms /Fo%ObjFile% /I .\thirdparty\stdatomic\win /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
 )
 cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (

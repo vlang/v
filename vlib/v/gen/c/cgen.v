@@ -367,6 +367,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		for k, v in tg.optionals {
 			g.optionals[k] = v
 		}
+		for k, v in tg.as_cast_type_names {
+			g.as_cast_type_names[k] = v
+		}
 		g.json_forward_decls.write(tg.json_forward_decls) or { panic(err) }
 		g.enum_typedefs.write(tg.enum_typedefs) or { panic(err) }
 		g.channel_definitions.write(tg.channel_definitions) or { panic(err) }

@@ -191,7 +191,7 @@ jobs:
       - name: v.c can be compiled and run with -os cross
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
-          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          gcc  -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc /tmp/v.c  -lm -lpthread
           ls -lart v_from_vc
           ./v_from_vc version
 
@@ -627,7 +627,7 @@ jobs:
           gcc --version
           .\make.bat -gcc
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
+        run: .\v.exe -o v.c cmd/v && gcc -Werror -I ./thirdparty/stdatomic/nix -municode -w v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -715,7 +715,7 @@ jobs:
         run: |
           .\make.bat -tcc --verbose
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/nix -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -764,7 +764,7 @@ jobs:
           .\v.exe wipe-cache
           .\make.bat -tcc32 --verbose
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/nix -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
         run: ./v doctor
 
