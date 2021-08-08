@@ -1516,50 +1516,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		left_sym := g.table.get_type_symbol(it.left_type)
 		if left_sym.kind == .array {
 			node := it
-			match node.name {
-				'insert' {
-					arg2_sym := g.table.get_type_symbol(node.args[1].typ)
-					is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
-					if is_arg2_array {
-						g.write('insert_many(')
-					} else {
-						g.write('insert(')
-					}
-
-					g.expr(node.args[0].expr)
-					g.write(',')
-					if is_arg2_array {
-						g.expr(node.args[1].expr)
-						g.write('.arr,')
-						g.expr(node.args[1].expr)
-						g.write('.len')
-					} else {
-						g.expr(node.args[1].expr)
-					}
-					g.write(')')
-					return
-				}
-				'prepend' {
-					arg_sym := g.table.get_type_symbol(node.args[0].typ)
-					is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
-					if is_arg_array {
-						g.write('prepend_many(')
-					} else {
-						g.write('prepend(')
-					}
-
-					if is_arg_array {
-						g.expr(node.args[0].expr)
-						g.write('.arr, ')
-						g.expr(node.args[0].expr)
-						g.write('.len')
-					} else {
-						g.expr(node.args[0].expr)
-					}
-					g.write(')')
-					return
-				}
-				else {}
+			if node.name in special_array_methods {
+				g.gen_array_method_call(it)
+				return
 			}
 		}
 	} else {

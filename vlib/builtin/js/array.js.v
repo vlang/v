@@ -87,19 +87,6 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	#a.arr.sort(compare)
 }
 
-#function $sortComparator(a, b)
-#{
-#"use strict";
-#a = a.$toJS();
-#b = b.$toJS();
-#
-#if (a > b) return 1;
-#if (a < b) return -1;
-#return 0;
-#
-#
-#}
-
 pub fn (mut a array) sort() {
 	#a.arr.sort($sortComparator)
 }
@@ -153,6 +140,23 @@ pub fn (a array) str() string {
 #array.prototype.map = function(callback) { return new builtin.array(this.arr.map(callback)); }
 #array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
+#array.prototype.any = function (value) {
+#let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
+#for (let i = 0;i < this.arr.length;i++)
+#if (val(this.arr[i]))
+#return true;
+#
+#return false;
+#}
+
+#array.prototype.all = function (value) {
+#let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
+#for (let i = 0;i < this.arr.length;i++)
+#if (!val(this.arr[i]))
+#return false;
+#
+#return true;
+#}
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
