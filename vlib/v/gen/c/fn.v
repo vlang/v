@@ -714,7 +714,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				return
 			}
 			'contains' {
-				g.gen_array_contains(node)
+				g.gen_array_contains(node.left_type, node.left, node.args[0].expr)
 				return
 			}
 			'index' {
