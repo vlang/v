@@ -398,6 +398,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.needed_equality_fns << tg.needed_equality_fns // duplicates are resolved later in gen_equality_fns
 		g.array_contains_types << tg.array_contains_types
 		g.array_index_types << tg.array_index_types
+		g.pcs << tg.pcs
 	}
 
 	g.write_optionals()
