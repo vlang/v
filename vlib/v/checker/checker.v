@@ -7117,6 +7117,13 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	right_type := c.expr(node.right)
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
+	if node.op == .amp {
+		if mut node.right is ast.PrefixExpr {
+			if node.right.op == .amp {
+				c.error('unexpected `&`, expecting expression', node.right.pos)
+			}
+		}
+	}
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
 		mut expr := node.right
