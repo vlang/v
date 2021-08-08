@@ -39,6 +39,7 @@ pub mut:
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 
+/*
 [unsafe]
 pub fn (t &Table) free() {
 	unsafe {
@@ -58,6 +59,7 @@ pub fn (t &Table) free() {
 		t.used_vweb_types.free()
 	}
 }
+*/
 
 pub type FnPanicHandler = fn (&Table, string)
 
