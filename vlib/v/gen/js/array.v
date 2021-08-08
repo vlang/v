@@ -63,11 +63,9 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 				// println(rec_sym.kind)
 				verror('.sort() is an array method')
 			}
-			info := rec_sym.info as ast.Array
+
 			// `users.sort(a.age > b.age)`
-			// Generate a comparison function for a custom type
-			elem_stype := g.typ(info.elem_type)
-			mut left_expr, mut right_expr := '', ''
+
 			if node.args.len == 0 {
 				g.write('sort()')
 				return
