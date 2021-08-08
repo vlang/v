@@ -1229,7 +1229,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		elem_type := g.typ(arr_info.elem_type)
 		if g.pref.translated && args.len == 1 {
 			// Handle `foo(c'str')` for `fn foo(args ...&u8)`
-			// TODO handle this in a better place
+			// TODOC2V handle this in a better place
 			// println(g.table.type_to_str(args[0].typ))
 			g.expr(args[0].expr)
 		} else if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecompose {
