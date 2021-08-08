@@ -574,7 +574,6 @@ fn get_module_meta_info(name string) ?Mod {
 fn vpm_show(module_names []string) {
 	installed_modules := get_installed_modules()
 	for module_name in module_names {
-		println(module_name)
 		if module_name !in installed_modules {
 			module_meta_info := get_module_meta_info(module_name) or { continue }
 			print('
