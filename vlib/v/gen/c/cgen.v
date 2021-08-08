@@ -5384,12 +5384,25 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
-					if (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
-						&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer())
-						&& !sfield.typ.is_number() {
-						g.write('/* autoref */&')
+					if field_type_sym.kind == .array_fixed && sfield.expr is ast.Ident {
+						fixed_array_info := field_type_sym.info as ast.ArrayFixed
+						g.write('{')
+						for i in 0 .. fixed_array_info.size {
+							g.expr(sfield.expr)
+							g.write('[$i]')
+							if i != fixed_array_info.size - 1 {
+								g.write(', ')
+							}
+						}
+						g.write('}')
+					} else {
+						if (sfield.expected_type.is_ptr()
+							&& !sfield.expected_type.has_flag(.shared_f)) && !(sfield.typ.is_ptr()
+							|| sfield.typ.is_pointer()) && !sfield.typ.is_number() {
+							g.write('/* autoref */&')
+						}
+						g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 					}
-					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
 				if is_multiline {
 					g.writeln(',')
