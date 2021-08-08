@@ -118,8 +118,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 }
 
 struct StrType {
-	is_optional bool
-	styp        string
+	styp string
 mut:
 	typ ast.Type
 }
@@ -142,18 +141,14 @@ fn (mut g Gen) get_str_fn(_typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
-	str_type := StrType{
-		is_optional: unwrapped.has_flag(.optional) || _typ.has_flag(.optional)
+	mut str_type := StrType{
 		typ: unwrapped
 		styp: styp
 	}
-	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
-	if !sym_has_str_method {
-		$if debugautostr ? {
-			eprintln('> get_str_fn: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
-		}
-		g.str_types << str_type
+	if typ.has_flag(.optional) {
+		str_type.typ.set_flag(.optional)
 	}
+	g.str_types << str_type
 	return str_fn_name
 }
 
@@ -163,7 +158,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.get_type_symbol(typ.typ)
-	if sym.has_method('str') {
+	if sym.has_method('str') && !typ.typ.has_flag(.optional) {
 		return
 	}
 	styp := typ.styp
