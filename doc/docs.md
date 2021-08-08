@@ -482,8 +482,15 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
-to bytes in the string, not Unicode code points.
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. 
+Indexes correspond to bytes in the string, not Unicode code points. If you want to 
+convert the `byte` to a `string`, use the `ascii_str()` method:
+
+```v
+country := 'Netherlands'
+println(country[0]) // Output: 78
+println(country[0].ascii_str()) // Output: N
+```
 
 Character literals have type `rune`. To denote them, use `
 
