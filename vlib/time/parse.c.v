@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
+#include "time.h"
 // parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
 pub fn parse(s string) ?Time {
 	pos := s.index(' ') or { return error('Invalid time format: $s') }
