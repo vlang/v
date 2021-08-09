@@ -3,23 +3,37 @@ module native
 import v.ast
 
 enum Arm64Register {
-	x0
-	x1
-	x2
-	x3
-	x4
-	x5
-	x6
-	x7
-	x8
-	x9
-	x10
-	x11
-	x12
-	x13
-	x14
-	x15
-	x16
+	x0 // v----
+	x1 // |
+	x2 // |
+	x3 // | parameter and result registers
+	x4 // |
+	x5 // |
+	x6 // |
+	x7 // ^----
+	x8 // XR - indirect result location register
+	x9 //  v----
+	x10 // |
+	x11 // |
+	x12 // | caller saved registers
+	x13 // |
+	x14 // |
+	x15 // ^----
+	x16 // IP0 - inter procedure call scratch register
+	x17 // IP1 - inter procedure call scratch register
+	x18 // PR - platform register
+	x19 // v----
+	x20 // |
+	x21 // |
+	x22 // |
+	x23 // | callee saved registers
+	x24 // |
+	x25 // |
+	x26 // |
+	x27 // |
+	x28 // ^----
+	x29 // FP - frame pointer
+	x30 // LR - link register
 }
 
 pub struct Arm64 {
