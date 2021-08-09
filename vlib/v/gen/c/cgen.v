@@ -588,9 +588,11 @@ fn (mut g Gen) base_type(t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := g.unwrap_generic(t).nr_muls()
-	if nr_muls > 0 {
-		styp += strings.repeat(`*`, nr_muls)
+	if !t.has_flag(.variadic) {
+		nr_muls := g.unwrap_generic(t).nr_muls()
+		if nr_muls > 0 {
+			styp += strings.repeat(`*`, nr_muls)
+		}
 	}
 	return styp
 }

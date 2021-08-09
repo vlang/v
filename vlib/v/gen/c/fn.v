@@ -775,8 +775,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
-		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
+	if node.receiver_type.is_ptr()
+		&& (!node.left_type.is_ptr() || node.left_type.has_flag(.variadic)
+		|| node.from_embed_type != 0
+		|| (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
