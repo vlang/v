@@ -526,7 +526,7 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 		fn_builder.writeln('\t$elem_type_str* pelem = a.data;')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(( *pelem, v))) {')
+			fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_array_equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq( *pelem, v)) {')
