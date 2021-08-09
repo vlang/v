@@ -127,6 +127,7 @@ pub:
 	kind    AttributeKind
 }
 
+[used]
 fn v_segmentation_fault_handler() {
 	println('signal 11: segmentation fault')
 	print_backtrace()
