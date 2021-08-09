@@ -592,44 +592,6 @@ pub fn copy(dst []byte, src []byte) int {
 	return min
 }
 
-// Private function. Comparator for int type.
-fn compare_ints(a &int, b &int) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_ints_reverse(a &int, b &int) int {
-	if *a > *b {
-		return -1
-	}
-	if *a < *b {
-		return 1
-	}
-	return 0
-}
-
-// sort sorts an array of int in place in ascending order.
-pub fn (mut a []int) sort() {
-	a.sort_with_compare(compare_ints)
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-[direct_array_access]
-pub fn (a []string) index(v string) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
@@ -650,25 +612,6 @@ pub fn (mut a array) grow_cap(amount int) {
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
-}
-
-// eq checks if the arrays have the same elements or not.
-// TODO: make it work with all types.
-pub fn (a1 []string) eq(a2 []string) bool {
-	// return array_eq(a, a2)
-	if a1.len != a2.len {
-		return false
-	}
-	size_of_string := int(sizeof(string))
-	for i in 0 .. a1.len {
-		offset := i * size_of_string
-		s1 := unsafe { &string(&byte(a1.data) + offset) }
-		s2 := unsafe { &string(&byte(a2.data) + offset) }
-		if *s1 != *s2 {
-			return false
-		}
-	}
-	return true
 }
 
 // pointers returns a new array, where each element

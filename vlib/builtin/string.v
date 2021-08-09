@@ -340,22 +340,6 @@ struct RepIndex {
 	val_idx int
 }
 
-// compare_rep_index returns the result of comparing RepIndex `a` and `b`.
-fn compare_rep_index(a &RepIndex, b &RepIndex) int {
-	if a.idx < b.idx {
-		return -1
-	}
-	if a.idx > b.idx {
-		return 1
-	}
-	return 0
-}
-
-// sort2 sorts the RepIndex array using `compare_rep_index`.
-fn (mut a []RepIndex) sort2() {
-	a.sort_with_compare(compare_rep_index)
-}
-
 // replace_each replaces all occurences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
@@ -404,7 +388,7 @@ pub fn (s string) replace_each(vals []string) string {
 	if idxs.len == 0 {
 		return s.clone()
 	}
-	idxs.sort2()
+	idxs.sort(a.idx < b.idx)
 	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
@@ -1192,17 +1176,6 @@ pub fn compare_strings(a &string, b &string) int {
 	return 0
 }
 
-// compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
-fn compare_strings_reverse(a &string, b &string) int {
-	if a < b {
-		return 1
-	}
-	if a > b {
-		return -1
-	}
-	return 0
-}
-
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
 	if a.len < b.len {
@@ -1219,11 +1192,6 @@ fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(&aa, &bb)
-}
-
-// sort sorts the string array.
-pub fn (mut s []string) sort() {
-	s.sort_with_compare(compare_strings)
 }
 
 // sort_ignore_case sorts the string array using case insesitive comparing.

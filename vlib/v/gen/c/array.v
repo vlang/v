@@ -221,6 +221,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
+	if g.pref.is_bare {
+		g.writeln('bare_panic(_SLIT("sort does not work with -freestanding"))')
+		return
+	}
 	info := rec_sym.info as ast.Array
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
