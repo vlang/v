@@ -1125,8 +1125,7 @@ fn (mut s Scanner) ident_string() string {
 			backslash_count++
 		}
 		// end of string
-		if c == s.quote
-			&& (is_raw || backslash_count % 2 == 0) {
+		if c == s.quote && (is_raw || backslash_count % 2 == 0) {
 			// handle '123\\' backslash at the end
 			break
 		}
@@ -1172,7 +1171,8 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
-		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
+		if prevc == `$` && c == `{` && !is_raw
+			&& s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_enclosed_inter = true
 			// so that s.pos points to $ at the next step
