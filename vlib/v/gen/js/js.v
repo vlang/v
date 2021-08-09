@@ -1810,9 +1810,18 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.left)
 
 		g.write(' $it.op ')
-
+		if is_arithmetic {
+			if g.ns.name == 'builtin' {
+				g.write('new ')
+			}
+			g.write('${g.typ(greater_typ)}(')
+			g.cast_stack << greater_typ
+		}
 		g.expr(it.right)
-
+		if is_arithmetic {
+			g.cast_stack.delete_last()
+			g.write(')')
+		}
 		if is_arithmetic {
 			g.cast_stack.delete_last()
 			g.write(')')
@@ -1844,8 +1853,9 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 	}
 	should_int := (l in ast.integer_type_idxs && r in ast.integer_type_idxs)
 	if should_int {
-		// cant add to u64 - if (ast.u64_type_idx in lr) { return ast.Type(ast.u64_type_idx) }
-		// just guessing this order
+		if ast.u64_type_idx in lr {
+			return ast.Type(ast.u64_type_idx)
+		}
 		if ast.i64_type_idx in lr {
 			return ast.Type(ast.i64_type_idx)
 		}
