@@ -1111,7 +1111,8 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
-	slash := `\\`
+	backslash := `\\`
+	mut backslash_count := if start_char == backslash { 1 } else { 0 }
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
@@ -1120,10 +1121,13 @@ fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
+		if c == backslash {
+			backslash_count++
+		}
 		// end of string
 		if c == s.quote
-			&& (is_raw || prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
-			// handle '123\\'  slash at the end
+			&& (is_raw || backslash_count % 2 == 0) {
+			// handle '123\\' backslash at the end
 			break
 		}
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
@@ -1136,22 +1140,22 @@ fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && prevc == slash {
+		if c == `0` && s.pos > 2 && prevc == backslash {
 			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit())
-				|| s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
+				|| s.count_symbol_before(s.pos - 1, backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
 		}
 		// Don't allow \x00
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
-			if s.count_symbol_before(s.pos - 3, slash) % 2 == 0 {
+			if s.count_symbol_before(s.pos - 3, backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\x00` (NULL character) in the string literal')
 			}
 		}
 		// Escape `\x` `\u`
-		if prevc == slash && !is_raw && !is_cstr && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` && (s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit()) {
 				s.error(r'`\x` used with no following hex digits')
@@ -1168,7 +1172,7 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
-		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_enclosed_inter = true
 			// so that s.pos points to $ at the next step
@@ -1177,11 +1181,14 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
 			break
+		}
+		if c != backslash {
+			backslash_count = 0
 		}
 	}
 	mut lit := ''
