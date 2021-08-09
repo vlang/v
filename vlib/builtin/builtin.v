@@ -129,7 +129,7 @@ pub:
 
 [used]
 fn v_segmentation_fault_handler() {
-	println('signal 11: segmentation fault')
+	eprintln('signal 11: segmentation fault')
 	print_backtrace()
 	exit(128 + 11)
 }
