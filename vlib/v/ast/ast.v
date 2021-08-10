@@ -74,10 +74,10 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr     Expr
 	pos      token.Position
 	comments []Comment
 pub mut:
+	expr    Expr
 	is_expr bool
 	typ     Type
 }
@@ -207,10 +207,10 @@ pub struct ConstField {
 pub:
 	mod    string
 	name   string
-	expr   Expr // the value expr of field; everything after `=`
 	is_pub bool
 	pos    token.Position
 pub mut:
+	expr     Expr // the value expr of field; everything after `=`
 	typ      Type      // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
@@ -667,6 +667,7 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
+	// TODO: seperate enum would be better
 	op      token.Kind
 	pos     token.Position
 	is_stmt bool

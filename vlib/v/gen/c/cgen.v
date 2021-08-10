@@ -3267,7 +3267,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
 		ast.EmptyExpr {
-			g.error('g.expr(): unhandled EmptyExpr', token.Position{})
+			// expression is pruned by transformer
+			// g.error('g.expr(): unhandled EmptyExpr', token.Position{})
 		}
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers

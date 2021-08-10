@@ -4559,7 +4559,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			node.typ = c.expr(node.expr)
 			c.expected_type = ast.void_type
 			mut or_typ := ast.void_type
-			match node.expr {
+			match mut node.expr {
 				ast.IndexExpr {
 					if node.expr.or_expr.kind != .absent {
 						node.is_expr = true
@@ -5931,7 +5931,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 						c.inside_const = true
 						typ = c.expr(obj.expr)
 						c.inside_const = false
-						if obj.expr is ast.CallExpr {
+						if mut obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
 							}

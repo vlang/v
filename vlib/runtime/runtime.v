@@ -40,17 +40,15 @@ pub fn is_64bit() bool {
 }
 
 // is_little_endian returns true if the current executable is running on a little-endian system.
+[direct_array_access]
 pub fn is_little_endian() bool {
-	$if little_endian {
-		return true
-	}
-	return false
+	x := 1
+	return int(unsafe { &char(&x)[0] }) == 1
 }
 
 // is_big_endian returns true if the current executable is running on a big-endian system.
+[direct_array_access]
 pub fn is_big_endian() bool {
-	$if big_endian {
-		return true
-	}
-	return false
+	x := 1
+	return int(unsafe { &char(&x)[0] }) == 0
 }
