@@ -18,6 +18,7 @@ pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 	}
 }
 
+[kwargs]
 pub struct AttrsOptions {
 	inline bool
 }

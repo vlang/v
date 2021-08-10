@@ -1,3 +1,4 @@
+[kwargs]
 struct Foo {
 	x int
 }
@@ -6,6 +7,7 @@ fn foo(f Foo) int {
 	return f.x
 }
 
+[kwargs]
 struct Bar {
 	x int
 	y int = 1234

@@ -629,6 +629,7 @@ pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	}
 }
 
+[kwargs]
 struct EatCommentsConfig {
 	same_line bool // Only eat comments on the same line as the previous token
 	follow_up bool // Comments directly below the previous token as long as there is no empty line

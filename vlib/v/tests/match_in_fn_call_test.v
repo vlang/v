@@ -1,3 +1,4 @@
+[kwargs]
 struct Data {
 	array []int
 }
