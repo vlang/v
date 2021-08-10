@@ -1,5 +1,4 @@
 import log
-import os
 
 fn main() {
 	mut l := log.Log{}
