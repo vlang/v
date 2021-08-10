@@ -641,6 +641,13 @@ pub fn (mut g Gen) init() {
 			}
 		}
 	}
+	// we know that this is being called before the multi-threading starts
+	// and this is being called in the main thread, so we can mutate the table
+	mut muttable := unsafe { &ast.Table(g.table) }
+	muttable.used_fns['v_segmentation_fault_handler'] = true
+	muttable.used_fns['eprintln'] = true
+	muttable.used_fns['print_backtrace'] = true
+	muttable.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
