@@ -83,14 +83,18 @@ fn (t Transformer) stmt(mut node ast.Stmt) {
 
 fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match node {
-		ast.InfixExpr { return t.infix_expr(node) }
+		ast.InfixExpr {
+			return t.infix_expr(node)
+		}
 		ast.IfExpr {
 			if node.is_comptime {
 				return t.comp_if_expr(node)
 			}
 			return node
 		}
-		else { return node }
+		else {
+			return node
+		}
 	}
 }
 
@@ -103,10 +107,12 @@ fn (t Transformer) comp_if_expr(node ast.IfExpr) ast.Expr {
 				is_comptime: true
 				branches: [
 					ast.IfBranch{
-						cond: ast.BoolLiteral{val: true}
+						cond: ast.BoolLiteral{
+							val: true
+						}
 						stmts: branch.stmts
 						scope: branch.scope
-					}
+					},
 				]
 			}
 		}
