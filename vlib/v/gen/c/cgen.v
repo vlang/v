@@ -180,6 +180,7 @@ mut:
 	defer_vars         []string
 	anon_fn            bool
 	array_sort_fn      map[string]bool
+	nr_closures        int
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -381,6 +382,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		}
 	}
 	if g.anon_fn_definitions.len > 0 {
+		if g.nr_closures > 0 {
+			b.writeln('\n// V closure helpers')
+			b.writeln(c_closure_helpers())
+		}
 		for fn_def in g.anon_fn_definitions {
 			b.writeln(fn_def)
 		}
@@ -613,9 +618,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) st
 fn (mut g Gen) expr_string(expr ast.Expr) string {
 	pos := g.out.len
 	g.expr(expr)
-	expr_str := g.out.after(pos)
-	g.out.go_back(expr_str.len)
-	return expr_str.trim_space()
+	return g.out.cut_to(pos).trim_space()
 }
 
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
@@ -623,13 +626,13 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string) string {
 	pos := g.out.len
 	g.stmt_path_pos << pos
+	defer {
+		g.stmt_path_pos.delete_last()
+	}
 	g.write(prepend)
 	g.expr(expr)
 	g.write(append)
-	expr_str := g.out.after(pos)
-	g.out.go_back(expr_str.len)
-	g.stmt_path_pos.delete_last()
-	return expr_str
+	return g.out.cut_to(pos)
 }
 
 // TODO this really shouldnt be seperate from typ
@@ -823,8 +826,7 @@ pub fn (mut g Gen) write_typedef_types() {
 					if elem_sym.info is ast.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed = g.out.after(pos)
-						g.out.go_back(fixed.len)
+						fixed = g.out.cut_to(pos)
 						mut def_str := 'typedef $fixed;'
 						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
 						g.type_definitions.writeln(def_str)
@@ -2623,7 +2625,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					ret_styp := g.typ(val.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
-					g.fn_args(val.decl.params, val.decl.is_variadic, voidptr(0))
+					g.fn_args(val.decl.params, voidptr(0))
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
@@ -2764,7 +2766,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ret_styp := g.typ(func.func.return_type)
 				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_args(func.func.params, func.func.is_variadic, voidptr(0))
+				g.fn_args(func.func.params, voidptr(0))
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')')
 			} else {
@@ -3084,6 +3086,10 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					g.trace_autofree('// skipping tmp var "$obj.name"')
 					continue
 				}
+				if obj.is_inherited {
+					g.trace_autofree('// skipping inherited var "$obj.name"')
+					continue
+				}
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
@@ -3194,19 +3200,6 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 }
 
-fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
-	if !node.has_gen {
-		pos := g.out.len
-		g.anon_fn = true
-		g.stmt(node.decl)
-		g.anon_fn = false
-		fn_body := g.out.after(pos)
-		g.out.go_back(fn_body.len)
-		g.anon_fn_definitions << fn_body
-		node.has_gen = true
-	}
-}
-
 fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, string) {
 	mut hash_fn := ''
 	mut key_eq_fn := ''
@@ -3270,10 +3263,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.error('g.expr(): unhandled EmptyExpr', token.Position{})
 		}
 		ast.AnonFn {
-			// TODO: dont fiddle with buffers
-			g.gen_anon_fn_decl(mut node)
-			fsym := g.table.get_type_symbol(node.typ)
-			g.write(fsym.name)
+			g.gen_anon_fn(mut node)
 		}
 		ast.ArrayDecompose {
 			g.expr(node.expr)
@@ -4438,6 +4428,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 					return
 				}
+			}
+			if v.is_inherited {
+				g.write(closure_ctx + '->')
 			}
 		}
 	} else if node_info is ast.IdentFn {
@@ -5703,8 +5696,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 							// optional and we dont want that
 							styp, base := g.optional_type_name(field.typ)
 							if styp !in g.optionals {
-								last_text := g.type_definitions.after(start_pos).clone()
-								g.type_definitions.go_back_to(start_pos)
+								last_text := g.type_definitions.cut_to(start_pos).clone()
 								g.optionals << styp
 								g.typedefs2.writeln('typedef struct $styp $styp;')
 								g.type_definitions.writeln('${g.optional_type_text(styp,
@@ -5796,8 +5788,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 					if elem_sym.info is ast.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed_elem_name = g.out.after(pos)
-						g.out.go_back(fixed_elem_name.len)
+						fixed_elem_name = g.out.cut_to(pos)
 						mut def_str := 'typedef $fixed_elem_name;'
 						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
 						g.type_definitions.writeln(def_str)
@@ -5883,9 +5874,7 @@ fn (g &Gen) nth_stmt_pos(n int) int {
 
 fn (mut g Gen) go_before_stmt(n int) string {
 	stmt_pos := g.nth_stmt_pos(n)
-	cur_line := g.out.after(stmt_pos)
-	g.out.go_back(cur_line.len)
-	return cur_line
+	return g.out.cut_to(stmt_pos)
 }
 
 [inline]
@@ -6167,8 +6156,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		name = receiver_sym.name + '_' + name
 	} else if mut expr.left is ast.AnonFn {
 		g.gen_anon_fn_decl(mut expr.left)
-		fsym := g.table.get_type_symbol(expr.left.typ)
-		name = fsym.name
+		name = expr.left.decl.name
 	}
 	name = util.no_dots(name)
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
@@ -6465,7 +6453,7 @@ fn (mut g Gen) interface_table() string {
 				arg := method.params[i]
 				methods_struct_def.write_string(', ${g.typ(arg.typ)} $arg.name')
 			}
-			// TODO g.fn_args(method.args[1..], method.is_variadic)
+			// TODO g.fn_args(method.args[1..])
 			methods_struct_def.writeln(');')
 		}
 		methods_struct_def.writeln('};')
@@ -6603,7 +6591,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}
-					fargs, _, _ := g.fn_args(params, false, voidptr(0)) // second argument is ignored anyway
+					fargs, _, _ := g.fn_args(params, voidptr(0))
 					methods_wrapper.write_string(g.out.cut_last(g.out.len - params_start_pos))
 					methods_wrapper.writeln(') {')
 					methods_wrapper.write_string('\t')

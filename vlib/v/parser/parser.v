@@ -1784,49 +1784,49 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
-	if p.tok.kind == .name {
-		pos := p.tok.position()
-		mut name := p.check_name()
-		if name == '_' {
-			return ast.Ident{
-				tok_kind: p.tok.kind
-				name: '_'
-				comptime: p.comp_if_cond
-				kind: .blank_ident
-				pos: pos
-				info: ast.IdentVar{
-					is_mut: false
-					is_static: false
-				}
-				scope: p.scope
-			}
+	if p.tok.kind != .name {
+		p.error('unexpected token `$p.tok.lit`')
+		return ast.Ident{
+			scope: p.scope
 		}
-		if p.inside_match_body && name == 'it' {
-			// p.warn('it')
-		}
-		if p.expr_mod.len > 0 {
-			name = '${p.expr_mod}.$name'
-		}
+	}
+	pos := p.tok.position()
+	mut name := p.check_name()
+	if name == '_' {
 		return ast.Ident{
 			tok_kind: p.tok.kind
-			kind: .unresolved
-			name: name
+			name: '_'
 			comptime: p.comp_if_cond
-			language: language
-			mod: p.mod
+			kind: .blank_ident
 			pos: pos
-			is_mut: is_mut
-			mut_pos: mut_pos
 			info: ast.IdentVar{
-				is_mut: is_mut
-				is_static: is_static
-				share: ast.sharetype_from_flags(is_shared, is_atomic)
+				is_mut: false
+				is_static: false
 			}
 			scope: p.scope
 		}
 	}
-	p.error('unexpected token `$p.tok.lit`')
+	if p.inside_match_body && name == 'it' {
+		// p.warn('it')
+	}
+	if p.expr_mod.len > 0 {
+		name = '${p.expr_mod}.$name'
+	}
 	return ast.Ident{
+		tok_kind: p.tok.kind
+		kind: .unresolved
+		name: name
+		comptime: p.comp_if_cond
+		language: language
+		mod: p.mod
+		pos: pos
+		is_mut: is_mut
+		mut_pos: mut_pos
+		info: ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+			share: ast.sharetype_from_flags(is_shared, is_atomic)
+		}
 		scope: p.scope
 	}
 }

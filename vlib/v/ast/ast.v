@@ -22,8 +22,6 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
 	Return | SqlStmt | StructDecl | TypeDecl
 
-// NB: when you add a new Expr or Stmt type with a .pos field, remember to update
-// the .position() token.Position methods too.
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
@@ -353,9 +351,10 @@ pub:
 // anonymous function
 pub struct AnonFn {
 pub mut:
-	decl    FnDecl
-	typ     Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen bool // has been generated
+	decl           FnDecl
+	inherited_vars []Param
+	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	has_gen        bool // has been generated
 }
 
 // function or method declaration
@@ -498,6 +497,7 @@ pub:
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
+	is_inherited    bool
 pub mut:
 	typ        Type
 	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
@@ -1539,7 +1539,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		EmptyExpr {
+		CTempVar, EmptyExpr {
 			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
@@ -1570,9 +1570,6 @@ pub fn (expr Expr) position() token.Position {
 				col: left_pos.col
 				last_line: right_pos.last_line
 			}
-		}
-		CTempVar {
-			return token.Position{}
 		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force

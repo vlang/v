@@ -633,9 +633,11 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false
 	p.open_scope()
-	if !p.pref.backend.is_js() {
-		p.scope.detached_from_parent = true
+	defer {
+		p.close_scope()
 	}
+	p.scope.detached_from_parent = true
+	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
@@ -691,7 +693,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.label_names = tmp
 	}
 	p.cur_fn_name = keep_fn_name
-	p.close_scope()
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := ast.new_type(idx)
@@ -714,6 +715,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			scope: p.scope
 			label_names: label_names
 		}
+		inherited_vars: inherited_vars
 		typ: typ
 	}
 }
@@ -908,6 +910,50 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	}
 	p.check(.rpar)
 	return args, types_only, is_variadic
+}
+
+fn (mut p Parser) closure_vars() []ast.Param {
+	p.check(.lsbr)
+	mut vars := []ast.Param{cap: 5}
+	for {
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+		// FIXME is_shared & is_atomic aren't used further
+		if is_mut {
+			p.next()
+		}
+		var_pos := p.tok.position()
+		p.check(.name)
+		var_name := p.prev_tok.lit
+		mut var := p.scope.parent.find_var(var_name) or {
+			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.position())
+			continue
+		}
+		var.is_used = true
+		if is_mut {
+			var.is_changed = true
+		}
+		p.scope.register(ast.Var{
+			...(*var)
+			pos: var_pos
+			is_inherited: true
+			is_used: false
+			is_changed: false
+			is_mut: is_mut
+		})
+		vars << ast.Param{
+			pos: var_pos
+			name: var_name
+			is_mut: is_mut
+		}
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	p.check(.rsbr)
+	return vars
 }
 
 fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {

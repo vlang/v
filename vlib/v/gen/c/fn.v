@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module c
 
+import strings
 import v.ast
 import v.util
 
@@ -39,7 +40,6 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 		return
 	}
 	g.gen_attrs(node.attrs)
-	// g.tmp_count = 0 TODO
 	mut skip := false
 	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
@@ -166,6 +166,15 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.table.cur_fn = node
 	}
 	fn_start_pos := g.out.len
+	is_closure := node.scope.has_inherited_vars()
+	mut cur_closure_ctx := ''
+	if is_closure {
+		cur_closure_ctx = closure_ctx_struct(node)
+		// declare the struct before its implementation
+		g.definitions.write_string(cur_closure_ctx)
+		g.definitions.writeln(';')
+	}
+
 	g.write_v_source_line_info(node.pos)
 	msvc_attrs := g.write_fn_attrs(node.attrs)
 	// Live
@@ -264,7 +273,19 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes, heap_promoted := g.fn_args(node.params, node.is_variadic, node.scope)
+	fargs, fargtypes, heap_promoted := g.fn_args(node.params, node.scope)
+	if is_closure {
+		mut s := '$cur_closure_ctx *$c.closure_ctx'
+		if node.params.len > 0 {
+			s = ', ' + s
+		} else {
+			// remove generated `void`
+			g.out.cut_to(arg_start_pos)
+		}
+		g.definitions.write_string(s)
+		g.write(s)
+		g.nr_closures++
+	}
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
 		&& !g.is_test) || skip {
@@ -386,6 +407,59 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 }
 
+const closure_ctx = '_V_closure_ctx'
+
+fn closure_ctx_struct(node ast.FnDecl) string {
+	return 'struct _V_${node.name}_Ctx'
+}
+
+fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
+	g.gen_anon_fn_decl(mut node)
+	if !node.decl.scope.has_inherited_vars() {
+		g.write(node.decl.name)
+		return
+	}
+	// it may be possible to optimize `memdup` out if the closure never leaves current scope
+	ctx_var := g.new_tmp_var()
+	cur_line := g.go_before_stmt(0)
+	ctx_struct := closure_ctx_struct(node.decl)
+	g.writeln('$ctx_struct* $ctx_var = ($ctx_struct*) memdup(&($ctx_struct){')
+	g.indent++
+	for var in node.inherited_vars {
+		g.writeln('.$var.name = $var.name,')
+	}
+	g.indent--
+	g.writeln('}, sizeof($ctx_struct));')
+	g.empty_line = false
+	g.write(cur_line)
+	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
+	g.write('__closure_create($node.decl.name, ${node.decl.params.len + 1}, $ctx_var)')
+}
+
+fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
+	if node.has_gen {
+		return
+	}
+	node.has_gen = true
+	mut builder := strings.new_builder(256)
+	if node.inherited_vars.len > 0 {
+		ctx_struct := closure_ctx_struct(node.decl)
+		builder.writeln('$ctx_struct {')
+		for var in node.inherited_vars {
+			styp := g.typ(var.typ)
+			builder.writeln('\t$styp $var.name;')
+		}
+		builder.writeln('};\n')
+	}
+	pos := g.out.len
+	was_anon_fn := g.anon_fn
+	g.anon_fn = true
+	g.process_fn_decl(node.decl)
+	g.anon_fn = was_anon_fn
+	builder.write_string(g.out.cut_to(pos))
+	g.anon_fn_definitions << builder.str()
+}
+
 fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
 	return '${g.last_fn_c_name}_defer_$stmt.idx_in_fn'
 }
@@ -405,7 +479,7 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 // fn decl args
-fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]string, []string, []bool) {
+fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, []bool) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	mut heap_promoted := []bool{}
@@ -423,7 +497,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-			g.fn_args(func.params, func.is_variadic, voidptr(0))
+			g.fn_args(func.params, voidptr(0))
 			g.write(')')
 			g.definitions.write_string(')')
 			fargs << caname
