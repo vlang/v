@@ -19,6 +19,7 @@ const (
 	num_sep      = `_`
 	b_lf         = 10
 	b_cr         = 13
+	backslash    = `\\`
 )
 
 pub struct Scanner {
@@ -1111,7 +1112,6 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
-	backslash := `\\`
 	mut backslash_count := if start_char == backslash { 1 } else { 0 }
 	for {
 		s.pos++
