@@ -307,3 +307,10 @@ pub fn (d Duration) hours() f64 {
 	nsec := d % time.hour
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
 }
+
+// offset returns time zone UTC offset in seconds.
+pub fn offset() int {
+	t := now()
+	local := t.local()
+	return int(local.unix - t.unix)
+}

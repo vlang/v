@@ -119,10 +119,3 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		unix: make_unix_time(t)
 	}
 }
-
-// offset returns time zone UTC offset in seconds.
-pub fn offset() int {
-	t := now()
-	local := t.local()
-	return int(local.unix - t.unix)
-}
