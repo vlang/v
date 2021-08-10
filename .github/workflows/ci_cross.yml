@@ -71,7 +71,7 @@ jobs:
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc -I ./thirdpart/stdatomic/win /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+          x86_64-w64-mingw32-gcc -I ./thirdparty/stdatomic/win /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
           ls -lart v_from_vc.exe
           wine v_from_vc.exe version
           
