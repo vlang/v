@@ -356,7 +356,7 @@ jobs:
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
-          ../v run examples/build_examples.vsh
+          ## ../v run examples/build_examples.vsh
 
   ubuntu:
     needs: no-scheduling
