@@ -105,6 +105,7 @@ fn (t Transformer) comp_if_expr(node ast.IfExpr) ast.Expr {
 			// TODO: return ast.Block instead
 			return ast.IfExpr{
 				is_comptime: true
+				is_expr: node.is_expr
 				branches: [
 					ast.IfBranch{
 						cond: ast.BoolLiteral{
