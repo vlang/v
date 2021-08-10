@@ -1,6 +1,7 @@
 module c
 
 import strings
+import v.pref
 
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings
@@ -54,18 +55,18 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 // Heavily based on Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
-fn c_closure_helpers() string {
-	$if windows {
+fn c_closure_helpers(pref &pref.Preferences) string {
+	if pref.os == .windows {
 		verror('closures are not implemented on Windows yet')
 	}
-	$if !x64 {
-		verror('closures are not implemented on this architecture yet')
+	if pref.arch != .amd64 {
+		verror('closures are not implemented on this architecture yet: $pref.arch')
 	}
-	mut builder := strings.new_builder(1024)
-	$if !windows {
+	mut builder := strings.new_builder(2048)
+	if pref.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
-	$if x64 {
+	if pref.arch == .amd64 {
 		builder.write_string('
 static unsigned char __closure_thunk[6][13] = {
     {
@@ -101,7 +102,7 @@ static void __closure_set_function(void *closure, void *f) {
     p[-1] = f;
 }
 ')
-	$if !windows {
+	if pref.os != .windows {
 		builder.write_string('
 static void * __closure_create(void *f, int nargs, void *userdata) {
     long page_size = sysconf(_SC_PAGESIZE);
