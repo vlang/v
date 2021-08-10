@@ -124,8 +124,8 @@ mut:
 	sumtype_casting_fns    []SumtypeCastingFn
 	anon_fn_definitions    []string     // anon generated functions defination list
 	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	is_json_fn             bool     // inside json.encode()
-	json_types             []string // to avoid json gen duplicates
+	is_json_fn             bool       // inside json.encode()
+	json_types             []ast.Type // to avoid json gen duplicates
 	pcs                    []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	is_builtin_mod         bool
 	hotcode_fn_names       []string
@@ -399,8 +399,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.array_contains_types << tg.array_contains_types
 		g.array_index_types << tg.array_index_types
 		g.pcs << tg.pcs
+		g.json_types << tg.json_types
 	}
 
+	println(g.json_types)
+	g.gen_jsons()
 	g.write_optionals()
 	g.dump_expr_definitions() // this uses g.get_str_fn, so it has to go before the below for loop
 	for i := 0; i < g.str_types.len; i++ {

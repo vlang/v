@@ -505,8 +505,11 @@ fn (mut g Gen) gen_array_contains_methods() {
 		if t in done || g.table.get_type_symbol(t).has_method('contains') {
 			continue
 		}
-		done << t
 		left_final_sym := g.table.get_final_type_symbol(t)
+		if left_final_sym.idx in done {
+			continue
+		}
+		done << t
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_contains'
 		left_info := left_final_sym.info as ast.Array
