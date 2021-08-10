@@ -3299,7 +3299,6 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 					return
 				}
 			}
-			ast.Return {}
 			else {
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
@@ -6075,13 +6074,15 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					} else if node.is_expr && ret_type != expr_type {
 						if !c.check_types(ret_type, expr_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)
-							if !(node.is_expr && ret_sym.kind == .sum_type) {
+							is_noreturn := is_noreturn_callexpr(stmt.expr)
+							if !(node.is_expr && ret_sym.kind == .sum_type) && !is_noreturn {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
 									stmt.expr.position())
 							}
 						}
 					}
 				}
+				ast.Return {}
 				else {
 					if node.is_expr && ret_type != ast.void_type {
 						c.error('`match` expression requires an expression as the last statement of every branch',
