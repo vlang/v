@@ -13,7 +13,7 @@ import v.vet
 import v.errors
 
 const (
-	single_quote = `'`
+	single_quote = `\'`
 	double_quote = `"`
 	// char used as number separator
 	num_sep      = `_`
@@ -678,7 +678,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
 			if s.is_inter_start && next_char == `\\`
-				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`, `'`] {
+				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`, `\'`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -1112,7 +1112,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
-	mut backslash_count := if start_char == backslash { 1 } else { 0 }
+	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
@@ -1121,7 +1121,7 @@ fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
-		if c == backslash {
+		if c == scanner.backslash {
 			backslash_count++
 		}
 		// end of string
@@ -1139,16 +1139,16 @@ fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && prevc == backslash {
+		if c == `0` && s.pos > 2 && prevc == scanner.backslash {
 			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit())
-				|| s.count_symbol_before(s.pos - 1, backslash) % 2 == 0 {
+				|| s.count_symbol_before(s.pos - 1, scanner.backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
 		}
 		// Don't allow \x00
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
-			if s.count_symbol_before(s.pos - 3, backslash) % 2 == 0 {
+			if s.count_symbol_before(s.pos - 3, scanner.backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\x00` (NULL character) in the string literal')
 			}
@@ -1172,7 +1172,7 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
-			&& s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_enclosed_inter = true
 			// so that s.pos points to $ at the next step
@@ -1181,13 +1181,13 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
 			break
 		}
-		if c != backslash {
+		if c != scanner.backslash {
 			backslash_count = 0
 		}
 	}
