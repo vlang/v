@@ -300,4 +300,3 @@ fn test_noreturn() {
 	}
 	assert false
 }
-
