@@ -179,7 +179,7 @@ mut:
 	obf_table           map[string]string
 	// main_fn_decl_node  ast.FnDecl
 	nr_closures          int
-	array_sort_fn        shared map[string]bool
+	array_sort_fn        shared []string
 	expected_cast_type   ast.Type // for match expr of sumtypes
 	defer_vars           []string
 	anon_fn              bool
