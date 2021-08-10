@@ -158,7 +158,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		if fmt_time != .no_time {
 			dstr := t.get_fmt_date_str(fmt_dlmtr, fmt_date)
 			tstr := t.get_fmt_time_str(fmt_time)
-			return  '$dstr $tstr' 
+			return '$dstr $tstr'
 		} else {
 			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
 		}
