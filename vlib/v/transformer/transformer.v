@@ -152,7 +152,12 @@ fn (t Transformer) evaluate_comp_if_cond(cond ast.Expr) bool {
 			if cond.name == 'little_endian' && runtime.is_little_endian() {
 				return true
 			}
-			// TODO: add bitness (x64 / x32)
+			if cond.name == 'x64' && t.pref.m64 {
+				return true
+			}
+			if cond.name == 'x32' && !t.pref.m64 {
+				return true
+			}
 			if cond.name == 'debug' && t.pref.is_debug {
 				return true
 			}
