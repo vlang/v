@@ -2,6 +2,7 @@ module transformer
 
 import v.pref
 import v.ast
+import runtime
 
 pub struct Transformer {
 	pref &pref.Preferences
@@ -144,6 +145,12 @@ fn (t Transformer) evaluate_comp_if_cond(cond ast.Expr) bool {
 				if backend == t.pref.backend {
 					return true
 				}
+			}
+			if cond.name == 'big_endian' && runtime.is_big_endian() {
+				return true
+			}
+			if cond.name == 'little_endian' && runtime.is_little_endian() {
+				return true
 			}
 			// TODO: add bitness (x64 / x32)
 			if cond.name == 'debug' && t.pref.is_debug {
