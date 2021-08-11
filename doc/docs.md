@@ -2112,7 +2112,7 @@ fn main() {
 
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
-They must do so explicitely by listing all variables that are inherited.
+They must do so explicitly by listing all variables that are inherited.
 
 > Warning: currently works on Unix-based, x64 architectures only.
 Some work is in progress to make closures work on Windows, then other architectures.
@@ -2140,7 +2140,7 @@ println(func() == 1) // still true
 ```
 
 However, the variable can be modified inside the anonymous function.
-The change won't be reflected outside, be will be in the later function calls.
+The change won't be reflected outside, but will be in the later function calls.
 
 ```v
 fn new_counter() fn () int {
