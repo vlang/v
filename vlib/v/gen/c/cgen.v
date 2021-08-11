@@ -384,7 +384,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	if g.anon_fn_definitions.len > 0 {
 		if g.nr_closures > 0 {
 			b.writeln('\n// V closure helpers')
-			b.writeln(c_closure_helpers())
+			b.writeln(c_closure_helpers(g.pref))
 		}
 		for fn_def in g.anon_fn_definitions {
 			b.writeln(fn_def)
