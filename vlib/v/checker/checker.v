@@ -3372,12 +3372,10 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return ast.string_type
 	}
 
-	//
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
 	typ := c.expr(node.expr)
 	c.inside_selector_expr = old_selector_expr
-	//
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
 		c.error('`void` type has no fields', node.pos)
@@ -3390,8 +3388,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			node.pos)
 	}
 	field_name := node.field_name
-	utyp := c.unwrap_generic(typ)
-	sym := c.table.get_type_symbol(utyp)
+	sym := c.table.get_type_symbol(typ)
 	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
 		node.typ = ast.int_type
 		return ast.int_type
@@ -3447,7 +3444,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 		if typ.has_flag(.generic) && !has_field {
-			gs := c.table.get_type_symbol(typ)
+			gs := c.table.get_type_symbol(c.unwrap_generic(typ))
 			if f := c.table.find_field(gs, field_name) {
 				has_field = true
 				field = f
@@ -3473,9 +3470,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := node.scope.find_struct_field(node.expr.str(), utyp,
-					field_name)
-				{
+				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
 					return scope_field.smartcasts.last()
 				}
 			}
@@ -4183,7 +4178,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
 			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
-			&& !right_type_unwrapped.has_flag(.generic) && !left_type_unwrapped.has_flag(.generic) {
+			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow for ptr += 2
