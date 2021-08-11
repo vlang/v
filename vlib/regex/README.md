@@ -141,8 +141,8 @@ parsing source string.
 | `ab.{3} .*e` | `abccc dde` |
 The dot matches any character, until the next token match is satisfied.
 
-**Important Note:** *Consecutive dots, for example `...`, are not allowed.  This will cause a syntax error.*
-*Use a quantifier instead.*
+**Important Note:** *Consecutive dots, for example `...`, are not allowed.*
+*This will cause a syntax error. Use a quantifier instead.*
 
 ### OR token
 
