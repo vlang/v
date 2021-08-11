@@ -1175,8 +1175,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				// Do not allow empty uninitialized interfaces
 				sym := c.table.get_type_symbol(field.typ)
 				if sym.kind == .interface_ {
-					// TODO error
-					c.warn('interface field `${type_sym.name}.$field.name` must be initialized',
+					// TODO: should be an error instead, but first `ui` needs updating.
+					c.note('interface field `${type_sym.name}.$field.name` must be initialized',
 						node.pos)
 				}
 				// Do not allow empty uninitialized sum types

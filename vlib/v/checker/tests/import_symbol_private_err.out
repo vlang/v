@@ -1,3 +1,15 @@
+vlib/v/checker/tests/import_symbol_private_err.vv:11:6: notice: interface field `io.ReaderWriterImpl.r` must be initialized
+    9 |     since(now())
+   10 |     _ = {'h': 2}.exists('h')
+   11 |     _ = ReaderWriterImpl{}
+      |         ~~~~~~~~~~~~~~~~~~
+   12 | }
+vlib/v/checker/tests/import_symbol_private_err.vv:11:6: notice: interface field `io.ReaderWriterImpl.w` must be initialized
+    9 |     since(now())
+   10 |     _ = {'h': 2}.exists('h')
+   11 |     _ = ReaderWriterImpl{}
+      |         ~~~~~~~~~~~~~~~~~~
+   12 | }
 vlib/v/checker/tests/import_symbol_private_err.vv:3:20: error: module `time` function `since()` is private
     1 | import v.scanner
     2 | import v.parser
@@ -10,10 +22,10 @@ vlib/v/checker/tests/import_symbol_private_err.vv:4:13: error: module `io` type 
     3 | import time { now, since }
     4 | import io { ReaderWriterImpl }
       |             ~~~~~~~~~~~~~~~~
-    5 |
+    5 | 
     6 | fn main() {
 vlib/v/checker/tests/import_symbol_private_err.vv:7:18: error: constant `v.scanner.single_quote` is private
-    5 |
+    5 | 
     6 | fn main() {
     7 |     println(scanner.single_quote)
       |                     ~~~~~~~~~~~~
