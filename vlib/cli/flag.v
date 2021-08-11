@@ -211,8 +211,8 @@ pub fn (flags []Flag) get_strings(name string) ?[]string {
 
 // parse parses flag values from arguments and return
 // an array of arguments with all consumed elements removed.
-fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
-	if flag.matches(args, with_abbrev) {
+fn (mut flag Flag) parse(args []string, posix_mode bool) ?[]string {
+	if flag.matches(args, posix_mode) {
 		if flag.flag == .bool {
 			new_args := flag.parse_bool(args) ?
 			return new_args
@@ -231,16 +231,12 @@ fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 }
 
 // matches returns `true` if first arg in `args` matches this flag.
-fn (mut flag Flag) matches(args []string, with_abbrev bool) bool {
-	if with_abbrev {
-		return (flag.name != '' && args[0] == '--$flag.name')
-			|| (flag.name != '' && args[0].starts_with('--$flag.name='))
-			|| (flag.abbrev != '' && args[0] == '-$flag.abbrev')
-			|| (flag.abbrev != '' && args[0].starts_with('-$flag.abbrev='))
-	} else {
-		return (flag.name != '' && args[0] == '-$flag.name')
-			|| (flag.name != '' && args[0].starts_with('-$flag.name='))
-	}
+fn (mut flag Flag) matches(args []string, posix_mode bool) bool {
+	prefix := if posix_mode { '--' } else { '-' }
+	return (flag.name != '' && args[0] == '$prefix$flag.name')
+		|| (flag.name != '' && args[0].starts_with('$prefix$flag.name='))
+		|| (flag.abbrev != '' && args[0] == '-$flag.abbrev')
+		|| (flag.abbrev != '' && args[0].starts_with('-$flag.abbrev='))
 }
 
 fn (mut flag Flag) parse_raw(args []string) ?[]string {
@@ -287,16 +283,6 @@ fn (flags []Flag) contains(name string) bool {
 		}
 	}
 	return false
-}
-
-fn (flags []Flag) have_abbrev() bool {
-	mut have_abbrev := false
-	for flag in flags {
-		if flag.abbrev != '' {
-			have_abbrev = true
-		}
-	}
-	return have_abbrev
 }
 
 // Check if value is set by command line option. If not, return default value.
