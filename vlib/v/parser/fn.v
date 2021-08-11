@@ -203,7 +203,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	conditional_ctdefine_idx := p.attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
-	pub_pos := p.tok.position()
 	if is_pub {
 		p.next()
 	}
@@ -223,9 +222,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				p.error_with_pos('interop function cannot be exported', fna.pos)
 				break
 			}
-		}
-		if is_pub {
-			p.error_with_pos('interop function cannot be public', pub_pos)
 		}
 	}
 	if is_keep_alive && language != .c {
