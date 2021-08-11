@@ -10,10 +10,10 @@ vlib/v/checker/tests/import_symbol_private_err.vv:4:13: error: module `io` type 
     3 | import time { now, since }
     4 | import io { ReaderWriterImpl }
       |             ~~~~~~~~~~~~~~~~
-    5 |
+    5 | 
     6 | fn main() {
 vlib/v/checker/tests/import_symbol_private_err.vv:7:18: error: constant `v.scanner.single_quote` is private
-    5 |
+    5 | 
     6 | fn main() {
     7 |     println(scanner.single_quote)
       |                     ~~~~~~~~~~~~

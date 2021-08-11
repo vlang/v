@@ -1,3 +1,0 @@
-fn C.printf(s string) {
-
-}
