@@ -327,6 +327,7 @@ pub fn (mut g JsGen) init() {
 		g.definitions.writeln('const \$os = require("os");')
 		g.definitions.writeln('const \$process = process;')
 	}
+	g.definitions.writeln('function alias(value) { return value; } ')
 }
 
 pub fn (g JsGen) hashes() string {
@@ -406,13 +407,41 @@ fn (mut g JsGen) get_alias(name string) string {
 
 fn (mut g JsGen) js_name(name_ string) string {
 	mut is_js := false
+	is_overload := ['+', '-', '*', '/', '==', '<', '>']
 	mut name := name_
 	if name.starts_with('JS.') {
 		name = name[3..]
 		is_js = true
 	}
 	ns := get_ns(name)
-	name = if g.ns == 0 {
+	name = if name in is_overload {
+		match name {
+			'+' {
+				'\$add'
+			}
+			'-' {
+				'\$sub'
+			}
+			'/' {
+				'\$div'
+			}
+			'*' {
+				'\$mul'
+			}
+			'==' {
+				'eq'
+			}
+			'>' {
+				'\$gt'
+			}
+			'<' {
+				'\$lt'
+			}
+			else {
+				''
+			}
+		}
+	} else if g.ns == 0 {
 		name
 	} else if ns == g.ns.name {
 		name.split('.').last()
