@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-// import gx
 // import sokol.sapp
+import gx
 import sokol.gfx
 import os
 import sokol
@@ -37,6 +37,7 @@ pub:
 	part_rect Rect // defines the size and position of part of the image to use when rendering
 	rotate    int  // amount to rotate the image in degrees
 	z         f32
+	color     gx.Color = gx.white
 }
 
 pub struct Rect {
@@ -303,7 +304,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	}
 
 	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
+	sgl.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
 	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
 	sgl.v3f_t2f(x1, y0, config.z, u1f, v0f)
 	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
