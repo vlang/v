@@ -441,6 +441,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
 	// URL path should be at least as long as the route path
+	// except for the catchall route (`/:path...`)
+	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
+		return ['/' + url_words.join('/')]
+	}
 	if url_words.len < route_words.len {
 		return none
 	}
