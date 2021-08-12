@@ -155,3 +155,8 @@ fn bare_backtrace() string {
 fn __exit(code int) {
 	sys_exit(code)
 }
+
+[export: 'qsort']
+fn __qsort(base voidptr, nmemb size_t, size size_t, sort_cb FnSortCB) {
+	panic('qsort() is not yet implemented in `-freestanding`')
+}

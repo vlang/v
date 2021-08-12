@@ -36,9 +36,14 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			}
 			mut allowed := false
 			for cdefine in prefs.compile_defines {
-				file_postfix := '_d_${cdefine}.v'
-				if file.ends_with(file_postfix) {
-					allowed = true
+				file_postfixes := ['_d_${cdefine}.v', '_d_${cdefine}.c.v']
+				for file_postfix in file_postfixes {
+					if file.ends_with(file_postfix) {
+						allowed = true
+						break
+					}
+				}
+				if allowed {
 					break
 				}
 			}
@@ -49,9 +54,14 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.contains('_notd_') {
 			mut allowed := true
 			for cdefine in prefs.compile_defines {
-				file_postfix := '_notd_${cdefine}.v'
-				if file.ends_with(file_postfix) {
-					allowed = false
+				file_postfixes := ['_notd_${cdefine}.v', '_notd_${cdefine}.c.v']
+				for file_postfix in file_postfixes {
+					if file.ends_with(file_postfix) {
+						allowed = false
+						break
+					}
+				}
+				if !allowed {
 					break
 				}
 			}
@@ -142,27 +152,28 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
+	if prefs.os == .windows && (file.ends_with('_nix.c.v') || file.ends_with('_nix.v')) {
+		return false
+	}
 	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
+	//
 	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
+	//
 	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
-		return false
-	}
-	if (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) && prefs.os != .ios {
-		return false
-	}
-	if file.ends_with('_nix.c.v') && prefs.os == .windows {
 		return false
 	}
 	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	if prefs.os == .windows && file.ends_with('_nix.c.v') {
+	//
+	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}
+	//
 	if prefs.os != .android && file.ends_with('_android.c.v') {
 		return false
 	}
