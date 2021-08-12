@@ -3,7 +3,7 @@ struct Test<T> {
 }
 
 fn get_test<T>(v T) Test<T> {
-	return Test{
+	return Test<T>{
 		v: v
 	}
 }
