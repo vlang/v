@@ -33,7 +33,6 @@ fn (mut g Gen) gen_jsons() {
 	for {
 		i++
 		if i >= g.json_types.len {
-			println('>>$g.json_types, $g.json_types.len, $i')
 			break
 		}
 		println('$g.json_types, $g.json_types.len, $i')

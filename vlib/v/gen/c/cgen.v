@@ -402,7 +402,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.json_types << tg.json_types
 	}
 
-	println(g.json_types)
 	g.gen_jsons()
 	g.write_optionals()
 	g.dump_expr_definitions() // this uses g.get_str_fn, so it has to go before the below for loop
