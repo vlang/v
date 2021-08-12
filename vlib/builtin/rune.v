@@ -55,7 +55,7 @@ pub fn (b []byte) clone() []byte {
 pub fn (b []byte) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)
-		C.memcpy(buf, b.data, b.len)
+		vmemcpy(buf, b.data, b.len)
 		buf[b.len] = 0
 		return tos(buf, b.len)
 	}
