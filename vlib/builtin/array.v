@@ -71,7 +71,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	unsafe { C.memcpy(arr.data, c_array, len * elm_size) }
+	unsafe { vmemcpy(arr.data, c_array, len * elm_size) }
 	return arr
 }
 
@@ -98,7 +98,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	new_data := vcalloc(new_size)
 	if a.data != voidptr(0) {
-		unsafe { C.memcpy(new_data, a.data, a.len * a.element_size) }
+		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
 	a.data = new_data
@@ -136,9 +136,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		for i in 0 .. count {
 			if depth > 0 {
 				ary_clone := unsafe { a.clone_to_depth(depth) }
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 			} else {
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 			}
 		}
 	}
@@ -150,7 +150,7 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		C.qsort(mut a.data, a.len, a.element_size, compare)
+		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), compare) }
 	}
 }
 
@@ -163,7 +163,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	}
 	a.ensure_cap(a.len + 1)
 	unsafe {
-		C.memmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
+		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
 		a.set_unsafe(i, val)
 	}
 	a.len++
@@ -181,8 +181,8 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
-		C.memmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
-		C.memcpy(iptr, val, size * elem_size)
+		vmemmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
+		vmemcpy(iptr, val, size * elem_size)
 	}
 	a.len += size
 }
@@ -217,9 +217,9 @@ pub fn (mut a array) delete_many(i int, size int) {
 	new_size := a.len - size
 	new_cap := if new_size == 0 { 1 } else { new_size }
 	a.data = vcalloc(new_cap * a.element_size)
-	unsafe { C.memcpy(a.data, old_data, i * a.element_size) }
+	unsafe { vmemcpy(a.data, old_data, i * a.element_size) }
 	unsafe {
-		C.memcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
+		vmemcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
 			(a.len - i - size) * a.element_size)
 	}
 	a.len = new_size
@@ -385,14 +385,14 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
 	} else {
 		if !isnil(a.data) {
-			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
+			unsafe { vmemcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
 	}
@@ -401,7 +401,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 // we manually inline this for single operations for performance without -prod
 [inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
-	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 // Private function. Used to implement assigment to the array element.
@@ -411,12 +411,12 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	unsafe { C.memmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
@@ -429,13 +429,13 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
 		unsafe {
-			// C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-			C.memcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
+			// vmemcpy(a.data, copy.data, copy.element_size * copy.len)
+			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
 		}
 	} else {
 		a3.ensure_cap(a3.len + size)
 		if !isnil(a3.data) && !isnil(val) {
-			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
+			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
 	a3.len += size
@@ -449,10 +449,10 @@ pub fn (mut a array) reverse_in_place() {
 	unsafe {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
-			C.memcpy(tmp_value, &byte(a.data) + i * a.element_size, a.element_size)
-			C.memcpy(&byte(a.data) + i * a.element_size, &byte(a.data) +
+			vmemcpy(tmp_value, &byte(a.data) + i * a.element_size, a.element_size)
+			vmemcpy(&byte(a.data) + i * a.element_size, &byte(a.data) +
 				(a.len - 1 - i) * a.element_size, a.element_size)
-			C.memcpy(&byte(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
+			vmemcpy(&byte(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
 		}
 		free(tmp_value)
 	}
@@ -587,7 +587,7 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst []byte, src []byte) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { C.memcpy(&byte(dst.data), src.data, min) }
+		unsafe { vmemcpy(&byte(dst.data), src.data, min) }
 	}
 	return min
 }
