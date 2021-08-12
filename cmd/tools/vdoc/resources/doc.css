@@ -366,7 +366,8 @@ body {
 }
 .doc-content p {
   font-size: 1rem;
-  line-height: 1.4;
+  line-height: 1.6;
+  letter-spacing: 0.025em;
 }
 .doc-content a {
   color: #2779bd;
@@ -546,7 +547,7 @@ pre code {
   color: var(--code-default-text-color);
   font-size: 0.948em;
   text-shadow: none;
-  font-family: 'Jetbrains Mono', monospace;
+  font-family: "Jetbrains Mono", monospace;
   background-color: #edf2f7;
   background-color: var(--code-background-color);
   border-radius: 0.25rem;
