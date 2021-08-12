@@ -2462,6 +2462,15 @@ v install [module]
 v install ui
 ```
 
+Modules could install directly from git or mercurial repositories.
+```powershell
+v install [--git|--hg] [url]
+```
+**Example:**
+```powershell
+v install --git https://github.com/vlang/markdown
+```
+
 Removing a module with v:
 
 ```powershell
