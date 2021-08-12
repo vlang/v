@@ -57,7 +57,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.map_init()
 				p.check(.rcbr) // `}`
 			} else {
-				if p.inside_if && p.is_generic_name() {
+				if p.inside_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
 					p.expecting_type = true
 				}
