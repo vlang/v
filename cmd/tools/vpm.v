@@ -224,15 +224,26 @@ fn vpm_install_from_git(module_names []string) {
 	for n in module_names {
 		url := n.trim_space()
 
-		cut_pos := url.last_index('/') or {
+		first_cut_pos := url.last_index('/') or {
 			errors++
 			println('Errors while retrieving name for module $url:')
 			println(err)
 			continue
 		}
-		name := url.substr(cut_pos + 1, url.len)
+
+		mod_name := url.substr(first_cut_pos + 1, url.len)
+
+		second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+
+		repo_name := url.substr(second_cut_pos + 1, first_cut_pos)
+		mut name := repo_name + os.path_separator + mod_name
 		mod_name_as_path := name.replace('-', '_').to_lower()
-		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
+		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
 			vpm_update([name.replace('-', '_')])
 			continue
@@ -249,6 +260,26 @@ fn vpm_install_from_git(module_names []string) {
 			verbose_println('Failed command output:\n$cmdres.output')
 			continue
 		}
+		vmod_path := os.join_path(final_module_path, 'v.mod')
+		if os.exists(vmod_path) {
+			data := os.read_file(vmod_path) or { return }
+			vmod := parse_vmod(data)
+			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name))
+			os.mv(final_module_path, mod_path) or {
+				errors++
+				println('Errors while relocating module $name files:')
+				println(err)
+				os.rmdir_all(final_module_path) or {
+					errors++
+					println('Errors while removing $final_module_path directories :')
+					println(err)
+					continue
+				}
+				continue
+			}
+			final_module_path = mod_path
+			name = vmod.name
+		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
 	if errors > 0 {
@@ -261,15 +292,26 @@ fn vpm_install_from_hg(module_names []string) {
 	for n in module_names {
 		url := n.trim_space()
 
-		cut_pos := url.last_index('/') or {
+		first_cut_pos := url.last_index('/') or {
 			errors++
 			println('Errors while retrieving name for module $url:')
 			println(err)
 			continue
 		}
-		name := url.substr(cut_pos + 1, url.len)
+
+		mod_name := url.substr(first_cut_pos + 1, url.len)
+
+		second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+
+		repo_name := url.substr(second_cut_pos + 1, first_cut_pos)
+		mut name := repo_name + os.path_separator + mod_name
 		mod_name_as_path := name.replace('-', '_').to_lower()
-		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
+		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
 			vpm_update([name.replace('-', '_')])
 			continue
@@ -285,6 +327,26 @@ fn vpm_install_from_hg(module_names []string) {
 			verbose_println('Failed command: $cmd')
 			verbose_println('Failed command output:\n$cmdres.output')
 			continue
+		}
+		vmod_path := os.join_path(final_module_path, 'v.mod')
+		if os.exists(vmod_path) {
+			data := os.read_file(vmod_path) or { return }
+			vmod := parse_vmod(data)
+			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name))
+			os.mv(final_module_path, mod_path) or {
+				errors++
+				println('Errors while relocating module $name files:')
+				println(err)
+				os.rmdir_all(final_module_path) or {
+					errors++
+					println('Errors while removing $final_module_path directories :')
+					println(err)
+					continue
+				}
+				continue
+			}
+			final_module_path = mod_path
+			name = vmod.name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
