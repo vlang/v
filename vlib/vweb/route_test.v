@@ -268,3 +268,15 @@ fn test_route_params_array() {
 		route: '/:a/:b/:c...'
 	}.test_param(['one', 'two', 'three/d/e'])
 }
+
+fn test_route_index_path() {
+	RoutePair{
+		url: '/'
+		route: '/:path...'
+	}.test_param(['/'])
+
+	RoutePair{
+		url: '/foo/bar'
+		route: '/:path...'
+	}.test_param(['/foo/bar'])
+}
