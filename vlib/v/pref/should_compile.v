@@ -7,7 +7,6 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	mut files := files_.clone()
 	files.sort()
 	mut all_v_files := []string{}
-	dump(prefs.backend)
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
