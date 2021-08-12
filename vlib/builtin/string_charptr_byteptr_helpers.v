@@ -36,7 +36,7 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 pub fn (cp charptr) vstring() string {
 	return string{
 		str: byteptr(cp)
-		len: unsafe { vstrlen(cp) }
+		len: unsafe { vstrlen_char(cp) }
 		is_lit: 0
 	}
 }
