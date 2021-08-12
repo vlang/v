@@ -17,15 +17,15 @@ const (
 	excluded_dirs             = ['cache', 'vlib']
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
-	supported_vcs_update_cmds = {
+	supported_vcs_update_cmds = map{
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds = {
+	supported_vcs_install_cmds = map{
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
-	supported_vcs_outdated_steps = {
+	supported_vcs_outdated_steps = map{
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
@@ -46,12 +46,19 @@ mut:
 	deps    []string
 }
 
+enum Source {
+	git
+	hg
+	vpm
+}
+
 fn main() {
 	init_settings()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
+	options := cmdline.only_options(os.args[1..])
 	verbose_println('cli params: $params')
 	if params.len < 1 {
 		vpm_help()
@@ -74,7 +81,15 @@ fn main() {
 				manifest := vmod.from_file('./v.mod') or { panic(err) }
 				module_names = manifest.dependencies
 			}
-			vpm_install(module_names)
+			mut source := Source.vpm
+			if '--git' in options {
+				source = Source.git
+			}
+			if '--hg' in options {
+				source = Source.hg
+			}
+
+			vpm_install(module_names, source)
 		}
 		'update' {
 			vpm_update(module_names)
@@ -159,15 +174,7 @@ fn vpm_search(keywords []string) {
 	}
 }
 
-fn vpm_install(module_names []string) {
-	if settings.is_help {
-		vhelp.show_topic('install')
-		exit(0)
-	}
-	if module_names.len == 0 {
-		println('´v install´ requires *at least one* module name.')
-		exit(2)
-	}
+fn vpm_install_from_vpm(module_names []string) {
 	mut errors := 0
 	for n in module_names {
 		name := n.trim_space().replace('_', '-')
@@ -186,6 +193,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
+
 		mod_name_as_path := mod.name.replace('.', os.path_separator).replace('-', '_').to_lower()
 		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
@@ -208,6 +216,101 @@ fn vpm_install(module_names []string) {
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn vpm_install_from_git(module_names []string) {
+	mut errors := 0
+	for n in module_names {
+		url := n.trim_space()
+
+		cut_pos := url.last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+		name := url.substr(cut_pos + 1, url.len)
+		mod_name_as_path := name.replace('-', '_').to_lower()
+		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
+		if os.exists(final_module_path) {
+			vpm_update([name.replace('-', '_')])
+			continue
+		}
+		println('Installing module "$name" from $url to $final_module_path ...')
+		vcs_install_cmd := supported_vcs_install_cmds['git']
+		cmd := '$vcs_install_cmd "$url" "$final_module_path"'
+		verbose_println('      command: $cmd')
+		cmdres := os.execute(cmd)
+		if cmdres.exit_code != 0 {
+			errors++
+			println('Failed installing module "$name" to "$final_module_path" .')
+			verbose_println('Failed command: $cmd')
+			verbose_println('Failed command output:\n$cmdres.output')
+			continue
+		}
+		resolve_dependencies(name, final_module_path, module_names)
+	}
+	if errors > 0 {
+		exit(1)
+	}
+}
+
+fn vpm_install_from_hg(module_names []string) {
+	mut errors := 0
+	for n in module_names {
+		url := n.trim_space()
+
+		cut_pos := url.last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+		name := url.substr(cut_pos + 1, url.len)
+		mod_name_as_path := name.replace('-', '_').to_lower()
+		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
+		if os.exists(final_module_path) {
+			vpm_update([name.replace('-', '_')])
+			continue
+		}
+		println('Installing module "$name" from $url to $final_module_path ...')
+		vcs_install_cmd := supported_vcs_install_cmds['hg']
+		cmd := '$vcs_install_cmd "$url" "$final_module_path"'
+		verbose_println('      command: $cmd')
+		cmdres := os.execute(cmd)
+		if cmdres.exit_code != 0 {
+			errors++
+			println('Failed installing module "$name" to "$final_module_path" .')
+			verbose_println('Failed command: $cmd')
+			verbose_println('Failed command output:\n$cmdres.output')
+			continue
+		}
+		resolve_dependencies(name, final_module_path, module_names)
+	}
+	if errors > 0 {
+		exit(1)
+	}
+}
+
+fn vpm_install(module_names []string, source Source) {
+	if settings.is_help {
+		vhelp.show_topic('install')
+		exit(0)
+	}
+	if module_names.len == 0 {
+		println('´v install´ requires *at least one* module name.')
+		exit(2)
+	}
+
+	if source == .vpm {
+		vpm_install_from_vpm(module_names)
+	}
+	if source == .git {
+		vpm_install_from_git(module_names)
+	}
+	if source == .hg {
+		vpm_install_from_hg(module_names)
 	}
 }
 
@@ -461,13 +564,13 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	if deps.len > 0 {
 		println('Resolving $deps.len dependencies for module "$name"...')
 		verbose_println('Found dependencies: $deps')
-		vpm_install(deps)
+		vpm_install(deps, Source.vpm)
 	}
 }
 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
-	mut m := {
+	mut m := map{
 		'name':    ''
 		'version': ''
 		'deps':    ''
