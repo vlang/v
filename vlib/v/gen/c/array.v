@@ -506,9 +506,6 @@ fn (mut g Gen) gen_array_contains_methods() {
 			continue
 		}
 		left_final_sym := g.table.get_final_type_symbol(t)
-		if left_final_sym.idx in done {
-			continue
-		}
 		done << t
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_contains'

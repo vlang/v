@@ -31,6 +31,10 @@ fn (mut g Gen) gen_jsons() {
 	done := []ast.Type{}
 
 	for utyp in g.json_types {
+		done << utyp
+		if utyp in done {
+			continue
+		}
 		mut dec := strings.new_builder(100)
 		mut enc := strings.new_builder(100)
 		sym := g.table.get_type_symbol(utyp)
