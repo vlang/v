@@ -265,7 +265,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			data := os.read_file(vmod_path) or { return }
 			vmod := parse_vmod(data)
 			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name))
-			println('Relocationg module from "$name" to "$vmod.name" ...')
+			println('Relocating module from "$name" to "$vmod.name" ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
 				println('Removing module "$mod_path" ...')
@@ -575,24 +575,11 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 }
 
 fn parse_vmod(data string) Vmod {
-	keys := ['name', 'version', 'deps']
-	mut m := {
-		'name':    ''
-		'version': ''
-		'deps':    ''
-	}
-	for key in keys {
-		mut key_index := data.index('$key:') or { continue }
-		key_index += key.len + 1
-		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'",
-			'').replace('[', '').replace(']', '')
-	}
+	manifest := vmod.decode(data) or { vmod.Manifest{} }
 	mut vmod := Vmod{}
-	vmod.name = m['name']
-	vmod.version = m['version']
-	if m['deps'].len > 0 {
-		vmod.deps = m['deps'].split(',')
-	}
+	vmod.name = manifest.name
+	vmod.version = manifest.version
+	vmod.deps = manifest.dependencies
 	return vmod
 }
 
