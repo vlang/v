@@ -23,7 +23,7 @@ fn make_any<T>(obj T) Any {
 }
 
 fn cast<T>(obj Any) ?T {
-	if int(T) == obj.typ {
+	if T.typ == obj.typ {
 		return *&T(obj.data)
 	}
 	return none
