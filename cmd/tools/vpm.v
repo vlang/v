@@ -264,8 +264,9 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		if os.exists(vmod_path) {
 			data := os.read_file(vmod_path) or { return }
 			vmod := parse_vmod(data)
-			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name))
-			println('Relocating module from "$name" to "$vmod.name" ...')
+			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name.replace('.',
+				os.path_separator)))
+			println('Relocating module from "$name" to "$vmod.name" ( $mod_path ) ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
 				println('Removing module "$mod_path" ...')
