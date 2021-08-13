@@ -2,9 +2,7 @@ module sapp
 
 import sokol.gfx
 
-pub const (
-	used_import = gfx.used_import
-)
+pub const used_import = gfx.used_import
 
 // Android needs a global reference to `g_desc`
 __global (

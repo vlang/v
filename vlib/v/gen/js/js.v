@@ -428,6 +428,9 @@ fn (mut g JsGen) js_name(name_ string) string {
 			'*' {
 				'\$mul'
 			}
+			'%' {
+				'\$mod'
+			}
 			'==' {
 				'eq'
 			}
@@ -1769,8 +1772,14 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	}
 
 	if it.op == .eq || it.op == .ne {
-		// Shallow equatables
-		if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
+		has_operator_overloading := g.table.type_has_method(l_sym, '==')
+		if has_operator_overloading {
+			g.expr(it.left)
+			g.write('.eq(')
+			g.expr(it.right)
+			g.write(')')
+			// Shallow equatables
+		} else if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
 			// wrap left expr in parens so binary operations will work correctly.
 			g.write('(')
 			g.expr(it.left)
@@ -1816,35 +1825,79 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.left)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
+	} else if it.op in [.lt, .gt, .ge, .le] && g.table.type_has_method(l_sym, '<')
+		&& l_sym.kind == r_sym.kind {
+		if it.op in [.le, .ge] {
+			g.write('!')
+		}
+		if it.op in [.lt, .ge] {
+			g.expr(it.left)
+			g.write('.\$lt (')
+			g.expr(it.right)
+			g.write(')')
+		} else {
+			g.expr(it.right)
+			g.write('.\$lt (')
+			g.expr(it.left)
+			g.write(')')
+		}
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
-
-		mut greater_typ := 0
-		// todo(playX): looks like this cast is always required to perform .eq operation on types.
-		if is_arithmetic {
-			greater_typ = g.greater_typ(it.left_type, it.right_type)
-			if g.cast_stack.len > 0 {
-				// needs_cast = g.cast_stack.last() != greater_typ
+		has_operator_overloading := g.table.type_has_method(l_sym, it.op.str())
+		if has_operator_overloading {
+			g.expr(it.left)
+			name := match it.op.str() {
+				'+' {
+					'\$add'
+				}
+				'-' {
+					'\$sub'
+				}
+				'/' {
+					'\$div'
+				}
+				'*' {
+					'\$mul'
+				}
+				'%' {
+					'\$mod'
+				}
+				else {
+					panic('unreachable')
+					''
+				}
 			}
-		}
-
-		if is_arithmetic {
-			if g.ns.name == 'builtin' {
-				g.write('new ')
-			}
-			g.write('${g.typ(greater_typ)}(')
-			g.cast_stack << greater_typ
-		}
-
-		g.expr(it.left)
-
-		g.write(' $it.op ')
-
-		g.expr(it.right)
-
-		if is_arithmetic {
-			g.cast_stack.delete_last()
+			g.write('.$name (')
+			g.expr(it.right)
 			g.write(')')
+		} else {
+			mut greater_typ := 0
+			// todo(playX): looks like this cast is always required to perform .eq operation on types.
+			if is_arithmetic {
+				greater_typ = g.greater_typ(it.left_type, it.right_type)
+				if g.cast_stack.len > 0 {
+					// needs_cast = g.cast_stack.last() != greater_typ
+				}
+			}
+
+			if is_arithmetic {
+				if g.ns.name == 'builtin' {
+					g.write('new ')
+				}
+				g.write('${g.typ(greater_typ)}(')
+				g.cast_stack << greater_typ
+			}
+
+			g.expr(it.left)
+
+			g.write(' $it.op ')
+
+			g.expr(it.right)
+
+			if is_arithmetic {
+				g.cast_stack.delete_last()
+				g.write(')')
+			}
 		}
 	}
 

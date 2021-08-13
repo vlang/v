@@ -224,7 +224,7 @@ fn C.GetUserNameW(&u16, &u32) bool
 [trusted]
 fn C.SendMessageTimeout() u32
 
-fn C.SendMessageTimeoutW(hWnd voidptr, Msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
+fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
 
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
 
@@ -323,7 +323,7 @@ fn C.FindClose(hFindFile voidptr)
 // macro
 fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
-fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, Arguments ...voidptr) voidptr
+fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, arguments ...voidptr) voidptr
 
 fn C.CloseHandle(voidptr) int
 

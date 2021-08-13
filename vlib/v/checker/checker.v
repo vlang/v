@@ -960,7 +960,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	unwrapped_struct_type := c.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
 		c.table.cur_concrete_types)
 	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
-	type_sym := c.table.get_type_symbol(unwrapped_struct_type)
+	type_sym := c.table.get_type_symbol(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
 		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
 	}
@@ -1091,7 +1091,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if is_embed {
 					expected_type = embed_type
 					c.expected_type = expected_type
-					expr_type = c.unwrap_generic(c.expr(field.expr))
+					expr_type = c.expr(field.expr)
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
@@ -1106,7 +1106,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					field_type_sym := c.table.get_type_symbol(field_info.typ)
 					expected_type = field_info.typ
 					c.expected_type = expected_type
-					expr_type = c.unwrap_generic(c.expr(field.expr))
+					expr_type = c.expr(field.expr)
 					if !field_info.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
@@ -1228,7 +1228,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			c.error('expression is not an lvalue', node.update_expr.position())
 		}
 	}
-	return unwrapped_struct_type
+	return node.typ
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {

@@ -101,6 +101,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 }
 
 fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
+	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
@@ -121,7 +122,29 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			g.write(ctoslit('$sym.name'))
 		}
 		else {
+			mut should_clone := true
+			if typ == ast.string_type && expr is ast.StringLiteral {
+				should_clone = false
+			}
+			if expr is ast.CTempVar {
+				if expr.orig is ast.CallExpr {
+					should_clone = false
+					if expr.orig.or_block.kind == .propagate {
+						should_clone = true
+					}
+					if expr.orig.is_method && expr.orig.args.len == 0
+						&& expr.orig.name == 'type_name' {
+						should_clone = true
+					}
+				}
+			}
+			if should_clone {
+				g.write('string_clone(')
+			}
 			g.gen_expr_to_string(expr, typ)
+			if should_clone {
+				g.write(')')
+			}
 		}
 	}
 	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')

@@ -1,6 +1,6 @@
 import encoding.base64
 
-fn test_long_encoding() {
+fn main() {
 	repeats := 1000
 	input_size := 3000
 
