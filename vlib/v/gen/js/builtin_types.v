@@ -299,7 +299,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64', 'int_literal', 'size_t' {
+			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal', 'size_t' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
 					typ_name: typ_name
@@ -309,6 +309,29 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					to_string: 'this.valueOf().toString()'
 					eq: 'this.valueOf() === other.valueOf()'
 					to_jsval: '+this'
+				)
+			}
+			// u64 and i64 are so big that their values do not fit into JS number so we use BigInt.
+			'u64' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'BigInt(0)'
+					constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
+					value_of: 'this.val'
+					to_string: 'this.val.toString()'
+					eq: 'this.valueOf() === other.valueOf()'
+					to_jsval: 'this.val'
+				)
+			}
+			'i64' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'BigInt(0)'
+					constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
+					value_of: 'this.val'
+					to_string: 'this.val.toString()'
+					eq: 'this.valueOf() === other.valueOf()'
+					to_jsval: 'this.val'
 				)
 			}
 			'byte' {

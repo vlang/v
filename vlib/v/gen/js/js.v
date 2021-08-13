@@ -1770,7 +1770,30 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	if is_not {
 		g.write('!(')
 	}
-
+	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+	if is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
+		// if left or right is i64 or u64 we convert them to bigint to perform operation.
+		greater_typ := g.greater_typ(it.left_type, it.right_type)
+		if g.ns.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write('${g.typ(greater_typ)}(')
+		g.cast_stack << greater_typ
+		g.write('BigInt((')
+		g.expr(it.left)
+		g.write(').\$toJS())')
+		g.write(' $it.op ')
+		g.write('BigInt((')
+		g.expr(it.right)
+		g.write(').\$toJS())')
+		g.cast_stack.delete_last()
+		g.write(')')
+		if is_not {
+			g.write(')')
+		}
+		return
+	}
 	if it.op == .eq || it.op == .ne {
 		has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
@@ -1842,7 +1865,6 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else {
-		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		has_operator_overloading := g.table.type_has_method(l_sym, it.op.str())
 		if has_operator_overloading {
 			g.expr(it.left)
@@ -1926,7 +1948,9 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 	}
 	should_int := (l in ast.integer_type_idxs && r in ast.integer_type_idxs)
 	if should_int {
-		// cant add to u64 - if (ast.u64_type_idx in lr) { return ast.Type(ast.u64_type_idx) }
+		if ast.u64_type_idx in lr {
+			return ast.Type(ast.u64_type_idx)
+		}
 		// just guessing this order
 		if ast.i64_type_idx in lr {
 			return ast.Type(ast.i64_type_idx)
@@ -2099,8 +2123,20 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in ast.integer_type_idxs)
 		|| (it.expr is ast.FloatLiteral && it.typ in ast.float_type_idxs))
 	// Skip cast if type is the same as the parrent caster
+	tsym := g.table.get_type_symbol(it.typ)
+	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
+		if g.ns.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write(tsym.kind.str())
+		g.write('(BigInt(')
+		g.write(it.expr.val)
+		g.write('n))')
+		return
+	}
 	if g.cast_stack.len > 0 && is_literal {
 		if it.typ == g.cast_stack[g.cast_stack.len - 1] {
+			g.expr(it.expr)
 			return
 		}
 	}
