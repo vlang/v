@@ -127,7 +127,7 @@ fn is_alnum(in_char byte) bool {
 	if tmp <= 9 {
 		return true
 	}
-	if tmp == `_` {
+	if in_char == `_` {
 		return true
 	}
 	return false
