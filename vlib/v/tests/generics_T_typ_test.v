@@ -6,14 +6,10 @@ mut:
 	typ  int
 }
 
-fn (mut a Any) set_typ(typ int) bool {
-	a.typ = typ
-	return true
-}
-
 fn make_any<T>(obj T) Any {
-	mut a := Any{}
-	a.set_typ(T.typ)
+	mut a := Any{
+		typ: T.typ
+	}
 	unsafe {
 		data := malloc(int(sizeof(T)))
 		vmemcpy(data, &obj, int(sizeof(T)))
