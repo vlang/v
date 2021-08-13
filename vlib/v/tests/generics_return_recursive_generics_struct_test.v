@@ -5,7 +5,7 @@ mut:
 }
 
 fn make_node<T>(val []T) Node<T> {
-	return Node{
+	return Node<T>{
 		val: val[0]
 		next: 0
 	}

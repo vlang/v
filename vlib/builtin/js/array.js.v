@@ -234,3 +234,8 @@ pub fn (a array) contains(key voidptr) bool {
 
 	return false
 }
+
+// delete_last effectively removes last element of an array.
+pub fn (mut a array) delete_last() {
+	#a.arr.pop();
+}

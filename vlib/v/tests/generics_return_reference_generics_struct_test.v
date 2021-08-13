@@ -3,7 +3,7 @@ struct Foo<T> {
 }
 
 fn new_foo<T>(len int) &Foo<T> {
-	return &Foo{
+	return &Foo<T>{
 		data: []T{len: len}
 	}
 }

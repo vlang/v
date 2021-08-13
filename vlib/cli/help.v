@@ -78,7 +78,9 @@ fn (cmd Command) help_message() string {
 	mut name_len := cli.min_description_indent_len
 	if cmd.posix_mode {
 		for flag in cmd.flags {
-			abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			if flag.abbrev != '' {
+				abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			}
 			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 2) // + 2 for '--' in front
 		}
 		for command in cmd.commands {
@@ -86,6 +88,9 @@ fn (cmd Command) help_message() string {
 		}
 	} else {
 		for flag in cmd.flags {
+			if flag.abbrev != '' {
+				abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			}
 			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 1) // + 1 for '-' in front
 		}
 		for command in cmd.commands {

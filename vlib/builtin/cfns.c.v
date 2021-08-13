@@ -1,11 +1,13 @@
 module builtin
 
 // <string.h>
-fn C.memcpy(dest &byte, src &byte, n int) voidptr
+fn C.memcpy(dest voidptr, const_src voidptr, n size_t) voidptr
 
-fn C.memcmp(&byte, &byte, int) int
+fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n size_t) int
 
-fn C.memmove(&byte, &byte, int) voidptr
+fn C.memmove(dest voidptr, const_src voidptr, n size_t) voidptr
+
+fn C.memset(str voidptr, c int, n size_t) voidptr
 
 [trusted]
 fn C.calloc(int, int) &byte
@@ -124,8 +126,6 @@ fn C.lstat(path &char, buf &C.stat) int
 fn C.rename(old_filename &char, new_filename &char) int
 
 fn C.fgets(str &char, n int, stream &C.FILE) int
-
-fn C.memset(str voidptr, c int, n size_t) int
 
 [trusted]
 fn C.sigemptyset() int

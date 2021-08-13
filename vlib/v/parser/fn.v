@@ -212,9 +212,17 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut language := ast.Language.v
 	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !is_trusted
-		language = ast.Language.c
+		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
-		language = ast.Language.js
+		language = .js
+	}
+	if language != .v {
+		for fna in p.attrs {
+			if fna.name == 'export' {
+				p.error_with_pos('interop function cannot be exported', fna.pos)
+				break
+			}
+		}
 	}
 	if is_keep_alive && language != .c {
 		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
@@ -435,6 +443,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
+		if language != .v {
+			p.error_with_pos('interop functions cannot have a body', p.tok.position())
+		}
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
 		stmts = p.parse_block_no_scope(true)

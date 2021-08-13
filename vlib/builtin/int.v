@@ -71,7 +71,7 @@ fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		/*
 		// === manual memory move for bare metal ===
 		mut c:= 0
@@ -142,7 +142,7 @@ pub fn (nn u32) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
@@ -196,7 +196,7 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
@@ -233,7 +233,7 @@ pub fn (nn u64) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
