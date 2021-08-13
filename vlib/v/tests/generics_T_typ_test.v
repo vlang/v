@@ -7,13 +7,13 @@ mut:
 }
 
 fn make_any<T>(obj T) Any {
+	tsize := int(sizeof(T))
 	mut a := Any{
 		typ: T.typ
+		data: unsafe { malloc(tsize) }
 	}
 	unsafe {
-		data := malloc(int(sizeof(T)))
-		vmemcpy(data, &obj, int(sizeof(T)))
-		a.data = data
+		vmemcpy(a.data, &obj, tsize)
 	}
 	return a
 }
