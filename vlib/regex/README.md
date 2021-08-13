@@ -90,7 +90,7 @@ For example `\w` is the meta-char `w`.
 
 A meta-char can match different types of characters.
 
-* `\w` matches an word char char `[a-zA-Z0-9_]`
+* `\w` matches a word char char `[a-zA-Z0-9_]`
 * `\W` matches a non word char
 * `\d` matches a digit `[0-9]`
 * `\D` matches a non digit
