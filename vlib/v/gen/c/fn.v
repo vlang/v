@@ -745,14 +745,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if left_sym.kind == .sum_type && node.name == 'type_name' {
-		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
+		g.write('charptr_vstring_literal( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		g.write(')${dot}_typ ))')
 		return
 	}
 	if left_sym.kind == .interface_ && node.name == 'type_name' {
-		g.write('tos3( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
+		g.write('charptr_vstring_literal( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		g.write(')${dot}_typ ))')

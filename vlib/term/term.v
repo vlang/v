@@ -181,11 +181,13 @@ fn supports_escape_sequences(fd int) bool {
 	if vcolors_override == 'never' {
 		return false
 	}
-	if os.getenv('TERM') == 'dumb' {
+	env_term := os.getenv('TERM')
+	if env_term == 'dumb' {
 		return false
 	}
 	$if windows {
-		if os.getenv('ConEmuANSI') == 'ON' {
+		env_conemu := os.getenv('ConEmuANSI')
+		if env_conemu == 'ON' {
 			return true
 		}
 		// 4 is enable_virtual_terminal_processing

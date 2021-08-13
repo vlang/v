@@ -3625,7 +3625,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sym.cname}( (')
+		g.write('charptr_vstring_literal( /* $sym.name */ v_typeof_sumtype_${sym.cname}( (')
 		g.expr(node.expr)
 		g.write(')._typ ))')
 	} else if sym.kind == .array_fixed {

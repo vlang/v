@@ -49,8 +49,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// byteptr and charptr
 		'3.vstring',
 		'3.vstring_with_len',
+		'3.vstring_literal',
 		'4.vstring',
 		'4.vstring_with_len',
+		'4.vstring_literal',
 		// byte. methods
 		'9.str_escaped',
 		// string. methods
