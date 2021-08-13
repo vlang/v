@@ -46,12 +46,19 @@ mut:
 	deps    []string
 }
 
+enum Source {
+	git
+	hg
+	vpm
+}
+
 fn main() {
 	init_settings()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
+	options := cmdline.only_options(os.args[1..])
 	verbose_println('cli params: $params')
 	if params.len < 1 {
 		vpm_help()
@@ -74,7 +81,15 @@ fn main() {
 				manifest := vmod.from_file('./v.mod') or { panic(err) }
 				module_names = manifest.dependencies
 			}
-			vpm_install(module_names)
+			mut source := Source.vpm
+			if '--git' in options {
+				source = Source.git
+			}
+			if '--hg' in options {
+				source = Source.hg
+			}
+
+			vpm_install(module_names, source)
 		}
 		'update' {
 			vpm_update(module_names)
@@ -159,15 +174,7 @@ fn vpm_search(keywords []string) {
 	}
 }
 
-fn vpm_install(module_names []string) {
-	if settings.is_help {
-		vhelp.show_topic('install')
-		exit(0)
-	}
-	if module_names.len == 0 {
-		println('´v install´ requires *at least one* module name.')
-		exit(2)
-	}
+fn vpm_install_from_vpm(module_names []string) {
 	mut errors := 0
 	for n in module_names {
 		name := n.trim_space().replace('_', '-')
@@ -186,6 +193,7 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
+
 		mod_name_as_path := mod.name.replace('.', os.path_separator).replace('-', '_').to_lower()
 		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
@@ -208,6 +216,108 @@ fn vpm_install(module_names []string) {
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn vpm_install_from_vcs(module_names []string, vcs_key string) {
+	mut errors := 0
+	for n in module_names {
+		url := n.trim_space()
+
+		first_cut_pos := url.last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+
+		mod_name := url.substr(first_cut_pos + 1, url.len)
+
+		second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
+			errors++
+			println('Errors while retrieving name for module $url:')
+			println(err)
+			continue
+		}
+
+		repo_name := url.substr(second_cut_pos + 1, first_cut_pos)
+		mut name := repo_name + os.path_separator + mod_name
+		mod_name_as_path := name.replace('-', '_').to_lower()
+		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
+		if os.exists(final_module_path) {
+			vpm_update([name.replace('-', '_')])
+			continue
+		}
+		println('Installing module "$name" from $url to $final_module_path ...')
+		vcs_install_cmd := supported_vcs_install_cmds[vcs_key]
+		cmd := '$vcs_install_cmd "$url" "$final_module_path"'
+		verbose_println('      command: $cmd')
+		cmdres := os.execute(cmd)
+		if cmdres.exit_code != 0 {
+			errors++
+			println('Failed installing module "$name" to "$final_module_path" .')
+			verbose_println('Failed command: $cmd')
+			verbose_println('Failed command output:\n$cmdres.output')
+			continue
+		}
+		vmod_path := os.join_path(final_module_path, 'v.mod')
+		if os.exists(vmod_path) {
+			data := os.read_file(vmod_path) or { return }
+			vmod := parse_vmod(data)
+			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name.replace('.',
+				os.path_separator)))
+			println('Relocating module from "$name" to "$vmod.name" ( $mod_path ) ...')
+			if os.exists(mod_path) {
+				println('Warning module "$mod_path" already exsits!')
+				println('Removing module "$mod_path" ...')
+				os.rmdir_all(mod_path) or {
+					errors++
+					println('Errors while removing "$mod_path" :')
+					println(err)
+					continue
+				}
+			}
+			os.mv(final_module_path, mod_path) or {
+				errors++
+				println('Errors while relocating module "$name" :')
+				println(err)
+				os.rmdir_all(final_module_path) or {
+					errors++
+					println('Errors while removing "$final_module_path" :')
+					println(err)
+					continue
+				}
+				continue
+			}
+			println('Module "$name" relocated to "$vmod.name" successfully.')
+			final_module_path = mod_path
+			name = vmod.name
+		}
+		resolve_dependencies(name, final_module_path, module_names)
+	}
+	if errors > 0 {
+		exit(1)
+	}
+}
+
+fn vpm_install(module_names []string, source Source) {
+	if settings.is_help {
+		vhelp.show_topic('install')
+		exit(0)
+	}
+	if module_names.len == 0 {
+		println('´v install´ requires *at least one* module name.')
+		exit(2)
+	}
+
+	if source == .vpm {
+		vpm_install_from_vpm(module_names)
+	}
+	if source == .git {
+		vpm_install_from_vcs(module_names, 'git')
+	}
+	if source == .hg {
+		vpm_install_from_vcs(module_names, 'hg')
 	}
 }
 
@@ -461,29 +571,16 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	if deps.len > 0 {
 		println('Resolving $deps.len dependencies for module "$name"...')
 		verbose_println('Found dependencies: $deps')
-		vpm_install(deps)
+		vpm_install(deps, Source.vpm)
 	}
 }
 
 fn parse_vmod(data string) Vmod {
-	keys := ['name', 'version', 'deps']
-	mut m := {
-		'name':    ''
-		'version': ''
-		'deps':    ''
-	}
-	for key in keys {
-		mut key_index := data.index('$key:') or { continue }
-		key_index += key.len + 1
-		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'",
-			'').replace('[', '').replace(']', '')
-	}
+	manifest := vmod.decode(data) or { vmod.Manifest{} }
 	mut vmod := Vmod{}
-	vmod.name = m['name']
-	vmod.version = m['version']
-	if m['deps'].len > 0 {
-		vmod.deps = m['deps'].split(',')
-	}
+	vmod.name = manifest.name
+	vmod.version = manifest.version
+	vmod.deps = manifest.dependencies
 	return vmod
 }
 
