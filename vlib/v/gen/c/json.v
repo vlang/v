@@ -19,7 +19,7 @@ import strings
 // }
 // Codegen json_decode/encode funcs
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
-	utyp := g.unwrap_generic(typ)
+	utyp := g.unwrap_generic(typ).set_nr_muls(0)
 	sym := g.table.get_type_symbol(utyp)
 	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
@@ -35,7 +35,6 @@ fn (mut g Gen) gen_jsons() {
 		if i >= g.json_types.len {
 			break
 		}
-		println('$g.json_types, $g.json_types.len, $i')
 		utyp := g.json_types[i]
 		if utyp in done {
 			continue
