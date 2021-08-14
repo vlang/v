@@ -191,6 +191,7 @@ pub mut:
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
+	checker_warn_error_limit              int = 100
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -527,6 +528,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-checker-match-exhaustive-cutoff-limit' {
 				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
 					arg, '10').int()
+				i++
+			}
+			'-checker-warn-error-limit' {
+				res.checker_warn_error_limit = cmdline.option(current_args, arg, '10').int()
 				i++
 			}
 			'-o', '-output' {
