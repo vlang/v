@@ -7641,7 +7641,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			exit(1)
 		}
 		c.nr_errors++
-		if c.nr_errors < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if c.errors.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
 			if pos.line_nr !in c.error_lines {
 				err := errors.Error{
 					reporter: errors.Reporter.checker
