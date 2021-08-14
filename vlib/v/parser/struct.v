@@ -514,8 +514,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			line_nr := p.tok.line_nr
 			name := p.check_name()
 
-			if name == 'type_name' {
-				p.error_with_pos('cannot override built-in method `type_name`', method_start_pos)
+			if name in ['type_name', 'type_idx'] {
+				p.error_with_pos('cannot override built-in method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
 			if ts.has_method(name) {

@@ -528,7 +528,7 @@ pub fn (mut g Gen) finish() {
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
-	for typ in g.table.type_symbols {
+	for ityp, typ in g.table.type_symbols {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as ast.SumType
 			if sum_info.is_generic {
@@ -554,6 +554,26 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln('}')
+			g.writeln('')
+			g.writeln('int v_typeof_sumtype_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
+			if g.pref.build_mode == .build_module {
+				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return ${int(ityp)};')
+				for v in sum_info.variants {
+					subtype := g.table.get_type_symbol(v)
+					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${int(v)};')
+				}
+				g.writeln('\treturn ${int(ityp)};')
+			} else {
+				tidx := g.table.find_type_idx(typ.name)
+				g.writeln('\tswitch(sidx) {')
+				g.writeln('\t\tcase $tidx: return ${int(ityp)};')
+				for v in sum_info.variants {
+					g.writeln('\t\tcase $v: return ${int(v)};')
+				}
+				g.writeln('\t\tdefault: return ${int(ityp)};')
+				g.writeln('\t}')
+			}
+			g.writeln('}')
 		} else if typ.kind == .interface_ {
 			inter_info := typ.info as ast.Interface
 			if inter_info.is_generic {
@@ -565,6 +585,14 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
 			}
 			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('}')
+			g.writeln('')
+			g.writeln('int v_typeof_interface_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
+			for t in inter_info.types {
+				subtype := g.table.get_type_symbol(t)
+				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return ${int(t)};')
+			}
+			g.writeln('\treturn ${int(ityp)};')
 			g.writeln('}')
 		}
 	}
@@ -3662,6 +3690,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				if node.field_name == 'name' {
 					// typeof(expr).name
 					g.type_name(node.name_type)
+					return
+				} else if node.field_name == 'idx' {
+					// typeof(expr).idx
+					g.write(int(g.unwrap_generic(node.name_type)).str())
 					return
 				}
 				g.error('unknown generic field', node.pos)

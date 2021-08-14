@@ -2081,8 +2081,13 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return ast.void_type
 	}
-	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
-		return ast.string_type
+	if left_type_sym.kind in [.sum_type, .interface_] {
+		if method_name == 'type_name' {
+			return ast.string_type
+		}
+		if method_name == 'type_idx' {
+			return ast.int_type
+		}
 	}
 	if left_type == ast.void_type {
 		c.error('`void` type has no methods', call_expr.left.position())
@@ -3374,10 +3379,12 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return ast.int_type
 			}
 			else {
-				if node.field_name != 'name' {
-					c.error('invalid field `.$node.field_name` for type `$node.expr`',
-						node.pos)
+				if node.field_name == 'name' {
+					return ast.string_type
+				} else if node.field_name == 'idx' {
+					return ast.int_type
 				}
+				c.error('invalid field `.$node.field_name` for type `$node.expr`', node.pos)
 				return ast.string_type
 			}
 		}
@@ -8006,6 +8013,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			// TODO `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
+			c.error('method overrides built-in sum type method', node.pos)
+		} else if sym.kind == .sum_type && node.name == 'type_idx' {
 			c.error('method overrides built-in sum type method', node.pos)
 		} else if sym.kind == .multi_return {
 			c.error('cannot define method on multi-value', node.method_type_pos)
