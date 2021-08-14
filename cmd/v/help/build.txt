@@ -82,6 +82,10 @@ NB: the build flags are shared with the run command too:
          d) the function name
       NB: if you want to output the profile info to stdout, use `-profile -`.
 
+   -warn-error-limit <limit>
+      Limit of warnings / errors that will be accumulated (defaults to 100).
+      Settings this to a negative value will disable the limit.
+
    -profile-no-inline
       Skip [inline] functions when profiling.
 

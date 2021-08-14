@@ -189,6 +189,7 @@ pub mut:
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	warn_error_limit    int = 100 // limit of warnings/errors to be accumulated
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 }
@@ -517,6 +518,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					define := current_args[1]
 					parse_define(mut res, define)
 				}
+				i++
+			}
+			'-warn-error-limit' {
+				res.warn_error_limit = cmdline.option(current_args, arg, '10').int()
 				i++
 			}
 			'-cc' {

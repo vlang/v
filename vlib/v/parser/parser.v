@@ -1649,7 +1649,9 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
-		p.errors << error
+		if p.errors.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
+			p.errors << error
+		}
 	}
 	if p.pref.output_mode == .silent {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
@@ -1672,11 +1674,13 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
-		p.warnings << errors.Warning{
-			file_path: p.file_name
-			pos: pos
-			reporter: .parser
-			message: s
+		if p.warnings.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
+			p.warnings << errors.Warning{
+				file_path: p.file_name
+				pos: pos
+				reporter: .parser
+				message: s
+			}
 		}
 	}
 }
