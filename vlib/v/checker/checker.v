@@ -7622,7 +7622,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
-		if c.nr_warnings < c.pref.checker_warn_error_limit || c.pref.checker_warn_error_limit < 0 {
+		if c.nr_warnings < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
 			wrn := errors.Warning{
 				reporter: errors.Reporter.checker
 				pos: pos
@@ -7640,7 +7640,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			exit(1)
 		}
 		c.nr_errors++
-		if c.nr_errors < c.pref.checker_warn_error_limit || c.pref.warn_error_limit < 0 {
+		if c.nr_errors < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
 			if pos.line_nr !in c.error_lines {
 				err := errors.Error{
 					reporter: errors.Reporter.checker
