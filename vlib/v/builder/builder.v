@@ -342,8 +342,8 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 		return
 	}
 	if b.pref.is_stats {
-		estring := util.bold(b.checker.nr_errors.str())
-		wstring := util.bold(b.checker.nr_warnings.str())
+		estring := util.bold(b.checker.errors.len.str())
+		wstring := util.bold(b.checker.warnings.len.str())
 		nstring := util.bold(b.checker.nr_notices.str())
 		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
 	}
