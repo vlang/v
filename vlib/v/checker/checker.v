@@ -118,9 +118,9 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 }
 
 fn (c Checker) should_abort() bool {
-	return ((c.nr_notices >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0)
-		|| (c.nr_warnings >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0)
-		|| (c.errors.len >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0))
+	return c.pref.warn_error_limit >= 0 && (c.nr_notices >= c.pref.warn_error_limit
+		|| c.nr_warnings >= c.pref.warn_error_limit
+		|| c.errors.len >= c.pref.warn_error_limit)
 }
 
 pub fn (mut c Checker) check(ast_file &ast.File) {
