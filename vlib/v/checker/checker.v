@@ -7622,17 +7622,18 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
-		if c.nr_warnings < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
-			wrn := errors.Warning{
-				reporter: errors.Reporter.checker
-				pos: pos
-				file_path: c.file.path
-				message: message
-				details: details
-			}
-			c.file.warnings << wrn
-			c.warnings << wrn
+		if c.nr_warnings >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
+			return
 		}
+		wrn := errors.Warning{
+			reporter: errors.Reporter.checker
+			pos: pos
+			file_path: c.file.path
+			message: message
+			details: details
+		}
+		c.file.warnings << wrn
+		c.warnings << wrn
 		return
 	}
 	if !warn {
