@@ -189,9 +189,9 @@ pub mut:
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	warn_error_limit    int = 100  // limit of warnings/errors to be accumulated
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
-	checker_warn_error_limit              int = 100
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -520,6 +520,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				i++
 			}
+			'-warn-error-limit' {
+				res.warn_error_limit = cmdline.option(current_args, arg, '10').int()
+				i++
+			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '$arg "$res.ccompiler"'
@@ -528,10 +532,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-checker-match-exhaustive-cutoff-limit' {
 				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
 					arg, '10').int()
-				i++
-			}
-			'-checker-warn-error-limit' {
-				res.checker_warn_error_limit = cmdline.option(current_args, arg, '10').int()
 				i++
 			}
 			'-o', '-output' {
