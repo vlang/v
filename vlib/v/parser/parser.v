@@ -2158,6 +2158,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			name := p.check_name()
 			p.check(.dot)
 			field := p.check_name()
+			fkind := match field {
+				'name' { ast.GenericKindField.name }
+				'typ' { ast.GenericKindField.typ }
+				else { ast.GenericKindField.unknown }
+			}
 			pos.extend(p.tok.position())
 			return ast.SelectorExpr{
 				expr: ast.Ident{
@@ -2165,6 +2170,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					scope: p.scope
 				}
 				field_name: field
+				gkind_field: fkind
 				pos: pos
 				scope: p.scope
 			}

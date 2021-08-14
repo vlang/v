@@ -3365,11 +3365,22 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		else {}
 	}
 	if name_type > 0 {
-		if node.field_name != 'name' {
-			c.error('invalid field `.$node.field_name` for type `$node.expr`', node.pos)
-		}
 		node.name_type = name_type
-		return ast.string_type
+		match node.gkind_field {
+			.name {
+				return ast.string_type
+			}
+			.typ {
+				return ast.int_type
+			}
+			else {
+				if node.field_name != 'name' {
+					c.error('invalid field `.$node.field_name` for type `$node.expr`',
+						node.pos)
+				}
+				return ast.string_type
+			}
+		}
 	}
 
 	old_selector_expr := c.inside_selector_expr
