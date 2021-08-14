@@ -1649,7 +1649,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
-		if p.errors.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if p.errors.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
 			p.errors << error
 		}
 	}
@@ -1674,7 +1674,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
-		if p.warnings.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if p.warnings.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
 			p.warnings << errors.Warning{
 				file_path: p.file_name
 				pos: pos

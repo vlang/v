@@ -1354,7 +1354,7 @@ pub fn (mut s Scanner) warn(msg string) {
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 	} else {
-		if s.warnings.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if s.warnings.len < s.pref.warn_error_limit || s.pref.warn_error_limit < 0 {
 			s.warnings << errors.Warning{
 				file_path: s.file_path
 				pos: pos
@@ -1378,7 +1378,7 @@ pub fn (mut s Scanner) error(msg string) {
 		if s.pref.fatal_errors {
 			exit(1)
 		}
-		if s.errors.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if s.errors.len < s.pref.warn_error_limit || s.pref.warn_error_limit < 0 {
 			s.errors << errors.Error{
 				file_path: s.file_path
 				pos: pos
