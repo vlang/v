@@ -3649,8 +3649,24 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name_type > 0 {
-		g.type_name(node.name_type)
-		return
+		match node.gkind_field {
+			.name {
+				g.type_name(node.name_type)
+				return
+			}
+			.typ {
+				g.write(int(g.unwrap_generic(node.name_type)).str())
+				return
+			}
+			.unknown {
+				if node.field_name == 'name' {
+					// typeof(expr).name
+					g.type_name(node.name_type)
+					return
+				}
+				g.error('unknown generic field', node.pos)
+			}
+		}
 	}
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
