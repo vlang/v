@@ -118,16 +118,9 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 }
 
 fn (c Checker) should_abort() bool {
-	if c.nr_notices >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
-		return true
-	}
-	if c.nr_warnings >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
-		return true
-	}
-	if c.errors.len >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
-		return true
-	}
-	return false
+	return ((c.nr_notices >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0)
+		|| (c.nr_warnings >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0)
+		|| (c.errors.len >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0))
 }
 
 pub fn (mut c Checker) check(ast_file &ast.File) {
@@ -152,21 +145,27 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() { return }
+		if c.should_abort() {
+			return
+		}
 	}
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() { return }
+		if c.should_abort() {
+			return
+		}
 	}
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() { return }
+		if c.should_abort() {
+			return
+		}
 	}
 	c.check_scope_vars(c.file.scope)
 }
