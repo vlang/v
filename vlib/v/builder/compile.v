@@ -83,12 +83,11 @@ fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
 	unsafe { b.parsed_files.free() }
-	unsafe { util.cached_read_source_file('') or {} }
+	util.free_caches()
 }
 
 fn (b &Builder) exit_on_invalid_syntax() {
-	// clear the source file cache, since it will not be needed anymore
-	unsafe { util.cached_read_source_file('') or {} }
+	util.free_caches()
 	// V should exit with an exit code of 1, when there are errors,
 	// even when -silent is passed in combination to -check-syntax:
 	if b.pref.only_check_syntax {

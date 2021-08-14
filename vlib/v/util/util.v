@@ -514,3 +514,11 @@ pub fn find_all_v_files(roots []string) ?[]string {
 	}
 	return files
 }
+
+// free_caches knows about all `util` caches and makes sure that they are freed
+// if you add another cached unsafe function using static, do not forget to add
+// a mechanism to clear its cache, and call it here.
+pub fn free_caches() {
+	unsafe { cached_read_source_file('') or {} }
+	unsafe { cached_file2sourcelines('') }
+}
