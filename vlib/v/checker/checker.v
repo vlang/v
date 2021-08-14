@@ -7593,6 +7593,9 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 }
 
 pub fn (mut c Checker) note(message string, pos token.Position) {
+	if c.nr_notices >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
+		return
+	}
 	mut details := ''
 	if c.error_details.len > 0 {
 		details = c.error_details.join('\n')
@@ -7641,7 +7644,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			exit(1)
 		}
 		c.nr_errors++
-		if c.nr_errors < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
+		if c.errors.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
 			if pos.line_nr !in c.error_lines {
 				err := errors.Error{
 					reporter: errors.Reporter.checker
