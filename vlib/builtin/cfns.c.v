@@ -21,7 +21,7 @@ fn C.free(ptr voidptr)
 [noreturn; trusted]
 fn C.exit(code int)
 
-fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
+fn C.qsort(base voidptr, items size_t, item_size size_t, cb C.qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
@@ -242,7 +242,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 
 fn C.RegSetValueEx() voidptr
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData &byte, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &byte, lpcbData u32) int
 
 fn C.RegCloseKey(hKey voidptr)
 
