@@ -628,6 +628,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.CallExpr) {
+	g.write('${prefix}( (')
+	g.expr(node.left)
+	dot := if node.left_type.is_ptr() { '->' } else { '.' }
+	g.write(')${dot}_typ )$postfix')
+}
+
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
@@ -744,20 +751,33 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	}
 
-	if left_sym.kind == .sum_type && node.name == 'type_name' {
-		g.write('charptr_vstring_literal( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
-		g.expr(node.left)
-		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}_typ ))')
-		return
+	if left_sym.kind in [.sum_type, .interface_] {
+		if node.name == 'type_name' {
+			if left_sym.kind == .sum_type {
+				g.conversion_function_call('charptr_vstring_literal( /* $left_sym.name */ v_typeof_sumtype_$typ_sym.cname',
+					')', node)
+				return
+			}
+			if left_sym.kind == .interface_ {
+				g.conversion_function_call('charptr_vstring_literal( /* $left_sym.name */ v_typeof_interface_$typ_sym.cname',
+					')', node)
+				return
+			}
+		}
+		if node.name == 'type_idx' {
+			if left_sym.kind == .sum_type {
+				g.conversion_function_call('/* $left_sym.name */ v_typeof_sumtype_idx_$typ_sym.cname',
+					'', node)
+				return
+			}
+			if left_sym.kind == .interface_ {
+				g.conversion_function_call('/* $left_sym.name */ v_typeof_interface_idx_$typ_sym.cname',
+					'', node)
+				return
+			}
+		}
 	}
-	if left_sym.kind == .interface_ && node.name == 'type_name' {
-		g.write('charptr_vstring_literal( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
-		g.expr(node.left)
-		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}_typ ))')
-		return
-	}
+
 	if node.name == 'str' {
 		mut rec_type := node.receiver_type
 		if rec_type.has_flag(.shared_f) {
