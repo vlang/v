@@ -61,6 +61,9 @@ fn main() {
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
+		if vdir.contains('/tmp/cirrus-ci-build') {
+			tcc_path = 'clang'
+		}
 	}
 	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
