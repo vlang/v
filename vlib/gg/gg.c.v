@@ -174,6 +174,10 @@ pub fn new_context(cfg Config) &Context {
 		height: cfg.height
 		config: cfg
 		ft: 0
+		window: C.sapp_desc{
+			window_title: ''.str
+			html5_canvas_name: ''.str
+		}
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 	}
