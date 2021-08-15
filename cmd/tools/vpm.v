@@ -84,11 +84,11 @@ fn module_from_url(url string, vcs string) ?Mod {
 		panic('"$url" is not a valid url!')
 	}
 
-	author := re.get_group_by_id(url,6)
-	name := re.get_group_by_id(url,7)
+	author := re.get_group_by_id(url, 6)
+	name := re.get_group_by_id(url, 7)
 
 	return Mod{
-		name: '${author}.${name}'
+		name: '${author}.$name'
 		url: url
 		vcs: vcs
 	}
@@ -654,7 +654,6 @@ fn resolve_dependencies(path string, mut modules map[string]Mod) {
 	mut re := regex.regex_opt(query) or { panic(err) }
 	mut deps := []string{}
 	for dep in manifest.dependencies {
-
 		if dep.starts_with('hg:') {
 			mod := module_from_url(dep[3..], 'hg') or {
 				println('Errors while retrieving meta data for module $dep:')
