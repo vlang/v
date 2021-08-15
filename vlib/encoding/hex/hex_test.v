@@ -39,3 +39,10 @@ fn test_encode() ? {
 	assert encode(decode('1234') ?) == '1234'
 	assert encode(decode('12345') ?) == '012345'
 }
+
+fn test_decode_0x() ? {
+	assert decode('0x') ? == []
+	assert decode('0x0') ? == [byte(0x0)]
+	assert decode('0x1234') ? == [byte(0x12), 0x34]
+	assert decode('0x12345') ? == [byte(0x1), 0x23, 0x45]
+}
