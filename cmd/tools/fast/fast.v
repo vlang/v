@@ -47,9 +47,12 @@ fn main() {
 	// exec('git checkout $commit')
 	println('  Building vprod...')
 	os.chdir(vdir)
-	exec('./v -o vprod -prod -prealloc cmd/v')
+	if os.args.contains('-noprod') {
+		exec('./v -o vprod cmd/v') // for faster debugging
+	} else {
+		exec('./v -o vprod -prod -prealloc cmd/v')
+	}
 	// println('cur vdir="$vdir"')
-	// exec('v -o vprod cmd/v') // for faster debugging
 	// cache vlib modules
 	exec('$vdir/v wipe-cache')
 	exec('$vdir/v -o v2 -prod cmd/v')
@@ -105,6 +108,13 @@ fn main() {
 	//}
 	// exec('git checkout master')
 	// os.write_file('last_commit.txt', commits[commits.len - 1]) ?
+	// Upload the result to github pages
+	os.chdir('website')
+	os.execute_or_exit('git checkout gh-pages')
+	os.cp('../index.html', 'index.html') ?
+	os.system('git commit -am "update benchmark"')
+	os.system('git push origin gh-pages')
+	os.chdir('..')
 }
 
 fn exec(s string) string {
