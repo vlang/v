@@ -32,12 +32,12 @@ struct Child {
 
 fn main() {
 	sqlite3_array()
-	mysql_array()
-	psql_array()
+	/*mysql_array()
+	psql_array()*/
 
 	sqlite3()
-	mysql()
-	psql()
+	/*mysql()
+	psql()*/
 }
 
 fn sqlite3_array() {
@@ -67,7 +67,6 @@ fn sqlite3_array() {
 	}
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 
@@ -111,7 +110,6 @@ fn mysql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 
@@ -150,7 +148,6 @@ fn psql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 

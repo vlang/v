@@ -298,6 +298,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut is_skip := false
 		mut unique_len := 0
 		// mut fkey := ''
+		mut field_name := sql_field_name(field)
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -306,7 +307,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 				'unique' {
 					if attr.arg != '' {
 						if attr.kind == .string {
-							unique[attr.arg] << field.name
+							unique[attr.arg] << field_name
 							continue
 						} else if attr.kind == .number {
 							unique_len = attr.arg.int()
@@ -337,7 +338,6 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			continue
 		}
 		mut stmt := ''
-		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
 			sql_from_v(7) ?
@@ -353,7 +353,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE($para$field.name$para'
+			mut f := 'UNIQUE($para$field_name$para'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '($unique_len)'
