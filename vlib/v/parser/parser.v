@@ -79,6 +79,7 @@ mut:
 	inside_defer        bool
 	comp_if_cond        bool
 	defer_vars          []ast.Ident
+	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 }
 
 // for tests
@@ -267,6 +268,9 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.attrs = []
 		}
 		stmts << stmt
+		if p.should_abort {
+			break
+		}
 	}
 	p.scope.end_pos = p.tok.pos
 	return &ast.File{
@@ -578,6 +582,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.error('bad top level statement ' + p.tok.str())
 				}
 			}
+		}
+		if p.should_abort {
+			break
 		}
 	}
 	// TODO remove dummy return statement
@@ -1649,9 +1656,11 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
-		if p.errors.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
-			p.errors << error
+		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
 		}
+		p.errors << error
 	}
 	if p.pref.output_mode == .silent {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
@@ -1674,13 +1683,15 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
-		if p.warnings.len < p.pref.warn_error_limit || p.pref.warn_error_limit < 0 {
-			p.warnings << errors.Warning{
-				file_path: p.file_name
-				pos: pos
-				reporter: .parser
-				message: s
-			}
+		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
+		p.warnings << errors.Warning{
+			file_path: p.file_name
+			pos: pos
+			reporter: .parser
+			message: s
 		}
 	}
 }

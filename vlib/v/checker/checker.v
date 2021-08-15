@@ -53,6 +53,7 @@ pub mut:
 	nr_errors        int
 	nr_warnings      int
 	nr_notices       int
+	should_abort     bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	errors           []errors.Error
 	warnings         []errors.Warning
 	notices          []errors.Notice
@@ -117,12 +118,6 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	}
 }
 
-fn (c Checker) should_abort() bool {
-	return c.pref.warn_error_limit >= 0 && (c.nr_notices >= c.pref.warn_error_limit
-		|| c.nr_warnings >= c.pref.warn_error_limit
-		|| c.errors.len >= c.pref.warn_error_limit)
-}
-
 pub fn (mut c Checker) check(ast_file &ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
@@ -145,7 +140,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() {
+		if c.should_abort {
 			return
 		}
 	}
@@ -154,7 +149,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() {
+		if c.should_abort {
 			return
 		}
 	}
@@ -163,7 +158,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
-		if c.should_abort() {
+		if c.should_abort {
 			return
 		}
 	}
@@ -7608,7 +7603,8 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 }
 
 pub fn (mut c Checker) note(message string, pos token.Position) {
-	if c.nr_notices >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
+	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
+		c.should_abort = true
 		return
 	}
 	mut details := ''
@@ -7640,7 +7636,8 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
-		if c.nr_warnings >= c.pref.warn_error_limit && c.pref.warn_error_limit >= 0 {
+		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
+			c.should_abort = true
 			return
 		}
 		wrn := errors.Warning{
@@ -7659,19 +7656,21 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			exit(1)
 		}
 		c.nr_errors++
-		if c.errors.len < c.pref.warn_error_limit || c.pref.warn_error_limit < 0 {
-			if pos.line_nr !in c.error_lines {
-				err := errors.Error{
-					reporter: errors.Reporter.checker
-					pos: pos
-					file_path: c.file.path
-					message: message
-					details: details
-				}
-				c.file.errors << err
-				c.errors << err
-				c.error_lines << pos.line_nr
+		if c.pref.message_limit >= 0 && c.errors.len >= c.pref.message_limit {
+			c.should_abort = true
+			return
+		}
+		if pos.line_nr !in c.error_lines {
+			err := errors.Error{
+				reporter: errors.Reporter.checker
+				pos: pos
+				file_path: c.file.path
+				message: message
+				details: details
 			}
+			c.file.errors << err
+			c.errors << err
+			c.error_lines << pos.line_nr
 		}
 	}
 }
