@@ -15,12 +15,15 @@ cd tinycc
             --crtprefix=thirdparty/tcc/lib:/usr/lib \
             --libpaths=thirdparty/tcc/lib:/usr/lib:/lib:/usr/local/lib \
             --debug
-make
-make install
+gmake
+gmake install
 
 popd
 
 mv tinycc/thirdparty/tcc thirdparty/tcc
 mv thirdparty/tcc/tcc thirdparty/tcc/tcc.exe
 
+sudo ln -s $(pwd)/thirdparty/tcc/tcc.exe /usr/local/bin/tcc
+
 thirdparty/tcc/tcc.exe -v -v
+

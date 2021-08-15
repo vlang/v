@@ -2,7 +2,7 @@ freebsd_instance:
   image_family: freebsd-13-0
 
 task:
-  install_script: pkg install -y git tcc bash
+  install_script: pkg install -y git gmake bash
   script: |
     echo 'Building V'
     git clone https://github.com/vlang/v
