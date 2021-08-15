@@ -62,7 +62,8 @@ fn main() {
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
 	}
-	diff2 := measure('$vdir/vprod $voptions -no-rsp -cc $tcc_path -o v2 cmd/v', 'v2')
+	diff2 := measure('$vdir/vprod $voptions -no-std -no-rsp -cc $tcc_path -o v2 cmd/v',
+		'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
 	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang examples/hello_world.v',
 		'hello.v')
