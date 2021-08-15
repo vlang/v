@@ -24,16 +24,6 @@ const (
 )
 
 [inline]
-pub fn sum64_string(key string, seed u64) u64 {
-	return wyhash_c(key.str, u64(key.len), seed)
-}
-
-[inline]
-pub fn sum64(key []byte, seed u64) u64 {
-	return wyhash_c(&byte(key.data), u64(key.len), seed)
-}
-
-[inline]
 fn wyrotr(v u64, k u32) u64 {
 	return (v >> k) | (v << (64 - k))
 }

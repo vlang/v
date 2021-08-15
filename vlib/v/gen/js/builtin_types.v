@@ -17,7 +17,7 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
-	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' }
+	mut prefix := if g.file.mod.name == 'builtin' { 'new  ' } else { 'new builtin.' }
 	match sym.kind {
 		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
 		.float_literal, .size_t {

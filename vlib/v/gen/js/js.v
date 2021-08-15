@@ -135,6 +135,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		}
 
 		g.stmts(file.stmts)
+		g.writeln('try { init() } catch (_) {}')
 		// store the current namespace
 		g.escape_namespace()
 	}
@@ -502,6 +503,24 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 			); // global')
 		} else {
 			// TODO(playXE): Initialize with default value of type
+
+			if field.typ.is_ptr() {
+				g.writeln('Object.defineProperty(\$global,"$field.name", {
+					configurable: false,
+					$mod ,
+					writable: true,
+					value: new \$ref({})
+					}
+				); // global')
+			} else {
+				g.writeln('Object.defineProperty(\$global,"$field.name", {
+					configurable: false,
+					$mod ,
+					writable: true,
+					value: {}
+					}
+				); // global')
+			}
 		}
 	}
 }
@@ -961,8 +980,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
-					if g.file.mod.name == 'builtin' {
-						g.write('new ')
+					g.write('new ')
+					if g.file.mod.name != 'builtin' {
+						g.write('builtin.')
 					}
 					g.write('${g.typ(stmt.left_types.first())}(')
 				}
@@ -1770,13 +1790,15 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	if is_not {
 		g.write('!(')
 	}
-	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod, .right_shift, .left_shift,
+		.amp, .pipe, .xor]
 	if is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		// if left or right is i64 or u64 we convert them to bigint to perform operation.
 		greater_typ := g.greater_typ(it.left_type, it.right_type)
-		if g.ns.name == 'builtin' {
-			g.write('new ')
+		g.write('new ')
+		if g.ns.name != 'builtin' {
+			g.write('builtin.')
 		}
 		g.write('${g.typ(greater_typ)}(')
 		g.cast_stack << greater_typ
@@ -2125,8 +2147,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	// Skip cast if type is the same as the parrent caster
 	tsym := g.table.get_type_symbol(it.typ)
 	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
-		if g.ns.name == 'builtin' {
-			g.write('new ')
+		g.write('new ')
+		if g.ns.name != 'builtin' {
+			g.write('builtin.')
 		}
 		g.write(tsym.kind.str())
 		g.write('(BigInt(')
@@ -2180,13 +2203,17 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
-			g.write('new int($it.val)')
+			g.write('new ')
+			if g.ns.name != 'builtin' {
+				g.write('builtin.')
+			}
+			g.write('int($it.val)')
 			return
 		}
 	}
-
-	if g.ns.name == 'builtin' {
-		g.write('new ')
+	g.write('new ')
+	if g.ns.name != 'builtin' {
+		g.write('builtin.')
 	}
 
 	g.write('${g.typ(typ)}($it.val)')
@@ -2225,9 +2252,9 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 			return
 		}
 	}
-
-	if g.ns.name == 'builtin' {
-		g.write('new ')
+	g.write('new ')
+	if g.ns.name != 'builtin' {
+		g.write('builtin.')
 	}
 
 	g.write('${g.typ(typ)}($it.val)')
