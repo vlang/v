@@ -176,7 +176,6 @@ pub mut:
 	no_std              bool        // when true, do not pass -std=c99 to the C backend
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
-	error_limit         int
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
@@ -494,9 +493,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-print-v-files' {
 				res.print_v_files = true
-			}
-			'-error-limit' {
-				res.error_limit = cmdline.option(current_args, '-error-limit', '0').int()
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
