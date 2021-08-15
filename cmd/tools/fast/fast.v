@@ -109,12 +109,13 @@ fn main() {
 	// exec('git checkout master')
 	// os.write_file('last_commit.txt', commits[commits.len - 1]) ?
 	// Upload the result to github pages
-	os.chdir('website')
-	os.execute_or_exit('git checkout gh-pages')
-	os.cp('../index.html', 'index.html') ?
-	os.system('git commit -am "update benchmark"')
-	os.system('git push origin gh-pages')
-	os.chdir('..')
+	if !os.args.contains('-noupload') {
+		os.chdir('website')
+		os.execute_or_exit('git checkout gh-pages')
+		os.cp('../index.html', 'index.html') ?
+		os.system('git commit -am "update benchmark"')
+		os.system('git push origin gh-pages')
+	}
 }
 
 fn exec(s string) string {

@@ -111,7 +111,7 @@ jobs:
         run: |
           ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
-        run: cd cmd/tools/fast && ../../../v fast.v && ./fast
+        run: cd cmd/tools/fast && ../../../v fast.v && ./fast -noupload
 
   ubuntu-tcc-boehm-gc:
     needs: no-scheduling
