@@ -16,7 +16,7 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn = &C.PgConn{}
+	conn &C.PGconn = 0 // needs to be 0 because otherwise it results in a c error
 }
 
 pub struct Row {
