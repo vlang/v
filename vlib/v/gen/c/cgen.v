@@ -587,7 +587,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
 			g.writeln('}')
 			g.writeln('')
-			g.writeln('int v_typeof_interface_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
+			g.writeln('static int v_typeof_interface_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
 				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return ${int(t)};')
