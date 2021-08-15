@@ -33,6 +33,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		.left_shift {
 			g.infix_expr_left_shift_op(node)
 		}
+		.and, .logical_or {
+			g.infix_expr_and_or_op(node)
+		}
 		else {
 			// `x & y == 0` => `(x & y) == 0` in C
 			need_par := node.op in [.amp, .pipe, .xor]
@@ -499,28 +502,34 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	}
 }
 
+// infix_expr_and_or_op generates code for `&&` and `||`
+fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
+	if node.right is ast.IfExpr {
+		// b := a && if true { a = false ...} else {...}
+		if g.need_tmp_var_in_if(node.right) {
+			tmp := g.new_tmp_var()
+			cur_line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
+			g.write('bool $tmp = (')
+			g.expr(node.left)
+			g.writeln(');')
+			g.stmt_path_pos << g.out.len
+			g.write('$cur_line $tmp $node.op.str() ')
+			g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
+			g.expr(node.right)
+			g.infix_left_var_name = ''
+			return
+		}
+	}
+	g.gen_plain_infix_expr(node)
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	if node.left is ast.Ident && node.right is ast.IfExpr {
-		// b := a && if true { a = false ...} else {...}
-		if g.need_tmp_var_in_if(node.right) {
-			tmp := g.new_tmp_var()
-			styp := g.typ(node.left_type)
-			cur_line := g.go_before_stmt(0)
-			g.empty_line = true
-			g.write('$styp $tmp = ')
-			g.expr(node.left)
-			g.writeln(';')
-			g.stmt_path_pos << g.out.len
-			g.write('$cur_line $tmp $node.op.str() ')
-			g.expr(node.right)
-			return
-		}
-	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
 	}
