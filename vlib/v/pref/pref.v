@@ -524,7 +524,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				i++
 			}
-			'-message-limit' {
+			'-error-limit', '-message-limit' {
 				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
