@@ -2,7 +2,7 @@ freebsd_instance:
   image_family: freebsd-13-0
 
 task:
-  install_script: pkg install -y git
+  install_script: true ## pkg install -y git
   script: |
     echo 'Building V'
     git clone https://github.com/vlang/v
