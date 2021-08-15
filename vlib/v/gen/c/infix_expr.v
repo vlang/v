@@ -505,6 +505,22 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
+	if node.left is ast.Ident && node.right is ast.IfExpr {
+		// b := a && if true { a = false ...} else {...}
+		if g.need_tmp_var_in_if(node.right) {
+			tmp := g.new_tmp_var()
+			styp := g.typ(node.left_type)
+			cur_line := g.go_before_stmt(0)
+			g.empty_line = true
+			g.write('$styp $tmp = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.stmt_path_pos << g.out.len
+			g.write('$cur_line $tmp $node.op.str() ')
+			g.expr(node.right)
+			return
+		}
+	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
 	}
