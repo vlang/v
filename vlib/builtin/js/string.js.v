@@ -94,7 +94,10 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) ends_with(p string) bool {
-	return s.str.endsWith(p.str)
+	mut res := false
+	#res.val = s.str.endsWith(p.str)
+
+	return res
 }
 
 pub fn (s string) starts_with(p string) bool {
@@ -133,7 +136,7 @@ pub fn (s string) fields() []string {
 }
 
 pub fn (s string) find_between(start string, end string) string {
-	return string(s.str.slice(s.str.indexOf(start.str), s.str.indexOf(end.str) + 1))
+	return string(s.str.slice(s.str.indexOf(start.str) + 1, s.str.indexOf(end.str)))
 }
 
 // unnecessary in the JS backend, implemented for api parity.
@@ -463,4 +466,78 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	#for (let x of ret.arr) result.str += String.fromCharCode(x.val)
 
 	return result
+}
+
+// split_nth splits the string based on the passed `delim` substring.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+[direct_array_access]
+pub fn (s string) split_nth(delim string, nth int) []string {
+	mut res := []string{}
+	mut i := 0
+
+	match delim.len {
+		0 {
+			i = 1
+			for ch in s {
+				if nth > 0 && i >= nth {
+					res << s[i..]
+					break
+				}
+				res << ch.str()
+				i++
+			}
+			return res
+		}
+		1 {
+			mut start := 0
+			delim_byte := delim[0]
+
+			for i < s.len {
+				if s[i] == delim_byte {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s[start..i] //.substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+		else {
+			mut start := 0
+			// Take the left part for each delimiter occurence
+			for i <= s.len {
+				is_delim := i + delim.len <= s.len && s[i..i + delim.len] == delim
+				if is_delim {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s[start..i] // .substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+	}
 }

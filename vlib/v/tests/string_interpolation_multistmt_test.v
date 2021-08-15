@@ -8,7 +8,7 @@ fn test_array_map_interpolation() {
 }
 
 fn test_json_encode_interpolation() {
-	object := map{
+	object := {
 		'example': 'string'
 		'other':   'data'
 	}

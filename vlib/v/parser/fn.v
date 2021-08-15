@@ -212,9 +212,17 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut language := ast.Language.v
 	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !is_trusted
-		language = ast.Language.c
+		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
-		language = ast.Language.js
+		language = .js
+	}
+	if language != .v {
+		for fna in p.attrs {
+			if fna.name == 'export' {
+				p.error_with_pos('interop function cannot be exported', fna.pos)
+				break
+			}
+		}
 	}
 	if is_keep_alive && language != .c {
 		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
@@ -435,6 +443,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
+		if language != .v {
+			p.error_with_pos('interop functions cannot have a body', p.tok.position())
+		}
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
 		stmts = p.parse_block_no_scope(true)
@@ -637,9 +648,11 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false
 	p.open_scope()
-	if !p.pref.backend.is_js() {
-		p.scope.detached_from_parent = true
+	defer {
+		p.close_scope()
 	}
+	p.scope.detached_from_parent = true
+	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
@@ -695,7 +708,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.label_names = tmp
 	}
 	p.cur_fn_name = keep_fn_name
-	p.close_scope()
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := ast.new_type(idx)
@@ -718,6 +730,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			scope: p.scope
 			label_names: label_names
 		}
+		inherited_vars: inherited_vars
 		typ: typ
 	}
 }
@@ -914,10 +927,55 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	return args, types_only, is_variadic
 }
 
+fn (mut p Parser) closure_vars() []ast.Param {
+	p.check(.lsbr)
+	mut vars := []ast.Param{cap: 5}
+	for {
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+		// FIXME is_shared & is_atomic aren't used further
+		if is_mut {
+			p.next()
+		}
+		var_pos := p.tok.position()
+		p.check(.name)
+		var_name := p.prev_tok.lit
+		mut var := p.scope.parent.find_var(var_name) or {
+			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.position())
+			continue
+		}
+		var.is_used = true
+		if is_mut {
+			var.is_changed = true
+		}
+		p.scope.register(ast.Var{
+			...(*var)
+			pos: var_pos
+			is_inherited: true
+			is_used: false
+			is_changed: false
+			is_mut: is_mut
+		})
+		vars << ast.Param{
+			pos: var_pos
+			name: var_name
+			is_mut: is_mut
+		}
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	p.check(.rsbr)
+	return vars
+}
+
 fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_,
-		.generic_struct_inst, .sum_type] {
+	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .generic_inst,
+		.sum_type,
+	] {
 		return
 	}
 	if typ.is_ptr() || typ.is_pointer() {

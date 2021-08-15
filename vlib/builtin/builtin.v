@@ -15,26 +15,6 @@ fn on_panic(f fn(int)int) {
 }
 */
 
-// print_backtrace shows a backtrace of the current call stack on stdout
-pub fn print_backtrace() {
-	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// * print_backtrace_skipping_top_frames
-	// * print_backtrace itself
-	// * the rest of the backtrace frames
-	// => top 2 frames should be skipped, since they will not be informative to the developer
-	$if !no_backtrace ? {
-		$if freestanding {
-			println(bare_backtrace())
-		} $else {
-			$if tinyc {
-				C.tcc_backtrace(c'Backtrace')
-			} $else {
-				print_backtrace_skipping_top_frames(2)
-			}
-		}
-	}
-}
-
 struct VCastTypeIndexName {
 	tindex int
 	tname  string
@@ -73,6 +53,23 @@ pub:
 	rlabel  string // the right side of the infix expressions as source
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+}
+
+// free is used to free the memory occupied by the assertion meta data.
+// It is called by cb_assertion_failed, and cb_assertion_ok in the preludes,
+// once they are done with reporting/formatting the meta data.
+[manualfree; unsafe]
+pub fn (ami &VAssertMetaInfo) free() {
+	unsafe {
+		ami.fpath.free()
+		ami.fn_name.free()
+		ami.src.free()
+		ami.op.free()
+		ami.llabel.free()
+		ami.rlabel.free()
+		ami.lvalue.free()
+		ami.rvalue.free()
+	}
 }
 
 fn __print_assert_failure(i &VAssertMetaInfo) {

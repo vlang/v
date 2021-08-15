@@ -4,12 +4,11 @@
 module term
 
 pub fn format(msg string, open string, close string) string {
-	return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
+	return '\x1b[${open}m$msg\x1b[${close}m'
 }
 
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
-	return '\x1b[' + open + ';2;' + r.str() + ';' + g.str() + ';' + b.str() + 'm' + msg + '\x1b[' +
-		close + 'm'
+	return '\x1b[$open;2;$r;$g;${b}m$msg\x1b[${close}m'
 }
 
 pub fn rgb(r int, g int, b int, msg string) string {

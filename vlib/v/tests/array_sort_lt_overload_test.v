@@ -8,13 +8,13 @@ fn (a Num) < (b Num) bool {
 
 fn test_sort_lt_overloaded_struct_array() {
 	mut arr := []Num{}
-	arr << {
+	arr << Num{
 		value: 10
 	}
-	arr << {
+	arr << Num{
 		value: 5
 	}
-	arr << {
+	arr << Num{
 		value: 7
 	}
 	arr.sort()

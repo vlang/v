@@ -8,7 +8,7 @@ import json
 struct App {
 	vweb.Context
 pub mut:
-	db      sqlite.DB [server_var]
+	db      sqlite.DB
 	user_id string
 }
 
@@ -16,7 +16,13 @@ fn main() {
 	mut app := App{
 		db: sqlite.connect('blog.db') or { panic(err) }
 	}
+<<<<<<< HEAD
 	app.init_server()
+=======
+	sql app.db {
+		create table Article
+	}
+>>>>>>> ea4f6fd48f907bd56a280b66278b78938d98491e
 	vweb.run(app, 8081)
 }
 
@@ -37,12 +43,15 @@ pub fn (app &App) index() vweb.Result {
 	return $vweb.html()
 }
 
+<<<<<<< HEAD
 pub fn (mut app App) init_server() {
 	sql app.db {
 		create table Article
 	}
 }
 
+=======
+>>>>>>> ea4f6fd48f907bd56a280b66278b78938d98491e
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }

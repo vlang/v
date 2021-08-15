@@ -32,7 +32,7 @@ fn test_array_or_direct() {
 }
 
 fn test_map_or() {
-	m := map{
+	m := {
 		'as': 3
 		'qw': 4
 		'kl': 5
@@ -52,7 +52,7 @@ fn test_map_or() {
 }
 
 fn get_map_el(key string) ?int {
-	m := map{
+	m := {
 		'as': 3
 		'qw': 4
 		'kl': 5

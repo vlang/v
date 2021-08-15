@@ -113,7 +113,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				}
 				i++
 				continue
-			} else if ch == `\'` {
+			} else if ch == `'` {
 				i++
 				continue
 			} else if ch == `.` && fc_ch1 >= `1` && fc_ch1 <= `9` {

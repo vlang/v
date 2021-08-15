@@ -153,7 +153,7 @@ fn (mut u User) from_json(an json2.Any) {
 
 fn (u User) to_json() string {
 	// TODO: derive from field
-	mut mp := map{
+	mut mp := {
 		'age': json2.Any(u.age)
 	}
 	mp['nums'] = u.nums.map(json2.Any(it))
@@ -252,7 +252,7 @@ fn test_struct_in_struct() {
 */
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
-	numbers := map{
+	numbers := {
 		'one':   json2.Any(1)
 		'two':   json2.Any(2)
 		'three': json2.Any(3)

@@ -19,7 +19,7 @@ match_test_suite = [
 	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
 	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
 	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
-	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,13},
+	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,16},
 	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
 	TestItem{"ab-cd-efGHK",r"[a-f\-g]+\A+",0,11},
 
@@ -138,6 +138,8 @@ match_test_suite = [
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
 	TestItem{"[ an s. s! ](wiki:something)", r"\[.*\]\( *(\w*:*\w+) *\)",0,28},
+	TestItem{"p_p", r"\w+",0,3},
+	TestItem{"p_é", r"\w+",0,2},
 	
 	// Crazywulf tests (?:^|[()])(\d+)(*)(\d+)(?:$|[()])
     TestItem{"1*1", r"(\d+)([*])(\d+)",0,3},

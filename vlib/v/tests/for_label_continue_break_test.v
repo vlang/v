@@ -62,7 +62,7 @@ fn test_for_in_fixed_array_label_continue_break() {
 
 fn test_for_in_map_label_continue_break() {
 	mut rets := []string{}
-	m := map{
+	m := {
 		'a': 4
 		'b': 5
 		'c': 6

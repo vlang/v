@@ -79,6 +79,7 @@ mut:
 	inside_defer        bool
 	comp_if_cond        bool
 	defer_vars          []ast.Ident
+	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 }
 
 // for tests
@@ -267,6 +268,9 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.attrs = []
 		}
 		stmts << stmt
+		if p.should_abort {
+			break
+		}
 	}
 	p.scope.end_pos = p.tok.pos
 	return &ast.File{
@@ -578,6 +582,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.error('bad top level statement ' + p.tok.str())
 				}
 			}
+		}
+		if p.should_abort {
+			break
 		}
 	}
 	// TODO remove dummy return statement
@@ -1649,6 +1656,10 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
+		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.errors << error
 	}
 	if p.pref.output_mode == .silent {
@@ -1672,6 +1683,10 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
+		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.warnings << errors.Warning{
 			file_path: p.file_name
 			pos: pos
@@ -1784,49 +1799,49 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
-	if p.tok.kind == .name {
-		pos := p.tok.position()
-		mut name := p.check_name()
-		if name == '_' {
-			return ast.Ident{
-				tok_kind: p.tok.kind
-				name: '_'
-				comptime: p.comp_if_cond
-				kind: .blank_ident
-				pos: pos
-				info: ast.IdentVar{
-					is_mut: false
-					is_static: false
-				}
-				scope: p.scope
-			}
+	if p.tok.kind != .name {
+		p.error('unexpected token `$p.tok.lit`')
+		return ast.Ident{
+			scope: p.scope
 		}
-		if p.inside_match_body && name == 'it' {
-			// p.warn('it')
-		}
-		if p.expr_mod.len > 0 {
-			name = '${p.expr_mod}.$name'
-		}
+	}
+	pos := p.tok.position()
+	mut name := p.check_name()
+	if name == '_' {
 		return ast.Ident{
 			tok_kind: p.tok.kind
-			kind: .unresolved
-			name: name
+			name: '_'
 			comptime: p.comp_if_cond
-			language: language
-			mod: p.mod
+			kind: .blank_ident
 			pos: pos
-			is_mut: is_mut
-			mut_pos: mut_pos
 			info: ast.IdentVar{
-				is_mut: is_mut
-				is_static: is_static
-				share: ast.sharetype_from_flags(is_shared, is_atomic)
+				is_mut: false
+				is_static: false
 			}
 			scope: p.scope
 		}
 	}
-	p.error('unexpected token `$p.tok.lit`')
+	if p.inside_match_body && name == 'it' {
+		// p.warn('it')
+	}
+	if p.expr_mod.len > 0 {
+		name = '${p.expr_mod}.$name'
+	}
 	return ast.Ident{
+		tok_kind: p.tok.kind
+		kind: .unresolved
+		name: name
+		comptime: p.comp_if_cond
+		language: language
+		mod: p.mod
+		pos: pos
+		is_mut: is_mut
+		mut_pos: mut_pos
+		info: ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+			share: ast.sharetype_from_flags(is_shared, is_atomic)
+		}
 		scope: p.scope
 	}
 }
@@ -2147,6 +2162,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return map_init
 		}
 		return p.struct_init(false) // short_syntax: false
+	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
+		&& language == .v {
+		// if a == Foo{} {...}
+		return p.struct_init(false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
@@ -2154,6 +2173,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			name := p.check_name()
 			p.check(.dot)
 			field := p.check_name()
+			fkind := match field {
+				'name' { ast.GenericKindField.name }
+				'typ' { ast.GenericKindField.typ }
+				else { ast.GenericKindField.unknown }
+			}
 			pos.extend(p.tok.position())
 			return ast.SelectorExpr{
 				expr: ast.Ident{
@@ -2161,6 +2185,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					scope: p.scope
 				}
 				field_name: field
+				gkind_field: fkind
 				pos: pos
 				scope: p.scope
 			}
@@ -2208,7 +2233,12 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		has_low = false
 		// [..end]
 		p.next()
-		high := p.expr(0)
+		mut high := ast.empty_expr()
+		mut has_high := false
+		if p.tok.kind != .rsbr {
+			high = p.expr(0)
+			has_high = true
+		}
 		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
@@ -2217,7 +2247,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			index: ast.RangeExpr{
 				low: ast.empty_expr()
 				high: high
-				has_high: true
+				has_high: has_high
 				pos: pos
 			}
 		}
@@ -3123,6 +3153,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.key_type)
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
+	name_pos := p.tok.position()
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
@@ -3197,6 +3228,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
+		if typ == -1 {
+			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
+				name_pos)
+			return ast.SumTypeDecl{}
+		}
 		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
@@ -3233,7 +3269,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	type_end_pos := p.prev_tok.position()
 	if idx == -1 {
 		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
-			decl_pos.extend(type_alias_pos))
+			name_pos)
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {

@@ -146,3 +146,43 @@ pub fn radians(degrees f64) f64 {
 pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
+
+pub fn tolerance(a f64, b f64, tol f64) bool {
+	mut ee := tol
+	// Multiplying by ee here can underflow denormal values to zero.
+	// Check a==b so that at least if a and b are small and identical
+	// we say they match.
+	if a == b {
+		return true
+	}
+	mut d := a - b
+	if d < 0 {
+		d = -d
+	}
+	// note: b is correct (expected) value, a is actual value.
+	// make error tolerance a fraction of b, not a.
+	if b != 0 {
+		ee = ee * b
+		if ee < 0 {
+			ee = -ee
+		}
+	}
+	return d < ee
+}
+
+pub fn close(a f64, b f64) bool {
+	return tolerance(a, b, 1e-14)
+}
+
+pub fn veryclose(a f64, b f64) bool {
+	return tolerance(a, b, 4e-16)
+}
+
+pub fn alike(a f64, b f64) bool {
+	if is_nan(a) && is_nan(b) {
+		return true
+	} else if a == b {
+		return signbit(a) == signbit(b)
+	}
+	return false
+}

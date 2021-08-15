@@ -651,7 +651,7 @@ fn test_for_loop_two() {
 }
 
 fn test_quote() {
-	a := `\'`
+	a := `'`
 	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'

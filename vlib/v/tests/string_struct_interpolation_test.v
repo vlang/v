@@ -22,3 +22,18 @@ fn test_adding_to_mutable_string_field() {
 	eprintln(foo.str)
 	assert foo.str == 'hi!'
 }
+
+struct MyStruct {
+	a string
+	b int
+}
+
+fn test_map_of_ref_struct_string() {
+	mut ar := map[string]&MyStruct{}
+	ar['a'] = &MyStruct{}
+	println(ar)
+	assert '$ar'.contains('MyStruct')
+	assert ('b' in ar) == false
+	assert ('a' in ar) == true
+	assert 'a' in ar
+}

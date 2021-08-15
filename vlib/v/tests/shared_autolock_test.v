@@ -23,7 +23,7 @@ fn inc_map_elem(shared b map[string]int, k string) {
 }
 
 fn test_autolock_map() {
-	shared m := &map{
+	shared m := &{
 		'xy':  1
 		'qwe': 2
 		'asd': 7

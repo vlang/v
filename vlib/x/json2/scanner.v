@@ -50,7 +50,7 @@ const (
 	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	// used for transforming escapes into valid unicode (eg. n => \n)
-	unicode_transform_escapes = map{
+	unicode_transform_escapes = {
 		98:  `\b`
 		102: `\f`
 		110: `\n`

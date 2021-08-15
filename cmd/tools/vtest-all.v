@@ -129,6 +129,11 @@ fn get_all_commands() []Command {
 		line: '$vexe install nedpals.args'
 		okmsg: '`v install` works.'
 	}
+	res << Command{
+		line: '$vexe -usecache -cg examples/hello_world.v'
+		okmsg: '`v -usecache -cg` works.'
+		rmfile: 'examples/hello_world'
+	}
 	// NB: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:

@@ -130,3 +130,21 @@ fn test_decode_null_byte_str() {
 	s := [byte(`A`), 0, `C`].bytestr()
 	assert base64.decode_str('QQBD') == s
 }
+
+fn test_decode_in_buffer_bytes() {
+	rfc4648_pairs := [
+		TestPair{'foob', 'Zm9vYg=='},
+		TestPair{'fooba', 'Zm9vYmE='},
+		TestPair{'foobar', 'Zm9vYmFy'},
+	]
+	mut src_dec_buf := []byte{len: 8}
+	mut src_enc_buf := []byte{len: 8}
+	mut out_buf := []byte{len: 8}
+
+	for p in rfc4648_pairs {
+		src_dec_buf = p.decoded.bytes()
+		src_enc_buf = p.encoded.bytes()
+		n := base64.decode_in_buffer_bytes(src_enc_buf, out_buf.data)
+		assert src_dec_buf == out_buf[..n]
+	}
+}

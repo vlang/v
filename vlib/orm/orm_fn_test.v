@@ -174,6 +174,85 @@ fn test_orm_table_gen() {
 		},
 	], sql_type_from_v, true) or { panic(err) }
 	assert alt_query == "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='test_table' and xtype='U') CREATE TABLE 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'));"
+
+	unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
+		orm.TableField{
+			name: 'id'
+			typ: 7
+			default_val: '10'
+			attrs: [
+				StructAttribute{
+					name: 'primary'
+				},
+				StructAttribute{
+					name: 'sql'
+					has_arg: true
+					arg: 'serial'
+					kind: .plain
+				},
+			]
+		},
+		orm.TableField{
+			name: 'test'
+			typ: 18
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+				},
+			]
+		},
+		orm.TableField{
+			name: 'abc'
+			typ: 8
+			default_val: '6754'
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'), UNIQUE('test'));"
+
+	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
+		orm.TableField{
+			name: 'id'
+			typ: 7
+			default_val: '10'
+			attrs: [
+				StructAttribute{
+					name: 'primary'
+				},
+				StructAttribute{
+					name: 'sql'
+					has_arg: true
+					arg: 'serial'
+					kind: .plain
+				},
+			]
+		},
+		orm.TableField{
+			name: 'test'
+			typ: 18
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+					has_arg: true
+					arg: 'test'
+					kind: .string
+				},
+			]
+		},
+		orm.TableField{
+			name: 'abc'
+			typ: 8
+			default_val: '6754'
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+					has_arg: true
+					arg: 'test'
+					kind: .string
+				},
+			]
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 }
 
 fn sql_type_from_v(typ int) ?string {

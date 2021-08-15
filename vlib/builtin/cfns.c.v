@@ -1,11 +1,13 @@
 module builtin
 
 // <string.h>
-fn C.memcpy(dest &byte, src &byte, n int) voidptr
+fn C.memcpy(dest voidptr, const_src voidptr, n size_t) voidptr
 
-fn C.memcmp(&byte, &byte, int) int
+fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n size_t) int
 
-fn C.memmove(&byte, &byte, int) voidptr
+fn C.memmove(dest voidptr, const_src voidptr, n size_t) voidptr
+
+fn C.memset(str voidptr, c int, n size_t) voidptr
 
 [trusted]
 fn C.calloc(int, int) &byte
@@ -19,7 +21,7 @@ fn C.free(ptr voidptr)
 [noreturn; trusted]
 fn C.exit(code int)
 
-fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
+fn C.qsort(base voidptr, items size_t, item_size size_t, cb C.qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
@@ -125,8 +127,6 @@ fn C.rename(old_filename &char, new_filename &char) int
 
 fn C.fgets(str &char, n int, stream &C.FILE) int
 
-fn C.memset(str voidptr, c int, n size_t) int
-
 [trusted]
 fn C.sigemptyset() int
 
@@ -224,7 +224,7 @@ fn C.GetUserNameW(&u16, &u32) bool
 [trusted]
 fn C.SendMessageTimeout() u32
 
-fn C.SendMessageTimeoutW(hWnd voidptr, Msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
+fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
 
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
 
@@ -242,7 +242,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 
 fn C.RegSetValueEx() voidptr
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData &byte, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &byte, lpcbData u32) int
 
 fn C.RegCloseKey(hKey voidptr)
 
@@ -323,7 +323,7 @@ fn C.FindClose(hFindFile voidptr)
 // macro
 fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
-fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, Arguments ...voidptr) voidptr
+fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, arguments ...voidptr) voidptr
 
 fn C.CloseHandle(voidptr) int
 

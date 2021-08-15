@@ -130,7 +130,7 @@ fn (mut s Scanner) scan_all() {
 				continue
 			}
 		}
-		if c in [`\'`, `\"`] && !s.peek_char(`\\`) {
+		if c in [`'`, `\"`] && !s.peek_char(`\\`) {
 			s.pos++
 			str := s.create_string(c)
 			s.tokenize(.str, str)

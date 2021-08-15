@@ -747,6 +747,6 @@ fn test_utime() {
 	f.write_string(hello) or { panic(err) }
 	atime := time.now().add_days(2).unix_time()
 	mtime := time.now().add_days(4).unix_time()
-	os.utime(filename, atime, mtime) or { panic(err) }
+	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }

@@ -173,7 +173,7 @@ fn test_mut_9() {
 		v = v + 1 // v: 1
 		mut vv := v // vv: 1, v: 1
 		vv = vv + v // vv: 2, v: 1
-		foo := map{
+		foo := {
 			'a': v
 			'b': vv
 		}
@@ -327,7 +327,7 @@ fn foo7(mut m map[string]int) {
 }
 
 fn test_mut_16() {
-	mut m := map{
+	mut m := {
 		'one': 100
 		'two': 2
 	}
@@ -335,7 +335,7 @@ fn test_mut_16() {
 }
 
 fn test_mut_17() {
-	mut arr := [map{
+	mut arr := [{
 		'foo': 1
 	}]
 	for _, mut j in arr {
@@ -346,10 +346,10 @@ fn test_mut_17() {
 		}
 		println(j)
 		println(k)
-		assert j == map{
+		assert j == {
 			'foo': 0
 		}
-		assert k == map{
+		assert k == {
 			'foo': 10
 		}
 	}

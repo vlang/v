@@ -16,6 +16,7 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
+	is_blocking    bool
 }
 
 pub fn dial_tcp(address string) ?&TcpConn {

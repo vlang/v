@@ -11,16 +11,19 @@ import v.pref
 // For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
 // it returns `x.websocket.tests`, because /languages/v/ has v.mod file in it.
 // NB: calling this is expensive, so keep the result, instead of recomputing it.
+// TODO: turn this to a Doc method, so that the new_vdoc_preferences call here can
+// be removed.
 fn get_parent_mod(input_dir string) ?string {
-	$if windows {
-		// windows root path is C: or D:
-		if input_dir.len <= 2 {
-			return error('root folder reached')
-		}
-	} $else {
-		if input_dir.len == 0 {
-			return error('root folder reached')
-		}
+	// windows root path is C: or D:
+	if input_dir.len == 2 && input_dir[1] == `:` {
+		return error('root folder reached')
+	}
+	// unix systems have / at the top:
+	if input_dir == '/' {
+		return error('root folder reached')
+	}
+	if input_dir == '' {
+		return error('no input folder')
 	}
 	base_dir := os.dir(input_dir)
 	input_dir_name := os.file_name(base_dir)

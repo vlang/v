@@ -4,13 +4,13 @@ vlib/v/checker/tests/map_delete.vv:5:11: error: cannot use `int literal` as `str
     5 |     m.delete(1)
       |              ^
     6 |     m.delete(1, 2)
-    7 |     m2 := map{
+    7 |     m2 := {
 vlib/v/checker/tests/map_delete.vv:6:4: error: expected 1 argument, but got 2
     4 |     }
     5 |     m.delete(1)
     6 |     m.delete(1, 2)
       |       ~~~~~~~~~~~~
-    7 |     m2 := map{
+    7 |     m2 := {
     8 |         '1': 1
 vlib/v/checker/tests/map_delete.vv:10:2: error: `m2` is immutable, declare it with `mut` to make it mutable
     8 |         '1': 1

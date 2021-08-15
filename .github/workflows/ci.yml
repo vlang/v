@@ -356,7 +356,7 @@ jobs:
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
-          ../v run examples/build_examples.vsh
+          ## ../v run examples/build_examples.vsh
 
   ubuntu:
     needs: no-scheduling
@@ -870,6 +870,7 @@ jobs:
           git clone --depth 1 https://github.com/vlang/gitly
           cd gitly
           ../v .
+          # ./gitly -ci_run
           ../v -autofree .
           cd ..
 

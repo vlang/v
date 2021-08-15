@@ -85,6 +85,7 @@ fn test_if_flag_gets_set_with_long_arg() {
 	mut cmd := cli.Command{
 		name: 'command'
 		execute: flag_should_be_set
+		posix_mode: true
 	}
 	cmd.add_flag(cli.Flag{
 		flag: .string

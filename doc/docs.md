@@ -482,8 +482,15 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
-to bytes in the string, not Unicode code points.
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. 
+Indexes correspond to bytes in the string, not Unicode code points. If you want to 
+convert the `byte` to a `string`, use the `ascii_str()` method:
+
+```v
+country := 'Netherlands'
+println(country[0]) // Output: 78
+println(country[0].ascii_str()) // Output: N
+```
 
 Character literals have type `rune`. To denote them, use `
 
@@ -1042,7 +1049,7 @@ Maps can have keys of type string, rune, integer, float or voidptr.
 
 The whole map can be initialized using this short syntax:
 ```v
-numbers := map{
+numbers := {
 	'one': 1
 	'two': 2
 }
@@ -1052,14 +1059,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := map{
+sm := {
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
 ```
 ```v
-intm := map{
+intm := {
 	1: 1234
 	2: 5678
 }
@@ -1306,7 +1313,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1421,7 +1428,7 @@ The code above prints:
 ##### Map `for`
 
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1434,7 +1441,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1783,7 +1790,7 @@ mut p := Point{
 	y: 20
 }
 // you can omit the struct name when it's already known
-p = {
+p = Point{
 	x: 30
 	y: 4
 }
@@ -1935,7 +1942,7 @@ clr1 := Rgba32{
 }
 
 clr2 := Rgba32{
-	Rgba32_Component: {
+	Rgba32_Component: Rgba32_Component{
 		a: 128
 	}
 }
@@ -2029,7 +2036,7 @@ struct User {
 }
 
 fn register(u User) User {
-	return {
+	return User{
 		...u
 		is_registered: true
 	}
@@ -2095,12 +2102,75 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println(fns[0](10)) // "100"
-	fns_map := map{
+	fns_map := {
 		'sqr':  sqr
 		'cube': cube
 	}
 	println(fns_map['cube'](2)) // "8"
 }
+```
+
+V supports closures too.
+This means that anonymous functions can inherit variables from the scope they were created in.
+They must do so explicitly by listing all variables that are inherited.
+
+> Warning: currently works on Unix-based, x64 architectures only.
+Some work is in progress to make closures work on Windows, then other architectures.
+
+```v
+my_int := 1
+my_closure := fn [my_int] () {
+	println(my_int)
+}
+my_closure() // prints 1
+```
+
+Inherited variables are copied when the anonymous function is created.
+This means that if the original variable is modified after the creation of the function,
+the modification won't be reflected in the function.
+
+```v
+mut i := 1
+func := fn [i] () int {
+	return i
+}
+println(func() == 1) // true
+i = 123
+println(func() == 1) // still true
+```
+
+However, the variable can be modified inside the anonymous function.
+The change won't be reflected outside, but will be in the later function calls.
+
+```v
+fn new_counter() fn () int {
+	mut i := 0
+	return fn [mut i] () int {
+		i++
+		return i
+	}
+}
+
+c := new_counter()
+println(c()) // 1
+println(c()) // 2
+println(c()) // 3
+```
+
+If you need the value to be modified outside the function, use a reference.
+**Warning**: _you need to make sure the reference is always valid,
+otherwise this can result in undefined behavior._
+
+```v
+mut i := 0
+mut ref := &i
+print_counter := fn [ref] () {
+	println(*ref)
+}
+
+print_counter() // 0
+i = 10
+print_counter() // 10
 ```
 
 ## References
@@ -2400,6 +2470,15 @@ v install [module]
 **Example:**
 ```powershell
 v install ui
+```
+
+Modules could install directly from git or mercurial repositories.
+```powershell
+v install [--git|--hg] [url]
+```
+**Example:**
+```powershell
+v install --git https://github.com/vlang/markdown
 ```
 
 Removing a module with v:
@@ -5229,6 +5308,18 @@ fn old_function() {
 // It can also display a custom deprecation message
 [deprecated: 'use new_function() instead']
 fn legacy_function() {}
+
+// You can also specify a date, after which the function will be
+// considered deprecated. Before that date, calls to the function
+// will be compiler notices - you will see them, but the compilation
+// is not affected. After that date, calls will become warnings,
+// so ordinary compiling will still work, but compiling with -prod
+// will not (all warnings are treated like errors with -prod).
+// 6 months after the deprecation date, calls will be hard
+// compiler errors.
+[deprecated: 'use new_function2() instead']
+[deprecated_after: '2021-05-27']
+fn legacy_function2() {}
 
 // This function's calls will be inlined.
 [inline]

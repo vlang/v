@@ -148,14 +148,11 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
-		println('')
-		println('=====================')
 		println('> C compiler cmd: $cmd')
-		if v.pref.show_cc {
-			println('> C compiler response file $response_file:')
+		if v.pref.show_cc && !v.pref.no_rsp {
+			println('> C compiler response file "$response_file":')
 			println(response_file_content)
 		}
-		println('=====================')
 	}
 }
 
@@ -189,7 +186,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut debug_options := ['-g']
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
-	ccoptions.args = [v.pref.cflags, '-std=gnu99']
+	ccoptions.args = [v.pref.cflags]
+	if !v.pref.no_std {
+		ccoptions.args << '-std=c99 -D_DEFAULT_SOURCE'
+	}
 	ccoptions.wargs = [
 		'-Wall',
 		'-Wextra',
@@ -610,15 +610,22 @@ fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		// write args to response file
-		response_file := '${v.out_name_c}.rsp'
-		response_file_content := str_args.replace('\\', '\\\\')
-		os.write_file(response_file, response_file_content) or {
-			verror('Unable to write response file "$response_file"')
+		mut cmd := '$ccompiler $str_args'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if !v.pref.no_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			response_file_content = str_args.replace('\\', '\\\\')
+			cmd = '$ccompiler "@$response_file"'
+			os.write_file(response_file, response_file_content) or {
+				verror('Unable to write to C response file "$response_file"')
+			}
 		}
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << v.out_name_c
-			v.pref.cleanup_files << response_file
+			if !v.pref.no_rsp {
+				v.pref.cleanup_files << response_file
+			}
 		}
 		$if windows {
 			if v.ccoptions.is_cc_tcc {
@@ -628,7 +635,6 @@ fn (mut v Builder) cc() {
 		}
 		//
 		os.chdir(vdir)
-		cmd := '$ccompiler "@$response_file"'
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run

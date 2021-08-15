@@ -10,9 +10,64 @@ const (
 	c_n = 5
 )
 
+struct Coord {
+	x int
+	y int
+	z int
+}
+
+struct Numbers {
+	odds  []int
+	evens []int
+}
+
+struct Person {
+	name string
+	nums []int
+	kv   map[string]string
+}
+
+// test array add in function with mut argument
+fn add_nums(mut arr []int) {
+	arr << 4
+}
+
+const (
+	grid_size_1 = 2
+	grid_size_2 = 3
+	grid_size_3 = 4
+	cell_value  = 123
+)
+
 struct User {
 	age  int
 	name string
+}
+
+struct Foo {
+mut:
+	bar []int
+}
+
+fn array_in_mut(mut a []int) {
+	if 1 in a {
+		a[0] = 2
+	}
+}
+
+fn mut_arr_with_eq_in_fn(mut a []int) {
+	if a == [1, 2, 3, 4] {
+		a[0] = 0
+	}
+	if [0, 2, 3, 4] == a {
+		a[1] = 0
+	}
+	if !(a != [0, 0, 3, 4]) {
+		a[2] = 0
+	}
+	if !([0, 0, 0, 4] != a) {
+		a[3] = 0
+	}
 }
 
 fn map_test_helper_1(i int) int {
@@ -78,7 +133,7 @@ fn main() {
 		println(*d_arr[1][0]) // 1
 	}
 	{
-		// test assign	
+		// test assign
 		mut arr := [2, 4, 8, 16, 32, 64, 128]
 		arr[0] = 2
 		arr[1] &= 255
@@ -622,15 +677,13 @@ fn main() {
 	}
 	{
 		// test array str
-		// todo(playX): JS array formatting should match what default builtin impl has.
-		/*
+
 		numbers := [1, 2, 3]
 		assert numbers == [1, 2, 3]
 		numbers2 := [numbers, [4, 5, 6]] // dup str() bug
 		println(numbers2)
 		assert true
 		assert numbers.str() == '[1, 2, 3]'
-		*/
 	}
 	{
 		// test eq
@@ -767,5 +820,361 @@ fn main() {
 		println(f[0])
 		println(f[1])
 		println(f[6])
+	}
+	{
+		// test f64 sort
+		mut f := [50.0, 15, 1, 79, 38, 0, 27]
+		f.sort()
+		println(f)
+		assert f[0] == 0.0
+		assert f[1] == 1.0
+		assert f[6] == 79.0
+	}
+	{
+		// test i64 sort
+		mut f := [i64(50), 15, 1, 79, 38, 0, 27]
+		f.sort()
+		println(f)
+		assert f[0] == 0
+		assert f[1] == 1
+		assert f[6] == 79
+	}
+	{
+		// test in struct
+
+		mut baz := Foo{
+			bar: [0, 0, 0]
+		}
+		baz.bar[0] += 2
+		baz.bar[0]++
+		println(baz.bar[0])
+	}
+	{
+		// test direct modification
+		mut foo := [2, 0, 5]
+		foo[1] = 3
+		foo[0] *= 7
+		foo[1]--
+		foo[2] -= 2
+		println(foo)
+	}
+	{
+		// test bools
+		println('test b')
+		mut a := [true, false]
+		a << true
+		println(a)
+	}
+	{
+		// test push many self
+		mut actual_arr := [1, 2, 3, 4]
+		actual_arr << actual_arr
+		expected_arr := [1, 2, 3, 4, 1, 2, 3, 4]
+		assert actual_arr.len == expected_arr.len
+		for i in 0 .. actual_arr.len {
+			print(actual_arr[i])
+			print(',')
+			println(expected_arr[i])
+		}
+	}
+	{
+		// test for
+		nums := [1, 2, 3]
+		mut sum := 0
+		for num in nums {
+			sum += num
+		}
+		println(sum)
+	}
+	{
+		// test left shift precedence
+
+		mut arr := []int{}
+		arr << 1 + 1
+		arr << 1 - 1
+		arr << 2 / 1
+		arr << 2 * 1
+		println(arr)
+	}
+	{
+		// todo(playX): what we should do with cap on the JS backend?
+		/*
+		// test array with cap
+		a4 := []int{len: 1, cap: 10}
+		println(a4.cap)
+		assert a4.len == 1
+		assert a4.cap == 10
+		a5 := []int{len: 1, cap: 10}
+		assert a5.len == 1
+		assert a5.cap == 10
+		*/
+	}
+	{
+		// test multi array index
+		mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
+		a[0][0] = 1
+		println('$a')
+		mut b := [[0].repeat(3)].repeat(2)
+		b[0][0] = 1
+		println('$b')
+	}
+	{
+		// test plus assign string
+		mut a := ['']
+		a[0] += 'abc'
+
+		println(a)
+	}
+	{
+		// test mut arr with eq in fn
+		mut a := [1, 2, 3, 4]
+		mut_arr_with_eq_in_fn(mut a)
+		println(a)
+	}
+	{
+		// test array in mut
+		mut a := [1, 2]
+		array_in_mut(mut a)
+		println(a)
+	}
+	{
+		mut nums := [1, 2, 3]
+		add_nums(mut nums)
+		println(nums)
+	}
+	{
+		// test reverse in place
+		mut a := [1, 2, 3, 4]
+		a.reverse_in_place()
+		println(a)
+		mut b := ['a', 'b', 'c']
+		b.reverse_in_place()
+		println(b)
+		mut c := [[1, 2], [3, 4], [5, 6]]
+		c.reverse_in_place()
+		println(c)
+	}
+	{
+		// test array int pop
+		mut a := [1, 2, 3, 4, 5]
+		assert a.len == 5
+		x := a.last()
+		y := a.pop()
+		println('$x,$y')
+		assert a.len == 4
+		z := a.pop()
+		assert a.len == 3
+		println(z)
+		a.pop()
+		a.pop()
+		final := a.pop()
+		println(final)
+	}
+	{
+		// test array string pop
+		mut a := ['abc', 'def', 'xyz']
+		assert a.len == 3
+		println(a.pop())
+		println(a.pop())
+		println(a.pop())
+		assert a.len == 0
+	}
+	{
+		// test array first
+		a := [3]
+		println(a.first())
+		b := [1, 2, 3, 4]
+		println(b.first())
+		c := ['abc', 'def']
+		println(c.first())
+		// todo(playX): we should implement byte str cmp
+
+		s := [Chunk{'a'}]
+		println(s.first().val)
+	}
+	{
+		// test array last
+		a := [3]
+		println(a.last())
+		b := [1, 2, 3, 4]
+		println(b.last())
+		c := ['abc', 'def']
+		println(c.last())
+		s := [Chunk{'a'}]
+		println(s.last().val)
+	}
+	{
+		// test direct array access
+		mut a := [11, 22, 33, 44]
+		println(a[0])
+		println(a[2])
+		x := a[0]
+		a[0] = 21
+		a[1] += 2
+		a[2] = x + 3
+		a[3] -= a[1]
+		println(a)
+	}
+	{
+		// test multidimensional array initialization with consts
+		mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}
+		println(data.len)
+		println(data[0].len)
+		println(data[0][0].len)
+		println(data[0][0][0])
+		println(data[1][1][1])
+	}
+	{
+		// test multi array prepend
+		mut a := [][]int{}
+		a.prepend([1, 2, 3])
+		println(a)
+		mut b := [][]int{}
+		b.prepend([[1, 2, 3]])
+		println(b)
+	}
+	{
+		// test multi array insert
+		mut a := [][]int{}
+		a.insert(0, [1, 2, 3])
+		println(a)
+		mut b := [][]int{}
+		b.insert(0, [[1, 2, 3]])
+		println(b)
+	}
+	{
+		// test multi array in
+		a := [[1]]
+		println([1] in a)
+	}
+	{
+		// test any type array contains
+		a := [true, false]
+		println(a.contains(true))
+		println(true in a)
+		println(a.contains(false))
+		println(false in a)
+		b := [i64(2), 3, 4]
+		println(b.contains(i64(3)))
+		println(5 !in b)
+		c := [[1], [2]]
+		println(c.contains([1]))
+		println([2] in c)
+		println([3] !in c)
+	}
+	{
+		// test struct array of multi type in
+		ivan := Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		}
+		people := [Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		}, Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		}]
+		println(ivan in people)
+	}
+	{
+		// test struct array of multi type index
+		ivan := Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		}
+		people := [Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		}, Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		}]
+		println(people.index(ivan))
+		assert people.index(ivan) == 0
+	}
+	{
+		// test array struct contains
+
+		mut coords := []Coord{}
+		coord_1 := Coord{
+			x: 1
+			y: 2
+			z: -1
+		}
+		coords << coord_1
+		exists := coord_1 in coords
+		not_exists := coord_1 !in coords
+		println('`exists`: $exists and `not exists`: $not_exists')
+		assert exists == true
+		assert not_exists == false
+	}
+	{
+		// test array of array append
+		mut x := [][]int{len: 4}
+		println(x) // OK
+		x[2] << 123 // RTE
+		println(x)
+	}
+	{
+		// test array of map insert
+		mut x := []map[string]int{len: 4}
+		println(x) // OK
+		x[2]['123'] = 123 // RTE
+		println(x)
+	}
+	{
+		// todo(playX): does not work
+		/*
+		// test multi fixed array init
+		a := [3][3]int{}
+		println(a)
+		*/
+	}
+	{
+		// test array of multi filter
+		arr := [1, 2, 3, 4, 5]
+		nums := Numbers{
+			odds: arr.filter(it % 2 == 1)
+			evens: arr.filter(it % 2 == 0)
+		}
+		println(nums)
+		assert nums.odds == [1, 3, 5]
+		assert nums.evens == [2, 4]
+	}
+	{
+		// test array of multi map
+		arr := [1, 3, 5]
+		nums := Numbers{
+			odds: arr.map(it + 2)
+			evens: arr.map(it * 2)
+		}
+		println(nums)
+		assert nums.odds == [3, 5, 7]
+		assert nums.evens == [2, 6, 10]
+	}
+	{
+		// test multi fixed array with default init
+		a := [3][3]int{init: [3]int{init: 10}}
+		println(a)
+		assert a == [[10, 10, 10]!, [10, 10, 10]!, [10, 10, 10]!]!
 	}
 }

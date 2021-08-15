@@ -21,7 +21,7 @@ pub fn (dog Dog) say(message string) ? {
 fn test_map_assign_array_of_interface() {
 	mut owner_and_animals := map[string][]Animal{}
 
-	owner_and_animals = map{
+	owner_and_animals = {
 		'John Doe': [
 			Cat{
 				name: 'Bobby'

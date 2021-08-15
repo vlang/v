@@ -23,20 +23,14 @@ fn main() {
 			return
 		}
 		// println('running ./fast')
-		resp := os.execute('./fast')
+		resp := os.execute('./fast -upload')
 		if resp.exit_code < 0 {
 			println(resp.output)
 			return
 		}
 		if resp.exit_code != 0 {
 			println('resp != 0, skipping')
-		} else {
-			os.chdir('website')
-			os.execute_or_exit('git checkout gh-pages')
-			os.cp('../index.html', 'index.html') ?
-			os.system('git commit -am "update benchmark"')
-			os.system('git push origin gh-pages')
-			os.chdir('..')
+			println(resp.output)
 		}
 		time.sleep(180 * time.second)
 	}

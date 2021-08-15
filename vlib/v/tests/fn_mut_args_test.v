@@ -12,7 +12,7 @@ fn test_fn_mut_args_of_array() {
 }
 
 fn init_map(mut n map[string]int) {
-	n = map{
+	n = {
 		'one': 1
 	}
 }
@@ -21,7 +21,7 @@ fn test_fn_mut_args_of_map() {
 	mut m := map[string]int{}
 	init_map(mut m)
 	println(m)
-	assert m == map{
+	assert m == {
 		'one': 1
 	}
 }

@@ -13,12 +13,13 @@ import v.vet
 import v.errors
 
 const (
-	single_quote = `\'`
+	single_quote = `'`
 	double_quote = `"`
 	// char used as number separator
 	num_sep      = `_`
 	b_lf         = 10
 	b_cr         = 13
+	backslash    = `\\`
 )
 
 pub struct Scanner {
@@ -56,6 +57,7 @@ pub mut:
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
 	vet_errors                  []vet.Error
+	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 }
 
 /*
@@ -563,7 +565,7 @@ pub fn (mut s Scanner) scan_remaining_text() {
 			continue
 		}
 		s.all_tokens << t
-		if t.kind == .eof {
+		if t.kind == .eof || s.should_abort {
 			break
 		}
 	}
@@ -578,7 +580,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 	for {
 		cidx := s.tidx
 		s.tidx++
-		if cidx >= s.all_tokens.len {
+		if cidx >= s.all_tokens.len || s.should_abort {
 			return s.end_of_file()
 		}
 		if s.all_tokens[cidx].kind == .comment {
@@ -634,7 +636,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		if !s.is_inside_string {
 			s.skip_whitespace()
 		}
-		if s.pos >= s.text.len {
+		if s.pos >= s.text.len || s.should_abort {
 			return s.end_of_file()
 		}
 		// End of $var, start next string
@@ -677,7 +679,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
 			if s.is_inter_start && next_char == `\\`
-				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`, `\'`] {
+				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`, `'`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -1111,7 +1113,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
-	slash := `\\`
+	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
@@ -1120,10 +1122,12 @@ fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
+		if c == scanner.backslash {
+			backslash_count++
+		}
 		// end of string
-		if c == s.quote
-			&& (is_raw || prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
-			// handle '123\\'  slash at the end
+		if c == s.quote && (is_raw || backslash_count % 2 == 0) {
+			// handle '123\\' backslash at the end
 			break
 		}
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
@@ -1136,22 +1140,22 @@ fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && prevc == slash {
+		if c == `0` && s.pos > 2 && prevc == scanner.backslash {
 			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit())
-				|| s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
+				|| s.count_symbol_before(s.pos - 1, scanner.backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
 		}
 		// Don't allow \x00
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
-			if s.count_symbol_before(s.pos - 3, slash) % 2 == 0 {
+			if s.count_symbol_before(s.pos - 3, scanner.backslash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\x00` (NULL character) in the string literal')
 			}
 		}
 		// Escape `\x` `\u`
-		if prevc == slash && !is_raw && !is_cstr && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` && (s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit()) {
 				s.error(r'`\x` used with no following hex digits')
@@ -1168,7 +1172,8 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
-		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if prevc == `$` && c == `{` && !is_raw
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_enclosed_inter = true
 			// so that s.pos points to $ at the next step
@@ -1177,11 +1182,14 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
 			break
+		}
+		if c != scanner.backslash {
+			backslash_count = 0
 		}
 	}
 	mut lit := ''
@@ -1347,6 +1355,10 @@ pub fn (mut s Scanner) warn(msg string) {
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 	} else {
+		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
+			s.should_abort = true
+			return
+		}
 		s.warnings << errors.Warning{
 			file_path: s.file_path
 			pos: pos
@@ -1368,6 +1380,10 @@ pub fn (mut s Scanner) error(msg string) {
 	} else {
 		if s.pref.fatal_errors {
 			exit(1)
+		}
+		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {
+			s.should_abort = true
+			return
 		}
 		s.errors << errors.Error{
 			file_path: s.file_path

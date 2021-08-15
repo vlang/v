@@ -12,7 +12,7 @@ import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.new_custom_header_from_map(map{
+	headers_close     = http.new_custom_header_from_map({
 		'Server':          'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
@@ -41,7 +41,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	mime_types        = map{
+	mime_types        = {
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -100,7 +100,9 @@ struct MultiplePathAttributesError {
 }
 
 // declaring init_server in your App struct is optional
-pub fn (ctx Context) init_server() {}
+pub fn (ctx Context) init_server() {
+	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
+}
 
 // declaring before_request in your App struct is optional
 pub fn (ctx Context) before_request() {}
@@ -126,7 +128,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	ctx.done = true
 
 	// build header
-	header := http.new_header_from_map(map{
+	header := http.new_header_from_map({
 		http.CommonHeader.content_type:   mimetype
 		http.CommonHeader.content_length: res.len.str()
 	}).join(ctx.header)
@@ -275,7 +277,6 @@ interface DbInterface {
 // run_app
 [manualfree]
 pub fn run<T>(global_app &T, port int) {
-	// x := global_app.clone()
 	// mut global_app := &T{}
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
@@ -287,7 +288,9 @@ pub fn run<T>(global_app &T, port int) {
 	// conn: 0
 	//}
 	// app.init_server()
+	// unsafe {
 	// global_app.init_server()
+	//}
 	//$for method in T.methods {
 	//$if method.return_type is Result {
 	// check routes for validity
@@ -438,6 +441,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
 	// URL path should be at least as long as the route path
+	// except for the catchall route (`/:path...`)
+	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
+		return ['/' + url_words.join('/')]
+	}
 	if url_words.len < route_words.len {
 		return none
 	}

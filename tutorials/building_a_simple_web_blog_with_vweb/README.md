@@ -203,12 +203,18 @@ pub mut:
 
 
 
-Add the `init_server()` method where we'll connect to a database:
+In `fn main()` we'll connect to a database.
+Code in the `main()` function is run only once during app's startup, so we are going
+to have one DB connection for all requests. This improves the performance of the web application,
+since a DB connection doesn't have to be set up for each request.
+
 
 ```v oksyntax
 // blog.v
-pub fn (mut app App) init_server() {
-	app.db = sqlite.connect(':memory:') or { panic(err) }
+fn main() {
+	mut app := App{
+		db: sqlite.connect(':memory:') or { panic(err) }
+	}
 	sql app.db {
 		create table Article
 	}
@@ -230,23 +236,7 @@ pub fn (mut app App) init_server() {
 }
 ```
 
-Code in the `init_server()` function is run only once during app's startup, so we are going
-to have one DB connection for all requests. Modify the main method to call the `init_server()`
-function before adding it to the vweb system:
-
-```v oksyntax
-fn main() {
-	mut app := App{}
-	app.init_server()
-	vweb.run(app, 8081)
-}
-```
-
-Because `init_server()` modifies properties of the app struct we now have to make it mutable
-with the `mut` keyword.
-
 Create a new file `article.v`:
-
 
 ```v oksyntax
 // article.v
@@ -265,7 +255,7 @@ pub fn (app &App) find_all_articles() []Article {
 }
 ```
 
-Notice that the `Article` structure conforms to the same structure and naming as 
+Notice that the `Article` structure conforms to the same structure and naming as
 the database table in the creation SQL statement. Also we need to add ORM decorators
 to our primary key to let it know that it is the primary key and it should auto-increment
 
@@ -423,21 +413,15 @@ pub fn (mut app App) articles() vweb.Result {
 
 ### Persistent data
 If one wants to persist data they need to use a file instead of memory SQLite Database.
-Replace the `init_server()` function with this instead:
+Replace the db setup code with this instead:
 
-```v oksyntax
-// blog.v
-pub fn (mut app App) init_server() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
-	sql app.db {
-		create table Article
-	}
-}
+```
+db: sqlite.connect('blog.db') or { panic(err) }
 ```
 
-As we can see it attempts to open a file in the current directory named `blog.db`. 
-If the database file doesn't exist it will create it. The second command will 
-create the table `Article` if none exists already. Now every time the 
+As we can see it attempts to open a file in the current directory named `blog.db`.
+If the database file doesn't exist it will create it. The second command will
+create the table `Article` if none exists already. Now every time the
 app is run you will see the articles created from the previous executions
 
 

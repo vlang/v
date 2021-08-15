@@ -12,18 +12,18 @@ vlib/v/checker/tests/in_mismatch_type.vv:13:5: error: left operand to `in` does 
       |        ~~~~~~
    14 |         println('yeah')
    15 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:16:5: error: use `str.contains(substr)` instead of `substr in str`
+vlib/v/checker/tests/in_mismatch_type.vv:16:7: error: `in` can only be used with an array/map/string
    14 |         println('yeah')
    15 |     }
    16 |     if 3 in s {
-      |        ~~~~~~
+      |          ~~
    17 |         println('dope')
    18 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:19:5: error: use `str.contains(substr)` instead of `substr in str`
+vlib/v/checker/tests/in_mismatch_type.vv:19:9: error: `in` can only be used with an array/map/string
    17 |         println('dope')
    18 |     }
    19 |     if `a` in s {
-      |        ~~~~~~~~
+      |            ~~
    20 |         println("oh no :'(")
    21 |     }
 vlib/v/checker/tests/in_mismatch_type.vv:22:7: error: `in` can only be used with an array/map/string

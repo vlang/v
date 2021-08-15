@@ -16,7 +16,7 @@ pub const (
 )
 
 pub const (
-	external_module_dependencies_for_tool = map{
+	external_module_dependencies_for_tool = {
 		'vdoc': ['markdown']
 	}
 )
@@ -75,7 +75,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
-			if !(ch == `\'` || ch == `)`) {
+			if !(ch == `'` || ch == `)`) {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}
@@ -267,9 +267,38 @@ pub fn path_of_executable(path string) string {
 	return path
 }
 
+[heap]
+struct SourceCache {
+mut:
+	sources map[string]string
+}
+
+[unsafe]
+pub fn cached_read_source_file(path string) ?string {
+	mut static cache := &SourceCache(0)
+	if isnil(cache) {
+		cache = &SourceCache{}
+	}
+	if path.len == 0 {
+		unsafe { cache.sources.free() }
+		unsafe { free(cache) }
+		cache = &SourceCache(0)
+		return error('memory source file cache cleared')
+	}
+	// eprintln('>> cached_read_source_file path: $path')
+	if res := cache.sources[path] {
+		// eprintln('>> cached')
+		return res
+	}
+	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
+	raw_text := os.read_file(path) or { return error('failed to open $path') }
+	res := skip_bom(raw_text)
+	cache.sources[path] = res
+	return res
+}
+
 pub fn read_file(file_path string) ?string {
-	raw_text := os.read_file(file_path) or { return error('failed to open $file_path') }
-	return skip_bom(raw_text)
+	return unsafe { cached_read_source_file(file_path) }
 }
 
 pub fn skip_bom(file_content string) string {
@@ -484,4 +513,14 @@ pub fn find_all_v_files(roots []string) ?[]string {
 		files << file
 	}
 	return files
+}
+
+// free_caches knows about all `util` caches and makes sure that they are freed
+// if you add another cached unsafe function using static, do not forget to add
+// a mechanism to clear its cache, and call it here.
+pub fn free_caches() {
+	unsafe {
+		cached_file2sourcelines('')
+		cached_read_source_file('') or { '' }
+	}
 }

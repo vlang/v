@@ -87,19 +87,6 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	#a.arr.sort(compare)
 }
 
-#function $sortComparator(a, b)
-#{
-#"use strict";
-#a = a.$toJS();
-#b = b.$toJS();
-#
-#if (a > b) return 1;
-#if (a < b) return -1;
-#return 0;
-#
-#
-#}
-
 pub fn (mut a array) sort() {
 	#a.arr.sort($sortComparator)
 }
@@ -153,6 +140,23 @@ pub fn (a array) str() string {
 #array.prototype.map = function(callback) { return new builtin.array(this.arr.map(callback)); }
 #array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
+#array.prototype.any = function (value) {
+#let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
+#for (let i = 0;i < this.arr.length;i++)
+#if (val(this.arr[i]))
+#return true;
+#
+#return false;
+#}
+
+#array.prototype.all = function (value) {
+#let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
+#for (let i = 0;i < this.arr.length;i++)
+#if (!val(this.arr[i]))
+#return false;
+#
+#return true;
+#}
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
@@ -181,6 +185,10 @@ pub fn (a array) reverse() array {
 	return res
 }
 
+pub fn (mut a array) reverse_in_place() {
+	#a.arr.reverse()
+}
+
 #array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
 
 // reduce executes a given reducer function on each element of the array,
@@ -192,4 +200,42 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	#}
 
 	return accum_
+}
+
+pub fn (mut a array) pop() voidptr {
+	mut res := voidptr(0)
+	#res = a.arr.pop()
+
+	return res
+}
+
+pub fn (a array) first() voidptr {
+	mut res := voidptr(0)
+	#res = a.arr[0]
+
+	return res
+}
+
+#array.prototype.toString = function () {
+#let res = "["
+#for (let i = 0; i < this.arr.length;i++) {
+#res += this.arr[i].toString();
+#if (i != this.arr.length-1)
+#res += ', '
+#}
+#res += ']'
+#return res;
+#
+#}
+
+pub fn (a array) contains(key voidptr) bool {
+	#for (let i = 0; i < a.arr.length;i++)
+	#if (vEq(a.arr[i],key)) return new bool(true);
+
+	return false
+}
+
+// delete_last effectively removes last element of an array.
+pub fn (mut a array) delete_last() {
+	#a.arr.pop();
 }

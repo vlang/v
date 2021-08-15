@@ -55,12 +55,6 @@ mut:
 	is_lit int
 }
 
-// vstrlen returns the V length of the C string `s` (0 terminator is not counted).
-[unsafe]
-pub fn vstrlen(s &byte) int {
-	return unsafe { C.strlen(&char(s)) }
-}
-
 pub fn (s string) runes() []rune {
 	mut runes := []rune{cap: s.len}
 	for i := 0; i < s.len; i++ {
@@ -118,7 +112,7 @@ pub fn tos3(s &char) string {
 	}
 	return string{
 		str: &byte(s)
-		len: unsafe { C.strlen(s) }
+		len: unsafe { vstrlen_char(s) }
 	}
 }
 
@@ -147,7 +141,7 @@ pub fn tos5(s &char) string {
 pub fn (bp &byte) vstring() string {
 	return string{
 		str: unsafe { bp }
-		len: unsafe { C.strlen(&char(bp)) }
+		len: unsafe { vstrlen(bp) }
 	}
 }
 
@@ -168,7 +162,7 @@ pub fn (bp &byte) vstring_with_len(len int) string {
 pub fn (cp &char) vstring() string {
 	return string{
 		str: &byte(cp)
-		len: unsafe { C.strlen(cp) }
+		len: unsafe { vstrlen_char(cp) }
 		is_lit: 0
 	}
 }
@@ -195,7 +189,7 @@ pub fn (cp &char) vstring_with_len(len int) string {
 pub fn (bp &byte) vstring_literal() string {
 	return string{
 		str: unsafe { bp }
-		len: unsafe { C.strlen(&char(bp)) }
+		len: unsafe { vstrlen(bp) }
 		is_lit: 1
 	}
 }
@@ -218,7 +212,7 @@ pub fn (bp &byte) vstring_literal_with_len(len int) string {
 pub fn (cp &char) vstring_literal() string {
 	return string{
 		str: &byte(cp)
-		len: unsafe { C.strlen(cp) }
+		len: unsafe { vstrlen_char(cp) }
 		is_lit: 1
 	}
 }
@@ -251,7 +245,7 @@ pub fn (a string) clone() string {
 		len: a.len
 	}
 	unsafe {
-		C.memcpy(b.str, a.str, a.len)
+		vmemcpy(b.str, a.str, a.len)
 		b.str[a.len] = 0
 	}
 	return b
@@ -340,22 +334,6 @@ struct RepIndex {
 	val_idx int
 }
 
-// compare_rep_index returns the result of comparing RepIndex `a` and `b`.
-fn compare_rep_index(a &RepIndex, b &RepIndex) int {
-	if a.idx < b.idx {
-		return -1
-	}
-	if a.idx > b.idx {
-		return 1
-	}
-	return 0
-}
-
-// sort2 sorts the RepIndex array using `compare_rep_index`.
-fn (mut a []RepIndex) sort2() {
-	a.sort_with_compare(compare_rep_index)
-}
-
 // replace_each replaces all occurences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
@@ -404,7 +382,7 @@ pub fn (s string) replace_each(vals []string) string {
 	if idxs.len == 0 {
 		return s.clone()
 	}
-	idxs.sort2()
+	idxs.sort(a.idx < b.idx)
 	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
@@ -469,13 +447,11 @@ pub fn (s string) i16() i16 {
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
-	// return C.atof(&char(s.str))
 	return f32(strconv.atof64(s))
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 pub fn (s string) f64() f64 {
-	// return C.atof(&char(s.str))
 	return strconv.atof64(s)
 }
 
@@ -510,7 +486,7 @@ fn (s string) == (a string) bool {
 		}
 	}
 	unsafe {
-		return C.memcmp(s.str, a.str, a.len) == 0
+		return vmemcmp(s.str, a.str, a.len) == 0
 	}
 }
 
@@ -1192,17 +1168,6 @@ pub fn compare_strings(a &string, b &string) int {
 	return 0
 }
 
-// compare_strings_reverse returns `1` if `a < b`, `-1` if `a > b` else `0`.
-fn compare_strings_reverse(a &string, b &string) int {
-	if a < b {
-		return 1
-	}
-	if a > b {
-		return -1
-	}
-	return 0
-}
-
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
 	if a.len < b.len {
@@ -1219,11 +1184,6 @@ fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(&aa, &bb)
-}
-
-// sort sorts the string array.
-pub fn (mut s []string) sort() {
-	s.sort_with_compare(compare_strings)
 }
 
 // sort_ignore_case sorts the string array using case insesitive comparing.
@@ -1443,13 +1403,13 @@ pub fn (a []string) join(sep string) string {
 	mut idx := 0
 	for i, val in a {
 		unsafe {
-			C.memcpy(res.str + idx, val.str, val.len)
+			vmemcpy(res.str + idx, val.str, val.len)
 			idx += val.len
 		}
 		// Add sep if it's not last
 		if i != a.len - 1 {
 			unsafe {
-				C.memcpy(res.str + idx, sep.str, sep.len)
+				vmemcpy(res.str + idx, sep.str, sep.len)
 				idx += sep.len
 			}
 		}
@@ -1514,7 +1474,7 @@ pub fn (s string) bytes() []byte {
 		return []
 	}
 	mut buf := []byte{len: s.len}
-	unsafe { C.memcpy(buf.data, s.str, s.len) }
+	unsafe { vmemcpy(buf.data, s.str, s.len) }
 	return buf
 }
 

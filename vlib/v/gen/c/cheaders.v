@@ -1,5 +1,8 @@
 module c
 
+import strings
+import v.pref
+
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -48,6 +51,82 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 	}
 }
 '
+
+// Heavily based on Chris Wellons's work
+// https://nullprogram.com/blog/2017/01/08/
+
+fn c_closure_helpers(pref &pref.Preferences) string {
+	if pref.os == .windows {
+		verror('closures are not implemented on Windows yet')
+	}
+	if pref.arch != .amd64 {
+		verror('closures are not implemented on this architecture yet: $pref.arch')
+	}
+	mut builder := strings.new_builder(2048)
+	if pref.os != .windows {
+		builder.writeln('#include <sys/mman.h>')
+	}
+	if pref.arch == .amd64 {
+		builder.write_string('
+static unsigned char __closure_thunk[6][13] = {
+    {
+        0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    },
+};
+')
+	}
+	builder.write_string('
+static void __closure_set_data(void *closure, void *data) {
+    void **p = closure;
+    p[-2] = data;
+}
+
+static void __closure_set_function(void *closure, void *f) {
+    void **p = closure;
+    p[-1] = f;
+}
+')
+	if pref.os != .windows {
+		builder.write_string('
+static void * __closure_create(void *f, int nargs, void *userdata) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    int prot = PROT_READ | PROT_WRITE;
+    int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+    char *p = mmap(0, page_size * 2, prot, flags, -1, 0);
+    if (p == MAP_FAILED)
+        return 0;
+    void *closure = p + page_size;
+    memcpy(closure, __closure_thunk[nargs - 1], sizeof(__closure_thunk[0]));
+    mprotect(closure, page_size, PROT_READ | PROT_EXEC);
+    __closure_set_function(closure, f);
+    __closure_set_data(closure, userdata);
+    return closure;
+}
+
+static void __closure_destroy(void *closure) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    munmap((char *)closure - page_size, page_size * 2);
+}
+')
+	}
+	return builder.str()
+}
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0

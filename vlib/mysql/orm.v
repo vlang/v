@@ -256,7 +256,7 @@ fn mysql_type_from_v(typ int) ?string {
 		6, 10 {
 			'SMALLINT'
 		}
-		7, 11 {
+		7, 11, orm.time {
 			'INT'
 		}
 		8, 12 {

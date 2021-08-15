@@ -172,9 +172,10 @@ pub mut:
 	warns_are_errors    bool        // -W, like C's "-Werror", treat *every* warning is an error
 	fatal_errors        bool        // unconditionally exit after the first error with exit(1)
 	reuse_tmpc          bool        // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	no_rsp              bool        // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
+	no_std              bool        // when true, do not pass -std=c99 to the C backend
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
-	error_limit         int
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
@@ -189,6 +190,7 @@ pub mut:
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 }
@@ -473,6 +475,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-W' {
 				res.warns_are_errors = true
 			}
+			'-no-rsp' {
+				res.no_rsp = true
+			}
+			'-no-std' {
+				res.no_std = true
+			}
 			'-keepc' {
 				res.reuse_tmpc = true
 			}
@@ -485,9 +493,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-print-v-files' {
 				res.print_v_files = true
-			}
-			'-error-limit' {
-				res.error_limit = cmdline.option(current_args, '-error-limit', '0').int()
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
@@ -517,6 +522,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					define := current_args[1]
 					parse_define(mut res, define)
 				}
+				i++
+			}
+			'-error-limit', '-message-limit' {
+				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
 			'-cc' {
@@ -801,7 +810,9 @@ pub fn get_host_arch() Arch {
 
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
-	prefs.build_options << '-d $define'
+	if !(prefs.is_debug && define == 'debug') {
+		prefs.build_options << '-d $define'
+	}
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define

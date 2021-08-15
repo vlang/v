@@ -71,7 +71,7 @@ fn main() {
 	arr := [1, 2, 3, 4, 5]
 	for i in arr {
 	}
-	ma := map{
+	ma := {
 		'str': 'done'
 		'ddo': 'baba'
 	}
