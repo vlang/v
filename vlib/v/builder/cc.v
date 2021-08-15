@@ -188,7 +188,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// arguments for the C compiler
 	ccoptions.args = [v.pref.cflags]
 	if !v.pref.no_std {
-		ccoptions.args << '-std=c99'
+		ccoptions.args << '-std=c99 -D_DEFAULT_SOURCE'
 	}
 	ccoptions.wargs = [
 		'-Wall',
