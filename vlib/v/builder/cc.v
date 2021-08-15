@@ -186,7 +186,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut debug_options := ['-g']
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
-	ccoptions.args = [v.pref.cflags, '-std=gnu99']
+	ccoptions.args = [v.pref.cflags]
+	if !v.pref.no_std {
+		ccoptions.args << '-std=c99'
+	}
 	ccoptions.wargs = [
 		'-Wall',
 		'-Wextra',
