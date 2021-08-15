@@ -83,7 +83,8 @@ NB: the build flags are shared with the run command too:
       NB: if you want to output the profile info to stdout, use `-profile -`.
 
    -warn-error-limit <limit>
-      Limit of warnings / errors that will be accumulated (defaults to 100).
+      Limit of warnings / errors that will be accumulated (defaults to 100),
+      the checker will abort prematurely once this limit has been reached.
       Settings this to a negative value will disable the limit.
 
    -profile-no-inline
