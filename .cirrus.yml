@@ -1,0 +1,6 @@
+freebsd_instance:
+  image_family: freebsd-13-0
+
+task:
+  install_script: pkg install -y git
+  script: git clone https://github.com/vlang/v && cd v && make
