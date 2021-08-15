@@ -228,6 +228,15 @@ see also `v help build`.
       Write all C flags into `file.txt`, one flag per line.
       If `file.txt` is `-`, then write the flags to stdout, one flag per line.
 
+   -no-rsp
+      By default, V passes all C compiler options to the backend C compiler
+      in so called "response files" (https://gcc.gnu.org/wiki/Response_Files).
+      This works in most cases, since it works around command line length
+      limitations on older systems (and windows), but some C compilers
+      (older versions of tcc for example) do not support them at all. When
+      you use -no-rsp, V will pass the C compiler options directly to the C
+      compiler, on the command line, without writing an .rsp file first.
+
    -assert aborts
       Call abort() after an assertion failure. Debuggers usually
       install signal handlers for SIGABRT, so your program will stop and you

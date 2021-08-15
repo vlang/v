@@ -172,6 +172,7 @@ pub mut:
 	warns_are_errors    bool        // -W, like C's "-Werror", treat *every* warning is an error
 	fatal_errors        bool        // unconditionally exit after the first error with exit(1)
 	reuse_tmpc          bool        // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	no_rsp              bool        // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
 	error_limit         int
@@ -473,6 +474,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-W' {
 				res.warns_are_errors = true
+			}
+			'-no-rsp' {
+				res.no_rsp = true
 			}
 			'-keepc' {
 				res.reuse_tmpc = true
