@@ -23,8 +23,6 @@ pub mut:
 	version      string
 	description  string
 	dependencies []string
-	git          []string
-	hg           []string
 	license      string
 	repo_url     string
 	author       string
@@ -235,18 +233,6 @@ fn (mut p Parser) parse() ?Manifest {
 					'dependencies' {
 						deps, idx := get_array_content(tokens, i + 1) ?
 						mn.dependencies = deps
-						i = idx
-						continue
-					}
-					'git' {
-						deps, idx := get_array_content(tokens, i + 1) ?
-						mn.git = deps
-						i = idx
-						continue
-					}
-					'hg' {
-						deps, idx := get_array_content(tokens, i + 1) ?
-						mn.hg = deps
 						i = idx
 						continue
 					}

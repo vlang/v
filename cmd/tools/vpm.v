@@ -74,22 +74,21 @@ fn real_path_of_module(name string) string {
 	return os.real_path(name_of_vmodules_folder)
 }
 
-fn module_from_url(uri string, vcs string) Mod {
-	url := uri.trim_space()
-	first_cut_pos := url.last_index('/') or {
-		println('Errors while retrieving name for module $url:')
-		println(err)
-		exit(1)
+fn module_from_url(url string, vcs string) ?Mod {
+	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
+	mut re := regex.regex_opt(query) or { panic(err) }
+
+	start, end := re.match_string(url)
+
+	if start < 0 || end <= start {
+		panic('"$url" is not a valid url!')
 	}
-	mod_name := url.substr(first_cut_pos + 1, url.len)
-	second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
-		println('Errors while retrieving name for module $url:')
-		println(err)
-		exit(1)
-	}
-	repo_name := url.substr(second_cut_pos + 1, first_cut_pos)
+
+	author := re.get_group_by_id(url,6)
+	name := re.get_group_by_id(url,7)
+
 	return Mod{
-		name: '${repo_name}.{$mod_name}'
+		name: '${author}.${name}'
 		url: url
 		vcs: vcs
 	}
@@ -112,6 +111,8 @@ fn main() {
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
+	mut modules := map[string]Mod{}
+
 	params := cmdline.only_non_options(os.args[1..])
 
 	verbose_println('cli params: $params')
@@ -123,16 +124,24 @@ fn main() {
 	mut module_names := params[1..]
 	ensure_vmodules_dir_exist()
 	verbose_println('module names: ')
-	println(module_names)
 	match vpm_command {
 		'help' {
 			vpm_help()
 		}
 		'search' {
+			if settings.is_help {
+				vhelp.show_topic('search')
+				exit(0)
+			}
 			vpm_search(module_names)
 		}
 		'install' {
-			mut modules := parse_modules()
+			if settings.is_help {
+				vhelp.show_topic('install')
+				exit(0)
+			}
+
+			modules = parse_modules()
 
 			if modules.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
@@ -142,7 +151,11 @@ fn main() {
 			vpm_install(mut &modules)
 		}
 		'update' {
-			mut modules := parse_modules()
+			if settings.is_help {
+				vhelp.show_topic('install')
+				exit(0)
+			}
+			modules = parse_modules()
 
 			if modules.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
@@ -177,19 +190,28 @@ fn main() {
 	}
 }
 
-fn parse_modules() []Mod {
-	mut modules := []Mod{}
-	args := os.args[2..]
-	mut re := regex.regex_opt(r'([\w+]+\://)?([\w\d-]+\.)*[\w-]+[\.\:]\w+([/\?\=\&\#\.]?[\w-]+)*/?/gm') or {
-		panic(err)
-	}
+fn parse_modules() map[string]Mod {
+	mut modules := map[string]Mod{}
+	args := os.args[1..]
+	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
+	mut re := regex.regex_opt(query) or { panic(err) }
 
 	for git in cmdline.options(args, '-git') {
-		modules << module_from_url(git, 'git')
+		arg_git_mod := module_from_url(git, 'git') or {
+			println('Error in parsing url:')
+			println(err)
+			continue
+		}
+		modules[arg_git_mod.name] = arg_git_mod
 	}
 
 	for hg in cmdline.options(args, '-hg') {
-		modules << module_from_url(hg, 'hg')
+		hg_mod := module_from_url(hg, 'hg') or {
+			println('Error in parsing url:')
+			println(err)
+			continue
+		}
+		modules[hg_mod.name] = hg_mod
 	}
 
 	mut ignore := true
@@ -204,18 +226,24 @@ fn parse_modules() []Mod {
 		}
 
 		// detect urls without option as git
-		start, _ := re.match_string(arg)
-		if start >= 0 {
-			modules << module_from_url(arg, 'git')
+		start, end := re.match_string(arg)
+		if start >= 0 && end > start {
+			git_mod := module_from_url(arg, 'git') or {
+				println('Error in parsing url:')
+				println(err)
+				continue
+			}
+			modules[git_mod.name] = git_mod
 			continue
 		}
 
-		dep := get_module_meta_info(arg) or {
+		vpm_mod := get_module_meta_info(arg) or {
 			println('Errors while retrieving meta data for module $arg:')
 			println(err)
 			continue
 		}
-		modules << dep
+
+		modules[vpm_mod.name] = vpm_mod
 		continue
 	}
 	return modules
@@ -223,10 +251,7 @@ fn parse_modules() []Mod {
 
 fn vpm_search(keywords []string) {
 	search_keys := keywords.map(it.replace('_', '-'))
-	if settings.is_help {
-		vhelp.show_topic('search')
-		exit(0)
-	}
+
 	if search_keys.len == 0 {
 		println('´v search´ requires *at least one* keyword.')
 		exit(2)
@@ -235,7 +260,7 @@ fn vpm_search(keywords []string) {
 	installed_modules := get_installed_modules()
 	joined := search_keys.join(', ')
 	mut index := 0
-	for mod in modules {
+	for _, mod in modules {
 		// TODO for some reason .filter results in substr error, so do it manually
 		for k in search_keys {
 			if !mod.name.contains(k) {
@@ -253,7 +278,7 @@ fn vpm_search(keywords []string) {
 			} else {
 				parts[0] = ' by ${parts[0]} '
 			}
-			installed := if mod in installed_modules { ' (installed)' } else { '' }
+			installed := if mod.name in installed_modules { ' (installed)' } else { '' }
 			println('${index}. ${parts[1]}${parts[0]}[$mod]$installed')
 			break
 		}
@@ -275,10 +300,10 @@ fn vpm_search(keywords []string) {
 	}
 }
 
-fn vpm_install(mut modules []Mod) {
+fn vpm_install(mut modules map[string]Mod) {
 	mut errors := 0
-	for mut mod in modules {
-		if mod.installed {
+	for _, mut mod in modules {
+		if mod.installed || mod.updated {
 			continue
 		}
 		mut vcs := mod.vcs
@@ -294,7 +319,9 @@ fn vpm_install(mut modules []Mod) {
 		mut final_module_path := mod.path()
 
 		if os.exists(final_module_path) {
-			mut mods := [mod]
+			mut mods := {
+				mod.name: mod
+			}
 			vpm_update(mut &mods)
 			continue
 		}
@@ -356,17 +383,10 @@ fn vpm_install(mut modules []Mod) {
 	}
 }
 
-fn vpm_update(mut modules []Mod) {
-	if settings.is_help {
-		vhelp.show_topic('update')
-		exit(0)
-	}
-	if modules.len == 0 {
-		return
-	}
+fn vpm_update(mut modules map[string]Mod) {
 	mut errors := 0
-	for mut mod in modules {
-		if mod.updated {
+	for _, mut mod in modules {
+		if mod.updated || mod.installed {
 			continue
 		}
 		final_module_path := mod.path()
@@ -387,6 +407,7 @@ fn vpm_update(mut modules []Mod) {
 			verbose_println('    $vcs_res.output.trim_space()')
 		}
 		mod.updated = true
+		mod.installed = true
 		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut &modules)
 	}
 	if errors > 0 {
@@ -394,10 +415,10 @@ fn vpm_update(mut modules []Mod) {
 	}
 }
 
-fn get_outdated() ?[]Mod {
+fn get_outdated() ?map[string]Mod {
 	modules := get_installed_modules()
-	mut outdated := []Mod{}
-	for mod in modules {
+	mut outdated := map[string]Mod{}
+	for _, mod in modules {
 		final_module_path := mod.path()
 		os.chdir(final_module_path)
 		vcs := vcs_used_in_path(final_module_path)
@@ -412,14 +433,14 @@ fn get_outdated() ?[]Mod {
 			}
 			if vcs == 'hg' {
 				if res.exit_code == 1 {
-					outdated << mod
+					outdated[mod.name] = mod
 				}
 			} else {
 				outputs << res.output
 			}
 		}
 		if vcs == 'git' && outputs[1] != outputs[2] {
-			outdated << mod
+			outdated[mod.name] = mod
 		}
 	}
 	return outdated
@@ -444,7 +465,7 @@ fn vpm_outdated() {
 	}
 	if outdated.len > 0 {
 		println('Outdated modules:')
-		for m in outdated {
+		for _, m in outdated {
 			println('  $m.name')
 		}
 	} else {
@@ -459,7 +480,7 @@ fn vpm_list() {
 		exit(0)
 	}
 	println('Installed modules:')
-	for mod in modules {
+	for _, mod in modules {
 		println('  $mod.name')
 	}
 }
@@ -530,9 +551,9 @@ fn vcs_used_in_path(dir string) string {
 	return 'git'
 }
 
-fn get_installed_modules() []Mod {
-	dirs := os.ls(settings.vmodules_path) or { return [] }
-	mut modules := []Mod{}
+fn get_installed_modules() map[string]Mod {
+	dirs := os.ls(settings.vmodules_path) or { return map[string]Mod{} }
+	mut modules := map[string]Mod{}
 	for dir in dirs {
 		adir := os.join_path(settings.vmodules_path, dir)
 		if dir in excluded_dirs || !os.is_dir(adir) {
@@ -546,7 +567,7 @@ fn get_installed_modules() []Mod {
 				println('Error while reading "$vmod_path":')
 				println(err)
 				url := 'https://github.com/vlang/$dir'
-				modules << Mod{
+				modules[dir] = Mod{
 					name: dir
 					url: url
 					vcs: 'git'
@@ -555,7 +576,7 @@ fn get_installed_modules() []Mod {
 				continue
 			}
 			mod.installed = true
-			modules << mod
+			modules[dir] = mod
 			continue
 		}
 		author := dir
@@ -566,7 +587,7 @@ fn get_installed_modules() []Mod {
 				println(err)
 				name := '${author}.$m'
 				url := 'https://github.com/vlang/$author/$m'
-				modules << Mod{
+				modules[name] = Mod{
 					name: name
 					url: url
 					vcs: 'git'
@@ -575,13 +596,13 @@ fn get_installed_modules() []Mod {
 				continue
 			}
 			mod.installed = true
-			modules << mod
+			modules[mod.name] = mod
 		}
 	}
 	return modules
 }
 
-fn get_all_modules() []Mod {
+fn get_all_modules() map[string]Mod {
 	url := get_working_server_url()
 	r := http.get(url) or { panic(err) }
 	if r.status_code != 200 {
@@ -614,10 +635,10 @@ fn get_all_modules() []Mod {
 			break
 		}
 	}
-	mut modules := []Mod{}
+	mut modules := map[string]Mod{}
 
 	for name in names {
-		modules << get_module_meta_info(name) or {
+		modules[name] = get_module_meta_info(name) or {
 			println('Error in getting "$name" module meta data:')
 			println(err)
 			continue
@@ -627,45 +648,49 @@ fn get_all_modules() []Mod {
 	return modules
 }
 
-fn is_module_resolved(mod Mod, resolved_modules []Mod) bool {
-	for resolved_mod in resolved_modules {
-		// because name may be based of vcs url is not good comparison
-		if resolved_mod.url == mod.url {
-			return true
-		}
-	}
-
-	return false
-}
-
-fn resolve_dependencies(path string, mut modules []Mod) {
+fn resolve_dependencies(path string, mut modules map[string]Mod) {
 	manifest := vmod.from_file(path) or { return }
-
+	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
+	mut re := regex.regex_opt(query) or { panic(err) }
 	mut deps := []string{}
 	for dep in manifest.dependencies {
+
+		if dep.starts_with('hg:') {
+			mod := module_from_url(dep[3..], 'hg') or {
+				println('Errors while retrieving meta data for module $dep:')
+				println(err)
+				continue
+			}
+			if mod.name !in modules {
+				modules[mod.name] = mod
+				deps << mod.name
+			}
+			continue
+		}
+
+		start, end := re.match_string(dep)
+
+		if start >= 0 && end > start {
+			mod := module_from_url(dep, 'git') or {
+				println('Errors while retrieving meta data for module $dep:')
+				println(err)
+				continue
+			}
+			if mod.name !in modules {
+				modules[mod.name] = mod
+				deps << mod.name
+			}
+			continue
+		}
+
 		mod := get_module_meta_info(dep) or {
 			println('Errors while retrieving meta data for module $dep:')
 			println(err)
 			continue
 		}
-		if !is_module_resolved(mod, modules) {
-			modules << mod
-			deps << mod.name
-		}
-	}
 
-	for url in manifest.git {
-		mod := module_from_url(url, 'git')
-		if !is_module_resolved(mod, modules) {
-			modules << mod
-			deps << mod.name
-		}
-	}
-
-	for url in manifest.hg {
-		mod := module_from_url(url, 'hg')
-		if !is_module_resolved(mod, modules) {
-			modules << mod
+		if mod.name !in modules {
+			modules[mod.name] = mod
 			deps << mod.name
 		}
 	}
@@ -673,6 +698,7 @@ fn resolve_dependencies(path string, mut modules []Mod) {
 	if deps.len > 0 {
 		println('Resolving $deps.len dependencies for module "$manifest.name"...')
 		verbose_println('Found dependencies: $deps')
+		vpm_update(mut &modules)
 		vpm_install(mut &modules)
 	}
 }
@@ -740,7 +766,7 @@ fn get_module_meta_info(name string) ?Mod {
 fn vpm_show(module_names []string) {
 	installed_modules := get_installed_modules()
 	mut installed_modules_names := []string{}
-	for installed in installed_modules {
+	for _, installed in installed_modules {
 		installed_modules_names << installed.name
 	}
 	for module_name in module_names {
