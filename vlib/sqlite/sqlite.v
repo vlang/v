@@ -42,7 +42,7 @@ pub struct DB {
 pub mut:
 	is_open bool
 mut:
-	conn &C.sqlite3 = 0 // needs to be 0 because otherwise it results in a c error
+	conn &C.sqlite3 = 0 // TODO remove 0 init
 }
 
 pub fn (db DB) str() string {

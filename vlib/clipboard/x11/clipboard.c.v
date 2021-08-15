@@ -290,7 +290,7 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 fn (mut cb Clipboard) start_listener() {
 	event := C.XEvent{
 		xselectionrequest: C.XSelectionRequestEvent{
-			display: &C.Display{}
+			display: 0 // TODO remove 0 init
 		}
 	}
 	mut sent_request := false
