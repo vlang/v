@@ -2,11 +2,12 @@ freebsd_instance:
   image_family: freebsd-13-0
 
 task:
-  install_script: pkg install -y git
+  install_script: pkg install -y git tcc
   script: |
     echo 'Building V'
     git clone https://github.com/vlang/v
     cd v
     make
+    tcc --version
     echo 'Build cmd/tools/fast'
     cd cmd/tools/fast && ../../../v fast.v && ./fast
