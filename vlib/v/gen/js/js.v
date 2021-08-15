@@ -2252,7 +2252,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 			return
 		}
 	}
-	g.write('new')
+	g.write('new ')
 	if g.ns.name != 'builtin' {
 		g.write('builtin.')
 	}
