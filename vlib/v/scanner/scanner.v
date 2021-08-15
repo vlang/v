@@ -57,6 +57,7 @@ pub mut:
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
 	vet_errors                  []vet.Error
+	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 }
 
 /*
@@ -564,7 +565,7 @@ pub fn (mut s Scanner) scan_remaining_text() {
 			continue
 		}
 		s.all_tokens << t
-		if t.kind == .eof {
+		if t.kind == .eof || s.should_abort {
 			break
 		}
 	}
@@ -579,7 +580,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 	for {
 		cidx := s.tidx
 		s.tidx++
-		if cidx >= s.all_tokens.len {
+		if cidx >= s.all_tokens.len || s.should_abort {
 			return s.end_of_file()
 		}
 		if s.all_tokens[cidx].kind == .comment {
@@ -635,7 +636,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		if !s.is_inside_string {
 			s.skip_whitespace()
 		}
-		if s.pos >= s.text.len {
+		if s.pos >= s.text.len || s.should_abort {
 			return s.end_of_file()
 		}
 		// End of $var, start next string
@@ -1354,13 +1355,15 @@ pub fn (mut s Scanner) warn(msg string) {
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 	} else {
-		if s.warnings.len < s.pref.warn_error_limit || s.pref.warn_error_limit < 0 {
-			s.warnings << errors.Warning{
-				file_path: s.file_path
-				pos: pos
-				reporter: .scanner
-				message: msg
-			}
+		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
+			s.should_abort = true
+			return
+		}
+		s.warnings << errors.Warning{
+			file_path: s.file_path
+			pos: pos
+			reporter: .scanner
+			message: msg
 		}
 	}
 }
@@ -1378,13 +1381,15 @@ pub fn (mut s Scanner) error(msg string) {
 		if s.pref.fatal_errors {
 			exit(1)
 		}
-		if s.errors.len < s.pref.warn_error_limit || s.pref.warn_error_limit < 0 {
-			s.errors << errors.Error{
-				file_path: s.file_path
-				pos: pos
-				reporter: .scanner
-				message: msg
-			}
+		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {
+			s.should_abort = true
+			return
+		}
+		s.errors << errors.Error{
+			file_path: s.file_path
+			pos: pos
+			reporter: .scanner
+			message: msg
 		}
 	}
 }

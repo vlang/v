@@ -176,7 +176,6 @@ pub mut:
 	no_std              bool        // when true, do not pass -std=c99 to the C backend
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
-	error_limit         int
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
@@ -191,7 +190,7 @@ pub mut:
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
-	warn_error_limit    int = 100 // limit of warnings/errors to be accumulated
+	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 }
@@ -495,9 +494,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-print-v-files' {
 				res.print_v_files = true
 			}
-			'-error-limit' {
-				res.error_limit = cmdline.option(current_args, '-error-limit', '0').int()
-			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++
@@ -528,8 +524,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				i++
 			}
-			'-warn-error-limit' {
-				res.warn_error_limit = cmdline.option(current_args, arg, '10').int()
+			'-message-limit' {
+				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
 			'-cc' {
