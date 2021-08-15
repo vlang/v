@@ -32,12 +32,12 @@ struct Child {
 
 fn main() {
 	sqlite3_array()
-	/*mysql_array()
-	psql_array()*/
+	mysql_array()
+	psql_array()
 
 	sqlite3()
-	/*mysql()
-	psql()*/
+	mysql()
+	psql()
 }
 
 fn sqlite3_array() {
