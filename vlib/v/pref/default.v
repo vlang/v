@@ -116,9 +116,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		'$p.compile_defines_all',
-		'$p.compile_defines',
-		'$p.lookup_path',
+		p.compile_defines_all.str(),
+		p.compile_defines.str(),
+		p.lookup_path.str(),
 	])
 	// eprintln('prefs.cache_manager: $p')
 	// disable use_cache for specific cases:

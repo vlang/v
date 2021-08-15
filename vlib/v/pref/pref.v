@@ -806,7 +806,9 @@ pub fn get_host_arch() Arch {
 
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
-	prefs.build_options << '-d $define'
+	if !(prefs.is_debug && define == 'debug') {
+		prefs.build_options << '-d $define'
+	}
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
