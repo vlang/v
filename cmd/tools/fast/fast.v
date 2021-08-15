@@ -109,7 +109,7 @@ fn main() {
 	// exec('git checkout master')
 	// os.write_file('last_commit.txt', commits[commits.len - 1]) ?
 	// Upload the result to github pages
-	if !os.args.contains('-noupload') {
+	if os.args.contains('upload') {
 		os.chdir('website')
 		os.execute_or_exit('git checkout gh-pages')
 		os.cp('../index.html', 'index.html') ?

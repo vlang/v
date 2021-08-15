@@ -3,4 +3,10 @@ freebsd_instance:
 
 task:
   install_script: pkg install -y git
-  script: git clone https://github.com/vlang/v && cd v && make
+  script: |
+    echo 'Building V'
+    git clone https://github.com/vlang/v
+    cd v
+    make
+    echo 'Build cmd/tools/fast'
+    cd cmd/tools/fast && ../../../v fast.v && ./fast

@@ -23,7 +23,7 @@ fn main() {
 			return
 		}
 		// println('running ./fast')
-		resp := os.execute('./fast')
+		resp := os.execute('./fast -upload')
 		if resp.exit_code < 0 {
 			println(resp.output)
 			return
