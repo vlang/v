@@ -131,6 +131,7 @@ const (
 		'-w',
 		'-print-v-files',
 		'-error-limit',
+		'-message-limit',
 		'-os',
 		'-printfn',
 		'-cflags',

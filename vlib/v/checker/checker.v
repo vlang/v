@@ -53,6 +53,7 @@ pub mut:
 	nr_errors        int
 	nr_warnings      int
 	nr_notices       int
+	should_abort     bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	errors           []errors.Error
 	warnings         []errors.Warning
 	notices          []errors.Notice
@@ -139,17 +140,26 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
+		if c.should_abort {
+			return
+		}
 	}
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
+		if c.should_abort {
+			return
+		}
 	}
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
 			c.stmt(stmt)
+		}
+		if c.should_abort {
+			return
 		}
 	}
 	c.check_scope_vars(c.file.scope)
@@ -2081,8 +2091,13 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return ast.void_type
 	}
-	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
-		return ast.string_type
+	if left_type_sym.kind in [.sum_type, .interface_] {
+		if method_name == 'type_name' {
+			return ast.string_type
+		}
+		if method_name == 'type_idx' {
+			return ast.int_type
+		}
 	}
 	if left_type == ast.void_type {
 		c.error('`void` type has no methods', call_expr.left.position())
@@ -3374,10 +3389,12 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return ast.int_type
 			}
 			else {
-				if node.field_name != 'name' {
-					c.error('invalid field `.$node.field_name` for type `$node.expr`',
-						node.pos)
+				if node.field_name == 'name' {
+					return ast.string_type
+				} else if node.field_name == 'idx' {
+					return ast.int_type
 				}
+				c.error('invalid field `.$node.field_name` for type `$node.expr`', node.pos)
 				return ast.string_type
 			}
 		}
@@ -7586,6 +7603,10 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 }
 
 pub fn (mut c Checker) note(message string, pos token.Position) {
+	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
+		c.should_abort = true
+		return
+	}
 	mut details := ''
 	if c.error_details.len > 0 {
 		details = c.error_details.join('\n')
@@ -7615,6 +7636,10 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 	}
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
+		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
+			c.should_abort = true
+			return
+		}
 		wrn := errors.Warning{
 			reporter: errors.Reporter.checker
 			pos: pos
@@ -7631,6 +7656,10 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 			exit(1)
 		}
 		c.nr_errors++
+		if c.pref.message_limit >= 0 && c.errors.len >= c.pref.message_limit {
+			c.should_abort = true
+			return
+		}
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{
 				reporter: errors.Reporter.checker
@@ -8006,6 +8035,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			// TODO `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
+			c.error('method overrides built-in sum type method', node.pos)
+		} else if sym.kind == .sum_type && node.name == 'type_idx' {
 			c.error('method overrides built-in sum type method', node.pos)
 		} else if sym.kind == .multi_return {
 			c.error('cannot define method on multi-value', node.method_type_pos)
