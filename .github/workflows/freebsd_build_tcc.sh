@@ -10,7 +10,11 @@ pushd .
 git clone git://repo.or.cz/tinycc.git
 cd tinycc
 
-./configure --prefix=thirdparty/tcc \
+export CC=clang
+
+./configure \
+            --cc=clang \
+            --prefix=thirdparty/tcc \
             --bindir=thirdparty/tcc \
             --crtprefix=thirdparty/tcc/lib:/usr/lib \
             --libpaths=thirdparty/tcc/lib:/usr/lib:/lib:/usr/local/lib \
