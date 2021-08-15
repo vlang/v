@@ -6,7 +6,12 @@ import strings
 // input format is 2 ASCII characters for each output byte. If the provided
 // string length is not a multiple of 2, an implicit `0` is prepended to it.
 pub fn decode(s string) ?[]byte {
-	hex_str := s.trim_prefix('0x')
+	mut hex_str := s
+	if hex_str.len >= 2 {
+		if s[0] == `0` && (s[1] == `x` || s[1] == `X`) {
+			hex_str = s[2..]
+		}
+	}
 	if hex_str.len == 0 {
 		return []byte{}
 	} else if hex_str.len == 1 {
