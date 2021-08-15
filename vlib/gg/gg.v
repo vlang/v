@@ -244,45 +244,6 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	}
 }
 
-<<<<<<< HEAD
-//
-pub fn new_context(cfg Config) &Context {
-	mut g := &Context{
-		width: cfg.width
-		height: cfg.height
-		config: cfg
-		ft: 0
-		window: C.sapp_desc{
-			window_title: ''.str
-			html5_canvas_name: ''.str
-		}
-		ui_mode: cfg.ui_mode
-		native_rendering: cfg.native_rendering
-	}
-	g.set_bg_color(cfg.bg_color)
-	// C.printf('new_context() %p\n', cfg.user_data)
-	window := C.sapp_desc{
-		user_data: g
-		init_userdata_cb: gg_init_sokol_window
-		frame_userdata_cb: gg_frame_fn
-		event_userdata_cb: gg_event_fn
-		fail_userdata_cb: gg_fail_fn
-		cleanup_userdata_cb: gg_cleanup_fn
-		window_title: &char(cfg.window_title.str)
-		html5_canvas_name: &char(cfg.window_title.str)
-		width: cfg.width
-		height: cfg.height
-		sample_count: cfg.sample_count
-		high_dpi: true
-		fullscreen: cfg.fullscreen
-		__v_native_render: cfg.native_rendering
-	}
-	g.window = window
-	return g
-}
-
-=======
->>>>>>> ea4f6fd48f907bd56a280b66278b78938d98491e
 pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
