@@ -290,7 +290,7 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
 	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
 	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x * ctx.scale, (y-1) * ctx.scale)
 	sgl.end()
 }
 
