@@ -391,7 +391,7 @@ pub fn (nn voidptr) str() string {
 // hex returns the value of the `byteptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
 // pub fn (nn byteptr) str() string {
-pub fn (nn &byte) str() string {
+pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
 
