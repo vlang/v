@@ -506,6 +506,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 	if node.right is ast.IfExpr {
 		// b := a && if true { a = false ...} else {...}
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
 		if g.need_tmp_var_in_if(node.right) {
 			tmp := g.new_tmp_var()
 			cur_line := g.go_before_stmt(0).trim_space()
@@ -518,8 +520,10 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
 			g.expr(node.right)
 			g.infix_left_var_name = ''
+			g.inside_ternary = prev_inside_ternary
 			return
 		}
+		g.inside_ternary = prev_inside_ternary
 	}
 	g.gen_plain_infix_expr(node)
 }

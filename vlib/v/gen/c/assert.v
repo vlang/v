@@ -104,7 +104,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
 	unknown_value := '*unknown value*'
 	match expr {
-		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
+		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
 		ast.PrefixExpr {

@@ -4584,7 +4584,7 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			return true
 		}
 		for branch in node.branches {
-			if branch.cond is ast.IfGuardExpr {
+			if branch.cond is ast.IfGuardExpr || branch.stmts.len > 1 {
 				return true
 			}
 			if branch.stmts.len == 1 {
