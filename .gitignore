@@ -58,7 +58,6 @@ fns.txt
 *.launch
 .settings/
 *.sublime-workspace
-.vscode/
 .vmodules/
 *.code-workspace
 *~

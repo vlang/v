@@ -2462,7 +2462,7 @@ v install [module]
 v install ui
 ```
 
-Modules could install directly from git or mercurial repositories. for git repo urls flag can be trimmed.
+Modules could install directly from git or mercurial repositories. The -git flag is the default for repository urls, and can be skipped.
 ```powershell
 v install [-git|-hg] [url]
 ```
