@@ -7,7 +7,6 @@ Usage:
 Options:
   -git          - Install from git repository url
   -hg           - Install from mercurial repository url
-  -f|-force     - force to replace module when installing from repositorie's url
   -help         - Show usage info.
   -v            - Print more details about the performed operation.
   -server-url   - When doing network operations, use this vpm server. Can be given multiple times.

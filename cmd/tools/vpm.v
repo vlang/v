@@ -31,7 +31,7 @@ const (
 		'hg':  ['hg incoming']
 	}
 	settings         = &VpmSettings{}
-	normal_flags     = ['-v', '-h', '-f']
+	normal_flags     = ['-v', '-h']
 	flags_with_value = ['-git', '-hg']
 )
 
@@ -41,7 +41,6 @@ mut:
 	is_help       bool
 	is_verbose    bool
 	is_global     bool
-	is_forces     bool
 	server_urls   []string
 	vmodules_path string
 }
@@ -53,7 +52,6 @@ fn init_settings() {
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
 	s.is_verbose = '-v' in os.args
-	s.is_forces = '-f' in os.args || '-force' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
 	s.vmodules_path = os.vmodules_dir()
 }
@@ -371,31 +369,21 @@ fn vpm_install(mut modules map[string]Mod) {
 			println('Relocating module from "$mod.name" to "$vmod.name" ( $mod_path ) ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
-				if settings.is_forces {
-					println('Removing module "$mod_path" ...')
-					os.rmdir_all(mod_path) or {
-						errors++
-						println('Errors while removing "$mod_path" :')
-						println(err)
-						continue
-					}
-					os.mv(final_module_path, mod_path) or {
-						errors++
-						println('Errors while relocating module "$mod.name" :')
-						println(err)
-						continue
-					}
-					println('Module "$mod.name" relocated to "$vmod.name" successfully.')
-				} else {
-					println('Ignoring "$mod.name" ...')
-					os.rmdir_all(final_module_path) or {
-						errors++
-						println('Errors while removing "$final_module_path" :')
-						println(err)
-						continue
-					}
+				println('Removing module "$mod_path" ...')
+				os.rmdir_all(mod_path) or {
+					errors++
+					println('Errors while removing "$mod_path" :')
+					println(err)
+					continue
 				}
 			}
+			os.mv(final_module_path, mod_path) or {
+				errors++
+				println('Errors while relocating module "$mod.name" :')
+				println(err)
+				continue
+			}
+			println('Module "$mod.name" relocated to "$vmod.name" successfully.')
 			final_module_path = mod_path
 			mod.name = vmod.name
 		}
@@ -412,7 +400,12 @@ fn vpm_update(mut modules map[string]Mod) {
 		if mod.updated || mod.failed {
 			continue
 		}
-		final_module_path := mod.path()
+		mut final_module_path := mod.path()
+		if !os.exists(final_module_path) {
+			println('Error in updating "$mod.name" module:')
+			println('"$mod.name" is not insalled!')
+			continue
+		}
 		os.chdir(final_module_path)
 		println('Updating module "$mod.name"...')
 		verbose_println('  work folder: $final_module_path')
