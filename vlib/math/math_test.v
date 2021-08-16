@@ -766,10 +766,10 @@ fn test_large_tan() {
 }
 
 fn test_egcd() {
-	helper := fn(a i64, b i64, expected_g i64) {
+	helper := fn (a i64, b i64, expected_g i64) {
 		g, x, y := egcd(a, b)
 		assert g == expected_g
-		assert abs(a*x + b*y) == g
+		assert abs(a * x + b * y) == g
 	}
 
 	helper(6, 9, 3)
