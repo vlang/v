@@ -169,7 +169,7 @@ fn main() {
 		}
 		'update' {
 			if settings.is_help {
-				vhelp.show_topic('install')
+				vhelp.show_topic('update')
 				exit(0)
 			}
 			if !os.exists('./v.mod') && !settings.is_global {
