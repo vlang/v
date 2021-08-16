@@ -41,6 +41,7 @@
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
 - [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
+- Great for writing low level software ([Vinix OS](https://github.com/vlang/vinix))
 
 ## Stability guarantee and future changes
 
