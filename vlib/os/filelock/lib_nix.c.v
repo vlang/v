@@ -56,10 +56,10 @@ pub fn (mut l FileLock) wait_acquire(s int) ?bool {
 }
 
 fn open_lockfile(f string) int {
-	mut fd := C.open(f.str, C.O_CREAT, 0o644)
+	mut fd := C.open(&char(f.str), C.O_CREAT, 0o644)
 	if fd == -1 {
 		// if stat is too old delete lockfile
-		fd = C.open(f.str, C.O_RDONLY, 0)
+		fd = C.open(&char(f.str), C.O_RDONLY, 0)
 	}
 	return fd
 }
