@@ -4037,8 +4037,13 @@ struct Customer {
 
 db := sqlite.connect('customers.db') ?
 
-// you can create tables
-// CREATE TABLE IF NOT EXISTS `Customer` (`id` INTEGER PRIMARY KEY, `name` TEXT NOT NULL, `nr_orders` INTEGER, `country` TEXT NOT NULL)
+// you can create tables:
+// CREATE TABLE IF NOT EXISTS `Customer` (
+//      `id` INTEGER PRIMARY KEY,
+//      `name` TEXT NOT NULL,
+//      `nr_orders` INTEGER,
+//      `country` TEXT NOT NULL
+// )
 sql db {
 	create table Customer
 }
