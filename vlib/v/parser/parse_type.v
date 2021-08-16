@@ -244,6 +244,26 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	return ast.new_type(idx)
 }
 
+pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
+	mut is_union := false
+	if p.tok.kind == .key_struct {
+		p.next()
+	} else {
+		p.check(.key_union)
+		is_union = true
+	}
+
+	generic_types := p.parse_generic_type_list()
+
+	st := ast.Struct {
+		is_union: is_union
+		is_generic: generic_types.len > 0
+		generic_types: generic_types
+	}
+
+	return ast.void_type_idx
+}
+
 pub fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 	typ := p.parse_type()
 	if is_mut {
@@ -392,6 +412,10 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		.key_fn {
 			// func
 			return p.parse_fn_type('')
+		}
+		.key_struct, .key_union {
+			// anon struct
+			return p.parse_anon_struct_type()
 		}
 		.lsbr {
 			// array

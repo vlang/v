@@ -335,6 +335,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				return node
 			}
 		}
+		.key_struct, .key_union {
+			eprintln('test')
+		}
 		else {
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens

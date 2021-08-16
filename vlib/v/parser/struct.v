@@ -77,6 +77,71 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	} else {
 		name = p.prepend_mod(name)
 	}
+
+	mut last_line := p.prev_tok.position().line_nr + 1
+	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(no_body,
+		language) or { return ast.StructDecl{} }
+
+
+	p.top_level_statement_end()
+	last_line = p.tok.line_nr
+	p.check(.rcbr)
+
+	t := ast.TypeSymbol{
+		kind: .struct_
+		language: language
+		name: name
+		cname: util.no_dots(name)
+		mod: p.mod
+		info: ast.Struct{
+			embeds: embed_types
+			fields: fields
+			is_typedef: attrs.contains('typedef')
+			is_union: is_union
+			is_heap: attrs.contains('heap')
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
+			attrs: attrs
+		}
+		is_public: is_pub
+	}
+	if p.table.has_deep_child_no_ref(&t, name) {
+		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
+		return ast.StructDecl{}
+	}
+	mut ret := 0
+	// println('reg type symbol $name mod=$p.mod')
+	ret = p.table.register_type_symbol(t)
+	// allow duplicate c struct declarations
+	if ret == -1 && language != .c {
+		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
+			name_pos)
+		return ast.StructDecl{}
+	}
+	p.expr_mod = ''
+	if name == 'GenPosition' {
+	eprintln(fields)
+	}
+	return ast.StructDecl{
+		name: name
+		is_pub: is_pub
+		fields: ast_fields
+		pos: start_pos.extend_with_last_line(name_pos, last_line)
+		mut_pos: mut_pos
+		pub_pos: pub_pos
+		pub_mut_pos: pub_mut_pos
+		global_pos: global_pos
+		module_pos: module_pos
+		language: language
+		is_union: is_union
+		attrs: attrs
+		end_comments: end_comments
+		generic_types: generic_types
+		embeds: embeds
+	}
+}
+
+fn (mut p Parser) parse_struct_fields(no_body bool, language ast.Language) ?([]ast.Type, []ast.StructField, []ast.StructField, int, int, int, int, int, []ast.Comment, []ast.Embed) {
 	mut ast_fields := []ast.StructField{}
 	mut fields := []ast.StructField{}
 	mut embed_types := []ast.Type{}
@@ -90,7 +155,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
-	mut last_line := p.prev_tok.position().line_nr + 1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
@@ -111,7 +175,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
 						p.error('redefinition of `pub mut` section')
-						return ast.StructDecl{}
+						return error('')
 					}
 					p.next()
 					pub_mut_pos = ast_fields.len
@@ -121,7 +185,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				} else {
 					if pub_pos != -1 {
 						p.error('redefinition of `pub` section')
-						return ast.StructDecl{}
+						return error('')
 					}
 					pub_pos = ast_fields.len
 					is_field_pub = true
@@ -132,7 +196,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_mut {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
-					return ast.StructDecl{}
+					return error('')
 				}
 				p.next()
 				p.check(.colon)
@@ -143,7 +207,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_global {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
-					return ast.StructDecl{}
+					return error('')
 				}
 				p.next()
 				p.check(.colon)
@@ -154,7 +218,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_module {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
-					return ast.StructDecl{}
+					return error('')
 				}
 				p.next()
 				p.check(.colon)
@@ -186,17 +250,17 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
 						type_pos)
-					return ast.StructDecl{}
+					return error('')
 				}
 				sym := p.table.get_type_symbol(typ)
 				if typ in embed_types {
 					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
-					return ast.StructDecl{}
+					return error('')
 				}
 				field_name = sym.embed_name()
 				if field_name in embed_field_names {
 					p.error_with_pos('duplicate field `$field_name`', type_pos)
-					return ast.StructDecl{}
+					return error('')
 				}
 				embed_field_names << field_name
 				embed_types << typ
@@ -217,10 +281,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ = p.parse_type()
 				if typ.idx() == 0 {
 					// error is set in parse_type
-					return ast.StructDecl{}
+					return error('')
 				}
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
+			}
+			if field_name[0].is_capital() {
+
+			eprintln('$field_name $is_embed')
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
@@ -273,59 +341,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			p.attrs = []
 		}
-		p.top_level_statement_end()
-		last_line = p.tok.line_nr
-		p.check(.rcbr)
 	}
-	t := ast.TypeSymbol{
-		kind: .struct_
-		language: language
-		name: name
-		cname: util.no_dots(name)
-		mod: p.mod
-		info: ast.Struct{
-			embeds: embed_types
-			fields: fields
-			is_typedef: attrs.contains('typedef')
-			is_union: is_union
-			is_heap: attrs.contains('heap')
-			is_generic: generic_types.len > 0
-			generic_types: generic_types
-			attrs: attrs
-		}
-		is_public: is_pub
-	}
-	if p.table.has_deep_child_no_ref(&t, name) {
-		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
-		return ast.StructDecl{}
-	}
-	mut ret := 0
-	// println('reg type symbol $name mod=$p.mod')
-	ret = p.table.register_type_symbol(t)
-	// allow duplicate c struct declarations
-	if ret == -1 && language != .c {
-		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
-			name_pos)
-		return ast.StructDecl{}
-	}
-	p.expr_mod = ''
-	return ast.StructDecl{
-		name: name
-		is_pub: is_pub
-		fields: ast_fields
-		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos
-		pub_pos: pub_pos
-		pub_mut_pos: pub_mut_pos
-		global_pos: global_pos
-		module_pos: module_pos
-		language: language
-		is_union: is_union
-		attrs: attrs
-		end_comments: end_comments
-		generic_types: generic_types
-		embeds: embeds
-	}
+
+	return embed_types, ast_fields, fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds
 }
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
