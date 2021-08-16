@@ -33,10 +33,13 @@ fn main() {
 		os.create('table.html') ?
 	}
 	mut table := os.read_file('table.html') ?
-	if table.contains('>$commit<') {
-		println('nothing to benchmark')
-		exit(1)
-		return
+	if os.exists('website/index.html') {
+		uploaded_index := os.read_file('website/index.html') ?
+		if uploaded_index.contains('>$commit<') {
+			println('nothing to benchmark')
+			exit(1)
+			return
+		}
 	}
 	// for i, commit in commits {
 	message := exec('git log --pretty=format:"%s" -n1 $commit')
@@ -119,6 +122,7 @@ fn main() {
 		os.chdir('website')
 		os.execute_or_exit('git checkout gh-pages')
 		os.cp('../index.html', 'index.html') ?
+		os.rm('../index.html') ?
 		os.system('git commit -am "update benchmark"')
 		os.system('git push origin gh-pages')
 	}
