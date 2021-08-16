@@ -4,7 +4,7 @@
 module time
 
 // unix returns a time struct from Unix time.
-pub fn unix(abs int) Time {
+pub fn unix(abs i64) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
