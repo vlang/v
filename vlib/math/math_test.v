@@ -764,3 +764,16 @@ fn test_large_tan() {
 		assert soclose(f1, f2, 4e-9)
 	}
 }
+
+fn test_egcd() {
+	helper := fn (a i64, b i64, expected_g i64) {
+		g, x, y := egcd(a, b)
+		assert g == expected_g
+		assert abs(a * x + b * y) == g
+	}
+
+	helper(6, 9, 3)
+	helper(6, -9, 3)
+	helper(-6, -9, 3)
+	helper(0, 0, 0)
+}

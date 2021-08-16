@@ -89,6 +89,21 @@ pub fn gcd(a_ i64, b_ i64) i64 {
 	return a
 }
 
+// egcd returns (gcd(a, b), x, y) such that |a*x + b*y| = gcd(a, b)
+pub fn egcd(a i64, b i64) (i64, i64, i64) {
+	mut old_r, mut r := a, b
+	mut old_s, mut s := i64(1), i64(0)
+	mut old_t, mut t := i64(0), i64(1)
+
+	for r != 0 {
+		quot := old_r / r
+		old_r, r = r, old_r % r
+		old_s, s = s, old_s - quot * s
+		old_t, t = t, old_t - quot * t
+	}
+	return if old_r < 0 { -old_r } else { old_r }, old_s, old_t
+}
+
 // lcm calculates least common (non-negative) multiple.
 pub fn lcm(a i64, b i64) i64 {
 	if a == 0 {
