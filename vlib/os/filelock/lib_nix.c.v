@@ -22,7 +22,7 @@ pub fn (mut l FileLock) acquire() ?bool {
 		// lock already acquired by this instance
 		return false
 	}
-	fd := open(l.name.str)
+	fd := open(l.name)
 	if fd == -1 {
 		return error('cannot create lock file $l.name')
 	}
