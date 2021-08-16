@@ -168,13 +168,14 @@ mut:
 	// TypeOne, TypeTwo {}
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
-	aggregate_type_idx int
-	returned_var_name  string // to detect that a var doesn't need to be freed since it's being returned
-	branch_parent_pos  int    // used in BranchStmt (continue/break) for autofree stop position
-	timers             &util.Timers = util.new_timers(false)
-	force_main_console bool // true when [console] used on fn main()
-	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
-	obf_table          map[string]string
+	aggregate_type_idx  int
+	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
+	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
+	infix_left_var_name string // a && if expr
+	timers              &util.Timers = util.new_timers(false)
+	force_main_console  bool // true when [console] used on fn main()
+	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
+	obf_table           map[string]string
 	// main_fn_decl_node  ast.FnDecl
 	expected_cast_type ast.Type // for match expr of sumtypes
 	defer_vars         []string
@@ -4626,6 +4627,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		cur_line = g.go_before_stmt(0)
 		g.empty_line = true
 		g.writeln('$styp $tmp; /* if prepend */')
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('if ($g.infix_left_var_name) {')
+			g.indent++
+		}
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
 		g.write('(')
@@ -4739,6 +4744,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	g.writeln('}')
 	if needs_tmp_var {
+		if g.infix_left_var_name.len > 0 {
+			g.indent--
+			g.writeln('}')
+		}
 		g.empty_line = false
 		g.write('$cur_line $tmp')
 	}
