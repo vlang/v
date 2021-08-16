@@ -31,7 +31,7 @@ const (
 		'hg':  ['hg incoming']
 	}
 	settings         = &VpmSettings{}
-	normal_flags     = ['-v', '-h', '-f', '-g']
+	normal_flags     = ['-v', '-h', '-f']
 	flags_with_value = ['-git', '-hg']
 )
 
@@ -53,14 +53,9 @@ fn init_settings() {
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
 	s.is_verbose = '-v' in os.args
-	s.is_global = '-g' in os.args || '-global' in os.args
 	s.is_forces = '-f' in os.args || '-force' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = if !s.is_global {
-		os.join_path(@VMODROOT, '.vmodules')
-	} else {
-		os.vmodules_dir()
-	}
+	s.vmodules_path = os.vmodules_dir()
 }
 
 struct Mod {
@@ -152,12 +147,6 @@ fn main() {
 				exit(0)
 			}
 
-			if !os.exists('./v.mod') && !settings.is_global {
-				println('for install modules you should have v.mod file inside project root or module should be install globaly!')
-				println('run "v init" in project root to create v.mod file or use -g flag.')
-				exit(0)
-			}
-
 			modules = parse_modules()
 
 			if modules.len == 0 && os.exists('./v.mod') {
@@ -170,11 +159,6 @@ fn main() {
 		'update' {
 			if settings.is_help {
 				vhelp.show_topic('update')
-				exit(0)
-			}
-			if !os.exists('./v.mod') && !settings.is_global {
-				println('for update modules you should have v.mod file inside project root or module should be install globaly!')
-				println('run "v init" in project root to create v.mod file or use -g flag.')
 				exit(0)
 			}
 
