@@ -95,7 +95,7 @@ jobs:
 
   release:
     name: Create Github Release
-    needs: [build-linux-arm64, build-linux, build-windows, build-macos]
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-20.04
     steps:
       - name: Get short tag name
