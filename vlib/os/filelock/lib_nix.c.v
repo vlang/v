@@ -36,7 +36,9 @@ pub fn (mut l FileLock) acquire() ?bool {
 
 pub fn (mut l FileLock) release() bool {
 	if l.fd != -1 {
-		l.unlink()
+		unsafe {
+			l.unlink()
+		}
 		return true
 	}
 	return false
