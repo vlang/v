@@ -417,13 +417,13 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 			}
 			if new_field.is_mut && !type_field.is_mut {
 				new_field = StructField{
-					...new_field,
+					...new_field
 					is_mut: false
 				}
 			}
 			if new_field.is_pub && !type_field.is_pub {
 				new_field = StructField{
-					...new_field,
+					...new_field
 					is_pub: false
 				}
 			}
