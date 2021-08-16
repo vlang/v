@@ -162,6 +162,12 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 			return
 		}
 	}
+	for mut anon_struct in ast_file.anon_structs {
+		c.anon_struct(mut anon_struct)
+		if c.should_abort {
+			return
+		}
+	}
 	c.check_scope_vars(c.file.scope)
 }
 
@@ -673,6 +679,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				decl.pos)
 		}
 	}
+}
+
+pub fn (mut c Checker) anon_struct(mut node ast.AnonStruct) {
+	c.struct_decl(mut node.decl)
 }
 
 fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {

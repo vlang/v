@@ -276,6 +276,16 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				}
 			}
 		}
+
+		// Gen anon structs
+		for anon_struct in file.anon_structs {
+			if anon_struct.decl.is_union {
+				g.typedefs.writeln('typedef union $anon_struct.name $anon_struct.name;')
+			} else {
+				g.typedefs.writeln('typedef struct $anon_struct.name $anon_struct.name;')
+			}
+		}
+
 		g.timers.show('cgen_file $file.path')
 	}
 	g.timers.start('cgen common')

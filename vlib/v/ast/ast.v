@@ -234,6 +234,13 @@ pub mut:
 	is_block     bool // const() block
 }
 
+pub struct AnonStruct {
+pub mut:
+	decl StructDecl
+	typ Type
+	name string
+}
+
 pub struct StructDecl {
 pub:
 	pos           token.Position
@@ -584,6 +591,7 @@ pub mut:
 	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
 	stmts            []Stmt            // all the statements in the source file
+	anon_structs     []AnonStruct
 	imports          []Import          // all the imports
 	auto_imports     []string          // imports that were implicitely added
 	embedded_files   []EmbeddedFile    // list of files to embed in the binary

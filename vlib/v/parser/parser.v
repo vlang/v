@@ -80,6 +80,7 @@ mut:
 	comp_if_cond        bool
 	defer_vars          []ast.Ident
 	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	anon_structs        []ast.AnonStruct
 }
 
 // for tests
@@ -289,6 +290,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		errors: p.errors
 		warnings: p.warnings
 		global_labels: p.global_labels
+		anon_structs: p.anon_structs
 	}
 }
 

@@ -119,9 +119,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	p.expr_mod = ''
-	if name == 'GenPosition' {
-	eprintln(fields)
-	}
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
@@ -343,7 +340,7 @@ fn (mut p Parser) parse_struct_fields(no_body bool, language ast.Language) ?([]a
 		}
 	}
 
-	return embed_types, ast_fields, fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds
+	return embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds
 }
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {

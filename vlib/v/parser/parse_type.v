@@ -245,6 +245,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 }
 
 pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
+	start_pos := p.tok.position()
 	mut is_union := false
 	if p.tok.kind == .key_struct {
 		p.next()
@@ -255,13 +256,53 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 
 	generic_types := p.parse_generic_type_list()
 
+	name_pos := p.tok.position()
+
+	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(false, .v) or {
+		return ast.void_type_idx
+	}
+
+	last_line := p.tok.line_nr
+	p.check(.rcbr)
+
 	st := ast.Struct {
+		embeds: embed_types
+		fields: fields
 		is_union: is_union
 		is_generic: generic_types.len > 0
 		generic_types: generic_types
 	}
 
-	return ast.void_type_idx
+	idx, new := p.table.find_or_register_struct_type(p.mod, st)
+
+	if new {
+		p.anon_structs << ast.AnonStruct{
+			typ: idx
+			name: p.table.get_type_name(idx)
+			decl: ast.StructDecl {
+				is_pub: false
+				fields: ast_fields
+				pos: start_pos.extend_with_last_line(name_pos, last_line)
+				mut_pos: mut_pos
+				pub_pos: pub_pos
+				pub_mut_pos: pub_mut_pos
+				global_pos: global_pos
+				module_pos: module_pos
+				language: .v
+				is_union: is_union
+				attrs: []ast.Attr{}
+				end_comments: end_comments
+				generic_types: generic_types
+				embeds: embeds 
+			}
+		}
+	}
+
+	if generic_types.len > 0 {
+		return ast.new_type(idx).set_flag(.generic)
+	}
+
+	return ast.new_type(idx)
 }
 
 pub fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {

@@ -1052,6 +1052,30 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	)
 }
 
+pub fn (mut t Table) find_or_register_struct_type(mod string, st Struct) (int, bool) {
+	mut names := []string{}
+	for field in st.fields {
+		names << '${field.name}_${int(field.typ)}'
+	}
+	mut generics := []string{}
+	for typ in st.generic_types {
+		generics << t.get_type_name(typ)
+	}
+	name := 'anon_struct_${mod}__${generics.join('_')}_${names.join('__')}'
+
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
+		return existing_idx, false
+	}
+	return t.register_type_symbol(
+		kind: .struct_
+		name: name
+		cname: name
+		mod: mod
+		info: st
+	), true
+}
+
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
