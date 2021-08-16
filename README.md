@@ -266,7 +266,8 @@ https://github.com/vlang/gitly
 
 ## Vinix, an OS/kernel written in V
 
-V is great for writing low level software like drivers and kernels. Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
+V is great for writing low level software like drivers and kernels.
+Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 
 https://github.com/vlang/vinix
 
