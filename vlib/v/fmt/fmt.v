@@ -286,9 +286,9 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
+	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
+	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
-
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
@@ -298,7 +298,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '$imp.mod$imp_alias_suffix'
+	return '$mod$imp_alias_suffix'
 }
 
 //=== Node helpers ===//
