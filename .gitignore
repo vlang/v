@@ -59,6 +59,7 @@ fns.txt
 .settings/
 *.sublime-workspace
 .vscode/
+.vmodules/
 *.code-workspace
 *~
 *.swp

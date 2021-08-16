@@ -30,7 +30,9 @@ const (
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
-	settings = &VpmSettings{}
+	settings         = &VpmSettings{}
+	normal_flags     = ['-v', '-h', '-f', '-g']
+	flags_with_value = ['-git', '-hg']
 )
 
 // settings context:
@@ -38,6 +40,8 @@ struct VpmSettings {
 mut:
 	is_help       bool
 	is_verbose    bool
+	is_global     bool
+	is_forces     bool
 	server_urls   []string
 	vmodules_path string
 }
@@ -49,8 +53,14 @@ fn init_settings() {
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
 	s.is_verbose = '-v' in os.args
+	s.is_global = '-g' in os.args || '-global' in os.args
+	s.is_forces = '-f' in os.args || '-force' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = os.vmodules_dir()
+	s.vmodules_path = if !s.is_global {
+		os.join_path(@VMODROOT, '.vmodules')
+	} else {
+		os.vmodules_dir()
+	}
 }
 
 struct Mod {
@@ -60,6 +70,7 @@ struct Mod {
 	vcs          string
 mut:
 	name      string
+	failed    bool
 	installed bool
 	updated   bool
 }
@@ -75,7 +86,7 @@ fn real_path_of_module(name string) string {
 }
 
 fn module_from_url(url string, vcs string) ?Mod {
-	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
+	query := r'([\w+]+\://)?((\w*@)?((\w+\.)+(\w*)))[/+\:](\w+)/([\w+\-]+)(\.\w*)?'
 	mut re := regex.regex_opt(query) or { panic(err) }
 
 	start, end := re.match_string(url)
@@ -141,6 +152,12 @@ fn main() {
 				exit(0)
 			}
 
+			if !os.exists('./v.mod') && !settings.is_global {
+				println('for install modules you should have v.mod file inside project root or module should be install globaly!')
+				println('run "v init" in project root to create v.mod file or use -g flag.')
+				exit(0)
+			}
+
 			modules = parse_modules()
 
 			if modules.len == 0 && os.exists('./v.mod') {
@@ -155,6 +172,12 @@ fn main() {
 				vhelp.show_topic('install')
 				exit(0)
 			}
+			if !os.exists('./v.mod') && !settings.is_global {
+				println('for install modules you should have v.mod file inside project root or module should be install globaly!')
+				println('run "v init" in project root to create v.mod file or use -g flag.')
+				exit(0)
+			}
+
 			modules = parse_modules()
 
 			if modules.len == 0 && os.exists('./v.mod') {
@@ -193,8 +216,11 @@ fn main() {
 fn parse_modules() map[string]Mod {
 	mut modules := map[string]Mod{}
 	args := os.args[1..]
-	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
-	mut re := regex.regex_opt(query) or { panic(err) }
+	url_query := r'([\w+]+\://)?((\w*@)?((\w+\.)+(\w*)))[/+\:](\w+)/([\w+\-]+)(\.\w*)?'
+	mod_query := r'(\w*)(\.\w*)?'
+
+	mut url_re := regex.regex_opt(url_query) or { panic(err) }
+	mut mod_re := regex.regex_opt(mod_query) or { panic(err) }
 
 	for git in cmdline.options(args, '-git') {
 		arg_git_mod := module_from_url(git, 'git') or {
@@ -216,17 +242,20 @@ fn parse_modules() map[string]Mod {
 
 	mut ignore := true
 	for arg in args {
+		if arg in normal_flags {
+			continue
+		}
 		if ignore {
 			ignore = false
 			continue
 		}
-		if arg.starts_with('-') {
+		if arg in flags_with_value {
 			ignore = true
 			continue
 		}
 
 		// detect urls without option as git
-		start, end := re.match_string(arg)
+		mut start, mut end := url_re.match_string(arg)
 		if start >= 0 && end > start {
 			git_mod := module_from_url(arg, 'git') or {
 				println('Error in parsing url:')
@@ -237,14 +266,20 @@ fn parse_modules() map[string]Mod {
 			continue
 		}
 
-		vpm_mod := get_module_meta_info(arg) or {
-			println('Errors while retrieving meta data for module $arg:')
-			println(err)
+		start, end = mod_re.match_string(arg)
+		if start >= 0 && end > start {
+			vpm_mod := get_module_meta_info(arg) or {
+				println('Errors while retrieving meta data for module $arg:')
+				println(err)
+				continue
+			}
+
+			modules[vpm_mod.name] = vpm_mod
 			continue
 		}
 
-		modules[vpm_mod.name] = vpm_mod
-		continue
+		println('Error in parsing module name:')
+		println('"$arg" is not a valid module name or url!')
 	}
 	return modules
 }
@@ -303,7 +338,7 @@ fn vpm_search(keywords []string) {
 fn vpm_install(mut modules map[string]Mod) {
 	mut errors := 0
 	for _, mut mod in modules {
-		if mod.installed || mod.updated {
+		if mod.failed || mod.updated || mod.installed {
 			continue
 		}
 		mut vcs := mod.vcs
@@ -330,12 +365,13 @@ fn vpm_install(mut modules map[string]Mod) {
 		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
 		verbose_println('      command: $cmd')
 		cmdres := os.execute(cmd)
-		mod.installed = true
+		mod.updated = true
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$mod.name" to "$final_module_path" .')
 			verbose_println('Failed command: $cmd')
 			verbose_println('Failed command output:\n$cmdres.output')
+			mod.failed = true
 			continue
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
@@ -352,27 +388,31 @@ fn vpm_install(mut modules map[string]Mod) {
 			println('Relocating module from "$mod.name" to "$vmod.name" ( $mod_path ) ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
-				println('Removing module "$mod_path" ...')
-				os.rmdir_all(mod_path) or {
-					errors++
-					println('Errors while removing "$mod_path" :')
-					println(err)
-					continue
+				if settings.is_forces {
+					println('Removing module "$mod_path" ...')
+					os.rmdir_all(mod_path) or {
+						errors++
+						println('Errors while removing "$mod_path" :')
+						println(err)
+						continue
+					}
+					os.mv(final_module_path, mod_path) or {
+						errors++
+						println('Errors while relocating module "$mod.name" :')
+						println(err)
+						continue
+					}
+					println('Module "$mod.name" relocated to "$vmod.name" successfully.')
+				} else {
+					println('Ignoring "$mod.name" ...')
+					os.rmdir_all(final_module_path) or {
+						errors++
+						println('Errors while removing "$final_module_path" :')
+						println(err)
+						continue
+					}
 				}
 			}
-			os.mv(final_module_path, mod_path) or {
-				errors++
-				println('Errors while relocating module "$mod.name" :')
-				println(err)
-				os.rmdir_all(final_module_path) or {
-					errors++
-					println('Errors while removing "$final_module_path" :')
-					println(err)
-					continue
-				}
-				continue
-			}
-			println('Module "$mod.name" relocated to "$vmod.name" successfully.')
 			final_module_path = mod_path
 			mod.name = vmod.name
 		}
@@ -386,7 +426,7 @@ fn vpm_install(mut modules map[string]Mod) {
 fn vpm_update(mut modules map[string]Mod) {
 	mut errors := 0
 	for _, mut mod in modules {
-		if mod.updated || mod.installed {
+		if mod.updated || mod.failed {
 			continue
 		}
 		final_module_path := mod.path()
@@ -402,12 +442,13 @@ fn vpm_update(mut modules map[string]Mod) {
 			println('Failed updating module "$mod.name".')
 			verbose_println('Failed command: $vcs_cmd')
 			verbose_println('Failed details:\n$vcs_res.output')
+			mod.failed = true
 			continue
 		} else {
 			verbose_println('    $vcs_res.output.trim_space()')
+			mod.updated = true
+			mod.installed = true
 		}
-		mod.updated = true
-		mod.installed = true
 		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut &modules)
 	}
 	if errors > 0 {
@@ -570,12 +611,11 @@ fn get_installed_modules() map[string]Mod {
 				modules[dir] = Mod{
 					name: dir
 					url: url
-					vcs: 'git'
 					installed: true
+					vcs: 'git'
 				}
 				continue
 			}
-			mod.installed = true
 			modules[dir] = mod
 			continue
 		}
@@ -590,12 +630,11 @@ fn get_installed_modules() map[string]Mod {
 				modules[name] = Mod{
 					name: name
 					url: url
-					vcs: 'git'
 					installed: true
+					vcs: 'git'
 				}
 				continue
 			}
-			mod.installed = true
 			modules[mod.name] = mod
 		}
 	}
@@ -650,8 +689,12 @@ fn get_all_modules() map[string]Mod {
 
 fn resolve_dependencies(path string, mut modules map[string]Mod) {
 	manifest := vmod.from_file(path) or { return }
-	query := r'([\w+]+\://)?(((\w+\.)+(\w*)))(/(\w+))/+([\w+.]+)'
-	mut re := regex.regex_opt(query) or { panic(err) }
+	url_query := r'([\w+]+\://)?((\w*@)?((\w+\.)+(\w*)))[/+\:](\w+)/([\w+\-]+)(\.\w*)?'
+	mod_query := r'(\w*)(\.\w*)?'
+
+	mut url_re := regex.regex_opt(url_query) or { panic(err) }
+	mut mod_re := regex.regex_opt(mod_query) or { panic(err) }
+
 	mut deps := []string{}
 	for dep in manifest.dependencies {
 		if dep.starts_with('hg:') {
@@ -667,7 +710,7 @@ fn resolve_dependencies(path string, mut modules map[string]Mod) {
 			continue
 		}
 
-		start, end := re.match_string(dep)
+		mut start, mut end := url_re.match_string(dep)
 
 		if start >= 0 && end > start {
 			mod := module_from_url(dep, 'git') or {
@@ -682,16 +725,24 @@ fn resolve_dependencies(path string, mut modules map[string]Mod) {
 			continue
 		}
 
-		mod := get_module_meta_info(dep) or {
-			println('Errors while retrieving meta data for module $dep:')
-			println(err)
+		start, end = mod_re.match_string(dep)
+
+		if start >= 0 && end > start {
+			mod := get_module_meta_info(dep) or {
+				println('Errors while retrieving meta data for module $dep:')
+				println(err)
+				continue
+			}
+
+			if mod.name !in modules {
+				modules[mod.name] = mod
+				deps << mod.name
+			}
 			continue
 		}
 
-		if mod.name !in modules {
-			modules[mod.name] = mod
-			deps << mod.name
-		}
+		println('Error in parsing module name:')
+		println('"$dep" is not a valid module name or url!')
 	}
 
 	if deps.len > 0 {
