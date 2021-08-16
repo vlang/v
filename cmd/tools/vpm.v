@@ -151,10 +151,10 @@ fn main() {
 
 			if modules.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
-				resolve_dependencies('./v.mod', mut &modules)
+				resolve_dependencies('./v.mod', mut modules)
 			}
 
-			vpm_install(mut &modules)
+			vpm_install(mut modules)
 		}
 		'update' {
 			if settings.is_help {
@@ -168,7 +168,7 @@ fn main() {
 				modules = get_installed_modules()
 			}
 
-			vpm_update(mut &modules)
+			vpm_update(mut modules)
 		}
 		'upgrade' {
 			vpm_upgrade()
@@ -340,7 +340,7 @@ fn vpm_install(mut modules map[string]Mod) {
 			mut mods := {
 				mod.name: mod
 			}
-			vpm_update(mut &mods)
+			vpm_update(mut mods)
 			continue
 		}
 		println('Installing module "$mod.name" from $mod.url to $final_module_path ...')
@@ -399,7 +399,7 @@ fn vpm_install(mut modules map[string]Mod) {
 			final_module_path = mod_path
 			mod.name = vmod.name
 		}
-		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut &modules)
+		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut modules)
 	}
 	if errors > 0 {
 		exit(1)
@@ -432,7 +432,7 @@ fn vpm_update(mut modules map[string]Mod) {
 			mod.updated = true
 			mod.installed = true
 		}
-		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut &modules)
+		resolve_dependencies(os.join_path(mod.path(), 'v.mod'), mut modules)
 	}
 	if errors > 0 {
 		exit(1)
@@ -732,8 +732,8 @@ fn resolve_dependencies(path string, mut modules map[string]Mod) {
 	if deps.len > 0 {
 		println('Resolving $deps.len dependencies for module "$manifest.name"...')
 		verbose_println('Found dependencies: $deps')
-		vpm_update(mut &modules)
-		vpm_install(mut &modules)
+		vpm_update(mut modules)
+		vpm_install(mut modules)
 	}
 }
 
