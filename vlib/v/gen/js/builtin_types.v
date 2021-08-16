@@ -304,8 +304,8 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
-					constructor: 'this.val = val | 0'
-					value_of: 'this.val | 0'
+					constructor: 'this.val = Number(val)'
+					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
 					eq: 'this.valueOf() === other.valueOf()'
 					to_jsval: '+this'

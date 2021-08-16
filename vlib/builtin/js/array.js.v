@@ -195,7 +195,7 @@ pub fn (mut a array) reverse_in_place() {
 // resulting in a single output value.
 pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
-	#for (let i of a)  {
+	#for (let i = 0;i < a.arr.length;i++)  {
 	#accum_ = iter(accum_, a.arr[i])
 	#}
 

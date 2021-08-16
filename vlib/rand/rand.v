@@ -3,17 +3,8 @@
 // that can be found in the LICENSE file.
 module rand
 
-import rand.seed
+import rand.config
 import rand.wyrand
-
-// PRNGConfigStruct is a configuration struct for creating a new instance of the default RNG.
-// Note that the RNGs may have a different number of u32s required for seeding. The default
-// generator WyRand used 64 bits, ie. 2 u32s so that is the default. In case your desired generator
-// uses a different number of u32s, use the `seed.time_seed_array()` method with the correct
-// number of u32s.
-pub struct PRNGConfigStruct {
-	seed_ []u32 = seed.time_seed_array(2)
-}
 
 // PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
 // modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
@@ -52,7 +43,7 @@ fn init() {
 }
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
-pub fn new_default(config PRNGConfigStruct) &PRNG {
+pub fn new_default(config config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed_)
 	return rng
