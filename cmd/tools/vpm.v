@@ -173,7 +173,7 @@ fn main() {
 				exit(0)
 			}
 			if !os.exists('./v.mod') && !settings.is_global {
-				println('for install modules you should have v.mod file inside project root or module should be install globaly!')
+				println('for update modules you should have v.mod file inside project root or module should be install globaly!')
 				println('run "v init" in project root to create v.mod file or use -g flag.')
 				exit(0)
 			}
