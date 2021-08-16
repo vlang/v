@@ -297,7 +297,7 @@ fn vpm_search(keywords []string) {
 				parts[0] = ' by ${parts[0]} '
 			}
 			installed := if mod.name in installed_modules { ' (installed)' } else { '' }
-			println('${index}. ${parts[1]}${parts[0]}[$mod]$installed')
+			println('${index}. ${parts[1]}${parts[0]}[$mod.name]$installed')
 			break
 		}
 	}
@@ -663,10 +663,8 @@ fn get_all_modules() map[string]Mod {
 	mut modules := map[string]Mod{}
 
 	for name in names {
-		modules[name] = get_module_meta_info(name) or {
-			println('Error in getting "$name" module meta data:')
-			println(err)
-			continue
+		modules[name] = Mod{
+			name: name
 		}
 	}
 
