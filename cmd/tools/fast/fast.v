@@ -65,6 +65,9 @@ fn main() {
 			tcc_path = 'clang'
 		}
 	}
+	if os.args.contains('-clang') {
+		tcc_path = 'clang'
+	}
 	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
 	diff4 := measure('$vdir/vprod -usecache $voptions -cc clang examples/hello_world.v',
