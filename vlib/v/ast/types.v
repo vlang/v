@@ -797,6 +797,8 @@ pub mut:
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type
+	// `I1 is I2` conversions
+	conversions map[int][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type
