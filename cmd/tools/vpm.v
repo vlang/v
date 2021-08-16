@@ -164,9 +164,8 @@ fn main() {
 
 			modules = parse_modules()
 
-			if modules.len == 0 && os.exists('./v.mod') {
-				println('Detected v.mod file inside the project directory. Using it...')
-				resolve_dependencies('./v.mod', mut &modules)
+			if modules.len == 0 {
+				modules = get_installed_modules()
 			}
 
 			vpm_update(mut &modules)
@@ -606,20 +605,23 @@ fn get_installed_modules() map[string]Mod {
 		author := dir
 		mods := os.ls(adir) or { continue }
 		for m in mods {
-			mut mod := module_from_file(os.join_path(adir, m, 'v.mod')) or {
-				println('Error while reading "$vmod_path":')
-				println(err)
-				name := '${author}.$m'
-				url := 'https://github.com/vlang/$author/$m'
-				modules[name] = Mod{
-					name: name
-					url: url
-					installed: true
-					vcs: 'git'
+			vmod_path = os.join_path(adir, m, 'v.mod')
+			if os.exists(vmod_path) {
+				mut mod := module_from_file(vmod_path) or {
+					println('Error while reading "$vmod_path":')
+					println(err)
+					name := '${author}.$m'
+					url := 'https://github.com/vlang/$author/$m'
+					modules[name] = Mod{
+						name: name
+						url: url
+						installed: true
+						vcs: 'git'
+					}
+					continue
 				}
-				continue
+				modules[mod.name] = mod
 			}
-			modules[mod.name] = mod
 		}
 	}
 	return modules

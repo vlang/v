@@ -2462,13 +2462,13 @@ v install [module]
 v install ui
 ```
 
-Modules could install directly from git or mercurial repositories.
+Modules could install directly from git or mercurial repositories. for git repo urls flag can be trimmed.
 ```powershell
-v install [--git|--hg] [url]
+v install [-git|-hg] [url]
 ```
 **Example:**
 ```powershell
-v install --git https://github.com/vlang/markdown
+v install https://github.com/vlang/markdown
 ```
 
 Removing a module with v:
