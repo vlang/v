@@ -263,6 +263,14 @@ https://github.com/vlang/gitly
 
 <img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
 
+## Vinix, an OS/kernel written in V
+
+V is great for writing low level software like drivers and kernels. Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
+
+https://github.com/vlang/vinix
+
+<img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
+
 ## Troubleshooting
 
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
