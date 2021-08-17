@@ -2105,6 +2105,14 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if exp_sym.kind == .function {
 		g.write('(voidptr)')
 	}
+	if exp_sym.info is ast.Struct {
+		if exp_sym.info.is_anon {
+			g.write('*((${g.typ(expected_type)}*)&(')
+			defer {
+				g.write('))')
+			}
+		}
+	}
 	// no cast
 	g.expr(expr)
 }

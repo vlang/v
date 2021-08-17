@@ -255,9 +255,7 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 	}
 
 	generic_types := p.parse_generic_type_list()
-
 	name_pos := p.tok.position()
-
 	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(false, .v) or {
 		return ast.void_type_idx
 	}
@@ -269,6 +267,7 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 		embeds: embed_types
 		fields: fields
 		is_union: is_union
+		is_anon: true
 		is_generic: generic_types.len > 0
 		generic_types: generic_types
 	}

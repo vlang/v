@@ -1,9 +1,11 @@
 struct Foo {
-	a struct{
-		foo int
-	}
+	foo int
 }
 
-fn test(a struct{
+type Test = struct {
 	foo int
-})
+}
+
+fn main() {
+	test := Test(Foo{foo: 0})	
+}

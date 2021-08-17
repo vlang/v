@@ -779,6 +779,7 @@ pub mut:
 	is_union       bool
 	is_heap        bool
 	is_generic     bool
+	is_anon        bool
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
