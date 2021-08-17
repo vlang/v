@@ -308,7 +308,7 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
-	g.definitions.writeln('function \$ref(value) { this.val = value; } ')
+	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
 	if g.pref.backend != .js_node {
 		g.definitions.writeln('const \$process = {')
@@ -736,8 +736,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
-				// C pointers/references: ignore them
 				if node.op == .amp {
+					s := node.right.str()
 					// if !node.right_type.is_pointer() {
 					// kind of weird way to handle references but it allows us to access type methods easily.
 					g.write('(function(x) {')
@@ -1150,7 +1150,12 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		if args.len > 0 {
 			g.write(', ')
 		}
-		g.write('${it.params[0].name} = this')
+		if it.params[0].is_mut  {
+			g.write('${it.params[0].name} = new \$ref(this)')
+		} else {
+			g.write('${it.params[0].name} = this')
+		}
+		
 	}
 	g.writeln(') {')
 	for i, arg in args {
@@ -1159,7 +1164,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		if is_varg {
 			g.writeln('$name = new array($name);')
 		} else {
-			if arg.typ.is_ptr() {
+			if arg.typ.is_ptr() || arg.is_mut {
 				g.writeln('$name = new \$ref($name)')
 			}
 		}
@@ -1592,7 +1597,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 	}
 	mut lname := g.table.get_type_name(it.left_type.set_nr_muls(0))
 	lsym := g.table.get_type_symbol(it.left_type.set_nr_muls(0))
-	if lsym.kind != .interface_ {
+	/*if lsym.kind != .interface_ {
 		// type is known and we can just access method directly
 		if lname in js.v_types {
 			g.write('builtin.')
@@ -1625,7 +1630,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		}
 		// end method call
 		g.write(')')
-	} else {
+	} else */{
 		// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
 		g.write('Object.getPrototypeOf(')
 		g.expr(it.left)
@@ -2243,7 +2248,8 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
-	text := it.val.replace("'", "'")
+	mut text := it.val.replace("'", "'")
+	text = text.replace("\"", "\\\"") 
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
@@ -2251,7 +2257,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('string(')
 	}
-	g.write("'$text'")
+	g.write("\"$text\"")
 	if true || should_cast {
 		g.write(')')
 	}
@@ -2331,6 +2337,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	g.cast_stack << it.typ
 	typ := g.typ(it.typ)
 	if !is_literal {
+		if it.typ.is_ptr() {
+			g.write('new \$ref(')
+		}
 		if typ !in js.v_types || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
@@ -2342,6 +2351,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	}
 	if !is_literal {
 		g.write(')')
+		if it.typ.is_ptr() {
+			g.write(')')
+		}
 	}
 	g.cast_stack.delete_last()
 }
