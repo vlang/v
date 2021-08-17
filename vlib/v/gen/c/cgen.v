@@ -184,7 +184,6 @@ mut:
 	defer_vars           []string
 	anon_fn              bool
 	tests_inited         bool
-	autofree_used        bool
 	cur_concrete_types   []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
 	cur_fn               &ast.FnDecl = 0 // same here
 	needed_equality_fns  []ast.Type
@@ -209,7 +208,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	$if time_cgening ? {
 		timers_should_print = true
 	}
-	mut global_g := Gen{ // TODO: make shared
+	mut global_g := Gen{
 		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
@@ -242,13 +241,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		timers: util.new_timers(timers_should_print)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
+		init: strings.new_builder(100)
 	}
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
 	if pref.is_test {
 		global_g.write_tests_definitions()
 	}
-	// lock global_g {
+
 	global_g.timers.start('cgen init')
 	for mod in global_g.table.modules {
 		global_g.inits[mod] = strings.new_builder(200)
@@ -258,170 +258,150 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	global_g.init()
 	global_g.timers.show('cgen init')
 	global_g.tests_inited = false
-	global_g.autofree_used = false
-	//	}
-	mut pp := pool.new_pool_processor(
-		callback: fn (p &pool.PoolProcessor, idx int, wid int) &Gen {
-			file := p.get_item<&ast.File>(idx)
-			mut global_g := &Gen(p.get_shared_context())
-			mut local_timers := util.new_timers(global_g.timers_should_print)
-			local_timers.start('cgen_file $file.path')
-			mut g := &Gen{
-				file: file
-				out: strings.new_builder(512000)
-				cheaders: strings.new_builder(15000)
-				includes: strings.new_builder(100)
-				typedefs: strings.new_builder(100)
-				typedefs2: strings.new_builder(100)
-				type_definitions: strings.new_builder(100)
-				definitions: strings.new_builder(100)
-				gowrappers: strings.new_builder(100)
-				stringliterals: strings.new_builder(100)
-				auto_str_funcs: strings.new_builder(100)
-				comptime_defines: strings.new_builder(100)
-				pcs_declarations: strings.new_builder(100)
-				hotcode_definitions: strings.new_builder(100)
-				embedded_data: strings.new_builder(1000)
-				options: strings.new_builder(100)
-				shared_types: strings.new_builder(100)
-				shared_functions: strings.new_builder(100)
-				channel_definitions: strings.new_builder(100)
-				json_forward_decls: strings.new_builder(100)
-				enum_typedefs: strings.new_builder(100)
-				sql_buf: strings.new_builder(100)
-				init: strings.new_builder(100)
-				global_init: strings.new_builder(0)
-				cleanup: strings.new_builder(100)
-				table: global_g.table
-				pref: global_g.pref
-				fn_decl: 0
-				indent: -1
-				module_built: global_g.module_built
-				timers: local_timers
-				inner_loop: &ast.EmptyStmt{}
-				field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
-				array_sort_fn: global_g.array_sort_fn
-				done_optionals: global_g.done_optionals
+	if !pref.no_parallel {
+		mut pp := pool.new_pool_processor(
+			callback: fn (p &pool.PoolProcessor, idx int, wid int) &Gen {
+				file := p.get_item<&ast.File>(idx)
+				mut global_g := &Gen(p.get_shared_context())
+				mut g := &Gen{
+					file: file
+					out: strings.new_builder(512000)
+					cheaders: strings.new_builder(15000)
+					includes: strings.new_builder(100)
+					typedefs: strings.new_builder(100)
+					typedefs2: strings.new_builder(100)
+					type_definitions: strings.new_builder(100)
+					definitions: strings.new_builder(100)
+					gowrappers: strings.new_builder(100)
+					stringliterals: strings.new_builder(100)
+					auto_str_funcs: strings.new_builder(100)
+					comptime_defines: strings.new_builder(100)
+					pcs_declarations: strings.new_builder(100)
+					hotcode_definitions: strings.new_builder(100)
+					embedded_data: strings.new_builder(1000)
+					options: strings.new_builder(100)
+					shared_types: strings.new_builder(100)
+					shared_functions: strings.new_builder(100)
+					channel_definitions: strings.new_builder(100)
+					json_forward_decls: strings.new_builder(100)
+					enum_typedefs: strings.new_builder(100)
+					sql_buf: strings.new_builder(100)
+					init: strings.new_builder(100)
+					global_init: strings.new_builder(0)
+					cleanup: strings.new_builder(100)
+					table: global_g.table
+					pref: global_g.pref
+					fn_decl: 0
+					indent: -1
+					module_built: global_g.module_built
+					timers: util.new_timers(global_g.timers_should_print)
+					inner_loop: &ast.EmptyStmt{}
+					field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+					array_sort_fn: global_g.array_sort_fn
+					done_optionals: global_g.done_optionals
+					is_autofree: global_g.pref.autofree
+				}
+				g.gen()
+				return g
 			}
+		)
+		pp.set_shared_context(global_g) // TODO: make global_g shared
+		pp.work_on_items(files)
+		global_g.timers.start('cgen unification')
+		// tg = thread gen
+		for g in pp.get_results<Gen>() {
+			global_g.out.write(g.out) or { panic(err) }
+			global_g.cheaders.write(g.cheaders) or { panic(err) }
+			global_g.includes.write(g.includes) or { panic(err) }
+			global_g.typedefs.write(g.typedefs) or { panic(err) }
+			global_g.typedefs2.write(g.typedefs2) or { panic(err) }
+			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
+			global_g.definitions.write(g.definitions) or { panic(err) }
+			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
+			global_g.stringliterals.write(g.stringliterals) or { panic(err) }
+			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
+			global_g.comptime_defines.write(g.comptime_defines) or { panic(err) }
+			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
+			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
+			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
+			global_g.shared_types.write(g.shared_types) or { panic(err) }
+			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			// merge maps
+			for k, v in g.shareds {
+				global_g.shareds[k] = v
+			}
+			for k, v in g.chan_pop_optionals {
+				global_g.chan_pop_optionals[k] = v
+			}
+			for k, v in g.chan_push_optionals {
+				global_g.chan_push_optionals[k] = v
+			}
+			for k, v in g.optionals {
+				global_g.optionals[k] = v
+			}
+			for k, v in g.as_cast_type_names {
+				global_g.as_cast_type_names[k] = v
+			}
+			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
+			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
+			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
+			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
 
-			if g.pref.is_vlines {
-				g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
+			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
+			global_g.inits[g.file.mod.name].write(g.init) or { panic(err) }
+			global_g.global_inits[g.file.mod.name].write(g.global_init) or { panic(err) }
+
+			for str_type in g.str_types {
+				global_g.str_types << str_type
 			}
-			// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
-			// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-			if g.file.path == '' || !g.pref.autofree {
-				// cgen test or building V
-				// println('autofree=false')
-				g.is_autofree = false
-			} else {
-				g.is_autofree = true
-				global_g.autofree_used = true
-			}
-			g.stmts(file.stmts)
-			// Transfer embedded files
-			if file.embedded_files.len > 0 {
-				for path in file.embedded_files {
-					if path !in g.embedded_files {
-						g.embedded_files << path
-					}
+			for scf in g.sumtype_casting_fns {
+				if scf !in global_g.sumtype_casting_fns {
+					global_g.sumtype_casting_fns << scf
 				}
 			}
-			g.timers.show('cgen_file $file.path')
-			return g
+
+			global_g.nr_closures += g.nr_closures
+			global_g.has_main = global_g.has_main || g.has_main
+
+			global_g.threaded_fns << g.threaded_fns
+			global_g.waiter_fns << g.waiter_fns
+			global_g.auto_fn_definitions << g.auto_fn_definitions
+			global_g.anon_fn_definitions << g.anon_fn_definitions
+			global_g.needed_equality_fns << g.needed_equality_fns // duplicates are resolved later in gen_equality_fns
+			global_g.array_contains_types << g.array_contains_types
+			global_g.array_index_types << g.array_index_types
+			global_g.pcs << g.pcs
+			global_g.json_types << g.json_types
 		}
-	)
-	// lock global_g {
-	pp.set_shared_context(global_g) // TODO: make global_g shared
-	//}
-	pp.work_on_items(files)
+	} else {
+		for file in files {
+			global_g.file = file
+			global_g.gen()
+			global_g.inits[file.mod.name].write(global_g.init) or { panic(err) }
+			global_g.init = strings.new_builder(100)
+		}
+		global_g.timers.start('cgen unification')
+	}
+
+	global_g.gen_jsons()
+	global_g.write_optionals()
+	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
+	for i := 0; i < global_g.str_types.len; i++ {
+		global_g.final_gen_str(global_g.str_types[i])
+	}
+	for sumtype_casting_fn in global_g.sumtype_casting_fns {
+		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
+	}
+	global_g.write_shareds()
+	global_g.write_chan_pop_optional_fns()
+	global_g.write_chan_push_optional_fns()
+	global_g.gen_array_contains_methods()
+	global_g.gen_array_index_methods()
+	global_g.gen_equality_fns()
+	global_g.timers.show('cgen unification')
+
 	mut g := global_g
-	g.timers.start('cgen unification')
-	// tg = thread gen
-	for tg in pp.get_results<Gen>() {
-		g.out.write(tg.out) or { panic(err) } // strings.Builder.write() never fails
-		g.cheaders.write(tg.cheaders) or { panic(err) }
-		g.includes.write(tg.includes) or { panic(err) }
-		g.typedefs.write(tg.typedefs) or { panic(err) }
-		g.typedefs2.write(tg.typedefs2) or { panic(err) }
-		g.type_definitions.write(tg.type_definitions) or { panic(err) }
-		g.definitions.write(tg.definitions) or { panic(err) }
-		g.gowrappers.write(tg.gowrappers) or { panic(err) }
-		g.stringliterals.write(tg.stringliterals) or { panic(err) }
-		g.auto_str_funcs.write(tg.auto_str_funcs) or { panic(err) }
-		g.comptime_defines.write(tg.comptime_defines) or { panic(err) }
-		g.pcs_declarations.write(tg.pcs_declarations) or { panic(err) }
-		g.hotcode_definitions.write(tg.hotcode_definitions) or { panic(err) }
-		g.embedded_data.write(tg.embedded_data) or { panic(err) }
-		g.shared_types.write(tg.shared_types) or { panic(err) }
-		g.shared_functions.write(tg.channel_definitions) or { panic(err) }
-		// merge maps
-		for k, v in tg.shareds {
-			g.shareds[k] = v
-		}
-		for k, v in tg.chan_pop_optionals {
-			g.chan_pop_optionals[k] = v
-		}
-		for k, v in tg.chan_push_optionals {
-			g.chan_push_optionals[k] = v
-		}
-		for k, v in tg.optionals {
-			g.optionals[k] = v
-		}
-		for k, v in tg.as_cast_type_names {
-			g.as_cast_type_names[k] = v
-		}
-		g.json_forward_decls.write(tg.json_forward_decls) or { panic(err) }
-		g.enum_typedefs.write(tg.enum_typedefs) or { panic(err) }
-		g.channel_definitions.write(tg.channel_definitions) or { panic(err) }
-		g.sql_buf.write(tg.sql_buf) or { panic(err) }
-
-		g.cleanups[tg.file.mod.name].write(tg.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
-		g.inits[tg.file.mod.name].write(tg.init) or { panic(err) }
-		g.global_inits[tg.file.mod.name].write(tg.global_init) or { panic(err) }
-
-		for str_type in tg.str_types {
-			g.str_types << str_type
-		}
-		for scf in tg.sumtype_casting_fns {
-			if scf !in g.sumtype_casting_fns {
-				g.sumtype_casting_fns << scf
-			}
-		}
-
-		g.nr_closures += tg.nr_closures
-		g.has_main = g.has_main || tg.has_main
-
-		g.threaded_fns << tg.threaded_fns
-		g.waiter_fns << tg.waiter_fns
-		g.auto_fn_definitions << tg.auto_fn_definitions
-		g.anon_fn_definitions << tg.anon_fn_definitions
-		g.needed_equality_fns << tg.needed_equality_fns // duplicates are resolved later in gen_equality_fns
-		g.array_contains_types << tg.array_contains_types
-		g.array_index_types << tg.array_index_types
-		g.pcs << tg.pcs
-		g.json_types << tg.json_types
-	}
-
-	g.gen_jsons()
-	g.write_optionals()
-	g.dump_expr_definitions() // this uses g.get_str_fn, so it has to go before the below for loop
-	for i := 0; i < g.str_types.len; i++ {
-		g.final_gen_str(g.str_types[i])
-	}
-	for sumtype_casting_fn in g.sumtype_casting_fns {
-		g.write_sumtype_casting_fn(sumtype_casting_fn)
-	}
-	g.write_shareds()
-	g.write_chan_pop_optional_fns()
-	g.write_chan_push_optional_fns()
-	g.gen_array_contains_methods()
-	g.gen_array_index_methods()
-	g.gen_equality_fns()
-	g.timers.show('cgen unification')
 	g.timers.start('cgen common')
-	if global_g.autofree_used {
-		g.is_autofree = true // so that _vcleanup is generated
-	}
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, typ in g.table.type_symbols {
@@ -531,6 +511,22 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.writeln('\n// THE END.')
 	g.timers.show('cgen common')
 	return b.str()
+}
+
+pub fn (mut g Gen) gen() {
+	g.timers.start('cgen_file $g.file.path')
+
+	if g.pref.is_vlines {
+		g.vlines_path = util.vlines_escape_path(g.file.path, g.pref.ccompiler)
+	}
+	g.stmts(g.file.stmts)
+	// Transfer embedded files
+	for path in g.file.embedded_files {
+		if path !in g.embedded_files {
+			g.embedded_files << path
+		}
+	}
+	g.timers.show('cgen_file $g.file.path')
 }
 
 pub fn (g &Gen) hashes() string {
