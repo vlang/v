@@ -4105,7 +4105,8 @@ fn copy_all(dupes bool) {
 }
 ```
 
-It also possible to use multiline comments with `/* */` (they can also be mixed with single line comments)
+It is also possible to use multiline comments with `/* */`
+(they can also be mixed with single line comments).
 
 ```v
 /*
