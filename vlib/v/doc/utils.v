@@ -100,7 +100,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			}
 		}
 
-		if line.ends_with('  ') || line_trimmed == '' || is_horizontalrule
+		if line_trimmed == '' || is_horizontalrule
 			|| (line.starts_with('#') && line.before(' ').count('#') == line.before(' ').len)
 			|| (line_trimmed.starts_with('|') && line_trimmed.ends_with('|'))
 			|| line_trimmed.starts_with('- ') {
