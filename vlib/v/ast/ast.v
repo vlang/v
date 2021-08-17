@@ -322,6 +322,7 @@ pub:
 	name_pos token.Position
 	is_short bool
 pub mut:
+	in_call_expr		 bool
 	unresolved           bool
 	pre_comments         []Comment
 	typ                  Type
