@@ -10,7 +10,8 @@ fn funky()
     code
     ```
     
-    test ====
+    test
+    ====
     - foo
     - bar
     # test
