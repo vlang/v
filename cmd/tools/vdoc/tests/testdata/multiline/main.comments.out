@@ -1,0 +1,10 @@
+module main
+
+fn funky()
+    Hello!
+fn veryfunky()
+    normal comment 1
+    
+    multiline comment 2
+    
+    normal comment 3
