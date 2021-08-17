@@ -502,10 +502,10 @@ fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 fn (mut g Gen) gen_array_contains_methods() {
 	mut done := []ast.Type{}
 	for t in g.array_contains_types {
-		if t in done || g.table.get_type_symbol(t).has_method('contains') {
+		left_final_sym := g.table.get_final_type_symbol(t)
+		if left_final_sym.idx in done || g.table.get_type_symbol(t).has_method('contains') {
 			continue
 		}
-		left_final_sym := g.table.get_final_type_symbol(t)
 		done << t
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_contains'
