@@ -47,9 +47,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	mut last_comment_line_nr := 0
 	for i := comments.len - 1; i >= 0; i-- {
 		cmt := comments[i]
-		if last_comment_line_nr != 0 && (cmt.pos.line_nr + 1 < last_comment_line_nr - 1
-			|| (cmt.is_multi
-			&& cmt.pos.line_nr + cmt.text.count('\n') + 1 < last_comment_line_nr - 1)) {
+		if (!cmt.is_multi && last_comment_line_nr != 0
+			&& cmt.pos.line_nr + 1 < last_comment_line_nr - 1) || (cmt.is_multi
+			&& cmt.pos.line_nr + cmt.text.count('\n') + 1 < last_comment_line_nr - 1) {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
 			break
@@ -59,8 +59,13 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			if cmt_content.len == 0 {
 				continue
 			}
-			multilines := cmt_content.split_into_lines()
+			mut multilines := cmt_content.split_into_lines()
+			if multilines[0] == '' {
+				multilines.delete(0)
+			}
+			commentlines << ''
 			commentlines << multilines.reverse()
+			commentlines << ''
 		} else {
 			if cmt_content.starts_with(' ') {
 				cmt_content = cmt_content[1..]
