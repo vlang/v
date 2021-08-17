@@ -118,6 +118,28 @@ pub fn from_string(input string) Number {
 	return n
 }
 
+// from_bytes converts an array of bytes (little-endian) to a big.Number.
+// Higher precedence bytes are expected at lower indices in the array.
+pub fn from_bytes(input []byte) ?Number {
+	if input.len > 128 {
+		return error('input array too large. big.Number can only hold up to 1024 bit numbers')
+	}
+	// pad input
+	mut padded_input := []byte{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+	padded_input << input
+	// combine every 4 bytes into a u32 and insert into n.array
+	mut n := Number{}
+	for i := 0; i < padded_input.len; i += 4 {
+		x3 := u32(padded_input[i])
+		x2 := u32(padded_input[i + 1])
+		x1 := u32(padded_input[i + 2])
+		x0 := u32(padded_input[i + 3])
+		val := (x3 << 24) | (x2 << 16) | (x1 << 8) | x0
+		n.array[(padded_input.len - i) / 4 - 1] = val
+	}
+	return n
+}
+
 // .int() converts (a small) big.Number `n` to an ordinary integer.
 pub fn (n &Number) int() int {
 	r := C.bignum_to_int(n)
