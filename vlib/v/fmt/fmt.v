@@ -1050,7 +1050,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
-	mut_fields := if node.mut_pos < 0 { []ast.StructField } else { node.fields[node.mut_pos..] }
+	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
 
 	mut immut_methods := node.methods
 	mut mut_methods := []ast.FnDecl{}
