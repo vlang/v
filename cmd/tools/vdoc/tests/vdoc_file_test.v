@@ -50,7 +50,9 @@ fn check_path(vexe string, dir string, tests []string) int {
 		if res_comments.exit_code < 0 {
 			panic(res_comments.output)
 		}
-		mut expected_comments := os.read_file(program.replace('main.v', 'main.comments.out')) or { panic(err) }
+		mut expected_comments := os.read_file(program.replace('main.v', 'main.comments.out')) or {
+			panic(err)
+		}
 		expected_comments = clean_line_endings(expected_comments)
 		found_comments := clean_line_endings(res_comments.output)
 		if expected_comments != found_comments {

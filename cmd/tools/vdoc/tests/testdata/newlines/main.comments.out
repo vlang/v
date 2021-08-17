@@ -1,7 +1,6 @@
 module main
 
 fn funky()
-    newline using two spaces  
     hello
     
     empty line

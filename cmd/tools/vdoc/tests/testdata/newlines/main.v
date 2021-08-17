@@ -1,6 +1,5 @@
-// newline using two spaces  
 // hello
-// 
+//
 // empty line
 // newline using a full stop.
 // ```v
@@ -15,7 +14,7 @@
 // ########### deep test
 // #a shouldnt have a newline
 // test
-// 
+//
 // | foo bar   |  yes   |
 // |-----------|--------|
 // |  working  |  yup   |
