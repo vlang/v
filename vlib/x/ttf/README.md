@@ -274,15 +274,14 @@ fn main() {
 	}
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
-		create_window: true
-		window_title: 'Test TTF module'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: draw_frame
-		init_fn: my_init
-	)
+		width: win_width,
+		height: win_height,
+		create_window: true,
+		window_title: 'Test TTF module',
+		user_data: app,
+		bg_color: bg_color,
+		frame_fn: draw_frame,
+		init_fn: my_init)
 
 	// load TTF fonts
 	for font_path in font_paths {
