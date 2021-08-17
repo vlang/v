@@ -2161,7 +2161,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rcbr)
 			return map_init
 		}
-		return p.struct_init(false) // short_syntax: false
+		return p.struct_init(false) // in_call_expr: false
 	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
 		&& language == .v {
 		// if a == Foo{} {...}

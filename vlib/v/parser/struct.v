@@ -328,13 +328,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
-	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).position()
-	typ := if short_syntax { ast.void_type } else { p.parse_type() }
+fn (mut p Parser) struct_init(in_call_expr bool) ast.StructInit {
+	first_pos := (if in_call_expr && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).position()
+	typ := if in_call_expr { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
 	// p.warn('struct init typ=$sym.name')
-	if !short_syntax {
+	if !in_call_expr {
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
@@ -403,7 +403,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			}
 		}
 	}
-	if !short_syntax {
+	if !in_call_expr {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
@@ -415,8 +415,9 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
 		name_pos: first_pos
-		pos: first_pos.extend(if short_syntax { p.tok.position() } else { p.prev_tok.position() })
+		pos: first_pos.extend(if in_call_expr { p.tok.position() } else { p.prev_tok.position() })
 		is_short: no_keys
+		in_call_expr: in_call_expr && !has_update_expr
 		pre_comments: pre_comments
 	}
 }
