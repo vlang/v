@@ -31,7 +31,7 @@ const (
 		'hg':  ['hg incoming']
 	}
 	settings         = &VpmSettings{}
-	normal_flags     = ['-v', '-h']
+	normal_flags     = ['-v', '-h', '-f', '-force']
 	flags_with_value = ['-git', '-hg']
 )
 
@@ -41,6 +41,7 @@ mut:
 	is_help       bool
 	is_verbose    bool
 	is_global     bool
+	is_forced     bool
 	server_urls   []string
 	vmodules_path string
 }
@@ -51,6 +52,7 @@ fn init_settings() {
 		s = settings
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
+	s.is_forced = '-f' in os.args || '-force' in os.args
 	s.is_verbose = '-v' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
 	s.vmodules_path = os.vmodules_dir()
@@ -369,6 +371,16 @@ fn vpm_install(mut modules map[string]Mod) {
 			println('Relocating module from "$mod.name" to "$vmod.name" ( $mod_path ) ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
+				if !settings.is_forced {
+					println('Undoing module "$final_module_path" installation ...')
+					os.rmdir_all(final_module_path) or {
+						errors++
+						println('Errors while removing "$final_module_path" :')
+						println(err)
+						continue
+					}
+					continue
+				}
 				println('Removing module "$mod_path" ...')
 				os.rmdir_all(mod_path) or {
 					errors++
