@@ -40,7 +40,6 @@ pub mut:
 	used_imports       []string          // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
-	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
 	inside_lambda      bool
@@ -1547,18 +1546,8 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	f.single_line_fields = true
-	old_short_arg_state := f.use_short_fn_args
-	f.use_short_fn_args = false
-	defer {
-		f.single_line_fields = false
-		f.use_short_fn_args = old_short_arg_state
-	}
+	defer { f.single_line_fields = false }
 	for i, arg in args {
-		if i == args.len - 1 && arg.expr is ast.StructInit {
-			if arg.expr.typ == ast.void_type {
-				f.use_short_fn_args = true
-			}
-		}
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}

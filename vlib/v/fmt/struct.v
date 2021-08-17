@@ -193,7 +193,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		}
 		f.mark_import_as_used(name)
 	} else if node.is_short {
-		// `Foo{1,2,3}` (short syntax )
+		// `Foo{1,2,3}` (short syntax)
 		f.write('$name{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {
@@ -209,14 +209,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		}
 		f.write('}')
 	} else {
-		use_short_args := f.use_short_fn_args && !node.has_update_expr
-		f.use_short_fn_args = false
 		mut single_line_fields := f.single_line_fields
 		f.single_line_fields = false
 		if node.pos.line_nr < node.pos.last_line || node.pre_comments.len > 0 {
 			single_line_fields = false
 		}
-		if !use_short_args {
+		if !node.in_call_expr {
 			f.write('$name{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
@@ -226,10 +224,10 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
-				if use_short_args && f.out[f.out.len - 1] == ` ` {
+				if node.in_call_expr && f.out[f.out.len - 1] == ` ` {
 					//           v Remove space at tail of line
 					// f(a, b, c, \n
-					//     f1: 0\n
+					//     f1: 0,\n
 					//     f2: 1\n
 					// )
 					f.out.go_back(1)
@@ -258,6 +256,11 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 					if i < node.fields.len - 1 {
 						f.write(', ')
 					}
+				} else if node.in_call_expr {
+					if i < node.fields.len - 1 {
+						f.write(',')
+					}
+					f.writeln('')
 				} else {
 					f.writeln('')
 				}
@@ -278,7 +281,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		if !single_line_fields {
 			f.indent--
 		}
-		if !use_short_args {
+		if !node.in_call_expr {
 			if single_line_fields {
 				f.write(' ')
 			}
