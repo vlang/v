@@ -1150,12 +1150,11 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		if args.len > 0 {
 			g.write(', ')
 		}
-		if it.params[0].is_mut  {
+		if it.params[0].is_mut {
 			g.write('${it.params[0].name} = new \$ref(this)')
 		} else {
 			g.write('${it.params[0].name} = this')
 		}
-		
 	}
 	g.writeln(') {')
 	for i, arg in args {
@@ -1597,7 +1596,8 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 	}
 	mut lname := g.table.get_type_name(it.left_type.set_nr_muls(0))
 	lsym := g.table.get_type_symbol(it.left_type.set_nr_muls(0))
-	/*if lsym.kind != .interface_ {
+	/*
+	if lsym.kind != .interface_ {
 		// type is known and we can just access method directly
 		if lname in js.v_types {
 			g.write('builtin.')
@@ -1630,7 +1630,9 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		}
 		// end method call
 		g.write(')')
-	} else */{
+	} else
+	*/
+	{
 		// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
 		g.write('Object.getPrototypeOf(')
 		g.expr(it.left)
@@ -2249,7 +2251,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	mut text := it.val.replace("'", "'")
-	text = text.replace("\"", "\\\"") 
+	text = text.replace('"', '\\"')
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
