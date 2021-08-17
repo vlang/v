@@ -346,7 +346,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 	}
 	$if macos {
 		/*
-		if pref.is_parallel && paths[0].contains('/array.v') {
+		if !pref.no_parallel && paths[0].contains('/array.v') {
 			println('\n\n\nparse_files() nr_files=$paths.len')
 			println(paths)
 			nr_cpus := runtime.nr_cpus()
