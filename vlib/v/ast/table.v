@@ -1162,10 +1162,84 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 			if v.idx() == variant.idx() {
 				return true
 			}
+			mut no_struct := false
+			is_anon_struct := t.struct_is_anon_struct(variant, v) or {
+				no_struct = true
+				false
+			}
+			if !no_struct && is_anon_struct {
+				return true
+			}
 		}
 	}
 	return false
 }
+
+pub fn (t &Table) sumtype_get_variant(parent Type, variant Type) Type {
+	parent_sym := t.get_type_symbol(parent)
+	if parent_sym.kind == .sum_type {
+		parent_info := parent_sym.info as SumType
+		for v in parent_info.variants {
+			if v.idx() == variant.idx() {
+				return v
+			}
+			mut no_struct := false
+			is_anon_struct := t.struct_is_anon_struct(variant, v) or {
+				no_struct = true
+				false
+			}
+			if !no_struct && is_anon_struct {
+				return v
+			}
+		}
+	}
+	return Type(0)
+}
+
+pub fn (t &Table) struct_is_anon_struct(got Type, expected Type) ?bool {
+	expected_sym := t.get_type_symbol(expected)
+	got_sym := t.get_type_symbol(got)
+	if expected_sym.info is Struct && got_sym.info is Struct {
+		if expected_sym.info.is_anon {
+			expected_st := expected_sym.info
+			got_st := got_sym.info
+			if expected_st.fields.len != got_st.fields.len {
+				return false
+			}
+			for i in 0..expected_st.fields.len {
+				if !t.compare_struct_fields(got_st.fields[i], expected_st.fields[i]) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return none
+}
+
+pub fn (t &Table) compare_struct_fields(got StructField, expected StructField) bool {
+	if got.name != expected.name {
+		return false
+	}
+	if got.typ.idx() != expected.typ.idx() {
+		return false
+	}
+	// TODO check default expr
+
+	if got.is_pub != expected.is_pub || got.is_mut != expected.is_mut || got.is_global != expected.is_global {
+		return false
+	}
+	if got.attrs.len != expected.attrs.len {
+		return false
+	}
+	for i in 0..got.attrs.len {
+		if got.attrs[i] != expected.attrs[i] {
+			return false
+		}
+	}
+	return true
+}
+
 
 // only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {

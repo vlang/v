@@ -283,10 +283,6 @@ fn (mut p Parser) parse_struct_fields(no_body bool, language ast.Language) ?([]a
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
-			if field_name[0].is_capital() {
-
-			eprintln('$field_name $is_embed')
-			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {

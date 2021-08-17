@@ -301,24 +301,16 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 
-	expected_sym := c.table.get_type_symbol(expected)
-	got_sym := c.table.get_type_symbol(got)
-	if expected_sym.info is ast.Struct && got_sym.info is ast.Struct {
-		if expected_sym.info.is_anon {
-			expected_st := expected_sym.info
-			got_st := got_sym.info
-			if expected_st.fields.len != got_st.fields.len {
-				return false
-			}
-			for i in 0..expected_st.fields.len {
-				if !c.compare_struct_fields(got_st.fields[i], expected_st.fields[i]) {
-					return false
-				}
-			}
-			return true
-		}
+	mut no_struct := false
+	is_anon_struct := c.table.struct_is_anon_struct(got, expected) or {
+		no_struct = true
+		false
 	}
 
+	if !no_struct && is_anon_struct {
+		return true
+	}
+	
 	if expected.has_flag(.optional) {
 		sym := c.table.get_type_symbol(got)
 		if (sym.kind == .interface_ && sym.name == 'IError')
@@ -348,28 +340,6 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	return true
 }
 
-pub fn (mut c Checker) compare_struct_fields(got ast.StructField, expected ast.StructField) bool {
-	if got.name != expected.name {
-		return false
-	}
-	if !c.check_types(got.typ, expected.typ) {
-		return false
-	}
-	// TODO check default expr
-
-	if got.is_pub != expected.is_pub || got.is_mut != expected.is_mut || got.is_global != expected.is_global {
-		return false
-	}
-	if got.attrs.len != expected.attrs.len {
-		return false
-	}
-	for i in 0..got.attrs.len {
-		if got.attrs[i] != expected.attrs[i] {
-			return false
-		}
-	}
-	return true
-}
 
 pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
 	if !c.check_types(got, expected) {

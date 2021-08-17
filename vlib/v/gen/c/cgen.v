@@ -1959,7 +1959,7 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_styp string) {
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_styp string, is_anon bool) {
 	mut rparen_n := 1
 	if exp_is_ptr {
 		g.write('HEAP($exp_styp, ')
@@ -1974,6 +1974,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 		} else {
 			g.write('&')
 		}
+	}
+	if is_anon {
+		g.write('*(($got_styp*)&(')
+		rparen_n += 2
 	}
 	g.expr(expr)
 	g.write(')'.repeat(rparen_n))
@@ -2010,7 +2014,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
 			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
-				got_styp)
+				got_styp, false)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
@@ -2020,13 +2024,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
 			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
-				got_styp)
+				got_styp, false)
 		}
 		return
 	}
 	// cast to sum type
 	exp_styp := g.typ(expected_type)
-	got_styp := g.typ(got_type)
 	if expected_type != ast.void_type {
 		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
 		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
@@ -2049,10 +2052,16 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
-				g.write_sumtype_casting_fn(got_type, expected_type)
-				fname := '${got_sym.cname}_to_sumtype_$exp_sym.cname'
+				fn_type := g.table.sumtype_get_variant(expected_type, got_type)
+				fn_sym := g.table.get_type_symbol(fn_type)
+				mut is_anon := false
+				if fn_sym.info is ast.Struct {
+					is_anon = fn_sym.info.is_anon
+				}
+				g.write_sumtype_casting_fn(fn_type, expected_type)
+				fname := '${fn_sym.cname}_to_sumtype_$exp_sym.cname'
 				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
-					got_is_ptr, got_styp)
+					got_is_ptr, g.typ(fn_type), is_anon)
 			}
 			return
 		}
