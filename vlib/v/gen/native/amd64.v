@@ -460,6 +460,7 @@ pub fn (mut g Gen) inline_strlen(r Register) {
 }
 
 // TODO: strlen of string at runtime
+
 pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
 	mystrlen := true
 	g.mov_reg(.rsi, r)

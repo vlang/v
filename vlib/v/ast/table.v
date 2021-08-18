@@ -39,8 +39,9 @@ pub mut:
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 
-// used by vls to avoid leaks
 // TODO remove manual memory management
+
+// Used by vls to avoid leaks
 [unsafe]
 pub fn (t &Table) free() {
 	unsafe {
@@ -1135,6 +1136,7 @@ pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bo
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
+
 pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {

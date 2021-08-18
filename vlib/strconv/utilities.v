@@ -197,6 +197,7 @@ f64 to string with string format
 */
 
 // TODO: Investigate precision issues
+
 // f32_to_str_l return a string with the f32 converted in a string in decimal notation
 [manualfree]
 pub fn f32_to_str_l(f f32) string {

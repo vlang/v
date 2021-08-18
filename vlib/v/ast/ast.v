@@ -25,6 +25,7 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
+
 pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
 	StructInitField
@@ -619,6 +620,7 @@ pub mut:
 }
 
 // TODO: (joe) remove completely, use ident.obj
+
 // instead which points to the scope object
 pub struct IdentVar {
 pub mut:
@@ -1001,6 +1003,7 @@ pub:
 }
 
 // TODO: handle this differently
+
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
 pub struct DeferStmt {
@@ -1114,6 +1117,7 @@ pub:
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 // 2021/07/17: TODO: since 6edfb2c, the above is fixed at the parser level,
 // we need to remove the hacks/special cases in vfmt and the checker too.
+
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`
@@ -1279,6 +1283,7 @@ pub const (
 )
 
 // TODO: saved priviled registers for arm
+
 pub const (
 	arm_no_number_register_list   = ['fp' /* aka r11 */, /* not instruction pointer: */ 'ip' /* aka r12 */,
 		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */

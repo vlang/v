@@ -183,6 +183,7 @@ fn (am AssetManager) get_assets(asset_type string) []Asset {
 }
 
 // todo: implement proper minification
+
 pub fn minify_css(css string) string {
 	mut lines := css.split('\n')
 	for i, _ in lines {
@@ -192,6 +193,7 @@ pub fn minify_css(css string) string {
 }
 
 // todo: implement proper minification
+
 pub fn minify_js(js string) string {
 	mut lines := js.split('\n')
 	for i, _ in lines {

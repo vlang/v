@@ -1,7 +1,7 @@
 module gx
 
-// TODO: remove these and uae the enum everywhere
 pub const (
+	// TODO: remove these and use the enum everywhere
 	align_left  = HorizontalAlign.left
 	align_right = HorizontalAlign.right
 )

@@ -104,9 +104,10 @@ pub fn connect(path string) ?DB {
 	}
 }
 
-// close Closes the DB.
 // TODO: For all functions, determine whether the connection is
 // closed first, and determine what to do if it is
+
+// close Closes the DB.
 pub fn (mut db DB) close() ?bool {
 	code := C.sqlite3_close(db.conn)
 	if code == 0 {

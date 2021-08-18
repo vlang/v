@@ -283,6 +283,7 @@ fn module_path(mod string) string {
 
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
+
 pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()

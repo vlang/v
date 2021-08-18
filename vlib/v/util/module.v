@@ -50,6 +50,7 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 // * if possible split this function in two, one which gets the
 // parent module path and another which turns it into the full name
 // * create shared logic between these fns and builder.find_module_path
+
 pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'

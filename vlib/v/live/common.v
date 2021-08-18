@@ -50,6 +50,7 @@ pub mut:
 //
 // live.info - give user access to program's LiveReloadInfo struct,
 // so that the user can set callbacks, read meta information, etc.
+
 pub fn info() &LiveReloadInfo {
 	if C.g_live_info != 0 {
 		return unsafe { &LiveReloadInfo(C.g_live_info) }

@@ -1691,8 +1691,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	return if node.op.is_relational() { ast.bool_type } else { return_type }
 }
 
+// TODO update the name to reflect this?
+
 // returns name and position of variable that needs write lock
-// also sets `is_changed` to true (TODO update the name to reflect this?)
+// also sets `is_changed` to true 
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
@@ -3521,6 +3523,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 }
 
 // TODO: non deferred
+
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)

@@ -48,8 +48,8 @@ pub:
 	height f32
 }
 
-// TODO remove this
 fn create_image(file string) Image {
+	// TODO remove this
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: $file')
 		return Image{} // none

@@ -258,6 +258,7 @@ pub fn wait_events() {
 */
 
 // TODO: Fix alpha
+
 pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {

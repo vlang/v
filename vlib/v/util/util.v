@@ -178,9 +178,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
 // That means that a tool can get recompiled twice, if called in short succession.
-// TODO: use a nanosecond mtime timestamp, if available.
 pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, tool_exe string) bool {
 	if os.is_dir(tool_source) {
+		// TODO: use a nanosecond mtime timestamp, if available.
 		source_files := os.walk_ext(tool_source, '.v')
 		mut newest_sfile := ''
 		mut newest_sfile_mtime := 0

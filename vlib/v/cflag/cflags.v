@@ -69,6 +69,7 @@ pub fn (cf &CFlag) format() string {
 }
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
+
 pub fn (cflags []CFlag) c_options_before_target_msvc() []string {
 	return []
 }

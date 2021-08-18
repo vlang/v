@@ -583,8 +583,8 @@ pub fn (b []byte) hex() string {
 // copy copies the `src` byte array elements to the `dst` byte array.
 // The number of the elements copied is the minimum of the length of both arrays.
 // Returns the number of elements copied.
-// TODO: implement for all types
 pub fn copy(dst []byte, src []byte) int {
+	// TODO: implement for all types
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
 		unsafe { vmemcpy(&byte(dst.data), src.data, min) }

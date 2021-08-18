@@ -660,7 +660,7 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ? {
 }
 
 // TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
-
+ 
 // write_raw writes a single instance of type `T`
 pub fn (mut f File) write_raw<T>(t &T) ? {
 	if !f.is_opened {

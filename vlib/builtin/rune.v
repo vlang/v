@@ -52,6 +52,7 @@ pub fn (b []byte) clone() []byte {
 }
 
 // TODO: remove this once runes are implemented
+
 pub fn (b []byte) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)

@@ -311,8 +311,8 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool 
 // else
 // the default value is returned
 // version with abbr
-// TODO error handling for invalid string to bool conversion
 pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage string) bool {
+	// TODO error handling for invalid string to bool conversion
 	value := fs.bool_opt(name, abbr, usage) or { return bdefault }
 	return value
 }
@@ -351,8 +351,8 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
 // else
 // the default value is returned
 // version with abbr
-// TODO error handling for invalid string to int conversion
 pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage string) int {
+	// TODO error handling for invalid string to int conversion
 	value := fs.int_opt(name, abbr, usage) or { return idefault }
 	return value
 }
@@ -390,8 +390,8 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 
 // else
 // the default value is returned
 // version with abbr
-// TODO error handling for invalid string to float conversion
 pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage string) f64 {
+	// TODO error handling for invalid string to float conversion
 	value := fs.float_opt(name, abbr, usage) or { return fdefault }
 	return value
 }

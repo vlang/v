@@ -24,8 +24,8 @@ struct SQLError {
 	code int
 }
 
-// TODO: Documentation
 pub struct Connection {
+	// TODO: Documentation
 mut:
 	conn &C.MYSQL = C.mysql_init(0)
 pub mut:

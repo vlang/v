@@ -28,7 +28,7 @@ import math
 
 // Measure of Occurance
 // Frequency of a given number
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/frequency-distribution.html
 pub fn freq(arr []f64, val f64) int {
 	if arr.len == 0 {
@@ -45,7 +45,7 @@ pub fn freq(arr []f64, val f64) int {
 
 // Measure of Central Tendancy
 // Mean of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mean(arr []f64) f64 {
 	if arr.len == 0 {
@@ -60,7 +60,7 @@ pub fn mean(arr []f64) f64 {
 
 // Measure of Central Tendancy
 // Geometric Mean of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/numbers/geometric-mean.html
 pub fn geometric_mean(arr []f64) f64 {
 	if arr.len == 0 {
@@ -75,7 +75,7 @@ pub fn geometric_mean(arr []f64) f64 {
 
 // Measure of Central Tendancy
 // Harmonic Mean of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/numbers/harmonic-mean.html
 pub fn harmonic_mean(arr []f64) f64 {
 	if arr.len == 0 {
@@ -90,7 +90,7 @@ pub fn harmonic_mean(arr []f64) f64 {
 
 // Measure of Central Tendancy
 // Median of the given input array ( input array is assumed to be sorted )
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn median(arr []f64) f64 {
 	if arr.len == 0 {
@@ -106,7 +106,7 @@ pub fn median(arr []f64) f64 {
 
 // Measure of Central Tendancy
 // Mode of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mode(arr []f64) f64 {
 	if arr.len == 0 {
@@ -126,7 +126,7 @@ pub fn mode(arr []f64) f64 {
 }
 
 // Root Mean Square of the given input array
-// Based on
+// - Based on
 // https://en.wikipedia.org/wiki/Root_mean_square
 pub fn rms(arr []f64) f64 {
 	if arr.len == 0 {
@@ -141,7 +141,7 @@ pub fn rms(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Population Variance of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn population_variance(arr []f64) f64 {
 	if arr.len == 0 {
@@ -157,7 +157,7 @@ pub fn population_variance(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Sample Variance of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn sample_variance(arr []f64) f64 {
 	if arr.len == 0 {
@@ -173,7 +173,7 @@ pub fn sample_variance(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Population Standard Deviation of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn population_stddev(arr []f64) f64 {
 	if arr.len == 0 {
@@ -184,7 +184,7 @@ pub fn population_stddev(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Sample Standard Deviation of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn sample_stddev(arr []f64) f64 {
 	if arr.len == 0 {
@@ -195,7 +195,7 @@ pub fn sample_stddev(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Mean Absolute Deviation of the given input array
-// Based on
+// - Based on
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
 pub fn mean_absdev(arr []f64) f64 {
 	if arr.len == 0 {
@@ -239,7 +239,7 @@ pub fn max(arr []f64) f64 {
 
 // Measure of Dispersion / Spread
 // Range ( Maximum - Minimum ) of the given input array
-// Based on
+// - Based on
 // https://www.mathsisfun.com/data/range.html
 pub fn range(arr []f64) f64 {
 	if arr.len == 0 {

@@ -143,8 +143,8 @@ pub fn (mut img Image) update_pixel_data(buf &byte) {
 	gfx.update_image(img.simg, &data)
 }
 
-// TODO copypasta
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
+	// TODO copypasta
 	if !C.sg_isvalid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file

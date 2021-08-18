@@ -919,9 +919,10 @@ pub fn (s string) ends_with(p string) bool {
 	return true
 }
 
+
 // to_lower returns the string in all lowercase characters.
-// TODO only works with ASCII
 pub fn (s string) to_lower() string {
+	// TODO only works with ASCII
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
@@ -1295,12 +1296,13 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
+
 // before returns the contents before `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.before('.') == '23:34:45'
 // Example: assert 'abcd'.before('.') == 'abcd'
-// TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
+	// TODO: deprecate and remove either .before or .all_before
 	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()
@@ -1361,8 +1363,8 @@ pub fn (s string) all_after_last(sub string) string {
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
 // Example: assert 'abcd'.after('z') == 'abcd'
-// TODO: deprecate either .all_after_last or .after
 pub fn (s string) after(sub string) string {
+	// TODO: deprecate either .all_after_last or .after
 	return s.all_after_last(sub)
 }
 

@@ -593,6 +593,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 }
 
 // TODO [if vfmt]
+
 pub fn (mut p Parser) check_comment() ast.Comment {
 	if p.tok.kind == .comment {
 		return p.comment()
