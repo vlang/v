@@ -1,13 +1,13 @@
 Usage:
-  v install [GIT_REPO_URL...|MODULE...]
+  v install [MODULE...]
     Installs each MODULE.
 
     If no MODULEs, the modules listed in the `v.mod` file are installed instead.
 
 Options:
-  -git          - Install from git repository url
-  -hg           - Install from mercurial repository url
-  -f|-force     - force module installation, regardless of existing install
+  --vpm         - [Default] Install from vpm
+  --git         - Install from git repository url
+  --hg          - Install from mercurial repository url
   -help         - Show usage info.
   -v            - Print more details about the performed operation.
   -server-url   - When doing network operations, use this vpm server. Can be given multiple times.
