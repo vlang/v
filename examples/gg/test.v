@@ -14,9 +14,9 @@ fn main() {
 	}
 	app.gg = gg.new_context(
 		bg_color: gx.rgb(174, 198, 255)
-		width: 600
-		height: 400
-		window_title: 'Polygons'
+		width: 100
+		height: 100
+		window_title: 'Set Pixels'
 		frame_fn: frame
 		user_data: app
 	)
@@ -24,8 +24,16 @@ fn main() {
 }
 
 fn frame(mut app App) {
-	app.gg.scale = 3
+	mut pixels := []f32{}
+	
+	for x in 30..60 {
+		for y in 30..60 {
+			pixels << f32(x)
+			pixels << f32(y)
+		}
+	}
+	
 	app.gg.begin()
-	app.gg.set_pixels([f32(4), 4, 8, 8], gx.red)
+	app.gg.set_pixels(pixels, gx.red)
 	app.gg.end()
 }
