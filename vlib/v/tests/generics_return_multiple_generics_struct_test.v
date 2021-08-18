@@ -5,7 +5,7 @@ mut:
 }
 
 fn new_foo<A, B>(a A, b B) Foo<A, B> {
-	return Foo<A,B>{
+	return Foo<A, B>{
 		a: a
 		b: b
 	}

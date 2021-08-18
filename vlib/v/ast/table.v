@@ -202,7 +202,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
 		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', '>', ''])
+			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '', '>', ''])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -1428,7 +1428,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						gts := t.get_type_symbol(ct)
 						nrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
-							nrt += ','
+							nrt += ', '
 						}
 					}
 				}

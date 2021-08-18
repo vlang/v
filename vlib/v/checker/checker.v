@@ -696,7 +696,7 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 					nrt += gts.name
 					c_nrt += gts.cname
 					if i != ts.info.generic_types.len - 1 {
-						nrt += ','
+						nrt += ', '
 						c_nrt += '_'
 					}
 				}

@@ -543,7 +543,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			break
 		}
 		p.next()
-		bs_name += ','
+		bs_name += ', '
 		bs_cname += '_'
 	}
 	p.check(.gt)
