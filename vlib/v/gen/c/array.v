@@ -494,7 +494,7 @@ fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 	if typ.share() == .shared_t {
 		println('noted')
 	}
-	t := g.unwrap_generic(typ).set_nr_muls(0)
+	t := g.table.get_final_type_symbol(g.unwrap_generic(typ).set_nr_muls(0)).idx
 	g.array_contains_types << t
 	return g.typ(t) + '_contains'
 }
