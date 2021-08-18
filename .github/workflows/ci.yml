@@ -764,7 +764,7 @@ jobs:
           .\v.exe wipe-cache
           .\make.bat -tcc32 --verbose
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/nix -Werror -w -ladvapi32 -bt10 v.c
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
         run: ./v doctor
 
