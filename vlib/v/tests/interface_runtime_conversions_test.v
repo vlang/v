@@ -21,6 +21,15 @@ fn draw(w Widget) {
 	}
 }
 
+fn draw_ref(w &Widget) {
+	if w is ResizableWidget {
+		rw := w as ResizableWidget
+		assert rw.resize(10, 20) == 200
+	} else {
+		assert false
+	}
+}
+
 // implements Widget, but not ResizableWidget
 struct WidgetA {
 }
