@@ -412,8 +412,13 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 			if !found_once {
 				found_once = true
 				new_field = type_field
-			} else if !new_field.equals(type_field) {
+			} else if new_field.typ != type_field.typ {
 				return error('field `${t.type_to_str(typ)}.$name` type is different')
+			}
+			new_field = StructField{
+				...new_field
+				is_mut: new_field.is_mut && type_field.is_mut
+				is_pub: new_field.is_pub && type_field.is_pub
 			}
 		} else {
 			return error('type `${t.type_to_str(typ)}` has no field or method `$name`')
