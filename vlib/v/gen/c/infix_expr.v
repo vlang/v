@@ -448,6 +448,9 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 		return
 	}
 	g.write('I_${left_sym.cname}_is_I_${right_sym.cname}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
 	g.expr(node.left)
 	g.write(')')
 }

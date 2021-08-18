@@ -6466,6 +6466,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		}
 	} else if expr_type_sym.kind == .interface_ && sym.kind == .interface_ {
 		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
+		if node.expr_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.expr)
 		g.write(')')
 
