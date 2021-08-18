@@ -12,7 +12,7 @@ const (
 	// All coordinates are designed for a clock size of this many pixel.
 	// You cannot change the size of the clock by adjusting this value.
 	design_size = 700
-	center = 350
+	center      = 350
 
 	// Half the width of a tic-mark.
 	tw          = 9
@@ -31,12 +31,13 @@ const (
 )
 
 struct App {
-	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 1 * th, center - tw,
-	tp + 1 * th,]
-	hours_tic   []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th, center - tw,
-	tp + 2 * th,]
-	hours3_tic  []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th, center - tw,
-	tp + 3 * th,]
+	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
+	tp +
+	1 * th, center - tw, tp + 1 * th]
+	hours_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th,
+	center - tw, tp + 2 * th]
+	hours3_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th,
+	center - tw, tp + 3 * th]
 
 	hour_hand   []f32 = [f32(329), 161, 350, 140, 371, 161, 371, 413, 329, 413]
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]
