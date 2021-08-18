@@ -737,7 +737,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
 				if node.op == .amp {
-					s := node.right.str()
 					// if !node.right_type.is_pointer() {
 					// kind of weird way to handle references but it allows us to access type methods easily.
 					g.write('(function(x) {')
@@ -1594,65 +1593,26 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			}
 		}
 	}
-	mut lname := g.table.get_type_name(it.left_type.set_nr_muls(0))
-	lsym := g.table.get_type_symbol(it.left_type.set_nr_muls(0))
-	/*
-	if lsym.kind != .interface_ {
-		// type is known and we can just access method directly
-		if lname in js.v_types {
-			g.write('builtin.')
-		}
-		// this hack is weird one but required to properly access module functions
-		// todo(playX): maybe we can get rid of it?
-		if lsym.mod == g.ns.name {
-			lname = lname.replace('$lsym.mod' + '.', '')
-		} else if lsym.mod.starts_with('$g.ns.name' + '.') {
-			lname = lname.replace_once('$g.ns.name' + '.', '')
-		}
-		if lname.starts_with('JS') {
-			lname = lname.replace_once('JS.', '')
-		}
-		if lsym.kind == .array {
-			g.write('builtin.array')
-		} else {
-			g.write('$lname')
-		}
-		g.write('.prototype.$name')
-		g.write('.call(')
-		g.expr(it.left)
-		g.write(',')
-
-		for i, arg in it.args {
-			g.expr(arg.expr)
-			if i != it.args.len - 1 {
-				g.write(', ')
-			}
-		}
-		// end method call
-		g.write(')')
-	} else
-	*/
-	{
-		// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
-		g.write('Object.getPrototypeOf(')
-		g.expr(it.left)
-		mut ltyp := it.left_type
-		for ltyp.is_ptr() {
-			g.write('.val')
-			ltyp = ltyp.deref()
-		}
-		g.write(').$name .call(')
-		g.expr(it.left)
-		g.write(',')
-		for i, arg in it.args {
-			g.expr(arg.expr)
-			if i != it.args.len - 1 {
-				g.write(', ')
-			}
-		}
-		// end method call
-		g.write(')')
+	// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
+	g.write('Object.getPrototypeOf(')
+	g.expr(it.left)
+	mut ltyp := it.left_type
+	for ltyp.is_ptr() {
+		g.write('.val')
+		ltyp = ltyp.deref()
 	}
+	g.write(').$name .call(')
+	g.expr(it.left)
+	g.write(',')
+	for i, arg in it.args {
+		g.expr(arg.expr)
+		if i != it.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	// end method call
+	g.write(')')
+
 	if call_return_is_optional {
 		// end unwrap
 		g.writeln(')')
