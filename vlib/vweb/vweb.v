@@ -57,6 +57,8 @@ pub const (
 		'.wasm': 'application/wasm'
 		'.xml':  'text/xml; charset=utf-8'
 		'.ico':  'img/x-icon'
+		'.ttf':  'font/ttf'
+		'.otf':  'font/opentype'
 	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
