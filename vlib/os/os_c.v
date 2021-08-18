@@ -139,7 +139,7 @@ pub fn read_file(path string) ?string {
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ? {
-	fp := C.open(&char(path.str), o_wronly | o_trunc)
+	fp := C.open(&char(path.str), o_wronly | o_trunc, 0)
 	defer {
 		C.close(fp)
 	}
@@ -236,7 +236,7 @@ pub fn cp(src string, dst string) ? {
 			return error_with_code('failed to copy $src to $dst', int(result))
 		}
 	} $else {
-		fp_from := C.open(&char(src.str), C.O_RDONLY)
+		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open $src', int(fp_from))
 		}

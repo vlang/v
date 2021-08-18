@@ -5260,6 +5260,8 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
 				}
+			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
+				c.ensure_type_exists(node.typ, node.pos) or {}
 			} else if node.expr_type != node.typ {
 				mut s := 'cannot cast non-sum type `$expr_type_sym.name` using `as`'
 				if type_sym.kind == .sum_type {
@@ -6089,7 +6091,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						}
 						stmt.typ = expr_type
 					} else if node.is_expr && ret_type != expr_type {
-						if !c.check_types(ret_type, expr_type) {
+						if !c.check_types(ret_type, expr_type)
+							&& !c.check_types(expr_type, ret_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)
 							if !(node.is_expr && ret_sym.kind == .sum_type) {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
@@ -6569,9 +6572,14 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			right_type = c.unwrap_generic(right_type)
 			if right_type != ast.Type(0) {
 				left_sym := c.table.get_type_symbol(node.left_type)
+				right_sym := c.table.get_type_symbol(right_type)
 				expr_type := c.unwrap_generic(c.expr(node.left))
 				if left_sym.kind == .interface_ {
-					c.type_implements(right_type, expr_type, node.pos)
+					if right_sym.kind != .interface_ {
+						c.type_implements(right_type, expr_type, node.pos)
+					} else {
+						return
+					}
 				} else if !c.check_types(right_type, expr_type) {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)

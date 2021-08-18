@@ -1049,16 +1049,26 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
-	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
+	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
+	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
+
+	mut immut_methods := node.methods
+	mut mut_methods := []ast.FnDecl{}
+	for i, method in node.methods {
+		if method.params[0].is_mut {
+			immut_methods = node.methods[..i]
+			mut_methods = node.methods[i..]
+			break
 		}
-		// TODO: alignment, comments, etc.
+	}
+
+	// TODO: alignment, comments, etc.
+	for field in immut_fields {
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}
-	for method in node.methods {
+	for method in immut_methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
@@ -1068,6 +1078,25 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			f.mark_types_import_as_used(param.typ)
 		}
 		f.mark_types_import_as_used(method.return_type)
+	}
+	if mut_fields.len + mut_methods.len > 0 {
+		f.writeln('mut:')
+		for field in mut_fields {
+			mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+			f.writeln('\t$field.name $ft')
+			f.mark_types_import_as_used(field.typ)
+		}
+		for method in mut_methods {
+			f.write('\t')
+			f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+			f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+			f.writeln('')
+			f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+			for param in method.params {
+				f.mark_types_import_as_used(param.typ)
+			}
+			f.mark_types_import_as_used(method.return_type)
+		}
 	}
 	f.writeln('}\n')
 }

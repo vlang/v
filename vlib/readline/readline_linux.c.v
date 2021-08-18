@@ -424,7 +424,7 @@ fn (mut r Readline) delete_character() {
 
 // suppr_character removes (suppresses) the character in front of the cursor.
 fn (mut r Readline) suppr_character() {
-	if r.cursor > r.current.len {
+	if r.cursor >= r.current.len {
 		return
 	}
 	r.current.delete(r.cursor)
