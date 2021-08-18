@@ -12,7 +12,7 @@ fn (num Foo<A, B>) get_foo2<B, A>() (A, B) {
 }
 
 fn test_generics_with_multi_generics_struct_receiver() {
-	num := Foo<int,string>{
+	num := Foo<int, string>{
 		a: 3
 		b: 'aaa'
 	}

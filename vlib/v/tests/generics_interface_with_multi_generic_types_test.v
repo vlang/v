@@ -20,7 +20,7 @@ fn (mut it ArrIter<T, U>) next<T, U>() ?(T, U) {
 }
 
 fn iter<T, U>(t []T, u []U) Iter<T, U> {
-	return ArrIter<T,U>{
+	return ArrIter<T, U>{
 		t: t
 		u: u
 	}
