@@ -845,6 +845,10 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 						typ.is_public = true
 						typ.kind = parent.kind
 					}
+					parent_sym := c.table.get_type_symbol(parent_info.parent_type)
+					for method in parent_sym.methods {
+						c.table.register_fn_concrete_types(method.name, info.concrete_types)
+					}
 				}
 				ast.Interface {
 					mut parent_info := parent.info as ast.Interface
