@@ -6534,11 +6534,10 @@ fn (mut g Gen) interface_table() string {
 		// generate an array of the interface methods for the structs using the interface
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
-		//
+
 		iname_table_length := inter_info.types.len
 		if iname_table_length == 0 {
-			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[1];')
+			methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[0] = {EMPTY_STRUCT_INITIALIZATION};')
 		} else {
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
