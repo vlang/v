@@ -17,6 +17,11 @@ pub const (
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
+	http_302          = http.new_response(
+		status: .found
+		text: '302 Found'
+		header: headers_close
+	)
 	http_400          = http.new_response(
 		status: .bad_request
 		text: '400 Bad Request'
@@ -246,9 +251,10 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.header\r\n$vweb.headers_close\r\n') or {
-		return Result{}
-	}
+	mut resp := vweb.http_302
+	resp.header = resp.header.join(ctx.header)
+	resp.header.add(.location, url)
+	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
 	return Result{}
 }
 
