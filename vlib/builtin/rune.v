@@ -34,9 +34,7 @@ pub fn (c rune) str() string {
 [manualfree]
 pub fn (ra []rune) string() string {
 	mut sb := strings.new_builder(ra.len)
-	for r in ra {
-		sb.write_string(r.str())
-	}
+	sb.write_runes(ra)
 	res := sb.str()
 	unsafe { sb.free() }
 	return res
