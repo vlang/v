@@ -25,14 +25,14 @@ fn main() {
 
 fn frame(mut app App) {
 	mut pixels := []f32{}
-	
-	for x in 30..60 {
-		for y in 30..60 {
+
+	for x in 30 .. 60 {
+		for y in 30 .. 60 {
 			pixels << f32(x)
 			pixels << f32(y)
 		}
 	}
-	
+
 	app.gg.begin()
 	app.gg.set_pixels(pixels, gx.red)
 	app.gg.end()
