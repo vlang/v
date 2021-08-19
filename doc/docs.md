@@ -4111,6 +4111,17 @@ An overview of the module must be placed in the first comment right after the mo
 
 To generate documentation use vdoc, for example `v doc net.http`.
 
+### Newlines in Documentation Comments
+
+Comments spanning multiple lines are merged together using spaces, unless
+
+- the line is empty
+- the line ends with a `.` (end of sentence)
+- the line is contains purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
+- the line starts with at least one `#` followed by a space (header)
+- the line starts and ends with a `|` (table)
+- the line starts with `- ` (list)
+
 ## Tools
 
 ### v fmt

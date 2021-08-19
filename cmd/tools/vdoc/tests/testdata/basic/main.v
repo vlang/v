@@ -1,8 +1,8 @@
-const (
+pub const (
 	source_root = 'temp'
 )
 
 // funky - comment for function below
-fn funky() {
+pub fn funky() {
 	println('hi')
 }
