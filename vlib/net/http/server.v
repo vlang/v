@@ -50,7 +50,7 @@ pub fn (s &Server) listen_and_serve() ? {
 }
 
 pub fn (s Server) stop() {
-	s.stop_signal.try_push(true)
+	s.stop_signal <- true
 }
 
 fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
