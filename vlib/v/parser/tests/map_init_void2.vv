@@ -3,5 +3,5 @@ fn f(m map[string]) {
 }
 
 fn main() {
-	println('Hello world')
+	println('Hello World!')
 }

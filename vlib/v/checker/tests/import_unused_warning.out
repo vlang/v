@@ -2,4 +2,4 @@ vlib/v/checker/tests/import_unused_warning.vv:1:8: warning: module 'time' is imp
     1 | import time
       |        ~~~~
     2 | fn main() {
-    3 |     println('hello, world')
+    3 |     println('Hello World')

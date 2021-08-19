@@ -100,7 +100,7 @@ pub fn raw_index(s string, index int) string {
 }
 
 // reverse - returns a reversed string.
-// example: utf8.reverse('你好世界hello world') => 'dlrow olleh界世好你'.
+// example: utf8.reverse('你好世界Hello World!') => '!dlroW olleH界世好你'.
 pub fn reverse(s string) string {
 	len_s := len(s)
 	if len_s == 0 || len_s == 1 {

@@ -3,6 +3,6 @@ fn iadd(x int, y int) int {
 }
 
 fn main() {
-	println('Hello world')
+	println('Hello World!')
 	println('iadd: ' + iadd(1, 2).str())
 }

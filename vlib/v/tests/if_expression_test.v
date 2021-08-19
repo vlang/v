@@ -86,7 +86,7 @@ fn test_simple_nested_if_expressions() {
 			b
 		}
 	} else {
-		println('Hello world !')
+		println('Hello World!')
 		if 1 == 1 {
 			t := 12
 			t + 42

@@ -1,5 +1,5 @@
 fn main() {
-	println('Hello world !')
+	println('Hello World !')
 	println('This is correct !')
 	println("It's okay")
 	println('This is "too"')

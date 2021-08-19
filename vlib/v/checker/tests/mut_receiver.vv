@@ -9,5 +9,5 @@ fn (mut f &Foo) info2() {
 	f.name = 'foo'
 }
 fn main() {
-	println('hello, world')
+	println('Hello World!')
 }

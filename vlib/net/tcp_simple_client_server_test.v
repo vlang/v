@@ -37,7 +37,7 @@ fn test_socket() {
 	defer {
 		cleanup(mut server, mut client, mut socket)
 	}
-	message := 'Hello World'
+	message := 'Hello World!'
 	socket.write_string(message) or {
 		assert false
 		return

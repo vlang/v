@@ -6,7 +6,7 @@ import time
 fn test_stopwatch_works_as_intended() {
 	mut sw := time.new_stopwatch()
 	// sample code that you want to measure:
-	println('Hello world')
+	println('Hello World!')
 	time.sleep(1 * time.millisecond)
 	//
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')

@@ -60,7 +60,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 <table>
     <tr><td width=33% valign=top>
 
-* [Hello world](#hello-world)
+* [Hello World](#hello-world)
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
@@ -164,7 +164,7 @@ For more details, do: `v check-md`
 
 ```v
 fn main() {
-	println('hello world')
+	println('Hello World!')
 }
 ```
 
@@ -192,10 +192,10 @@ It prints the value passed to it to standard output.
 This is useful when writing small programs, "scripts", or just learning the language.
 For brevity, `fn main()` will be skipped in this tutorial.
 
-This means that a "hello world" program in V is as simple as
+This means that a "Hello worlD" program in V is as simple as
 
 ```v
-println('hello world')
+println('Hello World!')
 ```
 
 ## Running a project folder with several files
@@ -505,8 +505,8 @@ Both single and double quotes can be used to denote strings. For consistency,
 For raw strings, prepend `r`. Raw strings are not escaped:
 
 ```v
-s := r'hello\nworld'
-println(s) // "hello\nworld"
+s := r'Hello\nWorld!'
+println(s) // "Hello\nWorld!"
 ```
 
 Strings can be easily converted to integers:
@@ -557,9 +557,9 @@ println('[${int(x):010}]') // pad with zeros on the left => [0000000123]
 name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
-mut s := 'hello '
-s += 'world' // `+=` is used to append to a string
-println(s) // "hello world"
+mut s := 'Hello '
+s += 'World' // `+=` is used to append to a string
+println(s) // "Hello World"
 ```
 
 All operators in V must have values of the same type on both sides.
@@ -2725,20 +2725,20 @@ my_filter := uppercase
 You can pass the assigned function as an argument:
 
 ```v oksyntax
-println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
+println(filter('Hello World', my_filter)) // prints `HELLO WORLD`
 ```
 
 And you could of course have passed it directly as well, without using a
 local variable:
 
 ```v oksyntax
-println(filter('Hello world', uppercase))
+println(filter('Hello World', uppercase))
 ```
 
 And this works with anonymous functions as well:
 
 ```v oksyntax
-println(filter('Hello world', fn (s string) string {
+println(filter('Hello World', fn (s string) string {
 	return s.to_upper()
 }))
 ```
@@ -3601,7 +3601,7 @@ unexpected value. Assert statements can be used in any function.
 module main
 
 fn hello() string {
-	return 'Hello world'
+	return 'Hello World!'
 }
 
 fn main() {
@@ -3614,7 +3614,7 @@ module main
 
 // hello_test.v
 fn test_hello() {
-	assert hello() == 'Hello world'
+	assert hello() == 'Hello World!'
 }
 ```
 To run the test above, use `v hello_test.v`. This will check that the function `hello` is
@@ -4158,7 +4158,7 @@ import time
 
 fn main() {
 	sw := time.new_stopwatch()
-	println('Hello world')
+	println('Hello World!')
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
 ```
@@ -4928,26 +4928,26 @@ fn main() { println(message) }
 main_default.c.v:
 ```v ignore
 module main
-const ( message = 'Hello world' )
+const ( message = 'Hello World!' )
 ```
 
 main_linux.c.v:
 ```v ignore
 module main
-const ( message = 'Hello linux' )
+const ( message = 'Hello Linux!' )
 ```
 
 main_windows.c.v:
 ```v ignore
 module main
-const ( message = 'Hello windows' )
+const ( message = 'Hello Windows!' )
 ```
 
 With the example above:
-- when you compile for windows, you will get 'Hello windows'
-- when you compile for linux, you will get 'Hello linux'
+- when you compile for windows, you will get 'Hello Windows'
+- when you compile for linux, you will get 'Hello Linux'
 - when you compile for any other platform, you will get the
-non specific 'Hello world' message.
+non specific 'Hello World!' message.
 
 - `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
 That corresponds to `$if customflag ? {}`, but for a whole file, not just a
@@ -5147,7 +5147,7 @@ Let's create a simple program `test.c` first:
 
 int main() {
 	for (int i = 0; i < 10; i++) {
-		printf("hello world\n");
+		printf("Hello World!\n");
 	}
         return 0;
 }
@@ -5158,7 +5158,7 @@ Run `v translate test.c`, and V will generate `test.v`:
 ```v
 fn main() {
 	for i := 0; i < 10; i++ {
-		println('hello world')
+		println('Hello World!')
 	}
 }
 ```

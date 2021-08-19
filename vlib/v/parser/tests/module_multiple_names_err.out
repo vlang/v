@@ -2,4 +2,4 @@ vlib/v/parser/tests/module_multiple_names_err.vv:1:13: error: `module main`, you
     1 | module main os
       |             ~~
     2 | fn main() {
-    3 |     println('hello, world')
+    3 |     println('Hello World!')

@@ -1,4 +1,4 @@
-mut s := 'hello world'
+mut s := 'Hello World!'
 s.len = 0   // Error (field len immutable)
 'BYE'
 ===output===

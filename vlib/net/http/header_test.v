@@ -91,7 +91,7 @@ fn test_custom_header() ? {
 
 fn test_contains_custom() ? {
 	mut h := new_header()
-	h.add_custom('Hello', 'world') ?
+	h.add_custom('Hello', 'World') ?
 	assert h.contains_custom('hello')
 	assert h.contains_custom('HELLO')
 	assert h.contains_custom('Hello', exact: true)
@@ -101,10 +101,10 @@ fn test_contains_custom() ? {
 
 fn test_get_custom() ? {
 	mut h := new_header()
-	h.add_custom('Hello', 'world') ?
-	assert h.get_custom('hello') ? == 'world'
-	assert h.get_custom('HELLO') ? == 'world'
-	assert h.get_custom('Hello', exact: true) ? == 'world'
+	h.add_custom('Hello', 'World') ?
+	assert h.get_custom('hello') ? == 'World'
+	assert h.get_custom('HELLO') ? == 'World'
+	assert h.get_custom('Hello', exact: true) ? == 'World'
 	if _ := h.get_custom('hello', exact: true) {
 		// should be none
 		assert false
@@ -117,18 +117,18 @@ fn test_get_custom() ? {
 
 fn test_starting_with() ? {
 	mut h := new_header()
-	h.add_custom('Hello-1', 'world') ?
-	h.add_custom('Hello-21', 'world') ?
+	h.add_custom('Hello-1', 'World') ?
+	h.add_custom('Hello-21', 'World') ?
 	assert h.starting_with('Hello-') ? == 'Hello-1'
 	assert h.starting_with('Hello-2') ? == 'Hello-21'
 }
 
 fn test_custom_values() ? {
 	mut h := new_header()
-	h.add_custom('Hello', 'world') ?
-	assert h.custom_values('hello') == ['world']
-	assert h.custom_values('HELLO') == ['world']
-	assert h.custom_values('Hello', exact: true) == ['world']
+	h.add_custom('Hello', 'World') ?
+	assert h.custom_values('hello') == ['World']
+	assert h.custom_values('HELLO') == ['World']
+	assert h.custom_values('Hello', exact: true) == ['World']
 	assert h.custom_values('hello', exact: true) == []
 	assert h.custom_values('HELLO', exact: true) == []
 }

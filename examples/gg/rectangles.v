@@ -44,7 +44,7 @@ fn frame(app &App) {
 }
 
 fn (app &App) draw() {
-	// app.gg.draw_text_def(200,20, 'hello world!')
+	// app.gg.draw_text_def(200,20, 'Hello World!')
 	// app.gg.draw_text_def(300,300, 'привет')
 	app.gg.draw_rect(10, 10, 100, 30, gx.blue)
 	app.gg.draw_empty_rect(110, 150, 80, 40, gx.black)

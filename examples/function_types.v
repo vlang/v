@@ -22,11 +22,11 @@ fn main() {
 	// You don't strictly need the `Filter` cast - it's only used
 	// here to illustrate how these types are compatible.
 
-	// All of the following prints "HELLO WORLD":
+	// All of the following prints "HELLO WORLD!":
 
-	println(filter('Hello world', my_filter))
-	println(filter('Hello world', uppercase))
-	println(filter('Hello world', fn (s string) string {
+	println(filter('Hello World!', my_filter))
+	println(filter('Hello World!', uppercase))
+	println(filter('Hello World!', fn (s string) string {
 		return s.to_upper()
 	}))
 }

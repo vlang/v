@@ -32,7 +32,7 @@ pub fn (mut app App) index() vweb.Result {
 }
 
 fn (mut app App) text() vweb.Result {
-	return app.Context.text('Hello, world from vweb!')
+	return app.Context.text('Hello World from vweb!')
 }
 
 fn (mut app App) time() vweb.Result {

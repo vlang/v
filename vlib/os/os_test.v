@@ -33,7 +33,7 @@ fn testsuite_end() {
 
 fn test_open_file() {
 	filename := './test1.txt'
-	hello := 'hello world!'
+	hello := 'Hello World!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg == 'No such file or directory'
 		os.File{}
@@ -49,7 +49,7 @@ fn test_open_file() {
 
 fn test_open_file_binary() {
 	filename := './test1.dat'
-	hello := 'hello \n world!'
+	hello := 'Hello\nWorld!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg == 'No such file or directory'
 		os.File{}
@@ -86,7 +86,7 @@ fn test_open_file_binary() {
 // }
 fn test_create_file() {
 	filename := './test1.txt'
-	hello := 'hello world!'
+	hello := 'Hello World!'
 	mut f := os.create(filename) or { panic(err) }
 	f.write_string(hello) or { panic(err) }
 	f.close()
@@ -126,7 +126,7 @@ fn test_is_file() {
 
 fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
-	hello := 'hello world!'
+	hello := 'Hello World!'
 	os.write_file(filename, hello) or { panic(err) }
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
@@ -696,7 +696,7 @@ fn test_exists_in_system_path() {
 
 fn test_truncate() {
 	filename := './test_trunc.txt'
-	hello := 'hello world!'
+	hello := 'Hello World!'
 	mut f := os.create(filename) or { panic(err) }
 	f.write_string(hello) or { panic(err) }
 	f.close()
@@ -738,7 +738,7 @@ fn test_glob() {
 
 fn test_utime() {
 	filename := './test_utime.txt'
-	hello := 'hello world!'
+	hello := 'Hello World!'
 	mut f := os.create(filename) or { panic(err) }
 	defer {
 		f.close()

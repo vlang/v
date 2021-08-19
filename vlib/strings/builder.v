@@ -121,8 +121,8 @@ pub fn (mut b Builder) writeln(s string) {
 	b << byte(`\n`)
 }
 
-// last_n(5) returns 'world'
-// buf == 'hello world'
+// last_n(6) returns 'World!'
+// buf == 'Hello World!'
 pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
@@ -131,8 +131,8 @@ pub fn (b &Builder) last_n(n int) string {
 	return x.bytestr()
 }
 
-// after(6) returns 'world'
-// buf == 'hello world'
+// after(6) returns 'World!'
+// buf == 'Hello World!'
 pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''

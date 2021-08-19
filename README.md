@@ -164,8 +164,8 @@ $ v
 V 0.2.x
 Use Ctrl-C or `exit` to exit
 
->>> println('hello world')
-hello world
+>>> println('Hello World!')
+Hello World!
 >>>
 ```
 

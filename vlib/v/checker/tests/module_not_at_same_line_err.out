@@ -3,4 +3,4 @@ vlib/v/checker/tests/module_not_at_same_line_err.vv:2:1: error: `module` and `ma
     2 | main
       | ~~~~
     3 | fn main() {
-    4 |     println('hello, world')
+    4 |     println('Hello World!')

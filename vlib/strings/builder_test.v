@@ -75,10 +75,10 @@ fn test_byte_write() {
 
 fn test_strings_builder_reuse() {
 	mut sb := strings.new_builder(256)
-	sb.write_string('world')
-	assert sb.str() == 'world'
-	sb.write_string('hello')
-	assert sb.str() == 'hello'
+	sb.write_string('World!')
+	assert sb.str() == 'World!'
+	sb.write_string('Hello')
+	assert sb.str() == 'Hello'
 }
 
 fn test_cut_to() {
@@ -106,9 +106,10 @@ fn test_write_rune() {
 
 fn test_write_runes() {
 	mut sb := strings.new_builder(20)
-	sb.write_runes([`h`, `e`, `l`, `l`, `o`])
+	sb.write_runes([`H`, `e`, `l`, `l`, `o`])
 	sb.write_rune(` `)
-	sb.write_runes([`w`, `o`, `r`, `l`, `d`])
+	sb.write_runes([`W`, `o`, `r`, `l`, `d`])
+	sb.write_rune(`!`)
 	x := sb.str()
-	assert x == 'hello world'
+	assert x == 'Hello World!'
 }

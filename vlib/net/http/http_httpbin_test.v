@@ -46,11 +46,11 @@ fn test_http_fetch_with_data() {
 		return
 	}
 	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'],
-		data: 'hello world'
+		data: 'Hello World!'
 	) or { panic(err) }
 	for response in responses {
 		payload := json.decode(HttpbinResponseBody, response.text) or { panic(err) }
-		assert payload.data == 'hello world'
+		assert payload.data == 'Hello World!'
 	}
 }
 
@@ -80,7 +80,7 @@ fn test_http_fetch_with_headers() ? {
 		return
 	}
 	mut header := new_header()
-	header.add_custom('Test-Header', 'hello world') ?
+	header.add_custom('Test-Header', 'Hello World!') ?
 	responses := http_fetch_mock([],
 		header: header
 	) or { panic(err) }
@@ -90,6 +90,6 @@ fn test_http_fetch_with_headers() ? {
 		// }
 		assert response.status() == .ok
 		// TODO
-		// assert payload.headers['Test-Header'] == 'hello world'
+		// assert payload.headers['Test-Header'] == 'Hello World!'
 	}
 }

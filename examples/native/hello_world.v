@@ -9,7 +9,7 @@ fn main() {
 	// i := 0
 	// for i < 5 {
 	for _ in 1 .. 5 {
-		println('Hello world from V native machine code generator!')
+		println('Hello World from V native machine code generator!')
 		// i++
 	}
 	/*

@@ -73,16 +73,16 @@ fn str_inter() {
 }
 
 fn str_replace() {
-	mut s := 'hello world'
-	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
+	mut s := 'Hello World!'
+	s = s.replace('Hello', 'Hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
 	//
 	mut s2 := 'aa' + 'bb'
 	s2 = s2.replace('a', 'c')
 	println(s2)
 	/*
-	r := s.replace('hello', 'hi')
-	cloned := s.replace('hello', 'hi').clone()
+	r := s.replace('Hello', 'Hi')
+	cloned := s.replace('Hello', 'Hi').clone()
 	cloned2 := r.clone()
 	println(s)
 	println(r)
@@ -93,8 +93,8 @@ fn fooo(s string) {
 }
 
 fn str_replace2() {
-	mut s := 'hello world'
-	s = s.replace('hello', 'hi').replace('world', 'planet')
+	mut s := 'Hello World!'
+	s = s.replace('Hello', 'Hi').replace('World', 'Planet')
 	println(s)
 }
 

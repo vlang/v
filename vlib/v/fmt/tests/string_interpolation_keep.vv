@@ -1,7 +1,7 @@
 import os
 
 fn main() {
-	println('Hello world, args: $os.args')
+	println('Hello World!, args: $os.args')
 	i := 123
 	a := 'abc'
 	b := 'xyz'

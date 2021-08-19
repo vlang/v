@@ -60,7 +60,7 @@ fn test_raw_indexing() {
 
 fn test_reversed() {
 	a := '我是V Lang!'
-	b := '你好世界hello world'
+	b := '你好世界Hello World!'
 	assert utf8.reverse(a) == '!gnaL V是我'
 	assert utf8.reverse(b) == 'dlrow olleh界世好你'
 }

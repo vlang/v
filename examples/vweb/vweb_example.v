@@ -34,13 +34,13 @@ pub fn (mut app App) index() vweb.Result {
 		app.state.cnt++
 	}
 	show := true
-	hello := 'Hello world from vweb'
+	hello := 'Hello World from vweb'
 	numbers := [1, 2, 3]
 	return $vweb.html()
 }
 
 pub fn (mut app App) show_text() vweb.Result {
-	return app.text('Hello world from vweb')
+	return app.text('Hello World from vweb')
 }
 
 pub fn (mut app App) cookie() vweb.Result {

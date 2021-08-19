@@ -2,4 +2,4 @@ vlib/v/parser/tests/module_syntax_err.vv:1:12: error: `module main`, unexpected 
     1 | module main.os
       |            ^
     2 | fn main() {
-    3 |     println('hello, world')
+    3 |     println('Hello Worl!d')

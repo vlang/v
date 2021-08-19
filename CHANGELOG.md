@@ -185,7 +185,7 @@ files with compilation errors.
 *30 Nov 2019*
 
 - [Direct x64 machine code generation](https://github.com/vlang/v/issues/2849).
-    Hello world being built in 3 milliseconds.
+    Hello World being built in 3 milliseconds.
 - Bare metal support via the `-freestanding` flag, to build programs without linking to libc.
 - Prebuilt V packages for Linux, macOS, and Windows.
 - `string.index()` now returns `?int` instead of `int/-1`.
@@ -482,5 +482,5 @@ this backend.
   can compile itself, all tests pass, and all examples compile.
 - More tests have been uploaded.
 - Cleaner bytes to string conversion: `tos2(bytes)` => `string(bytes)`.
-- The home page has 3 more examples next to 'hello world' that show the features of the language.
+- The home page has 3 more examples next to 'Hello World!' that show the features of the language.
 - Lots of bugs and issues fixed.

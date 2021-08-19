@@ -54,7 +54,7 @@ fn get_all_commands() []Command {
 	mut res := []Command{}
 	res << Command{
 		line: '$vexe examples/hello_world.v'
-		okmsg: 'V can compile hello world.'
+		okmsg: 'V can compile Hello World.'
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{

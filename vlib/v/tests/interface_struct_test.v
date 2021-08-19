@@ -41,7 +41,7 @@ fn test_interface_struct() {
 	}
 	assert bz1.sp.say_hello() == "Hello, My name is Richard and I'm the bawz"
 	print('Test Boss inside Baz struct: ')
-	bz1.sp.speak('Hello world!')
+	bz1.sp.speak('Hello World!')
 	bz2 := Baz{
 		sp: Cat{
 			name: 'Grungy'
@@ -50,7 +50,7 @@ fn test_interface_struct() {
 	}
 	assert bz2.sp.say_hello() == 'Meow meow Grungy the Persian Cat meow'
 	print('Test Cat inside Baz struct: ')
-	bz2.sp.speak('Hello world!')
+	bz2.sp.speak('Hello World!')
 }
 
 fn test_interface_mut_struct() {

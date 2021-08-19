@@ -13,14 +13,14 @@ struct Message {
 [inline]
 fn json_response() string {
 	msg := Message{
-		message: 'Hello, World!'
+		message: 'Hello World!'
 	}
 	return json.encode(msg)
 }
 
 [inline]
 fn hello_response() string {
-	return 'Hello, World!'
+	return 'Hello World!'
 }
 
 fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response) {

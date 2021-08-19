@@ -11,7 +11,7 @@ still a very useful tool.  The [gitly](https://gitly.org/) site is based on vweb
 ## Features ##
 
 - **Very fast** performance of C on the web.
-- **Small binary** hello world website is <100 KB.
+- **Small binary** Hello World website is <100 KB.
 - **Easy to deploy** just one binary file that also includes all templates.
   No need to install any dependencies.
 - **Templates are precompiled** all errors are visible at compilation time,

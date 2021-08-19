@@ -52,7 +52,7 @@ mkdir blog
 v init
 ```
 
-First, let's create a simple hello world website:
+First, let's create a simple Hello World website:
 
 ```v oksyntax
 // blog.v
@@ -71,7 +71,7 @@ fn main() {
 
 ['/index']
 pub fn (mut app App) index() vweb.Result {
-	return app.text('Hello world from vweb!')
+	return app.text('Hello World from vweb!')
 }
 ```
 
@@ -142,7 +142,7 @@ and update our `index()` action so that it returns the HTML view we just created
 ```v ignore
 // blog.v
 pub fn (mut app App) index() vweb.Result {
-	message := 'Hello, world from Vweb!'
+	message := 'Hello World from Vweb!'
 	return $vweb.html()
 }
 ```
@@ -220,7 +220,7 @@ fn main() {
 	}
 
 	first_article := Article{
-		title: 'Hello, world!'
+		title: 'Hello World!'
 		text: 'V is great.'
 	}
 

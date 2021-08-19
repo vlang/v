@@ -24,12 +24,12 @@ fn main() {
 
 /*
 pub fn (mut app App) index_text() vweb.Result {
-	app.vweb.text('Hello, world from vweb!')
+	app.vweb.text('Hello World from vweb!')
 	return vweb.Result{}
 }
 
 pub fn (app &App) index_html() vweb.Result {
-	message := 'Hello, world from Vweb!'
+	message := 'Hello World from Vweb!'
 	return $vweb.html()
 }
 */

@@ -1,3 +1,3 @@
 fn main() {
-	println('hello world')
+	println('Hello World!')
 }

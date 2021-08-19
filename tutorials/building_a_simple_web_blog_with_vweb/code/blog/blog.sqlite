@@ -7,7 +7,7 @@ create table Article (
 );
 
 insert into Article (title, text) values (
-	"Hello, world!",
+	"Helle World!",
 	"V is great."
 );
 

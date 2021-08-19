@@ -1,6 +1,6 @@
 import time
 fn show() {
-	println('hello, world')
+	println('Hello World')
 }
 import os
 fn main() {
