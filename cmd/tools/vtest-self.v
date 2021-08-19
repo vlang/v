@@ -47,6 +47,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
+		'vlib/net/http/response_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
@@ -89,6 +90,7 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 		'vlib/net/http/server_test.v',
+		'vlib/net/http/response_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
