@@ -1,4 +1,5 @@
 module main
 
-fn funky()
-fn veryfunky()
+fn a1()
+fn a2()
+fn a3()

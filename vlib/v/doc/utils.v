@@ -56,16 +56,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 		}
 		mut cmt_content := cmt.text.trim_left('\x01')
 		if cmt.is_multi {
-			if cmt_content.len == 0 {
-				continue
-			}
-			mut multilines := cmt_content.split_into_lines()
-			if multilines[0] == '' {
-				multilines.delete(0)
-			}
-			commentlines << ''
-			commentlines << multilines.reverse()
-			commentlines << ''
+			// /**/ comments are deliberately NOT supported as vdoc comments,
+			// so just ignore them:
+			continue
 		} else {
 			if cmt_content.starts_with(' ') {
 				cmt_content = cmt_content[1..]
