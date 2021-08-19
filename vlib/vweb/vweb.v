@@ -246,7 +246,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.header\r\n$vweb.headers_close\r\n') or {
 		return Result{}
 	}
 	return Result{}
