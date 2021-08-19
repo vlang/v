@@ -1921,7 +1921,18 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 		return
 	}
-	if it.op == .eq || it.op == .ne {
+	if it.op == .logical_or || it.op == .and {
+		if g.ns.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write('bool(')
+		g.expr(it.left)
+		g.write('.valueOf()')
+		g.write(it.op.str())
+		g.expr(it.right)
+		g.write('.valueOf()')
+		g.write(')')
+	} else if it.op == .eq || it.op == .ne {
 		has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
 			g.expr(it.left)
@@ -2063,10 +2074,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 
 			g.expr(it.left)
 			g.gen_deref_ptr(it.left_type)
+			// g.write('.val')
 			g.write(' $it.op ')
 
 			g.expr(it.right)
 			g.gen_deref_ptr(it.right_type)
+			// g.write('.val')
 
 			if is_arithmetic {
 				g.cast_stack.delete_last()

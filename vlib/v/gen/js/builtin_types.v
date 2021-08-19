@@ -348,6 +348,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 			'f32', 'f64', 'float_literal' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
+					constructor: 'this.val = +val'
 					default_value: 'new Number(0)'
 					to_jsval: '+this'
 				)

@@ -111,25 +111,17 @@ pub fn cosh(a f64) f64 {
 // exp calculates exponent of the number (math.pow(math.E, a)).
 [inline]
 pub fn exp(a f64) f64 {
-	return JS.Math.exp(a)
-}
+	mut res := 0.0
+	#res.val = Math.exp(a)
 
-// erf computes the error function value
-[inline]
-pub fn erf(a f64) f64 {
-	return JS.Math.erf(a)
-}
-
-// erfc computes the complementary error function value
-[inline]
-pub fn erfc(a f64) f64 {
-	return JS.Math.erfc(a)
+	return res
 }
 
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
 pub fn exp2(a f64) f64 {
-	return JS.Math.exp2(a)
+	return 0
+	// return JS.Math.exp2(a)
 }
 
 // floor returns the nearest f64 lower or equal of the provided value.
@@ -140,20 +132,46 @@ pub fn floor(a f64) f64 {
 
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 [inline]
-pub fn fmod(a f64, b f64) f64 {
-	return JS.Math.fmod(a, b)
+pub fn fmod(x f64, y f64) f64 {
+	#let tmp
+	#let tmp2
+	#let p = 0
+	#let pY = 0
+	#let l = 0.0
+	#let l2 = 0.0
+	#tmp = x.toExponential().match(/^.\.?(.*)e(.+)$/)
+	#p = parseInt(tmp[2], 10) - (tmp[1] + '').length
+	#tmp = y.toExponential().match(/^.\.?(.*)e(.+)$/)
+	#pY = parseInt(tmp[2], 10) - (tmp[1] + '').length
+	#if (pY > p) {
+	#p = pY
+	#}
+	#tmp2 = (x % y)
+	#if (p < -100 || p > 20) {
+	// toFixed will give an out of bound error so we fix it like this:
+	#l = Math.round(Math.log(tmp2) / Math.log(10))
+	#l2 = Math.pow(10, l)
+	#return new builtin.f64((tmp2 / l2).toFixed(l - p) * l2)
+	#} else {
+	#return new builtin.f64(parseFloat(tmp2.toFixed(-p)))
+	#}
+
+	return 0.0
+	// return JS.Math.fmod(a, b)
 }
 
 // gamma computes the gamma function value
 [inline]
 pub fn gamma(a f64) f64 {
-	return JS.Math.tgamma(a)
+	return 0
+	//	return JS.Math.tgamma(a)
 }
 
 // Returns hypotenuse of a right triangle.
 [inline]
 pub fn hypot(a f64, b f64) f64 {
-	return JS.Math.hypot(a, b)
+	return 0
+	// return JS.Math.hypot(a, b)
 }
 
 // log calculates natural (base-e) logarithm of the provided value.
@@ -165,19 +183,22 @@ pub fn log(a f64) f64 {
 // log2 calculates base-2 logarithm of the provided value.
 [inline]
 pub fn log2(a f64) f64 {
-	return JS.Math.log2(a)
+	return 0
+	// return JS.Math.log2(a)
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
 [inline]
 pub fn log10(a f64) f64 {
-	return JS.Math.log10(a)
+	return 0.0
+	// return JS.Math.log10(a)
 }
 
 // log_gamma computes the log-gamma function value
 [inline]
 pub fn log_gamma(a f64) f64 {
-	return JS.Math.lgamma(a)
+	return 0
+	// return JS.Math.lgamma(a)
 }
 
 // log_n calculates base-N logarithm of the provided value.
