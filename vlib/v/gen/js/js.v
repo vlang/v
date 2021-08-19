@@ -1927,10 +1927,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 		g.write('bool(')
 		g.expr(it.left)
-		g.write('.val')
+		g.write('.valueOf()')
 		g.write(it.op.str())
 		g.expr(it.right)
-		g.write('.val')
+		g.write('.valueOf()')
 		g.write(')')
 	} else if it.op == .eq || it.op == .ne {
 		has_operator_overloading := g.table.type_has_method(l_sym, '==')
