@@ -12,22 +12,34 @@ interface Handler {
 }
 
 pub struct Server {
+	stop_signal chan bool = chan bool{cap: 1}
 pub mut:
-	port          int           = 8080
-	handler       Handler       = DebugHandler{}
-	read_timeout  time.Duration = 30 * time.second
-	write_timeout time.Duration = 30 * time.second
+	port           int           = 8080
+	handler        Handler       = DebugHandler{}
+	read_timeout   time.Duration = 30 * time.second
+	write_timeout  time.Duration = 30 * time.second
+	accept_timeout time.Duration = 30 * time.second
 }
 
-pub fn (mut s Server) listen_and_serve() ? {
+pub fn (s &Server) listen_and_serve() ? {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
 	mut l := net.listen_tcp(.ip6, ':$s.port') ?
+	l.set_accept_timeout(s.accept_timeout)
 	eprintln('Listening on :$s.port')
 	for {
+		// break if we have a stop signal (non-blocking check)
+		select {
+			_ := <-s.stop_signal {
+				break
+			}
+			else {}
+		}
 		mut conn := l.accept() or {
-			eprintln('accept() failed: $err; skipping')
+			if err.msg != 'net: op timed out' {
+				eprintln('accept() failed: $err; skipping')
+			}
 			continue
 		}
 		conn.set_read_timeout(s.read_timeout)
@@ -37,7 +49,11 @@ pub fn (mut s Server) listen_and_serve() ? {
 	}
 }
 
-fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
+pub fn (s Server) stop() {
+	s.stop_signal <- true
+}
+
+fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
 	defer {
 		conn.close() or { eprintln('close() failed: $err') }
 	}
