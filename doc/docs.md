@@ -4105,19 +4105,6 @@ fn copy_all(dupes bool) {
 }
 ```
 
-It is also possible to use multiline comments with `/* */`
-(they can be mixed with single line comments).
-
-```v
-/*
-copy_all recursively copies all elements of the array by their value,
-if `dupes` is false all duplicate values are eliminated in the process.
-*/
-fn copy_all(dupes bool) {
-	// ...
-}
-```
-
 By convention it is preferred that comments are written in *present tense*.
 
 An overview of the module must be placed in the first comment right after the module's name.
