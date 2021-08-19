@@ -6652,6 +6652,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					continue
 				}
 				// .speak = Cat_speak
+				if st_sym.info is ast.Struct {
+					if st_sym.info.parent_type.has_flag(.generic) {
+						name = g.generic_fn_name(st_sym.info.concrete_types, method.name,
+							false)
+					}
+				}
 				mut method_call := '${cctype}_$name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
