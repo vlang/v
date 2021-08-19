@@ -48,6 +48,7 @@ type MyTime = time.Time
 type F8 = fn (MyTime)
 
 interface MyInterface {}
+
 type F9 = fn (MyInterface)
 
 fn C.atoi(&byte) int
