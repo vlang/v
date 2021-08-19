@@ -150,18 +150,20 @@ pub fn exp(a f64) f64 {
 	return C.exp(a)
 }
 
+/*
 // erf computes the error function value
 [inline]
 pub fn erf(a f64) f64 {
 	return C.erf(a)
 }
-
+*/
+/*
 // erfc computes the complementary error function value
 [inline]
 pub fn erfc(a f64) f64 {
 	return C.erfc(a)
 }
-
+*/
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 [inline]
 pub fn exp2(a f64) f64 {
