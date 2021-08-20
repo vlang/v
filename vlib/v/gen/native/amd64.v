@@ -1143,7 +1143,29 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 }
 
+fn (mut g Gen) infloop() {
+	if g.pref.arch == .arm64 {
+		g.write32(byte(0x14))
+	} else {
+		g.write8(byte(0xeb))
+		g.write8(byte(0xfe))
+	}
+	g.println('jmp $$')
+}
+
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	if node.is_inf {
+		if node.stmts.len == 0 {
+			g.infloop()
+			return
+		}
+		// infinite loop
+		start := g.pos()
+		g.stmts(node.stmts)
+		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
+		g.println('jmp after infinite for')
+		return
+	}
 	infix_expr := node.cond as ast.InfixExpr
 	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
