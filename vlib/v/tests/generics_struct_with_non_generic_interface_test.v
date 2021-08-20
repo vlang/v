@@ -23,3 +23,17 @@ fn test_generic_struct_with_non_generic_interface() {
 	println(ret)
 	assert ret == 106
 }
+
+fn run<T>(data T) {
+	t := Test<T>{
+		data: data
+		salt: 6
+	}
+	x := box_transform(t)
+	println(x)
+	assert x == 106
+}
+
+fn test_generic_struct_with_non_generic_interface_in_generic_fn() {
+	run('foo')
+}
