@@ -977,6 +977,9 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.mov_reg_to_var(dest, .rax)
 				g.mov_var_to_reg(.rsi, dest)
 			}
+			ast.GoExpr {
+				verror('threads not implemented for the native backend')
+			}
 			else {
 				// dump(node)
 				g.error_with_pos('native assign_stmt unhandled expr: ' + right.type_name(),
@@ -1118,8 +1121,8 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 			}
 		}
 		else {
-			dump(infix_expr)
-			verror('unhandled infix.left')
+			// dump(infix_expr)
+			verror('unhandled $infix_expr.left')
 		}
 	}
 
@@ -1131,6 +1134,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	cjmp_addr := g.condition(infix_expr, false)
+	if node.is_comptime {
+		verror('ignored comptime')
+	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
 	// The value is the relative address, difference between current position and the location

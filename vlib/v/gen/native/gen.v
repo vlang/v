@@ -268,7 +268,7 @@ fn (mut g Gen) println(comment string) {
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
 	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++ {
+	for i := g.debug_pos; i < g.pos(); i++ {
 		s := g.buf[i].hex()
 		if s.len == 1 {
 			print(term.blue('0'))
@@ -346,24 +346,27 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if in main
 			// zero := ast.IntegerLiteral{}
 			// g.gen_exit(zero)
-			dump(node)
-			dump(node.types)
+			// dump(node)
+			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
 			e0 := node.exprs[0]
 			match e0 {
 				ast.IntegerLiteral {
+					g.mov64(.rax, e0.val.int())
+				}
+				ast.InfixExpr {
 					// TODO
+					// verror('expr')
 				}
 				ast.StringLiteral {
 					s = e0.val.str()
-					eprintln('jlalala $s')
+					g.expr(node.exprs[0])
+					g.mov64(.rax, g.allocate_string(s, 2))
 				}
 				else {
-					verror('unknown return type')
+					verror('unknown return type $e0')
 				}
 			}
-			g.expr(node.exprs[0])
-			g.mov64(.rax, g.allocate_string(s, 2))
 			// intel specific
 			g.add8(.rsp, 0x20) // XXX depends on scope frame size
 			g.pop(.rbp)
@@ -403,7 +406,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.FloatLiteral {}
 		ast.Ident {}
 		ast.IfExpr {
-			g.if_expr(node)
+			if node.is_comptime {
+				eprintln('Warning: ignored compile time conditional not yet supported for the native backend.')
+			} else {
+				g.if_expr(node)
+			}
 		}
 		ast.InfixExpr {}
 		ast.IntegerLiteral {}
@@ -412,8 +419,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {}
 		ast.StructInit {}
+		ast.GoExpr {
+			verror('Error: native backend doesnt support threads yet')
+		}
 		else {
-			println(term.red('native.expr(): unhandled node: ' + node.type_name()))
+			eprintln(term.red('native.expr(): unhandled node: ' + node.type_name()))
 		}
 	}
 }
