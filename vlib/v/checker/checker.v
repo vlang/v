@@ -731,6 +731,11 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 						final_concrete_types << t_typ
 					}
 				}
+				if final_concrete_types.len > 0 {
+					for method in ts.methods {
+						c.table.register_fn_concrete_types(method.name, final_concrete_types)
+					}
+				}
 			}
 		}
 		else {}
