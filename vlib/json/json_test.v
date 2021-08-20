@@ -27,6 +27,16 @@ fn test_simple() ? {
 	assert y.title == .worker
 }
 
+fn test_decode_top_level_array() {
+	s := '[{"name":"Peter", "age": 29}, {"name":"Bob", "age":31}]'
+	x := json.decode([]Employee, s) or { panic(err) }
+	assert x.len == 2
+	assert x[0].name == 'Peter'
+	assert x[0].age == 29
+	assert x[1].name == 'Bob'
+	assert x[1].age == 31
+}
+
 fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
 	result := json.decode(T, payload) ?
 	return result
