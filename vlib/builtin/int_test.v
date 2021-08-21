@@ -33,8 +33,8 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == 'ffffffffffffffff'
 	assert voidptr(1).str() == '1'
-	assert &byte(-1).str() == 'ffffffffffffffff'
-	assert &byte(1).str() == '1'
+	//assert &byte(-1).str() == 'ffffffffffffffff'
+	//assert &byte(1).str() == '1'
 }
 
 fn test_and_precendence() {
@@ -106,10 +106,14 @@ fn test_hex() {
 	b1 := -1
 	assert b1.hex() == 'ffffffff'
 	// unsigned tests
+	assert u8(12).hex() == '0c'
+	assert u8(255).hex() == 'ff'
 	assert u16(65535).hex() == 'ffff'
 	assert u32(-1).hex() == 'ffffffff'
 	assert u64(-1).hex() == 'ffffffffffffffff'
 	// signed tests
+	assert i8(-1).hex() == 'ff'
+	assert i8(12).hex() == '0c'
 	assert i16(32767).hex() == '7fff'
 	assert int(2147483647).hex() == '7fffffff'
 	assert i64(9223372036854775807).hex() == '7fffffffffffffff'

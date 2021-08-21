@@ -304,7 +304,11 @@ pub fn (nn byte) hex() string {
 // Example: assert i8(10).hex() == '0a'
 // Example: assert i8(15).hex() == '0f'
 pub fn (nn i8) hex() string {
-	return byte(nn).hex()
+	if nn == 0 {
+		return '00'
+	}
+	return u64_to_hex(u64(nn), 2)
+	//return byte(nn).hex()
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.
