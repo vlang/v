@@ -23,8 +23,6 @@ fn test_str_methods() {
 	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
-	// assert byte(1).str() == '1'
-	// assert byte(-1).str() == '255'
 	assert u16(1).str() == '1'
 	assert u16(-1).str() == '65535'
 	assert u32(1).str() == '1'
@@ -33,8 +31,10 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == 'ffffffffffffffff'
 	assert voidptr(1).str() == '1'
-	//assert &byte(-1).str() == 'ffffffffffffffff'
-	//assert &byte(1).str() == '1'
+	assert (&byte(-1)).str() == 'ffffffffffffffff'
+	assert (&byte(1)).str() == '1'
+	assert byteptr(-1).str() == 'ffffffffffffffff'
+	assert byteptr(1).str() == '1'
 }
 
 fn test_and_precendence() {
