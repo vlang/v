@@ -33,8 +33,8 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == 'ffffffffffffffff'
 	assert voidptr(1).str() == '1'
-	assert byteptr(-1).str() == 'ffffffffffffffff'
-	assert byteptr(1).str() == '1'
+	assert &byte(-1).str() == 'ffffffffffffffff'
+	assert &byte(1).str() == '1'
 }
 
 fn test_and_precendence() {
@@ -105,6 +105,14 @@ fn test_hex() {
 	assert b.hex() == '4d2'
 	b1 := -1
 	assert b1.hex() == 'ffffffff'
+	// unsigned tests
+	assert u16(65535).hex() == 'ffff'
+	assert u32(-1).hex() == 'ffffffff'
+	assert u64(-1).hex() == 'ffffffffffffffff'
+	// signed tests
+	assert i16(32767).hex() == '7fff'
+	assert int(2147483647).hex() == '7fffffff'
+	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
 }
 
 fn test_bin() {
@@ -129,21 +137,21 @@ fn test_bin() {
 fn test_oct() {
 	x1 := 0o12
 	assert x1 == 10
-	x2 := 00000o350
+	x2 := 0o350
 	assert x2 == 232
-	x3 := 000o00073
+	x3 := 0o00073
 	assert x3 == 59
-	x4 := 00000000
+	x4 := 0
 	assert x4 == 0
-	x5 := 00000195
+	x5 := 195
 	assert x5 == 195
 	x6 := -0o744
 	assert x6 == -484
-	x7 := -000o000042
+	x7 := -0o000042
 	assert x7 == -34
-	x8 := -0000112
+	x8 := -112
 	assert x8 == -112
-	x9 := -000
+	x9 := -0
 	assert x9 == 0
 }
 
@@ -168,7 +176,6 @@ fn test_num_separator() {
 	// f32 or f64
 	assert 312_2.55 == 3122.55
 	assert 312_2.55 == 3122.55
-
 }
 
 fn test_int_decl() {
