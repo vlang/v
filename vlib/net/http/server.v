@@ -9,13 +9,14 @@ import time
 
 // ServerStatus is the current status of the server.
 // server_running means that the server is active and serving.
-// server_stoped means that the server is not active but still listening.
+// server_stopped means that the server is not active but still listening.
 // server_closed means that the server is completely inactive.
 pub enum ServerStatus {
 	server_running
-	server_stoped
+	server_stopped
 	server_closed
 }
+
 interface Handler {
 	handle(Request) Response
 }
@@ -56,21 +57,18 @@ pub fn (mut s Server) listen_and_serve() ? {
 		// TODO: make concurrent
 		s.parse_and_respond(mut conn)
 	}
-	match s.status() {
-		.server_stoped {
-			s.close()
-		}
-		else {}
+	if s.status() == .server_stopped {
+		s.close()
 	}
 }
 
 // stop signals the server that it should not respond anymore
 [inline]
 pub fn (mut s Server) stop() {
-	s.stop_signal = .server_stoped
+	s.stop_signal = .server_stopped
 }
 
-// close immediatly closes the port and signals the server that it has been crashed
+// close immediatly closes the port and signals the server that it has been closed
 [inline]
 pub fn (mut s Server) close() {
 	s.stop_signal = .server_closed
@@ -79,7 +77,7 @@ pub fn (mut s Server) close() {
 
 [inline]
 pub fn (s &Server) status() ServerStatus {
-	return ServerStatus(s.stop_signal)
+	return s.stop_signal
 }
 
 fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
