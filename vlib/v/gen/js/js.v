@@ -1149,7 +1149,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		if args.len > 0 {
 			g.write(', ')
 		}
-		if it.params[0].is_mut {
+		if it.params[0].is_mut || it.params[0].typ.is_ptr() {
 			g.write('${it.params[0].name} = new \$ref(this)')
 		} else {
 			g.write('${it.params[0].name} = this')
@@ -2174,7 +2174,53 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	g.write(')')
 }
 
+fn (mut g JsGen) type_name(raw_type ast.Type) {
+	typ := raw_type
+	sym := g.table.get_type_symbol(typ)
+	mut s := ''
+	if sym.kind == .function {
+		// todo: properly print function signatures
+		if typ.is_ptr() {
+			s = '&function'
+		} else {
+			s = 'function'
+		}
+	} else {
+		s = g.table.type_to_str(g.unwrap_generic(typ))
+	}
+	g.write('new builtin.string("$s")')
+}
+
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
+	if it.name_type > 0 {
+		node := it
+		match node.gkind_field {
+			.name {
+				g.type_name(it.name_type)
+				return
+			}
+			.typ {
+				g.write('new builtin.int(')
+
+				g.write('${int(g.unwrap_generic(it.name_type))}')
+				g.write(')')
+				g.write(')')
+				return
+			}
+			.unknown {
+				if node.field_name == 'name' {
+					g.type_name(it.name_type)
+					return
+				} else if node.field_name == 'idx' {
+					g.write('new builtin.int(')
+					g.write('${int(g.unwrap_generic(it.name_type))}')
+					g.write(')')
+					return
+				}
+				panic('unknown generic field $it.pos')
+			}
+		}
+	}
 	g.expr(it.expr)
 	mut ltyp := it.expr_type
 	for ltyp.is_ptr() {
