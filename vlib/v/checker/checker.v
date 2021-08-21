@@ -1555,10 +1555,6 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					return ast.void_type
 				}
-				if left_value_sym.kind == .sum_type
-					&& c.table.sumtype_has_variant(left_value_type, right_type) {
-					return ast.void_type
-				}
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
 				if c.check_types(unwrapped_right_type, left_value_type)
