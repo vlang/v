@@ -7,14 +7,23 @@ import io
 import net
 import time
 
+// ServerStatus is the current status of the server.
+// server_running means that the server is active and serving.
+// server_stoped means that the server is not active but still listening.
+// server_closed means that the server is completely inactive.
+pub enum ServerStatus {
+	server_running
+	server_stoped
+	server_closed
+}
 interface Handler {
 	handle(Request) Response
 }
 
 pub struct Server {
-	stop_signal chan bool = chan bool{cap: 1}
 mut:
-	listener       net.TcpListener
+	stop_signal ServerStatus = .server_closed
+	listener    net.TcpListener
 pub mut:
 	port           int           = 8080
 	handler        Handler       = DebugHandler{}
@@ -30,13 +39,11 @@ pub fn (mut s Server) listen_and_serve() ? {
 	s.listener = net.listen_tcp(.ip6, ':$s.port') ?
 	s.listener.set_accept_timeout(s.accept_timeout)
 	eprintln('Listening on :$s.port')
+	s.stop_signal = .server_running
 	for {
-		// break if we have a stop signal (non-blocking check)
-		select {
-			_ := <-s.stop_signal {
-				break
-			}
-			else {}
+		// break if we have a stop signal
+		if s.status() != .server_running {
+			break
 		}
 		mut conn := s.listener.accept() or {
 			if err.msg != 'net: op timed out' {
@@ -49,11 +56,30 @@ pub fn (mut s Server) listen_and_serve() ? {
 		// TODO: make concurrent
 		s.parse_and_respond(mut conn)
 	}
+	match s.status() {
+		.server_stoped {
+			s.close()
+		}
+		else {}
+	}
 }
 
+// stop signals the server that it should not respond anymore
+[inline]
 pub fn (mut s Server) stop() {
-	s.stop_signal <- true
+	s.stop_signal = .server_stoped
+}
+
+// close immediatly closes the port and signals the server that it has been crashed
+[inline]
+pub fn (mut s Server) close() {
+	s.stop_signal = .server_closed
 	s.listener.close() or { return }
+}
+
+[inline]
+pub fn (s &Server) status() ServerStatus {
+	return ServerStatus(s.stop_signal)
 }
 
 fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
