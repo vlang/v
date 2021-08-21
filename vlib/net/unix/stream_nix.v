@@ -161,6 +161,7 @@ pub fn (mut c StreamListener) wait_for_accept() ? {
 }
 
 pub fn (mut c StreamListener) close() ? {
+	os.rm(c.sock.path) ?
 	c.sock.close() ?
 }
 
