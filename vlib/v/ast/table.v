@@ -1139,9 +1139,20 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
-		for v in parent_info.variants {
-			if v.idx() == variant.idx() {
-				return true
+		var_sym := t.get_type_symbol(variant)
+		if var_sym.kind == .aggregate {
+			var_info := var_sym.info as Aggregate
+			for var_type in var_info.types {
+				if t.sumtype_has_variant(parent, var_type) {
+					return true
+				}
+			}
+			return false
+		} else {
+			for v in parent_info.variants {
+				if v.idx() == variant.idx() {
+					return true
+				}
 			}
 		}
 	}
