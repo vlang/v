@@ -668,9 +668,11 @@ pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
 
 	sgl.begin_line_strip()
 	for i in 0 .. len {
-		sgl.v2f(points[2 * i], points[2 * i + 1])
+		x := points[2 * i]
+		y := points[2 * i + 1]
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
 	}
-	sgl.v2f(points[0], points[1])
+	sgl.v2f(points[0] * ctx.scale, points[1] * ctx.scale)
 	sgl.end()
 }
 
