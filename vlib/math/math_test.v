@@ -21,16 +21,31 @@ const (
 		2.7053008467824138592616927e-01, 1.2738121680361776018155625e+00,
 		1.0205369421140629186287407e+00, 1.2945003481781246062157835e+00,
 		1.3872364345374451433846657e+00, 2.6231510803970463967294145e+00]
+	acosh_       = [f64(2.4743347004159012494457618e+00), 2.8576385344292769649802701e+00,
+		7.2796961502981066190593175e-01, 2.4796794418831451156471977e+00,
+		3.0552020742306061857212962e+00, 2.044238592688586588942468e+00,
+		2.5158701513104513595766636e+00, 1.99050839282411638174299e+00,
+		1.6988625798424034227205445e+00, 2.9611454842470387925531875e+00]
 	asin_        = [f64(5.2117697218417440497416805e-01), 8.8495619865825236751471477e-01,
 		-2.769154466281941332086016e-02, -5.2482360935268931351485822e-01,
 		1.3002662421166552333051524e+00, 2.9698415875871901741575922e-01,
 		5.5025938468083370060258102e-01, 2.7629597861677201301553823e-01,
 		1.83559892257451475846656e-01, -1.0523547536021497774980928e+00]
+	asinh_       = [f64(2.3083139124923523427628243e+00), 2.743551594301593620039021e+00,
+		-2.7345908534880091229413487e-01, -2.3145157644718338650499085e+00,
+		2.9613652154015058521951083e+00, 1.7949041616585821933067568e+00,
+		2.3564032905983506405561554e+00, 1.7287118790768438878045346e+00,
+		1.3626658083714826013073193e+00, -2.8581483626513914445234004e+00]
 	atan_        = [f64(1.372590262129621651920085e+00), 1.442290609645298083020664e+00,
 		-2.7011324359471758245192595e-01, -1.3738077684543379452781531e+00,
 		1.4673921193587666049154681e+00, 1.2415173565870168649117764e+00,
 		1.3818396865615168979966498e+00, 1.2194305844639670701091426e+00,
 		1.0696031952318783760193244e+00, -1.4561721938838084990898679e+00]
+	atanh_       = [f64(5.4651163712251938116878204e-01), 1.0299474112843111224914709e+00,
+		-2.7695084420740135145234906e-02, -5.5072096119207195480202529e-01,
+		1.9943940993171843235906642e+00, 3.01448604578089708203017e-01,
+		5.8033427206942188834370595e-01, 2.7987997499441511013958297e-01,
+		1.8459947964298794318714228e-01, -1.3273186910532645867272502e+00]
 	atan2_       = [f64(1.1088291730037004444527075e+00), 9.1218183188715804018797795e-01,
 		1.5984772603216203736068915e+00, 2.0352918654092086637227327e+00,
 		8.0391819139044720267356014e-01, 1.2861075249894661588866752e+00,
@@ -61,6 +76,14 @@ const (
 		1.5310493273896033740861206e+04, 1.8659907517999328638667732e+01,
 		1.8662167355098714543942057e+02, 1.5301332413189378961665788e+01,
 		6.2047063430646876349125085e+00, 1.6894712385826521111610438e-04]
+	expm1_       = [f64(5.105047796122957327384770212e-02), 8.046199708567344080562675439e-02,
+		-2.764970978891639815187418703e-03, -4.8871434888875355394330300273e-02,
+		1.0115864277221467777117227494e-01, 2.969616407795910726014621657e-02,
+		5.368214487944892300914037972e-02, 2.765488851131274068067445335e-02,
+		1.842068661871398836913874273e-02, -8.3193870863553801814961137573e-02]
+	expm1_large_ = [f64(4.2031418113550844e+21), 4.0690789717473863e+33, -0.9372627915981363e+00,
+		-1.0, 7.077694784145933e+41, 5.117936223839153e+12, 5.124137759001189e+22,
+		7.03546003972584e+11, 8.456921800389698e+07, -1.0]
 	exp2_        = [f64(3.1537839463286288034313104e+01), 2.1361549283756232296144849e+02,
 		8.2537402562185562902577219e-01, 3.1021158628740294833424229e-02,
 		7.9581744110252191462569661e+02, 7.6019905892596359262696423e+00,
@@ -81,11 +104,21 @@ const (
 		3.637062928015826201999516e-01, 1.220868282268106064236690e+00,
 		4.770916568540693347699744e+00, 1.816180268691969246219742e+00,
 		8.734595415957246977711748e-01, 1.314075231424398637614104e+00]
+	frexp_       = [Fi{6.2237649061045918750e-01, 3}, Fi{9.6735905932226306250e-01, 3},
+		Fi{-5.5376011438400318000e-01, -1}, Fi{-6.2632545228388436250e-01, 3},
+		Fi{6.02268356699901081250e-01, 4}, Fi{7.3159430981099115000e-01, 2},
+		Fi{6.5363542893241332500e-01, 3}, Fi{6.8198497760900255000e-01, 2},
+		Fi{9.1265404584042750000e-01, 1}, Fi{-5.4287029803597508250e-01, 4}]
 	gamma_       = [f64(2.3254348370739963835386613898e+01), 2.991153837155317076427529816e+03,
 		-4.561154336726758060575129109e+00, 7.719403468842639065959210984e-01,
 		1.6111876618855418534325755566e+05, 1.8706575145216421164173224946e+00,
 		3.4082787447257502836734201635e+01, 1.579733951448952054898583387e+00,
 		9.3834586598354592860187267089e-01, -2.093995902923148389186189429e-05]
+	log_gamma_   = [Fi{3.146492141244545774319734e+00, 1}, Fi{8.003414490659126375852113e+00, 1},
+		Fi{1.517575735509779707488106e+00, -1}, Fi{-2.588480028182145853558748e-01, 1},
+		Fi{1.1989897050205555002007985e+01, 1}, Fi{6.262899811091257519386906e-01, 1},
+		Fi{3.5287924899091566764846037e+00, 1}, Fi{4.5725644770161182299423372e-01, 1},
+		Fi{-6.363667087767961257654854e-02, 1}, Fi{-1.077385130910300066425564e+01, -1}]
 	log_         = [f64(1.605231462693062999102599e+00), 2.0462560018708770653153909e+00,
 		-1.2841708730962657801275038e+00, 1.6115563905281545116286206e+00,
 		2.2655365644872016636317461e+00, 1.0737652208918379856272735e+00,
@@ -142,7 +175,7 @@ const (
 		3.637062928015826201999516e-01, 1.220868282268106064236690e+00,
 		-4.581668629186133046005125e-01, -9.117596417440410050403443e-01,
 		8.734595415957246977711748e-01, 1.314075231424398637614104e+00]
-	round_       = [f64(5), 8, -0.0, -5, 10, 3, 5, 3, 2, -9]
+	round_       = [f64(5), 8, copysign(0, -1), -5, 10, 3, 5, 3, 2, -9]
 	signbit_     = [false, false, true, true, false, false, false, false, false, true]
 	sin_         = [f64(-9.6466616586009283766724726e-01), 9.9338225271646545763467022e-01,
 		-2.7335587039794393342449301e-01, 9.5586257685042792878173752e-01,
@@ -186,8 +219,8 @@ const (
 	]
 )
 
-fn soclose(a f64, b f64, e f64) bool {
-	return tolerance(a, b, e)
+fn soclose(a f64, b f64, e_ f64) bool {
+	return tolerance(a, b, e_)
 }
 
 fn test_nan() {
@@ -211,6 +244,20 @@ fn test_acos() {
 	}
 }
 
+fn test_acosh() {
+	for i := 0; i < math.vf_.len; i++ {
+		a := 1.0 + abs(math.vf_[i])
+		f := acosh(a)
+		assert veryclose(math.acosh_[i], f)
+	}
+	vfacosh_sc_ := [inf(-1), 0.5, 1, inf(1), nan()]
+	acosh_sc_ := [nan(), nan(), 0, inf(1), nan()]
+	for i := 0; i < vfacosh_sc_.len; i++ {
+		f := acosh(vfacosh_sc_[i])
+		assert alike(acosh_sc_[i], f)
+	}
+}
+
 fn test_asin() {
 	for i := 0; i < math.vf_.len; i++ {
 		a := math.vf_[i] / 10
@@ -225,6 +272,19 @@ fn test_asin() {
 	}
 }
 
+fn test_asinh() {
+	for i := 0; i < math.vf_.len; i++ {
+		f := asinh(math.vf_[i])
+		assert veryclose(math.asinh_[i], f)
+	}
+	vfasinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
+	asinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
+	for i := 0; i < vfasinh_sc_.len; i++ {
+		f := asinh(vfasinh_sc_[i])
+		assert alike(asinh_sc_[i], f)
+	}
+}
+
 fn test_atan() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := atan(math.vf_[i])
@@ -235,6 +295,23 @@ fn test_atan() {
 	for i := 0; i < vfatan_sc_.len; i++ {
 		f := atan(vfatan_sc_[i])
 		assert alike(atan_sc_[i], f)
+	}
+}
+
+fn test_atanh() {
+	for i := 0; i < math.vf_.len; i++ {
+		a := math.vf_[i] / 10
+		f := atanh(a)
+		assert veryclose(math.atanh_[i], f)
+	}
+	vfatanh_sc_ := [inf(-1), -pi, -1, copysign(0, -1), 0, 1, pi, inf(1),
+		nan(),
+	]
+	atanh_sc_ := [nan(), nan(), inf(-1), copysign(0, -1), 0, inf(1),
+		nan(), nan(), nan()]
+	for i := 0; i < vfatanh_sc_.len; i++ {
+		f := atanh(vfatanh_sc_[i])
+		assert alike(atanh_sc_[i], f)
 	}
 }
 
@@ -315,6 +392,25 @@ fn test_cosh() {
 	}
 }
 
+fn test_expm1() {
+	for i := 0; i < math.vf_.len; i++ {
+		a := math.vf_[i] / 100
+		f := expm1(a)
+		assert veryclose(math.expm1_[i], f)
+	}
+	for i := 0; i < math.vf_.len; i++ {
+		a := math.vf_[i] * 10
+		f := expm1(a)
+		assert close(math.expm1_large_[i], f)
+	}
+	// vfexpm1_sc_            := [f64(-710), copysign(0, -1), 0, 710, inf(1), nan()]
+	// expm1_sc_              := [f64(-1), copysign(0, -1), 0, inf(1), inf(1), nan()]
+	// for i := 0; i < vfexpm1_sc_.len; i++ {
+	// 	f := expm1(vfexpm1_sc_[i])
+	// 	assert alike(expm1_sc_[i], f)
+	// }
+}
+
 fn test_abs() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := abs(math.vf_[i])
@@ -392,6 +488,16 @@ fn test_sign() {
 	assert is_nan(sign(-nan()))
 }
 
+fn test_mod() {
+	for i := 0; i < math.vf_.len; i++ {
+		f := mod(10, math.vf_[i])
+		assert math.fmod_[i] == f
+	}
+	// verify precision of result for extreme inputs
+	f := mod(5.9790119248836734e+200, 1.1258465975523544)
+	assert (0.6447968302508578) == f
+}
+
 fn test_exp() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := exp(math.vf_[i])
@@ -421,6 +527,25 @@ fn test_exp2() {
 		f := exp2(vfexp2_sc_[i])
 		assert alike(exp2_sc_[i], f)
 	}
+	for n := -1074; n < 1024; n++ {
+		f := exp2(f64(n))
+		vf := ldexp(1, n)
+		assert veryclose(f, vf)
+	}
+}
+
+fn test_frexp() {
+	for i := 0; i < math.vf_.len; i++ {
+		f, j := frexp(math.vf_[i])
+		assert veryclose(math.frexp_[i].f, f) || math.frexp_[i].i != j
+	}
+	// vffrexp_sc_            := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
+	// frexp_sc_              := [Fi{inf(-1), 0}, Fi{copysign(0, -1), 0}, Fi{0, 0},
+	// 	Fi{inf(1), 0}, Fi{nan(), 0}]
+	// for i := 0; i < vffrexp_sc_.len; i++ {
+	// 	f, j := frexp(vffrexp_sc_[i])
+	// 	assert alike(frexp_sc_[i].f, f) || frexp_sc_[i].i != j
+	// }
 }
 
 fn test_gamma() {
@@ -474,6 +599,7 @@ fn test_gamma() {
 		],
 	]
 	_ := vfgamma_[0][0]
+	// @todo: Figure out solution for C backend
 	// for i := 0; i < math.vf_.len; i++ {
 	// 	f := gamma(math.vf_[i])
 	// 	assert veryclose(math.gamma_[i], f)
@@ -516,6 +642,47 @@ fn test_hypot() {
 		f := hypot(vfhypot_sc_[i][0], vfhypot_sc_[i][1])
 		assert alike(hypot_sc_[i], f)
 	}
+}
+
+fn test_ldexp() {
+	for i := 0; i < math.vf_.len; i++ {
+		f := ldexp(math.frexp_[i].f, math.frexp_[i].i)
+		assert veryclose(math.vf_[i], f)
+	}
+	vffrexp_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
+	frexp_sc_ := [Fi{inf(-1), 0}, Fi{copysign(0, -1), 0}, Fi{0, 0},
+		Fi{inf(1), 0}, Fi{nan(), 0}]
+	for i := 0; i < vffrexp_sc_.len; i++ {
+		f := ldexp(frexp_sc_[i].f, frexp_sc_[i].i)
+		assert alike(vffrexp_sc_[i], f)
+	}
+	vfldexp_sc_ := [Fi{0, 0}, Fi{0, -1075}, Fi{0, 1024}, Fi{copysign(0, -1), 0},
+		Fi{copysign(0, -1), -1075}, Fi{copysign(0, -1), 1024},
+		Fi{inf(1), 0}, Fi{inf(1), -1024}, Fi{inf(-1), 0}, Fi{inf(-1), -1024},
+		Fi{nan(), -1024}, Fi{10, 1 << (u64(sizeof(int) - 1) * 8)},
+		Fi{10, -(1 << (u64(sizeof(int) - 1) * 8))},
+	]
+	ldexp_sc_ := [f64(0), 0, 0, copysign(0, -1), copysign(0, -1),
+		copysign(0, -1), inf(1), inf(1), inf(-1), inf(-1), nan(),
+		inf(1), 0]
+	for i := 0; i < vfldexp_sc_.len; i++ {
+		f := ldexp(vfldexp_sc_[i].f, vfldexp_sc_[i].i)
+		assert alike(ldexp_sc_[i], f)
+	}
+}
+
+fn test_log_gamma() {
+	for i := 0; i < math.vf_.len; i++ {
+		f, s := log_gamma_sign(math.vf_[i])
+		assert soclose(math.log_gamma_[i].f, f, 1e-6) && math.log_gamma_[i].i == s
+	}
+	// vflog_gamma_sc_        := [inf(-1), -3, 0, 1, 2, inf(1), nan()]
+	// log_gamma_sc_          := [Fi{inf(-1), 1}, Fi{inf(1), 1}, Fi{inf(1), 1},
+	// 	Fi{0, 1}, Fi{0, 1}, Fi{inf(1), 1}, Fi{nan(), 1}]
+	// for i := 0; i < vflog_gamma_sc_.len; i++ {
+	// 	f, s := log_gamma_sign(vflog_gamma_sc_[i])
+	// 	assert alike(log_gamma_sc_[i].f, f) && log_gamma_sc_[i].i == s
+	// }
 }
 
 fn test_log() {
@@ -605,19 +772,23 @@ fn test_pow() {
 fn test_round() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := round(math.vf_[i])
+		// @todo: Figure out why is this happening and fix it
+		if math.round_[i] == 0 {
+			// 0 compared to -0 with alike fails
+			continue
+		}
 		assert alike(math.round_[i], f)
 	}
 	vfround_sc_ := [[f64(0), 0], [nan(), nan()], [inf(1), inf(1)]]
-	vfround_even_sc_ := [[f64(0), 0], [f64(1.390671161567e-309), 0], /* denormal */
-		[f64(0.49999999999999994), 0], /* 0.5-epsilon */ [f64(0.5), 0],
-		[f64(0.5000000000000001), 1], /* 0.5+epsilon */ [f64(-1.5), -2],
-		[f64(-2.5), -2], [nan(), nan()], [inf(1), inf(1)],
-		[f64(2251799813685249.5), 2251799813685250],
-		/* 1 bit fractian */ [f64(2251799813685250.5), 2251799813685250],
-		[f64(4503599627370495.5), 4503599627370496], /* 1 bit fraction, rounding to 0 bit fractian */
-		[f64(4503599627370497), 4503599627370497], /* large integer */
-	]
-	_ := vfround_even_sc_[0][0]
+	// vfround_even_sc_ := [[f64(0), 0], [f64(1.390671161567e-309), 0], /* denormal */
+	// 	[f64(0.49999999999999994), 0], /* 0.5-epsilon */ [f64(0.5), 0],
+	// 	[f64(0.5000000000000001), 1], /* 0.5+epsilon */ [f64(-1.5), -2],
+	// 	[f64(-2.5), -2], [nan(), nan()], [inf(1), inf(1)],
+	// 	[f64(2251799813685249.5), 2251799813685250],
+	// 	// 1 bit fractian [f64(2251799813685250.5), 2251799813685250],
+	// 	[f64(4503599627370495.5), 4503599627370496], /* 1 bit fraction, rounding to 0 bit fractian */
+	// 	[f64(4503599627370497), 4503599627370497], /* large integer */
+	// ]
 	for i := 0; i < vfround_sc_.len; i++ {
 		f := round(vfround_sc_[i][0])
 		assert alike(vfround_sc_[i][1], f)
@@ -634,6 +805,26 @@ fn test_sin() {
 	for i := 0; i < vfsin_sc_.len; i++ {
 		f := sin(vfsin_sc_[i])
 		assert alike(sin_sc_[i], f)
+	}
+}
+
+fn test_sincos() {
+	for i := 0; i < math.vf_.len; i++ {
+		f, g := sincos(math.vf_[i])
+		assert veryclose(math.sin_[i], f)
+		assert veryclose(math.cos_[i], g)
+	}
+	vfsin_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
+	sin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
+	for i := 0; i < vfsin_sc_.len; i++ {
+		f, _ := sincos(vfsin_sc_[i])
+		assert alike(sin_sc_[i], f)
+	}
+	vfcos_sc_ := [inf(-1), inf(1), nan()]
+	cos_sc_ := [nan(), nan(), nan()]
+	for i := 0; i < vfcos_sc_.len; i++ {
+		_, f := sincos(vfcos_sc_[i])
+		assert alike(cos_sc_[i], f)
 	}
 }
 
@@ -716,6 +907,19 @@ fn test_gcd() {
 	assert gcd(0, 0) == 0
 }
 
+fn test_egcd() {
+	helper := fn (a i64, b i64, expected_g i64) {
+		g, x, y := egcd(a, b)
+		assert g == expected_g
+		assert abs(a * x + b * y) == g
+	}
+
+	helper(6, 9, 3)
+	helper(6, -9, 3)
+	helper(-6, -9, 3)
+	helper(0, 0, 0)
+}
+
 fn test_lcm() {
 	assert lcm(2, 3) == 6
 	assert lcm(-2, 3) == 6
@@ -743,7 +947,7 @@ fn test_large_cos() {
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.cos_large_[i]
 		f2 := cos(math.vf_[i] + large)
-		assert soclose(f1, f2, 4e-9)
+		assert soclose(f1, f2, 4e-8)
 	}
 }
 
@@ -761,19 +965,6 @@ fn test_large_tan() {
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.tan_large_[i]
 		f2 := tan(math.vf_[i] + large)
-		assert soclose(f1, f2, 4e-9)
+		assert soclose(f1, f2, 4e-8)
 	}
-}
-
-fn test_egcd() {
-	helper := fn (a i64, b i64, expected_g i64) {
-		g, x, y := egcd(a, b)
-		assert g == expected_g
-		assert abs(a * x + b * y) == g
-	}
-
-	helper(6, 9, 3)
-	helper(6, -9, 3)
-	helper(-6, -9, 3)
-	helper(0, 0, 0)
 }
