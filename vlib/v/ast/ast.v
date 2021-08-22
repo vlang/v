@@ -388,9 +388,10 @@ pub:
 	method_idx      int
 	rec_mut         bool // is receiver mutable
 	rec_share       ShareType
-	language        Language
-	no_body         bool // just a definition `fn C.malloc()`
-	is_builtin      bool // this function is defined in builtin/strconv
+	language        Language       // V, C, JS
+	file_mode       Language       // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body         bool           // just a definition `fn C.malloc()`
+	is_builtin      bool           // this function is defined in builtin/strconv
 	body_pos        token.Position // function bodys position
 	file            string
 	generic_names   []string
