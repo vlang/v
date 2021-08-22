@@ -713,7 +713,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_map_init_expr(node)
 		}
 		ast.MatchExpr {
-			// TODO
+			g.match_expr(node)
 		}
 		ast.None {
 			// TODO
@@ -801,8 +801,10 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_struct_init(node)
 		}
 		ast.TypeNode {
-			// skip: JS has no types
-			// TODO maybe?
+			typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(typ)
+			name := sym.name.replace_once('${g.ns.name}.', '')
+			g.write('$name')
 		}
 		ast.Likely {
 			g.write('(')
@@ -1732,6 +1734,250 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 
 fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 	// TODO: implement this
+}
+
+fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
+	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+		sym := g.table.get_type_symbol(node.return_type)
+		if sym.kind == .multi_return {
+			return false
+		}
+		for branch in node.branches {
+			if branch.stmts.len > 1 {
+				return true
+			}
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
+						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+	type_sym := g.table.get_type_symbol(node.cond_type)
+	for j, branch in node.branches {
+		is_last := j == node.branches.len - 1
+		if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
+			if node.branches.len > 1 {
+				if is_expr && tmp_var.len == 0 {
+					// TODO too many branches. maybe separate ?: matches
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.writeln('else {')
+				}
+			}
+		} else {
+			if j > 0 {
+				if is_expr && tmp_var.len == 0 {
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.write('else ')
+				}
+			}
+			if is_expr && tmp_var.len == 0 {
+				g.write('(')
+			} else {
+				if j == 0 {
+					g.writeln('')
+				}
+				g.write_v_source_line_info(branch.pos)
+				g.write('if (')
+			}
+			for i, expr in branch.exprs {
+				if i > 0 {
+					g.write(' || ')
+				}
+				match type_sym.kind {
+					.array {
+						g.write('vEq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.array_fixed {
+						g.write('vEq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.map {
+						g.write('vEq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.string {
+						g.write('vEq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					.struct_ {
+						g.write('vEq($cond_var, ')
+						g.expr(expr)
+						g.write(')')
+					}
+					else {
+						if expr is ast.RangeExpr {
+							// if type is unsigned and low is 0, check is unneeded
+							mut skip_low := false
+							if expr.low is ast.IntegerLiteral {
+								if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
+									&& expr.low.val == '0' {
+									skip_low = true
+								}
+							}
+							g.write('(')
+							if !skip_low {
+								g.write('$cond_var >= ')
+								g.expr(expr.low)
+								g.write(' && ')
+							}
+							g.write('$cond_var <= ')
+							g.expr(expr.high)
+							g.write(')')
+						} else {
+							g.write('vEq($cond_var,')
+							g.expr(expr)
+							g.write(')')
+						}
+					}
+				}
+			}
+			if is_expr && tmp_var.len == 0 {
+				g.write(') ? ')
+			} else {
+				g.writeln(') {')
+			}
+		}
+		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		if !g.inside_ternary && node.branches.len >= 1 {
+			g.write('}')
+		}
+	}
+}
+
+fn (mut g JsGen) match_expr(node ast.MatchExpr) {
+	if node.cond_type == 0 {
+		g.writeln('// match 0')
+		return
+	}
+	prev := g.inside_ternary
+	need_tmp_var := g.need_tmp_var_in_match(node)
+	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
+	mut cond_var := ''
+	mut tmp_var := ''
+	mut cur_line := ''
+	if is_expr && !need_tmp_var {
+		g.inside_ternary = true
+	}
+
+	cond_var = g.new_tmp_var()
+	g.write('let $cond_var = ')
+	g.expr(node.cond)
+	g.write(';')
+	if need_tmp_var {
+		tmp_var = g.new_tmp_var()
+		g.writeln('let $tmp_var = undefined;')
+	}
+	if is_expr && !need_tmp_var {
+		g.write('(')
+	}
+	if node.is_sum_type {
+		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+	} else {
+		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+	}
+	if need_tmp_var {
+		g.write('$tmp_var')
+	}
+	if is_expr && !need_tmp_var {
+		g.write(')')
+		g.inside_ternary = prev
+	}
+}
+
+fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
+	g.inc_indent()
+	if g.inside_ternary {
+		g.write('(')
+	}
+	for i, stmt in stmts {
+		if i == stmts.len - 1 && tmp_var != '' {
+			g.write('$tmp_var = ')
+			g.stmt(stmt)
+			g.writeln('')
+		} else {
+			g.stmt(stmt)
+		}
+		if g.inside_ternary && i < stmts.len - 1 {
+			g.write(',')
+		}
+	}
+	g.dec_indent()
+	if g.inside_ternary {
+		g.write(')')
+	}
+}
+
+fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+	for j, branch in node.branches {
+		mut sumtype_index := 0
+		for {
+			is_last := j == node.branches.len - 1
+			sym := g.table.get_type_symbol(node.cond_type)
+			if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
+				if is_expr && tmp_var.len == 0 {
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.writeln('else {')
+				}
+			} else {
+				if j > 0 || sumtype_index > 0 {
+					if is_expr && tmp_var.len == 0 {
+						g.write(' : ')
+					} else {
+						g.write('else ')
+					}
+				}
+
+				if is_expr && tmp_var.len == 0 {
+					g.write('(')
+				} else {
+					g.write('if (')
+				}
+				g.write(cond_var)
+				if sym.kind == .sum_type {
+					g.write(' instanceof ')
+					g.expr(branch.exprs[sumtype_index])
+				} else {
+					panic('TODO: Generate match for interfaces')
+				}
+				if is_expr && tmp_var.len == 0 {
+					g.write(') ? ')
+				} else {
+					g.writeln(') {')
+				}
+			}
+			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			if !g.inside_ternary {
+				g.writeln('}')
+			}
+			sumtype_index++
+			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
+				break
+			}
+		}
+	}
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
