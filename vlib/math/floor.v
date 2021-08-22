@@ -89,7 +89,7 @@ pub fn round_to_even(x f64) f64 {
 		// - Large numbers without fractional components, infinity, and nan are unchanged.
 		// - Add 0.499.. or 0.5 before truncating depending on whether the truncated
 		// number is even or odd (respectively).
-		half_minus_ulp := u64(1 << (shift - 1)) - 1
+		half_minus_ulp := u64(u64(1) << (shift - 1)) - 1
 		e_ -= u64(bias)
 		bits += (half_minus_ulp + (bits >> (shift - e_)) & 1) >> e_
 		bits &= frac_mask >> e_

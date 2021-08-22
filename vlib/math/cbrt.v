@@ -25,19 +25,19 @@ pub fn cbrt(a f64) f64 {
 		sign = true
 	}
 	// rough cbrt to 5 bits
-	mut t := f64_from_bits(f64_bits(x) / u64(3 + (b1 << 32)))
+	mut t := f64_from_bits(f64_bits(x) / u64(3 + (u64(b1) << 32)))
 	if x < smallest_normal {
 		// subnormal number
-		t = f64(1 << 54) // set t= 2**54
+		t = f64(u64(1) << 54) // set t= 2**54
 		t *= x
-		t = f64_from_bits(f64_bits(t) / u64(3 + (b2 << 32)))
+		t = f64_from_bits(f64_bits(t) / u64(3 + (u64(b2) << 32)))
 	}
 	// new cbrt to 23 bits
 	mut r := t * t / x
 	mut s := c + r * t
 	t *= g + f / (s + e_ + d / s)
 	// chop to 22 bits, make larger than cbrt(x)
-	t = f64_from_bits(f64_bits(t) & (0xffffffffc << 28) + (1 << 30))
+	t = f64_from_bits(f64_bits(t) & (u64(0xffffffffc) << 28) + (u64(1) << 30))
 	// one step newton iteration to 53 bits with error less than 0.667ulps
 	s = t * t // t*t is exact
 	r = x / s
