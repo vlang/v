@@ -256,13 +256,12 @@ pub fn (b bool) str() string {
 [direct_array_access; inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 	}
 	return unsafe { tos(memdup(&buf[0], len + 1), len) }
@@ -272,13 +271,12 @@ fn u64_to_hex(nn u64, len byte) string {
 [direct_array_access; inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 		if n == 0 {
 			break
@@ -306,7 +304,11 @@ pub fn (nn byte) hex() string {
 // Example: assert i8(10).hex() == '0a'
 // Example: assert i8(15).hex() == '0f'
 pub fn (nn i8) hex() string {
-	return byte(nn).hex()
+	if nn == 0 {
+		return '00'
+	}
+	return u64_to_hex(u64(nn), 2)
+	//return byte(nn).hex()
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.
