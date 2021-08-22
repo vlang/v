@@ -1,5 +1,7 @@
 module internal
 
+// contants to do fine tuning of precision for the functions
+// implemented in pure V
 pub const (
 	f64_epsilon           = 2.2204460492503131e-16
 	sqrt_f64_epsilon      = 1.4901161193847656e-08
