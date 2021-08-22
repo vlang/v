@@ -290,7 +290,7 @@ fn test_str() ? {
 
 	// key order is not guaranteed
 	assert h.str() == 'Accept: text/html\r\nAccept: image/jpeg\r\nX-custom: Hello\r\n'
-	|| h.str() == 'X-custom: Hello\r\nAccept:text/html\r\nAccept: image/jpeg\r\n'
+		|| h.str() == 'X-custom: Hello\r\nAccept:text/html\r\nAccept: image/jpeg\r\n'
 }
 
 fn test_header_from_map() ? {
