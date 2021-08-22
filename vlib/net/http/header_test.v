@@ -190,15 +190,18 @@ fn test_render_version() ? {
 
 	s1_0 := h.render(version: .v1_0)
 	assert s1_0.contains('accept: foo\r\n')
-	assert s1_0.contains('Accept: bar,baz\r\n')
+	assert s1_0.contains('Accept: bar\r\n')
+	assert s1_0.contains('Accept: baz\r\n')
 
 	s1_1 := h.render(version: .v1_1)
 	assert s1_1.contains('accept: foo\r\n')
-	assert s1_1.contains('Accept: bar,baz\r\n')
+	assert s1_1.contains('Accept: bar\r\n')
+	assert s1_1.contains('Accept: baz\r\n')
 
 	s2_0 := h.render(version: .v2_0)
 	assert s2_0.contains('accept: foo\r\n')
-	assert s2_0.contains('accept: bar,baz\r\n')
+	assert s2_0.contains('accept: bar\r\n')
+	assert s2_0.contains('accept: baz\r\n')
 }
 
 fn test_render_coerce() ? {
@@ -209,15 +212,21 @@ fn test_render_coerce() ? {
 	h.add(.host, 'host')
 
 	s1_0 := h.render(version: .v1_1, coerce: true)
-	assert s1_0.contains('accept: foo,bar,baz\r\n')
+	assert s1_0.contains('accept: foo\r\n')
+	assert s1_0.contains('accept: bar\r\n')
+	assert s1_0.contains('accept: baz\r\n')
 	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, coerce: true)
-	assert s1_1.contains('accept: foo,bar,baz\r\n')
+	assert s1_1.contains('accept: foo\r\n')
+	assert s1_1.contains('accept: bar\r\n')
+	assert s1_1.contains('accept: baz\r\n')
 	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, coerce: true)
-	assert s2_0.contains('accept: foo,bar,baz\r\n')
+	assert s2_0.contains('accept: foo\r\n')
+	assert s2_0.contains('accept: bar\r\n')
+	assert s2_0.contains('accept: baz\r\n')
 	assert s2_0.contains('host: host\r\n')
 }
 
@@ -230,17 +239,20 @@ fn test_render_canonicalize() ? {
 
 	s1_0 := h.render(version: .v1_1, canonicalize: true)
 	assert s1_0.contains('Accept: foo\r\n')
-	assert s1_0.contains('Accept: bar,baz\r\n')
+	assert s1_0.contains('Accept: bar\r\n')
+	assert s1_0.contains('Accept: baz\r\n')
 	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, canonicalize: true)
 	assert s1_1.contains('Accept: foo\r\n')
-	assert s1_1.contains('Accept: bar,baz\r\n')
+	assert s1_1.contains('Accept: bar\r\n')
+	assert s1_1.contains('Accept: baz\r\n')
 	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, canonicalize: true)
 	assert s2_0.contains('accept: foo\r\n')
-	assert s2_0.contains('accept: bar,baz\r\n')
+	assert s2_0.contains('accept: bar\r\n')
+	assert s2_0.contains('accept: baz\r\n')
 	assert s2_0.contains('host: host\r\n')
 }
 
@@ -252,15 +264,21 @@ fn test_render_coerce_canonicalize() ? {
 	h.add(.host, 'host')
 
 	s1_0 := h.render(version: .v1_1, coerce: true, canonicalize: true)
-	assert s1_0.contains('Accept: foo,bar,baz\r\n')
+	assert s1_0.contains('Accept: foo\r\n')
+	assert s1_0.contains('Accept: bar\r\n')
+	assert s1_0.contains('Accept: baz\r\n')
 	assert s1_0.contains('Host: host\r\n')
 
 	s1_1 := h.render(version: .v1_1, coerce: true, canonicalize: true)
-	assert s1_1.contains('Accept: foo,bar,baz\r\n')
+	assert s1_1.contains('Accept: foo\r\n')
+	assert s1_1.contains('Accept: bar\r\n')
+	assert s1_1.contains('Accept: baz\r\n')
 	assert s1_1.contains('Host: host\r\n')
 
 	s2_0 := h.render(version: .v2_0, coerce: true, canonicalize: true)
-	assert s2_0.contains('accept: foo,bar,baz\r\n')
+	assert s2_0.contains('accept: foo\r\n')
+	assert s2_0.contains('accept: bar\r\n')
+	assert s2_0.contains('accept: baz\r\n')
 	assert s2_0.contains('host: host\r\n')
 }
 
@@ -271,8 +289,8 @@ fn test_str() ? {
 	h.add_custom('X-custom', 'Hello') ?
 
 	// key order is not guaranteed
-	assert h.str() == 'Accept: text/html,image/jpeg\r\nX-custom: Hello\r\n'
-		|| h.str() == 'X-custom: Hello\r\nAccept:text/html,image/jpeg\r\n'
+	assert h.str() == 'Accept: text/html\r\nAccept: image/jpeg\r\nX-custom: Hello\r\n'
+		|| h.str() == 'X-custom: Hello\r\nAccept:text/html\r\nAccept: image/jpeg\r\n'
 }
 
 fn test_header_from_map() ? {
@@ -358,4 +376,12 @@ fn test_parse_headers() ? {
 	if x := parse_headers(' oops: oh no') {
 		return error('should have errored, but got $x')
 	}
+}
+
+fn test_set_cookie() {
+	// multiple Set-Cookie headers should be sent when rendered
+	mut h := new_header()
+	h.add(.set_cookie, 'foo')
+	h.add(.set_cookie, 'bar')
+	assert h.render() == 'Set-Cookie: foo\r\nSet-Cookie: bar\r\n'
 }
