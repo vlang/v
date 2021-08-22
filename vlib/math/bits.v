@@ -36,13 +36,16 @@ pub fn is_inf(f f64, sign int) bool {
 	return (sign >= 0 && f > max_f64) || (sign <= 0 && f < -max_f64)
 }
 
-// NOTE: (joe-c) exponent notation is borked
+pub fn is_finite(f f64) bool {
+	return !is_nan(f) && !is_inf(f, 0)
+}
+
 // normalize returns a normal number y and exponent exp
 // satisfying x == y × 2**exp. It assumes x is finite and non-zero.
-// pub fn normalize(x f64) (f64, int) {
-// smallest_normal := 2.2250738585072014e-308 // 2**-1022
-// if abs(x) < smallest_normal {
-// return x * (1 << 52), -52
-// }
-// return x, 0
-// }
+pub fn normalize(x f64) (f64, int) {
+	smallest_normal := 2.2250738585072014e-308 // 2**-1022
+	if abs(x) < smallest_normal {
+		return x * (1 << 52), -52
+	}
+	return x, 0
+}

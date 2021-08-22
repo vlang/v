@@ -1,659 +1,327 @@
-// Provides the [error](https://en.wikipedia.org/wiki/Error_function) and related functions
-// based on https://github.com/unovor/frame/blob/master/statrs-0.10.0/src/function/erf.rs
-//
-// NOTE: This impl does not have the same precision as glibc impl of erf,erfc and others, we should fix this
-// in the future.
 module math
 
-// Coefficients for erf_impl polynominal
+/*
+*                           x
+ *                    2      |\
+ *     erf(x)  =  ---------  | exp(-t*t)dt
+ *                 sqrt(pi) \|
+ *                           0
+ *
+ *     erfc(x) =  1-erf(x)
+ *  Note that
+ *              erf(-x) = -erf(x)
+ *              erfc(-x) = 2 - erfc(x)
+ *
+ * Method:
+ *      1. For |x| in [0, 0.84375]
+ *          erf(x)  = x + x*R(x**2)
+ *          erfc(x) = 1 - erf(x)           if x in [-.84375,0.25]
+ *                  = 0.5 + ((0.5-x)-x*R)  if x in [0.25,0.84375]
+ *         where R = P/Q where P is an odd poly of degree 8 and
+ *         Q is an odd poly of degree 10.
+ *                                               -57.90
+ *                      | R - (erf(x)-x)/x | <= 2
+ *
+ *
+ *         Remark. The formula is derived by noting
+ *          erf(x) = (2/sqrt(pi))*(x - x**3/3 + x**5/10 - x**7/42 + ....)
+ *         and that
+ *          2/sqrt(pi) = 1.128379167095512573896158903121545171688
+ *         is close to one. The interval is chosen because the fix
+ *         point of erf(x) is near 0.6174 (i.e., erf(x)=x when x is
+ *         near 0.6174), and by some experiment, 0.84375 is chosen to
+ *         guarantee the error is less than one ulp for erf.
+ *
+ *      2. For |x| in [0.84375,1.25], let s_ = |x| - 1, and
+ *         c = 0.84506291151 rounded to single (24 bits)
+ *              erf(x)  = sign(x) * (c  + P1(s_)/Q1(s_))
+ *              erfc(x) = (1-c)  - P1(s_)/Q1(s_) if x > 0
+ *                        1+(c+P1(s_)/Q1(s_))    if x < 0
+ *              |P1/Q1 - (erf(|x|)-c)| <= 2**-59.06
+ *         Remark: here we use the taylor series expansion at x=1.
+ *              erf(1+s_) = erf(1) + s_*Poly(s_)
+ *                       = 0.845.. + P1(s_)/Q1(s_)
+ *         That is, we use rational approximation to approximate
+ *                      erf(1+s_) - (c = (single)0.84506291151)
+ *         Note that |P1/Q1|< 0.078 for x in [0.84375,1.25]
+ *         where
+ *              P1(s_) = degree 6 poly in s_
+ *              Q1(s_) = degree 6 poly in s_
+ *
+ *      3. For x in [1.25,1/0.35(~2.857143)],
+ *              erfc(x) = (1/x)*exp(-x*x-0.5625+R1/s1)
+ *              erf(x)  = 1 - erfc(x)
+ *         where
+ *              R1(z) = degree 7 poly in z, (z=1/x**2)
+ *              s1(z) = degree 8 poly in z
+ *
+ *      4. For x in [1/0.35,28]
+ *              erfc(x) = (1/x)*exp(-x*x-0.5625+R2/s2) if x > 0
+ *                      = 2.0 - (1/x)*exp(-x*x-0.5625+R2/s2) if -6<x<0
+ *                      = 2.0 - tiny            (if x <= -6)
+ *              erf(x)  = sign(x)*(1.0 - erfc(x)) if x < 6, else
+ *              erf(x)  = sign(x)*(1.0 - tiny)
+ *         where
+ *              R2(z) = degree 6 poly in z, (z=1/x**2)
+ *              s2(z) = degree 7 poly in z
+ *
+ *      Note1:
+ *         To compute exp(-x*x-0.5625+R/s), let s_ be a single
+ *         precision number and s_ := x; then
+ *              -x*x = -s_*s_ + (s_-x)*(s_+x)
+ *              exp(-x*x-0.5626+R/s) =
+ *                      exp(-s_*s_-0.5625)*exp((s_-x)*(s_+x)+R/s);
+ *      Note2:
+ *         Here 4 and 5 make use of the asymptotic series
+ *                        exp(-x*x)
+ *              erfc(x) ~ ---------- * ( 1 + Poly(1/x**2) )
+ *                        x*sqrt(pi)
+ *         We use rational approximation to approximate
+ *              g(s_)=f(1/x**2) = log(erfc(x)*x) - x*x + 0.5625
+ *         Here is the error bound for R1/s1 and R2/s2
+ *              |R1/s1 - f(x)|  < 2**(-62.57)
+ *              |R2/s2 - f(x)|  < 2**(-61.52)
+ *
+ *      5. For inf > x >= 28
+ *              erf(x)  = sign(x) *(1 - tiny)  (raise inexact)
+ *              erfc(x) = tiny*tiny (raise underflow) if x > 0
+ *                      = 2 - tiny if x<0
+ *
+ *      7. special case:
+ *              erf(0)  = 0, erf(inf)  = 1, erf(-inf) = -1,
+ *              erfc(0) = 1, erfc(inf) = 0, erfc(-inf) = 2,
+ *              erfc/erf(nan) is nan
+*/
 const (
-	// Polynomial coefficients for a numerator of `erf_impl`
-	// in the interval [1e-10, 0.5].
-	erf_impl_an     = [0.00337916709551257388990745, -0.00073695653048167948530905,
-		-0.374732337392919607868241, 0.0817442448733587196071743, -0.0421089319936548595203468,
-		0.0070165709512095756344528, -0.00495091255982435110337458, 0.000871646599037922480317225]
-	// Polynomial coefficients for a denominator of `erf_impl`
-	// in the interval [1e-10, 0.5]
-	erf_impl_ad     = [1.0, -0.218088218087924645390535, 0.412542972725442099083918,
-		-0.0841891147873106755410271, 0.0655338856400241519690695, -0.0120019604454941768171266,
-		0.00408165558926174048329689, -0.000615900721557769691924509]
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [0.5, 0.75].
-	erf_impl_bn     = [-0.0361790390718262471360258, 0.292251883444882683221149,
-		0.281447041797604512774415, 0.125610208862766947294894, 0.0274135028268930549240776,
-		0.00250839672168065762786937,
-	]
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [0.5, 0.75].
-	erf_impl_bd     = [1.0, 1.8545005897903486499845, 1.43575803037831418074962,
-		0.582827658753036572454135, 0.124810476932949746447682, 0.0113724176546353285778481]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [0.75, 1.25].
-	erf_impl_cn     = [
-		-0.0397876892611136856954425,
-		0.153165212467878293257683,
-		0.191260295600936245503129,
-		0.10276327061989304213645,
-		0.029637090615738836726027,
-		0.0046093486780275489468812,
-		0.000307607820348680180548455,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [0.75, 1.25].
-	erf_impl_cd     = [
-		1.0,
-		1.95520072987627704987886,
-		1.64762317199384860109595,
-		0.768238607022126250082483,
-		0.209793185936509782784315,
-		0.0319569316899913392596356,
-		0.00213363160895785378615014,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [1.25, 2.25].
-	erf_impl_dn     = [
-		-0.0300838560557949717328341,
-		0.0538578829844454508530552,
-		0.0726211541651914182692959,
-		0.0367628469888049348429018,
-		0.00964629015572527529605267,
-		0.00133453480075291076745275,
-		0.778087599782504251917881e-4,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [1.25, 2.25].
-	erf_impl_dd     = [
-		1.0,
-		1.75967098147167528287343,
-		1.32883571437961120556307,
-		0.552528596508757581287907,
-		0.133793056941332861912279,
-		0.0179509645176280768640766,
-		0.00104712440019937356634038,
-		-0.106640381820357337177643e-7,
-	]
-
-	//  Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [2.25, 3.5].
-	erf_impl_en     = [
-		-0.0117907570137227847827732,
-		0.014262132090538809896674,
-		0.0202234435902960820020765,
-		0.00930668299990432009042239,
-		0.00213357802422065994322516,
-		0.00025022987386460102395382,
-		0.120534912219588189822126e-4,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [2.25, 3.5].
-	erf_impl_ed     = [
-		1.0,
-		1.50376225203620482047419,
-		0.965397786204462896346934,
-		0.339265230476796681555511,
-		0.0689740649541569716897427,
-		0.00771060262491768307365526,
-		0.000371421101531069302990367,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [3.5, 5.25].
-	erf_impl_fn     = [
-		-0.00546954795538729307482955,
-		0.00404190278731707110245394,
-		0.0054963369553161170521356,
-		0.00212616472603945399437862,
-		0.000394984014495083900689956,
-		0.365565477064442377259271e-4,
-		0.135485897109932323253786e-5,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [3.5, 5.25].
-	erf_impl_fd     = [
-		1.0,
-		1.21019697773630784832251,
-		0.620914668221143886601045,
-		0.173038430661142762569515,
-		0.0276550813773432047594539,
-		0.00240625974424309709745382,
-		0.891811817251336577241006e-4,
-		-0.465528836283382684461025e-11,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [5.25, 8].
-	erf_impl_gn     = [
-		-0.00270722535905778347999196,
-		0.0013187563425029400461378,
-		0.00119925933261002333923989,
-		0.00027849619811344664248235,
-		0.267822988218331849989363e-4,
-		0.923043672315028197865066e-6,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [5.25, 8].
-	erf_impl_gd     = [
-		1.0,
-		0.814632808543141591118279,
-		0.268901665856299542168425,
-		0.0449877216103041118694989,
-		0.00381759663320248459168994,
-		0.000131571897888596914350697,
-		0.404815359675764138445257e-11,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [8, 11.5].
-	erf_impl_hn     = [
-		-0.00109946720691742196814323,
-		0.000406425442750422675169153,
-		0.000274499489416900707787024,
-		0.465293770646659383436343e-4,
-		0.320955425395767463401993e-5,
-		0.778286018145020892261936e-7,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [8, 11.5].
-	erf_impl_hd     = [
-		1.0,
-		0.588173710611846046373373,
-		0.139363331289409746077541,
-		0.0166329340417083678763028,
-		0.00100023921310234908642639,
-		0.24254837521587225125068e-4,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [11.5, 17].
-	erf_impl_in     = [
-		-0.00056907993601094962855594,
-		0.000169498540373762264416984,
-		0.518472354581100890120501e-4,
-		0.382819312231928859704678e-5,
-		0.824989931281894431781794e-7,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [11.5, 17].
-	erf_impl_id     = [
-		1.0,
-		0.339637250051139347430323,
-		0.043472647870310663055044,
-		0.00248549335224637114641629,
-		0.535633305337152900549536e-4,
-		-0.117490944405459578783846e-12,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [17, 24].
-	erf_impl_jn     = [
-		-0.000241313599483991337479091,
-		0.574224975202501512365975e-4,
-		0.115998962927383778460557e-4,
-		0.581762134402593739370875e-6,
-		0.853971555085673614607418e-8,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [17, 24].
-	erf_impl_jd     = [
-		1.0,
-		0.233044138299687841018015,
-		0.0204186940546440312625597,
-		0.000797185647564398289151125,
-		0.117019281670172327758019e-4,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [24, 38].
-	erf_impl_kn     = [
-		-0.000146674699277760365803642,
-		0.162666552112280519955647e-4,
-		0.269116248509165239294897e-5,
-		0.979584479468091935086972e-7,
-		0.101994647625723465722285e-8,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [24, 38].
-	erf_impl_kd     = [
-		1.0,
-		0.165907812944847226546036,
-		0.0103361716191505884359634,
-		0.000286593026373868366935721,
-		0.298401570840900340874568e-5,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [38, 60].
-	erf_impl_ln     = [
-		-0.583905797629771786720406e-4,
-		0.412510325105496173512992e-5,
-		0.431790922420250949096906e-6,
-		0.993365155590013193345569e-8,
-		0.653480510020104699270084e-10,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [38, 60].
-	erf_impl_ld     = [
-		1.0,
-		0.105077086072039915406159,
-		0.00414278428675475620830226,
-		0.726338754644523769144108e-4,
-		0.477818471047398785369849e-6,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [60, 85].
-	erf_impl_mn     = [
-		-0.196457797609229579459841e-4,
-		0.157243887666800692441195e-5,
-		0.543902511192700878690335e-7,
-		0.317472492369117710852685e-9,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [60, 85].
-	erf_impl_md     = [
-		1.0,
-		0.052803989240957632204885,
-		0.000926876069151753290378112,
-		0.541011723226630257077328e-5,
-		0.535093845803642394908747e-15,
-	]
-
-	// Polynomial coefficients for a numerator in `erf_impl`
-	// in the interval [85, 110].
-	erf_impl_nn     = [
-		-0.789224703978722689089794e-5,
-		0.622088451660986955124162e-6,
-		0.145728445676882396797184e-7,
-		0.603715505542715364529243e-10,
-	]
-
-	// Polynomial coefficients for a denominator in `erf_impl`
-	// in the interval [85, 110].
-	erf_impl_nd     = [
-		1.0,
-		0.0375328846356293715248719,
-		0.000467919535974625308126054,
-		0.193847039275845656900547e-5,
-	]
-
-	// **********************************************************
-	// ********** Coefficients for erf_inv_impl polynomial ******
-	// **********************************************************
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0, 0.5].
-	erf_inv_impl_an = [
-		-0.000508781949658280665617,
-		-0.00836874819741736770379,
-		0.0334806625409744615033,
-		-0.0126926147662974029034,
-		-0.0365637971411762664006,
-		0.0219878681111168899165,
-		0.00822687874676915743155,
-		-0.00538772965071242932965,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0, 0.5].
-	erf_inv_impl_ad = [
-		1.0,
-		-0.970005043303290640362,
-		-1.56574558234175846809,
-		1.56221558398423026363,
-		0.662328840472002992063,
-		-0.71228902341542847553,
-		-0.0527396382340099713954,
-		0.0795283687341571680018,
-		-0.00233393759374190016776,
-		0.000886216390456424707504,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.5, 0.75].
-	erf_inv_impl_bn = [
-		-0.202433508355938759655,
-		0.105264680699391713268,
-		8.37050328343119927838,
-		17.6447298408374015486,
-		-18.8510648058714251895,
-		-44.6382324441786960818,
-		17.445385985570866523,
-		21.1294655448340526258,
-		-3.67192254707729348546,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.5, 0.75].
-	erf_inv_impl_bd = [
-		1.0,
-		6.24264124854247537712,
-		3.9713437953343869095,
-		-28.6608180499800029974,
-		-20.1432634680485188801,
-		48.5609213108739935468,
-		10.8268667355460159008,
-		-22.6436933413139721736,
-		1.72114765761200282724,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x less than 3.
-	erf_inv_impl_cn = [
-		-0.131102781679951906451,
-		-0.163794047193317060787,
-		0.117030156341995252019,
-		0.387079738972604337464,
-		0.337785538912035898924,
-		0.142869534408157156766,
-		0.0290157910005329060432,
-		0.00214558995388805277169,
-		-0.679465575181126350155e-6,
-		0.285225331782217055858e-7,
-		-0.681149956853776992068e-9,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x less than 3.
-	erf_inv_impl_cd = [
-		1.0,
-		3.46625407242567245975,
-		5.38168345707006855425,
-		4.77846592945843778382,
-		2.59301921623620271374,
-		0.848854343457902036425,
-		0.152264338295331783612,
-		0.01105924229346489121,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 3 and 6.
-	erf_inv_impl_dn = [
-		-0.0350353787183177984712,
-		-0.00222426529213447927281,
-		0.0185573306514231072324,
-		0.00950804701325919603619,
-		0.00187123492819559223345,
-		0.000157544617424960554631,
-		0.460469890584317994083e-5,
-		-0.230404776911882601748e-9,
-		0.266339227425782031962e-11,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 3 and 6.
-	erf_inv_impl_dd = [
-		1.0,
-		1.3653349817554063097,
-		0.762059164553623404043,
-		0.220091105764131249824,
-		0.0341589143670947727934,
-		0.00263861676657015992959,
-		0.764675292302794483503e-4,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 6 and 18.
-	erf_inv_impl_en = [
-		-0.0167431005076633737133,
-		-0.00112951438745580278863,
-		0.00105628862152492910091,
-		0.000209386317487588078668,
-		0.149624783758342370182e-4,
-		0.449696789927706453732e-6,
-		0.462596163522878599135e-8,
-		-0.281128735628831791805e-13,
-		0.99055709973310326855e-16,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 6 and 18.
-	erf_inv_impl_ed = [
-		1.0,
-		0.591429344886417493481,
-		0.138151865749083321638,
-		0.0160746087093676504695,
-		0.000964011807005165528527,
-		0.275335474764726041141e-4,
-		0.282243172016108031869e-6,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 18 and 44.
-	erf_inv_impl_fn = [
-		-0.0024978212791898131227,
-		-0.779190719229053954292e-5,
-		0.254723037413027451751e-4,
-		0.162397777342510920873e-5,
-		0.396341011304801168516e-7,
-		0.411632831190944208473e-9,
-		0.145596286718675035587e-11,
-		-0.116765012397184275695e-17,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x between 18 and 44.
-	erf_inv_impl_fd = [
-		1.0,
-		0.207123112214422517181,
-		0.0169410838120975906478,
-		0.000690538265622684595676,
-		0.145007359818232637924e-4,
-		0.144437756628144157666e-6,
-		0.509761276599778486139e-9,
-	]
-
-	// Polynomial coefficients for a numerator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x greater than 44.
-	erf_inv_impl_gn = [
-		-0.000539042911019078575891,
-		-0.28398759004727721098e-6,
-		0.899465114892291446442e-6,
-		0.229345859265920864296e-7,
-		0.225561444863500149219e-9,
-		0.947846627503022684216e-12,
-		0.135880130108924861008e-14,
-		-0.348890393399948882918e-21,
-	]
-
-	// Polynomial coefficients for a denominator of `erf_inv_impl`
-	// in the interval [0.75, 1] with x greater than 44.
-	erf_inv_impl_gd = [
-		1.0,
-		0.0845746234001899436914,
-		0.00282092984726264681981,
-		0.468292921940894236786e-4,
-		0.399968812193862100054e-6,
-		0.161809290887904476097e-8,
-		0.231558608310259605225e-11,
-	]
+	erx  = 8.45062911510467529297e-01 // 0x3FEB0AC160000000
+	// Coefficients for approximation to  erf in [0, 0.84375]
+	efx  = 1.28379167095512586316e-01 // 0x3FC06EBA8214DB69
+	efx8 = 1.02703333676410069053e+00 // 0x3FF06EBA8214DB69
+	pp0  = 1.28379167095512558561e-01 // 0x3FC06EBA8214DB68
+	pp1  = -3.25042107247001499370e-01 // 0xBFD4CD7D691CB913
+	pp2  = -2.84817495755985104766e-02 // 0xBF9D2A51DBD7194F
+	pp3  = -5.77027029648944159157e-03 // 0xBF77A291236668E4
+	pp4  = -2.37630166566501626084e-05 // 0xBEF8EAD6120016AC
+	qq1  = 3.97917223959155352819e-01 // 0x3FD97779CDDADC09
+	qq2  = 6.50222499887672944485e-02 // 0x3FB0A54C5536CEBA
+	qq3  = 5.08130628187576562776e-03 // 0x3F74D022C4D36B0F
+	qq4  = 1.32494738004321644526e-04 // 0x3F215DC9221C1A10
+	qq5  = -3.96022827877536812320e-06 // 0xBED09C4342A26120
+	// Coefficients for approximation to  erf  in [0.84375, 1.25]
+	pa0  = -2.36211856075265944077e-03 // 0xBF6359B8BEF77538
+	pa1  = 4.14856118683748331666e-01 // 0x3FDA8D00AD92B34D
+	pa2  = -3.72207876035701323847e-01 // 0xBFD7D240FBB8C3F1
+	pa3  = 3.18346619901161753674e-01 // 0x3FD45FCA805120E4
+	pa4  = -1.10894694282396677476e-01 // 0xBFBC63983D3E28EC
+	pa5  = 3.54783043256182359371e-02 // 0x3FA22A36599795EB
+	pa6  = -2.16637559486879084300e-03 // 0xBF61BF380A96073F
+	qa1  = 1.06420880400844228286e-01 // 0x3FBB3E6618EEE323
+	qa2  = 5.40397917702171048937e-01 // 0x3FE14AF092EB6F33
+	qa3  = 7.18286544141962662868e-02 // 0x3FB2635CD99FE9A7
+	qa4  = 1.26171219808761642112e-01 // 0x3FC02660E763351F
+	qa5  = 1.36370839120290507362e-02 // 0x3F8BEDC26B51DD1C
+	qa6  = 1.19844998467991074170e-02 // 0x3F888B545735151D
+	// Coefficients for approximation to  erfc in [1.25, 1/0.35]
+	ra0  = -9.86494403484714822705e-03 // 0xBF843412600D6435
+	ra1  = -6.93858572707181764372e-01 // 0xBFE63416E4BA7360
+	ra2  = -1.05586262253232909814e+01 // 0xC0251E0441B0E726
+	ra3  = -6.23753324503260060396e+01 // 0xC04F300AE4CBA38D
+	ra4  = -1.62396669462573470355e+02 // 0xC0644CB184282266
+	ra5  = -1.84605092906711035994e+02 // 0xC067135CEBCCABB2
+	ra6  = -8.12874355063065934246e+01 // 0xC054526557E4D2F2
+	ra7  = -9.81432934416914548592e+00 // 0xC023A0EFC69AC25C
+	sa1  = 1.96512716674392571292e+01 // 0x4033A6B9BD707687
+	sa2  = 1.37657754143519042600e+02 // 0x4061350C526AE721
+	sa3  = 4.34565877475229228821e+02 // 0x407B290DD58A1A71
+	sa4  = 6.45387271733267880336e+02 // 0x40842B1921EC2868
+	sa5  = 4.29008140027567833386e+02 // 0x407AD02157700314
+	sa6  = 1.08635005541779435134e+02 // 0x405B28A3EE48AE2C
+	sa7  = 6.57024977031928170135e+00 // 0x401A47EF8E484A93
+	sa8  = -6.04244152148580987438e-02 // 0xBFAEEFF2EE749A62
+	// Coefficients for approximation to  erfc in [1/.35, 28]
+	rb0  = -9.86494292470009928597e-03 // 0xBF84341239E86F4A
+	rb1  = -7.99283237680523006574e-01 // 0xBFE993BA70C285DE
+	rb2  = -1.77579549177547519889e+01 // 0xC031C209555F995A
+	rb3  = -1.60636384855821916062e+02 // 0xC064145D43C5ED98
+	rb4  = -6.37566443368389627722e+02 // 0xC083EC881375F228
+	rb5  = -1.02509513161107724954e+03 // 0xC09004616A2E5992
+	rb6  = -4.83519191608651397019e+02 // 0xC07E384E9BDC383F
+	sb1  = 3.03380607434824582924e+01 // 0x403E568B261D5190
+	sb2  = 3.25792512996573918826e+02 // 0x40745CAE221B9F0A
+	sb3  = 1.53672958608443695994e+03 // 0x409802EB189D5118
+	sb4  = 3.19985821950859553908e+03 // 0x40A8FFB7688C246A
+	sb5  = 2.55305040643316442583e+03 // 0x40A3F219CEDF3BE6
+	sb6  = 4.74528541206955367215e+02 // 0x407DA874E79FE763
+	sb7  = -2.24409524465858183362e+01 // 0xC03670E242712D62
 )
 
-fn erf_inv_impl(p f64, q f64, s f64) f64 {
-	mut result := 0.0
-	if p <= 0.5 {
-		y := 0.0891314744949340820313
-		g := p * (p + 10.0)
-		r := polynomial(p, math.erf_inv_impl_an) / polynomial(p, math.erf_inv_impl_ad)
-		result = g * y + g * r
-	} else if q >= 0.25 {
-		y := 2.249481201171875
-		g := sqrt(-2.0 * log(q))
-		xs := q - 0.25
-		r := polynomial(xs, math.erf_inv_impl_bn) / polynomial(xs, math.erf_inv_impl_bd)
-		result = g / (y + r)
-	} else {
-		x := sqrt(-log(q))
-		if x < 3.0 {
-			y := 0.807220458984375
-			xs := x - 1.125
-			r := polynomial(xs, math.erf_inv_impl_cn) / polynomial(xs, math.erf_inv_impl_cd)
-			result = y * x + r * x
-		} else if x < 6.0 {
-			y := 0.93995571136474609375
-			xs := x - 3.0
-			r := polynomial(xs, math.erf_inv_impl_dn) / polynomial(xs, math.erf_inv_impl_dd)
-			result = y * x + r * x
-		} else if x < 18.0 {
-			y := 0.98362827301025390625
-			xs := x - 6.0
-			r := polynomial(xs, math.erf_inv_impl_en) / polynomial(xs, math.erf_inv_impl_ed)
-			result = y * x + r * x
-		} else if x < 44.0 {
-			y := 0.99714565277099609375
-			xs := x - 18.0
-			r := polynomial(xs, math.erf_inv_impl_fn) / polynomial(xs, math.erf_inv_impl_fd)
-			result = y * x + r * x
-		} else {
-			y := 0.99941349029541015625
-			xs := x - 44.0
-			r := polynomial(xs, math.erf_inv_impl_gn) / polynomial(xs, math.erf_inv_impl_gd)
-			result = y * x + r * x
-		}
-	}
-
-	return s * result
-}
-
-fn erf_impl(z f64, inv bool) f64 {
-	if z < 0.0 {
-		if !inv {
-			return -erf_impl(-z, false)
-		}
-		if z < -0.5 {
-			return 2.0 - erf_impl(-z, true)
-		}
-		return 1.0 + erf_impl(-z, false)
-	}
-	mut result := 0.0
-	if z < 0.5 {
-		if z < 1e-10 {
-			result = z * 1.125 + z * 0.003379167095512573896158903121545171688
-		} else {
-			result = z * 1.125 +
-				z * polynomial(z, math.erf_impl_an) / polynomial(z, math.erf_impl_ad)
-		}
-	} else if z < 110.0 {
-		mut r := 0.0
-		mut b := 0.0
-		if z < 0.75 {
-			r = polynomial(z - 0.5, math.erf_impl_bn) / polynomial(z - 0.5, math.erf_impl_bd)
-			b = 0.3440242112
-		} else if z < 1.25 {
-			r = polynomial(z - 0.75, math.erf_impl_cn) / polynomial(z - 0.75, math.erf_impl_cd)
-			b = 0.419990927
-		} else if z < 2.25 {
-			r = polynomial(z - 1.25, math.erf_impl_dn) / polynomial(z - 1.25, math.erf_impl_dd)
-			b = 0.4898625016
-		} else if z < 3.5 {
-			r = polynomial(z - 2.25, math.erf_impl_en) / polynomial(z - 2.25, math.erf_impl_ed)
-			b = 0.5317370892
-		} else if z < 5.25 {
-			r = polynomial(z - 3.5, math.erf_impl_fn) / polynomial(z - 3.5, math.erf_impl_fd)
-			b = 0.5489973426
-		} else if z < 8.0 {
-			r = polynomial(z - 5.25, math.erf_impl_gn) / polynomial(z - 5.25, math.erf_impl_gd)
-			b = 0.5571740866
-		} else if z < 11.5 {
-			r = polynomial(z - 8.0, math.erf_impl_hn) / polynomial(z - 8.0, math.erf_impl_hd)
-			b = 0.5609807968
-		} else if z < 17.0 {
-			r = polynomial(z - 11.5, math.erf_impl_in) / polynomial(z - 11.5, math.erf_impl_id)
-			b = 0.5626493692
-		} else if z < 24.0 {
-			r = polynomial(z - 17.0, math.erf_impl_jn) / polynomial(z - 17.0, math.erf_impl_jd)
-			b = 0.5634598136
-		} else if z < 38.0 {
-			r = polynomial(z - 24.0, math.erf_impl_kn) / polynomial(z - 24.0, math.erf_impl_kd)
-			b = 0.5638477802
-		} else if z < 60.0 {
-			r = polynomial(z - 38.0, math.erf_impl_ln) / polynomial(z - 38.0, math.erf_impl_ld)
-			b = 0.5640528202
-		} else if z < 85.0 {
-			r = polynomial(z - 60.0, math.erf_impl_mn) / polynomial(z - 60.0, math.erf_impl_md)
-			b = 0.5641309023
-		} else {
-			r = polynomial(z - 85.0, math.erf_impl_nn) / polynomial(z - 85.0, math.erf_impl_nd)
-			b = 0.5641584396
-		}
-
-		g := exp(-z * z) / z
-		result = g * b + g * r
-	} else {
-		result = 0.0
-	}
-	if inv && z >= 0.5 {
-		return result
-	} else if z >= 0.5 || inv {
-		return 1.0 - result
-	} else {
-		return result
-	}
-}
-
-/// 'erf' calculates the error function at `x`.
-pub fn erf(x f64) f64 {
+// erf returns the error function of x.
+//
+// special cases are:
+// erf(+inf) = 1
+// erf(-inf) = -1
+// erf(nan) = nan
+pub fn erf(a f64) f64 {
+	mut x := a
+	very_tiny := 2.848094538889218e-306 // 0x0080000000000000
+	small := 1.0 / (1 << 28) // 2**-28
 	if is_nan(x) {
 		return nan()
-	} else if is_inf(x, 1) {
+	}
+	if is_inf(x, 1) {
 		return 1.0
-	} else if is_inf(x, -1) {
-		return -1.0
-	} else if x == 0.0 {
-		return 0.0
-	} else {
-		return erf_impl(x, false)
 	}
+	if is_inf(x, -1) {
+		return f64(-1)
+	}
+	mut sign := false
+	if x < 0 {
+		x = -x
+		sign = true
+	}
+	if x < 0.84375 { // |x| < 0.84375
+		mut temp := 0.0
+		if x < small { // |x| < 2**-28
+			if x < very_tiny {
+				temp = 0.125 * (8.0 * x + math.efx8 * x) // avoid underflow
+			} else {
+				temp = x + math.efx * x
+			}
+		} else {
+			z := x * x
+			r := math.pp0 + z * (math.pp1 + z * (math.pp2 + z * (math.pp3 + z * math.pp4)))
+			s_ := 1.0 + z * (math.qq1 + z * (math.qq2 + z * (math.qq3 + z * (math.qq4 +
+				z * math.qq5))))
+			y := r / s_
+			temp = x + x * y
+		}
+		if sign {
+			return -temp
+		}
+		return temp
+	}
+	if x < 1.25 { // 0.84375 <= |x| < 1.25
+		s_ := x - 1
+		p := math.pa0 + s_ * (math.pa1 + s_ * (math.pa2 + s_ * (math.pa3 + s_ * (math.pa4 +
+			s_ * (math.pa5 + s_ * math.pa6)))))
+		q := 1.0 + s_ * (math.qa1 + s_ * (math.qa2 + s_ * (math.qa3 + s_ * (math.qa4 +
+			s_ * (math.qa5 + s_ * math.qa6)))))
+		if sign {
+			return -math.erx - p / q
+		}
+		return math.erx + p / q
+	}
+	if x >= 6 { // inf > |x| >= 6
+		if sign {
+			return -1
+		}
+		return 1.0
+	}
+	s_ := 1.0 / (x * x)
+	mut r := 0.0
+	mut s := 0.0
+	if x < 1.0 / 0.35 { // |x| < 1 / 0.35  ~ 2.857143
+		r = math.ra0 + s_ * (math.ra1 + s_ * (math.ra2 + s_ * (math.ra3 + s_ * (math.ra4 +
+			s_ * (math.ra5 + s_ * (math.ra6 + s_ * math.ra7))))))
+		s = 1.0 + s_ * (math.sa1 + s_ * (math.sa2 + s_ * (math.sa3 + s_ * (math.sa4 +
+			s_ * (math.sa5 + s_ * (math.sa6 + s_ * (math.sa7 + s_ * math.sa8)))))))
+	} else { // |x| >= 1 / 0.35  ~ 2.857143
+		r = math.rb0 + s_ * (math.rb1 + s_ * (math.rb2 + s_ * (math.rb3 + s_ * (math.rb4 +
+			s_ * (math.rb5 + s_ * math.rb6)))))
+		s = 1.0 + s_ * (math.sb1 + s_ * (math.sb2 + s_ * (math.sb3 + s_ * (math.sb4 +
+			s_ * (math.sb5 + s_ * (math.sb6 + s_ * math.sb7))))))
+	}
+	z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
+	r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)
+	if sign {
+		return r_ / x - 1.0
+	}
+	return 1.0 - r_ / x
 }
 
-// `erf_inv` calculates the inverse error function at `x`.
-pub fn erf_inv(x f64) f64 {
-	if x == 0 {
-		return 0.0
-	} else if x >= 1.0 {
-		return inf(1)
-	} else if x <= -1.0 {
-		return inf(-1)
-	} else if x < 0.0 {
-		return erf_inv_impl(-x, 1.0 + x, -1.0)
-	} else {
-		return erf_inv_impl(x, 1.0 - x, 1.0)
-	}
-}
-
-// `erfc` calculates the complementary error function at `x`.
-pub fn erfc(x f64) f64 {
+// erfc returns the complementary error function of x.
+//
+// special cases are:
+// erfc(+inf) = 0
+// erfc(-inf) = 2
+// erfc(nan) = nan
+pub fn erfc(a f64) f64 {
+	mut x := a
+	tiny := 1.0 / (1 << 56) // 2**-56
+	// special cases
 	if is_nan(x) {
 		return nan()
-	} else if is_inf(x, 1) {
+	}
+	if is_inf(x, 1) {
 		return 0.0
-	} else if is_inf(x, -1) {
+	}
+	if is_inf(x, -1) {
 		return 2.0
-	} else {
-		return erf_impl(x, true)
 	}
-}
-
-// `erfc_inv` calculates the complementary inverse error function at `x`.
-pub fn erfc_inv(x f64) f64 {
-	if x <= 0.0 {
-		return inf(1)
-	} else if x >= 2.0 {
-		return inf(-1)
-	} else if is_inf(x, -1) {
-		return erf_inv_impl(-1.0 + x, 2.0 - x, -1.0)
-	} else {
-		return erf_inv_impl(1.0 - x, x, 1.0)
+	mut sign := false
+	if x < 0 {
+		x = -x
+		sign = true
 	}
+	if x < 0.84375 { // |x| < 0.84375
+		mut temp := 0.0
+		if x < tiny { // |x| < 2**-56
+			temp = x
+		} else {
+			z := x * x
+			r := math.pp0 + z * (math.pp1 + z * (math.pp2 + z * (math.pp3 + z * math.pp4)))
+			s_ := 1.0 + z * (math.qq1 + z * (math.qq2 + z * (math.qq3 + z * (math.qq4 +
+				z * math.qq5))))
+			y := r / s_
+			if x < 0.25 { // |x| < 1.0/4
+				temp = x + x * y
+			} else {
+				temp = 0.5 + (x * y + (x - 0.5))
+			}
+		}
+		if sign {
+			return 1.0 + temp
+		}
+		return 1.0 - temp
+	}
+	if x < 1.25 { // 0.84375 <= |x| < 1.25
+		s_ := x - 1
+		p := math.pa0 + s_ * (math.pa1 + s_ * (math.pa2 + s_ * (math.pa3 + s_ * (math.pa4 +
+			s_ * (math.pa5 + s_ * math.pa6)))))
+		q := 1.0 + s_ * (math.qa1 + s_ * (math.qa2 + s_ * (math.qa3 + s_ * (math.qa4 +
+			s_ * (math.qa5 + s_ * math.qa6)))))
+		if sign {
+			return 1.0 + math.erx + p / q
+		}
+		return 1.0 - math.erx - p / q
+	}
+	if x < 28 { // |x| < 28
+		s_ := 1.0 / (x * x)
+		mut r := 0.0
+		mut s := 0.0
+		if x < 1.0 / 0.35 { // |x| < 1 / 0.35 ~ 2.857143
+			r = math.ra0 + s_ * (math.ra1 + s_ * (math.ra2 + s_ * (math.ra3 + s_ * (math.ra4 +
+				s_ * (math.ra5 + s_ * (math.ra6 + s_ * math.ra7))))))
+			s = 1.0 + s_ * (math.sa1 + s_ * (math.sa2 + s_ * (math.sa3 + s_ * (math.sa4 +
+				s_ * (math.sa5 + s_ * (math.sa6 + s_ * (math.sa7 + s_ * math.sa8)))))))
+		} else { // |x| >= 1 / 0.35 ~ 2.857143
+			if sign && x > 6 {
+				return 2.0 // x < -6
+			}
+			r = math.rb0 + s_ * (math.rb1 + s_ * (math.rb2 + s_ * (math.rb3 + s_ * (math.rb4 +
+				s_ * (math.rb5 + s_ * math.rb6)))))
+			s = 1.0 + s_ * (math.sb1 + s_ * (math.sb2 + s_ * (math.sb3 + s_ * (math.sb4 +
+				s_ * (math.sb5 + s_ * (math.sb6 + s_ * math.sb7))))))
+		}
+		z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
+		r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)
+		if sign {
+			return 2.0 - r_ / x
+		}
+		return r_ / x
+	}
+	if sign {
+		return 2.0
+	}
+	return 0.0
 }
