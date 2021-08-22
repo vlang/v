@@ -474,7 +474,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 				}
 			}
 			SumType {
-				t.resolve_common_sumtype_fields(s)
+				t.resolve_common_sumtype_fields(ts)
 				if field := ts.info.find_field(name) {
 					return field
 				}
