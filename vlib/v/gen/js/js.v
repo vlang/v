@@ -1875,7 +1875,6 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
 	mut cond_var := ''
 	mut tmp_var := ''
-	mut cur_line := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary = true
 	}
