@@ -961,4 +961,3 @@ fn test_large_tan() {
 		assert soclose(f1, f2, 4e-8)
 	}
 }
-

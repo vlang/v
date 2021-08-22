@@ -17,13 +17,13 @@ const (
 
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.
 pub fn inf(sign int) f64 {
-	v := if sign >= 0 { uvinf } else { uvneginf }
+	v := if sign >= 0 { math.uvinf } else { math.uvneginf }
 	return f64_from_bits(v)
 }
 
 // nan returns an IEEE 754 ``not-a-number'' value.
 pub fn nan() f64 {
-	return f64_from_bits(uvnan)
+	return f64_from_bits(math.uvnan)
 }
 
 // is_nan reports whether f is an IEEE 754 ``not-a-number'' value.
