@@ -1,0 +1,4 @@
+- [x] Move `vsl/vmath` to `vlib/math` as default backend
+- [ ] Implement `log` in pure V
+- [ ] Implement `pow` in pure V
+- [ ] Define functions for initial release of hardware implementations
