@@ -36,7 +36,6 @@ fn poly_1_eval(c []f64, x f64) f64 {
 	return poly_n_1_eval(c, c.len, x)
 }
 
-
 // data for a Chebyshev series over a given interval
 struct ChebSeries {
 pub:

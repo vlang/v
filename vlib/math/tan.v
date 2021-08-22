@@ -49,9 +49,8 @@ pub fn tan(a f64) f64 {
 	z = ((x - y * math.tan_dp1) - y * math.tan_dp2) - y * math.tan_dp3
 	zz := z * z
 	if zz > 1.0e-14 {
-		y = z + z * (zz * (((math.tan_p[0] * zz) + math.tan_p[1]) * zz +
-			math.tan_p[2]) / ((((zz + math.tan_q[1]) * zz + math.tan_q[2]) * zz +
-			math.tan_q[3]) * zz + math.tan_q[4]))
+		y = z + z * (zz * (((math.tan_p[0] * zz) + math.tan_p[1]) * zz + math.tan_p[2]) / ((((zz +
+			math.tan_q[1]) * zz + math.tan_q[2]) * zz + math.tan_q[3]) * zz + math.tan_q[4]))
 	} else {
 		y = z
 	}
@@ -69,7 +68,6 @@ pub fn tan(a f64) f64 {
 pub fn tanf(a f32) f32 {
 	return f32(tan(a))
 }
-
 
 // tan calculates cotangent of a number
 pub fn cot(a f64) f64 {
@@ -98,9 +96,8 @@ pub fn cot(a f64) f64 {
 	z = ((x - y * math.tan_dp1) - y * math.tan_dp2) - y * math.tan_dp3
 	zz := z * z
 	if zz > 1.0e-14 {
-		y = z + z * (zz * (((math.tan_p[0] * zz) + math.tan_p[1]) * zz +
-			math.tan_p[2]) / ((((zz + math.tan_q[1]) * zz + math.tan_q[2]) * zz +
-			math.tan_q[3]) * zz + math.tan_q[4]))
+		y = z + z * (zz * (((math.tan_p[0] * zz) + math.tan_p[1]) * zz + math.tan_p[2]) / ((((zz +
+			math.tan_q[1]) * zz + math.tan_q[2]) * zz + math.tan_q[3]) * zz + math.tan_q[4]))
 	} else {
 		y = z
 	}
