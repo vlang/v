@@ -623,8 +623,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = unsafe { &ch.write_subscriber }
 			unsafe {
-				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
-					&subscr[i])
+				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
+					&subscr[i]))
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
@@ -637,7 +637,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = unsafe { &ch.read_subscriber }
 			unsafe {
-				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber), &subscr[i])
+				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
+					&subscr[i]))
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
