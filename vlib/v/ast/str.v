@@ -28,7 +28,7 @@ pub fn (node &FnDecl) fkey() string {
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.$node.name'
+		return '${int(node.receiver_type.set_nr_muls(0))}.$node.name'
 	}
 	return node.name
 }
