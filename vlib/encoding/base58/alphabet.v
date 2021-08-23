@@ -1,15 +1,22 @@
 module base58
 
 // alphabets is a map of common base58 alphabets
-pub const alphabets = {
-	'btc':    new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
-		panic(@MOD + '.' + @FN + ': this should never happen')
-	}
-	'flickr': new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
-		panic(@MOD + '.' + @FN + ': this should never happen')
-	}
-	'ripple': new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
-		panic(@MOD + '.' + @FN + ': this should never happen')
+pub const alphabets = init_alphabets()
+
+// init_alphabet instantiates the preconfigured `Alphabet`s and returns them as `map[string]Alphabet`.
+// This is a temporary function. Setting const alphabets to the value returned in this function
+// causes a C error right now.
+fn init_alphabets() map[string]Alphabet {
+	return {
+		'btc':    new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
+			panic(@MOD + '.' + @FN + ': this should never happen')
+		}
+		'flickr': new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
+			panic(@MOD + '.' + @FN + ': this should never happen')
+		}
+		'ripple': new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
+			panic(@MOD + '.' + @FN + ': this should never happen')
+		}
 	}
 }
 
@@ -22,7 +29,7 @@ mut:
 }
 
 // str returns an Alphabet encode table byte array as a string
-pub fn (alphabet &Alphabet) str() string {
+pub fn (alphabet Alphabet) str() string {
 	// i guess i had a brain fart here. Why would I actually use this code?!
 	// mut str := []byte{}
 	// for entry in alphabet.encode {
@@ -34,12 +41,12 @@ pub fn (alphabet &Alphabet) str() string {
 
 // new_alphabet instantiates an Alphabet object based on
 // the provided characters
-pub fn new_alphabet_opt(str string) ?&Alphabet {
+pub fn new_alphabet(str string) ?Alphabet {
 	if str.len != 58 {
-		return error('base58 > new_alphabet(string): string must be 58 characters in length')
+		return error(@MOD + '.' + @FN + ': string must be 58 characters in length')
 	}
 
-	mut ret := &Alphabet{}
+	mut ret := Alphabet{}
 	copy(ret.encode, str.bytes())
 
 	mut distinct := 0
@@ -51,7 +58,7 @@ pub fn new_alphabet_opt(str string) ?&Alphabet {
 	}
 
 	if distinct != 58 {
-		return error('base58 > new_alphabet(string): string must not contain repeating characters')
+		return error(@MOD + '.' + @FN + ': string must not contain repeating characters')
 	}
 
 	return ret
