@@ -38,7 +38,7 @@ fn main() {
 		bg_color: gx.rgb(174, 198, 255)
 		width: 600
 		height: 400
-		window_title: 'Cubic Bézier'
+		window_title: 'Animated cubic Bézier curve'
 		frame_fn: frame
 		user_data: app
 	)

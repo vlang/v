@@ -674,7 +674,7 @@ pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
 	sgl.end()
 }
 
-// draw_cubic_bezier draws a cubic Bézer curve, also known as a spline, from four points.
+// draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
 // The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
 // Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
 // Please see `draw_cubic_bezier_in_steps` to control the amount of steps (segments) used to draw the curve.
@@ -682,7 +682,7 @@ pub fn (ctx &Context) draw_cubic_bezier(points []f32, control_points []f32, c gx
 	ctx.draw_cubic_bezier_in_steps(points, control_points, u32(30 * ctx.scale), c)
 }
 
-// draw_cubic_bezier_in_steps draws a cubic Bézer curve, also known as a spline, from four points.
+// draw_cubic_bezier_in_steps draws a cubic Bézier curve, also known as a spline, from four points.
 // The smoothness of the curve can be controlled with the `steps` parameter. `steps` determines how many iterations is
 // taken to draw the curve.
 // The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
