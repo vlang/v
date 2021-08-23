@@ -1595,6 +1595,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			}
 		}
 	}
+
 	// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
 	g.write('Object.getPrototypeOf(')
 	g.expr(it.left)
@@ -1660,6 +1661,15 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	g.call_stack << it
 	mut name := g.js_name(it.name)
+	ret_sym := g.table.get_type_symbol(it.return_type)
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
+		g.write('new ')
+		if g.ns.name != 'builtin' {
+			g.write('builtin.')
+		}
+		g.write(ret_sym.name)
+		g.write('(')
+	}
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		g.writeln('(function(){')
@@ -1717,6 +1727,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
+		g.write(')')
+	}
 	g.call_stack.delete_last()
 }
 
@@ -1761,7 +1774,7 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	return false
 }
 
-fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
 	type_sym := g.table.get_type_symbol(node.cond_type)
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
@@ -1801,27 +1814,37 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var s
 				}
 				match type_sym.kind {
 					.array {
-						g.write('vEq($cond_var, ')
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
 						g.expr(expr)
 						g.write(')')
 					}
 					.array_fixed {
-						g.write('vEq($cond_var, ')
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
 						g.expr(expr)
 						g.write(')')
 					}
 					.map {
-						g.write('vEq($cond_var, ')
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
 						g.expr(expr)
 						g.write(')')
 					}
 					.string {
-						g.write('vEq($cond_var, ')
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
 						g.expr(expr)
 						g.write(')')
 					}
 					.struct_ {
-						g.write('vEq($cond_var, ')
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
 						g.expr(expr)
 						g.write(')')
 					}
@@ -1837,15 +1860,19 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var s
 							}
 							g.write('(')
 							if !skip_low {
-								g.write('$cond_var >= ')
+								g.match_cond(cond_var)
+								g.write(' >= ')
 								g.expr(expr.low)
 								g.write(' && ')
 							}
-							g.write('$cond_var <= ')
+							g.match_cond(cond_var)
+							g.write(' <= ')
 							g.expr(expr.high)
 							g.write(')')
 						} else {
-							g.write('vEq($cond_var,')
+							g.write('vEq(')
+							g.match_cond(cond_var)
+							g.write(',')
 							g.expr(expr)
 							g.write(')')
 						}
@@ -1865,6 +1892,27 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var s
 	}
 }
 
+type MatchCond = CondExpr | CondString
+
+struct CondString {
+	s string
+}
+
+struct CondExpr {
+	expr ast.Expr
+}
+
+fn (mut g JsGen) match_cond(cond MatchCond) {
+	match cond {
+		CondString {
+			g.writeln(cond.s)
+		}
+		CondExpr {
+			g.expr(cond.expr)
+		}
+	}
+}
+
 fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	if node.cond_type == 0 {
 		g.writeln('// match 0')
@@ -1873,16 +1921,22 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	prev := g.inside_ternary
 	need_tmp_var := g.need_tmp_var_in_match(node)
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
-	mut cond_var := ''
+	mut cond_var := MatchCond(CondString{''})
 	mut tmp_var := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary = true
 	}
 
-	cond_var = g.new_tmp_var()
-	g.write('let $cond_var = ')
-	g.expr(node.cond)
-	g.write(';')
+	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
+		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
+		cond_var = CondExpr{node.cond}
+	} else {
+		s := g.new_tmp_var()
+		cond_var = CondString{s}
+		g.write('let $s = ')
+		g.expr(node.cond)
+		g.writeln(';')
+	}
 	if need_tmp_var {
 		tmp_var = g.new_tmp_var()
 		g.writeln('let $tmp_var = undefined;')
@@ -1927,7 +1981,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	}
 }
 
-fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		for {
@@ -1954,7 +2008,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var s
 				} else {
 					g.write('if (')
 				}
-				g.write(cond_var)
+				g.match_cond(cond_var)
 				if sym.kind == .sum_type {
 					g.write(' instanceof ')
 					g.expr(branch.exprs[sumtype_index])
@@ -2669,20 +2723,20 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		// if call.language == .js {
-		for i, t in call.args {
-			if t.expr is ast.FloatLiteral {
-				if t.expr == it {
-					if call.expected_arg_types[i] in ast.integer_type_idxs {
-						g.write(int(it.val.f64()).str())
-					} else {
-						g.write(it.val)
+		if call.language == .js {
+			for i, t in call.args {
+				if t.expr is ast.FloatLiteral {
+					if t.expr == it {
+						if call.expected_arg_types[i] in ast.integer_type_idxs {
+							g.write(int(it.val.f64()).str())
+						} else {
+							g.write(it.val)
+						}
+						return
 					}
-					return
 				}
 			}
 		}
-		//}
 	}
 
 	// Skip cast if type is the same as the parrent caster
