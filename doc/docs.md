@@ -5400,6 +5400,37 @@ fn custom_allocations() {
 struct C.Foo {
 }
 
+// [flag] enables Enum types to be used as bitfields
+[flag]
+enum BitField {
+	read
+	write
+	other
+}
+
+struct BitFieldExample {
+mut:
+	flags BitField
+}
+
+fn example_enum_as_bitfield_use() {
+	assert 1 == int(BitField.read)
+	assert 2 == int(BitField.write)
+ 
+	mut ex := BitFieldExample{}
+	ex.flags.set(.read)
+	ex.flags.set(.write)
+	ex.flags.toggle(.write)
+	ex.flags.clear(.write)
+	
+	assert ex.flags.has(.read)
+	assert !ex.flags.has(.write)
+	
+	mut bf := BitField.read
+	bf.set(.write | .other)
+	assert bf.has(.read | .write | .other)
+}
+
 // Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
