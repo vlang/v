@@ -7,22 +7,25 @@ import v.util
 import v.ast
 import v.vmod
 import v.checker
+import v.transformer
 import v.parser
-import v.depgraph
 import v.markused
+import v.depgraph
+import v.callgraph
+import v.dotgraph
 
 pub struct Builder {
 pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path  string
 mut:
-	pref          &pref.Preferences
-	checker       &checker.Checker
-	out_name_c    string
-	out_name_js   string
-	max_nr_errors int = 100
-	stats_lines   int // size of backend generated source code in lines
-	stats_bytes   int // size of backend generated source code in bytes
+	pref        &pref.Preferences
+	checker     &checker.Checker
+	transformer &transformer.Transformer
+	out_name_c  string
+	out_name_js string
+	stats_lines int // size of backend generated source code in lines
+	stats_bytes int // size of backend generated source code in bytes
 pub mut:
 	module_search_paths []string
 	parsed_files        []&ast.File
@@ -51,15 +54,17 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		}
 	}
 	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
+	if pref.show_callgraph || pref.show_depgraph {
+		dotgraph.start_digraph()
+	}
 	return Builder{
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
+		transformer: transformer.new_transformer(pref)
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
 	}
-	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
 
 pub fn (mut b Builder) front_stages(v_files []string) ? {
@@ -81,10 +86,16 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	util.timing_start('TRANSFORM')
+	b.transformer.transform_files(b.parsed_files)
+	util.timing_measure('TRANSFORM')
 	//
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+	if b.pref.show_callgraph {
+		callgraph.show(mut b.table, b.pref, b.parsed_files)
 	}
 }
 
@@ -175,6 +186,9 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln('------ resolved dependencies graph: ------')
 		eprintln(deps_resolved.display())
 		eprintln('------------------------------------------')
+	}
+	if b.pref.show_depgraph {
+		depgraph.show(deps_resolved, b.pref.path)
 	}
 	cycles := deps_resolved.display_cycles()
 	if cycles.len > 1 {
@@ -325,8 +339,8 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 		return
 	}
 	if b.pref.is_stats {
-		estring := util.bold(b.checker.nr_errors.str())
-		wstring := util.bold(b.checker.nr_warnings.str())
+		estring := util.bold(b.checker.errors.len.str())
+		wstring := util.bold(b.checker.warnings.len.str())
 		nstring := util.bold(b.checker.nr_notices.str())
 		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
 	}
@@ -349,7 +363,7 @@ fn (b &Builder) print_warnings_and_errors() {
 		println('$b.checker.nr_notices notices')
 	}
 	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
-		for i, err in b.checker.notices {
+		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
 				'$err.reporter notice #$b.checker.nr_notices:'
 			} else {
@@ -360,13 +374,10 @@ fn (b &Builder) print_warnings_and_errors() {
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
 			}
-			if i > b.max_nr_errors {
-				return
-			}
 		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
-		for i, err in b.checker.warnings {
+		for err in b.checker.warnings {
 			kind := if b.pref.is_verbose {
 				'$err.reporter warning #$b.checker.nr_warnings:'
 			} else {
@@ -377,10 +388,6 @@ fn (b &Builder) print_warnings_and_errors() {
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
 			}
-			// eprintln('')
-			if i > b.max_nr_errors {
-				return
-			}
 		}
 	}
 	//
@@ -388,7 +395,7 @@ fn (b &Builder) print_warnings_and_errors() {
 		println('$b.checker.nr_errors errors')
 	}
 	if b.checker.nr_errors > 0 {
-		for i, err in b.checker.errors {
+		for err in b.checker.errors {
 			kind := if b.pref.is_verbose {
 				'$err.reporter error #$b.checker.nr_errors:'
 			} else {
@@ -398,10 +405,6 @@ fn (b &Builder) print_warnings_and_errors() {
 			eprintln(ferror)
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
-			}
-			// eprintln('')
-			if i > b.max_nr_errors {
-				return
 			}
 		}
 		b.show_total_warns_and_errors_stats()

@@ -9,6 +9,12 @@ function vEq(a, b) {
 
 	if (a && b && typeof a == 'object' && typeof b == 'object') {
 		if (a.constructor !== b.constructor) return false;
+		// we want to convert all V types to JS for comparison.
+		if ('\$toJS' in a)
+			a = a.\$toJS();
+
+		if ('\$toJS' in b)
+			b = b.\$toJS();
 
 		var length, i, keys;
 		if (Array.isArray(a)) {
@@ -68,5 +74,16 @@ function vEq(a, b) {
 	// true if both NaN, false otherwise
 	return a!==a && b!==b;
 };
+
+function \$sortComparator(a, b)
+{
+a = a.\$toJS();
+b = b.\$toJS();
+if (a > b) return 1;
+if (a < b) return -1;
+return 0;
+
+
+}
 "
 )

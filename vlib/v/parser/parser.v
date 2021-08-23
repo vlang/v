@@ -79,6 +79,7 @@ mut:
 	inside_defer        bool
 	comp_if_cond        bool
 	defer_vars          []ast.Ident
+	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 }
 
 // for tests
@@ -267,6 +268,9 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.attrs = []
 		}
 		stmts << stmt
+		if p.should_abort {
+			break
+		}
 	}
 	p.scope.end_pos = p.tok.pos
 	return &ast.File{
@@ -579,6 +583,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 			}
 		}
+		if p.should_abort {
+			break
+		}
 	}
 	// TODO remove dummy return statement
 	// the compiler complains if it's not there
@@ -674,7 +681,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.tok.lit == 'sql' {
+			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
 				return p.sql_stmt()
 			}
 			if p.peek_tok.kind == .colon {
@@ -1067,7 +1074,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		output: output
 		input: input
 		clobbered: clobbered
-		pos: pos.extend(p.tok.position())
+		pos: pos.extend(p.prev_tok.position())
 		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
 		scope: scope
 		global_labels: global_labels
@@ -1649,6 +1656,10 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
+		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.errors << error
 	}
 	if p.pref.output_mode == .silent {
@@ -1672,6 +1683,10 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
+		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.warnings << errors.Warning{
 			file_path: p.file_name
 			pos: pos
@@ -1784,49 +1799,49 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
-	if p.tok.kind == .name {
-		pos := p.tok.position()
-		mut name := p.check_name()
-		if name == '_' {
-			return ast.Ident{
-				tok_kind: p.tok.kind
-				name: '_'
-				comptime: p.comp_if_cond
-				kind: .blank_ident
-				pos: pos
-				info: ast.IdentVar{
-					is_mut: false
-					is_static: false
-				}
-				scope: p.scope
-			}
+	if p.tok.kind != .name {
+		p.error('unexpected token `$p.tok.lit`')
+		return ast.Ident{
+			scope: p.scope
 		}
-		if p.inside_match_body && name == 'it' {
-			// p.warn('it')
-		}
-		if p.expr_mod.len > 0 {
-			name = '${p.expr_mod}.$name'
-		}
+	}
+	pos := p.tok.position()
+	mut name := p.check_name()
+	if name == '_' {
 		return ast.Ident{
 			tok_kind: p.tok.kind
-			kind: .unresolved
-			name: name
+			name: '_'
 			comptime: p.comp_if_cond
-			language: language
-			mod: p.mod
+			kind: .blank_ident
 			pos: pos
-			is_mut: is_mut
-			mut_pos: mut_pos
 			info: ast.IdentVar{
-				is_mut: is_mut
-				is_static: is_static
-				share: ast.sharetype_from_flags(is_shared, is_atomic)
+				is_mut: false
+				is_static: false
 			}
 			scope: p.scope
 		}
 	}
-	p.error('unexpected token `$p.tok.lit`')
+	if p.inside_match_body && name == 'it' {
+		// p.warn('it')
+	}
+	if p.expr_mod.len > 0 {
+		name = '${p.expr_mod}.$name'
+	}
 	return ast.Ident{
+		tok_kind: p.tok.kind
+		kind: .unresolved
+		name: name
+		comptime: p.comp_if_cond
+		language: language
+		mod: p.mod
+		pos: pos
+		is_mut: is_mut
+		mut_pos: mut_pos
+		info: ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+			share: ast.sharetype_from_flags(is_shared, is_atomic)
+		}
 		scope: p.scope
 	}
 }
@@ -2093,7 +2108,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in ast.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
 			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
-			|| (language == .v && name[0].is_capital()) {
+			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
@@ -2147,6 +2162,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return map_init
 		}
 		return p.struct_init(false) // short_syntax: false
+	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
+		&& language == .v {
+		// if a == Foo{} {...}
+		return p.struct_init(false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
@@ -2154,6 +2173,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			name := p.check_name()
 			p.check(.dot)
 			field := p.check_name()
+			fkind := match field {
+				'name' { ast.GenericKindField.name }
+				'typ' { ast.GenericKindField.typ }
+				else { ast.GenericKindField.unknown }
+			}
 			pos.extend(p.tok.position())
 			return ast.SelectorExpr{
 				expr: ast.Ident{
@@ -2161,6 +2185,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					scope: p.scope
 				}
 				field_name: field
+				gkind_field: fkind
 				pos: pos
 				scope: p.scope
 			}
@@ -2208,7 +2233,12 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		has_low = false
 		// [..end]
 		p.next()
-		high := p.expr(0)
+		mut high := ast.empty_expr()
+		mut has_high := false
+		if p.tok.kind != .rsbr {
+			high = p.expr(0)
+			has_high = true
+		}
 		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
@@ -2217,7 +2247,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			index: ast.RangeExpr{
 				low: ast.empty_expr()
 				high: high
-				has_high: true
+				has_high: has_high
 				pos: pos
 			}
 		}
@@ -2830,7 +2860,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
@@ -2887,7 +2917,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// no return
-	mut comments := p.eat_comments({})
+	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			comments: comments
@@ -2927,7 +2957,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut fields := []ast.GlobalField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.GlobalDecl{}
@@ -2938,24 +2968,47 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		pos := p.tok.position()
 		name := p.check_name()
 		has_expr := p.tok.kind == .assign
+		mut expr := ast.empty_expr()
+		mut typ := ast.void_type
+		mut typ_pos := token.Position{}
 		if has_expr {
 			p.next() // =
-		}
-		typ_pos := p.tok.position()
-		typ := p.parse_type()
-		if p.tok.kind == .assign {
-			p.error('global assign must have the type around the value, use `name = type(value)`')
-			return ast.GlobalDecl{}
-		}
-		mut expr := ast.empty_expr()
-		if has_expr {
-			if p.tok.kind != .lpar {
-				p.error('global assign must have a type and value, use `name = type(value)` or `name type`')
-				return ast.GlobalDecl{}
-			}
-			p.next() // (
 			expr = p.expr(0)
-			p.check(.rpar)
+			match expr {
+				ast.CastExpr {
+					typ = (expr as ast.CastExpr).typ
+				}
+				ast.StructInit {
+					typ = (expr as ast.StructInit).typ
+				}
+				ast.ArrayInit {
+					typ = (expr as ast.ArrayInit).typ
+				}
+				ast.ChanInit {
+					typ = (expr as ast.ChanInit).typ
+				}
+				ast.BoolLiteral, ast.IsRefType {
+					typ = ast.bool_type
+				}
+				ast.CharLiteral {
+					typ = ast.char_type
+				}
+				ast.FloatLiteral {
+					typ = ast.f64_type
+				}
+				ast.IntegerLiteral, ast.SizeOf {
+					typ = ast.int_type
+				}
+				ast.StringLiteral, ast.StringInterLiteral {
+					typ = ast.string_type
+				}
+				else {
+					// type will be deduced by checker
+				}
+			}
+		} else {
+			typ_pos = p.tok.position()
+			typ = p.parse_type()
 		}
 		field := ast.GlobalField{
 			name: name
@@ -2978,6 +3031,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 	return ast.GlobalDecl{
 		pos: start_pos.extend(p.prev_tok.position())
+		mod: p.mod
 		fields: fields
 		end_comments: comments
 		is_block: is_block
@@ -3006,7 +3060,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments({})
+	enum_decl_comments := p.eat_comments()
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -3028,7 +3082,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr: expr
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
-			next_comments: p.eat_comments({})
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -3074,7 +3128,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
 			end_pos)
 	}
-	return ast.EnumDecl{
+
+	enum_decl := ast.EnumDecl{
 		name: name
 		is_pub: is_pub
 		is_flag: is_flag
@@ -3084,6 +3139,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
+
+	p.table.register_enum_decl(enum_decl)
+
+	return enum_decl
 }
 
 fn (mut p Parser) type_decl() ast.TypeDecl {
@@ -3095,6 +3154,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.key_type)
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
+	name_pos := p.tok.position()
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
@@ -3108,6 +3168,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	mut sum_variants := []ast.TypeNode{}
 	generic_types := p.parse_generic_type_list()
+	decl_pos_with_generics := decl_pos.extend(p.prev_tok.position())
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3133,7 +3194,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << {
+		sum_variants << ast.TypeNode{
 			typ: first_type
 			pos: type_pos
 		}
@@ -3145,7 +3206,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			prev_tok := p.prev_tok
 			type_end_pos = prev_tok.position()
 			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << {
+			sum_variants << ast.TypeNode{
 				typ: variant_type
 				pos: type_pos
 			}
@@ -3168,6 +3229,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
+		if typ == -1 {
+			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
+				name_pos)
+			return ast.SumTypeDecl{}
+		}
 		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
@@ -3180,6 +3246,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	// type MyType = int
+	if generic_types.len > 0 {
+		p.error_with_pos('generic type aliases are not yet implemented', decl_pos_with_generics)
+		return ast.AliasTypeDecl{}
+	}
 	parent_type := first_type
 	parent_sym := p.table.get_type_symbol(parent_type)
 	pidx := parent_type.idx()
@@ -3200,7 +3270,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	type_end_pos := p.prev_tok.position()
 	if idx == -1 {
 		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
-			decl_pos.extend(type_alias_pos))
+			name_pos)
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {

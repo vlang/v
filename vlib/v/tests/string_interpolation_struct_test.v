@@ -42,7 +42,7 @@ struct Info {
 fn test_struct_map_field_string_interpolation() {
 	info := Info{
 		name: 'test'
-		dict: map{
+		dict: {
 			'a': int(1)
 			'b': 2
 		}

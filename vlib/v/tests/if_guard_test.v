@@ -26,7 +26,7 @@ fn test_fn_return_empty() {
 }
 
 fn test_map_get() {
-	mut m := map{
+	mut m := {
 		'xy': 5
 		'zu': 7
 	}
@@ -42,7 +42,7 @@ fn test_map_get() {
 }
 
 fn test_map_get_empty() {
-	mut m := map{
+	mut m := {
 		'xy': 5
 		'zu': 7
 	}

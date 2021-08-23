@@ -55,7 +55,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 		cap: cap_
 	}
 	for i in 0 .. arr.len {
-		val_clone := val.clone()
+		val_clone := unsafe { val.clone_to_depth(1) }
 		unsafe { arr.set_unsafe(i, &val_clone) }
 	}
 	return arr
@@ -71,7 +71,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	unsafe { C.memcpy(arr.data, c_array, len * elm_size) }
+	unsafe { vmemcpy(arr.data, c_array, len * elm_size) }
 	return arr
 }
 
@@ -98,7 +98,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	new_data := vcalloc(new_size)
 	if a.data != voidptr(0) {
-		unsafe { C.memcpy(new_data, a.data, a.len * a.element_size) }
+		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
 	a.data = new_data
@@ -136,9 +136,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		for i in 0 .. count {
 			if depth > 0 {
 				ary_clone := unsafe { a.clone_to_depth(depth) }
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 			} else {
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 			}
 		}
 	}
@@ -150,7 +150,7 @@ pub fn (mut a array) sort_with_compare(compare voidptr) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		C.qsort(a.data, a.len, a.element_size, compare)
+		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), compare) }
 	}
 }
 
@@ -163,7 +163,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	}
 	a.ensure_cap(a.len + 1)
 	unsafe {
-		C.memmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
+		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
 		a.set_unsafe(i, val)
 	}
 	a.len++
@@ -181,8 +181,8 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
-		C.memmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
-		C.memcpy(iptr, val, size * elem_size)
+		vmemmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
+		vmemcpy(iptr, val, size * elem_size)
 	}
 	a.len += size
 }
@@ -200,15 +200,30 @@ pub fn (mut a array) prepend_many(val voidptr, size int) {
 
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
+	a.delete_many(i, 1)
+}
+
+// delete_many deletes `size` elements beginning with index `i`
+pub fn (mut a array) delete_many(i int, size int) {
 	$if !no_bounds_checking ? {
-		if i < 0 || i >= a.len {
-			panic('array.delete: index out of range (i == $i, a.len == $a.len)')
+		if i < 0 || i + size > a.len {
+			endidx := if size > 1 { '..${i + size}' } else { '' }
+			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
 		}
 	}
 	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
-	unsafe { C.memmove(a.get_unsafe(i), a.get_unsafe(i + 1), (a.len - i - 1) * a.element_size) }
-	a.len--
+	old_data := a.data
+	new_size := a.len - size
+	new_cap := if new_size == 0 { 1 } else { new_size }
+	a.data = vcalloc(new_cap * a.element_size)
+	unsafe { vmemcpy(a.data, old_data, i * a.element_size) }
+	unsafe {
+		vmemcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
+			(a.len - i - size) * a.element_size)
+	}
+	a.len = new_size
+	a.cap = new_cap
 }
 
 // clear clears the array without deallocating the allocated data.
@@ -367,17 +382,17 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	if depth > 0 {
+	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
 	} else {
 		if !isnil(a.data) {
-			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
+			unsafe { vmemcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
 	}
@@ -386,7 +401,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 // we manually inline this for single operations for performance without -prod
 [inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
-	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 // Private function. Used to implement assigment to the array element.
@@ -396,12 +411,12 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	unsafe { C.memmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
@@ -414,13 +429,13 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
 		unsafe {
-			// C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-			C.memcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
+			// vmemcpy(a.data, copy.data, copy.element_size * copy.len)
+			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
 		}
 	} else {
 		a3.ensure_cap(a3.len + size)
 		if !isnil(a3.data) && !isnil(val) {
-			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
+			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
 	a3.len += size
@@ -434,10 +449,10 @@ pub fn (mut a array) reverse_in_place() {
 	unsafe {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
-			C.memcpy(tmp_value, &byte(a.data) + i * a.element_size, a.element_size)
-			C.memcpy(&byte(a.data) + i * a.element_size, &byte(a.data) +
+			vmemcpy(tmp_value, &byte(a.data) + i * a.element_size, a.element_size)
+			vmemcpy(&byte(a.data) + i * a.element_size, &byte(a.data) +
 				(a.len - 1 - i) * a.element_size, a.element_size)
-			C.memcpy(&byte(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
+			vmemcpy(&byte(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
 		}
 		free(tmp_value)
 	}
@@ -472,6 +487,43 @@ pub fn (a &array) free() {
 	// }
 	unsafe { free(&byte(a.data) - a.offset) }
 }
+
+// filter creates a new array with all elements that pass the test implemented by the provided function
+pub fn (a array) filter(predicate fn (voidptr) bool) array
+
+struct ZZZTmp1 {}
+
+// any tests whether at least one element in the array passes the test implemented by the
+// provided function. It returns true if, in the array, it finds an element for which the provided
+// function returns true; otherwise it returns false. It doesn't modify the array
+pub fn (a array) any(predicate fn (voidptr) bool) bool
+
+struct ZZZTmp2 {}
+
+// all tests whether all elements in the array pass the test implemented by the provided function
+pub fn (a array) all(predicate fn (voidptr) bool) bool
+
+struct ZZZTmp3 {}
+
+// map creates a new array populated with the results of calling a provided function
+// on every element in the calling array
+pub fn (a array) map(callback fn (voidptr) voidptr) array
+
+struct ZZZTmp4 {}
+
+// sort sorts an array in place in ascending order.
+pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
+
+struct ZZZTmp5 {}
+
+// contains determines whether an array includes a certain value among its entries
+pub fn (a array) contains(val voidptr) bool
+
+struct ZZZTmp6 {}
+
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
+pub fn (a array) index(value voidptr) int
 
 [unsafe]
 pub fn (mut a []string) free() {
@@ -535,47 +587,9 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst []byte, src []byte) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { C.memcpy(&byte(dst.data), src.data, min) }
+		unsafe { vmemcpy(&byte(dst.data), src.data, min) }
 	}
 	return min
-}
-
-// Private function. Comparator for int type.
-fn compare_ints(a &int, b &int) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_ints_reverse(a &int, b &int) int {
-	if *a > *b {
-		return -1
-	}
-	if *a < *b {
-		return 1
-	}
-	return 0
-}
-
-// sort sorts an array of int in place in ascending order.
-pub fn (mut a []int) sort() {
-	a.sort_with_compare(compare_ints)
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-[direct_array_access]
-pub fn (a []string) index(v string) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
 }
 
 // reduce executes a given reducer function on each element of the array,
@@ -598,25 +612,6 @@ pub fn (mut a array) grow_cap(amount int) {
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
-}
-
-// eq checks if the arrays have the same elements or not.
-// TODO: make it work with all types.
-pub fn (a1 []string) eq(a2 []string) bool {
-	// return array_eq(a, a2)
-	if a1.len != a2.len {
-		return false
-	}
-	size_of_string := int(sizeof(string))
-	for i in 0 .. a1.len {
-		offset := i * size_of_string
-		s1 := unsafe { &string(&byte(a1.data) + offset) }
-		s2 := unsafe { &string(&byte(a2.data) + offset) }
-		if *s1 != *s2 {
-			return false
-		}
-	}
-	return true
 }
 
 // pointers returns a new array, where each element

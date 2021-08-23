@@ -33,9 +33,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.tok.position()
 		}
 		if p.tok.kind == .key_else {
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			p.check(.key_else)
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			if p.tok.kind == .key_match {
 				p.error('cannot use `match` with `if` statements')
 				return ast.IfExpr{}
@@ -78,7 +78,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.error('cannot use `match` with `if` statements')
 			return ast.IfExpr{}
 		}
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 		mut cond := ast.empty_expr()
 		mut is_guard := false
 		// `if x := opt() {`
@@ -90,9 +90,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			if p.scope.known_var(var_name) {
 				p.error_with_pos('redefinition of `$var_name`', var_pos)
 			}
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			p.check(.decl_assign)
-			comments << p.eat_comments({})
+			comments << p.eat_comments()
 			expr := p.expr(0)
 			cond = ast.IfGuardExpr{
 				var_name: var_name
@@ -110,7 +110,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			cond = p.expr(0)
 			p.comp_if_cond = false
 		}
-		comments << p.eat_comments({})
+		comments << p.eat_comments()
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
 		p.inside_if = false
@@ -128,7 +128,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		if is_guard {
 			p.close_scope()
 		}
-		comments = p.eat_comments({})
+		comments = p.eat_comments()
 		if is_comptime {
 			if p.tok.kind == .key_else {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
@@ -167,7 +167,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	if !no_lcbr {
 		p.check(.lcbr)
 	}
-	comments := p.eat_comments({}) // comments before the first branch
+	comments := p.eat_comments() // comments before the first branch
 	mut branches := []ast.MatchBranch{}
 	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.position()
@@ -187,7 +187,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
-				ecmnts << p.eat_comments({})
+				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.TypeNode{
 					typ: parsed_type
@@ -204,7 +204,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
-				ecmnts << p.eat_comments({})
+				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -238,7 +238,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.inside_match_body = false
 		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
 		branch_pos := branch_first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
-		post_comments := p.eat_comments({})
+		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
 			ecmnts: ecmnts
@@ -309,30 +309,14 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			is_else = true
 			has_else = true
 			p.next()
-		} else if p.tok.kind == .gt {
-			if has_else {
-				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys',
-					p.tok.position())
-				return ast.SelectExpr{}
-			}
-			if has_timeout {
-				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block',
-					p.tok.position())
-				return ast.SelectExpr{}
-			}
-			is_timeout = true
-			has_timeout = true
-			p.next()
-			p.inside_match = true
-			expr := p.expr(0)
-			p.inside_match = false
-			stmt = ast.ExprStmt{
-				expr: expr
-				pos: expr.position()
-				comments: [comment]
-				is_expr: true
-			}
 		} else {
+			mut is_gt := false
+			if p.tok.kind == .gt {
+				is_gt = true
+				p.note_with_pos('`>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds',
+					p.tok.position())
+				p.next()
+			}
 			p.inside_match = true
 			p.inside_select = true
 			exprs, comments := p.expr_list()
@@ -354,6 +338,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			p.inside_select = false
 			match mut stmt {
 				ast.ExprStmt {
+					mut check_timeout := false
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
 						return ast.SelectExpr{}
@@ -361,17 +346,30 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 						match mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
-									p.error_with_pos('select key: `<-` operator expected',
-										stmt.expr.pos)
-									return ast.SelectExpr{}
+									check_timeout = true
+								} else if is_gt {
+									p.error_with_pos('send expression cannot be used as timeout',
+										stmt.pos)
 								}
 							}
 							else {
-								p.error_with_pos('select key: send expression (`ch <- x`) expected',
-									stmt.pos)
-								return ast.SelectExpr{}
+								check_timeout = true
 							}
 						}
+					}
+					if check_timeout {
+						if has_else {
+							p.error_with_pos('`else` and timeout value are mutually exclusive `select` keys',
+								stmt.pos)
+							return ast.SelectExpr{}
+						}
+						if has_timeout {
+							p.error_with_pos('at most one timeout branch allowed in `select` block',
+								stmt.pos)
+							return ast.SelectExpr{}
+						}
+						is_timeout = true
+						has_timeout = true
 					}
 				}
 				ast.AssignStmt {
@@ -392,7 +390,8 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					}
 				}
 				else {
-					p.error_with_pos('select: transmission statement expected', stmt.pos)
+					p.error_with_pos('select: transmission statement, timeout (in ns) or `else` expected',
+						stmt.pos)
 					return ast.SelectExpr{}
 				}
 			}
@@ -408,7 +407,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
 			col: branch_first_pos.col
 		}
-		post_comments := p.eat_comments({})
+		post_comments := p.eat_comments()
 		pos.update_last_line(p.prev_tok.line_nr)
 		if post_comments.len > 0 {
 			pos.last_line = post_comments.last().pos.last_line

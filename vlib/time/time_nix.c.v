@@ -21,10 +21,10 @@ struct C.tm {
 fn C.timegm(&C.tm) C.time_t
 
 // fn C.gmtime_r(&tm, &gbuf)
-fn C.localtime_r(t &time_t, tm &C.tm)
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 
-fn make_unix_time(t C.tm) int {
-	return int(C.timegm(&t))
+fn make_unix_time(t C.tm) i64 {
+	return i64(C.timegm(&t))
 }
 
 // local returns t with the location set to local time.
@@ -127,13 +127,6 @@ pub fn zero_timespec() C.timespec {
 		tv_nsec: 0
 	}
 	return ts
-}
-
-// wait makes the calling thread sleep for a given duration (in nanoseconds).
-[deprecated: 'call time.sleep(n * time.second)']
-pub fn wait(duration Duration) {
-	ts := &C.timespec{duration / second, duration % second}
-	C.nanosleep(ts, C.NULL)
 }
 
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).

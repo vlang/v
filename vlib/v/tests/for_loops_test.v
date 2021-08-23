@@ -44,7 +44,7 @@ fn test_for_char_in_string() {
 }
 
 fn test_for_string_in_map() {
-	m := map{
+	m := {
 		'a': 'b'
 		'c': 'd'
 	}
@@ -54,7 +54,7 @@ fn test_for_string_in_map() {
 	}
 	assert acc == 'a: b, c: d, '
 
-	mut m2 := map{
+	mut m2 := {
 		'a': 3
 		'b': 4
 		'c': 5

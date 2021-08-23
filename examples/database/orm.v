@@ -67,7 +67,6 @@ fn sqlite3_array() {
 	}
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 
@@ -111,7 +110,6 @@ fn mysql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 
@@ -150,7 +148,6 @@ fn psql_array() {
 	eprintln(parent)
 
 	sql db {
-		drop table Child
 		drop table Parent
 	}
 

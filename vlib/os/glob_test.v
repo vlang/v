@@ -41,15 +41,15 @@ fn test_glob_can_find_v_files_3_levels_deep() ? {
 fn test_glob_can_find_files_in_current_folder() ? {
 	os.chdir(@VMODROOT)
 	matches := os.glob('*') ?
+	assert '.gitignore' in matches
+	assert 'make.bat' in matches
+	assert 'Makefile' in matches
+	assert 'Dockerfile' in matches
 	assert 'README.md' in matches
 	assert 'v.mod' in matches
 	assert 'cmd/' in matches
 	assert 'vlib/' in matches
-	for f in matches {
-		if !f.ends_with(os.path_separator) {
-			assert !f.ends_with('.v')
-		}
-	}
+	assert 'thirdparty/' in matches
 }
 
 fn test_glob_can_be_used_with_multiple_patterns() ? {

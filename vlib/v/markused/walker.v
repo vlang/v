@@ -5,17 +5,21 @@ module markused
 // Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
+import v.pref
 
 pub struct Walker {
 pub mut:
-	table       &ast.Table
-	used_fns    map[string]bool // used_fns['println'] == true
-	used_consts map[string]bool // used_consts['os.args'] == true
-	n_asserts   int
+	table        &ast.Table
+	used_fns     map[string]bool // used_fns['println'] == true
+	used_consts  map[string]bool // used_consts['os.args'] == true
+	used_globals map[string]bool
+	n_asserts    int
+	pref         &pref.Preferences
 mut:
-	files      []&ast.File
-	all_fns    map[string]ast.FnDecl
-	all_consts map[string]ast.ConstField
+	files       []&ast.File
+	all_fns     map[string]ast.FnDecl
+	all_consts  map[string]ast.ConstField
+	all_globals map[string]ast.GlobalField
 }
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
@@ -32,6 +36,15 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
+}
+
+pub fn (mut w Walker) mark_global_as_used(ckey string) {
+	$if trace_skip_unused_marked ? {
+		eprintln('  global > |$ckey|')
+	}
+	w.used_globals[ckey] = true
+	gfield := w.all_globals[ckey] or { return }
+	w.expr(gfield.expr)
 }
 
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
@@ -213,6 +226,13 @@ fn (mut w Walker) expr(node ast.Expr) {
 		}
 		ast.GoExpr {
 			w.expr(node.call_expr)
+			if w.pref.os == .windows {
+				w.fn_by_name('panic_lasterr')
+				w.fn_by_name('winapi_lasterr_str')
+			} else {
+				w.fn_by_name('c_error_number_str')
+				w.fn_by_name('panic_error_number')
+			}
 		}
 		ast.IndexExpr {
 			w.expr(node.left)
@@ -259,8 +279,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 				.function {
 					w.fn_by_name(node.name)
 				}
+				.global {
+					w.mark_global_as_used(node.name)
+				}
 				else {
-					// `.unresolved`, `.blank_ident`, `.variable`, `.global`, `.function`
+					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
@@ -377,7 +400,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
 		return
 	}
-	fkey := if node.is_method { '${node.receiver.typ.set_nr_muls(0)}.$node.name' } else { node.name }
+	fkey := node.fkey()
 	if w.used_fns[fkey] {
 		// This function is already known to be called, meaning it has been processed already.
 		// Save CPU time and do nothing.
@@ -398,11 +421,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	w.expr(node.left)
 	w.or_block(node.or_block)
 	//
-	fn_name := if node.is_method {
-		int(node.receiver_type.set_nr_muls(0)).str() + '.' + node.name
-	} else {
-		node.name
-	}
+	fn_name := node.fkey()
 	if w.used_fns[fn_name] {
 		return
 	}

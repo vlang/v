@@ -50,7 +50,7 @@ $dec_fn_dec {
 		if (error_ptr != NULL)	{
 			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
-			return (Option_$styp){.state = 2,.err = v_error(tos2((byteptr)error_ptr)),.data = {0}};
+			return (Option_$styp){.state = 2,.err = _v_error(tos2((byteptr)error_ptr)),.data = {0}};
 		}
 	}
 ')
@@ -113,20 +113,34 @@ $enc_fn_dec {
 fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
 	info := type_info as ast.Struct
 	for field in info.fields {
-		if field.attrs.contains('skip') {
-			continue
-		}
 		mut name := field.name
+		mut is_raw := false
+		mut is_skip := false
+		mut is_required := false
 		for attr in field.attrs {
-			if attr.name == 'json' {
-				name = attr.arg
-				break
+			match attr.name {
+				'json' {
+					name = attr.arg
+				}
+				'skip' {
+					is_skip = true
+				}
+				'raw' {
+					is_raw = true
+				}
+				'required' {
+					is_required = true
+				}
+				else {}
 			}
+		}
+		if is_skip {
+			continue
 		}
 		field_type := g.typ(field.typ)
 		field_sym := g.table.get_type_symbol(field.typ)
 		// First generate decoding
-		if field.attrs.contains('raw') {
+		if is_raw {
 			dec.writeln('\tres.${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
 				'js_get(root, "$name")));')
 		} else {
@@ -135,35 +149,36 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 			g.gen_json_for_type(field.typ)
 			dec_name := js_dec_name(field_type)
 			if is_js_prim(field_type) {
-				dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
+				tmp := g.new_tmp_var()
+				gen_js_get(styp, tmp, name, mut dec, is_required)
+				dec.writeln('\tres.${c_name(field.name)} = $dec_name (jsonroot_$tmp);')
 			} else if field_sym.kind == .enum_ {
-				dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
+				tmp := g.new_tmp_var()
+				gen_js_get(styp, tmp, name, mut dec, is_required)
+				dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(jsonroot_$tmp);')
 			} else if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be decoded from a unix timestamp number
-				dec.writeln('\tres.${c_name(field.name)} = time__unix(json__decode_u64(js_get(root, "$name")));')
+				tmp := g.new_tmp_var()
+				gen_js_get(styp, tmp, name, mut dec, is_required)
+				dec.writeln('\tres.${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_$tmp));')
 			} else if field_sym.kind == .alias {
 				alias := field_sym.info as ast.Alias
 				parent_type := g.typ(alias.parent_type)
 				parent_dec_name := js_dec_name(parent_type)
 				if is_js_prim(parent_type) {
-					dec.writeln('\tres.${c_name(field.name)} = $parent_dec_name (js_get(root, "$name"));')
+					tmp := g.new_tmp_var()
+					gen_js_get(styp, tmp, name, mut dec, is_required)
+					dec.writeln('\tres.${c_name(field.name)} = $parent_dec_name (jsonroot_$tmp);')
 				} else {
 					g.gen_json_for_type(field.typ)
 					tmp := g.new_tmp_var()
-					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
-					dec.writeln('\tif(${tmp}.state != 0) {')
-					dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
-					dec.writeln('\t}')
+					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
 			} else {
-				// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
 				tmp := g.new_tmp_var()
-				dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
-				dec.writeln('\tif(${tmp}.state != 0) {')
-				dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
-				dec.writeln('\t}')
+				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 			}
 		}
@@ -181,12 +196,29 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
-				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}.v_unix));')
+				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}._v_unix));')
 			} else {
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));\n')
 			}
 		}
 	}
+}
+
+fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
+	dec.writeln('\tcJSON *jsonroot_$tmp = js_get(root,"$name");')
+	if is_required {
+		dec.writeln('\tif(jsonroot_$tmp == 0) {')
+		dec.writeln('\t\treturn (Option_$styp){ .state = 2, .err = _v_error(_SLIT("expected field \'$name\' is missing")), .data = {0} };')
+		dec.writeln('\t}')
+	}
+}
+
+fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
+	gen_js_get(styp, tmp, name, mut dec, is_required)
+	dec.writeln('\tOption_$field_type $tmp = $dec_name (jsonroot_$tmp);')
+	dec.writeln('\tif(${tmp}.state != 0) {')
+	dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
+	dec.writeln('\t}')
 }
 
 fn js_enc_name(typ string) string {
@@ -225,7 +257,7 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 	noscan := g.check_noscan(value_type)
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (Option_Array_$styp){.state = 2, .err = v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (Option_Array_$styp){.state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	res = __new_array${noscan}(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
@@ -269,7 +301,7 @@ fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	res = new_map(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;

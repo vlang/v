@@ -9,6 +9,8 @@ const github_job = os.getenv('GITHUB_JOB')
 const (
 	skip_test_files               = [
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
+		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit
@@ -34,15 +36,18 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
 		'vlib/net/udp_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
+		'vlib/net/http/response_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
@@ -54,10 +59,7 @@ const (
 		'do_not_remove',
 	]
 	skip_with_werror              = [
-		// -Wduplicated-branches
-		'vlib/v/tests/match_in_fn_call_test.v',
-		'vlib/v/tests/match_test.v',
-		'vlib/v/tests/unsafe_test.v',
+		'do_not_remove',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
@@ -75,6 +77,7 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
@@ -86,6 +89,8 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
+		'vlib/net/http/response_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -96,6 +101,7 @@ const (
 	skip_on_windows               = [
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/closure_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/websocket/websocket_test.v',

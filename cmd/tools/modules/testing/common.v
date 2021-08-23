@@ -70,7 +70,7 @@ pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
 
 pub fn (mut ts TestSession) print_messages() {
 	empty := term.header(' ', ' ')
-	mut print_msg_time := time.new_stopwatch({})
+	mut print_msg_time := time.new_stopwatch()
 	for {
 		// get a message from the channel of messages to be printed:
 		mut rmessage := <-ts.nmessages
@@ -128,6 +128,9 @@ pub fn (mut ts TestSession) print_messages() {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
+		$if msvc {
+			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
+		}
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
 			skip_files << 'examples/pico/pico.v'
@@ -267,6 +270,10 @@ fn worker_trunner(p &pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
+	mut cmd_options := [ts.vargs]
+	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
+		cmd_options << ' -enable-globals'
+	}
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
@@ -286,7 +293,6 @@ fn worker_trunner(p &pool.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
-	mut cmd_options := [ts.vargs]
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}

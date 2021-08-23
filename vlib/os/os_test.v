@@ -533,9 +533,15 @@ fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
 		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/c') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/') == 'C:\\a\\b'
 	} $else {
+		assert os.dir('/') == '/'
+		assert os.dir('/abc') == '/'
 		assert os.dir('/var/tmp/foo') == '/var/tmp'
 		assert os.dir('/var/tmp/') == '/var/tmp'
+		assert os.dir('C:\\a\\b\\c') == 'C:/a/b'
+		assert os.dir('C:\\a\\b\\') == 'C:/a/b'
 	}
 	assert os.dir('os') == '.'
 }
@@ -544,9 +550,13 @@ fn test_base() {
 	$if windows {
 		assert os.base('v\\vlib\\os') == 'os'
 		assert os.base('v\\vlib\\os\\') == 'os'
+		assert os.base('v/vlib/os') == 'os'
+		assert os.base('v/vlib/os/') == 'os'
 	} $else {
 		assert os.base('v/vlib/os') == 'os'
 		assert os.base('v/vlib/os/') == 'os'
+		assert os.base('v\\vlib\\os') == 'os'
+		assert os.base('v\\vlib\\os\\') == 'os'
 	}
 	assert os.base('filename') == 'filename'
 }
@@ -737,6 +747,6 @@ fn test_utime() {
 	f.write_string(hello) or { panic(err) }
 	atime := time.now().add_days(2).unix_time()
 	mtime := time.now().add_days(4).unix_time()
-	os.utime(filename, atime, mtime) or { panic(err) }
+	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }

@@ -127,7 +127,7 @@ fn is_alnum(in_char byte) bool {
 	if tmp <= 9 {
 		return true
 	}
-	if tmp == `_` {
+	if in_char == `_` {
 		return true
 	}
 	return false
@@ -159,6 +159,7 @@ fn is_not_digit(in_char byte) bool {
 	return !is_digit(in_char)
 }
 
+/*
 [inline]
 fn is_wordchar(in_char byte) bool {
 	return is_alnum(in_char) || in_char == `_`
@@ -168,6 +169,7 @@ fn is_wordchar(in_char byte) bool {
 fn is_not_wordchar(in_char byte) bool {
 	return !is_alnum(in_char)
 }
+*/
 
 [inline]
 fn is_lower(in_char byte) bool {

@@ -40,7 +40,7 @@ fn test_function_interpolation_in_array() {
 }
 
 fn test_function_interpolation_in_map() {
-	m := map{
+	m := {
 		'aaa': fn () string {
 			return 'aaa'
 		}

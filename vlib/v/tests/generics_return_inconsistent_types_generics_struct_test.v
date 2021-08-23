@@ -7,7 +7,7 @@ mut:
 }
 
 pub fn new_some<T, B>(value T, b B) Optional<T> {
-	return {
+	return Optional<T>{
 		value: value
 		some: true
 		typ: typeof(b).name
@@ -54,7 +54,7 @@ pub struct Foo {
 }
 
 pub fn (f Foo) new_some<T, B>(value T, b B) Optional<T> {
-	return {
+	return Optional<T>{
 		value: value
 		some: true
 		typ: typeof(b).name

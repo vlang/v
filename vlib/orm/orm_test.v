@@ -1,12 +1,14 @@
 // import os
 // import pg
 // import term
+import time
 import sqlite
 
 struct Module {
-	id           int
+	id           int    [primary; sql: serial]
 	name         string
 	nr_downloads int
+	user         User
 }
 
 [table: 'userlist']
@@ -20,6 +22,11 @@ struct User {
 
 struct Foo {
 	age int
+}
+
+struct TestTime {
+	id     int       [primary; sql: serial]
+	create time.Time
 }
 
 fn test_orm_sqlite() {
@@ -260,57 +267,50 @@ fn test_orm_sqlite() {
 		select from User where id == 5
 	}
 	assert null_user.name == ''
-}
 
-fn test_orm_pg() {
-	/*
-	dbname := os.getenv('VDB_NAME')
-	dbuser := os.getenv('VDB_USER')
-	if dbname == '' || dbuser == '' {
-		eprintln(term.red('NB: this test requires VDB_NAME and VDB_USER env variables to be set'))
-		return
+	age_test := sql db {
+		select from User where id == 1
 	}
-	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
-	_ = db
-	nr_modules := db.select count from modules
-	//nr_modules := db.select count from Modules where id == 1
-	nr_modules := db.select count from Modules where
-		name == 'Bob' && id == 1
-	println(nr_modules)
 
-	mod := db.select from Modules where id = 1 limit 1
-	println(mod)
+	assert age_test.age == 29
 
-	mods := db.select from Modules limit 10
-	for mod in mods {
-	println(mod)
+	sql db {
+		update User set age = age + 1 where id == 1
 	}
-	*/
-	/*
-	mod := db.retrieve<Module>(1)
-	mod := db.select from Module where id = 1
 
-	mod := db.update Module set name = name + '!' where id > 10
+	mut first := sql db {
+		select from User where id == 1
+	}
 
+	assert first.age == 30
 
-	nr_modules := db.select count from Modules
-		where id > 1 && name == ''
-	println(nr_modules)
+	sql db {
+		update User set age = age * 2 where id == 1
+	}
 
-	nr_modules := db.select count from modules
-	nr_modules := db.select from modules
-	nr_modules := db[:modules].select
-	*/
-	/*
-	mod := select from db.modules where id = 1 limit 1
-	println(mod.name)
-	top_mods := select from db.modules where nr_downloads > 1000 order by nr_downloads desc limit 10
-	top_mods := db.select from modules where nr_downloads > 1000 order by nr_downloads desc limit 10
-	top_mods := db.select<Module>(m => m.nr_downloads > 1000).order_by(m => m.nr_downloads).desc().limit(10)
-	names := select name from db.modules // []string
+	first = sql db {
+		select from User where id == 1
+	}
 
+	assert first.age == 60
 
-	n := db.q_int('select count(*) from modules')
-	println(n)
-	*/
+	sql db {
+		create table TestTime
+	}
+
+	tnow := time.now()
+
+	time_test := TestTime{
+		create: tnow
+	}
+
+	sql db {
+		insert time_test into TestTime
+	}
+
+	data := sql db {
+		select from TestTime where create == tnow
+	}
+
+	assert data.len == 1
 }

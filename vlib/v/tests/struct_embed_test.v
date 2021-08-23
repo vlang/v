@@ -37,14 +37,15 @@ fn test_default_value_without_init() {
 	assert b.y == 5
 }
 
-/*
-TODO
 fn test_initialize() {
-	b := Bar{x: 1, y: 2}
+	b := Bar{
+		x: 1
+		y: 2
+	}
 	assert b.x == 1
 	assert b.y == 2
 }
-*/
+
 struct Bar3 {
 	Foo
 	y string = 'test'
@@ -155,4 +156,69 @@ fn embed_method_generic<T>(app T) bool {
 fn test_embed_method_generic() {
 	mut app := App{}
 	assert embed_method_generic(app)
+}
+
+type Piece = King | Queen
+
+struct Position {
+	x byte
+	y byte
+}
+
+enum TeamEnum {
+	black
+	white
+}
+
+struct PieceCommonFields {
+	pos  Position
+	team TeamEnum
+}
+
+fn (p PieceCommonFields) get_pos() Position {
+	return p.pos
+}
+
+struct King {
+	PieceCommonFields
+}
+
+struct Queen {
+	PieceCommonFields
+}
+
+fn (piece Piece) position() Position {
+	mut pos := Position{}
+	match piece {
+		King, Queen { pos = piece.pos }
+	}
+	return pos
+}
+
+fn (piece Piece) get_position() Position {
+	mut pos := Position{}
+	match piece {
+		King, Queen { pos = piece.get_pos() }
+	}
+	return pos
+}
+
+fn test_match_aggregate_field() {
+	piece := Piece(King{
+		pos: Position{1, 8}
+		team: .black
+	})
+	pos := piece.position()
+	assert pos.x == 1
+	assert pos.y == 8
+}
+
+fn test_match_aggregate_method() {
+	piece := Piece(King{
+		pos: Position{1, 8}
+		team: .black
+	})
+	pos := piece.get_position()
+	assert pos.x == 1
+	assert pos.y == 8
 }

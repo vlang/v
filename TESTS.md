@@ -23,6 +23,17 @@ General runnable tests for different features of the V compiler.
 Test output of running a V program matches an expected .out file.
 Check the source for how to test panics.
 
+* `vlib/v/gen/c/coutput_test.v`
+
+This tests whether the generated C source code matches all expectations,
+specified in *.c.must_have files, in the folder vlib/v/gen/c/testdata/ .
+
+Each `.c.must_have` file has to have a corresponding .vv file.
+
+Each `.c.must_have` file, consists of multiple lines. Each of these
+lines, *should* be present *at least once* in the output, when the .vv
+file is compiled with `-o -` .
+
 * `vlib/v/tests/run_project_folders_test.v`
 Tests whether whole project folders can be compiled, and run.
 NB: Each project in these folders, should finish with exit code 0,

@@ -6,34 +6,6 @@ module builtin
 
 fn (a any) toString()
 
-pub fn println(s any) {
-	// Quickfix to properly print basic types
-	// TODO: Add proper detection code for this
-	JS.console.log(s.toString())
-}
-
-pub fn print(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stdout.write(s.toString())
-	// } $else {
-	//	panic('Cannot `print` in a browser, use `println` instead')
-	// }
-}
-
-pub fn eprintln(s any) {
-	JS.console.error(s.toString())
-}
-
-pub fn eprint(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stderr.write(s.toString())
-	// } $else {
-	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
-	// }
-}
-
 // Exits the process in node, and halts execution in the browser
 // because `process.exit` is undefined. Workaround for not having
 // a 'real' way to exit in the browser.
@@ -79,7 +51,7 @@ pub fn (o Option) str() string {
 pub fn error(s string) Option {
 	return Option{
 		state: 2
-		err: {
+		err: Error{
 			msg: s
 		}
 	}
@@ -88,7 +60,7 @@ pub fn error(s string) Option {
 pub fn error_with_code(s string, code int) Option {
 	return Option{
 		state: 2
-		err: {
+		err: Error{
 			msg: s
 			code: code
 		}

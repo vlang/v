@@ -7,37 +7,39 @@ import io
 import net
 import time
 
-pub struct Server {
-pub mut:
-	port          int = 8080
-	handler       fn (Request) Response
-	read_timeout  time.Duration = 30 * time.second
-	write_timeout time.Duration = 30 * time.second
+interface Handler {
+	handle(Request) Response
 }
 
-pub fn (mut s Server) listen_and_serve() ? {
-	if voidptr(s.handler) == 0 {
+pub struct Server {
+	stop_signal chan bool = chan bool{cap: 1}
+pub mut:
+	port           int           = 8080
+	handler        Handler       = DebugHandler{}
+	read_timeout   time.Duration = 30 * time.second
+	write_timeout  time.Duration = 30 * time.second
+	accept_timeout time.Duration = 30 * time.second
+}
+
+pub fn (s &Server) listen_and_serve() ? {
+	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
-		s.handler = fn (req Request) Response {
-			$if debug {
-				eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
-			} $else {
-				eprintln('[$time.now()] $req.method $req.url - 200')
-			}
-			return Response{
-				version: req.version
-				text: req.data
-				header: req.header
-				cookies: req.cookies
-				status_code: int(Status.ok)
-			}
-		}
 	}
 	mut l := net.listen_tcp(.ip6, ':$s.port') ?
+	l.set_accept_timeout(s.accept_timeout)
 	eprintln('Listening on :$s.port')
 	for {
+		// break if we have a stop signal (non-blocking check)
+		select {
+			_ := <-s.stop_signal {
+				break
+			}
+			else {}
+		}
 		mut conn := l.accept() or {
-			eprintln('accept() failed: $err; skipping')
+			if err.msg != 'net: op timed out' {
+				eprintln('accept() failed: $err; skipping')
+			}
 			continue
 		}
 		conn.set_read_timeout(s.read_timeout)
@@ -47,7 +49,11 @@ pub fn (mut s Server) listen_and_serve() ? {
 	}
 }
 
-fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
+pub fn (s Server) stop() {
+	s.stop_signal <- true
+}
+
+fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
 	defer {
 		conn.close() or { eprintln('close() failed: $err') }
 	}
@@ -63,9 +69,28 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 		}
 		return
 	}
-	mut resp := s.handler(req)
-	if resp.version == .unknown {
-		resp.version = req.version
+	mut resp := s.handler.handle(req)
+	if resp.version() == .unknown {
+		resp.set_version(req.version)
 	}
 	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
+}
+
+// DebugHandler implements the Handler interface by echoing the request
+// in the response
+struct DebugHandler {}
+
+fn (d DebugHandler) handle(req Request) Response {
+	$if debug {
+		eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
+	} $else {
+		eprintln('[$time.now()] $req.method $req.url - 200')
+	}
+	mut r := Response{
+		text: req.data
+		header: req.header
+	}
+	r.set_status(.ok)
+	r.set_version(req.version)
+	return r
 }

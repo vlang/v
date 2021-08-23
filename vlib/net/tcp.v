@@ -16,6 +16,7 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
+	is_blocking    bool
 }
 
 pub fn dial_tcp(address string) ?&TcpConn {
@@ -76,12 +77,6 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 // write blocks and attempts to write all data
 pub fn (mut c TcpConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
-}
-
-// write_str blocks and attempts to write all data
-[deprecated: 'use TcpConn.write_string() instead']
-pub fn (mut c TcpConn) write_str(s string) ?int {
-	return c.write_ptr(s.str, s.len)
 }
 
 // write_string blocks and attempts to write all data
@@ -165,8 +160,8 @@ pub fn (mut c TcpConn) wait_for_write() ? {
 
 pub fn (c &TcpConn) peer_addr() ?Addr {
 	mut addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	mut size := sizeof(Addr)
@@ -217,8 +212,8 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
 	addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	size := sizeof(Addr)

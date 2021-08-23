@@ -3,6 +3,7 @@ module builtin
 type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
+fn C.strerror(int) &char
 
 [noreturn]
 fn vhalt() {
@@ -98,6 +99,30 @@ pub fn panic(s string) {
 		}
 	}
 	vhalt()
+}
+
+// return a C-API error message matching to `errnum`
+pub fn c_error_number_str(errnum int) string {
+	mut err_msg := ''
+	$if freestanding {
+		err_msg = 'error $errnum'
+	} $else {
+		$if !vinix {
+			c_msg := C.strerror(errnum)
+			err_msg = string{
+				str: &byte(c_msg)
+				len: unsafe { C.strlen(c_msg) }
+				is_lit: 1
+			}
+		}
+	}
+	return err_msg
+}
+
+// panic with a C-API error message matching `errnum`
+[noreturn]
+pub fn panic_error_number(basestr string, errnum int) {
+	panic(basestr + c_error_number_str(errnum))
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
@@ -238,7 +263,7 @@ pub fn malloc(n int) &byte {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
 	mut res := &byte(0)
@@ -285,7 +310,7 @@ pub fn malloc_noscan(n int) &byte {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
 	mut res := &byte(0)
@@ -499,4 +524,24 @@ fn v_fixed_index(i int, len int) int {
 		}
 	}
 	return i
+}
+
+// print_backtrace shows a backtrace of the current call stack on stdout
+pub fn print_backtrace() {
+	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// * print_backtrace_skipping_top_frames
+	// * print_backtrace itself
+	// * the rest of the backtrace frames
+	// => top 2 frames should be skipped, since they will not be informative to the developer
+	$if !no_backtrace ? {
+		$if freestanding {
+			println(bare_backtrace())
+		} $else {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+			} $else {
+				print_backtrace_skipping_top_frames(2)
+			}
+		}
+	}
 }

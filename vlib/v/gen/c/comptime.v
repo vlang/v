@@ -20,7 +20,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comp_for_field_var
 				&& node.field_expr.field_name == 'name' {
-				g.write(g.comp_for_field_value.name)
+				g.write(c_name(g.comp_for_field_value.name))
 				return
 			}
 		}
@@ -519,12 +519,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			for attr in sym.info.attrs {
 				g.writeln('/* attribute $i */ {')
-
 				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
 				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
 				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__$attr.kind;')
-
+				g.stmts(node.stmts)
 				g.writeln('}')
 			}
 		}
@@ -591,7 +590,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 			return '__sun'
 		}
 		'haiku' {
-			return '__haiku__'
+			return '__HAIKU__'
 		}
 		//
 		'js' {

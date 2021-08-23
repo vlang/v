@@ -58,6 +58,7 @@ fn new_cancel_context(parent Context) &CancelContext {
 		context: parent
 		mutex: sync.new_mutex()
 		done: chan int{cap: 2}
+		err: none
 	}
 }
 

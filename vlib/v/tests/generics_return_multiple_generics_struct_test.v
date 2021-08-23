@@ -5,7 +5,7 @@ mut:
 }
 
 fn new_foo<A, B>(a A, b B) Foo<A, B> {
-	return {
+	return Foo<A, B>{
 		a: a
 		b: b
 	}
@@ -25,14 +25,36 @@ fn set<A, B>(mut opt Foo<A, B>, a A, b B) {
 }
 
 fn test_generics_return_multiple_generics_struct() {
-	mut o := new_foo<int, string>(23, 'aaa')
-	println(get_a<int, string>(o))
-	assert get_a<int, string>(o) == 23
-	println(get_b<int, string>(o))
-	assert get_b<int, string>(o) == 'aaa'
-	set<int, string>(mut o, 42, 'bbb')
-	println(get_a<int, string>(o))
-	assert get_a<int, string>(o) == 42
-	println(get_b<int, string>(o))
-	assert get_b<int, string>(o) == 'bbb'
+	mut o1 := new_foo<int, string>(23, 'aaa')
+	println(get_a<int, string>(o1))
+	assert get_a<int, string>(o1) == 23
+	println(get_b<int, string>(o1))
+	assert get_b<int, string>(o1) == 'aaa'
+	set<int, string>(mut o1, 42, 'bbb')
+	println(get_a<int, string>(o1))
+	assert get_a<int, string>(o1) == 42
+	println(get_b<int, string>(o1))
+	assert get_b<int, string>(o1) == 'bbb'
+
+	mut o2 := new_foo<string, int>('bbb', 22)
+	println(get_a<string, int>(o2))
+	assert get_a<string, int>(o2) == 'bbb'
+	println(get_b<string, int>(o2))
+	assert get_b<string, int>(o2) == 22
+	set<string, int>(mut o2, 'bbb', 42)
+	println(get_a<string, int>(o2))
+	assert get_a<string, int>(o2) == 'bbb'
+	println(get_b<string, int>(o2))
+	assert get_b<string, int>(o2) == 42
+
+	mut o3 := new_foo<int, bool>(23, true)
+	println(get_a<int, bool>(o3))
+	assert get_a<int, bool>(o3) == 23
+	println(get_b<int, bool>(o3))
+	assert get_b<int, bool>(o3) == true
+	set<int, bool>(mut o3, 42, false)
+	println(get_a<int, bool>(o3))
+	assert get_a<int, bool>(o3) == 42
+	println(get_b<int, bool>(o3))
+	assert get_b<int, bool>(o3) == false
 }

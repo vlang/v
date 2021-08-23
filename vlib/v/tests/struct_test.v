@@ -170,7 +170,7 @@ fn test_assoc_with_vars() {
 	}
 	assert merged.a == 42
 	assert merged.b == 7
-	merged = {
+	merged = Def{
 		...def2
 		b: 9
 	}
@@ -274,12 +274,12 @@ fn test_struct_literal_args() {
 		n: 10
 		def: 20
 	)
-	foo_config(10, {})
+	foo_config(10)
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 
-	bar_config({}, 10)
-	bar_config({ def: 4 }, 4)
+	bar_config(Config{}, 10)
+	bar_config(Config{ def: 4 }, 4)
 
 	mut c_ := Config{
 		def: 10
@@ -307,7 +307,7 @@ struct Country {
 fn test_levels() {
 	_ := Country{
 		name: 'UK'
-		capital: {
+		capital: City{
 			name: 'London'
 			population: 10
 		}

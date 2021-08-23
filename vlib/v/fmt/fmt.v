@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil as mu
+import math.mathutil
 import v.ast
 import strings
 import v.util
@@ -17,9 +17,12 @@ const (
 
 pub struct Fmt {
 pub mut:
+	file               ast.File
 	table              &ast.Table
-	out_imports        strings.Builder
+	pref               &pref.Preferences
+	is_debug           bool
 	out                strings.Builder
+	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
 	line_len           int    // the current line length, NB: it counts \t as 4 spaces, and starts at 0 after f.writeln
@@ -29,15 +32,13 @@ pub mut:
 	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
-	file               ast.File
 	did_imports        bool
 	is_assign          bool
 	is_struct_init     bool
-	auto_imports       []string        // automatically inserted imports that the user forgot to specify
-	import_pos         int             // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string        // to remove unused imports
-	import_syms_used   map[string]bool // to remove unused import symbols.
-	is_debug           bool
+	auto_imports       []string          // automatically inserted imports that the user forgot to specify
+	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
+	used_imports       []string          // to remove unused imports
+	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
@@ -45,18 +46,16 @@ pub mut:
 	inside_lambda      bool
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	pref               &pref.Preferences
 }
 
 pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
 	mut f := Fmt{
+		file: file
+		table: table
+		pref: pref
+		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
-		table: table
-		indent: 0
-		file: file
-		is_debug: is_debug
-		pref: pref
 	}
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
@@ -69,7 +68,7 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := mu.min(res.len, f.import_pos)
+	bounded_import_pos := mathutil.min(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
@@ -111,14 +110,6 @@ fn (mut f Fmt) write_indent() {
 	f.line_len += f.indent * 4
 }
 
-fn (mut f Fmt) write_language_prefix(lang ast.Language) {
-	match lang {
-		.c { f.write('C.') }
-		.js { f.write('JS.') }
-		else {}
-	}
-}
-
 pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
@@ -155,6 +146,25 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	}
 	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
+}
+
+//=== Specialized write methods ===//
+
+fn (mut f Fmt) write_language_prefix(lang ast.Language) {
+	match lang {
+		.c { f.write('C.') }
+		.js { f.write('JS.') }
+		else {}
+	}
+}
+
+fn (mut f Fmt) write_generic_types(gtypes []ast.Type) {
+	if gtypes.len > 0 {
+		f.write('<')
+		gtypes_string := gtypes.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes_string)
+		f.write('>')
+	}
 }
 
 //=== Module handling helper methods ===//
@@ -267,7 +277,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
 		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments, {})
+		f.import_comments(imp.next_comments)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -276,9 +286,9 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
+	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
+	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
-
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
@@ -288,7 +298,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '$imp.mod$imp_alias_suffix'
+	return '$mod$imp_alias_suffix'
 }
 
 //=== Node helpers ===//
@@ -381,8 +391,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
-		ast.NodeError {}
-		ast.EmptyStmt {}
+		ast.EmptyStmt, ast.NodeError {}
 		ast.AsmStmt {
 			f.asm_stmt(node)
 		}
@@ -481,7 +490,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.NodeError {}
 		ast.EmptyExpr {}
 		ast.AnonFn {
-			f.fn_decl(node.decl)
+			f.anon_fn(node)
 		}
 		ast.ArrayDecompose {
 			f.array_decompose(node)
@@ -511,7 +520,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.chan_init(mut node)
 		}
 		ast.CharLiteral {
-			f.write('`$node.val`')
+			if node.val == r"\'" {
+				f.write("`'`")
+			} else {
+				f.write('`$node.val`')
+			}
 		}
 		ast.Comment {
 			f.comment(node, inline: true)
@@ -670,176 +683,6 @@ fn expr_is_single_line(expr ast.Expr) bool {
 
 //=== Specific Stmt methods ===//
 
-fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
-	f.write('asm ')
-	if stmt.is_volatile {
-		f.write('volatile ')
-	} else if stmt.is_goto {
-		f.write('goto ')
-	}
-	f.writeln('$stmt.arch {')
-	f.indent++
-	for template in stmt.templates {
-		if template.is_directive {
-			f.write('.')
-		}
-		f.write('$template.name')
-		if template.is_label {
-			f.write(':')
-		} else {
-			if template.args.len > 0 {
-				f.write(' ')
-			}
-		}
-		for i, arg in template.args {
-			f.asm_arg(arg)
-			if i + 1 < template.args.len {
-				f.write(', ')
-			}
-		}
-		if template.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(template.comments, inline: false)
-		}
-	}
-	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	f.asm_ios(stmt.output)
-
-	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	f.asm_ios(stmt.input)
-
-	if stmt.clobbered.len != 0 {
-		f.write('; ')
-	}
-	for i, clob in stmt.clobbered {
-		if i != 0 {
-			f.write('  ')
-		}
-		f.write(clob.reg.name)
-
-		if clob.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(clob.comments, inline: false)
-		}
-	}
-	f.indent--
-	f.writeln('}')
-	if f.indent == 0 {
-		f.writeln('')
-	}
-}
-
-fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
-	match arg {
-		ast.AsmRegister {
-			f.asm_reg(arg)
-		}
-		ast.AsmAlias {
-			f.write('$arg.name')
-		}
-		ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral {
-			f.write(arg.val)
-		}
-		ast.BoolLiteral {
-			f.write(arg.val.str())
-		}
-		string {
-			f.write(arg)
-		}
-		ast.AsmAddressing {
-			f.write('[')
-			base := arg.base
-			index := arg.index
-			displacement := arg.displacement
-			scale := arg.scale
-			match arg.mode {
-				.base {
-					f.asm_arg(base)
-				}
-				.displacement {
-					f.asm_arg(displacement)
-				}
-				.base_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.index_times_scale_plus_displacement {
-					f.asm_arg(index)
-					f.write(' * $scale + ')
-					f.asm_arg(displacement)
-				}
-				.base_plus_index_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(index)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.base_plus_index_times_scale_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(index)
-					f.write(' * $scale + ')
-					f.asm_arg(displacement)
-				}
-				.rip_plus_displacement {
-					f.asm_arg(base)
-					f.write(' + ')
-					f.asm_arg(displacement)
-				}
-				.invalid {
-					panic('fmt: invalid addressing mode')
-				}
-			}
-			f.write(']')
-		}
-		ast.AsmDisp {
-			if arg.val.len >= 2 && arg.val[arg.val.len - 1] in [`b`, `f`]
-				&& arg.val[..arg.val.len - 1].bytes().all(it.is_digit()) {
-				f.write(arg.val[arg.val.len - 1].ascii_str())
-				f.write(arg.val[..arg.val.len - 1])
-			} else {
-				f.write(arg.val)
-			}
-		}
-	}
-}
-
-fn (mut f Fmt) asm_reg(reg ast.AsmRegister) {
-	f.write(reg.name)
-}
-
-fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
-	for i, io in ios {
-		if i != 0 {
-			f.write('  ')
-		}
-
-		f.write('$io.constraint ($io.expr)')
-		mut as_block := true
-		if io.expr is ast.Ident {
-			if io.expr.name == io.alias {
-				as_block = false
-			}
-		}
-		if as_block && io.alias != '' {
-			f.write(' as $io.alias')
-		}
-		if io.comments.len == 0 {
-			f.writeln('')
-		} else {
-			f.comments(io.comments, inline: false)
-		}
-	}
-}
-
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	if node.expr is ast.ParExpr {
@@ -855,7 +698,7 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	for i, left in node.left {
 		f.expr(left)
 		if i < node.left.len - 1 {
@@ -989,7 +832,7 @@ pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.expr(node.expr)
 	if !f.single_line_if {
 		f.writeln('')
@@ -1024,6 +867,15 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node)
+}
+
+pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
+	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node.decl)
+}
+
+fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
@@ -1060,7 +912,7 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	f.expr(node.cond)
 	f.write('; ')
 	f.stmt(node.inc)
-	f.remove_new_line({})
+	f.remove_new_line()
 	f.write(' {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
@@ -1143,16 +995,14 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
-			f.write(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-			f.write('(')
 			f.expr(field.expr)
-			f.write(')')
 		} else {
 			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)}')
 		}
 		if node.is_block {
 			f.writeln('')
 		}
+		f.mark_types_import_as_used(field.typ)
 	}
 	f.comments_after_last_field(node.end_comments)
 	if node.is_block {
@@ -1165,7 +1015,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
 	f.write('go ')
-	f.expr(node.call_expr)
+	f.call_expr(node.call_expr)
 }
 
 pub fn (mut f Fmt) goto_label(node ast.GotoLabel) {
@@ -1186,34 +1036,39 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	f.write('interface ')
 	f.write_language_prefix(node.language)
-	name := node.name.after('.')
+	name := node.name.after('.') // strip prepended module
 	f.write(name)
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	f.write(' {')
 	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
-	f.comments_after_last_field(node.pre_comments)
+	f.comments_before_field(node.pre_comments)
 	for iface in node.ifaces {
 		f.write('\t$iface.name')
 		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
-	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
+	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
+	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
+
+	mut immut_methods := node.methods
+	mut mut_methods := []ast.FnDecl{}
+	for i, method in node.methods {
+		if method.params[0].is_mut {
+			immut_methods = node.methods[..i]
+			mut_methods = node.methods[i..]
+			break
 		}
-		// TODO: alignment, comments, etc.
+	}
+
+	// TODO: alignment, comments, etc.
+	for field in immut_fields {
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}
-	for method in node.methods {
+	for method in immut_methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
@@ -1223,6 +1078,25 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			f.mark_types_import_as_used(param.typ)
 		}
 		f.mark_types_import_as_used(method.return_type)
+	}
+	if mut_fields.len + mut_methods.len > 0 {
+		f.writeln('mut:')
+		for field in mut_fields {
+			mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+			f.writeln('\t$field.name $ft')
+			f.mark_types_import_as_used(field.typ)
+		}
+		for method in mut_methods {
+			f.write('\t')
+			f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+			f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+			f.writeln('')
+			f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+			for param in method.params {
+				f.mark_types_import_as_used(param.typ)
+			}
+			f.mark_types_import_as_used(method.return_type)
+		}
 	}
 	f.writeln('}\n')
 }
@@ -1240,7 +1114,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 }
 
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	f.write('return')
 	if node.exprs.len > 0 {
 		f.write(' ')
@@ -1378,12 +1252,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		f.write('pub ')
 	}
 	f.write('type $node.name')
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
 	mut sum_type_names := []string{}
@@ -1643,7 +1512,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	for arg in node.args {
-		f.comments(arg.comments, {})
+		f.comments(arg.comments)
 	}
 	if node.is_method {
 		if node.name in ['map', 'filter'] {
@@ -1668,7 +1537,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	} else {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
-			f.fn_decl(node.left.decl)
+			f.anon_fn(node.left)
 		} else if node.language != .v {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
@@ -1680,7 +1549,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.mod == '' && node.name == '' {
 		f.write(node.left.str())
 	}
-	f.write_generic_if_require(node)
+	f.write_generic_call_if_require(node)
 	f.write('(')
 	f.call_args(node.args)
 	f.write(')')
@@ -1688,7 +1557,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.comments(node.comments, has_nl: false)
 }
 
-fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
+fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
@@ -1882,12 +1751,12 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		for i, branch in node.branches {
 			if i == 0 {
 				// first `if`
-				f.comments(branch.comments, {})
+				f.comments(branch.comments)
 			} else {
 				// `else`, close previous branch
 				if branch.comments.len > 0 {
 					f.writeln('}')
-					f.comments(branch.comments, {})
+					f.comments(branch.comments)
 				} else {
 					f.write('} ')
 				}
@@ -2070,7 +1939,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				continue
 			}
 			if i == 0 {
-				f.remove_new_line({})
+				f.remove_new_line()
 			}
 			f.writeln('')
 			f.indent++
@@ -2142,16 +2011,13 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 			info := sym.info as ast.Map
 			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		} else {
-			// m = map{}
-			f.write('map')
 		}
 		f.write('{}')
 		return
 	}
-	f.writeln('map{')
+	f.writeln('{')
 	f.indent++
-	f.comments(node.pre_cmnts, {})
+	f.comments(node.pre_cmnts)
 	mut max_field_len := 0
 	for key in node.keys {
 		if key.str().len > max_field_len {
@@ -2177,7 +2043,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
 			if f.line_len + estr.len + 2 > fmt.max_len[5] {
-				f.remove_new_line({})
+				f.remove_new_line()
 				f.writeln('')
 			}
 			f.write(estr)
@@ -2204,7 +2070,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		}
 		f.stmts(branch.stmts)
 		if single_line {
-			f.remove_new_line({})
+			f.remove_new_line()
 			f.writeln(' }')
 		} else {
 			f.writeln('}')
@@ -2221,7 +2087,7 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
-	f.comments(node.comments, {})
+	f.comments(node.comments)
 	mut single_line := true
 	for branch in node.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
@@ -2340,9 +2206,6 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 		if branch.is_else {
 			f.write('else {')
 		} else {
-			if branch.is_timeout {
-				f.write('> ')
-			}
 			f.single_line_if = true
 			match branch.stmt {
 				ast.ExprStmt { f.expr(branch.stmt.expr) }

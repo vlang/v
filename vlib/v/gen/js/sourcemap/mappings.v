@@ -42,7 +42,7 @@ mut:
 fn new_mappings() Mappings {
 	return Mappings{
 		last: Mapping{
-			GenPosition: {
+			GenPosition: GenPosition{
 				gen_column: 0
 				gen_line: 0
 			}

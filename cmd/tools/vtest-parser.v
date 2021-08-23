@@ -12,7 +12,7 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_details = map{
+	ecode_details = {
 		-1:  'worker executable not found'
 		101: 'too slow'
 		102: 'too memory hungry'
@@ -73,9 +73,9 @@ fn main() {
 		context.expand_all_paths()
 		mut fails := 0
 		mut panics := 0
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		for path in context.all_paths {
-			filesw := time.new_stopwatch({})
+			filesw := time.new_stopwatch()
 			context.start_printing()
 			new_fails, new_panics := context.process_whole_file_in_worker(path)
 			fails += new_fails

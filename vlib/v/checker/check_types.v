@@ -195,13 +195,13 @@ fn (mut c Checker) check_shift(left_type ast.Type, right_type ast.Type, left_pos
 }
 
 pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
-	if left_type.is_ptr() || left_type.is_pointer() {
+	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() {
 			return left_type
 		} else {
 			return ast.void_type
 		}
-	} else if right_type.is_ptr() || right_type.is_pointer() {
+	} else if right_type.is_any_kind_of_pointer() {
 		if left_type.is_int() {
 			return right_type
 		} else {

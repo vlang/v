@@ -65,6 +65,34 @@ fn test_deleting() {
 	assert a.len == 2
 }
 
+fn test_slice_delete() {
+	mut a := [1.5, 2.5, 3.25, 4.5, 5.75]
+	b := a[2..4]
+	a.delete(0)
+	assert a == [2.5, 3.25, 4.5, 5.75]
+	assert b == [3.25, 4.5]
+	a = [3.75, 4.25, -1.5, 2.25, 6.0]
+	c := a[..3]
+	a.delete(2)
+	assert a == [3.75, 4.25, 2.25, 6.0]
+	assert c == [3.75, 4.25, -1.5]
+}
+
+fn test_delete_many() {
+	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
+	b := a[2..6]
+	a.delete_many(4, 3)
+	assert a == [1, 2, 3, 4, 8, 9]
+	assert b == [3, 4, 5, 6]
+	c := a[..a.len]
+	a.delete_many(2, 0) // this should just clone
+	a[1] = 17
+	assert a == [1, 17, 3, 4, 8, 9]
+	assert c == [1, 2, 3, 4, 8, 9]
+	a.delete_many(0, a.len)
+	assert a == []int{}
+}
+
 fn test_short() {
 	a := [1, 2, 3]
 	assert a.len == 3
@@ -717,13 +745,13 @@ fn test_eq() {
 		age: 22
 		name: 'bob'
 	}]
-	assert [map{
+	assert [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
-	}] == [map{
+	}] == [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
 	}]
 	assert [[1, 2, 3], [4]] == [[1, 2, 3], [4]]
@@ -780,25 +808,17 @@ fn test_fixed_array_literal_eq() {
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
-	assert a[0] == '1'
-	assert a[1] == '3'
-	assert a[2] == '5'
-	assert a[3] == 'hi'
+	assert a == ['1', '3', '5', 'hi']
 
 	mut nums := [67, -3, 108, 42, 7]
 	nums.sort()
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
 
 	nums.sort(a < b)
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
+
+	nums.sort(b < a)
+	assert nums == [108, 67, 42, 7, -3]
 
 	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
@@ -814,23 +834,30 @@ fn test_sort() {
 	assert users[1].age == 22
 	assert users[2].age == 20
 
-	users.sort(a.name < b.name) // Test sorting by string fields
-	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
+	users.sort(b.age > a.age)
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+
+	users.sort(a.name < b.name)
+	assert users[0].name == 'Alice'
+	assert users[1].name == 'Bob'
+	assert users[2].name == 'Peter'
 }
 
 fn test_rune_sort() {
 	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 	bs.sort()
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 
 	bs.sort(a > b)
 	println(bs)
-	assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+	assert bs == [`f`, `e`, `d`, `c`, `b`, `a`]
 
 	bs.sort(a < b)
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 }
 
 fn test_sort_by_different_order_of_a_b() {
@@ -848,9 +875,19 @@ fn test_sort_by_different_order_of_a_b() {
 fn test_f32_sort() {
 	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
 	f.sort()
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(a < b)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b > a)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b < a)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
+
+	f.sort(a > b)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
 }
 
 fn test_f64_sort() {
@@ -867,6 +904,35 @@ fn test_i64_sort() {
 	assert f[0] == 0
 	assert f[1] == 1
 	assert f[6] == 79
+}
+
+fn test_sort_index_expr() {
+	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)],
+		[i64(0)], [i64(27)]]
+	// TODO This currently gives "indexing pointer" error without unsafe
+	unsafe {
+		f.sort(a[0] < b[0])
+	}
+	assert f == [[i64(0)], [i64(1)], [i64(15)], [i64(27)], [i64(38)],
+		[i64(50), 48], [i64(79)]]
+}
+
+fn test_a_b_paras_sort() {
+	mut arr_i := [1, 3, 2]
+	arr_i.sort(a < b)
+	println(arr_i)
+	assert arr_i == [1, 2, 3]
+	arr_i.sort(b < a)
+	println(arr_i)
+	assert arr_i == [3, 2, 1]
+
+	mut arr_f := [1.1, 3.3, 2.2]
+	arr_f.sort(a < b)
+	println(arr_f)
+	assert arr_f == [1.1, 2.2, 3.3]
+	arr_f.sort(b < a)
+	println(arr_f)
+	assert arr_f == [3.3, 2.2, 1.1]
 }
 
 /*
@@ -1269,20 +1335,20 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: map{
+		kv: {
 			'bbb': '222'
 		}
 	}]
@@ -1294,20 +1360,20 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: map{
+		kv: {
 			'bbb': '222'
 		}
 	}]

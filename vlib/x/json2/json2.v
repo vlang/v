@@ -48,7 +48,7 @@ pub fn (f Any) as_map() map[string]Any {
 		}
 		return mp
 	}
-	return map{
+	return {
 		'0': f
 	}
 }

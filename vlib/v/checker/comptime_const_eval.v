@@ -33,14 +33,37 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 		}
 		ast.CastExpr {
 			cast_expr_value := eval_comptime_const_expr(expr.expr, nlevel + 1) or { return none }
+			if expr.typ == ast.i8_type {
+				return cast_expr_value.i8() or { return none }
+			}
+			if expr.typ == ast.i16_type {
+				return cast_expr_value.i16() or { return none }
+			}
+			if expr.typ == ast.int_type {
+				return cast_expr_value.int() or { return none }
+			}
+			if expr.typ == ast.i64_type {
+				return cast_expr_value.i64() or { return none }
+			}
+			//
 			if expr.typ == ast.byte_type {
 				return cast_expr_value.byte() or { return none }
 			}
-			if expr.typ == ast.int_type {
-				return i64(cast_expr_value.int() or { return none })
+			if expr.typ == ast.u16_type {
+				return cast_expr_value.u16() or { return none }
+			}
+			if expr.typ == ast.u32_type {
+				return cast_expr_value.u32() or { return none }
 			}
 			if expr.typ == ast.u64_type {
 				return cast_expr_value.u64() or { return none }
+			}
+			//
+			if expr.typ == ast.f32_type {
+				return cast_expr_value.f32() or { return none }
+			}
+			if expr.typ == ast.f64_type {
+				return cast_expr_value.f64() or { return none }
 			}
 		}
 		ast.InfixExpr {
@@ -54,6 +77,34 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					else {
 						return none
 					}
+				}
+			} else if left is u64 && right is i64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
+				}
+			} else if left is i64 && right is u64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
 				}
 			} else if left is u64 && right is u64 {
 				match expr.op {

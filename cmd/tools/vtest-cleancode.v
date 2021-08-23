@@ -28,6 +28,7 @@ const (
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
+		'vlib/sqlite/orm.v' /* mut c &int -> mut c int */,
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
@@ -45,7 +46,6 @@ const (
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
 		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
 		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
-		'vlib/fontstash/fontstash_structs.v' /* eats fn arg names for inline callback types in struct field declarations */,
 		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
 		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
 	])

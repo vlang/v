@@ -80,7 +80,7 @@ fn no_empty_lines() {
 	mut files := map[string][]FileData{}
 	code := 'foo
 bar'
-	params[0] = {
+	params[0] = IfExpr{
 		...params[0]
 		typ: params[0].typ.set_nr_muls(1)
 	}

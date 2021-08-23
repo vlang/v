@@ -3,7 +3,7 @@ fn main() {
 		println('
 fn foo${i}() {
 	x := $i
-	mut a := 1
+	mut a := 1 + x
 	a += 2
 	print(a)
 	a = 0

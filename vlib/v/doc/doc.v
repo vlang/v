@@ -279,7 +279,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						kind: .variable
 						parent_name: node.name
 						pos: param.pos
-						attrs: map{
+						attrs: {
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)

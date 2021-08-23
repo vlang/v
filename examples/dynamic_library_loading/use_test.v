@@ -49,7 +49,7 @@ fn test_can_compile_and_use_library_with_skip_unused() {
 fn v_compile(vopts string) os.Result {
 	cmd := '"$vexe" -showcc $vopts'
 	// dump(cmd)
-	res := os.execute_or_panic(cmd)
+	res := os.execute_or_exit(cmd)
 	// dump(res)
 	assert res.exit_code == 0
 	return res

@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
+import strings
+
 // This was never working correctly, the issue is now
 // fixed however the type checks in checker need to be
 // updated. if you uncomment it you will see the issue
@@ -29,11 +31,12 @@ pub fn (c rune) str() string {
 }
 
 // string converts a rune array to a string
+[manualfree]
 pub fn (ra []rune) string() string {
-	mut res := ''
-	for r in ra {
-		res += r.str()
-	}
+	mut sb := strings.new_builder(ra.len)
+	sb.write_runes(ra)
+	res := sb.str()
+	unsafe { sb.free() }
 	return res
 }
 
@@ -55,7 +58,7 @@ pub fn (b []byte) clone() []byte {
 pub fn (b []byte) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)
-		C.memcpy(buf, b.data, b.len)
+		vmemcpy(buf, b.data, b.len)
 		buf[b.len] = 0
 		return tos(buf, b.len)
 	}

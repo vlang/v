@@ -6,7 +6,6 @@ import time
 import term
 import math
 import scripting
-import v.util
 
 struct CmdResult {
 mut:
@@ -127,8 +126,12 @@ fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 	return res
 }
 
+fn bold(s string) string {
+	return term.colorize(term.bold, s)
+}
+
 fn (a Aints) str() string {
-	return util.bold('${a.average:6.2f}') +
+	return bold('${a.average:6.2f}') +
 		'ms ± σ: ${a.stddev:4.1f}ms, min: ${a.imin:4}ms, max: ${a.imax:4}ms, runs:${a.values.len:3}, nmins:${a.nmins:2}, nmaxs:${a.nmaxs:2}'
 }
 
@@ -245,7 +248,7 @@ fn (mut context Context) run() {
 			if context.warmup > 0 && run_warmups < context.commands.len {
 				for i in 1 .. context.warmup + 1 {
 					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
-					mut sw := time.new_stopwatch({})
+					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					if res.exit_code != 0 {
 						continue
@@ -261,7 +264,7 @@ fn (mut context Context) run() {
 				if context.show_output {
 					print(' | result: ${oldres:s}')
 				}
-				mut sw := time.new_stopwatch({})
+				mut sw := time.new_stopwatch()
 				res := scripting.exec(cmd) or { continue }
 				duration = int(sw.elapsed().milliseconds())
 				if res.exit_code != 0 {
@@ -346,7 +349,7 @@ fn (mut context Context) show_diff_summary() {
 		first_marker = ' '
 		cpercent := (r.atiming.average / base) * 100 - 100
 		if r.icmd == 0 {
-			first_marker = util.bold('>')
+			first_marker = bold('>')
 			first_cmd_percentage = cpercent
 		}
 		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')

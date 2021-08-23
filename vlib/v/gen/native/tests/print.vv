@@ -1,0 +1,14 @@
+fn test_stdout() {
+	print('Hello ')
+	println('World')
+}
+
+fn test_stderr() {
+	eprint('2(Hello)')
+	eprintln('2(World)')
+}
+
+fn main() {
+	test_stdout()
+	test_stderr()
+}

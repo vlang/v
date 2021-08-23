@@ -13,8 +13,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `v self` .')
 	os.chdir(vroot)
 	os.setenv('VCOLORS', 'always', true)
-	self_idx := os.args.index('self')
-	args := os.args[1..self_idx]
+	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '$jargs -o v2' }
@@ -32,7 +31,7 @@ fn main() {
 }
 
 fn compile(vroot string, cmd string) {
-	result := os.execute_or_panic(cmd)
+	result := os.execute_or_exit(cmd)
 	if result.exit_code != 0 {
 		eprintln('cannot compile to `$vroot`: \n$result.output')
 		exit(1)

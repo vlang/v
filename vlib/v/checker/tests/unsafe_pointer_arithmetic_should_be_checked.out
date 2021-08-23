@@ -16,13 +16,13 @@ vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:11:14: error
     9 | fn test_ptr_infix() {
    10 |     v := 4
    11 |     mut q := &v - 1
-      |              ^
+      |              ~~~~~~
    12 |     q = q + 3
    13 |     _ := q
 vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:12:9: error: pointer arithmetic is only allowed in `unsafe` blocks
    10 |     v := 4
    11 |     mut q := &v - 1
    12 |     q = q + 3
-      |         ^
+      |         ~~~~~
    13 |     _ := q
    14 |     _ := v

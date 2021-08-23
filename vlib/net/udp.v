@@ -67,11 +67,6 @@ pub fn (mut c UdpConn) write(buf []byte) ?int {
 	return c.write_ptr(buf.data, buf.len)
 }
 
-[deprecated: 'use UdpConn.write_string() instead']
-pub fn (mut c UdpConn) write_str(s string) ?int {
-	return c.write_string(s)
-}
-
 pub fn (mut c UdpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
@@ -104,8 +99,8 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 // read reads from the socket into buf up to buf.len returning the number of bytes read
 pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	mut addr := Addr{
-		addr: {
-			Ip6: {}
+		addr: AddrData{
+			Ip6: Ip6{}
 		}
 	}
 	len := sizeof(Addr)
@@ -206,8 +201,8 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 		handle: sockfd
 		l: local_addr
 		r: Addr{
-			addr: {
-				Ip6: {}
+			addr: AddrData{
+				Ip6: Ip6{}
 			}
 		}
 	}
@@ -233,26 +228,24 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 
 fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 	// Invent a sutible local address for this remote addr
-	addr := match raddr.family() {
+	// Appease compiler
+	mut addr := Addr{
+		addr: AddrData{
+			Ip6: Ip6{}
+		}
+	}
+	match raddr.family() {
 		.ip, .ip6 {
 			// Use ip6 dualstack
-			new_ip6(0, addr_ip6_any)
+			addr = new_ip6(0, addr_ip6_any)
 		}
 		.unix {
-			x := temp_unix() ?
-			x
+			addr = temp_unix() ?
 		}
 		else {
 			panic('Invalid family')
-			// Appease compiler
-			Addr{
-				addr: {
-					Ip6: {}
-				}
-			}
 		}
 	}
-
 	mut sock := new_udp_socket(addr) ?
 	sock.has_r = true
 	sock.r = raddr

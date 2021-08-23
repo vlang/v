@@ -22,8 +22,6 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
 	Return | SqlStmt | StructDecl | TypeDecl
 
-// NB: when you add a new Expr or Stmt type with a .pos field, remember to update
-// the .position() token.Position methods too.
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
@@ -131,6 +129,12 @@ pub:
 	pos token.Position
 }
 
+pub enum GenericKindField {
+	unknown
+	name
+	typ
+}
+
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
@@ -144,6 +148,7 @@ pub mut:
 	expr_type       Type // type of `Foo` in `Foo.bar`
 	typ             Type // type of the entire thing (`Foo.bar`)
 	name_type       Type // T in `T.name` or typeof in `typeof(expr).name`
+	gkind_field     GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
 	scope           &Scope
 	from_embed_type Type // holds the type of the embed that the method is called from
 }
@@ -353,9 +358,10 @@ pub:
 // anonymous function
 pub struct AnonFn {
 pub mut:
-	decl    FnDecl
-	typ     Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen bool // has been generated
+	decl           FnDecl
+	inherited_vars []Param
+	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	has_gen        bool // has been generated
 }
 
 // function or method declaration
@@ -382,9 +388,10 @@ pub:
 	method_idx      int
 	rec_mut         bool // is receiver mutable
 	rec_share       ShareType
-	language        Language
-	no_body         bool // just a definition `fn C.malloc()`
-	is_builtin      bool // this function is defined in builtin/strconv
+	language        Language       // V, C, JS
+	file_mode       Language       // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body         bool           // just a definition `fn C.malloc()`
+	is_builtin      bool           // this function is defined in builtin/strconv
 	body_pos        token.Position // function bodys position
 	file            string
 	generic_names   []string
@@ -392,12 +399,13 @@ pub:
 	attrs           []Attr
 	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
-	params          []Param
-	stmts           []Stmt
-	defer_stmts     []DeferStmt
-	return_type     Type
-	return_type_pos token.Position // `string` in `fn (u User) name() string` position
-	has_return      bool
+	params            []Param
+	stmts             []Stmt
+	defer_stmts       []DeferStmt
+	return_type       Type
+	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
+	has_return        bool
+	should_be_skipped bool
 	//
 	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
@@ -497,6 +505,7 @@ pub:
 	is_mut          bool
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
+	is_inherited    bool
 pub mut:
 	typ        Type
 	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
@@ -536,17 +545,18 @@ pub:
 pub struct GlobalField {
 pub:
 	name     string
-	expr     Expr
 	has_expr bool
 	pos      token.Position
 	typ_pos  token.Position
 pub mut:
+	expr     Expr
 	typ      Type
 	comments []Comment
 }
 
 pub struct GlobalDecl {
 pub:
+	mod      string
 	pos      token.Position
 	is_block bool // __global() block
 pub mut:
@@ -878,17 +888,19 @@ pub mut:
 	scope &Scope
 }
 
-// #include etc
+// #include, #define etc
 pub struct HashStmt {
 pub:
 	mod         string
 	pos         token.Position
 	source_file string
 pub mut:
-	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
-	kind string // : 'include'
-	main string // : '<openssl/rand.h>'
-	msg  string // : 'please install openssl'
+	val      string // example: 'include <openssl/rand.h> # please install openssl // comment'
+	kind     string // : 'include'
+	main     string // : '<openssl/rand.h>'
+	msg      string // : 'please install openssl'
+	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
+	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
 }
 
 /*
@@ -1214,7 +1226,7 @@ pub:
 pub const (
 	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
 	// map register size -> register name
-	x86_no_number_register_list = map{
+	x86_no_number_register_list = {
 		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
 		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
 			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
@@ -1241,32 +1253,32 @@ pub const (
 	// st#: floating point numbers
 	// cr#: control/status registers
 	// dr#: debug registers
-	x86_with_number_register_list = map{
-		8:   map{
+	x86_with_number_register_list = {
+		8:   {
 			'r#b': 16
 		}
-		16:  map{
+		16:  {
 			'r#w': 16
 		}
-		32:  map{
+		32:  {
 			'r#d': 16
 		}
-		64:  map{
+		64:  {
 			'r#':  16
 			'mm#': 16
 			'cr#': 16
 			'dr#': 16
 		}
-		80:  map{
+		80:  {
 			'st#': 16
 		}
-		128: map{
+		128: {
 			'xmm#': 32
 		}
-		256: map{
+		256: {
 			'ymm#': 32
 		}
-		512: map{
+		512: {
 			'zmm#': 32
 		}
 	}
@@ -1278,14 +1290,14 @@ pub const (
 		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
 		'pc' /* aka r15 */,
 	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
-	arm_with_number_register_list = map{
+	arm_with_number_register_list = {
 		'r#': 16
 	}
 )
 
 pub const (
 	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
-	riscv_with_number_register_list = map{
+	riscv_with_number_register_list = {
 		'x#': 32
 		't#': 3
 		's#': 12
@@ -1484,16 +1496,16 @@ pub mut:
 
 pub struct SqlStmtLine {
 pub:
-	kind            SqlStmtKind
-	object_var_name string // `user`
-	pos             token.Position
-	where_expr      Expr
-	updated_columns []string // for `update set x=y`
-	update_exprs    []Expr   // for `update`
+	kind         SqlStmtKind
+	pos          token.Position
+	where_expr   Expr
+	update_exprs []Expr // for `update`
 pub mut:
-	table_expr  TypeNode
-	fields      []StructField
-	sub_structs map[int]SqlStmtLine
+	object_var_name string   // `user`
+	updated_columns []string // for `update set x=y`
+	table_expr      TypeNode
+	fields          []StructField
+	sub_structs     map[int]SqlStmtLine
 }
 
 pub struct SqlExpr {
@@ -1540,7 +1552,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		EmptyExpr {
+		CTempVar, EmptyExpr {
 			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
@@ -1571,9 +1583,6 @@ pub fn (expr Expr) position() token.Position {
 				col: left_pos.col
 				last_line: right_pos.last_line
 			}
-		}
-		CTempVar {
-			return token.Position{}
 		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
@@ -1898,7 +1907,7 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 	}
 }
 
-// return all the registers for a give architecture
+// return all the registers for the given architecture
 pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	match arch {
@@ -1986,4 +1995,33 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 		}
 	}
 	return res
+}
+
+// is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
+pub fn (expr Expr) is_literal() bool {
+	match expr {
+		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral {
+			return true
+		}
+		PrefixExpr {
+			return expr.right.is_literal()
+		}
+		InfixExpr {
+			return expr.left.is_literal() && expr.right.is_literal()
+		}
+		ParExpr {
+			return expr.expr.is_literal()
+		}
+		CastExpr {
+			return !expr.has_arg && expr.expr.is_literal()
+				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
+				|| expr.typ in [i8_type, i16_type, int_type, i64_type, byte_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+		}
+		SizeOf, IsRefType {
+			return expr.is_type || expr.expr.is_literal()
+		}
+		else {
+			return false
+		}
+	}
 }

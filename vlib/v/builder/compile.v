@@ -37,10 +37,10 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('builder.compile() pref:')
 		// println(pref)
 	}
-	mut sw := time.new_stopwatch({})
+	mut sw := time.new_stopwatch()
 	match pref.backend {
 		.c { b.compile_c() }
-		.js { b.compile_js() }
+		.js_node, .js_freestanding, .js_browser { b.compile_js() }
 		.native { b.compile_native() }
 	}
 	mut timers := util.get_timers()
@@ -83,9 +83,11 @@ fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
 	unsafe { b.parsed_files.free() }
+	util.free_caches()
 }
 
 fn (b &Builder) exit_on_invalid_syntax() {
+	util.free_caches()
 	// V should exit with an exit code of 1, when there are errors,
 	// even when -silent is passed in combination to -check-syntax:
 	if b.pref.only_check_syntax {
@@ -107,7 +109,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.only_check_syntax {
 		return
 	}
-	if b.pref.out_name.ends_with('/-') {
+	if b.pref.should_output_to_stdout() {
 		return
 	}
 	if b.pref.os == .ios {
@@ -118,7 +120,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
-	if b.pref.backend == .js {
+	if b.pref.backend.is_js() {
 		exefile = os.real_path('${b.pref.out_name}.js')
 		cmd = 'node "$exefile"'
 	}
@@ -200,7 +202,7 @@ pub fn (v Builder) get_builtin_files() []string {
 	for location in v.pref.lookup_path {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
-			if v.pref.backend == .js {
+			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
 			} else {
@@ -237,7 +239,10 @@ pub fn (v &Builder) get_user_files() []string {
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	mut preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	if v.pref.backend == .js_node {
+		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
+	}
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}

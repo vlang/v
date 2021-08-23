@@ -61,46 +61,6 @@ pub fn digits(_n int, base int) []int {
 	return res
 }
 
-[inline]
-pub fn fabs(x f64) f64 {
-	if x < 0.0 {
-		return -x
-	}
-	return x
-}
-
-// gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a_ i64, b_ i64) i64 {
-	mut a := a_
-	mut b := b_
-	if a < 0 {
-		a = -a
-	}
-	if b < 0 {
-		b = -b
-	}
-	for b != 0 {
-		a %= b
-		if a == 0 {
-			return b
-		}
-		b %= a
-	}
-	return a
-}
-
-// lcm calculates least common (non-negative) multiple.
-pub fn lcm(a i64, b i64) i64 {
-	if a == 0 {
-		return a
-	}
-	res := a * (b / gcd(b, a))
-	if res < 0 {
-		return -res
-	}
-	return res
-}
-
 // max returns the maximum value of the two provided.
 [inline]
 pub fn max(a f64, b f64) f64 {
@@ -117,6 +77,14 @@ pub fn min(a f64, b f64) f64 {
 		return a
 	}
 	return b
+}
+
+// minmax returns the minimum and maximum value of the two provided.
+pub fn minmax(a f64, b f64) (f64, f64) {
+	if a < b {
+		return a, b
+	}
+	return b, a
 }
 
 // sign returns the corresponding sign -1.0, 1.0 of the provided number.
@@ -145,4 +113,57 @@ pub fn radians(degrees f64) f64 {
 [inline]
 pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
+}
+
+pub fn tolerance(a f64, b f64, tol f64) bool {
+	mut ee := tol
+	// Multiplying by ee here can underflow denormal values to zero.
+	// Check a==b so that at least if a and b are small and identical
+	// we say they match.
+	if a == b {
+		return true
+	}
+	mut d := a - b
+	if d < 0 {
+		d = -d
+	}
+	// note: b is correct (expected) value, a is actual value.
+	// make error tolerance a fraction of b, not a.
+	if b != 0 {
+		ee = ee * b
+		if ee < 0 {
+			ee = -ee
+		}
+	}
+	return d < ee
+}
+
+pub fn close(a f64, b f64) bool {
+	return tolerance(a, b, 1e-14)
+}
+
+pub fn veryclose(a f64, b f64) bool {
+	return tolerance(a, b, 4e-16)
+}
+
+pub fn alike(a f64, b f64) bool {
+	if is_nan(a) && is_nan(b) {
+		return true
+	} else if a == b {
+		return signbit(a) == signbit(b)
+	}
+	return false
+}
+
+fn is_odd_int(x f64) bool {
+	xi, xf := modf(x)
+	return xf == 0 && (i64(xi) & 1) == 1
+}
+
+fn is_neg_int(x f64) bool {
+	if x < 0 {
+		_, xf := modf(x)
+		return xf == 0
+	}
+	return false
 }

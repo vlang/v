@@ -56,7 +56,8 @@ term.fail_message('oh, no')
 term.warning_message('be warned')
 // clears the entire terminal and leaves a blank one
 term.clear()
-// colors the output of the output, the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
+// colors the output of the output, the available colors are:
+// black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
 term.yellow('submarine')
 // transforms the given string into bold text
 term.bold('and beautiful')

@@ -62,6 +62,7 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		eprintln('    $final_src')
 	}
 	eprintln('')
+	unsafe { i.free() }
 }
 
 fn cb_assertion_ok(i &VAssertMetaInfo) {
@@ -85,6 +86,7 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 	}
 	println('$final_funcname ($final_filepath)')
 	*/
+	unsafe { i.free() }
 }
 
 fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string, errmsg string) {

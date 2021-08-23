@@ -31,6 +31,11 @@ fn test_plus() {
 	assert (big.from_u64(1024) + big.from_u64(1024)).hexstr() == '800'
 	a += b
 	assert a.hexstr() == '5'
+	a.inc()
+	assert a.hexstr() == '6'
+	a.dec()
+	a.dec()
+	assert a.hexstr() == '4'
 }
 
 fn test_minus() {
@@ -85,6 +90,18 @@ fn test_mod() {
 	assert (big.from_u64(7) % big.from_u64(5)).int() == 2
 }
 
+fn test_divmod() {
+	x, y := big.divmod(big.from_u64(13), big.from_u64(10))
+	assert x.int() == 1
+	assert y.int() == 3
+	p, q := big.divmod(big.from_u64(13), big.from_u64(9))
+	assert p.int() == 1
+	assert q.int() == 4
+	c, d := big.divmod(big.from_u64(7), big.from_u64(5))
+	assert c.int() == 1
+	assert d.int() == 2
+}
+
 fn test_from_str() {
 	assert big.from_string('9870123').str() == '9870123'
 	assert big.from_string('').str() == '0'
@@ -125,4 +142,40 @@ fn test_factorial() {
 	assert f5.hexstr() == '78'
 	f100 := big.factorial(big.from_u64(100))
 	assert f100.hexstr() == '1b30964ec395dc24069528d54bbda40d16e966ef9a70eb21b5b2943a321cdf10391745570cca9420c6ecb3b72ed2ee8b02ea2735c61a000000000000000000000000'
+}
+
+fn trimbytes(n int, x []byte) []byte {
+	mut res := x.clone()
+	res.trim(n)
+	return res
+}
+
+fn test_bytes() {
+	assert big.from_int(0).bytes().len == 128
+	assert big.from_hex_string('e'.repeat(100)).bytes().len == 128
+	assert trimbytes(3, big.from_int(1).bytes()) == [byte(0x01), 0x00, 0x00]
+	assert trimbytes(3, big.from_int(1024).bytes()) == [byte(0x00), 0x04, 0x00]
+	assert trimbytes(3, big.from_int(1048576).bytes()) == [byte(0x00), 0x00, 0x10]
+}
+
+fn test_bytes_trimmed() {
+	assert big.from_int(0).bytes_trimmed().len == 0
+	assert big.from_hex_string('AB'.repeat(50)).bytes_trimmed().len == 50
+	assert big.from_int(1).bytes_trimmed() == [byte(0x01)]
+	assert big.from_int(1024).bytes_trimmed() == [byte(0x00), 0x04]
+	assert big.from_int(1048576).bytes_trimmed() == [byte(0x00), 0x00, 0x10]
+}
+
+fn test_from_bytes() ? {
+	assert big.from_bytes([]) ?.hexstr() == '0'
+	assert big.from_bytes([byte(0x13)]) ?.hexstr() == '13'
+	assert big.from_bytes([byte(0x13), 0x37]) ?.hexstr() == '1337'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca]) ?.hexstr() == '1337ca'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe]) ?.hexstr() == '1337cafe'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba]) ?.hexstr() == '1337cafeba'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]) ?.hexstr() == '1337cafebabe'
+	assert big.from_bytes([]byte{len: 128, init: 0x0}) ?.hexstr() == '0'
+	if x := big.from_bytes([]byte{len: 129, init: 0x0}) {
+		return error('expected error, got $x')
+	}
 }

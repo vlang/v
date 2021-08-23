@@ -33,6 +33,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		.left_shift {
 			g.infix_expr_left_shift_op(node)
 		}
+		.and, .logical_or {
+			g.infix_expr_and_or_op(node)
+		}
 		else {
 			// `x & y == 0` => `(x & y) == 0` in C
 			need_par := node.op in [.amp, .pipe, .xor]
@@ -397,6 +400,13 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
+	sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
+	if sym.kind == .interface_ && right_sym.kind == .interface_ {
+		g.gen_interface_is_op(node)
+		return
+	}
+
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
 	g.write('(')
 	g.expr(node.left)
@@ -406,7 +416,6 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else {
 		g.write('.')
 	}
-	sym := g.table.get_type_symbol(node.left_type)
 	if sym.kind == .interface_ {
 		g.write('_typ $cmp_op ')
 		// `_Animal_Dog_index`
@@ -424,26 +433,50 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	g.expr(node.right)
 }
 
+fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
+	mut left_sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
+
+	mut info := left_sym.info as ast.Interface
+
+	common_variants := info.conversions[node.right_type] or {
+		left_variants := g.table.iface_types[left_sym.name]
+		right_variants := g.table.iface_types[right_sym.name]
+		c := left_variants.filter(it in right_variants)
+		info.conversions[node.right_type] = c
+		c
+	}
+	left_sym.info = info
+	if common_variants.len == 0 {
+		g.write('false')
+		return
+	}
+	g.write('I_${left_sym.cname}_is_I_${right_sym.cname}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
+	g.expr(node.left)
+	g.write(')')
+}
+
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.type_has_method(left.sym, node.op.str())
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
-		g.write(g.typ(left.typ.set_nr_muls(0)))
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
-		g.write('(')
-		g.write('*'.repeat(left.typ.nr_muls()))
-		g.expr(node.left)
-		g.write(', ')
-		g.write('*'.repeat(right.typ.nr_muls()))
-		g.expr(node.right)
-		g.write(')')
-	} else {
+	method := g.table.type_find_method(left.sym, node.op.str()) or {
 		g.gen_plain_infix_expr(node)
+		return
 	}
+	left_styp := g.typ(left.typ.set_nr_muls(0))
+	g.write(left_styp)
+	g.write('_')
+	g.write(util.replace_op(node.op.str()))
+	g.write('(')
+	g.op_arg(node.left, method.params[0].typ, left.typ)
+	g.write(', ')
+	g.op_arg(node.right, method.params[1].typ, right.typ)
+	g.write(')')
 }
 
 // infix_expr_left_shift_op generates code for the `<<` operator
@@ -506,6 +539,32 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	}
 }
 
+// infix_expr_and_or_op generates code for `&&` and `||`
+fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
+	if node.right is ast.IfExpr {
+		// b := a && if true { a = false ...} else {...}
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
+		if g.need_tmp_var_in_if(node.right) {
+			tmp := g.new_tmp_var()
+			cur_line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
+			g.write('bool $tmp = (')
+			g.expr(node.left)
+			g.writeln(');')
+			g.stmt_path_pos << g.out.len
+			g.write('$cur_line $tmp $node.op.str() ')
+			g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
+			g.expr(node.right)
+			g.infix_left_var_name = ''
+			g.inside_ternary = prev_inside_ternary
+			return
+		}
+		g.inside_ternary = prev_inside_ternary
+	}
+	g.gen_plain_infix_expr(node)
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
@@ -515,6 +574,29 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	g.expr(node.left)
 	g.write(' $node.op.str() ')
 	g.expr_with_cast(node.right, node.right_type, node.left_type)
+}
+
+fn (mut g Gen) op_arg(expr ast.Expr, expected ast.Type, got ast.Type) {
+	mut needs_closing := false
+	mut nr_muls := got.nr_muls()
+	if expected.is_ptr() {
+		if nr_muls > 0 {
+			nr_muls--
+		} else {
+			if expr.is_lvalue() {
+				g.write('&')
+			} else {
+				styp := g.typ(got.set_nr_muls(0))
+				g.write('ADDR($styp, ')
+				needs_closing = true
+			}
+		}
+	}
+	g.write('*'.repeat(nr_muls))
+	g.expr(expr)
+	if needs_closing {
+		g.write(')')
+	}
 }
 
 struct GenSafeIntegerCfg {

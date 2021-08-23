@@ -463,6 +463,12 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	return error('Could not read file')
 }
 
+// read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
+// Returns the amount of bytes read or an error.
+pub fn (f &File) read_into_ptr(ptr &byte, max_size int) ?int {
+	return fread(ptr, 1, max_size, f.cfile)
+}
+
 // **************************** Utility  ops ***********************
 // flush writes any buffered unwritten data left in the file stream.
 pub fn (mut f File) flush() {
@@ -726,4 +732,56 @@ pub fn (mut f File) write_raw_at<T>(t &T, pos u64) ? {
 	if nbytes != tsize {
 		return error_with_code('incomplete struct write', nbytes)
 	}
+}
+
+pub enum SeekMode {
+	start
+	current
+	end
+}
+
+// seek moves the file cursor (if any) associated with a file
+// to a new location, offset `pos` bytes from the origin. The origin
+// is dependent on the `mode` and can be:
+//   .start   -> the origin is the start of the file
+//   .current -> the current position/cursor in the file
+//   .end     -> the end of the file
+// If the file is not seek-able, or an error occures, the error will
+// be returned to the caller.
+// A successful call to the fseek() function clears the end-of-file
+// indicator for the file.
+pub fn (mut f File) seek(pos i64, mode SeekMode) ? {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
+	whence := int(mode)
+	mut res := 0
+	$if x64 {
+		$if windows {
+			res = C._fseeki64(f.cfile, pos, whence)
+		} $else {
+			res = C.fseeko(f.cfile, pos, whence)
+		}
+	}
+	$if x32 {
+		res = C.fseek(f.cfile, pos, whence)
+	}
+	if res == -1 {
+		return error(posix_get_error_msg(C.errno))
+	}
+}
+
+// tell will return the current offset of the file cursor measured from
+// the start of the file, in bytes. It is complementary to seek, i.e.
+// you can use the return value as the `pos` parameter to .seek( pos, .start ),
+// so that your next read will happen from the same place.
+pub fn (f &File) tell() ?i64 {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
+	pos := C.ftell(f.cfile)
+	if pos == -1 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	return pos
 }

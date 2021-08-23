@@ -13,7 +13,9 @@ pub enum OS {
 	openbsd
 	netbsd
 	dragonfly
-	js // TODO
+	js_node
+	js_browser
+	js_freestanding
 	android
 	solaris
 	serenity
@@ -34,7 +36,9 @@ pub fn os_from_string(os_str string) ?OS {
 		'openbsd' { return .openbsd }
 		'netbsd' { return .netbsd }
 		'dragonfly' { return .dragonfly }
-		'js' { return .js }
+		'js', 'js_node' { return .js_node }
+		'js_freestanding' { return .js_freestanding }
+		'js_browser' { return .js_browser }
 		'solaris' { return .solaris }
 		'serenity' { return .serenity }
 		'vinix' { return .vinix }
@@ -58,7 +62,9 @@ pub fn (o OS) str() string {
 		.openbsd { return 'OpenBSD' }
 		.netbsd { return 'NetBSD' }
 		.dragonfly { return 'Dragonfly' }
-		.js { return 'JavaScript' }
+		.js_node { return 'NodeJS' }
+		.js_freestanding { return 'JavaScript' }
+		.js_browser { return 'JavaScript(Browser)' }
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
 		.serenity { return 'SerenityOS' }

@@ -1,11 +1,11 @@
 import cli {Command}
 
 fn main() {
-	mut cmd := Command {
+	mut cmd := Command{
 		name: 'cmd'
 	}
-	cmd.add_command({
+	cmd.add_command(
 		name: 'foo'
-	})
+	)
 	cmd.parse(['', 'cmd', 'foo'])
 }

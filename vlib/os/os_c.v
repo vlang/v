@@ -13,7 +13,7 @@ fn C.readlink(pathname &char, buf &char, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
-fn C.ftell(fp voidptr) int
+fn C.ftell(fp voidptr) i64
 
 fn C.sigaction(int, voidptr, int) int
 
@@ -83,12 +83,12 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('ftell failed')
 	}
 	C.rewind(fp)
-	mut res := []byte{len: fsize}
+	mut res := []byte{len: int(fsize)}
 	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	res.trim(nr_read_elements * fsize)
+	res.trim(nr_read_elements * int(fsize))
 	return res
 }
 
@@ -110,7 +110,7 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
-		mut str := malloc_noscan(fsize + 1)
+		mut str := malloc_noscan(int(fsize) + 1)
 		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
@@ -139,7 +139,7 @@ pub fn read_file(path string) ?string {
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ? {
-	fp := C.open(&char(path.str), o_wronly | o_trunc)
+	fp := C.open(&char(path.str), o_wronly | o_trunc, 0)
 	defer {
 		C.close(fp)
 	}
@@ -236,7 +236,7 @@ pub fn cp(src string, dst string) ? {
 			return error_with_code('failed to copy $src to $dst', int(result))
 		}
 	} $else {
-		fp_from := C.open(&char(src.str), C.O_RDONLY)
+		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open $src', int(fp_from))
 		}
@@ -586,7 +586,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := unsafe { malloc_noscan(fsize) }
+	buf := unsafe { malloc_noscan(int(fsize)) }
 	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
@@ -594,7 +594,7 @@ pub fn read_file_array<T>(path string) []T {
 			element_size: tsize
 			data: buf
 			len: int(nread)
-			cap: len
+			cap: int(len)
 		}
 	}
 }
@@ -975,5 +975,17 @@ pub fn execve(cmdpath string, args []string, envs []string) ? {
 	// If it returns, then something went wrong...
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+}
+
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
+pub fn is_atty(fd int) int {
+	$if windows {
+		mut mode := u32(0)
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
+	} $else {
+		return C.isatty(fd)
 	}
 }

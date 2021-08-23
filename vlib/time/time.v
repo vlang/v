@@ -1,9 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module time
-
-#include <time.h>
 
 pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
@@ -50,7 +45,7 @@ pub:
 	minute      int
 	second      int
 	microsecond int
-	unix        u64
+	unix        i64
 }
 
 // FormatDelimiter contains different time formats.
@@ -88,58 +83,6 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// C.timeval represents a C time value.
-pub struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
-
-fn C.localtime(t &C.time_t) &C.tm
-
-fn C.time(t &C.time_t) C.time_t
-
-// now returns current local time.
-pub fn now() Time {
-	$if macos {
-		return darwin_now()
-	}
-	$if windows {
-		return win_now()
-	}
-	$if solaris {
-		return solaris_now()
-	}
-	$if linux || android {
-		return linux_now()
-	}
-	// defaults to most common feature, the microsecond precision is not available
-	// in this API call
-	t := C.time(0)
-	now := C.localtime(&t)
-	return convert_ctime(*now, 0)
-}
-
-// utc returns the current UTC time.
-pub fn utc() Time {
-	$if macos {
-		return darwin_utc()
-	}
-	$if windows {
-		return win_utc()
-	}
-	$if solaris {
-		return solaris_utc()
-	}
-	$if linux || android {
-		return linux_utc()
-	}
-	// defaults to most common feature, the microsecond precision is not available
-	// in this API call
-	t := C.time(0)
-	_ = C.time(&t)
-	return unix2(i64(t), 0)
-}
-
 // smonth returns month name.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
@@ -149,43 +92,23 @@ pub fn (t Time) smonth() string {
 	return time.months_string[i * 3..(i + 1) * 3]
 }
 
-// new_time returns a time struct with calculated Unix time.
-pub fn new_time(t Time) Time {
-	if t.unix != 0 {
-		return t
-	}
-	tt := C.tm{
-		tm_sec: t.second
-		tm_min: t.minute
-		tm_hour: t.hour
-		tm_mday: t.day
-		tm_mon: t.month - 1
-		tm_year: t.year - 1900
-	}
-	utime := u64(make_unix_time(tt))
-	return Time{
-		...t
-		unix: utime
-	}
-}
-
 // unix_time returns Unix time.
 [inline]
-pub fn (t Time) unix_time() int {
-	return int(t.unix)
+pub fn (t Time) unix_time() i64 {
+	return t.unix
 }
 
 // unix_time_milli returns Unix time with millisecond resolution.
 [inline]
-pub fn (t Time) unix_time_milli() u64 {
-	return t.unix * 1000 + u64(t.microsecond / 1000)
+pub fn (t Time) unix_time_milli() i64 {
+	return t.unix * 1000 + (t.microsecond / 1000)
 }
 
 // add returns a new time that duration is added
 pub fn (t Time) add(d Duration) Time {
-	microseconds := i64(t.unix) * 1000 * 1000 + t.microsecond + d.microseconds()
-	unix := microseconds / (1000 * 1000)
-	micro := microseconds % (1000 * 1000)
+	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
+	unix := microseconds / 1_000_000
+	micro := microseconds % 1_000_000
 	return unix2(unix, int(micro))
 }
 
@@ -314,40 +237,6 @@ pub fn (t Time) long_weekday_str() string {
 	return time.long_days[i]
 }
 
-// ticks returns a number of milliseconds elapsed since system start.
-pub fn ticks() i64 {
-	$if windows {
-		return C.GetTickCount()
-	} $else {
-		ts := C.timeval{}
-		C.gettimeofday(&ts, 0)
-		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
-	}
-	// t := i64(C.mach_absolute_time())
-	// # Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
-	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
-}
-
-/*
-// sleep makes the calling thread sleep for a given number of seconds.
-[deprecated: 'call time.sleep(n * time.second)']
-pub fn sleep(seconds int) {
-	wait(seconds * time.second)
-}
-*/
-
-// sleep_ms makes the calling thread sleep for a given number of milliseconds.
-[deprecated: 'call time.sleep(n * time.millisecond)']
-pub fn sleep_ms(milliseconds int) {
-	wait(milliseconds * time.millisecond)
-}
-
-// usleep makes the calling thread sleep for a given number of microseconds.
-[deprecated: 'call time.sleep(n * time.microsecond)']
-pub fn usleep(microseconds int) {
-	wait(microseconds * time.microsecond)
-}
-
 // is_leap_year checks if a given a year is a leap year.
 pub fn is_leap_year(year int) bool {
 	return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0)
@@ -364,24 +253,8 @@ pub fn days_in_month(month int, year int) ?int {
 }
 
 // str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
-pub fn (t Time) str() string {
-	// TODO Define common default format for
-	// `str` and `parse` and use it in both ways
-	return t.format_ss()
-}
-
-// convert_ctime converts a C time to V time.
-fn convert_ctime(t C.tm, microsecond int) Time {
-	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
-		microsecond: time.microsecond
-		unix: u64(make_unix_time(t))
-	}
+pub fn (t Time) debug() string {
+	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
 }
 
 // A lot of these are taken from the Go library.
@@ -394,7 +267,6 @@ pub const (
 	second      = Duration(1000 * millisecond)
 	minute      = Duration(60 * second)
 	hour        = Duration(60 * minute)
-	infinite    = Duration(C.INT64_MAX)
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.

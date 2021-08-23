@@ -65,3 +65,20 @@ fn test_sorting_u64s() {
 	eprintln(' a: $a')
 	assert a == [u64(9), 8, 3, 2, 1, 0]
 }
+
+struct User {
+	age  int
+	name string
+}
+
+fn g(mut users []User) {
+	users.sort(a.name > b.name)
+}
+
+fn f(mut users []User) {
+	users.sort(a.name < b.name)
+}
+
+fn z(mut users []User) {
+	users.sort(a.name < b.name)
+}

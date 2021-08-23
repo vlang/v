@@ -12,11 +12,15 @@ import v.pref
 import regex
 
 const (
-	too_long_line_length = 100
-	term_colors          = term.can_show_color_on_stderr()
-	hide_warnings        = '-hide-warnings' in os.args || '-w' in os.args
-	show_progress        = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
-	non_option_args      = cmdline.only_non_options(os.args[2..])
+	too_long_line_length_example   = 120
+	too_long_line_length_codeblock = 120
+	too_long_line_length_table     = 120
+	too_long_line_length_link      = 150
+	too_long_line_length_other     = 100
+	term_colors                    = term.can_show_color_on_stderr()
+	hide_warnings                  = '-hide-warnings' in os.args || '-w' in os.args
+	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
+	non_option_args                = cmdline.only_non_options(os.args[2..])
 )
 
 struct CheckResult {
@@ -166,28 +170,34 @@ fn (mut f MDFile) check() CheckResult {
 	mut anchor_data := AnchorData{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
-		if line.len > too_long_line_length {
-			if f.state == .vexample {
+		if f.state == .vexample {
+			if line.len > too_long_line_length_example {
 				wprintln(wline(f.path, j, line.len, 'long V example line'))
 				wprintln(line)
 				res.warnings++
-			} else if f.state == .codeblock {
+			}
+		} else if f.state == .codeblock {
+			if line.len > too_long_line_length_codeblock {
 				wprintln(wline(f.path, j, line.len, 'long code block line'))
 				wprintln(line)
 				res.warnings++
-			} else if line.starts_with('|') {
+			}
+		} else if line.starts_with('|') {
+			if line.len > too_long_line_length_table {
 				wprintln(wline(f.path, j, line.len, 'long table'))
 				wprintln(line)
 				res.warnings++
-			} else if line.contains('https') {
+			}
+		} else if line.contains('http') {
+			if line.all_after('https').len > too_long_line_length_link {
 				wprintln(wline(f.path, j, line.len, 'long link'))
 				wprintln(line)
 				res.warnings++
-			} else {
-				eprintln(eline(f.path, j, line.len, 'line too long'))
-				eprintln(line)
-				res.errors++
 			}
+		} else if line.len > too_long_line_length_other {
+			eprintln(eline(f.path, j, line.len, 'line too long'))
+			eprintln(line)
+			res.errors++
 		}
 		if f.state == .markdown {
 			anchor_data.add_links(j, line)
@@ -292,7 +302,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 			}
 		}
 	} else {
-		query := r'<a\s*id=["\'](?P<link>[a-z0-9\-\_\x7f-\uffff]+)["\']\s*/>'
+		query := '<a\\s*id=["\'](?P<link>[a-z0-9\\-\\_\\x7f-\\uffff]+)["\']\\s*/>'
 		mut re := regex.regex_opt(query) or { panic(err) }
 		res := re.find_all_str(line)
 
@@ -436,6 +446,23 @@ fn (mut f MDFile) check_examples() CheckResult {
 						}
 						if fmt_res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
+				'globals' {
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals -o x.c $vfile')
+					os.rm('x.c') or {}
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`example failed to compile with -enable-globals'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`example is not formatted'))
 						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false

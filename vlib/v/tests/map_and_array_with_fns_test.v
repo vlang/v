@@ -37,12 +37,12 @@ fn test_array_with_fns() {
 }
 
 fn test_map_with_fns() {
-	mut a := map{
+	mut a := {
 		'one': foo
 		'two': foo2
 	}
 	assert a.len == 2
-	assert (a == map{
+	assert (a == {
 		'one': foo
 		'two': foo2
 	}) == true
@@ -55,7 +55,7 @@ fn test_map_with_fns() {
 	assert f2('zzzz', '') == 24
 	f3 := a['two']
 	assert f3('aaaaa', '') == 15
-	mut b := map{
+	mut b := {
 		'one': foo
 	}
 	b['one'] = a['one']
@@ -78,7 +78,7 @@ fn test_map_and_array_with_fns_typeof_and_direct_call() {
 	a := [foo3]
 	assert typeof(a).name == '[]fn (string) int'
 	assert a[0]('hello') == 15
-	b := map{
+	b := {
 		'one': foo3
 	}
 	assert typeof(b).name == 'map[string]fn (string) int'
@@ -111,11 +111,11 @@ fn bar4(mut m map[string]fn (string) int) int {
 }
 
 fn test_map_of_fns_as_argument() {
-	m1 := map{
+	m1 := {
 		'fn': foo3
 	}
 	assert bar3(m1) == 12
-	mut m2 := map{
+	mut m2 := {
 		'fn': foo3
 	}
 	assert bar4(mut m2) == 22

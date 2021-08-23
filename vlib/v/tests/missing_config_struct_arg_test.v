@@ -17,7 +17,7 @@ fn bar(b Bar) Bar {
 
 fn test_missing_config_struct_arg() {
 	assert foo() == 0
-	assert bar() == {
+	assert bar() == Bar{
 		x: 0
 		y: 1234
 	}

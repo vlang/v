@@ -38,7 +38,7 @@ fn (mut state AppState) draw() {
 // gg callbacks:
 
 fn graphics_init(mut state AppState) {
-	state.istream_idx = state.gg.new_streaming_image(pwidth, pheight, pbytes)
+	state.istream_idx = state.gg.new_streaming_image(pwidth, pheight, pbytes, pixel_format: .rgba8)
 }
 
 fn graphics_frame(mut state AppState) {

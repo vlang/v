@@ -73,33 +73,6 @@ fn get_string_special(neg bool, expZero bool, mantZero bool) string {
 /*
 32 bit functions
 */
-// decimal_len_32 return the number of decimal digits of the input
-[deprecated]
-pub fn decimal_len_32(u u32) int {
-	// Function precondition: u is not a 10-digit number.
-	// (9 digits are sufficient for round-tripping.)
-	// This benchmarked faster than the log2 approach used for u64.
-	assert1(u < 1000000000, 'too big')
-
-	if u >= 100000000 {
-		return 9
-	} else if u >= 10000000 {
-		return 8
-	} else if u >= 1000000 {
-		return 7
-	} else if u >= 100000 {
-		return 6
-	} else if u >= 10000 {
-		return 5
-	} else if u >= 1000 {
-		return 4
-	} else if u >= 100 {
-		return 3
-	} else if u >= 10 {
-		return 2
-	}
-	return 1
-}
 
 fn mul_shift_32(m u32, mul u64, ishift int) u32 {
 	// QTODO
@@ -173,15 +146,6 @@ fn pow5_bits(e int) int {
 /*
 64 bit functions
 */
-
-// decimal_len_64 return the number of decimal digits of the input
-[deprecated]
-pub fn decimal_len_64(u u64) int {
-	// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLog10
-	log2 := 64 - bits.leading_zeros_64(u) - 1
-	t := (log2 + 1) * 1233 >> 12
-	return t - bool_to_int(u < powers_of_10[t]) + 1
-}
 
 fn shift_right_128(v Uint128, shift int) u64 {
 	// The shift value is always modulo 64.

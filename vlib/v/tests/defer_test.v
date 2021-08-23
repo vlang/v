@@ -142,3 +142,15 @@ fn test_defer_str_interpol() {
 		t << '${t[0]}'
 	}
 }
+
+fn test_defer_not_change_return_values() {
+	assert num() == 10
+}
+
+fn num() int {
+	mut ret := 10
+	defer {
+		ret = 20
+	}
+	return ret
+}

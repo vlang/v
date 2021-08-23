@@ -131,6 +131,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
+    * [Calling V from C](#calling-v-from-c)
+	* [Atomics](#atomics)
+	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -479,8 +482,15 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
-to bytes in the string, not Unicode code points.
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. 
+Indexes correspond to bytes in the string, not Unicode code points. If you want to 
+convert the `byte` to a `string`, use the `ascii_str()` method:
+
+```v
+country := 'Netherlands'
+println(country[0]) // Output: 78
+println(country[0].ascii_str()) // Output: N
+```
 
 Character literals have type `rune`. To denote them, use `
 
@@ -622,6 +632,13 @@ f2 := f32(3.14)
 ```
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
+
+Float literals can also be declared as a power of ten:
+```v
+f0 := 42e1 // 420
+f1 := 123e-2 // 1.23
+f2 := 456e+2 // 45600
+```
 
 ### Arrays
 #### Basic Array Concepts
@@ -861,6 +878,9 @@ There are further built in methods for arrays:
 * `a.prepend(arr)` insert elements of array `arr` at beginning
 * `a.trim(new_len)` truncate the length (if `new_length < a.len`, otherwise do nothing)
 * `a.clear()` empty the array (without changing `cap`, equivalent to `a.trim(0)`)
+* `a.delete_many(start, size)` removes `size` consecutive elements beginning with index `start`
+  &ndash; triggers reallocation
+* `a.delete(index)` equivalent to `a.delete_many(index, 1)`
 * `v := a.first()` equivalent to `v := a[0]`
 * `v := a.last()` equivalent to `v := a[a.len - 1]`
 * `v := a.pop()` get last element and remove it from array
@@ -1029,7 +1049,7 @@ Maps can have keys of type string, rune, integer, float or voidptr.
 
 The whole map can be initialized using this short syntax:
 ```v
-numbers := map{
+numbers := {
 	'one': 1
 	'two': 2
 }
@@ -1039,14 +1059,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := map{
+sm := {
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
 ```
 ```v
-intm := map{
+intm := {
 	1: 1234
 	2: 5678
 }
@@ -1132,7 +1152,7 @@ import crypto.sha256
 import mymod.sha256 as mysha256
 
 fn main() {
-	v_hash := mysha256.sum('hi'.bytes()).hex()
+	v_hash := sha256.sum('hi'.bytes()).hex()
 	my_hash := mysha256.sum('hi'.bytes()).hex()
 	assert my_hash == v_hash
 }
@@ -1293,7 +1313,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1408,7 +1428,7 @@ The code above prints:
 ##### Map `for`
 
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1421,7 +1441,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1770,7 +1790,7 @@ mut p := Point{
 	y: 20
 }
 // you can omit the struct name when it's already known
-p = {
+p = Point{
 	x: 30
 	y: 4
 }
@@ -1922,7 +1942,7 @@ clr1 := Rgba32{
 }
 
 clr2 := Rgba32{
-	Rgba32_Component: {
+	Rgba32_Component: Rgba32_Component{
 		a: 128
 	}
 }
@@ -2016,7 +2036,7 @@ struct User {
 }
 
 fn register(u User) User {
-	return {
+	return User{
 		...u
 		is_registered: true
 	}
@@ -2082,12 +2102,75 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println(fns[0](10)) // "100"
-	fns_map := map{
+	fns_map := {
 		'sqr':  sqr
 		'cube': cube
 	}
 	println(fns_map['cube'](2)) // "8"
 }
+```
+
+V supports closures too.
+This means that anonymous functions can inherit variables from the scope they were created in.
+They must do so explicitly by listing all variables that are inherited.
+
+> Warning: currently works on Unix-based, x64 architectures only.
+Some work is in progress to make closures work on Windows, then other architectures.
+
+```v
+my_int := 1
+my_closure := fn [my_int] () {
+	println(my_int)
+}
+my_closure() // prints 1
+```
+
+Inherited variables are copied when the anonymous function is created.
+This means that if the original variable is modified after the creation of the function,
+the modification won't be reflected in the function.
+
+```v
+mut i := 1
+func := fn [i] () int {
+	return i
+}
+println(func() == 1) // true
+i = 123
+println(func() == 1) // still true
+```
+
+However, the variable can be modified inside the anonymous function.
+The change won't be reflected outside, but will be in the later function calls.
+
+```v
+fn new_counter() fn () int {
+	mut i := 0
+	return fn [mut i] () int {
+		i++
+		return i
+	}
+}
+
+c := new_counter()
+println(c()) // 1
+println(c()) // 2
+println(c()) // 3
+```
+
+If you need the value to be modified outside the function, use a reference.
+**Warning**: _you need to make sure the reference is always valid,
+otherwise this can result in undefined behavior._
+
+```v
+mut i := 0
+mut ref := &i
+print_counter := fn [ref] () {
+	println(*ref)
+}
+
+print_counter() // 0
+i = 10
+print_counter() // 10
 ```
 
 ## References
@@ -2377,6 +2460,15 @@ v install [module]
 **Example:**
 ```powershell
 v install ui
+```
+
+Modules could install directly from git or mercurial repositories.
+```powershell
+v install [--git|--hg] [url]
+```
+**Example:**
+```powershell
+v install --git https://github.com/vlang/markdown
 ```
 
 Removing a module with v:
@@ -3346,7 +3438,7 @@ fn main() {
 			time.sleep(5 * time.millisecond)
 			eprintln('> c: $c was send on channel ch3')
 		}
-		> 500 * time.millisecond {
+		500 * time.millisecond {
 			// do something if no channel has become ready within 0.5s
 			eprintln('> more than 0.5s passed without a channel being ready')
 		}
@@ -3446,7 +3538,12 @@ struct Foo {
 }
 
 struct User {
-	name string
+	// Adding a [required] attribute will make decoding fail, if that
+	// field is not present in the input.
+	// If a field is not [required], but is missing, it will be assumed
+	// to have its default value, like 0 for numbers, or '' for strings,
+	// and decoding will not fail.
+	name string [required]
 	age  int
 	// Use the `skip` attribute to skip certain fields
 	foo Foo [skip]
@@ -3456,7 +3553,7 @@ struct User {
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
 user := json.decode(User, data) or {
-	eprintln('Failed to decode json')
+	eprintln('Failed to decode json, error: $err')
 	return
 }
 println(user.name)
@@ -3721,7 +3818,7 @@ fn f() (RefStruct, &MyStruct) {
 
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
-`c` is returned. For this reason `b` and `c` will be heap allocated. 
+`c` is returned. For this reason `b` and `c` will be heap allocated.
 
 Things become less obvious when a reference to an object is passed as function argument:
 
@@ -3754,7 +3851,7 @@ these references are leaving `main()`. However the *lifetime* of these
 references lies inside the scope of `main()` so `q` and `w` are allocated
 on the stack.
 
-#### Manual Control for Stack and Heap 
+#### Manual Control for Stack and Heap
 
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
@@ -3802,7 +3899,7 @@ reference to `s` into `r`. The problem with this is that `s` lives only as long
 as `g()` is running but `r` is used in `main()` after that. For this reason
 the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
-`r.f(&s)` would only borrow the reference to `s` is wrong. 
+`r.f(&s)` would only borrow the reference to `s` is wrong.
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
@@ -3940,8 +4037,13 @@ struct Customer {
 
 db := sqlite.connect('customers.db') ?
 
-// you can create tables
-// CREATE TABLE IF NOT EXISTS `Customer` (`id` INTEGER PRIMARY KEY, `name` TEXT NOT NULL, `nr_orders` INTEGER, `country` TEXT NOT NULL)
+// you can create tables:
+// CREATE TABLE IF NOT EXISTS `Customer` (
+//      `id` INTEGER PRIMARY KEY,
+//      `name` TEXT NOT NULL,
+//      `nr_orders` INTEGER,
+//      `country` TEXT NOT NULL
+// )
 sql db {
 	create table Customer
 }
@@ -4009,6 +4111,17 @@ An overview of the module must be placed in the first comment right after the mo
 
 To generate documentation use vdoc, for example `v doc net.http`.
 
+### Newlines in Documentation Comments
+
+Comments spanning multiple lines are merged together using spaces, unless
+
+- the line is empty
+- the line ends with a `.` (end of sentence)
+- the line is contains purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
+- the line starts with at least one `#` followed by a space (header)
+- the line starts and ends with a `|` (table)
+- the line starts with `- ` (list)
+
 ## Tools
 
 ### v fmt
@@ -4044,7 +4157,7 @@ You can also use stopwatches to measure just portions of your code explicitly:
 import time
 
 fn main() {
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	println('Hello world')
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
@@ -4251,6 +4364,155 @@ fn main() {
 }
 ```
 
+## Calling V from C
+
+Since V can compile to C, calling V code from C is very easy.
+
+By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
+
+For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
+
+To use a custom export name, use the `[export]` attribute:
+
+```
+[export: 'my_custom_c_name']
+fn foo() {
+}
+```
+
+
+## Atomics
+
+V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
+by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
+defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
+Since V does not support overloading functions by intention there are wrapper functions defined in
+C headers named `atomic.h` that are part of the V compiler infrastructure.
+
+There are dedicated wrappers for all unsigned integer types and for pointers.
+(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
+
+To use these functions the C header for the used OS has to be included and the functions
+that are intended to be used have to be declared. Example:
+
+```v globals
+$if windows {
+	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+}
+
+// declare functions we want to use - V does not parse the C header
+fn C.atomic_store_u32(&u32, u32)
+fn C.atomic_load_u32(&u32) u32
+fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
+fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
+
+const num_iterations = 10000000
+
+// see section "Global Variables" below
+__global (
+	atom u32 // ordinary variable but used as atomic
+)
+
+fn change() int {
+	mut races_won_by_change := 0
+	for {
+		mut cmp := u32(17) // addressable value to compare with and to store the found value
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
+			races_won_by_change++
+		} else {
+			if cmp == 31 {
+				break
+			}
+			cmp = 17 // re-assign because overwritten with value of atom
+		}
+	}
+	return races_won_by_change
+}
+
+fn main() {
+	C.atomic_store_u32(&atom, 17)
+	t := go change()
+	mut races_won_by_main := 0
+	mut cmp17 := u32(17)
+	mut cmp23 := u32(23)
+	for i in 0 .. num_iterations {
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
+			races_won_by_main++
+		} else {
+			cmp17 = 17
+		}
+		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
+		// atomic version of `for atom != 23 {} atom = desir`
+		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
+			cmp23 = 23
+		}
+	}
+	races_won_by_change := t.wait()
+	atom_new := C.atomic_load_u32(&atom)
+	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	// prints `atom: 31, #exchanges: 10000000`)
+	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
+}
+```
+
+In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
+in the global `atom` with a value of `23`. The replacement in the opposite direction is
+done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
+thread finish.
+
+It is not predictable how many replacements occur in which thread, but the sum will always
+be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
+will hang &ndash; dependent on the compiler optimization used.)
+
+## Global Variables
+
+By default V does not allow global variables. However, in low level applications they have their
+place so their usage can be enabled with the compiler flag `-enable-globals`.
+Declarations of global variables must be surrounded with a `__global ( ... )`
+specification &ndash; as in the example [above](#atomics).
+
+An initializer for global variables must be explicitly converted to the
+desired target type. If no initializer is given a default initialization is done.
+Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
+not with a value returned from a function call but with a method call by reference.
+A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
+
+```v globals
+import sync
+
+__global (
+	sem   sync.Semaphore // needs initialization in `init()`
+	mtx   sync.RwMutex // needs initialization in `init()`
+	f1    = f64(34.0625) // explicily initialized
+	shmap shared map[string]f64 // initialized as empty `shared` map
+	f2    f64 // initialized to `0.0`
+)
+
+fn init() {
+	sem.init(0)
+	mtx.init()
+}
+```
+Be aware that in multi threaded applications the access to global variables is subject
+to race conditions. There are several approaches to deal with these:
+
+- use `shared` types for the variable declarations and use `lock` blocks for access.
+  This is most appropriate for larger objects like structs, arrays or maps.
+- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- use explicit synchronization primitives like mutexes to control access. The compiler
+  cannot really help in this case, so you have to know what you are doing.
+- don't care &ndash; this approach is possible but makes only sense if the exact values
+  of global variables do not really matter. An example can be found in the `rand` module
+  where global variables are used to generate (non cryptographic) pseudo random numbers.
+  In this case data races lead to random numbers in different threads becoming somewhat
+  correlated, which is acceptable considering the performance penalty that using
+  synchonization primitives would represent.
+
 ### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
@@ -4300,7 +4562,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 
@@ -5052,6 +5314,18 @@ fn old_function() {
 // It can also display a custom deprecation message
 [deprecated: 'use new_function() instead']
 fn legacy_function() {}
+
+// You can also specify a date, after which the function will be
+// considered deprecated. Before that date, calls to the function
+// will be compiler notices - you will see them, but the compilation
+// is not affected. After that date, calls will become warnings,
+// so ordinary compiling will still work, but compiling with -prod
+// will not (all warnings are treated like errors with -prod).
+// 6 months after the deprecation date, calls will be hard
+// compiler errors.
+[deprecated: 'use new_function2() instead']
+[deprecated_after: '2021-05-27']
+fn legacy_function2() {}
 
 // This function's calls will be inlined.
 [inline]

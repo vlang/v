@@ -148,14 +148,11 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
-		println('')
-		println('=====================')
 		println('> C compiler cmd: $cmd')
-		if v.pref.show_cc {
-			println('> C compiler response file $response_file:')
+		if v.pref.show_cc && !v.pref.no_rsp {
+			println('> C compiler response file "$response_file":')
 			println(response_file_content)
 		}
-		println('=====================')
 	}
 }
 
@@ -189,7 +186,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut debug_options := ['-g']
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
-	ccoptions.args = [v.pref.cflags, '-std=gnu99']
+	ccoptions.args = [v.pref.cflags]
+	if !v.pref.no_std {
+		ccoptions.args << '-std=c99 -D_DEFAULT_SOURCE'
+	}
 	ccoptions.wargs = [
 		'-Wall',
 		'-Wextra',
@@ -317,6 +317,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
+	}
+	if v.pref.os == .freebsd {
+		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
+		ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
 	}
 
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
@@ -479,7 +483,7 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.pref.out_name.ends_with('/-') {
+	if v.pref.should_output_to_stdout() {
 		// output to stdout
 		content := os.read_file(v.out_name_c) or { panic(err) }
 		println(content)
@@ -524,7 +528,7 @@ fn (mut v Builder) cc() {
 		mut ccompiler := v.pref.ccompiler
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.execute_or_panic('xcrun --sdk $ios_sdk --show-sdk-path')
+			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			arch := if v.pref.is_ios_simulator {
 				'-arch x86_64'
@@ -610,15 +614,22 @@ fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		// write args to response file
-		response_file := '${v.out_name_c}.rsp'
-		response_file_content := str_args.replace('\\', '\\\\')
-		os.write_file(response_file, response_file_content) or {
-			verror('Unable to write response file "$response_file"')
+		mut cmd := '$ccompiler $str_args'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if !v.pref.no_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			response_file_content = str_args.replace('\\', '\\\\')
+			cmd = '$ccompiler "@$response_file"'
+			os.write_file(response_file, response_file_content) or {
+				verror('Unable to write to C response file "$response_file"')
+			}
 		}
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << v.out_name_c
-			v.pref.cleanup_files << response_file
+			if !v.pref.no_rsp {
+				v.pref.cleanup_files << response_file
+			}
 		}
 		$if windows {
 			if v.ccoptions.is_cc_tcc {
@@ -628,7 +639,6 @@ fn (mut v Builder) cc() {
 		}
 		//
 		os.chdir(vdir)
-		cmd := '$ccompiler "@$response_file"'
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run

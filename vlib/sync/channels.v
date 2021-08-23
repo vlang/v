@@ -648,7 +648,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	stopwatch := if timeout == time.infinite || timeout <= 0 {
 		time.StopWatch{}
 	} else {
-		time.new_stopwatch({})
+		time.new_stopwatch()
 	}
 	mut event_idx := -1 // negative index means `timed out`
 

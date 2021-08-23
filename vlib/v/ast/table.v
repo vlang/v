@@ -13,6 +13,7 @@ pub mut:
 	type_symbols       []TypeSymbol
 	type_idxs          map[string]int
 	fns                map[string]Fn
+	iface_types        map[string][]Type
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
@@ -25,6 +26,7 @@ pub mut:
 	is_fmt             bool
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
@@ -33,9 +35,12 @@ pub mut:
 	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
+	enum_decls         map[string]EnumDecl
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 }
 
+// used by vls to avoid leaks
+// TODO remove manual memory management
 [unsafe]
 pub fn (t &Table) free() {
 	unsafe {
@@ -51,6 +56,7 @@ pub fn (t &Table) free() {
 		t.cmod_prefix.free()
 		t.used_fns.free()
 		t.used_consts.free()
+		t.used_globals.free()
 		t.used_vweb_types.free()
 	}
 }
@@ -81,6 +87,7 @@ pub:
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
+	file_mode       Language
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
@@ -196,7 +203,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
 		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', '>', ''])
+			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '', '>', ''])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -321,7 +328,7 @@ pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 	return false
 }
 
-// search from current type up through each parent looking for method
+// type_find_method searches from current type up through each parent looking for method
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := unsafe { s }
@@ -340,6 +347,58 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	return none
 }
 
+pub struct GetEmbedsOptions {
+	preceding []Type
+}
+
+// get_embeds returns all nested embedded structs
+// the hierarchy of embeds is returned as a list
+pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type {
+	mut embeds := [][]Type{}
+	if sym.info is Struct {
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			mut preceding := options.preceding
+			preceding << embed
+			embeds << t.get_embeds(embed_sym, preceding: preceding)
+		}
+		if sym.info.embeds.len == 0 && options.preceding.len > 0 {
+			embeds << options.preceding
+		}
+	}
+	return embeds
+}
+
+pub fn (t &Table) type_find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, Type) {
+	if sym.info is Struct {
+		mut found_methods := []Fn{}
+		mut embed_of_found_methods := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if m := t.type_find_method(embed_sym, method_name) {
+				found_methods << m
+				embed_of_found_methods << embed
+			}
+		}
+		if found_methods.len == 1 {
+			return found_methods[0], embed_of_found_methods[0]
+		} else if found_methods.len > 1 {
+			return error('ambiguous method `$method_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			method, embed_type := t.type_find_method_from_embeds(agg_sym, method_name) or {
+				return err
+			}
+			if embed_type != 0 {
+				return method, embed_type
+			}
+		}
+	}
+	return none
+}
+
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
@@ -347,17 +406,20 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := StructField{
-		// default_expr: ast.empty_expr()
-	}
+	mut new_field := StructField{}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
 		if type_field := t.find_field(ts, name) {
 			if !found_once {
 				found_once = true
 				new_field = type_field
-			} else if !new_field.equals(type_field) {
+			} else if new_field.typ != type_field.typ {
 				return error('field `${t.type_to_str(typ)}.$name` type is different')
+			}
+			new_field = StructField{
+				...new_field
+				is_mut: new_field.is_mut && type_field.is_mut
+				is_pub: new_field.is_pub && type_field.is_pub
 			}
 		} else {
 			return error('type `${t.type_to_str(typ)}` has no field or method `$name`')
@@ -373,6 +435,20 @@ pub fn (t &Table) struct_has_field(struct_ &TypeSymbol, name string) bool {
 		return true
 	}
 	return false
+}
+
+// struct_fields returns all fields including fields from embeds
+// use this instead symbol.info.fields to get all fields
+pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
+	mut fields := []StructField{}
+	if sym.info is Struct {
+		fields << sym.info.fields
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			fields << t.struct_fields(embed_sym)
+		}
+	}
+	return fields
 }
 
 // search from current type up through each parent looking for field
@@ -399,7 +475,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 				}
 			}
 			SumType {
-				t.resolve_common_sumtype_fields(s)
+				t.resolve_common_sumtype_fields(ts)
 				if field := ts.info.find_field(name) {
 					return field
 				}
@@ -415,29 +491,81 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
-// search for a given field, looking through embedded fields
-pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
-	if f := t.find_field(sym, field_name) {
-		return f
-	} else {
-		// look for embedded field
-		if sym.info is Struct {
-			mut found_fields := []StructField{}
-			mut embed_of_found_fields := []Type{}
-			for embed in sym.info.embeds {
-				embed_sym := t.get_type_symbol(embed)
-				if f := t.find_field(embed_sym, field_name) {
-					found_fields << f
-					embed_of_found_fields << embed
+// find_field_from_embeds is the same as find_field_from_embeds but also looks into nested embeds
+pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
+	if sym.info is Struct {
+		mut found_fields := []StructField{}
+		mut embeds_of_found_fields := [][]Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if field := t.find_field(embed_sym, field_name) {
+				found_fields << field
+				embeds_of_found_fields << [embed]
+			} else {
+				field, types := t.find_field_from_embeds_recursive(embed_sym, field_name) or {
+					StructField{}, []Type{}
 				}
-			}
-			if found_fields.len == 1 {
-				return found_fields[0]
-			} else if found_fields.len > 1 {
-				return error('ambiguous field `$field_name`')
+				found_fields << field
+				embeds_of_found_fields << types
 			}
 		}
-		return err
+		if found_fields.len == 1 {
+			return found_fields[0], embeds_of_found_fields[0]
+		} else if found_fields.len > 1 {
+			return error('ambiguous field `$field_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or {
+				return err
+			}
+			if embed_types.len > 0 {
+				return field, embed_types
+			}
+		}
+	}
+	return none
+}
+
+// find_field_from_embeds finds and returns a field in the embeddings of a struct and the embedding type
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, Type) {
+	if sym.info is Struct {
+		mut found_fields := []StructField{}
+		mut embed_of_found_fields := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if field := t.find_field(embed_sym, field_name) {
+				found_fields << field
+				embed_of_found_fields << embed
+			}
+		}
+		if found_fields.len == 1 {
+			return found_fields[0], embed_of_found_fields[0]
+		} else if found_fields.len > 1 {
+			return error('ambiguous field `$field_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			field, embed_type := t.find_field_from_embeds(agg_sym, field_name) or { return err }
+			if embed_type != 0 {
+				return field, embed_type
+			}
+		}
+	}
+	return none
+}
+
+// find_field_with_embeds searches for a given field, also looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
+	if field := t.find_field(sym, field_name) {
+		return field
+	} else {
+		// look for embedded field
+		first_err := err
+		field, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
+		return field
 	}
 }
 
@@ -453,7 +581,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 		mut v_sym := t.get_type_symbol(variant)
 		fields := match mut v_sym.info {
 			Struct {
-				v_sym.info.fields
+				t.struct_fields(v_sym)
 			}
 			SumType {
 				t.resolve_common_sumtype_fields(v_sym)
@@ -556,7 +684,7 @@ fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_id
 		.placeholder {
 			// override placeholder
 			// println('overriding type placeholder `$typ.name`')
-			t.type_symbols[existing_idx] = {
+			t.type_symbols[existing_idx] = TypeSymbol{
 				...typ
 				methods: ex_type.methods
 			}
@@ -609,6 +737,11 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	t.type_symbols[typ_idx].idx = typ_idx
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
+}
+
+[inline]
+pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
+	t.enum_decls[enum_decl.name] = enum_decl
 }
 
 pub fn (t &Table) known_type(name string) bool {
@@ -1007,9 +1140,20 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
-		for v in parent_info.variants {
-			if v.idx() == variant.idx() {
-				return true
+		var_sym := t.get_type_symbol(variant)
+		if var_sym.kind == .aggregate {
+			var_info := var_sym.info as Aggregate
+			for var_type in var_info.types {
+				if !t.sumtype_has_variant(parent, var_type) {
+					return false
+				}
+			}
+			return true
+		} else {
+			for v in parent_info.variants {
+				if v.idx() == variant.idx() {
+					return true
+				}
 			}
 		}
 	}
@@ -1068,7 +1212,12 @@ pub fn (mut t Table) complete_interface_check() {
 				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
 				continue
 			}
-			t.does_type_implement_interface(tk, idecl.typ)
+			if t.does_type_implement_interface(tk, idecl.typ) {
+				$if trace_types_implementing_each_interface ? {
+					eprintln('>>> tsym.mod: $tsym.mod | tsym.name: $tsym.name | tk: $tk | idecl.name: $idecl.name | idecl.typ: $idecl.typ')
+				}
+				t.iface_types[idecl.name] << tk
+			}
 		}
 	}
 }
@@ -1109,18 +1258,23 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 }
 
 pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
-	utyp := typ
-	if utyp.idx() == inter_typ.idx() {
+	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true
 	}
-	if inter_typ.idx() == error_type_idx && utyp.idx() == none_type_idx {
+	if inter_typ.idx() == error_type_idx && typ.idx() == none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
-	typ_sym := t.get_type_symbol(utyp)
+	typ_sym := t.get_type_symbol(typ)
 	if typ_sym.language != .v {
 		return false
+	}
+	// generic struct don't generate cast interface fn
+	if typ_sym.info is Struct {
+		if typ_sym.info.is_generic {
+			return false
+		}
 	}
 	mut inter_sym := t.get_type_symbol(inter_typ)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
@@ -1129,7 +1283,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 	if mut inter_sym.info is Interface {
 		// do not check the same type more than once
 		for tt in inter_sym.info.types {
-			if tt.idx() == utyp.idx() {
+			if tt.idx() == typ.idx() {
 				return true
 			}
 		}
@@ -1165,7 +1319,7 @@ pub fn (mut t Table) does_type_implement_interface(typ Type, inter_typ Type) boo
 			}
 			return false
 		}
-		inter_sym.info.types << utyp
+		inter_sym.info.types << typ
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}
@@ -1291,7 +1445,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						gts := t.get_type_symbol(ct)
 						nrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
-							nrt += ','
+							nrt += ', '
 						}
 					}
 				}

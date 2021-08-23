@@ -49,7 +49,6 @@ fn new_stream_socket() ?StreamSocket {
 }
 
 fn (mut s StreamSocket) close() ? {
-	os.rm(s.path) ?
 	return shutdown(s.handle)
 }
 
@@ -98,7 +97,11 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	addr.sun_family = C.AF_UNIX
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
+	if os.exists(sock) {
+		os.rm(sock) ?
+	}
 	net.socket_error(C.bind(s.handle, voidptr(&addr), size)) ?
+	os.chmod(sock, 0o777)
 	net.socket_error(C.listen(s.handle, 128)) ?
 	return &StreamListener{
 		sock: s
@@ -158,6 +161,7 @@ pub fn (mut c StreamListener) wait_for_accept() ? {
 }
 
 pub fn (mut c StreamListener) close() ? {
+	os.rm(c.sock.path) ?
 	c.sock.close() ?
 }
 
@@ -197,12 +201,6 @@ pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
 // write blocks and attempts to write all data
 pub fn (mut c StreamConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
-}
-
-// write_str blocks and attempts to write all data
-[deprecated: 'use StreamConn.write_string() instead']
-pub fn (mut c StreamConn) write_str(s string) ?int {
-	return c.write_string(s)
 }
 
 // write_string blocks and attempts to write all data

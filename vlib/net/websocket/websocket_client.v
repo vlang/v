@@ -38,7 +38,7 @@ pub mut:
 	state             State    // current state of connection
 	logger            &log.Log // logger used to log messages
 	resource_name     string   // name of current resource
-	last_pong_ut      u64      // last time in unix time we got a pong message
+	last_pong_ut      i64      // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -308,12 +308,6 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 // write writes a byte array with a websocket messagetype to socket
 pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
 	return ws.write_ptr(&byte(bytes.data), bytes.len, code)
-}
-
-// write_string, writes a string with a websocket texttype to socket
-[deprecated: 'use Client.write_string() instead']
-pub fn (mut ws Client) write_str(str string) ?int {
-	return ws.write_string(str)
 }
 
 // write_str, writes a string with a websocket texttype to socket

@@ -16,7 +16,7 @@ import v.pref
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericInst |
 	Interface | Map | MultiReturn | Struct | SumType | Thread
 
 pub enum Language {
@@ -398,11 +398,14 @@ pub const (
 	int_literal_type_idx   = 26
 	thread_type_idx        = 27
 	error_type_idx         = 28
+	u8_type_idx            = 29
 )
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx, rune_type_idx]
+		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx,
+		rune_type_idx,
+	]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
@@ -424,6 +427,7 @@ pub const (
 	i16_type           = new_type(i16_type_idx)
 	i64_type           = new_type(i64_type_idx)
 	byte_type          = new_type(byte_type_idx)
+	u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)
@@ -457,10 +461,11 @@ pub fn merge_types(params ...[]Type) []Type {
 }
 
 pub const (
+	// must be in the same order as the idx consts above
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'char', 'byte', 'bool',
 		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
-		'thread', 'Error']
+		'thread', 'Error', 'u8']
 )
 
 pub struct MultiReturn {
@@ -494,6 +499,7 @@ pub enum Kind {
 	int
 	i64
 	byte
+	u8
 	u16
 	u32
 	u64
@@ -511,7 +517,7 @@ pub enum Kind {
 	chan
 	any
 	struct_
-	generic_struct_inst
+	generic_inst
 	multi_return
 	sum_type
 	alias
@@ -664,6 +670,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
+	t.register_type_symbol(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
 }
 
 [inline]
@@ -719,6 +726,7 @@ pub fn (k Kind) str() string {
 		.i16 { 'i16' }
 		.i64 { 'i64' }
 		.byte { 'byte' }
+		.u8 { 'u8' }
 		.u16 { 'u16' }
 		.u32 { 'u32' }
 		.u64 { 'u64' }
@@ -742,7 +750,7 @@ pub fn (k Kind) str() string {
 		.any { 'any' }
 		.function { 'function' }
 		.interface_ { 'interface' }
-		.generic_struct_inst { 'generic_struct_inst' }
+		.generic_inst { 'generic_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
 		.thread { 'thread' }
@@ -777,7 +785,7 @@ pub mut:
 }
 
 // instantiation of a generic struct
-pub struct GenericStructInst {
+pub struct GenericInst {
 pub mut:
 	parent_idx     int    // idx of the base generic struct
 	concrete_types []Type // concrete types, e.g. <int, string>
@@ -789,6 +797,8 @@ pub mut:
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type
+	// `I1 is I2` conversions
+	conversions map[int][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type
@@ -917,8 +927,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		.int_literal, .float_literal {
 			res = sym.name
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool,
-		.none_, .byteptr, .voidptr, .charptr {
+		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string,
+		.bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			if sym.kind == .byteptr {
 				res = '&byte'
@@ -1022,8 +1032,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
-		.generic_struct_inst {
-			info := sym.info as GenericStructInst
+		.generic_inst {
+			info := sym.info as GenericInst
 			res = sym.name.all_before('<')
 			res += '<'
 			for i, ctyp in info.concrete_types {
@@ -1056,7 +1066,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		nr_muls--
 		res = 'shared ' + res
 	}
-	if nr_muls > 0 {
+	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
