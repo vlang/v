@@ -239,3 +239,7 @@ pub fn (a array) contains(key voidptr) bool {
 pub fn (mut a array) delete_last() {
 	#a.val.arr.pop();
 }
+
+[unsafe]
+pub fn (a array) free() {
+}
