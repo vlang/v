@@ -4,13 +4,13 @@ import gg
 import gx
 
 const (
-	p1_and_p2 = [f32(200.0), 200.0, 400.0, 300.0]
+	p1_and_p2      = [f32(200.0), 200.0, 400.0, 300.0]
 	ctrl_p1_and_p2 = [f32(200.0), 100.0, 400.0, 100.0]
 )
 
 struct App {
 mut:
-	gg   &gg.Context
+	gg &gg.Context
 }
 
 fn main() {

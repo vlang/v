@@ -51,7 +51,7 @@ fn frame(mut app App) {
 	ctrl_p1_x := f32(200.0) + (40 * time)
 	ctrl_p2_x := f32(400.0) + (-40 * time)
 
-	p1_and_p2 := [f32(200.0), 200.0  + (10 * time), 400.0, 200.0 + (10 * time)]
+	p1_and_p2 := [f32(200.0), 200.0 + (10 * time), 400.0, 200.0 + (10 * time)]
 
 	app.gg.begin()
 	app.gg.draw_cubic_bezier(p1_and_p2, [ctrl_p1_x, 100.0, ctrl_p2_x, 100.0], gx.blue)
