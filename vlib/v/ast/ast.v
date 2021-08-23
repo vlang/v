@@ -667,7 +667,7 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
-	// TODO: seperate enum would be better
+	// TODO: separate enum would be better
 	op      token.Kind
 	pos     token.Position
 	is_stmt bool
