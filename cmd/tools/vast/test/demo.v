@@ -119,3 +119,13 @@ struct GenericStruct<T> {
 mut:
 	model T
 }
+
+// generic interface
+interface Gettable<T> {
+	get() T
+}
+
+// generic sumtype
+struct None {}
+
+type MyOption<T> = Error | None | T
