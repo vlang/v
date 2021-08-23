@@ -881,7 +881,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		if !is_range_slice {
-			if node.left is ast.Ident {
+			if false && node.left is ast.Ident { // mut_for investigate further
 				if node.left.obj is ast.Var {
 					if node.from_embed_type == 0
 						&& (node.left.obj.is_auto_deref || node.left.obj.is_auto_heap) {

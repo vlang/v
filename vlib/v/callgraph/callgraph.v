@@ -10,7 +10,7 @@ import v.dotgraph
 pub fn show(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
 	mut mapper := &Mapper{
 		pref: pref
-		table: table
+		table: &table
 		dg: dotgraph.new('CallGraph', 'CallGraph for $pref.path', 'green')
 	}
 	// Node14 [shape="box",label="PrivateBase",URL="$classPrivateBase.html"];
