@@ -96,7 +96,8 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 	for i, ch in b58 {
 		ch_i := alphabet.encode.bytestr().index_byte(ch)
 		if ch_i == -1 {
-			return error(@MOD + '.' + @FN + ': input string contains values not found in the provided alphabet')
+			return error(@MOD + '.' + @FN +
+				': input string contains values not found in the provided alphabet')
 		}
 
 		val := ch_i * math.pow(58, i)
@@ -135,7 +136,8 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 
 	for _, r in str {
 		if r > 127 {
-			panic(@MOD + '.' + @FN + ': high-bit set on invalid digit; outside of ascii range ($r). This should never happen.')
+			panic(@MOD + '.' + @FN +
+				': high-bit set on invalid digit; outside of ascii range ($r). This should never happen.')
 		}
 		if alphabet.decode[r] == -1 {
 			return error(@MOD + '.' + @FN + ': invalid base58 digit ($r)')
