@@ -242,5 +242,4 @@ pub fn (mut a array) delete_last() {
 
 [unsafe]
 pub fn (a array) free() {
-
 }
