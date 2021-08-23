@@ -710,14 +710,14 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, control_points []
 	step := f32(1.0) / steps
 	sgl.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
 	for u := f32(0.0); u <= f32(1.0); u += step {
-		pow_u_3 := math.powf(u, 3)
-		pow_u_2 := math.powf(u, 2)
+		pow_2_u := u * u
+		pow_3_u := pow_2_u * u
 
-		x := pow_u_3 * (p2_x + 3 * (ctrl_p1_x - ctrl_p2_x) - p1_x) +
-			3 * pow_u_2 * (p1_x - 2 * ctrl_p1_x + ctrl_p2_x) + 3 * u * (ctrl_p1_x - p1_x) + p1_x
+		x := pow_3_u * (p2_x + 3 * (ctrl_p1_x - ctrl_p2_x) - p1_x) +
+			3 * pow_2_u * (p1_x - 2 * ctrl_p1_x + ctrl_p2_x) + 3 * u * (ctrl_p1_x - p1_x) + p1_x
 
-		y := pow_u_3 * (p2_y + 3 * (ctrl_p1_y - ctrl_p2_y) - p1_y) +
-			3 * pow_u_2 * (p1_y - 2 * ctrl_p1_y + ctrl_p2_y) + 3 * u * (ctrl_p1_y - p1_y) + p1_y
+		y := pow_3_u * (p2_y + 3 * (ctrl_p1_y - ctrl_p2_y) - p1_y) +
+			3 * pow_2_u * (p1_y - 2 * ctrl_p1_y + ctrl_p2_y) + 3 * u * (ctrl_p1_y - p1_y) + p1_y
 
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
 	}
