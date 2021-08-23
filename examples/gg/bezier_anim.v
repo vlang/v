@@ -23,7 +23,7 @@ fn (mut anim Anim) advance() {
 	} else {
 		anim.time += 1 * rate
 	}
-	// Add some arbitrary value
+	// Use some arbitrary value that fits 60 fps
 	if anim.time > 80 * rate || anim.time < -80 * rate {
 		anim.reverse = !anim.reverse
 	}
