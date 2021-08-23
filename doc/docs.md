@@ -5306,6 +5306,23 @@ An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 
 ```v
+// [flag] enables Enum types to be used as bitfields
+
+[flag]
+enum BitField {
+	read
+	write
+	other
+}
+
+fn example_enum_as_bitfield_use() {
+	assert 1 == int(BitField.read)
+	assert 2 == int(BitField.write)
+	mut bf := BitField.read
+	bf.set(.write | .other)
+	assert bf.has(.read | .write | .other)
+}
+
 // Calling this function will result in a deprecation warning
 [deprecated]
 fn old_function() {
