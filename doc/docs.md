@@ -5306,6 +5306,23 @@ An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 
 ```v
+// [flag] enables Enum types to be used as bitfields
+
+[flag]
+enum BitField {
+	read
+	write
+	other
+}
+
+fn example_enum_as_bitfield_use() {
+	assert 1 == int(BitField.read)
+	assert 2 == int(BitField.write)
+	mut bf := BitField.read
+	bf.set(.write | .other)
+	assert bf.has(.read | .write | .other)
+}
+
 // Calling this function will result in a deprecation warning
 [deprecated]
 fn old_function() {
@@ -5398,37 +5415,6 @@ fn custom_allocations() {
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
 [typedef]
 struct C.Foo {
-}
-
-// [flag] enables Enum types to be used as bitfields
-[flag]
-enum BitField {
-	read
-	write
-	other
-}
-
-struct BitFieldExample {
-mut:
-	flags BitField
-}
-
-fn example_enum_as_bitfield_use() {
-	assert 1 == int(BitField.read)
-	assert 2 == int(BitField.write)
- 
-	mut ex := BitFieldExample{}
-	ex.flags.set(.read)
-	ex.flags.set(.write)
-	ex.flags.toggle(.write)
-	ex.flags.clear(.write)
-	
-	assert ex.flags.has(.read)
-	assert !ex.flags.has(.write)
-	
-	mut bf := BitField.read
-	bf.set(.write | .other)
-	assert bf.has(.read | .write | .other)
 }
 
 // Used in Win32 API code when you need to pass callback function
