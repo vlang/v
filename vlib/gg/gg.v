@@ -640,16 +640,16 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
 	sgl.begin_triangle_strip()
-	x0 := points[0]
-	y0 := points[1]
+	x0 := points[0] * ctx.scale
+	y0 := points[1] * ctx.scale
 	for i in 1 .. (len / 2 + 1) {
 		sgl.v2f(x0, y0)
-		sgl.v2f(points[i * 4 - 2], points[i * 4 - 1])
-		sgl.v2f(points[i * 4], points[i * 4 + 1])
+		sgl.v2f(points[i * 4 - 2] * ctx.scale, points[i * 4 - 1] * ctx.scale)
+		sgl.v2f(points[i * 4] * ctx.scale, points[i * 4 + 1] * ctx.scale)
 	}
 
 	if len % 2 == 0 {
-		sgl.v2f(points[2 * len - 2], points[2 * len - 1])
+		sgl.v2f(points[2 * len - 2] * ctx.scale, points[2 * len - 1] * ctx.scale)
 	}
 	sgl.end()
 }
