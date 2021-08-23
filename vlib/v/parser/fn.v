@@ -215,6 +215,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = .js
+		
 	}
 	if language != .v {
 		for fna in p.attrs {

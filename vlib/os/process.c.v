@@ -1,7 +1,5 @@
 module os
 
-
-
 // signal_kill - kills the process, after that it is no longer running
 pub fn (mut p Process) signal_kill() {
 	if p.status !in [.running, .stopped] {

@@ -2,7 +2,6 @@ module os
 
 #const $child_process = require('child_process')
 
-
 // new_process - create a new process descriptor
 // NB: new does NOT start the new process.
 // That is done because you may want to customize it first,
@@ -14,9 +13,6 @@ pub fn new_process(filename string) &Process {
 		stdio_fd: [-1, -1, -1]!
 	}
 }
-
-
-
 
 fn (mut p Process) spawn_internal() {
 	#p.val.pid = $child_process.spawn(

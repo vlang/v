@@ -4,7 +4,7 @@ module os
 #const $path = require('path');
 
 pub const (
-	args = []string{}
+	args           = []string{}
 	path_delimiter = '/'
 	path_separator = '/'
 )

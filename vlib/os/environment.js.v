@@ -1,9 +1,9 @@
 module os
 
 $if js_node {
-#const $ENV = $process.env 
+	#const $ENV = $process.env
 } $else {
-#const $ENV = {}
+	#const $ENV = {}
 }
 
 // setenv sets the value of an environment variable with `name` to `value`.

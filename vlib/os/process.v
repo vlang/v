@@ -1,4 +1,5 @@
 module os
+
 // ProcessState.not_started - the process has not yet started
 // ProcessState.running - the process is currently running
 // ProcessState.stopped - the process was running, but was stopped temporarily
@@ -67,4 +68,3 @@ pub fn (mut p Process) set_environment(envs map[string]string) {
 	}
 	return
 }
-

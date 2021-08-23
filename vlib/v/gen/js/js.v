@@ -1525,7 +1525,7 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 
 fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 	g.call_stack << it
-	
+
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
@@ -1595,7 +1595,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			}
 		}
 	}
-	
+
 	// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
 	g.write('Object.getPrototypeOf(')
 	g.expr(it.left)
@@ -1662,7 +1662,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.call_stack << it
 	mut name := g.js_name(it.name)
 	ret_sym := g.table.get_type_symbol(it.return_type)
-	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
 		g.write('new ')
 		if g.ns.name != 'builtin' {
 			g.write('builtin.')
@@ -1727,7 +1727,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
-	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
 		g.write(')')
 	}
 	g.call_stack.delete_last()
@@ -1891,10 +1891,11 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 		}
 	}
 }
-type MatchCond = CondString | CondExpr
+
+type MatchCond = CondExpr | CondString
 
 struct CondString {
-	s string 
+	s string
 }
 
 struct CondExpr {
@@ -1931,7 +1932,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
-		cond_var = CondString {s}
+		cond_var = CondString{s}
 		g.write('let $s = ')
 		g.expr(node.cond)
 		g.writeln(';')
@@ -1979,8 +1980,6 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		g.write(')')
 	}
 }
-
-
 
 fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
 	for j, branch in node.branches {
@@ -2724,19 +2723,19 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		 if call.language == .js {
-		for i, t in call.args {
-			if t.expr is ast.FloatLiteral {
-				if t.expr == it {
-					if call.expected_arg_types[i] in ast.integer_type_idxs {
-						g.write(int(it.val.f64()).str())
-					} else {
-						g.write(it.val)
+		if call.language == .js {
+			for i, t in call.args {
+				if t.expr is ast.FloatLiteral {
+					if t.expr == it {
+						if call.expected_arg_types[i] in ast.integer_type_idxs {
+							g.write(int(it.val.f64()).str())
+						} else {
+							g.write(it.val)
+						}
+						return
 					}
-					return
 				}
 			}
-		}
 		}
 	}
 
