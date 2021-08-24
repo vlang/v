@@ -895,6 +895,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 						p.check_fn_atomic_arguments(typ, pos)
 					} else {
 						p.check_fn_mutable_arguments(typ, pos)
+						typ = typ.set_nr_muls(0) // compatibility `mut x &Type` -> `mut x Type`
 					}
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic` or `shared`',
