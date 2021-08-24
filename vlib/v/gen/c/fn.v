@@ -1405,7 +1405,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	arg_sym := g.table.get_type_symbol(arg.typ)
 	mut is_amp := false
 	needs_interface_promotion := exp_sym.kind == .interface_ && arg_sym.kind != .interface_
-	mut needs_array_promotion := false
 	mut is_non_ptr_index_expr := false
 	mut is_auto_deref := false
 	mut is_heap := false
@@ -1419,18 +1418,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if is_auto_deref {
 					// to optimize &(*(x)) -> x
 					name = obj.name
-				}
-			}
-		}
-		ast.SelectorExpr {
-			left := arg.expr.expr
-			if left is ast.Ident {
-				obj := left.obj
-				if obj is ast.Var {
-					// is_auto_deref = obj.is_auto_deref
-					if obj.is_auto_deref {
-						needs_array_promotion = true
-					}
 				}
 			}
 		}
@@ -1457,8 +1444,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut needs_closing := false
 	if arg.is_mut && !arg_is_ptr {
 		if !(is_amp && exp_sym.kind == .interface_ && arg_sym.kind == .interface_) {
-			if needs_interface_promotion || is_non_ptr_index_expr
-				|| (exp_sym.kind == .array && needs_array_promotion) {
+			if needs_interface_promotion || is_non_ptr_index_expr {
 				if is_heap {
 					g.write('HEAP(/*mut*/$exp_sym.cname, ')
 				} else {
