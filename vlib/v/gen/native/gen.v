@@ -380,6 +380,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.pop(.rbp)
 			g.ret()
 		}
+		ast.AsmStmt {
+			g.gen_asm_stmt(node)
+		}
 		ast.AssertStmt {
 			g.gen_assert(node)
 		}
