@@ -674,6 +674,58 @@ pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
 	sgl.end()
 }
 
+// draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
+// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
+// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
+// Please see `draw_cubic_bezier_in_steps` to control the amount of steps (segments) used to draw the curve.
+pub fn (ctx &Context) draw_cubic_bezier(points []f32, control_points []f32, c gx.Color) {
+	ctx.draw_cubic_bezier_in_steps(points, control_points, u32(30 * ctx.scale), c)
+}
+
+// draw_cubic_bezier_in_steps draws a cubic Bézier curve, also known as a spline, from four points.
+// The smoothness of the curve can be controlled with the `steps` parameter. `steps` determines how many iterations is
+// taken to draw the curve.
+// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
+// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
+pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, control_points []f32, steps u32, c gx.Color) {
+	assert steps > 0
+	assert points.len == 4
+	assert points.len == control_points.len
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_line_strip()
+
+	p1_x, p1_y := points[0], points[1]
+	p2_x, p2_y := points[2], points[3]
+
+	ctrl_p1_x, ctrl_p1_y := control_points[0], control_points[1]
+	ctrl_p2_x, ctrl_p2_y := control_points[2], control_points[3]
+
+	// The constant 3 is actually points.len() - 1;
+
+	step := f32(1.0) / steps
+	sgl.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
+	for u := f32(0.0); u <= f32(1.0); u += step {
+		pow_2_u := u * u
+		pow_3_u := pow_2_u * u
+
+		x := pow_3_u * (p2_x + 3 * (ctrl_p1_x - ctrl_p2_x) - p1_x) +
+			3 * pow_2_u * (p1_x - 2 * ctrl_p1_x + ctrl_p2_x) + 3 * u * (ctrl_p1_x - p1_x) + p1_x
+
+		y := pow_3_u * (p2_y + 3 * (ctrl_p1_y - ctrl_p2_y) - p1_y) +
+			3 * pow_2_u * (p1_y - 2 * ctrl_p1_y + ctrl_p2_y) + 3 * u * (ctrl_p1_y - p1_y) + p1_y
+
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
+	}
+	sgl.v2f(p2_x * ctx.scale, p2_y * ctx.scale)
+
+	sgl.end()
+}
+
 // window_size returns the `Size` of the active window
 pub fn window_size() Size {
 	s := dpi_scale()
