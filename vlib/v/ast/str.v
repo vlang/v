@@ -66,8 +66,9 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 			cur_mod)
 		if node.rec_mut {
 			f.write_string(node.receiver.typ.share().str() + ' ')
-			// *** mut_for investigate further
-			styp = styp[1..] // remove &
+			if styp.starts_with('&') {
+				styp = styp[1..] // remove &
+			}
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
