@@ -1,0 +1,28 @@
+module main
+
+import net.http { CommonHeader, Request, Response, Server }
+
+struct ExampleHandler {}
+
+fn (h ExampleHandler) handle(req Request) Response {
+	mut res := Response{
+		header: http.new_header_from_map({
+			CommonHeader.content_type: 'text/plain'
+		})
+	}
+	res.text = match req.url {
+		'/foo' { 'bar\n' }
+		'/hello' { 'world\n' }
+		'/' { 'foo\nhello\n' }
+		else { 'Not found\n' }
+	}
+	res.status_code = if res.text == 'Not found' { 404 } else { 200 }
+	return res
+}
+
+fn main() {
+	mut server := Server{
+		handler: ExampleHandler{}
+	}
+	server.listen_and_serve() ?
+}
