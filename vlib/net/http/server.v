@@ -8,13 +8,13 @@ import net
 import time
 
 // ServerStatus is the current status of the server.
-// server_running means that the server is active and serving.
-// server_stopped means that the server is not active but still listening.
-// server_closed means that the server is completely inactive.
+// .running means that the server is active and serving.
+// .stopped means that the server is not active but still listening.
+// .closed means that the server is completely inactive.
 pub enum ServerStatus {
-	server_running
-	server_stopped
-	server_closed
+	running
+	stopped
+	closed
 }
 
 interface Handler {
@@ -23,8 +23,8 @@ interface Handler {
 
 pub struct Server {
 mut:
-	stop_signal ServerStatus = .server_closed
-	listener    net.TcpListener
+	state    ServerStatus = .closed
+	listener net.TcpListener
 pub mut:
 	port           int           = 8080
 	handler        Handler       = DebugHandler{}
@@ -40,10 +40,10 @@ pub fn (mut s Server) listen_and_serve() ? {
 	s.listener = net.listen_tcp(.ip6, ':$s.port') ?
 	s.listener.set_accept_timeout(s.accept_timeout)
 	eprintln('Listening on :$s.port')
-	s.stop_signal = .server_running
+	s.state = .running
 	for {
 		// break if we have a stop signal
-		if s.status() != .server_running {
+		if s.state != .running {
 			break
 		}
 		mut conn := s.listener.accept() or {
@@ -57,7 +57,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 		// TODO: make concurrent
 		s.parse_and_respond(mut conn)
 	}
-	if s.status() == .server_stopped {
+	if s.state == .stopped {
 		s.close()
 	}
 }
@@ -65,19 +65,19 @@ pub fn (mut s Server) listen_and_serve() ? {
 // stop signals the server that it should not respond anymore
 [inline]
 pub fn (mut s Server) stop() {
-	s.stop_signal = .server_stopped
+	s.state = .stopped
 }
 
 // close immediatly closes the port and signals the server that it has been closed
 [inline]
 pub fn (mut s Server) close() {
-	s.stop_signal = .server_closed
+	s.state = .closed
 	s.listener.close() or { return }
 }
 
 [inline]
 pub fn (s &Server) status() ServerStatus {
-	return s.stop_signal
+	return s.state
 }
 
 fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
