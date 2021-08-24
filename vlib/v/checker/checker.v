@@ -2129,6 +2129,26 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete'] {
 		return c.map_builtin_method_call(mut node, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
+		if method_name == 'insert' {
+			if node.args.len != 2 {
+				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+					node.pos)
+				return ast.void_type
+			} else {
+				arg_type := c.expr(node.args[0].expr)
+				if arg_type !in [ast.int_type, ast.int_literal_type] {
+					c.error('the first argument of `array.insert()` should be integer',
+						node.args[0].expr.position())
+					return ast.void_type
+				}
+			}
+		} else {
+			if node.args.len != 1 {
+				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+					node.pos)
+				return ast.void_type
+			}
+		}
 		info := left_type_sym.info as ast.Array
 		arg_expr := if method_name == 'insert' { node.args[1].expr } else { node.args[0].expr }
 		arg_type := c.expr(arg_expr)
