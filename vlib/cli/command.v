@@ -175,7 +175,7 @@ fn (mut cmd Command) parse_flags() {
 			break
 		}
 		mut found := false
-		for mut flag in cmd.flags.len {
+		for mut flag in cmd.flags {
 			if flag.matches(cmd.args, cmd.posix_mode) {
 				found = true
 				flag.found = true
