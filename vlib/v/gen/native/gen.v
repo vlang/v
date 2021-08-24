@@ -84,7 +84,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	g.generate_header()
 	for file in files {
 		if file.warnings.len > 0 {
-			eprintln('Warning: ${file.warnings[0]}')
+			eprintln('warning: ${file.warnings[0]}')
 		}
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
@@ -358,13 +358,21 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					// TODO
 					// verror('expr')
 				}
+				ast.CastExpr {
+					g.mov64(.rax, e0.expr.str().int())
+					// do the job
+				}
 				ast.StringLiteral {
 					s = e0.val.str()
 					g.expr(node.exprs[0])
 					g.mov64(.rax, g.allocate_string(s, 2))
 				}
+				ast.Ident {
+					g.expr(e0)
+					eprintln('ident $e0.name')
+				}
 				else {
-					g.n_error('unknown return type $e0')
+					g.n_error('unknown return type $e0.type_name()')
 				}
 			}
 			// intel specific
@@ -448,6 +456,20 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 [noreturn]
 pub fn (mut g Gen) n_error(s string) {
 	util.verror('native error', s)
+}
+
+pub fn (mut g Gen) warning(s string, pos token.Position) {
+	if g.pref.output_mode == .stdout {
+		werror := util.formatted_error('warning', s, g.pref.path, pos)
+		eprintln(werror)
+	} else {
+		g.warnings << errors.Warning{
+			file_path: g.pref.path
+			pos: pos
+			reporter: .gen
+			message: s
+		}
+	}
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Position) {

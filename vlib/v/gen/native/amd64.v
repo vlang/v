@@ -983,6 +983,20 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
 			}
+			ast.CastExpr {
+				g.warning('cast expressions are work in progress', right.pos)
+				match right.typname {
+					'u64' {
+						g.allocate_var(name, 8, right.expr.str().int())
+					}
+					'int' {
+						g.allocate_var(name, 4, right.expr.str().int())
+					}
+					else {
+						g.v_error('unsupported cast type $right.typ', node.pos)
+					}
+				}
+			}
 			else {
 				// dump(node)
 				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.position())
