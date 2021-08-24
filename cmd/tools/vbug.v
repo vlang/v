@@ -176,7 +176,8 @@ fn main() {
 	raw_body := '<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
 **V doctor:**
 ```
-$vdoctor_output```
+$vdoctor_output
+```
 
 **What did you do?**
 `v -g -o vdbg cmd/v && vdbg $file_path`
