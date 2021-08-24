@@ -372,6 +372,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.array_index_types << g.array_index_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
+			global_g.hotcode_fn_names << g.hotcode_fn_names
 		}
 	} else {
 		for file in files {
