@@ -37,6 +37,7 @@ enum Register {
 
 const (
 	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	amd64_cpuregs    = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
 
 fn (mut g Gen) dec(reg Register) {
@@ -51,6 +52,11 @@ fn (mut g Gen) dec(reg Register) {
 		else { panic('unhandled inc $reg') }
 	}
 	g.println('dec $reg')
+}
+
+[inline]
+fn byt(n int, s int) byte {
+	return byte((n >> (s * 8)) & 0xff)
 }
 
 fn (mut g Gen) inc(reg Register) {
@@ -983,6 +989,20 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
 			}
+			ast.CastExpr {
+				g.warning('cast expressions are work in progress', right.pos)
+				match right.typname {
+					'u64' {
+						g.allocate_var(name, 8, right.expr.str().int())
+					}
+					'int' {
+						g.allocate_var(name, 4, right.expr.str().int())
+					}
+					else {
+						g.v_error('unsupported cast type $right.typ', node.pos)
+					}
+				}
+			}
 			else {
 				// dump(node)
 				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.position())
@@ -1022,6 +1042,109 @@ fn (mut g Gen) trap() {
 	// funnily works on x86 and arm64
 	g.write32(0xcccccccc)
 	g.println('trap')
+}
+
+fn (mut g Gen) gen_asm_stmt(asm_node ast.AsmStmt) {
+	if g.pref.arch == .arm64 {
+		g.gen_asm_stmt_arm64(asm_node)
+	} else {
+		g.gen_asm_stmt_amd64(asm_node)
+	}
+}
+
+fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
+	// inline assembly using vasm
+	g.println('// asm inline')
+	mut reg := 0
+	mut imm := 0
+	mut regname := ''
+	// dump(asm_node)
+	for t in asm_node.templates {
+		mut line := t.name
+		mut comma := false
+		for a in t.args {
+			if comma {
+				line += ', '
+			} else {
+				comma = true
+			}
+			match a {
+				ast.AsmRegister {
+					regname = a.name
+					reg = native.amd64_cpuregs.index(regname)
+					line += a.typ.str()
+				}
+				ast.IntegerLiteral {
+					line += a.val
+					imm = a.val.int()
+				}
+				ast.BoolLiteral {
+					line += a.val.str()
+					imm = if a.val { 1 } else { 0 }
+				}
+				/*
+				ast.AsmAddressing {
+				}
+				ast.AsmAlias {
+				}
+				ast.AsmDisp {
+				}
+				ast.CharLiteral {
+				}
+				ast.FloatLiteral {
+				}
+				*/
+				string {
+					// XXX
+					g.v_error('no strings allowed in this context', asm_node.pos)
+				}
+				else {
+					g.v_error('unsupported instruction argument argument', asm_node.pos)
+				}
+			}
+		}
+		g.println(': $line')
+		match t.name {
+			'nop' {
+				g.write8(byte(0x90))
+			}
+			'syscall' {
+				g.write8(byte(0x0f))
+				g.write8(byte(0x05))
+			}
+			'ret' {
+				g.write8(byte(0xc3))
+			}
+			'int3' {
+				g.write8(byte(0xcc))
+				g.write8(byte(imm))
+			}
+			'sti' {
+				g.write8(byte(0xfb))
+			}
+			'cli' {
+				g.write8(byte(0xfa))
+			}
+			'int' {
+				g.write8(byte(0xcd))
+				g.write8(byte(imm))
+			}
+			'cpuid' {
+				g.write8(byte(0x0f))
+				g.write8(byte(0xa2))
+			}
+			'mov' {
+				g.write8(byte(0xb8 + reg))
+				g.write8(byt(imm, 0))
+				g.write8(byt(imm, 1))
+				g.write8(byt(imm, 2))
+				g.write8(byt(imm, 3))
+			}
+			else {
+				g.v_error('unsupported instruction $t.name', asm_node.pos)
+			}
+		}
+	}
 }
 
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {

@@ -197,3 +197,7 @@ pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
 	g.mov_arm(.x0, 0)
 	g.svc()
 }
+
+fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
+	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
+}
