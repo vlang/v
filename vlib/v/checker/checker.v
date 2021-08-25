@@ -818,6 +818,10 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 			match parent.info {
 				ast.Struct {
 					mut parent_info := parent.info as ast.Struct
+					if !parent_info.is_generic {
+						util.verror('generic error', 'struct `$parent.name` is not a generic struct, cannot instantiate to the concrete types')
+						continue
+					}
 					mut fields := parent_info.fields.clone()
 					if parent_info.generic_types.len == info.concrete_types.len {
 						generic_names := parent_info.generic_types.map(c.table.get_type_symbol(it).name)
@@ -857,6 +861,10 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 				}
 				ast.Interface {
 					mut parent_info := parent.info as ast.Interface
+					if !parent_info.is_generic {
+						util.verror('generic error', 'interface `$parent.name` is not a generic interface, cannot instantiate to the concrete types')
+						continue
+					}
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						generic_names := parent_info.generic_types.map(c.table.get_type_symbol(it).name)
@@ -908,6 +916,10 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 				}
 				ast.SumType {
 					mut parent_info := parent.info as ast.SumType
+					if !parent_info.is_generic {
+						util.verror('generic error', 'sumtype `$parent.name` is not a generic sumtype, cannot instantiate to the concrete types')
+						continue
+					}
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
