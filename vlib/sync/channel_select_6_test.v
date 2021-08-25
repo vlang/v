@@ -6,8 +6,8 @@
 fn do_select(ch1 chan int, ch2 chan int, chf1 chan f64, chf2 chan f64, sumch1 chan i64, sumch2 chan i64) {
 	mut sum1 := i64(0)
 	mut sum2 := i64(0)
-	f1 := 17.
-	f2 := 7.
+	f1 := 17.0
+	f2 := 7.0
 	for _ in 0 .. 20000 + chf1.cap / 3 {
 		select {
 			chf1 <- f1 {}
@@ -31,7 +31,7 @@ fn do_send_int(ch chan int, factor int) {
 }
 
 fn do_rec_f64(ch chan f64, sumch chan f64) {
-	mut sum := 0.
+	mut sum := 0.0
 	for _ in 0 .. 10000 {
 		sum += <-ch
 	}
@@ -70,6 +70,6 @@ fn test_select() {
 	expected_sum := i64(10000) * (10000 - 1) / 2
 	assert sum1 == 3 * expected_sum
 	assert sum2 == (7 + 17) * expected_sum
-	assert sumf1 == 17. * f64(10000 + chf1.cap)
-	assert sumf2 == 7. * 20000
+	assert sumf1 == 17.0 * f64(10000 + chf1.cap)
+	assert sumf2 == 7.0 * 20000
 }
