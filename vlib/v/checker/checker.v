@@ -8091,6 +8091,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				arg_typ_sym := c.table.get_type_symbol(arg.typ)
 				if arg_typ_sym.kind == .struct_ {
 					info := arg_typ_sym.info as ast.Struct
+					if info.is_anon {
+						c.error('Anon struct are not allowed in function parameter', node.pos)
+					}
 					if info.is_heap { // set auto_heap to promote value parameter
 						mut v := node.scope.find_var(arg.name) or { continue }
 						v.is_auto_heap = true
