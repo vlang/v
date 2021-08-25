@@ -359,7 +359,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with := vals[rep_i + 1]
 		for {
 			idx = s_.index_after(rep, idx)
-			
+
 			if idx == -1 {
 				break
 			}
@@ -367,7 +367,6 @@ pub fn (s string) replace_each(vals []string) string {
 			for i in 0 .. rep.len {
 				unsafe {
 					s_.str[idx + i] = 127
-					
 				}
 			}
 			// We need to remember both the position in the string,
@@ -376,7 +375,7 @@ pub fn (s string) replace_each(vals []string) string {
 				idx: idx
 				val_idx: rep_i
 			}
-			
+
 			idx += rep.len
 			new_len += with.len - rep.len
 		}
@@ -399,7 +398,6 @@ pub fn (s string) replace_each(vals []string) string {
 			for j in 0 .. with.len {
 				unsafe {
 					b[b_i] = with[j]
-					
 				}
 				b_i++
 			}
