@@ -1178,14 +1178,14 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 				if v.idx() == variant.idx() {
 					return true
 				}
-			}
-			mut no_struct := false
-			is_anon_struct := t.struct_is_anon_struct(variant, v) or {
-				no_struct = true
-				false
-			}
-			if !no_struct && is_anon_struct {
-				return true
+				mut no_struct := false
+				is_anon_struct := t.struct_is_anon_struct(variant, v) or {
+					no_struct = true
+					false
+				}
+				if !no_struct && is_anon_struct {
+					return true
+				}
 			}
 		}
 	}
