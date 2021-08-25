@@ -97,13 +97,13 @@ fn test_for_in_mut_val_of_string() {
 }
 
 fn test_for_in_mut_val_of_float() {
-	mut values := [1., 2, 3]
+	mut values := [1.0, 2, 3]
 	println(values)
 
 	for mut v in values {
-		v = 1.
-		v = v + 1.
+		v = 1.0
+		v = v + 1.0
 	}
 	println(values)
-	assert values == [2., 2, 2]
+	assert values == [2.0, 2, 2]
 }
