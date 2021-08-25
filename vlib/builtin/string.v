@@ -359,6 +359,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with := vals[rep_i + 1]
 		for {
 			idx = s_.index_after(rep, idx)
+
 			if idx == -1 {
 				break
 			}
@@ -374,6 +375,7 @@ pub fn (s string) replace_each(vals []string) string {
 				idx: idx
 				val_idx: rep_i
 			}
+
 			idx += rep.len
 			new_len += with.len - rep.len
 		}

@@ -1,4 +1,4 @@
-module os_js
+module os
 
 pub struct File {
 pub:
@@ -128,3 +128,9 @@ pub fn (mut f File) write_string(s string) ?int {
 	nbytes := f.write(s.bytes()) ?
 	return nbytes
 }
+
+pub fn (mut f File) close() {
+	#f.valueOf().fd.close()
+}
+
+pub fn (mut f File) write_full_buffer(s voidptr, buffer_len size_t) ? {}
