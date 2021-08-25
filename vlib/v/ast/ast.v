@@ -237,7 +237,7 @@ pub mut:
 pub struct AnonStruct {
 pub mut:
 	decl StructDecl
-	typ Type
+	typ  Type
 	name string
 }
 
@@ -590,7 +590,7 @@ pub mut:
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
-	stmts            []Stmt            // all the statements in the source file
+	stmts            []Stmt // all the statements in the source file
 	anon_structs     []AnonStruct
 	imports          []Import          // all the imports
 	auto_imports     []string          // imports that were implicitely added

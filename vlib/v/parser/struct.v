@@ -82,7 +82,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(no_body,
 		language) or { return ast.StructDecl{} }
 
-
 	p.top_level_statement_end()
 	last_line = p.tok.line_nr
 	p.check(.rcbr)

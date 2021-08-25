@@ -256,14 +256,13 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 
 	generic_types := p.parse_generic_type_list()
 	name_pos := p.tok.position()
-	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(false, .v) or {
-		return ast.void_type_idx
-	}
+	embed_types, fields, ast_fields, mut_pos, pub_pos, pub_mut_pos, global_pos, module_pos, end_comments, embeds := p.parse_struct_fields(false,
+		.v) or { return ast.void_type_idx }
 
 	last_line := p.tok.line_nr
 	p.check(.rcbr)
 
-	st := ast.Struct {
+	st := ast.Struct{
 		embeds: embed_types
 		fields: fields
 		is_union: is_union
@@ -278,7 +277,7 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 		p.anon_structs << ast.AnonStruct{
 			typ: idx
 			name: p.table.get_type_name(idx)
-			decl: ast.StructDecl {
+			decl: ast.StructDecl{
 				is_pub: false
 				fields: ast_fields
 				pos: start_pos.extend_with_last_line(name_pos, last_line)
@@ -292,7 +291,7 @@ pub fn (mut p Parser) parse_anon_struct_type() ast.Type {
 				attrs: []ast.Attr{}
 				end_comments: end_comments
 				generic_types: generic_types
-				embeds: embeds 
+				embeds: embeds
 			}
 		}
 	}

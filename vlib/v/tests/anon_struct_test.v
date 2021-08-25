@@ -3,17 +3,11 @@ struct Foo {
 }
 
 struct Test {
-	anon struct {
-		foo int
-	}
+	anon struct { foo int }
 }
 
-type Abc = struct {
-	foo int
-}
-type Def = struct {
-	foo int
-} | int
+type Abc = struct { foo int abc int }
+type Def = int | struct { foo int }
 
 fn test_anon_struct_init() {
 	test := Test{

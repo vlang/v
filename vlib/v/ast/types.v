@@ -1013,6 +1013,11 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			res += ')'
 		}
 		.struct_, .interface_, .sum_type {
+			if sym.info is Struct {
+				if sym.info.is_anon {
+					res = 'struct'
+				}
+			}
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
@@ -1029,6 +1034,15 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				}
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
+			}
+			if sym.info is Struct {
+				if sym.info.is_anon {
+					mut fields := []string{}
+					for field in sym.info.fields {
+						fields << '$field.name ${t.type_to_str(field.typ)}'
+					}
+					res += ' { ${fields.join(' ')} }'
+				}
 			}
 		}
 		.generic_inst {

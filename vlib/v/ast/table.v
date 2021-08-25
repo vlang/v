@@ -1206,7 +1206,7 @@ pub fn (t &Table) struct_is_anon_struct(got Type, expected Type) ?bool {
 			if expected_st.fields.len != got_st.fields.len {
 				return false
 			}
-			for i in 0..expected_st.fields.len {
+			for i in 0 .. expected_st.fields.len {
 				if !t.compare_struct_fields(got_st.fields[i], expected_st.fields[i]) {
 					return false
 				}
@@ -1226,20 +1226,20 @@ pub fn (t &Table) compare_struct_fields(got StructField, expected StructField) b
 	}
 	// TODO check default expr
 
-	if got.is_pub != expected.is_pub || got.is_mut != expected.is_mut || got.is_global != expected.is_global {
+	if got.is_pub != expected.is_pub || got.is_mut != expected.is_mut
+		|| got.is_global != expected.is_global {
 		return false
 	}
 	if got.attrs.len != expected.attrs.len {
 		return false
 	}
-	for i in 0..got.attrs.len {
+	for i in 0 .. got.attrs.len {
 		if got.attrs[i] != expected.attrs[i] {
 			return false
 		}
 	}
 	return true
 }
-
 
 // only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {

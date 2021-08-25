@@ -310,7 +310,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if !no_struct && is_anon_struct {
 		return true
 	}
-	
+
 	if expected.has_flag(.optional) {
 		sym := c.table.get_type_symbol(got)
 		if (sym.kind == .interface_ && sym.name == 'IError')
@@ -339,7 +339,6 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	return true
 }
-
 
 pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
 	if !c.check_types(got, expected) {
