@@ -525,6 +525,111 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 	}
 }
 
+fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
+	g.stmt_start_pos = g.ns.out.len
+	match node {
+		ast.EmptyStmt {}
+		ast.AsmStmt {
+			panic('inline asm is not supported by js')
+		}
+		ast.AssertStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_assert_stmt(node)
+		}
+		ast.AssignStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_assign_stmt(node, false)
+		}
+		ast.Block {
+			g.write_v_source_line_info(node.pos)
+			g.gen_block(node)
+			g.writeln('')
+		}
+		ast.BranchStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_branch_stmt(node)
+		}
+		ast.CompFor {}
+		ast.ConstDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_const_decl(node)
+		}
+		ast.DeferStmt {
+			g.defer_stmts << node
+		}
+		ast.EnumDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_enum_decl(node)
+			g.writeln('')
+		}
+		ast.ExprStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_expr_stmt_no_semi(node)
+		}
+		ast.FnDecl {
+			g.write_v_source_line_info(node.pos)
+			g.fn_decl = unsafe { &node }
+			g.gen_fn_decl(node)
+		}
+		ast.ForCStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_c_stmt(node)
+			g.writeln('')
+		}
+		ast.ForInStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_in_stmt(node)
+			g.writeln('')
+		}
+		ast.ForStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_stmt(node)
+			g.writeln('')
+		}
+		ast.GlobalDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_global_decl(node)
+			g.writeln('')
+		}
+		ast.GotoLabel {
+			g.write_v_source_line_info(node.pos)
+			g.writeln('${g.js_name(node.name)}:')
+		}
+		ast.GotoStmt {
+			// skip: JS has no goto
+		}
+		ast.HashStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_hash_stmt(node)
+		}
+		ast.Import {
+			g.ns.imports[node.mod] = node.alias
+		}
+		ast.InterfaceDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_interface_decl(node)
+		}
+		ast.Module {
+			// skip: namespacing implemented externally
+		}
+		ast.NodeError {}
+		ast.Return {
+			if g.defer_stmts.len > 0 {
+				g.gen_defer_stmts()
+			}
+			g.gen_return_stmt(node)
+		}
+		ast.SqlStmt {}
+		ast.StructDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_struct_decl(node)
+		}
+		ast.TypeDecl {
+			// skip JS has no typedecl
+		}
+	}
+}
+
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
@@ -538,7 +643,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assign_stmt(node)
+			g.gen_assign_stmt(node, true)
 		}
 		ast.Block {
 			g.write_v_source_line_info(node.pos)
@@ -860,7 +965,7 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('}')
 }
 
-fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
+fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 	if stmt.left.len > stmt.right.len {
 		// multi return
 		g.write('const [')
@@ -874,7 +979,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 		}
 		g.write('] = ')
 		g.expr(stmt.right[0])
-		g.writeln(';')
+		if semicolon {
+			g.writeln(';')
+		}
 	} else {
 		// `a := 1` | `a,b := 1,2`
 		for i, left in stmt.left {
@@ -996,10 +1103,12 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 					g.cast_stack.delete_last()
 				}
 			}
-			if g.inside_loop {
-				g.write('; ')
-			} else {
-				g.writeln(';')
+			if semicolon {
+				if g.inside_loop {
+					g.write('; ')
+				} else {
+					g.writeln(';')
+				}
 			}
 		}
 	}
@@ -1070,6 +1179,10 @@ fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary {
 		g.writeln(';')
 	}
+}
+
+fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
+	g.expr(it.expr)
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
@@ -1211,7 +1324,7 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 	}
 	g.write('; ')
 	if it.has_inc {
-		g.stmt(it.inc)
+		g.stmt_no_semi(it.inc)
 	}
 	g.writeln(') {')
 	g.stmts(it.stmts)
@@ -1349,6 +1462,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// TODO: interfaces are always `pub`?
 	name := g.js_name(it.name)
 	g.push_pub_var('/** @type $name */\n\t\t$name: undefined')
+	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
 }
 
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
@@ -1629,7 +1743,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				g.write('return ')
+				// g.write('return ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1707,7 +1821,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				g.write('return ')
+
+				//	g.write('return ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1928,7 +2043,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	}
 
 	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
-		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
+		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral
+		|| node.cond is ast.CallExpr {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
@@ -2577,7 +2693,15 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('string(')
 	}
-	g.write("\"$text\"")
+	if it.is_raw {
+		g.writeln('(function() { let s = String(); ')
+		for x in text {
+			g.writeln('s += String.fromCharCode($x);')
+		}
+		g.writeln('return s; })()')
+	} else {
+		g.write("\"$text\"")
+	}
 	if true || should_cast {
 		g.write(')')
 	}
