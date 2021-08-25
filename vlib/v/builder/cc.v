@@ -16,7 +16,7 @@ const (
 ==================
 C error. This should never happen.
 
-If you were not working with C interop, this is a compiler bug, please report the bug using `v bug file.v`.
+This is a compiler bug, please report it using `v bug file.v`.
 
 https://github.com/vlang/v/issues/new/choose
 
@@ -317,6 +317,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
+	}
+	if v.pref.os == .freebsd {
+		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
+		ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
 	}
 
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {

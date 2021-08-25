@@ -364,6 +364,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		&& (p.file_base.ends_with('_test.v')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test'))
 
+	file_mode := p.file_backend_mode
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
@@ -386,6 +387,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		type_sym_method_idx = type_sym.register_method(ast.Fn{
 			name: name
+			file_mode: file_mode
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
@@ -412,11 +414,21 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		} else {
 			name = p.prepend_mod(name)
 		}
-		if !p.pref.translated && language == .v && name in p.table.fns {
-			p.table.redefined_fns << name
+		if !p.pref.translated && language == .v {
+			if existing := p.table.fns[name] {
+				if existing.name != '' {
+					if file_mode == .v && existing.file_mode != .v {
+						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
+						name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_$short_fn_name')
+					} else {
+						p.table.redefined_fns << name
+					}
+				}
+			}
 		}
 		p.table.register_fn(ast.Fn{
 			name: name
+			file_mode: file_mode
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic

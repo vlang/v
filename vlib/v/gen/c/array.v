@@ -411,7 +411,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		if left_info.elem_type == ast.string_type {
 			g.write('string_clone(')
 		}
-		g.expr(node.args[1].expr)
+		g.expr_with_cast(node.args[1].expr, node.args[1].typ, left_info.elem_type)
 		if left_info.elem_type == ast.string_type {
 			g.write(')')
 		}
@@ -441,7 +441,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		g.write(', &($elem_type_str[]){')
-		g.expr(node.args[0].expr)
+		g.expr_with_cast(node.args[0].expr, node.args[0].typ, left_info.elem_type)
 		g.write('})')
 	}
 }

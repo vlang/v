@@ -23,8 +23,6 @@ fn test_str_methods() {
 	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
-	// assert byte(1).str() == '1'
-	// assert byte(-1).str() == '255'
 	assert u16(1).str() == '1'
 	assert u16(-1).str() == '65535'
 	assert u32(1).str() == '1'
@@ -33,6 +31,8 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == 'ffffffffffffffff'
 	assert voidptr(1).str() == '1'
+	assert (&byte(-1)).str() == 'ffffffffffffffff'
+	assert (&byte(1)).str() == '1'
 	assert byteptr(-1).str() == 'ffffffffffffffff'
 	assert byteptr(1).str() == '1'
 }
@@ -105,6 +105,18 @@ fn test_hex() {
 	assert b.hex() == '4d2'
 	b1 := -1
 	assert b1.hex() == 'ffffffff'
+	// unsigned tests
+	assert u8(12).hex() == '0c'
+	assert u8(255).hex() == 'ff'
+	assert u16(65535).hex() == 'ffff'
+	assert u32(-1).hex() == 'ffffffff'
+	assert u64(-1).hex() == 'ffffffffffffffff'
+	// signed tests
+	assert i8(-1).hex() == 'ff'
+	assert i8(12).hex() == '0c'
+	assert i16(32767).hex() == '7fff'
+	assert int(2147483647).hex() == '7fffffff'
+	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
 }
 
 fn test_bin() {
@@ -168,7 +180,6 @@ fn test_num_separator() {
 	// f32 or f64
 	assert 312_2.55 == 3122.55
 	assert 312_2.55 == 3122.55
-
 }
 
 fn test_int_decl() {

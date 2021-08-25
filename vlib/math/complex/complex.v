@@ -27,7 +27,7 @@ pub fn (c Complex) str() string {
 // Complex Modulus value
 // mod() and abs() return the same
 pub fn (c Complex) abs() f64 {
-	return C.hypot(c.re, c.im)
+	return math.hypot(c.re, c.im)
 }
 
 pub fn (c Complex) mod() f64 {

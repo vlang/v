@@ -87,6 +87,7 @@ pub:
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
+	file_mode       Language
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
@@ -202,7 +203,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.get_type_symbol(typ)
 		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[]', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', '>', ''])
+			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '', '>', ''])
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -412,8 +413,13 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 			if !found_once {
 				found_once = true
 				new_field = type_field
-			} else if !new_field.equals(type_field) {
+			} else if new_field.typ != type_field.typ {
 				return error('field `${t.type_to_str(typ)}.$name` type is different')
+			}
+			new_field = StructField{
+				...new_field
+				is_mut: new_field.is_mut && type_field.is_mut
+				is_pub: new_field.is_pub && type_field.is_pub
 			}
 		} else {
 			return error('type `${t.type_to_str(typ)}` has no field or method `$name`')
@@ -469,7 +475,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 				}
 			}
 			SumType {
-				t.resolve_common_sumtype_fields(s)
+				t.resolve_common_sumtype_fields(ts)
 				if field := ts.info.find_field(name) {
 					return field
 				}
@@ -1158,9 +1164,20 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
-		for v in parent_info.variants {
-			if v.idx() == variant.idx() {
-				return true
+		var_sym := t.get_type_symbol(variant)
+		if var_sym.kind == .aggregate {
+			var_info := var_sym.info as Aggregate
+			for var_type in var_info.types {
+				if !t.sumtype_has_variant(parent, var_type) {
+					return false
+				}
+			}
+			return true
+		} else {
+			for v in parent_info.variants {
+				if v.idx() == variant.idx() {
+					return true
+				}
 			}
 			mut no_struct := false
 			is_anon_struct := t.struct_is_anon_struct(variant, v) or {
@@ -1526,7 +1543,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						gts := t.get_type_symbol(ct)
 						nrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
-							nrt += ','
+							nrt += ', '
 						}
 					}
 				}

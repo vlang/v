@@ -92,11 +92,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if sym.kind == .none_ {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
-		is_var := match expr {
-			ast.SelectorExpr, ast.Ident, ast.CTempVar { true }
-			else { false }
-		}
-		if is_var {
+		if expr !is ast.EnumVal {
 			str_fn_name := g.gen_str_for_type(typ)
 			g.write('${str_fn_name}(')
 			g.enum_expr(expr)

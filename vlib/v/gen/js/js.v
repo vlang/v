@@ -308,7 +308,7 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
-	g.definitions.writeln('function \$ref(value) { this.val = value; } ')
+	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
 	if g.pref.backend != .js_node {
 		g.definitions.writeln('const \$process = {')
@@ -525,6 +525,111 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 	}
 }
 
+fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
+	g.stmt_start_pos = g.ns.out.len
+	match node {
+		ast.EmptyStmt {}
+		ast.AsmStmt {
+			panic('inline asm is not supported by js')
+		}
+		ast.AssertStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_assert_stmt(node)
+		}
+		ast.AssignStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_assign_stmt(node, false)
+		}
+		ast.Block {
+			g.write_v_source_line_info(node.pos)
+			g.gen_block(node)
+			g.writeln('')
+		}
+		ast.BranchStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_branch_stmt(node)
+		}
+		ast.CompFor {}
+		ast.ConstDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_const_decl(node)
+		}
+		ast.DeferStmt {
+			g.defer_stmts << node
+		}
+		ast.EnumDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_enum_decl(node)
+			g.writeln('')
+		}
+		ast.ExprStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_expr_stmt_no_semi(node)
+		}
+		ast.FnDecl {
+			g.write_v_source_line_info(node.pos)
+			g.fn_decl = unsafe { &node }
+			g.gen_fn_decl(node)
+		}
+		ast.ForCStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_c_stmt(node)
+			g.writeln('')
+		}
+		ast.ForInStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_in_stmt(node)
+			g.writeln('')
+		}
+		ast.ForStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_for_stmt(node)
+			g.writeln('')
+		}
+		ast.GlobalDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_global_decl(node)
+			g.writeln('')
+		}
+		ast.GotoLabel {
+			g.write_v_source_line_info(node.pos)
+			g.writeln('${g.js_name(node.name)}:')
+		}
+		ast.GotoStmt {
+			// skip: JS has no goto
+		}
+		ast.HashStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_hash_stmt(node)
+		}
+		ast.Import {
+			g.ns.imports[node.mod] = node.alias
+		}
+		ast.InterfaceDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_interface_decl(node)
+		}
+		ast.Module {
+			// skip: namespacing implemented externally
+		}
+		ast.NodeError {}
+		ast.Return {
+			if g.defer_stmts.len > 0 {
+				g.gen_defer_stmts()
+			}
+			g.gen_return_stmt(node)
+		}
+		ast.SqlStmt {}
+		ast.StructDecl {
+			g.write_v_source_line_info(node.pos)
+			g.gen_struct_decl(node)
+		}
+		ast.TypeDecl {
+			// skip JS has no typedecl
+		}
+	}
+}
+
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
@@ -538,7 +643,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assign_stmt(node)
+			g.gen_assign_stmt(node, true)
 		}
 		ast.Block {
 			g.write_v_source_line_info(node.pos)
@@ -713,7 +818,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_map_init_expr(node)
 		}
 		ast.MatchExpr {
-			// TODO
+			g.match_expr(node)
 		}
 		ast.None {
 			// TODO
@@ -736,17 +841,16 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
-				// C pointers/references: ignore them
 				if node.op == .amp {
-					if !node.right_type.is_pointer() {
-						// kind of weird way to handle references but it allows us to access type methods easily.
-						g.write('(function(x) {')
-						g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
-						g.expr(node.right)
-						g.write(')')
-					} else {
-						g.expr(node.right)
-					}
+					// if !node.right_type.is_pointer() {
+					// kind of weird way to handle references but it allows us to access type methods easily.
+					g.write('(function(x) {')
+					g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
+					g.expr(node.right)
+					g.write(')')
+					//} else {
+					//		g.expr(node.right)
+					//	}
 				} else {
 					g.write('(')
 					g.expr(node.right)
@@ -802,8 +906,10 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_struct_init(node)
 		}
 		ast.TypeNode {
-			// skip: JS has no types
-			// TODO maybe?
+			typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(typ)
+			name := sym.name.replace_once('${g.ns.name}.', '')
+			g.write('$name')
 		}
 		ast.Likely {
 			g.write('(')
@@ -859,7 +965,7 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('}')
 }
 
-fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
+fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 	if stmt.left.len > stmt.right.len {
 		// multi return
 		g.write('const [')
@@ -873,7 +979,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 		}
 		g.write('] = ')
 		g.expr(stmt.right[0])
-		g.writeln(';')
+		if semicolon {
+			g.writeln(';')
+		}
 	} else {
 		// `a := 1` | `a,b := 1,2`
 		for i, left in stmt.left {
@@ -995,10 +1103,12 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 					g.cast_stack.delete_last()
 				}
 			}
-			if g.inside_loop {
-				g.write('; ')
-			} else {
-				g.writeln(';')
+			if semicolon {
+				if g.inside_loop {
+					g.write('; ')
+				} else {
+					g.writeln(';')
+				}
 			}
 		}
 	}
@@ -1069,6 +1179,10 @@ fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary {
 		g.writeln(';')
 	}
+}
+
+fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
+	g.expr(it.expr)
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
@@ -1150,14 +1264,22 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		if args.len > 0 {
 			g.write(', ')
 		}
-		g.write('${it.params[0].name} = this')
+		if it.params[0].is_mut || it.params[0].typ.is_ptr() {
+			g.write('${it.params[0].name} = new \$ref(this)')
+		} else {
+			g.write('${it.params[0].name} = this')
+		}
 	}
 	g.writeln(') {')
 	for i, arg in args {
 		is_varg := i == args.len - 1 && it.is_variadic
+		name := g.js_name(arg.name)
 		if is_varg {
-			name := g.js_name(arg.name)
 			g.writeln('$name = new array($name);')
+		} else {
+			if arg.typ.is_ptr() || arg.is_mut {
+				g.writeln('$name = new \$ref($name)')
+			}
 		}
 	}
 
@@ -1202,7 +1324,7 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 	}
 	g.write('; ')
 	if it.has_inc {
-		g.stmt(it.inc)
+		g.stmt_no_semi(it.inc)
 	}
 	g.writeln(') {')
 	g.stmts(it.stmts)
@@ -1340,6 +1462,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// TODO: interfaces are always `pub`?
 	name := g.js_name(it.name)
 	g.push_pub_var('/** @type $name */\n\t\t$name: undefined')
+	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
 }
 
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
@@ -1514,8 +1637,9 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 	g.write(']')
 }
 
-fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 	g.call_stack << it
+
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
@@ -1525,12 +1649,16 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.inc_indent()
 		g.write('return builtin.unwrap(')
 	}
-	g.expr(it.left)
-
-	if it.is_method { // foo.bar.baz()
-		sym := g.table.get_type_symbol(it.receiver_type)
-		g.write('.')
+	sym := g.table.get_type_symbol(it.receiver_type)
+	if sym.kind == .array {
 		if sym.kind == .array && it.name in ['map', 'filter'] {
+			g.expr(it.left)
+			mut ltyp := it.left_type
+			for ltyp.is_ptr() {
+				g.write('.val')
+				ltyp = ltyp.deref()
+			}
+			g.write('.')
 			// Prevent 'it' from getting shadowed inside the match
 			node := it
 			g.write(it.name)
@@ -1540,19 +1668,19 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				ast.AnonFn {
 					g.gen_fn_decl(expr.decl)
 					g.write(')')
-					return
+					return true
 				}
 				ast.Ident {
 					if expr.kind == .function {
 						g.write(g.js_name(expr.name))
 						g.write(')')
-						return
+						return true
 					} else if expr.kind == .variable {
 						v_sym := g.table.get_type_symbol(expr.var_info().typ)
 						if v_sym.kind == .function {
 							g.write(g.js_name(expr.name))
 							g.write(')')
-							return
+							return true
 						}
 					}
 				}
@@ -1562,22 +1690,115 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write('it => ')
 			g.expr(node.args[0].expr)
 			g.write(')')
-			return
+			return true
 		}
 
 		left_sym := g.table.get_type_symbol(it.left_type)
 		if left_sym.kind == .array {
-			node := it
-			if node.name in special_array_methods {
+			if it.name in special_array_methods {
+				g.expr(it.left)
+				mut ltyp := it.left_type
+				for ltyp.is_ptr() {
+					g.write('.val')
+					ltyp = ltyp.deref()
+				}
+				g.write('.')
+
 				g.gen_array_method_call(it)
-				return
+				return true
 			}
 		}
-	} else {
-		if name in g.builtin_fns {
-			g.write('builtin.')
+	}
+
+	// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
+	g.write('Object.getPrototypeOf(')
+	g.expr(it.left)
+	mut ltyp := it.left_type
+	for ltyp.is_ptr() {
+		g.write('.val')
+		ltyp = ltyp.deref()
+	}
+	g.write(').$name .call(')
+	g.expr(it.left)
+	g.write(',')
+	for i, arg in it.args {
+		g.expr(arg.expr)
+		if i != it.args.len - 1 {
+			g.write(', ')
 		}
 	}
+	// end method call
+	g.write(')')
+
+	if call_return_is_optional {
+		// end unwrap
+		g.writeln(')')
+		g.dec_indent()
+		// begin catch block
+		g.writeln('} catch(err) {')
+		g.inc_indent()
+		// gen or block contents
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
+				}
+				// g.write('return ')
+				g.stmt(it.or_block.stmts.last())
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin.panic($panicstr)')
+				} else {
+					g.writeln('builtin.js_throw(err)')
+				}
+			}
+			else {}
+		}
+		// end catch
+		g.dec_indent()
+		g.writeln('}')
+		// end anon fn
+		g.dec_indent()
+		g.write('})()')
+	}
+	g.call_stack.delete_last()
+	return true
+}
+
+fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+	if it.is_method {
+		if g.gen_method_call(it) {
+			return
+		}
+	}
+	g.call_stack << it
+	mut name := g.js_name(it.name)
+	ret_sym := g.table.get_type_symbol(it.return_type)
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
+		g.write('new ')
+		if g.ns.name != 'builtin' {
+			g.write('builtin.')
+		}
+		g.write(ret_sym.name)
+		g.write('(')
+	}
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.writeln('(function(){')
+		g.inc_indent()
+		g.writeln('try {')
+		g.inc_indent()
+		g.write('return builtin.unwrap(')
+	}
+
+	g.expr(it.left)
+
+	if name in g.builtin_fns {
+		g.write('builtin.')
+	}
+
 	g.write('${name}(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
@@ -1600,7 +1821,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
-				g.write('return ')
+
+				//	g.write('return ')
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
@@ -1620,6 +1842,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
+		g.write(')')
+	}
 	g.call_stack.delete_last()
 }
 
@@ -1637,6 +1862,291 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 
 fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 	// TODO: implement this
+}
+
+fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
+	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+		sym := g.table.get_type_symbol(node.return_type)
+		if sym.kind == .multi_return {
+			return false
+		}
+		for branch in node.branches {
+			if branch.stmts.len > 1 {
+				return true
+			}
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
+						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
+	type_sym := g.table.get_type_symbol(node.cond_type)
+	for j, branch in node.branches {
+		is_last := j == node.branches.len - 1
+		if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
+			if node.branches.len > 1 {
+				if is_expr && tmp_var.len == 0 {
+					// TODO too many branches. maybe separate ?: matches
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.writeln('else {')
+				}
+			}
+		} else {
+			if j > 0 {
+				if is_expr && tmp_var.len == 0 {
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.write('else ')
+				}
+			}
+			if is_expr && tmp_var.len == 0 {
+				g.write('(')
+			} else {
+				if j == 0 {
+					g.writeln('')
+				}
+				g.write_v_source_line_info(branch.pos)
+				g.write('if (')
+			}
+			for i, expr in branch.exprs {
+				if i > 0 {
+					g.write(' || ')
+				}
+				match type_sym.kind {
+					.array {
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(')')
+					}
+					.array_fixed {
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(')')
+					}
+					.map {
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(')')
+					}
+					.string {
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(')')
+					}
+					.struct_ {
+						g.write('vEq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(')')
+					}
+					else {
+						if expr is ast.RangeExpr {
+							// if type is unsigned and low is 0, check is unneeded
+							mut skip_low := false
+							if expr.low is ast.IntegerLiteral {
+								if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
+									&& expr.low.val == '0' {
+									skip_low = true
+								}
+							}
+							g.write('(')
+							if !skip_low {
+								g.match_cond(cond_var)
+								g.write(' >= ')
+								g.expr(expr.low)
+								g.write(' && ')
+							}
+							g.match_cond(cond_var)
+							g.write(' <= ')
+							g.expr(expr.high)
+							g.write(')')
+						} else {
+							g.write('vEq(')
+							g.match_cond(cond_var)
+							g.write(',')
+							g.expr(expr)
+							g.write(')')
+						}
+					}
+				}
+			}
+			if is_expr && tmp_var.len == 0 {
+				g.write(') ? ')
+			} else {
+				g.writeln(') {')
+			}
+		}
+		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		if !g.inside_ternary && node.branches.len >= 1 {
+			g.write('}')
+		}
+	}
+}
+
+type MatchCond = CondExpr | CondString
+
+struct CondString {
+	s string
+}
+
+struct CondExpr {
+	expr ast.Expr
+}
+
+fn (mut g JsGen) match_cond(cond MatchCond) {
+	match cond {
+		CondString {
+			g.writeln(cond.s)
+		}
+		CondExpr {
+			g.expr(cond.expr)
+		}
+	}
+}
+
+fn (mut g JsGen) match_expr(node ast.MatchExpr) {
+	if node.cond_type == 0 {
+		g.writeln('// match 0')
+		return
+	}
+	prev := g.inside_ternary
+	need_tmp_var := g.need_tmp_var_in_match(node)
+	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
+	mut cond_var := MatchCond(CondString{''})
+	mut tmp_var := ''
+	if is_expr && !need_tmp_var {
+		g.inside_ternary = true
+	}
+
+	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
+		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral
+		|| node.cond is ast.CallExpr {
+		cond_var = CondExpr{node.cond}
+	} else {
+		s := g.new_tmp_var()
+		cond_var = CondString{s}
+		g.write('let $s = ')
+		g.expr(node.cond)
+		g.writeln(';')
+	}
+	if need_tmp_var {
+		tmp_var = g.new_tmp_var()
+		g.writeln('let $tmp_var = undefined;')
+	}
+	if is_expr && !need_tmp_var {
+		g.write('(')
+	}
+	if node.is_sum_type {
+		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+	} else {
+		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+	}
+	if need_tmp_var {
+		g.write('$tmp_var')
+	}
+	if is_expr && !need_tmp_var {
+		g.write(')')
+		g.inside_ternary = prev
+	}
+}
+
+fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
+	g.inc_indent()
+	if g.inside_ternary {
+		g.write('(')
+	}
+	for i, stmt in stmts {
+		if i == stmts.len - 1 && tmp_var != '' {
+			g.write('$tmp_var = ')
+			g.stmt(stmt)
+			g.writeln('')
+		} else {
+			g.stmt(stmt)
+		}
+		if g.inside_ternary && i < stmts.len - 1 {
+			g.write(',')
+		}
+	}
+	g.dec_indent()
+	if g.inside_ternary {
+		g.write(')')
+	}
+}
+
+fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
+	for j, branch in node.branches {
+		mut sumtype_index := 0
+		for {
+			is_last := j == node.branches.len - 1
+			sym := g.table.get_type_symbol(node.cond_type)
+			if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
+				if is_expr && tmp_var.len == 0 {
+					g.write(' : ')
+				} else {
+					g.writeln('')
+					g.writeln('else {')
+				}
+			} else {
+				if j > 0 || sumtype_index > 0 {
+					if is_expr && tmp_var.len == 0 {
+						g.write(' : ')
+					} else {
+						g.write('else ')
+					}
+				}
+
+				if is_expr && tmp_var.len == 0 {
+					g.write('(')
+				} else {
+					g.write('if (')
+				}
+				g.match_cond(cond_var)
+				if sym.kind == .sum_type {
+					g.write(' instanceof ')
+					g.expr(branch.exprs[sumtype_index])
+				} else {
+					panic('TODO: Generate match for interfaces')
+				}
+				if is_expr && tmp_var.len == 0 {
+					g.write(') ? ')
+				} else {
+					g.writeln(') {')
+				}
+			}
+			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			if !g.inside_ternary {
+				g.writeln('}')
+			}
+			sumtype_index++
+			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
+				break
+			}
+		}
+	}
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
@@ -1782,6 +2292,14 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	}
 }
 
+fn (mut g JsGen) gen_deref_ptr(ty ast.Type) {
+	mut t := ty
+	for t.is_ptr() {
+		g.write('.val')
+		t = t.deref()
+	}
+}
+
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	l_sym := g.table.get_type_symbol(it.left_type)
 	r_sym := g.table.get_type_symbol(it.right_type)
@@ -1804,10 +2322,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.cast_stack << greater_typ
 		g.write('BigInt((')
 		g.expr(it.left)
+		g.gen_deref_ptr(it.left_type)
 		g.write(').\$toJS())')
 		g.write(' $it.op ')
 		g.write('BigInt((')
 		g.expr(it.right)
+		g.gen_deref_ptr(it.right_type)
 		g.write(').\$toJS())')
 		g.cast_stack.delete_last()
 		g.write(')')
@@ -1816,34 +2336,56 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 		return
 	}
-	if it.op == .eq || it.op == .ne {
+	if it.op == .logical_or || it.op == .and {
+		if g.ns.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write('bool(')
+		g.expr(it.left)
+		g.write('.valueOf()')
+		g.write(it.op.str())
+		g.expr(it.right)
+		g.write('.valueOf()')
+		g.write(')')
+	} else if it.op == .eq || it.op == .ne {
 		has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			g.write('.eq(')
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 			// Shallow equatables
 		} else if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
 			// wrap left expr in parens so binary operations will work correctly.
 			g.write('(')
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			g.write(')')
 			g.write('.eq(')
 			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.cast_stack.delete_last()
 			g.write(')')
 		} else {
 			g.write('vEq(')
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			g.write(', ')
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
+		mut ltyp := it.left_type
+		for ltyp.is_ptr() {
+			g.write('.val')
+			ltyp = ltyp.deref()
+		}
 		g.write('.arr,')
 		array_info := l_sym.info as ast.Array
 		// arr << [1, 2]
@@ -1854,6 +2396,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
+
+		mut ltyp := it.right_type
+		for ltyp.is_ptr() {
+			g.write('.val')
+			ltyp = ltyp.deref()
+		}
 		if r_sym.kind == .map {
 			g.write('.map.has(')
 		} else if r_sym.kind == .string {
@@ -1868,6 +2416,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 	} else if it.op in [.key_is, .not_is] { // foo is Foo
 		g.expr(it.left)
+		g.gen_deref_ptr(it.left_type)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
 	} else if it.op in [.lt, .gt, .ge, .le] && g.table.type_has_method(l_sym, '<')
@@ -1877,19 +2426,24 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 		if it.op in [.lt, .ge] {
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			g.write('.\$lt (')
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 		} else {
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.write('.\$lt (')
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			g.write(')')
 		}
 	} else {
 		has_operator_overloading := g.table.type_has_method(l_sym, it.op.str())
 		if has_operator_overloading {
 			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
 			name := match it.op.str() {
 				'+' {
 					'\$add'
@@ -1913,6 +2467,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 			g.write('.$name (')
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 		} else {
 			mut greater_typ := 0
@@ -1933,10 +2488,13 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 
 			g.expr(it.left)
-
+			g.gen_deref_ptr(it.left_type)
+			// g.write('.val')
 			g.write(' $it.op ')
 
 			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
+			// g.write('.val')
 
 			if is_arithmetic {
 				g.cast_stack.delete_last()
@@ -2031,10 +2589,58 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	g.write(')')
 }
 
+fn (mut g JsGen) type_name(raw_type ast.Type) {
+	typ := raw_type
+	sym := g.table.get_type_symbol(typ)
+	mut s := ''
+	if sym.kind == .function {
+		// todo: properly print function signatures
+		if typ.is_ptr() {
+			s = '&function'
+		} else {
+			s = 'function'
+		}
+	} else {
+		s = g.table.type_to_str(g.unwrap_generic(typ))
+	}
+	g.write('new builtin.string("$s")')
+}
+
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
+	if it.name_type > 0 {
+		node := it
+		match node.gkind_field {
+			.name {
+				g.type_name(it.name_type)
+				return
+			}
+			.typ {
+				g.write('new builtin.int(')
+
+				g.write('${int(g.unwrap_generic(it.name_type))}')
+				g.write(')')
+				g.write(')')
+				return
+			}
+			.unknown {
+				if node.field_name == 'name' {
+					g.type_name(it.name_type)
+					return
+				} else if node.field_name == 'idx' {
+					g.write('new builtin.int(')
+					g.write('${int(g.unwrap_generic(it.name_type))}')
+					g.write(')')
+					return
+				}
+				panic('unknown generic field $it.pos')
+			}
+		}
+	}
 	g.expr(it.expr)
-	if it.expr_type.is_ptr() {
-		g.write('.valueOf()')
+	mut ltyp := it.expr_type
+	for ltyp.is_ptr() {
+		g.write('.val')
+		ltyp = ltyp.deref()
 	}
 	g.write('.$it.field_name')
 }
@@ -2078,7 +2684,8 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
-	text := it.val.replace("'", "\\'")
+	mut text := it.val.replace("'", "'")
+	text = text.replace('"', '\\"')
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if true || should_cast {
 		if g.file.mod.name == 'builtin' {
@@ -2086,7 +2693,15 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('string(')
 	}
-	g.write("'$text'")
+	if it.is_raw {
+		g.writeln('(function() { let s = String(); ')
+		for x in text {
+			g.writeln('s += String.fromCharCode($x);')
+		}
+		g.writeln('return s; })()')
+	} else {
+		g.write("\"$text\"")
+	}
 	if true || should_cast {
 		g.write(')')
 	}
@@ -2166,6 +2781,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	g.cast_stack << it.typ
 	typ := g.typ(it.typ)
 	if !is_literal {
+		if it.typ.is_ptr() {
+			g.write('new \$ref(')
+		}
 		if typ !in js.v_types || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
@@ -2177,6 +2795,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	}
 	if !is_literal {
 		g.write(')')
+		if it.typ.is_ptr() {
+			g.write(')')
+		}
 	}
 	g.cast_stack.delete_last()
 }
@@ -2226,20 +2847,20 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		// if call.language == .js {
-		for i, t in call.args {
-			if t.expr is ast.FloatLiteral {
-				if t.expr == it {
-					if call.expected_arg_types[i] in ast.integer_type_idxs {
-						g.write(int(it.val.f64()).str())
-					} else {
-						g.write(it.val)
+		if call.language == .js {
+			for i, t in call.args {
+				if t.expr is ast.FloatLiteral {
+					if t.expr == it {
+						if call.expected_arg_types[i] in ast.integer_type_idxs {
+							g.write(int(it.val.f64()).str())
+						} else {
+							g.write(it.val)
+						}
+						return
 					}
-					return
 				}
 			}
 		}
-		//}
 	}
 
 	// Skip cast if type is the same as the parrent caster

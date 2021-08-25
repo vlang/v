@@ -61,61 +61,6 @@ pub fn digits(_n int, base int) []int {
 	return res
 }
 
-[inline]
-pub fn fabs(x f64) f64 {
-	if x < 0.0 {
-		return -x
-	}
-	return x
-}
-
-// gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a_ i64, b_ i64) i64 {
-	mut a := a_
-	mut b := b_
-	if a < 0 {
-		a = -a
-	}
-	if b < 0 {
-		b = -b
-	}
-	for b != 0 {
-		a %= b
-		if a == 0 {
-			return b
-		}
-		b %= a
-	}
-	return a
-}
-
-// egcd returns (gcd(a, b), x, y) such that |a*x + b*y| = gcd(a, b)
-pub fn egcd(a i64, b i64) (i64, i64, i64) {
-	mut old_r, mut r := a, b
-	mut old_s, mut s := i64(1), i64(0)
-	mut old_t, mut t := i64(0), i64(1)
-
-	for r != 0 {
-		quot := old_r / r
-		old_r, r = r, old_r % r
-		old_s, s = s, old_s - quot * s
-		old_t, t = t, old_t - quot * t
-	}
-	return if old_r < 0 { -old_r } else { old_r }, old_s, old_t
-}
-
-// lcm calculates least common (non-negative) multiple.
-pub fn lcm(a i64, b i64) i64 {
-	if a == 0 {
-		return a
-	}
-	res := a * (b / gcd(b, a))
-	if res < 0 {
-		return -res
-	}
-	return res
-}
-
 // max returns the maximum value of the two provided.
 [inline]
 pub fn max(a f64, b f64) f64 {
@@ -132,6 +77,14 @@ pub fn min(a f64, b f64) f64 {
 		return a
 	}
 	return b
+}
+
+// minmax returns the minimum and maximum value of the two provided.
+pub fn minmax(a f64, b f64) (f64, f64) {
+	if a < b {
+		return a, b
+	}
+	return b, a
 }
 
 // sign returns the corresponding sign -1.0, 1.0 of the provided number.
@@ -198,6 +151,19 @@ pub fn alike(a f64, b f64) bool {
 		return true
 	} else if a == b {
 		return signbit(a) == signbit(b)
+	}
+	return false
+}
+
+fn is_odd_int(x f64) bool {
+	xi, xf := modf(x)
+	return xf == 0 && (i64(xi) & 1) == 1
+}
+
+fn is_neg_int(x f64) bool {
+	if x < 0 {
+		_, xf := modf(x)
+		return xf == 0
 	}
 	return false
 }

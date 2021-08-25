@@ -4,7 +4,6 @@
 module os
 
 pub const (
-	args          = []string{}
 	max_path_len  = 4096
 	wd_at_startup = getwd()
 )
@@ -344,22 +343,15 @@ pub fn write_file(path string, text string) ? {
 	f.close()
 }
 
-// write_file_array writes the data in `buffer` to a file in `path`.
-pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
-	f.close()
-}
-
 // executable_fallback is used when there is not a more platform specific and accurate implementation.
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if os.args.len == 0 {
+	if args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := os.args[0]
+	mut exepath := args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
@@ -638,13 +630,4 @@ pub fn execute_or_exit(cmd string) Result {
 		exit(1)
 	}
 	return res
-}
-
-pub fn glob(patterns ...string) ?[]string {
-	mut matches := []string{}
-	for pattern in patterns {
-		native_glob_pattern(pattern, mut matches) ?
-	}
-	matches.sort()
-	return matches
 }

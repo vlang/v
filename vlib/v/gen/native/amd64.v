@@ -37,6 +37,7 @@ enum Register {
 
 const (
 	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	amd64_cpuregs    = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
 
 fn (mut g Gen) dec(reg Register) {
@@ -51,6 +52,11 @@ fn (mut g Gen) dec(reg Register) {
 		else { panic('unhandled inc $reg') }
 	}
 	g.println('dec $reg')
+}
+
+[inline]
+fn byt(n int, s int) byte {
+	return byte((n >> (s * 8)) & 0xff)
 }
 
 fn (mut g Gen) inc(reg Register) {
@@ -229,7 +235,7 @@ fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
 		.rsi { g.write8(0x75) }
 		.rdx { g.write8(0x55) }
 		.rcx { g.write8(0x4d) }
-		else { verror('mov_from_reg $reg') }
+		else { g.n_error('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
@@ -251,7 +257,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
 		.rdx { g.write8(0x55) }
 		.rbx { g.write8(0x5d) }
 		.rcx { g.write8(0x4d) }
-		else { verror('mov_var_to_reg $reg') }
+		else { g.n_error('mov_var_to_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
@@ -354,7 +360,7 @@ fn (mut g Gen) add8_var(reg Register, var_offset int) {
 	g.write8(0x03)
 	match reg {
 		.eax, .rax { g.write8(0x45) }
-		else { verror('add8_var') }
+		else { g.n_error('add8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
@@ -364,7 +370,7 @@ fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 	g.write8(0x2b)
 	match reg {
 		.eax, .rax { g.write8(0x45) }
-		else { verror('sub8_var') }
+		else { g.n_error('sub8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
@@ -385,7 +391,7 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 	g.write8(0xaf)
 	match reg {
 		.eax, .rax { g.write8(0x45) }
-		else { verror('mul8_var') }
+		else { g.n_error('mul8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
@@ -439,11 +445,11 @@ pub fn (mut g Gen) xor(r Register, v int) {
 				g.println('xor rcx, -1')
 			}
 			else {
-				verror('unhandled xor')
+				g.n_error('unhandled xor')
 			}
 		}
 	} else {
-		verror('unhandled xor')
+		g.n_error('unhandled xor')
 	}
 }
 
@@ -495,7 +501,7 @@ fn (mut g Gen) nsyscall_write() int {
 			return 0x2000004
 		}
 		else {
-			verror('unsupported exit syscall for this platform')
+			g.n_error('unsupported exit syscall for this platform')
 		}
 	}
 	return 0
@@ -510,7 +516,7 @@ fn (mut g Gen) nsyscall_exit() int {
 			return 0x2000001
 		}
 		else {
-			verror('unsupported exit syscall for this platform')
+			g.n_error('unsupported exit syscall for this platform')
 		}
 	}
 	return 0
@@ -525,7 +531,7 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 	match expr {
 		ast.CallExpr {
 			right := expr.return_type
-			verror('native exit builtin: Unsupported call $right')
+			g.n_error('native exit builtin: Unsupported call $right')
 		}
 		ast.Ident {
 			var_offset := g.get_var_offset(expr.name)
@@ -535,7 +541,7 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 			g.mov(.edi, expr.val.int())
 		}
 		else {
-			verror('native builtin exit expects a numeric argument')
+			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	g.mov(.eax, g.nsyscall_exit())
@@ -560,7 +566,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				return
 			}
 			else {
-				verror('unhandled mov $reg, -1')
+				g.n_error('unhandled mov $reg, -1')
 			}
 		}
 	}
@@ -600,7 +606,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0xe4)
 			}
 			else {
-				verror('unhandled mov $reg, $reg')
+				g.n_error('unhandled mov $reg, $reg')
 			}
 		}
 		g.println('xor $reg, $reg')
@@ -627,7 +633,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0xbc) // r11 is 0xbb etc
 			}
 			else {
-				verror('unhandled mov $reg')
+				g.n_error('unhandled mov $reg')
 			}
 		}
 		g.write32(val)
@@ -731,7 +737,7 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 		g.write8(0x89)
 		g.write8(0xc6)
 	} else {
-		verror('unhandled mov_reg combination for $a $b')
+		g.n_error('unhandled mov_reg combination for $a $b')
 	}
 	g.println('mov $a, $b')
 }
@@ -757,7 +763,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	eprintln('call fn ($n)')
 	addr := g.fn_addr[n]
 	if addr == 0 {
-		verror('fn addr of `$name` = 0')
+		g.n_error('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)
 	// g.mov(.eax, 0)
@@ -778,12 +784,12 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 				g.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
 			}
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
+				g.v_error('unhandled call_fn (name=$name) node: $expr.type_name()', node.pos)
 			}
 		}
 	}
 	if node.args.len > 6 {
-		verror('more than 6 args not allowed for now')
+		g.v_error('more than 6 args not allowed for now', node.pos)
 	}
 	g.call(int(addr))
 	g.println('fn call `${name}()`')
@@ -835,7 +841,10 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						match node.left_types[i] {
 							7 { // ast.IndexExpr {
 								ie := node.left[i] as ast.IndexExpr
-								bracket := name.index('[') or { verror('bracket expected') }
+								bracket := name.index('[') or {
+									g.v_error('bracket expected', node.pos)
+									exit(1)
+								}
 								var_name := name[0..bracket]
 								mut dest := g.get_var_offset(var_name)
 								index := ie.index as ast.IntegerLiteral
@@ -848,7 +857,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 							else {
 								tn := node.left[i].type_name()
 								dump(node.left_types)
-								verror('unhandled assign type: $tn')
+								g.n_error('unhandled assign type: $tn')
 							}
 						}
 					}
@@ -935,7 +944,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						}
 						else {
 							dump(e)
-							verror('unhandled array init type')
+							g.n_error('unhandled array init type')
 						}
 					}
 				}
@@ -960,7 +969,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.mov_var_to_reg(.rax, dest)
 					g.add_reg(.rax, .rdi)
 				} else {
-					verror('only integers and idents can be used as indexes')
+					g.n_error('only integers and idents can be used as indexes')
 				}
 				// TODO check if out of bounds access
 				g.mov_reg_to_var(offset, .eax)
@@ -977,10 +986,26 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.mov_reg_to_var(dest, .rax)
 				g.mov_var_to_reg(.rsi, dest)
 			}
+			ast.GoExpr {
+				g.v_error('threads not implemented for the native backend', node.pos)
+			}
+			ast.CastExpr {
+				g.warning('cast expressions are work in progress', right.pos)
+				match right.typname {
+					'u64' {
+						g.allocate_var(name, 8, right.expr.str().int())
+					}
+					'int' {
+						g.allocate_var(name, 4, right.expr.str().int())
+					}
+					else {
+						g.v_error('unsupported cast type $right.typ', node.pos)
+					}
+				}
+			}
 			else {
 				// dump(node)
-				g.error_with_pos('native assign_stmt unhandled expr: ' + right.type_name(),
-					right.position())
+				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.position())
 			}
 		}
 		// }
@@ -993,7 +1018,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	// TODO
 	if node.left is ast.InfixExpr {
-		verror('only simple expressions are supported right now (not more than 2 operands)')
+		g.n_error('only simple expressions are supported right now (not more than 2 operands)')
 	}
 	match mut node.left {
 		ast.Ident {
@@ -1019,6 +1044,109 @@ fn (mut g Gen) trap() {
 	g.println('trap')
 }
 
+fn (mut g Gen) gen_asm_stmt(asm_node ast.AsmStmt) {
+	if g.pref.arch == .arm64 {
+		g.gen_asm_stmt_arm64(asm_node)
+	} else {
+		g.gen_asm_stmt_amd64(asm_node)
+	}
+}
+
+fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
+	// inline assembly using vasm
+	g.println('// asm inline')
+	mut reg := 0
+	mut imm := 0
+	mut regname := ''
+	// dump(asm_node)
+	for t in asm_node.templates {
+		mut line := t.name
+		mut comma := false
+		for a in t.args {
+			if comma {
+				line += ', '
+			} else {
+				comma = true
+			}
+			match a {
+				ast.AsmRegister {
+					regname = a.name
+					reg = native.amd64_cpuregs.index(regname)
+					line += a.typ.str()
+				}
+				ast.IntegerLiteral {
+					line += a.val
+					imm = a.val.int()
+				}
+				ast.BoolLiteral {
+					line += a.val.str()
+					imm = if a.val { 1 } else { 0 }
+				}
+				/*
+				ast.AsmAddressing {
+				}
+				ast.AsmAlias {
+				}
+				ast.AsmDisp {
+				}
+				ast.CharLiteral {
+				}
+				ast.FloatLiteral {
+				}
+				*/
+				string {
+					// XXX
+					g.v_error('no strings allowed in this context', asm_node.pos)
+				}
+				else {
+					g.v_error('unsupported instruction argument argument', asm_node.pos)
+				}
+			}
+		}
+		g.println(': $line')
+		match t.name {
+			'nop' {
+				g.write8(byte(0x90))
+			}
+			'syscall' {
+				g.write8(byte(0x0f))
+				g.write8(byte(0x05))
+			}
+			'ret' {
+				g.write8(byte(0xc3))
+			}
+			'int3' {
+				g.write8(byte(0xcc))
+				g.write8(byte(imm))
+			}
+			'sti' {
+				g.write8(byte(0xfb))
+			}
+			'cli' {
+				g.write8(byte(0xfa))
+			}
+			'int' {
+				g.write8(byte(0xcd))
+				g.write8(byte(imm))
+			}
+			'cpuid' {
+				g.write8(byte(0x0f))
+				g.write8(byte(0xa2))
+			}
+			'mov' {
+				g.write8(byte(0xb8 + reg))
+				g.write8(byt(imm, 0))
+				g.write8(byt(imm, 1))
+				g.write8(byt(imm, 2))
+				g.write8(byt(imm, 3))
+			}
+			else {
+				g.v_error('unsupported instruction $t.name', asm_node.pos)
+			}
+		}
+	}
+}
+
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	mut cjmp_addr := 0
 	mut ine := ast.InfixExpr{}
@@ -1028,7 +1156,7 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	} else if ane is ast.InfixExpr { // assert 1==1
 		ine = ane
 	} else {
-		verror('Unsupported expression in assert')
+		g.n_error('Unsupported expression in assert')
 	}
 	cjmp_addr = g.condition(ine, true)
 	g.expr(assert_node.expr)
@@ -1094,10 +1222,10 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 					// lit := infix_expr.right as ast.IntegerLiteral
 					// g.cmp_var(infix_expr.left.name, lit.val.int())
 					// +not
-					verror('unsupported if construction')
+					g.n_error('unsupported if construction')
 				}
 				else {
-					verror('unsupported if construction')
+					g.n_error('unsupported if construction')
 				}
 			}
 		}
@@ -1110,16 +1238,16 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 				}
 				ast.Ident {
 					// var < var2
-					verror('unsupported if construction')
+					g.n_error('unsupported if construction')
 				}
 				else {
-					verror('unsupported if construction')
+					g.n_error('unsupported if construction')
 				}
 			}
 		}
 		else {
-			dump(infix_expr)
-			verror('unhandled infix.left')
+			// dump(infix_expr)
+			g.n_error('unhandled $infix_expr.left')
 		}
 	}
 
@@ -1131,6 +1259,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	cjmp_addr := g.condition(infix_expr, false)
+	if node.is_comptime {
+		g.n_error('ignored comptime')
+	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
 	// The value is the relative address, difference between current position and the location
@@ -1139,11 +1270,33 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
 
 	if node.has_else {
-		verror('else statements not yet supported')
+		g.n_error('else statements not yet supported')
 	}
 }
 
+fn (mut g Gen) infloop() {
+	if g.pref.arch == .arm64 {
+		g.write32(byte(0x14))
+	} else {
+		g.write8(byte(0xeb))
+		g.write8(byte(0xfe))
+	}
+	g.println('jmp $$')
+}
+
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	if node.is_inf {
+		if node.stmts.len == 0 {
+			g.infloop()
+			return
+		}
+		// infinite loop
+		start := g.pos()
+		g.stmts(node.stmts)
+		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
+		g.println('jmp after infinite for')
+		return
+	}
 	infix_expr := node.cond as ast.InfixExpr
 	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
@@ -1155,7 +1308,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 			jump_addr = g.cjmp(.jge)
 		}
 		else {
-			verror('unhandled infix.left')
+			g.n_error('unhandled infix.left')
 		}
 	}
 	g.stmts(node.stmts)
@@ -1256,7 +1409,7 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 			g.write8(0x45)
 		}
 		else {
-			verror('allocate_var: bad size $size')
+			g.n_error('allocate_var: bad size $size')
 		}
 	}
 	// Generate N in `[rbp-N]`

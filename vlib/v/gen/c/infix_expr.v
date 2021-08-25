@@ -396,6 +396,13 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
+	sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
+	if sym.kind == .interface_ && right_sym.kind == .interface_ {
+		g.gen_interface_is_op(node)
+		return
+	}
+
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
 	g.write('(')
 	g.expr(node.left)
@@ -405,7 +412,6 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else {
 		g.write('.')
 	}
-	sym := g.table.get_type_symbol(node.left_type)
 	if sym.kind == .interface_ {
 		g.write('_typ $cmp_op ')
 		// `_Animal_Dog_index`
@@ -421,6 +427,32 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		g.write('_typ $cmp_op ')
 	}
 	g.expr(node.right)
+}
+
+fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
+	mut left_sym := g.table.get_type_symbol(node.left_type)
+	right_sym := g.table.get_type_symbol(node.right_type)
+
+	mut info := left_sym.info as ast.Interface
+
+	common_variants := info.conversions[node.right_type] or {
+		left_variants := g.table.iface_types[left_sym.name]
+		right_variants := g.table.iface_types[right_sym.name]
+		c := left_variants.filter(it in right_variants)
+		info.conversions[node.right_type] = c
+		c
+	}
+	left_sym.info = info
+	if common_variants.len == 0 {
+		g.write('false')
+		return
+	}
+	g.write('I_${left_sym.cname}_is_I_${right_sym.cname}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
+	g.expr(node.left)
+	g.write(')')
 }
 
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`

@@ -84,11 +84,11 @@ fn (a &array) set_len(i int) {
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	#a.arr.sort(compare)
+	#a.val.arr.sort(compare)
 }
 
 pub fn (mut a array) sort() {
-	#a.arr.sort($sortComparator)
+	#a.val.arr.sort($sortComparator)
 }
 
 pub fn (a array) index(v string) int {
@@ -110,16 +110,16 @@ pub fn (a array) slice(start int, end int) array {
 }
 
 pub fn (mut a array) insert(i int, val voidptr) {
-	#a.arr.splice(i,0,val)
+	#a.val.arr.splice(i,0,val)
 }
 
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
-	#a.arr.splice(i,0,...val.slice(0,+size))
+	#a.val.arr.splice(i,0,...val.slice(0,+size))
 }
 
 pub fn (mut a array) join(separator string) string {
 	mut res := ''
-	#res = new builtin.string(a.arr.join(separator +''));
+	#res = new builtin.string(a.val.arr.join(separator +''));
 
 	return res
 }
@@ -164,7 +164,7 @@ pub fn (mut a array) delete(i int) {
 
 // delete_many deletes `size` elements beginning with index `i`
 pub fn (mut a array) delete_many(i int, size int) {
-	#a.arr.splice(i.valueOf(),size.valueOf())
+	#a.val.arr.splice(i.valueOf(),size.valueOf())
 }
 
 // prepend prepends one value to the array.
@@ -186,7 +186,7 @@ pub fn (a array) reverse() array {
 }
 
 pub fn (mut a array) reverse_in_place() {
-	#a.arr.reverse()
+	#a.val.arr.reverse()
 }
 
 #array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
@@ -195,7 +195,7 @@ pub fn (mut a array) reverse_in_place() {
 // resulting in a single output value.
 pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
-	#for (let i of a)  {
+	#for (let i = 0;i < a.arr.length;i++)  {
 	#accum_ = iter(accum_, a.arr[i])
 	#}
 
@@ -204,7 +204,7 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 
 pub fn (mut a array) pop() voidptr {
 	mut res := voidptr(0)
-	#res = a.arr.pop()
+	#res = a.val.arr.pop()
 
 	return res
 }
@@ -237,5 +237,9 @@ pub fn (a array) contains(key voidptr) bool {
 
 // delete_last effectively removes last element of an array.
 pub fn (mut a array) delete_last() {
-	#a.arr.pop();
+	#a.val.arr.pop();
+}
+
+[unsafe]
+pub fn (a array) free() {
 }

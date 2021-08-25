@@ -4111,6 +4111,17 @@ An overview of the module must be placed in the first comment right after the mo
 
 To generate documentation use vdoc, for example `v doc net.http`.
 
+### Newlines in Documentation Comments
+
+Comments spanning multiple lines are merged together using spaces, unless
+
+- the line is empty
+- the line ends with a `.` (end of sentence)
+- the line is contains purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
+- the line starts with at least one `#` followed by a space (header)
+- the line starts and ends with a `|` (table)
+- the line starts with `- ` (list)
+
 ## Tools
 
 ### v fmt
@@ -5295,6 +5306,23 @@ An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 
 ```v
+// [flag] enables Enum types to be used as bitfields
+
+[flag]
+enum BitField {
+	read
+	write
+	other
+}
+
+fn example_enum_as_bitfield_use() {
+	assert 1 == int(BitField.read)
+	assert 2 == int(BitField.write)
+	mut bf := BitField.read
+	bf.set(.write | .other)
+	assert bf.has(.read | .write | .other)
+}
+
 // Calling this function will result in a deprecation warning
 [deprecated]
 fn old_function() {

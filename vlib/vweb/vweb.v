@@ -17,6 +17,11 @@ pub const (
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
+	http_302          = http.new_response(
+		status: .found
+		text: '302 Found'
+		header: headers_close
+	)
 	http_400          = http.new_response(
 		status: .bad_request
 		text: '400 Bad Request'
@@ -42,21 +47,82 @@ pub const (
 		).join(headers_close)
 	)
 	mime_types        = {
-		'.css':  'text/css; charset=utf-8'
-		'.gif':  'image/gif'
-		'.htm':  'text/html; charset=utf-8'
-		'.html': 'text/html; charset=utf-8'
-		'.jpg':  'image/jpeg'
-		'.js':   'application/javascript'
-		'.json': 'application/json'
-		'.md':   'text/markdown; charset=utf-8'
-		'.pdf':  'application/pdf'
-		'.png':  'image/png'
-		'.svg':  'image/svg+xml'
-		'.txt':  'text/plain; charset=utf-8'
-		'.wasm': 'application/wasm'
-		'.xml':  'text/xml; charset=utf-8'
-		'.ico':  'img/x-icon'
+		'.aac':    'audio/aac'
+		'.abw':    'application/x-abiword'
+		'.arc':    'application/x-freearc'
+		'.avi':    'video/x-msvideo'
+		'.azw':    'application/vnd.amazon.ebook'
+		'.bin':    'application/octet-stream'
+		'.bmp':    'image/bmp'
+		'.bz':     'application/x-bzip'
+		'.bz2':    'application/x-bzip2'
+		'.cda':    'application/x-cdf'
+		'.csh':    'application/x-csh'
+		'.css':    'text/css'
+		'.csv':    'text/csv'
+		'.doc':    'application/msword'
+		'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+		'.eot':    'application/vnd.ms-fontobject'
+		'.epub':   'application/epub+zip'
+		'.gz':     'application/gzip'
+		'.gif':    'image/gif'
+		'.htm':    'text/html'
+		'.html':   'text/html'
+		'.ico':    'image/vnd.microsoft.icon'
+		'.ics':    'text/calendar'
+		'.jar':    'application/java-archive'
+		'.jpeg':   'image/jpeg'
+		'.jpg':    'image/jpeg'
+		'.js':     'text/javascript'
+		'.json':   'application/json'
+		'.jsonld': 'application/ld+json'
+		'.mid':    'audio/midi audio/x-midi'
+		'.midi':   'audio/midi audio/x-midi'
+		'.mjs':    'text/javascript'
+		'.mp3':    'audio/mpeg'
+		'.mp4':    'video/mp4'
+		'.mpeg':   'video/mpeg'
+		'.mpkg':   'application/vnd.apple.installer+xml'
+		'.odp':    'application/vnd.oasis.opendocument.presentation'
+		'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
+		'.odt':    'application/vnd.oasis.opendocument.text'
+		'.oga':    'audio/ogg'
+		'.ogv':    'video/ogg'
+		'.ogx':    'application/ogg'
+		'.opus':   'audio/opus'
+		'.otf':    'font/otf'
+		'.png':    'image/png'
+		'.pdf':    'application/pdf'
+		'.php':    'application/x-httpd-php'
+		'.ppt':    'application/vnd.ms-powerpoint'
+		'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+		'.rar':    'application/vnd.rar'
+		'.rtf':    'application/rtf'
+		'.sh':     'application/x-sh'
+		'.svg':    'image/svg+xml'
+		'.swf':    'application/x-shockwave-flash'
+		'.tar':    'application/x-tar'
+		'.tif':    'image/tiff'
+		'.tiff':   'image/tiff'
+		'.ts':     'video/mp2t'
+		'.ttf':    'font/ttf'
+		'.txt':    'text/plain'
+		'.vsd':    'application/vnd.visio'
+		'.wav':    'audio/wav'
+		'.weba':   'audio/webm'
+		'.webm':   'video/webm'
+		'.webp':   'image/webp'
+		'.woff':   'font/woff'
+		'.woff2':  'font/woff2'
+		'.xhtml':  'application/xhtml+xml'
+		'.xls':    'application/vnd.ms-excel'
+		'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+		'.xml':    'application/xml'
+		'.xul':    'application/vnd.mozilla.xul+xml'
+		'.zip':    'application/zip'
+		'.3gp':    'video/3gpp'
+		'.3g2':    'video/3gpp2'
+		'.7z':     'application/x-7z-compressed'
 	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
@@ -185,9 +251,10 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
-		return Result{}
-	}
+	mut resp := vweb.http_302
+	resp.header = resp.header.join(ctx.header)
+	resp.header.add(.location, url)
+	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
 	return Result{}
 }
 

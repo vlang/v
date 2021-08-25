@@ -23,6 +23,29 @@ pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
 	unsafe { b.push_many(ptr, len) }
 }
 
+// write_rune appends a single rune to the accumulated buffer
+[manualfree]
+pub fn (mut b Builder) write_rune(r rune) {
+	mut buffer := [5]byte{}
+	res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+	if res.len == 0 {
+		return
+	}
+	unsafe { b.push_many(res.str, res.len) }
+}
+
+// write_runes appends all the given runes to the accumulated buffer
+pub fn (mut b Builder) write_runes(runes []rune) {
+	mut buffer := [5]byte{}
+	for r in runes {
+		res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+		if res.len == 0 {
+			continue
+		}
+		unsafe { b.push_many(res.str, res.len) }
+	}
+}
+
 // write_b appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_b(data byte) {
 	b << data

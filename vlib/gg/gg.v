@@ -268,6 +268,27 @@ pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
 	ctx.draw_square(x, y, 1, c)
 }
 
+pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
+	assert points.len % 2 == 0
+	len := points.len / 2
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_quads()
+	for i in 0 .. len {
+		x, y := points[i * 2], points[i * 2 + 1]
+
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + 1) * ctx.scale, y * ctx.scale)
+		sgl.v2f((x + 1) * ctx.scale, (y + 1) * ctx.scale)
+		sgl.v2f(x * ctx.scale, (y + 1) * ctx.scale)
+	}
+	sgl.end()
+}
+
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -619,16 +640,16 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
 	sgl.begin_triangle_strip()
-	x0 := points[0]
-	y0 := points[1]
+	x0 := points[0] * ctx.scale
+	y0 := points[1] * ctx.scale
 	for i in 1 .. (len / 2 + 1) {
 		sgl.v2f(x0, y0)
-		sgl.v2f(points[i * 4 - 2], points[i * 4 - 1])
-		sgl.v2f(points[i * 4], points[i * 4 + 1])
+		sgl.v2f(points[i * 4 - 2] * ctx.scale, points[i * 4 - 1] * ctx.scale)
+		sgl.v2f(points[i * 4] * ctx.scale, points[i * 4 + 1] * ctx.scale)
 	}
 
 	if len % 2 == 0 {
-		sgl.v2f(points[2 * len - 2], points[2 * len - 1])
+		sgl.v2f(points[2 * len - 2] * ctx.scale, points[2 * len - 1] * ctx.scale)
 	}
 	sgl.end()
 }
@@ -647,9 +668,61 @@ pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
 
 	sgl.begin_line_strip()
 	for i in 0 .. len {
-		sgl.v2f(points[2 * i], points[2 * i + 1])
+		sgl.v2f(points[2 * i] * ctx.scale, points[2 * i + 1] * ctx.scale)
 	}
-	sgl.v2f(points[0], points[1])
+	sgl.v2f(points[0] * ctx.scale, points[1] * ctx.scale)
+	sgl.end()
+}
+
+// draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
+// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
+// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
+// Please see `draw_cubic_bezier_in_steps` to control the amount of steps (segments) used to draw the curve.
+pub fn (ctx &Context) draw_cubic_bezier(points []f32, control_points []f32, c gx.Color) {
+	ctx.draw_cubic_bezier_in_steps(points, control_points, u32(30 * ctx.scale), c)
+}
+
+// draw_cubic_bezier_in_steps draws a cubic Bézier curve, also known as a spline, from four points.
+// The smoothness of the curve can be controlled with the `steps` parameter. `steps` determines how many iterations is
+// taken to draw the curve.
+// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
+// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
+pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, control_points []f32, steps u32, c gx.Color) {
+	assert steps > 0
+	assert points.len == 4
+	assert points.len == control_points.len
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_line_strip()
+
+	p1_x, p1_y := points[0], points[1]
+	p2_x, p2_y := points[2], points[3]
+
+	ctrl_p1_x, ctrl_p1_y := control_points[0], control_points[1]
+	ctrl_p2_x, ctrl_p2_y := control_points[2], control_points[3]
+
+	// The constant 3 is actually points.len() - 1;
+
+	step := f32(1.0) / steps
+	sgl.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
+	for u := f32(0.0); u <= f32(1.0); u += step {
+		pow_2_u := u * u
+		pow_3_u := pow_2_u * u
+
+		x := pow_3_u * (p2_x + 3 * (ctrl_p1_x - ctrl_p2_x) - p1_x) +
+			3 * pow_2_u * (p1_x - 2 * ctrl_p1_x + ctrl_p2_x) + 3 * u * (ctrl_p1_x - p1_x) + p1_x
+
+		y := pow_3_u * (p2_y + 3 * (ctrl_p1_y - ctrl_p2_y) - p1_y) +
+			3 * pow_2_u * (p1_y - 2 * ctrl_p1_y + ctrl_p2_y) + 3 * u * (ctrl_p1_y - p1_y) + p1_y
+
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
+	}
+	sgl.v2f(p2_x * ctx.scale, p2_y * ctx.scale)
+
 	sgl.end()
 }
 
@@ -672,7 +745,7 @@ pub fn dpi_scale() f32 {
 	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
 	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
 	if s < 0.1 {
-		s = 1.
+		s = 1.0
 	}
 	return s
 }

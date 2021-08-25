@@ -590,6 +590,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if inter_info.is_generic {
 				continue
 			}
+			g.definitions.writeln('static char * v_typeof_interface_${typ.cname}(int sidx);')
 			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
@@ -954,7 +955,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 
 pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
 	struct_name := c_name(sym.cname)
-	g.type_definitions.writeln('typedef struct $struct_name $struct_name;')
+	g.typedefs.writeln('typedef struct $struct_name $struct_name;')
 }
 
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
@@ -6463,8 +6464,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// g.insert_before('
 	styp := g.typ(node.typ)
 	sym := g.table.get_type_symbol(node.typ)
-	expr_type_sym := g.table.get_type_symbol(node.expr_type)
-	if expr_type_sym.info is ast.SumType {
+	mut expr_type_sym := g.table.get_type_symbol(node.expr_type)
+	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		g.write('/* as */ *($styp*)__as_cast(')
 		g.write('(')
@@ -6490,6 +6491,21 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			variant_sym := g.table.get_type_symbol(variant)
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
+	} else if expr_type_sym.kind == .interface_ && sym.kind == .interface_ {
+		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
+		if node.expr_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.expr)
+		g.write(')')
+
+		mut info := expr_type_sym.info as ast.Interface
+		if node.typ !in info.conversions {
+			left_variants := g.table.iface_types[expr_type_sym.name]
+			right_variants := g.table.iface_types[sym.name]
+			info.conversions[node.typ] = left_variants.filter(it in right_variants)
+		}
+		expr_type_sym.info = info
 	} else {
 		g.expr(node.expr)
 	}
@@ -6513,6 +6529,7 @@ fn (g Gen) as_cast_name_table() string {
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
+	mut conversion_functions := strings.new_builder(100)
 	for ityp in g.table.type_symbols {
 		if ityp.kind != .interface_ {
 			continue
@@ -6662,6 +6679,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					continue
 				}
 				// .speak = Cat_speak
+				if st_sym.info is ast.Struct {
+					if st_sym.info.parent_type.has_flag(.generic) {
+						name = g.generic_fn_name(st_sym.info.concrete_types, method.name,
+							false)
+					}
+				}
 				mut method_call := '${cctype}_$name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
@@ -6696,10 +6719,41 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
 			if g.pref.build_mode != .build_module {
-				sb.writeln('int $interface_index_name = $iin_idx;')
+				sb.writeln('const int $interface_index_name = $iin_idx;')
 			} else {
-				sb.writeln('int $interface_index_name;')
+				sb.writeln('extern const int $interface_index_name;')
 			}
+		}
+		for vtyp, variants in inter_info.conversions {
+			vsym := g.table.get_type_symbol(vtyp)
+			conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}($interface_name x) {\n\treturn ')
+			for i, variant in variants {
+				variant_sym := g.table.get_type_symbol(variant)
+				if i > 0 {
+					conversion_functions.write_string(' || ')
+				}
+				conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
+			}
+			conversion_functions.writeln(';\n}')
+
+			conversion_functions.writeln('static inline $vsym.cname I_${interface_name}_as_I_${vsym.cname}($interface_name x) {')
+			for variant in variants {
+				variant_sym := g.table.get_type_symbol(variant)
+				conversion_functions.writeln('\tif (x._typ == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_to_Interface_${vsym.cname}(x._$variant_sym.cname);')
+			}
+			pmessage := 'string__plus(string__plus(tos3("`as_cast`: cannot convert "), tos3(v_typeof_interface_${interface_name}(x._typ))), tos3(" to ${util.strip_main_name(vsym.name)}"))'
+			if g.pref.is_debug {
+				// TODO: actually return a valid position here
+				conversion_functions.write_string('\tpanic_debug(1, tos3("builtin.v"), tos3("builtin"), tos3("__as_cast"), ')
+				conversion_functions.write_string(pmessage)
+				conversion_functions.writeln(');')
+			} else {
+				conversion_functions.write_string('\t_v_panic(')
+				conversion_functions.write_string(pmessage)
+				conversion_functions.writeln(');')
+			}
+			conversion_functions.writeln('\treturn ($vsym.cname){0};')
+			conversion_functions.writeln('}')
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		if iname_table_length == 0 {
@@ -6718,6 +6772,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 		}
 		sb.writeln(cast_functions.str())
 	}
+	sb.writeln(conversion_functions.str())
 	return sb.str()
 }
 

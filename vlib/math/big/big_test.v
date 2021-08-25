@@ -165,3 +165,17 @@ fn test_bytes_trimmed() {
 	assert big.from_int(1024).bytes_trimmed() == [byte(0x00), 0x04]
 	assert big.from_int(1048576).bytes_trimmed() == [byte(0x00), 0x00, 0x10]
 }
+
+fn test_from_bytes() ? {
+	assert big.from_bytes([]) ?.hexstr() == '0'
+	assert big.from_bytes([byte(0x13)]) ?.hexstr() == '13'
+	assert big.from_bytes([byte(0x13), 0x37]) ?.hexstr() == '1337'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca]) ?.hexstr() == '1337ca'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe]) ?.hexstr() == '1337cafe'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba]) ?.hexstr() == '1337cafeba'
+	assert big.from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]) ?.hexstr() == '1337cafebabe'
+	assert big.from_bytes([]byte{len: 128, init: 0x0}) ?.hexstr() == '0'
+	if x := big.from_bytes([]byte{len: 129, init: 0x0}) {
+		return error('expected error, got $x')
+	}
+}

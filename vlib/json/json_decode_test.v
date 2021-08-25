@@ -33,3 +33,14 @@ fn test_json_decode_works_with_a_dict_of_arrays() {
 	assert res.twins[1].seed == 'dfgdfgdfgd'
 	assert res.twins[1].pubkey == 'skjldskljh45sdf'
 }
+
+struct Mount {
+	size u64
+}
+
+fn test_decode_u64() ? {
+	data := '{"size": 10737418240}'
+	m := json.decode(Mount, data) ?
+	assert m.size == 10737418240
+	println(m)
+}

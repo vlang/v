@@ -61,7 +61,7 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 		g.write32(0xd2800000 + int(r) + (int(val) << 5))
 		g.println('mov x$r, $val')
 	} else {
-		verror('mov_arm unsupported values')
+		g.n_error('mov_arm unsupported values')
 	}
 	/*
 	if 1 ^ (x & ~m) != 0 {
@@ -87,7 +87,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 	// println('call fn $name')
 	addr := g.fn_addr[name]
 	if addr == 0 {
-		verror('fn addr of `$name` = 0')
+		g.n_error('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)
 	// g.mov_arm(.eax, 0)
@@ -110,12 +110,12 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 			}
 			*/
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
+				g.n_error('unhandled call_fn (name=$name) node: ' + expr.type_name())
 			}
 		}
 	}
 	if node.args.len > 6 {
-		verror('more than 6 args not allowed for now')
+		g.n_error('more than 6 args not allowed for now')
 	}
 	g.call(int(addr))
 	g.println('fn call `${name}()`')
@@ -165,7 +165,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			return_code = expr.val.u64()
 		}
 		else {
-			verror('native builtin exit expects a numeric argument')
+			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	match c.g.pref.os {
@@ -179,7 +179,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			verror('unsupported os $c.g.pref.os')
+			g.n_error('unsupported os $c.g.pref.os')
 		}
 	}
 	g.svc()
@@ -191,9 +191,13 @@ pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
 			g.mov_arm(.x16, expr.val.u64())
 		}
 		else {
-			verror('native builtin exit expects a numeric argument')
+			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	g.mov_arm(.x0, 0)
 	g.svc()
+}
+
+fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
+	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
 }
