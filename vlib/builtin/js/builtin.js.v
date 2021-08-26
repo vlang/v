@@ -36,3 +36,12 @@ pub fn eprint(s any) {
 		panic('Cannot `eprint` in a browser, use `println` instead')
 	}
 }
+
+// Exits the process in node, and halts execution in the browser
+// because `process.exit` is undefined. Workaround for not having
+// a 'real' way to exit in the browser.
+pub fn exit(c int) {
+	println('YOOOO')
+	JS.process.exit(c)
+	js_throw('exit($c)')
+}

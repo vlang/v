@@ -20,7 +20,7 @@ mut:
 
 // ///////////////////////////////////////////////////////////////////
 // Called at the start of the test program produced by `v -stats file_test.v`
-fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
+pub fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 	mut benched_tests_res := BenchedTests{}
 	benched_tests_res.total_number_of_tests = total_number_of_tests
 	benched_tests_res.test_suit_file = vfilename
