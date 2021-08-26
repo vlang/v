@@ -47,43 +47,43 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	start_pos := p.prev_tok.position()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
-		n := p.check_name() // skip `vweb.html()` TODO
-		if n != 'vweb' {
+		name := p.check_name() // skip `vweb.html()` TODO
+		if name != 'vweb' {
 			p.error(error_msg)
 			return err_node
 		}
 		p.check(.dot)
 	}
-	n := p.check_name() // (.name)
-	if n !in parser.supported_comptime_calls {
+	method_name := p.check_name() // (.name)
+	if method_name !in parser.supported_comptime_calls {
 		p.error(error_msg)
 		return err_node
 	}
-	is_embed_file := n == 'embed_file'
-	is_html := n == 'html'
+	is_embed_file := method_name == 'embed_file'
+	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
 	spos := p.tok.position()
-	if n == 'env' {
+	if method_name == 'env' {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0
-			method_name: n
+			method_name: method_name
 			args_var: s
 			is_env: true
 			env_pos: spos
 			pos: spos.extend(p.prev_tok.position())
 		}
 	}
-	if n == 'pkgconfig' {
+	if method_name == 'pkgconfig' {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0
-			method_name: n
+			method_name: method_name
 			args_var: s
 			is_pkgconfig: true
 			env_pos: spos
@@ -161,7 +161,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				return ast.ComptimeCall{
 					scope: 0
 					is_vweb: true
-					method_name: n
+					method_name: method_name
 					args_var: literal_string_param
 					pos: start_pos.extend(p.prev_tok.position())
 				}
@@ -226,7 +226,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 		is_vweb: true
 		vweb_tmpl: file
-		method_name: n
+		method_name: method_name
 		args_var: literal_string_param
 		pos: start_pos.extend(p.prev_tok.position())
 	}

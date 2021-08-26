@@ -4,9 +4,9 @@ module os
 #const $path = require('path');
 
 pub const (
-	args           = []string{}
 	path_delimiter = '/'
 	path_separator = '/'
+	args           = []string{}
 )
 
 $if js_node {

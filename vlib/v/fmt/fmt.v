@@ -549,6 +549,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {
 			f.write(node.val)
+			if node.val.ends_with('.') {
+				f.write('0')
+			}
 		}
 		ast.GoExpr {
 			f.go_expr(node)

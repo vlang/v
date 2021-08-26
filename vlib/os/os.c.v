@@ -3,6 +3,10 @@ module os
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
+pub const (
+	args = []string{}
+)
+
 struct C.dirent {
 	d_name [256]char
 }
@@ -927,11 +931,11 @@ pub fn open_append(path string) ?File {
 // The arguments, that will be passed to it are in `args`.
 // NB: this function will NOT return when successfull, since
 // the child process will take control over execution.
-pub fn execvp(cmdpath string, args []string) ? {
+pub fn execvp(cmdpath string, cmdargs []string) ? {
 	mut cargs := []&char{}
 	cargs << &char(cmdpath.str)
-	for i in 0 .. args.len {
-		cargs << &char(args[i].str)
+	for i in 0 .. cmdargs.len {
+		cargs << &char(cmdargs[i].str)
 	}
 	cargs << &char(0)
 	mut res := int(0)
@@ -953,12 +957,12 @@ pub fn execvp(cmdpath string, args []string) ? {
 // You can pass environment variables to through `envs`.
 // NB: this function will NOT return when successfull, since
 // the child process will take control over execution.
-pub fn execve(cmdpath string, args []string, envs []string) ? {
+pub fn execve(cmdpath string, cmdargs []string, envs []string) ? {
 	mut cargv := []&char{}
 	mut cenvs := []&char{}
 	cargv << &char(cmdpath.str)
-	for i in 0 .. args.len {
-		cargv << &char(args[i].str)
+	for i in 0 .. cmdargs.len {
+		cargv << &char(cmdargs[i].str)
 	}
 	for i in 0 .. envs.len {
 		cenvs << &char(envs[i].str)
@@ -988,4 +992,20 @@ pub fn is_atty(fd int) int {
 	} $else {
 		return C.isatty(fd)
 	}
+}
+
+// write_file_array writes the data in `buffer` to a file in `path`.
+pub fn write_file_array(path string, buffer array) ? {
+	mut f := create(path) ?
+	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
+	f.close()
+}
+
+pub fn glob(patterns ...string) ?[]string {
+	mut matches := []string{}
+	for pattern in patterns {
+		native_glob_pattern(pattern, mut matches) ?
+	}
+	matches.sort()
+	return matches
 }
