@@ -5646,7 +5646,11 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
 		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			type_name := c.table.type_to_str(node.typ)
-			c.error('cannot cast struct to `$type_name`', node.pos)
+			if node.expr.is_auto_deref_var() {
+				c.note('cannot cast struct to `$type_name` - accepted for compatibility', node.pos)
+			} else {
+				c.error('cannot cast struct to `$type_name`', node.pos)
+			}
 		}
 	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
@@ -7130,11 +7134,8 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 							'referenced'
 						}
 						msg := '`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.'
-						if as_interface {
-							c.note(msg, node.pos)
-						} else {
-							c.error(msg, node.pos)
-						}
+						// should always be an error but is used too often in existing code
+						c.note(msg, node.pos)
 					}
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
