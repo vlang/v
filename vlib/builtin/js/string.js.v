@@ -567,16 +567,19 @@ pub fn (s string) replace_each(vals []string) string {
 
 	mut idxs := []RepIndex{}
 	mut idx := 0
+	mut new_len := s.len
 	s_ := s.clone()
 	#function setCharAt(str,index,chr) {
 	#if(index > str.length-1) return str;
 	#return str.substring(0,index) + chr + str.substring(index+1);
 	#}
 
-	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
+	for rep_i := 0; rep_i < vals.len; rep_i = rep_i + 2 {
 		rep := vals[rep_i]
+
 		mut with_ := vals[rep_i + 1]
 		with_ = with_
+
 		for {
 			idx = s_.index_after(rep, idx)
 			if idx == -1 {
@@ -589,11 +592,16 @@ pub fn (s string) replace_each(vals []string) string {
 				#s_.str = setCharAt(s_.str,idx + i, String.fromCharCode(127))
 			}
 
-			idxs << RepIndex{
-				idx: idx
-				val_idx: rep_i
+			rep_idx := RepIndex{
+				idx: 0
+				val_idx: 0
 			}
+			// todo: primitives should always be copied
+			#rep_idx.idx = idx.val
+			#rep_idx.val_idx = new int(rep_i.val)
+			idxs << rep_idx
 			idx += rep.len
+			new_len += with_.len - rep.len
 		}
 	}
 
@@ -604,6 +612,9 @@ pub fn (s string) replace_each(vals []string) string {
 	idxs.sort(a.idx < b.idx)
 
 	mut b := ''
+	#for (let i = 0; i < new_len.val;i++) b.str += String.fromCharCode(127)
+
+	new_len = new_len
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
@@ -613,6 +624,7 @@ pub fn (s string) replace_each(vals []string) string {
 			with_ := vals[cur_idx.val_idx + 1]
 			for j in 0 .. with_.len {
 				mut j_ := j
+
 				j_ = j_
 				#b.str = setCharAt(b.str,b_i, with_.str[j])
 				//#b.str[b_i] = with_.str[j]
