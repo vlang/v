@@ -1021,7 +1021,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			}
 			g.expr(left)
 			mut is_ptr := false
-			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+			if stmt.op == .assign && (stmt.left_types[i].is_ptr() || left.is_auto_deref_var()) {
 				is_ptr = true
 				g.write('.val')
 			}
@@ -1357,7 +1357,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
-				if it.cond_type.is_ptr() {
+				if it.cond_type.is_ptr() || it.cond.is_auto_deref_var() {
 					g.write('.valueOf()')
 				}
 				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
@@ -1367,7 +1367,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 				g.write('byte($val)])')
 			} else {
 				g.expr(it.cond)
-				if it.cond_type.is_ptr() {
+				if it.cond_type.is_ptr() || it.cond.is_auto_deref_var() {
 					g.write('.valueOf()')
 				}
 				g.write('.entries()')
@@ -1375,7 +1375,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		} else {
 			g.write('for (const $val of ')
 			g.expr(it.cond)
-			if it.cond_type.is_ptr() {
+			if it.cond_type.is_ptr() || it.cond.is_auto_deref_var() {
 				g.write('.valueOf()')
 			}
 			if it.kind == .string {
@@ -1401,7 +1401,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
 		g.write('for (let [$key, $val] of ')
 		g.expr(it.cond)
-		if it.cond_type.is_ptr() {
+		if it.cond_type.is_ptr() || it.cond.is_auto_deref_var() {
 			g.write('.valueOf()')
 		}
 		g.writeln(') {')
@@ -1650,13 +1650,19 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		g.write('return builtin.unwrap(')
 	}
 	sym := g.table.get_type_symbol(it.receiver_type)
+	is_auto_deref := it.left.is_auto_deref_var()
 	if sym.kind == .array {
 		if sym.kind == .array && it.name in ['map', 'filter'] {
 			g.expr(it.left)
+			mut auto_deref := is_auto_deref
 			mut ltyp := it.left_type
-			for ltyp.is_ptr() {
+			for ltyp.is_ptr() || auto_deref {
 				g.write('.val')
-				ltyp = ltyp.deref()
+				if auto_deref {
+					auto_deref = false
+				} else {
+					ltyp = ltyp.deref()
+				}
 			}
 			g.write('.')
 			// Prevent 'it' from getting shadowed inside the match
@@ -1698,9 +1704,14 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			if it.name in special_array_methods {
 				g.expr(it.left)
 				mut ltyp := it.left_type
-				for ltyp.is_ptr() {
+				mut auto_deref := is_auto_deref
+				for ltyp.is_ptr() || auto_deref {
 					g.write('.val')
-					ltyp = ltyp.deref()
+					if auto_deref {
+						auto_deref = false
+					} else {
+						ltyp = ltyp.deref()
+					}
 				}
 				g.write('.')
 
@@ -1714,9 +1725,14 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 	g.write('Object.getPrototypeOf(')
 	g.expr(it.left)
 	mut ltyp := it.left_type
-	for ltyp.is_ptr() {
+	mut auto_deref := is_auto_deref
+	for ltyp.is_ptr() || auto_deref {
 		g.write('.val')
-		ltyp = ltyp.deref()
+		if auto_deref {
+			auto_deref = false
+		} else {
+			ltyp = ltyp.deref()
+		}
 	}
 	g.write(').$name .call(')
 	g.expr(it.left)
@@ -2229,7 +2245,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
 		g.expr(expr.left)
-		if expr.left_type.is_ptr() {
+		if expr.left_type.is_ptr() || expr.left.is_auto_deref_var() {
 			g.write('.valueOf()')
 		}
 		g.write('.slice(')
@@ -2243,7 +2259,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.expr(expr.index.high)
 		} else {
 			g.expr(expr.left)
-			if expr.left_type.is_ptr() {
+			if expr.left_type.is_ptr() || expr.left.is_auto_deref_var() {
 				g.write('.valueOf()')
 			}
 			g.write('.length')
@@ -2270,7 +2286,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
 			g.write('new byte(')
 			g.expr(expr.left)
-			if expr.left_type.is_ptr() {
+			if expr.left_type.is_ptr() || expr.left.is_auto_deref_var() {
 				g.write('.valueOf()')
 			}
 			g.write('.str.charCodeAt(')
@@ -2280,7 +2296,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
-		if expr.left_type.is_ptr() {
+		if expr.left_type.is_ptr() || expr.left.is_auto_deref_var() {
 			g.write('.valueOf()')
 		}
 		g.write('.arr')
@@ -2292,18 +2308,27 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	}
 }
 
-fn (mut g JsGen) gen_deref_ptr(ty ast.Type) {
+fn (mut g JsGen) gen_deref_ptr(ty ast.Type, is_auto_deref bool) {
 	mut t := ty
-	for t.is_ptr() {
+	mut auto_deref := is_auto_deref
+	for t.is_ptr() || auto_deref {
 		g.write('.val')
-		t = t.deref()
+		if auto_deref {
+			auto_deref = false
+		} else {
+			t = t.deref()
+		}
 	}
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
+	
 	l_sym := g.table.get_type_symbol(it.left_type)
 	r_sym := g.table.get_type_symbol(it.right_type)
-
+	
+	l_is_auto_deref := it.left.is_auto_deref_var()
+	r_is_auto_deref := it.right.is_auto_deref_var()
+	
 	is_not := it.op in [.not_in, .not_is, .ne]
 	if is_not {
 		g.write('!(')
@@ -2322,12 +2347,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.cast_stack << greater_typ
 		g.write('BigInt((')
 		g.expr(it.left)
-		g.gen_deref_ptr(it.left_type)
+		g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 		g.write(').\$toJS())')
 		g.write(' $it.op ')
 		g.write('BigInt((')
 		g.expr(it.right)
-		g.gen_deref_ptr(it.right_type)
+		g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 		g.write(').\$toJS())')
 		g.cast_stack.delete_last()
 		g.write(')')
@@ -2351,40 +2376,45 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			g.write('.eq(')
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.write(')')
 			// Shallow equatables
 		} else if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
 			// wrap left expr in parens so binary operations will work correctly.
 			g.write('(')
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			g.write(')')
 			g.write('.eq(')
 			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.cast_stack.delete_last()
 			g.write(')')
 		} else {
 			g.write('vEq(')
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			g.write(', ')
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
 		mut ltyp := it.left_type
-		for ltyp.is_ptr() {
+		mut auto_deref := l_is_auto_deref
+		for ltyp.is_ptr() || auto_deref {
 			g.write('.val')
-			ltyp = ltyp.deref()
+			if auto_deref {
+				auto_deref = false
+			} else {
+				ltyp = ltyp.deref()
+			}
 		}
 		g.write('.arr,')
 		array_info := l_sym.info as ast.Array
@@ -2398,9 +2428,14 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.right)
 
 		mut ltyp := it.right_type
-		for ltyp.is_ptr() {
+		mut auto_deref := r_is_auto_deref
+		for ltyp.is_ptr() || auto_deref {
 			g.write('.val')
-			ltyp = ltyp.deref()
+			if auto_deref {
+				auto_deref = false
+			} else {
+				ltyp = ltyp.deref()
+			}
 		}
 		if r_sym.kind == .map {
 			g.write('.map.has(')
@@ -2416,7 +2451,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 	} else if it.op in [.key_is, .not_is] { // foo is Foo
 		g.expr(it.left)
-		g.gen_deref_ptr(it.left_type)
+		g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
 	} else if it.op in [.lt, .gt, .ge, .le] && g.table.type_has_method(l_sym, '<')
@@ -2426,24 +2461,24 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 		if it.op in [.lt, .ge] {
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			g.write('.\$lt (')
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.write(')')
 		} else {
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.write('.\$lt (')
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			g.write(')')
 		}
 	} else {
 		has_operator_overloading := g.table.type_has_method(l_sym, it.op.str())
 		if has_operator_overloading {
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			name := match it.op.str() {
 				'+' {
 					'\$add'
@@ -2467,7 +2502,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 			g.write('.$name (')
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			g.write(')')
 		} else {
 			mut greater_typ := 0
@@ -2488,12 +2523,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 
 			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
+			g.gen_deref_ptr(it.left_type, l_is_auto_deref)
 			// g.write('.val')
 			g.write(' $it.op ')
 
 			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
+			g.gen_deref_ptr(it.right_type, r_is_auto_deref)
 			// g.write('.val')
 
 			if is_arithmetic {
@@ -2638,9 +2673,14 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	}
 	g.expr(it.expr)
 	mut ltyp := it.expr_type
-	for ltyp.is_ptr() {
+	mut auto_deref := it.expr.is_auto_deref_var()
+	for ltyp.is_ptr() || auto_deref {
 		g.write('.val')
-		ltyp = ltyp.deref()
+		if auto_deref {
+			auto_deref = false
+		} else {
+			ltyp = ltyp.deref()
+		}
 	}
 	g.write('.$it.field_name')
 }
