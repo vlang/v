@@ -4242,8 +4242,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident
-			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
 			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
@@ -7249,7 +7248,8 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		// allow de-referencing `mut` argument for compatibility
 		if !right_type.is_pointer() {
 			if node.right.is_auto_deref_var() {
-				c.note('dereferencing `mut` fn-arg/for-value is deprecated and will be forbidden soon', node.pos)
+				c.note('dereferencing `mut` fn-arg/for-value is deprecated and will be forbidden soon',
+					node.pos)
 				node.ref_compat = true
 			} else {
 				s := c.table.type_to_str(right_type)

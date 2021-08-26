@@ -2322,13 +2322,12 @@ fn (mut g JsGen) gen_deref_ptr(ty ast.Type, is_auto_deref bool) {
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
-	
 	l_sym := g.table.get_type_symbol(it.left_type)
 	r_sym := g.table.get_type_symbol(it.right_type)
-	
+
 	l_is_auto_deref := it.left.is_auto_deref_var()
 	r_is_auto_deref := it.right.is_auto_deref_var()
-	
+
 	is_not := it.op in [.not_in, .not_is, .ne]
 	if is_not {
 		g.write('!(')
