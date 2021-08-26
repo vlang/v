@@ -81,6 +81,11 @@ mut:
 	defer_ifdef           string
 }
 
+fn (mut g JsGen) write_tests_definitions() {
+	g.definitions.writeln('globalThis.g_test_oks = 0;')
+	g.definitions.writeln('globalThis.g_test_fails = 0;')
+}
+
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
@@ -105,6 +110,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		mut sg := sourcemap.generate_empty_map()
 		g.sourcemap = sg.add_map('', '', g.pref.sourcemap_src_included, 0, 0)
 	}
+	mut tests_inited := false
+
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -133,15 +140,22 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
-
+		if g.is_test && !tests_inited {
+			g.write_tests_definitions()
+			tests_inited = true
+		}
 		g.stmts(file.stmts)
 		g.writeln('try { init() } catch (_) {}')
 		// store the current namespace
 		g.escape_namespace()
 	}
+	if g.pref.is_test {
+		g.gen_js_main_for_tests()
+	}
 	// resolve imports
 	deps_resolved := graph.resolve()
 	nodes := deps_resolved.nodes
+
 	mut out := g.hashes() + g.definitions.str()
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
@@ -260,6 +274,67 @@ fn (g JsGen) create_sourcemap() string {
 	out += '\n'
 
 	return out
+}
+
+pub fn (mut g JsGen) gen_js_main_for_tests() {
+	g.enter_namespace('main')
+	g.writeln('(function() {  ')
+	g.inc_indent()
+	all_tfuncs := g.get_all_test_function_names()
+
+	g.writeln('')
+	g.writeln('globalThis.VTEST=1')
+	// g.writeln('let bt = start_testing($all_tfuncs.len, "$g.pref.path")')
+
+	for tname in all_tfuncs {
+		tcname := g.js_name(tname)
+
+		if g.pref.is_stats {
+			// g.writeln('bt.testing_step_start("$tcname")')
+		}
+
+		g.writeln('try { ${tcname}(); } catch (_e) {} ')
+		if g.pref.is_stats {
+			//	g.writeln('bt.testing_step_end();')
+		}
+	}
+
+	g.writeln('')
+	if g.pref.is_stats {
+		// g.writeln('bt.end_testing();')
+	}
+	g.dec_indent()
+	g.writeln('})();')
+	g.escape_namespace()
+}
+
+fn (g &JsGen) get_all_test_function_names() []string {
+	mut tfuncs := []string{}
+	mut tsuite_begin := ''
+	mut tsuite_end := ''
+	for _, f in g.table.fns {
+		if f.name.ends_with('.testsuite_begin') {
+			tsuite_begin = f.name
+			continue
+		}
+		if f.name.contains('.test_') {
+			tfuncs << f.name
+			continue
+		}
+		if f.name.ends_with('.testsuite_end') {
+			tsuite_end = f.name
+			continue
+		}
+	}
+	mut all_tfuncs := []string{}
+	if tsuite_begin.len > 0 {
+		all_tfuncs << tsuite_begin
+	}
+	all_tfuncs << tfuncs
+	if tsuite_end.len > 0 {
+		all_tfuncs << tsuite_end
+	}
+	return all_tfuncs
 }
 
 pub fn (mut g JsGen) enter_namespace(name string) {
@@ -936,6 +1011,63 @@ fn (mut g JsGen) expr(node ast.Expr) {
 	}
 }
 
+fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
+	mod_path := g.file.path
+	fn_name := g.fn_decl.name
+	line_nr := node.pos.line_nr
+	src := node.expr.str()
+	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
+	g.writeln('let $metaname = {}')
+	g.writeln('${metaname}.fpath = new builtin.string("$mod_path");')
+	g.writeln('${metaname}.line_nr = new builtin.int("$line_nr")')
+	g.writeln('${metaname}.fn_name = new builtin.string("$fn_name")')
+	metasrc := src
+	g.writeln('${metaname}.src = "$metasrc"')
+
+	match mut node.expr {
+		ast.InfixExpr {
+			expr_op_str := node.expr.op.str()
+			expr_left_str := node.expr.left.str()
+			expr_right_str := node.expr.right.str()
+			g.writeln('\t${metaname}.op = new builtin.string("$expr_op_str");')
+			g.writeln('\t${metaname}.llabel = new builtin.string("$expr_left_str");')
+			g.writeln('\t${metaname}.rlabel = new builtin.string("$expr_right_str");')
+			g.write('\t${metaname}.lvalue = new builtin.string("')
+			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
+			g.writeln('");')
+			g.write('\t${metaname}.rvalue = new builtin.string("')
+			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
+			g.writeln('");')
+		}
+		ast.CallExpr {
+			g.writeln('\t${metaname}.op = new builtin.string("call");')
+		}
+		else {}
+	}
+	return metaname
+}
+
+fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
+	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
+	unknown_value := '*unknown value*'
+	match expr {
+		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
+			g.write(unknown_value)
+		}
+		ast.PrefixExpr {
+			g.write(unknown_value)
+		}
+		ast.TypeNode {
+			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+			g.write('$sym.name')
+		}
+		else {
+			g.writeln(unknown_value)
+		}
+	}
+	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
+}
+
 // TODO
 fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	if !a.is_used {
@@ -948,12 +1080,14 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	s_assertion := a.expr.str().replace('"', "'")
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
+		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_ok($metaname_ok);')
 		g.writeln('} else {')
+		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
-		g.writeln('	exit(1);')
+		g.writeln('	cb_assertion_failed($metaname_fail);')
+		g.writeln('	builtin.exit(1);')
 		g.writeln('}')
 		return
 	}

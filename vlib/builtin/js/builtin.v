@@ -6,14 +6,6 @@ module builtin
 
 fn (a any) toString()
 
-// Exits the process in node, and halts execution in the browser
-// because `process.exit` is undefined. Workaround for not having
-// a 'real' way to exit in the browser.
-pub fn exit(c int) {
-	JS.process.exit(c)
-	js_throw('exit($c)')
-}
-
 pub fn unwrap(opt any) any {
 	o := &Option(opt)
 	if o.state != 0 {
