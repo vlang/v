@@ -291,12 +291,11 @@ type LeType = int | string
 fn test_noreturn() {
 	t := LeType(3)
 	_ := match t {
-		string {
-			'foo'
+		int {
+			'test'
 		}
-		else {
+		string {
 			exit(0)
 		}
 	}
-	assert false
 }
