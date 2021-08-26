@@ -381,7 +381,7 @@ pub fn (s string) replace_each(vals []string) string {
 			new_len += with.len - rep.len
 		}
 	}
-	println(idxs)
+
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
 		return s.clone()
