@@ -41,7 +41,6 @@ pub fn eprint(s any) {
 // because `process.exit` is undefined. Workaround for not having
 // a 'real' way to exit in the browser.
 pub fn exit(c int) {
-	println('YOOOO')
 	JS.process.exit(c)
 	js_throw('exit($c)')
 }
