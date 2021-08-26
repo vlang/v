@@ -1062,7 +1062,6 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			g.write('$sym.name')
 		}
 		else {
-			mut should_clone := true
 			g.writeln(unknown_value)
 		}
 	}
