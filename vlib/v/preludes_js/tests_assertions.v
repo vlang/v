@@ -1,6 +1,6 @@
 module main
 
-import os_js
+import os
 
 // VAssertMetaInfo is used during assertions. An instance of it
 // is filled in by compile time generated code, when an assertion fails.
@@ -20,7 +20,7 @@ pub:
 const use_relative_paths = can_use_relative_paths()
 
 fn can_use_relative_paths() bool {
-	return match os_js.getenv('VERROR_PATHS') {
+	return match os.getenv('VERROR_PATHS') {
 		'absolute' { false }
 		else { true }
 	}
@@ -40,11 +40,13 @@ fn myeprintln(s string) {
 // //////////////////////////////////////////////////////////////////
 // TODO copy pasta builtin.v fn ___print_assert_failure
 fn cb_assertion_failed(i VAssertMetaInfo) {
-	filepath := if use_relative_paths { i.fpath } else { os_js.real_path(i.fpath) }
+	filepath := if use_relative_paths { i.fpath } else { os.real_path(i.fpath) }
 	mut final_filepath := filepath + ':${i.line_nr + 1}:'
-	mut final_funcname := 'fn ' + i.fn_name.replace('main.', '').replace('__', '.')
+	mut final_funcname := 'fn ' + i.fn_name
 	final_src := 'assert ' + i.src
+
 	myeprintln('$final_filepath $final_funcname')
+
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
@@ -72,15 +74,15 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 }
 
 fn cb_propagate_test_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	filepath := if use_relative_paths { file } else { os_js.real_path(file) }
+	filepath := if use_relative_paths { file } else { os.real_path(file) }
 	mut final_filepath := filepath + ':$line_nr:'
 	mut final_funcname := 'fn ' + fn_name.replace('main.', '').replace('__', '.')
 	final_msg := errmsg
 	myeprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
-	// TODO: implement os_js.is_file and os_js.read_lines:
+	// TODO: implement os.is_file and os.read_lines:
 	/*
-	if os_js.is_file(file) {
-		source_lines := os_js.read_lines(file) or { []string{len: line_nr + 1} }
+	if os.is_file(file) {
+		source_lines := os.read_lines(file) or { []string{len: line_nr + 1} }
 		myeprintln('${line_nr:5} | ${source_lines[line_nr - 1]}')
 	}
 	*/

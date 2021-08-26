@@ -357,9 +357,9 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+
 		for {
 			idx = s_.index_after(rep, idx)
-
 			if idx == -1 {
 				break
 			}
@@ -371,6 +371,7 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
+
 			idxs << RepIndex{
 				idx: idx
 				val_idx: rep_i
@@ -380,6 +381,7 @@ pub fn (s string) replace_each(vals []string) string {
 			new_len += with.len - rep.len
 		}
 	}
+
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
 		return s.clone()
