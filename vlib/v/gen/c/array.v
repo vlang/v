@@ -447,7 +447,10 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
-	unwrap_left_type := g.unwrap_generic(left_type)
+	mut unwrap_left_type := g.unwrap_generic(left_type)
+	if unwrap_left_type.share() == .shared_t {
+		unwrap_left_type = unwrap_left_type.clear_flag(.shared_f)
+	}
 	mut left_sym := g.table.get_type_symbol(unwrap_left_type)
 	left_final_sym := g.table.get_final_type_symbol(unwrap_left_type)
 	mut left_type_str := g.typ(unwrap_left_type).replace('*', '')
@@ -502,10 +505,13 @@ fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 	fn_name := g.gen_array_contains_method(node.left_type)
 	g.write('${fn_name}(')
-	if node.left_type.is_ptr() {
+	if node.left_type.is_ptr() && node.left_type.share() != .shared_t {
 		g.write('*')
 	}
 	g.expr(node.left)
+	if node.left_type.share() == .shared_t {
+		g.write('->val')
+	}
 	g.write(', ')
 	g.expr(node.args[0].expr)
 	g.write(')')
