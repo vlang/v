@@ -378,6 +378,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			} else if !os.is_dir(out.path) {
 				out.path = os.real_path('.')
 			}
+		} else if cfg.output_type == .html {
+			out.path = os.dir(out.path)
 		}
 		if cfg.is_multi {
 			out.path = os.join_path(out.path, '_docs')
