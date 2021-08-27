@@ -30,10 +30,10 @@ enum OutputType {
 }
 
 const (
-	file_ext_html = '.html'
+	file_ext_html     = '.html'
 	file_ext_markdown = '.md'
-	file_ext_json = '.json'
-	file_ext_unknown = '.txt'
+	file_ext_json     = '.json'
+	file_ext_unknown  = '.txt'
 )
 
 // file_ext returns the corresponding file extension
@@ -195,7 +195,11 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 			break
 		}
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
-		output_path := if pdoc.out.path_ends_with_file_ext() { pdoc.out.path } else { os.join_path(pdoc.out.path, file_name) }
+		output_path := if pdoc.out.path_ends_with_file_ext() {
+			pdoc.out.path
+		} else {
+			os.join_path(pdoc.out.path, file_name)
+		}
 		println('Generating $pdoc.out.typ in "$output_path"')
 		os.write_file(output_path, content) or { panic(err) }
 	}
