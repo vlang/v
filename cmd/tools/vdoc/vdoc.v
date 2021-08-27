@@ -372,10 +372,12 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			println(outputs[first])
 		}
 	} else {
-		if !os.exists(out.path) && !out.path_ends_with_file_ext() {
-			os.mkdir_all(out.path) or { panic(err) }
-		} else if !os.is_dir(out.path) && (!cfg.is_multi && !out.path_ends_with_file_ext()) {
-			out.path = os.real_path('.')
+		if !out.path_ends_with_file_ext() {
+			if !os.exists(out.path) {
+				os.mkdir_all(out.path) or { panic(err) }
+			} else if !os.is_dir(out.path) {
+				out.path = os.real_path('.')
+			}
 		}
 		if cfg.is_multi {
 			out.path = os.join_path(out.path, '_docs')
