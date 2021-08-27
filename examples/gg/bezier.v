@@ -4,8 +4,7 @@ import gg
 import gx
 
 const (
-	p1_and_p2      = [f32(200.0), 200.0, 400.0, 300.0]
-	ctrl_p1_and_p2 = [f32(200.0), 100.0, 400.0, 100.0]
+	points = [f32(200.0), 200.0, 200.0, 100.0, 400.0, 100.0, 400.0, 300.0]
 )
 
 struct App {
@@ -30,6 +29,6 @@ fn main() {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	app.gg.draw_cubic_bezier(p1_and_p2, ctrl_p1_and_p2, gx.blue)
+	app.gg.draw_cubic_bezier(points, gx.blue)
 	app.gg.end()
 }

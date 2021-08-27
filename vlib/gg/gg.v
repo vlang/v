@@ -675,22 +675,21 @@ pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
 }
 
 // draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
-// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
-// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
+// The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
+// Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
 // Please see `draw_cubic_bezier_in_steps` to control the amount of steps (segments) used to draw the curve.
-pub fn (ctx &Context) draw_cubic_bezier(points []f32, control_points []f32, c gx.Color) {
-	ctx.draw_cubic_bezier_in_steps(points, control_points, u32(30 * ctx.scale), c)
+pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
+	ctx.draw_cubic_bezier_in_steps(points, u32(30 * ctx.scale), c)
 }
 
 // draw_cubic_bezier_in_steps draws a cubic Bézier curve, also known as a spline, from four points.
 // The smoothness of the curve can be controlled with the `steps` parameter. `steps` determines how many iterations is
 // taken to draw the curve.
-// The four points is provided as two arrays; `points` and `control_points`, which is both pairs of x and y coordinates.
-// Thus a coordinate pair could be declared like: `points := [x1, y1, x2, y2]`.
-pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, control_points []f32, steps u32, c gx.Color) {
+// The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
+// Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
+pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.Color) {
 	assert steps > 0
-	assert points.len == 4
-	assert points.len == control_points.len
+	assert points.len == 8
 
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -700,10 +699,10 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, control_points []
 	sgl.begin_line_strip()
 
 	p1_x, p1_y := points[0], points[1]
-	p2_x, p2_y := points[2], points[3]
+	p2_x, p2_y := points[6], points[7]
 
-	ctrl_p1_x, ctrl_p1_y := control_points[0], control_points[1]
-	ctrl_p2_x, ctrl_p2_y := control_points[2], control_points[3]
+	ctrl_p1_x, ctrl_p1_y := points[2], points[3]
+	ctrl_p2_x, ctrl_p2_y := points[4], points[5]
 
 	// The constant 3 is actually points.len() - 1;
 
