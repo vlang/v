@@ -86,6 +86,15 @@ mut:
 	typ  OutputType = .unset
 }
 
+// path_ends_with_file_ext checks if the given output path ends
+// with a file extension that is supported by vdoc.
+fn (out Output) path_ends_with_file_ext() bool {
+	if out.path.ends_with(out.typ.file_ext()) {
+		return true
+	}
+	return false
+}
+
 struct ParallelDoc {
 	d   doc.Doc
 	out Output
@@ -186,7 +195,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 			break
 		}
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
-		output_path := os.join_path(pdoc.out.path, file_name)
+		output_path := if pdoc.out.path_ends_with_file_ext() { pdoc.out.path } else { os.join_path(pdoc.out.path, file_name) }
 		println('Generating $pdoc.out.typ in "$output_path"')
 		os.write_file(output_path, content) or { panic(err) }
 	}
@@ -355,9 +364,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			println(outputs[first])
 		}
 	} else {
-		if !os.exists(out.path) {
+		if !os.exists(out.path) && !out.path_ends_with_file_ext() {
 			os.mkdir_all(out.path) or { panic(err) }
-		} else if !os.is_dir(out.path) {
+		} else if !os.is_dir(out.path) && (!cfg.is_multi && !out.path_ends_with_file_ext()) {
 			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
