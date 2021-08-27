@@ -438,7 +438,12 @@ fn (mut s Scanner) ident_dec_number() string {
 				s.pos--
 			} else {
 				// 5.
-				s.warn('float literals should have a digit after the decimal point, e.g. `5.0`')
+				mut symbol_length := 0
+				for i := s.pos - 2; i > 0 && s.text[i - 1].is_digit(); i-- {
+					symbol_length++
+				}
+				float_symbol := s.text[s.pos - 2 - symbol_length..s.pos - 1]
+				s.warn('float literals should have a digit after the decimal point, e.g. `${float_symbol}.0`')
 			}
 		}
 	}

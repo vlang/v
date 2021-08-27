@@ -328,10 +328,13 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		}
 		fn_name := g.gen_array_contains_method(node.right_type)
 		g.write('(${fn_name}(')
-		if right.typ.is_ptr() {
+		if right.typ.is_ptr() && right.typ.share() != .shared_t {
 			g.write('*')
 		}
 		g.expr(node.right)
+		if right.typ.share() == .shared_t {
+			g.write('->val')
+		}
 		g.write(', ')
 		g.expr(node.left)
 		g.write('))')

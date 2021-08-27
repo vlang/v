@@ -119,6 +119,13 @@ const (
 	skip_on_non_macos             = [
 		'do_not_remove',
 	]
+	skip_on_amd64                 = [
+		'do_not_remove',
+	]
+	skip_on_non_amd64             = [
+		'vlib/v/tests/closure_test.v' /* not implemented yet */,
+		'do_not_remove',
+	]
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
@@ -197,6 +204,12 @@ fn main() {
 	}
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_ubuntu_musl
+	}
+	$if !amd64 {
+		tsession.skip_files << skip_on_non_amd64
+	}
+	$if amd64 {
+		tsession.skip_files << skip_on_amd64
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux

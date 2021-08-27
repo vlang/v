@@ -46,6 +46,7 @@ pub mut:
 	inside_lambda      bool
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
+	fn_scope           &ast.Scope = voidptr(0)
 }
 
 pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
@@ -879,6 +880,11 @@ pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
 }
 
 fn (mut f Fmt) fn_body(node ast.FnDecl) {
+	prev_fn_scope := f.fn_scope
+	f.fn_scope = node.scope
+	defer {
+		f.fn_scope = prev_fn_scope
+	}
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
@@ -1710,12 +1716,18 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	} else if node.kind == .blank_ident {
 		f.write('_')
 	} else {
-		// Force usage of full path to const in the same module:
-		// `println(minute)` => `println(time.minute)`
-		// This makes it clear that a module const is being used
-		// (since V's consts are no longer ALL_CAP).
-		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
-		if !node.name.contains('.') && !f.inside_const {
+		mut is_local := false
+		if !isnil(f.fn_scope) {
+			if _ := f.fn_scope.find_var(node.name) {
+				is_local = true
+			}
+		}
+		if !is_local && !node.name.contains('.') && !f.inside_const {
+			// Force usage of full path to const in the same module:
+			// `println(minute)` => `println(time.minute)`
+			// This makes it clear that a module const is being used
+			// (since V's consts are no longer ALL_CAP).
+			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 			mod := f.cur_mod
 			full_name := mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
