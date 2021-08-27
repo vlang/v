@@ -277,6 +277,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		ext := os.file_ext(out.path)
 		out.typ = set_output_type_from_str(ext.all_after('.'))
 	}
+	if cfg.is_multi && out.path_ends_with_file_ext() {
+		eprintln('vdoc: Custom output file name (e.g. `./README.md`) is only availble in single module mode.')
+		exit(1)
+	}
 	if cfg.include_readme && out.typ !in [.html, .stdout] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
