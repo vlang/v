@@ -849,8 +849,7 @@ fn (mut g Gen) register_optional(t ast.Type) string {
 }
 
 fn (mut g Gen) write_optionals() {
-	shared a := g.done_optionals
-	mut done := a.clone()
+	mut done := g.done_optionals.clone()
 	for base, styp in g.optionals {
 		if base in done {
 			continue
@@ -3293,6 +3292,15 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_
 		}
 		g.write(' array_clone_static_to_depth(')
 		g.expr(val)
+		if val is ast.SelectorExpr {
+			if val.field_name == 'done_optionals' {
+				println(ast.Type(right_sym.idx).debug())
+			}
+		}
+
+		if ast.Type(right_sym.idx).share() == .shared_t {
+			g.write('->val')
+		}
 		elem_type := (right_sym.info as ast.Array).elem_type
 		array_depth := g.get_array_depth(elem_type)
 		g.write(', $array_depth)')
@@ -3393,7 +3401,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// }
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
-	if free_parent_scopes && !isnil(scope.parent)
+	if free_parent_scopes && !isnil(scope.parent) && !scope.detached_from_parent
 		&& (stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
 		g.trace_autofree('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
@@ -3449,6 +3457,11 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 }
 
 fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
+	if free_fn_name == 'string_free' && g.file.path.contains('cgen.v') && v.name == 'module_built' {
+		// println(v)
+		// print_backtrace()
+		println(g.fn_decl.name)
+	}
 	if v.is_arg {
 		// fn args should not be autofreed
 		return
@@ -6011,11 +6024,8 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
 							styp, base := g.optional_type_name(field.typ)
-							// temporary hack because `elmnt in shared_map` doesn't work
-							shared a := g.done_optionals
-							done_optionals := a.clone()
 							lock g.done_optionals {
-								if base !in done_optionals {
+								if base !in g.done_optionals {
 									g.done_optionals << base
 									last_text := g.type_definitions.after(start_pos).clone()
 									g.type_definitions.go_back_to(start_pos)

@@ -491,9 +491,6 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 }
 
 fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
-	if typ.share() == .shared_t {
-		println('noted')
-	}
 	t := g.table.get_final_type_symbol(g.unwrap_generic(typ).set_nr_muls(0)).idx
 	g.array_contains_types << t
 	return g.typ(t) + '_contains'
@@ -549,18 +546,15 @@ fn (mut g Gen) gen_array_contains_methods() {
 fn (mut g Gen) gen_array_contains(typ ast.Type, left ast.Expr, right ast.Expr) {
 	fn_name := g.get_array_contains_method(typ)
 	g.write('${fn_name}(')
-<<<<<<< HEAD
-	if node.left_type.is_ptr() && node.left_type.share() != .shared_t {
-		g.write('*')
-	}
-	g.expr(node.left)
-	if node.left_type.share() == .shared_t {
+	g.write(strings.repeat(`*`, typ.nr_muls() - if typ.share() == .shared_t {
+		1
+	} else {
+		0
+	}))
+	g.expr(left)
+	if typ.share() == .shared_t {
 		g.write('->val')
 	}
-=======
-	g.write(strings.repeat(`*`, typ.nr_muls()))
-	g.expr(left)
->>>>>>> 855b0e14f (fix index and contains methods, fix options)
 	g.write(', ')
 	g.expr(right)
 	g.write(')')
