@@ -5647,7 +5647,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			type_name := c.table.type_to_str(node.typ)
 			if node.expr.is_auto_deref_var() {
-				c.note('cannot cast struct to `$type_name` - accepted for compatibility', node.pos)
+				c.note('cannot cast struct to `$type_name` - accepted for compatibility',
+					node.pos)
 			} else {
 				c.error('cannot cast struct to `$type_name`', node.pos)
 			}
