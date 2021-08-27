@@ -48,13 +48,21 @@ fn main() {
 fn frame(mut app App) {
 	time := app.anim.time
 
-	ctrl_p1_x := f32(200.0) + (40 * time)
-	ctrl_p2_x := f32(400.0) + (-40 * time)
+	p1_x := f32(200.0)
+	p1_y := f32(200.0) + (10 * time)
 
-	p1_and_p2 := [f32(200.0), 200.0 + (10 * time), 400.0, 200.0 + (10 * time)]
+	p2_x := f32(400.0)
+	p2_y := f32(200.0) + (10 * time)
+
+	ctrl_p1_x := f32(200.0) + (40 * time)
+	ctrl_p1_y := f32(100.0)
+	ctrl_p2_x := f32(400.0) + (-40 * time)
+	ctrl_p2_y := f32(100.0)
+
+	points := [p1_x, p1_y, ctrl_p1_x, ctrl_p1_y, ctrl_p2_x, ctrl_p2_y, p2_x, p2_y]
 
 	app.gg.begin()
-	app.gg.draw_cubic_bezier(p1_and_p2, [ctrl_p1_x, 100.0, ctrl_p2_x, 100.0], gx.blue)
+	app.gg.draw_cubic_bezier(points, gx.blue)
 	app.gg.end()
 	app.anim.advance()
 }
