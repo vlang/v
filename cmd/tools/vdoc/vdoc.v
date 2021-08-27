@@ -29,6 +29,24 @@ enum OutputType {
 	stdout
 }
 
+const (
+	file_ext_html = '.html'
+	file_ext_markdown = '.md'
+	file_ext_json = '.json'
+	file_ext_unknown = '.txt'
+)
+
+// file_ext returns the corresponding file extension
+// for that specific OutputType enum member
+fn (typ OutputType) file_ext() string {
+	return match typ {
+		.html { file_ext_html }
+		.markdown { file_ext_markdown }
+		.json { file_ext_json }
+		else { file_ext_unknown }
+	}
+}
+
 struct VDoc {
 	cfg Config [required]
 mut:
@@ -151,16 +169,12 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 	cfg := vd.cfg
 	mut name := mod
 	// since builtin is generated first, ignore it
-	if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) || mod == 'README' {
-		name = 'index'
-	} else if !cfg.is_multi && !os.is_dir(out.path) {
-		name = os.file_name(out.path)
-	}
-	name = name + match out.typ {
-		.html { '.html' }
-		.markdown { '.md' }
-		.json { '.json' }
-		else { '.txt' }
+	name = if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) || mod == 'README' {
+		'index' + out.typ.file_ext()
+	} else if !cfg.is_multi && (!os.is_dir(out.path) || out.path_ends_with_file_ext()) {
+		os.file_name(out.path)
+	} else {
+		name + out.typ.file_ext()
 	}
 	return name
 }

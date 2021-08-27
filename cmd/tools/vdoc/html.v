@@ -268,10 +268,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			}
 			names := dc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
-			mut href_name := './${dc.head.name}.html'
+			mut href_name := './' + dc.head.name + file_ext_html
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
 				|| dc.head.name == 'README' {
-				href_name = './index.html'
+				href_name = './index' + file_ext_html
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
 			}
