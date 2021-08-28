@@ -45,7 +45,7 @@ fn test_v_init() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 
 	init_and_check() ?
 }
@@ -57,7 +57,7 @@ fn test_v_init_in_git_dir() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 	os.execute_or_exit('git init .')
 	init_and_check() ?
 }
@@ -70,7 +70,7 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 
 	vexe := @VEXE
 	os.execute_or_exit('$vexe init')

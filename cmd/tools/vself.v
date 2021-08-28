@@ -11,7 +11,7 @@ fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `v self` .')
-	os.chdir(vroot)
+	os.chdir(vroot) ?
 	os.setenv('VCOLORS', 'always', true)
 	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')

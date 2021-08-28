@@ -22,12 +22,12 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := os.getenv('VEXE')
 	// prepare a V compiler with -g to have better backtraces if possible
 	wd := os.getwd()
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '$vroot/vdbg.exe' } $else { '$vroot/vdbg' }
 	vdbg_compilation_cmd := '"$vexe" $verbose_flag -g -o "$vdbg_path" cmd/v'
 	vdbg_result := os.execute(vdbg_compilation_cmd)
-	os.chdir(wd)
+	os.chdir(wd) or {}
 	if vdbg_result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {

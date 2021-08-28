@@ -333,7 +333,7 @@ fn vpm_update(m []string) {
 	mut errors := 0
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		os.chdir(final_module_path)
+		os.chdir(final_module_path) or {}
 		println('Updating module "$name"...')
 		verbose_println('  work folder: $final_module_path')
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
@@ -361,7 +361,7 @@ fn get_outdated() ?[]string {
 	mut outdated := []string{}
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		os.chdir(final_module_path)
+		os.chdir(final_module_path) or {}
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}

@@ -156,7 +156,7 @@ fn get_all_commands() []Command {
 fn (mut cmd Command) run() {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
