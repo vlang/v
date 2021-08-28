@@ -886,7 +886,7 @@ pub fn flush() {
 
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
-pub fn chmod(path string, mode int)? {
+pub fn chmod(path string, mode int) ? {
 	if C.chmod(&char(path.str), mode) != 0 {
 		return error_with_code('chmod failed: ' + posix_get_error_msg(C.errno), C.errno)
 	}
