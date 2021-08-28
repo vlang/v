@@ -633,7 +633,9 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				}
 			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.get_type_symbol(arg.typ)
-				if arg_sym.kind == .array && param_type_sym.kind == .array {
+				if param.typ.has_flag(.variadic) {
+					to_set = c.table.mktyp(arg.typ)
+				} else if arg_sym.kind == .array && param_type_sym.kind == .array {
 					mut arg_elem_info := arg_sym.info as ast.Array
 					mut param_elem_info := param_type_sym.info as ast.Array
 					mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
@@ -678,8 +680,6 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 						&& c.table.get_type_symbol(param_map_info.value_type).name == gt_name {
 						typ = arg_map_info.value_type
 					}
-				} else if param.typ.has_flag(.variadic) {
-					to_set = c.table.mktyp(arg.typ)
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}
