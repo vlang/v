@@ -444,7 +444,7 @@ pub fn building_any_v_binaries_failed() bool {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
-	os.chdir(parent_dir)
+	os.chdir(parent_dir) or { panic(err) }
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
 		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',

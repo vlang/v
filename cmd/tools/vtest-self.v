@@ -133,7 +133,7 @@ const (
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or { panic(err) }
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
