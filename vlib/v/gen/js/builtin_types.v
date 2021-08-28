@@ -184,8 +184,9 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 			styp = 'union_sym_type'
 		}
 		.alias {
-			// TODO: Implement aliases
-			styp = 'alias'
+			fsym := g.table.get_final_type_symbol(t)
+			name := g.js_name(fsym.name)
+			styp += '$name'
 		}
 		.enum_ {
 			// NB: We could declare them as TypeScript enums but TS doesn't like
@@ -278,7 +279,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	}
 	for method in g.method_fn_decls[c.typ_name] {
 		g.inside_def_typ_decl = true
-		g.gen_method_decl(method)
+		g.gen_method_decl(method, .struct_method)
 		g.inside_def_typ_decl = false
 		g.writeln(',')
 	}
