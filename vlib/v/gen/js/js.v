@@ -1318,19 +1318,25 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 	g.expr(it.expr)
 }
 
-fn (g &JsGen) is_method_to_generate(it &ast.FnDecl) int {
+enum FnGenType {
+	function
+	struct_method
+	alias_method
+}
+
+fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
 	if it.is_method && g.table.get_type_symbol(it.params[0].typ).kind == .alias {
-		return 2
+		return .alias_method
 	} else if it.is_method || it.no_body {
-		return 0
+		return .struct_method
 	} else {
-		return 1
+		return .function
 	}
 }
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
-	res := g.is_method_to_generate(it)
-	if res == 0 {
+	res := g.fn_gen_type(it)
+	if res == .struct_method {
 		// Struct methods are handled by class generation code.
 		return
 	}
@@ -1355,11 +1361,11 @@ fn fn_has_go(node ast.FnDecl) bool {
 	return has_go
 }
 
-fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ int) {
+fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	unsafe {
 		g.fn_decl = &it
 	}
-	if typ == 2 {
+	if typ == .alias_method {
 		sym := g.table.get_final_type_symbol(it.params[0].typ.set_nr_muls(0))
 		name := g.js_name(sym.name)
 		if name in js.v_types {
@@ -1440,7 +1446,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ int) {
 	if is_main {
 		g.write(')();')
 	}
-	if (!it.is_anon && !it.is_method) || typ == 2 {
+	if typ == .struct_method || typ == .alias_method {
 		g.writeln('\n')
 	}
 	g.fn_decl = voidptr(0)
@@ -1681,7 +1687,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 
 	for cfn in fns {
-		g.gen_method_decl(cfn, 1)
+		g.gen_method_decl(cfn, .struct_method)
 		g.writeln(',')
 	}
 	// gen toString method

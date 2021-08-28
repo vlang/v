@@ -279,7 +279,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	}
 	for method in g.method_fn_decls[c.typ_name] {
 		g.inside_def_typ_decl = true
-		g.gen_method_decl(method, 1)
+		g.gen_method_decl(method, .struct_method)
 		g.inside_def_typ_decl = false
 		g.writeln(',')
 	}
