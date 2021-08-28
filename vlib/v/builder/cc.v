@@ -748,7 +748,7 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 		if !os.exists(sysroot_git_config_path) {
 			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
 		}
-		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755)
+		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755) or { panic(err) }
 	}
 }
 

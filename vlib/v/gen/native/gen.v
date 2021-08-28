@@ -117,7 +117,7 @@ pub fn (mut g Gen) generate_header() {
 pub fn (mut g Gen) create_executable() {
 	// Create the binary // should be .o ?
 	os.write_file_array(g.out_name, g.buf) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it executable
+	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
 	if g.pref.is_verbose {
 		println('\n$g.out_name: native binary has been successfully generated')
 	}
