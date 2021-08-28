@@ -16,7 +16,7 @@ const vdir = @VEXEROOT
 fn main() {
 	dump(fast_dir)
 	dump(vdir)
-	os.chdir(fast_dir)
+	os.chdir(fast_dir) ?
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
@@ -49,7 +49,7 @@ fn main() {
 	// println('Checking out ${commit}...')
 	// exec('git checkout $commit')
 	println('  Building vprod...')
-	os.chdir(vdir)
+	os.chdir(vdir) ?
 	if os.args.contains('-noprod') {
 		exec('./v -o vprod cmd/v') // for faster debugging
 	} else {
@@ -82,7 +82,7 @@ fn main() {
 	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 	date := time.unix(commit_date.int())
 	//
-	os.chdir(fast_dir)
+	os.chdir(fast_dir) ?
 	mut out := os.create('table.html') ?
 	// Place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
@@ -120,7 +120,7 @@ fn main() {
 	// Upload the result to github pages
 	if os.args.contains('-upload') {
 		println('uploading...')
-		os.chdir('website')
+		os.chdir('website') ?
 		os.execute_or_exit('git checkout gh-pages')
 		os.cp('../index.html', 'index.html') ?
 		os.rm('../index.html') ?
