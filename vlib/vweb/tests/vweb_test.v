@@ -18,7 +18,7 @@ const (
 
 // setup of vweb webserver
 fn testsuite_begin() {
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	if os.exists(serverexe) {
 		os.rm(serverexe) or {}
 	}

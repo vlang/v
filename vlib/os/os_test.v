@@ -17,7 +17,7 @@ fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
-	os.chdir(tfolder)
+	os.chdir(tfolder) or {}
 	assert os.is_dir(tfolder)
 	// println('args_at_start: $args_at_start')
 	assert args_at_start.len > 0
@@ -25,7 +25,7 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
-	os.chdir(os.wd_at_startup)
+	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
@@ -326,9 +326,9 @@ fn test_realpath_removes_dots() {
 fn test_realpath_absolutizes_existing_relative_paths() {
 	old_wd := os.getwd()
 	defer {
-		os.chdir(old_wd)
+		os.chdir(old_wd) or { panic(err) }
 	}
-	os.chdir(@VEXEROOT)
+	os.chdir(@VEXEROOT) or { panic(err) }
 	examples_folder := os.join_path('vlib', 'v', '..', '..', 'cmd', '.', '..', 'examples')
 	real_path_of_examples_folder := os.real_path(examples_folder)
 	assert os.is_abs_path(real_path_of_examples_folder)
