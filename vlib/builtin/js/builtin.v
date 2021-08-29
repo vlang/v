@@ -19,11 +19,6 @@ pub fn panic(s string) {
 	exit(1)
 }
 
-struct Option {
-	state byte
-	err   Error
-}
-
 // IError holds information about an error instance
 pub interface IError {
 	msg string
@@ -37,7 +32,12 @@ pub:
 	code int
 }
 
-const none__ = IError(&None__{})
+pub const none__ = IError(&None__{})
+
+pub struct Option {
+	state byte
+	err   IError = none__
+}
 
 struct None__ {
 	msg  string
@@ -66,7 +66,6 @@ pub fn (o Option) str() string {
 	return 'Option{ error: "$o.err" }'
 }
 
-[if trace_error ?]
 fn trace_error(x string) {
 	eprintln('> ${@FN} | $x')
 }
@@ -75,7 +74,7 @@ fn trace_error(x string) {
 // Example: `if ouch { return error('an error occurred') }`
 [inline]
 pub fn error(message string) IError {
-	trace_error(message)
+	// trace_error(message)
 	return &Error{
 		msg: message
 	}

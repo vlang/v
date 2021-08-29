@@ -63,6 +63,7 @@ mut:
 	inside_loop           bool
 	inside_map_set        bool // map.set(key, value)
 	inside_builtin        bool
+	inside_if_optional    bool
 	generated_builtin     bool
 	inside_def_typ_decl   bool
 	is_test               bool
@@ -891,11 +892,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.MapInit {
 			g.gen_map_init_expr(node)
 		}
+		ast.None {
+			g.write('builtin.none__')
+		}
 		ast.MatchExpr {
 			g.match_expr(node)
-		}
-		ast.None {
-			// TODO
 		}
 		ast.OrExpr {
 			// TODO
@@ -1309,7 +1310,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
-	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary {
+	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary && !g.inside_if_optional {
 		g.writeln(';')
 	}
 }
@@ -1623,12 +1624,43 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
 }
 
+fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
+	g.write('new builtin.Option({ state:  new builtin.byte(2),err: ')
+	g.expr(expr)
+	g.write('})')
+}
+
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
-	if it.exprs.len == 0 {
-		// Returns nothing
-		g.writeln('return;')
+	node := it
+	// sym := g.table.get_type_symbol(g.fn_decl.return_type)
+	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
+	if node.exprs.len == 0 {
+		if fn_return_is_optional {
+			g.writeln('return {}')
+		} else {
+			g.writeln('return;')
+		}
 		return
 	}
+
+	if fn_return_is_optional {
+		optional_none := node.exprs[0] is ast.None
+		ftyp := g.typ(node.types[0])
+		mut is_regular_option := ftyp == 'Option'
+		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
+			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+				test_error_var := g.new_tmp_var()
+				g.writeln('let $test_error_var = "TODO";')
+				g.writeln('return $test_error_var;')
+				return
+			}
+			g.write('return ')
+			g.gen_optional_error(it.exprs[0])
+			g.writeln(';')
+			return
+		}
+	}
+
 	g.write('return ')
 	if it.exprs.len == 1 {
 		g.expr(it.exprs[0])
@@ -2240,11 +2272,29 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	}
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
-			g.write('$tmp_var = ')
-			g.stmt(stmt)
-			g.writeln('')
+			if g.inside_if_optional {
+				if stmt is ast.ExprStmt {
+					if stmt.typ == ast.error_type_idx || stmt.expr is ast.None {
+						g.writeln('${tmp_var}.state = 2;')
+						g.write('${tmp_var}.err = ')
+						g.expr(stmt.expr)
+						g.writeln(';')
+					} else {
+						g.write('builtin.opt_ok(')
+						g.stmt(stmt)
+						g.writeln(', $tmp_var);')
+					}
+				}
+			} else {
+				g.write('$tmp_var = ')
+				g.stmt(stmt)
+				g.writeln('')
+			}
 		} else {
 			g.stmt(stmt)
+			if g.inside_if_optional && stmt is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 		if g.inside_ternary && i < stmts.len - 1 {
 			g.write(',')
@@ -2308,16 +2358,58 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 	}
 }
 
+fn (mut g JsGen) need_tmp_var_in_if(node ast.IfExpr) bool {
+	if node.is_expr && g.inside_ternary {
+		if node.typ.has_flag(.optional) {
+			return true
+		}
+
+		for branch in node.branches {
+			if branch.cond is ast.IfGuardExpr || branch.stmts.len > 1 {
+				return true
+			}
+
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.CallExpr {
+						if stmt.expr.is_method {
+							left_sym := g.table.get_type_symbol(stmt.expr.receiver_type)
+							if left_sym.kind in [.array, .array_fixed, .map] {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.comp_if(node)
 		return
 	}
-	type_sym := g.table.get_type_symbol(node.typ)
-	// one line ?:
-	if node.is_expr && node.branches.len >= 2 && node.has_else && type_sym.kind != .void {
-		// `x := if a > b {  } else if { } else { }`
+	// For simpe if expressions we can use C's `?:`
+	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
+	// For if expressions with multiple statements or another if expression inside, it's much
+	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
+	// (as it used to be done).
+	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
+	needs_tmp_var := g.need_tmp_var_in_if(node)
+	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+
+	if needs_tmp_var {
+		if node.typ.has_flag(.optional) {
+			g.inside_if_optional = true
+		}
+
+		g.writeln('let $tmp; /* if prepend */')
+	} else if node.is_expr || g.inside_ternary {
 		g.write('(')
+		prev := g.inside_ternary
 		g.inside_ternary = true
 		for i, branch in node.branches {
 			if i > 0 {
@@ -2326,60 +2418,100 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			if i < node.branches.len - 1 || !node.has_else {
 				g.write('(')
 				g.expr(branch.cond)
-				g.write(')')
-				g.write('.valueOf()')
+				g.write(').valueOf()')
 				g.write(' ? ')
 			}
 			g.stmts(branch.stmts)
 		}
-		g.inside_ternary = false
+		g.inside_ternary = prev
 		g.write(')')
-	} else {
-		// mut is_guard = false
-		for i, branch in node.branches {
-			if i == 0 {
-				match branch.cond {
-					ast.IfGuardExpr {
-						// TODO optionals
+		return
+	}
+
+	mut is_guard := false
+	mut guard_idx := 0
+	mut guard_vars := []string{}
+
+	for i, branch in node.branches {
+		cond := branch.cond
+		if cond is ast.IfGuardExpr {
+			if !is_guard {
+				is_guard = true
+				guard_idx = i
+				guard_vars = []string{len: node.branches.len}
+			}
+			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
+				var_name := g.new_tmp_var()
+				guard_vars[i] = var_name
+				g.writeln('let $var_name;')
+			} else {
+				guard_vars[i] = ''
+			}
+		}
+	}
+
+	for i, branch in node.branches {
+		if i > 0 {
+			g.write('} else ')
+		}
+		// if last branch is `else {`
+		if i == node.branches.len - 1 && node.has_else {
+			g.writeln('{')
+			// define `err` only for simple `if val := opt {...} else {`
+			if is_guard && guard_idx == i - 1 {
+				cvar_name := guard_vars[guard_idx]
+				g.writeln('\tlet err = ${cvar_name}.err;')
+			}
+		} else {
+			match branch.cond {
+				ast.IfGuardExpr {
+					mut var_name := guard_vars[i]
+					mut short_opt := false
+					if var_name == '' {
+						short_opt = true // we don't need a further tmp, so use the one we'll get later
+						var_name = g.new_tmp_var()
+						guard_vars[i] = var_name // for `else`
+						g.tmp_count--
+						g.writeln('if (${var_name}.state == 0) {')
+					} else {
+						g.write('if ($var_name = ')
+						g.expr(branch.cond.expr)
+						g.writeln(', ${var_name}.state == 0) {')
 					}
-					else {
-						g.write('if (')
-						if '$branch.cond' == 'js' {
-							g.write('true')
+					if short_opt || branch.cond.var_name != '_' {
+						if short_opt {
+							cond_var_name := if branch.cond.var_name == '_' {
+								'_dummy_${g.tmp_count + 1}'
+							} else {
+								branch.cond.var_name
+							}
+							g.write('\tlet $cond_var_name = ')
+							g.expr(branch.cond.expr)
+							g.writeln(';')
 						} else {
-							g.write('(')
-							g.expr(branch.cond)
-							g.write(')')
-							g.write('.valueOf()')
+							g.writeln('\tlet $branch.cond.var_name = ${var_name}.data;')
 						}
-						g.writeln(') {')
 					}
 				}
-			} else if i < node.branches.len - 1 || !node.has_else {
-				g.write('} else if (')
-				g.write('(')
-				g.expr(branch.cond)
-				g.write(')')
-				g.write('.valueOf()')
-				g.writeln(') {')
-			} else if i == node.branches.len - 1 && node.has_else {
-				/*
-				if is_guard {
-					//g.writeln('} if (!$guard_ok) { /* else */')
-				} else {
-				*/
-				g.writeln('} else {')
-				// }
+				else {
+					g.write('if ((')
+					g.expr(branch.cond)
+					g.writeln(').valueOf()) {')
+				}
 			}
+		}
+		if needs_tmp_var {
+			g.stmts_with_tmp_var(branch.stmts, tmp)
+		} else {
 			g.stmts(branch.stmts)
 		}
-		/*
-		if is_guard {
-			g.write('}')
-		}
-		*/
-		g.writeln('}')
-		g.writeln('')
+	}
+	g.writeln('}')
+	if needs_tmp_var {
+		g.write('$tmp')
+	}
+	if node.typ.has_flag(.optional) {
+		g.inside_if_optional = false
 	}
 }
 
