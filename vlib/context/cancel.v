@@ -96,7 +96,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 	}
 
 	ctx.mutex.@lock()
-	if !(ctx.err is none) {
+	if ctx.err !is none {
 		ctx.mutex.unlock()
 		// already canceled
 		return

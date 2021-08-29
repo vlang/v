@@ -338,7 +338,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 		}
 	}
 	for link, anchor_lists in ad.anchors {
-		if !(link in checked_headlines) {
+		if link !in checked_headlines {
 			if anchor_lists.len > 1 {
 				for anchor in anchor_lists {
 					line := match anchor {
