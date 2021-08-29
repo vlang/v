@@ -287,3 +287,17 @@ fn test_match_expression_add() {
 	} + 3
 	assert a == 4
 }
+
+type LeType = int | string
+
+fn test_noreturn() {
+	t := LeType(3)
+	_ := match t {
+		int {
+			'test'
+		}
+		string {
+			exit(0)
+		}
+	}
+}

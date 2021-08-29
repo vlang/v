@@ -6124,7 +6124,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						if !c.check_types(ret_type, expr_type)
 							&& !c.check_types(expr_type, ret_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)
-							if !(node.is_expr && ret_sym.kind == .sum_type) {
+							is_noreturn := is_noreturn_callexpr(stmt.expr)
+							if !(node.is_expr && ret_sym.kind == .sum_type) && !is_noreturn {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
 									stmt.expr.position())
 							}

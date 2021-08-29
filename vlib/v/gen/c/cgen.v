@@ -1084,6 +1084,13 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.stmts_with_tmp_var(stmts, '')
 }
 
+fn is_noreturn_callexpr(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		return expr.is_noreturn
+	}
+	return false
+}
+
 // tmp_var is used in `if` expressions only
 fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	g.indent++
@@ -1119,7 +1126,13 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			} else {
 				g.stmt_path_pos << g.out.len
 				g.skip_stmt_pos = true
-				g.write('$tmp_var = ')
+				mut is_noreturn := false
+				if stmt is ast.ExprStmt {
+					is_noreturn = is_noreturn_callexpr(stmt.expr)
+				}
+				if !is_noreturn {
+					g.write('$tmp_var = ')
+				}
 				g.stmt(stmt)
 				if !g.out.last_n(2).contains(';') {
 					g.writeln(';')
