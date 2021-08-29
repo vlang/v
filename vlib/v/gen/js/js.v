@@ -1310,7 +1310,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
-	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary {
+	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary && !g.inside_if_optional {
 		g.writeln(';')
 	}
 }
@@ -2409,6 +2409,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		g.writeln('let $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary {
 		g.write('(')
+		prev := g.inside_ternary
+		g.inside_ternary = true
 		for i, branch in node.branches {
 			if i > 0 {
 				g.write(' : ')
@@ -2421,6 +2423,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			}
 			g.stmts(branch.stmts)
 		}
+		g.inside_ternary = prev
 		g.write(')')
 		return
 	}
