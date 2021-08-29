@@ -2195,6 +2195,26 @@ pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
 }
 
 pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
+	// !(a in b) => a !in b, !(a is b) => a !is b
+	if node.op == .not && node.right is ast.ParExpr {
+		if node.right.expr is ast.InfixExpr {
+			if node.right.expr.op in [.key_in, .not_in, .key_is, .not_is]
+				&& node.right.expr.right !is ast.InfixExpr {
+				f.expr(node.right.expr.left)
+				if node.right.expr.op == .key_in {
+					f.write(' !in ')
+				} else if node.right.expr.op == .not_in {
+					f.write(' in ')
+				} else if node.right.expr.op == .key_is {
+					f.write(' !is ')
+				} else if node.right.expr.op == .not_is {
+					f.write(' is ')
+				}
+				f.expr(node.right.expr.right)
+				return
+			}
+		}
+	}
 	f.write(node.op.str())
 	f.prefix_expr_cast_expr(node.right)
 	f.or_expr(node.or_block)
