@@ -3524,7 +3524,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	}
 	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
-			c.error('field `${sym.name}.$field_name` is not public', node.pos)
+			unwrapped_sym := c.table.get_type_symbol(c.unwrap_generic(typ))
+			c.error('field `${unwrapped_sym.name}.$field_name` is not public', node.pos)
 		}
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
@@ -3539,7 +3540,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
-			c.error('`$sym.name` has no property `$node.field_name`', node.pos)
+			unwrapped_sym := c.table.get_type_symbol(c.unwrap_generic(typ))
+			c.error('`$unwrapped_sym.name` has no property `$node.field_name`', node.pos)
 		}
 	} else {
 		if sym.info is ast.Struct {
