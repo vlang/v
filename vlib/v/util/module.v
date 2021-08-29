@@ -55,7 +55,7 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := ['vlib', '.vmodules', 'modules']
 	for base in pref.lookup_path.map(os.base(it)) {
-		if !(base in vmod_folders) {
+		if base !in vmod_folders {
 			vmod_folders << base
 		}
 	}
