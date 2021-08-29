@@ -69,7 +69,7 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
-	for i := path_parts.len - 1; i >= 0; i-- {
+	for i := path_parts.len - 1; i > 0; i-- {
 		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
 		// found module path
 		if os.is_dir(try_path) {
