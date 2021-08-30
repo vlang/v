@@ -537,8 +537,8 @@ fn main() {
 		println(1 in a)
 		println(2 in a)
 		println(3 in a)
-		println(!(4 in a))
-		println(!(0 in a))
+		println(4 !in a)
+		println(0 !in a)
 		println(0 !in a)
 		println(4 !in a)
 		b := [1, 4, 0]

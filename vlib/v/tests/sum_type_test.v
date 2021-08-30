@@ -553,7 +553,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 fn handle(e Expr) string {
 	is_literal := e is IntegerLiteral
 	assert is_literal
-	assert !(e !is IntegerLiteral)
+	assert e is IntegerLiteral
 	if e is IntegerLiteral {
 		assert typeof(e.val).name == 'string'
 	}
