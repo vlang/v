@@ -115,6 +115,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
+		'v.embed_file.find_index_entry_by_path',
 	]
 
 	if pref.is_bare {
