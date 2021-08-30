@@ -235,7 +235,7 @@ jobs:
       - name: g++ version
         run: g++-9 --version
       - name: V self compilation with g++
-        run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+        run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
   ##    - name: Running tests with g++
   ##      run: ./v -cc g++-9 -silent test-self
 
