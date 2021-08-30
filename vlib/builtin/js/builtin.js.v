@@ -5,42 +5,33 @@ pub fn js_throw(s any) {
 	#throw s
 }
 
-fn fmt(s any) string {
-	mut res := ''
-
-	#if (Object.getPrototypeOf(s).hasOwnProperty('str') && typeof s.str == 'function') res = s.str()
-	#else res.str = s.toString()
-
-	return res
-}
-
-pub fn println(s any) {
+pub fn println(s string) {
 	$if js_freestanding {
-		#print(fmt(s).str)
+		#print(s.str)
 	} $else {
-		#console.log(fmt(s).str)
+		#console.log(s.str)
 	}
 }
 
-pub fn print(s any) {
+pub fn print(s string) {
 	$if js_node {
-		#$process.stdout.write(fmt(s).str)
+		#$process.stdout.write(s.str)
 	} $else {
 		panic('Cannot `print` in a browser, use `println` instead')
 	}
 }
 
-pub fn eprintln(s any) {
+pub fn eprintln(s string) {
 	$if js_freestanding {
-		#print(fmt(s).str)
+		#print(s.str)
 	} $else {
-		#console.error(fmt(s).str)
+		#console.error(s.str)
 	}
 }
 
-pub fn eprint(s any) {
+pub fn eprint(s string) {
 	$if js_node {
-		#$process.stderr.write(fmt(s).str)
+		#$process.stderr.write(s.str)
 	} $else {
 		panic('Cannot `eprint` in a browser, use `println` instead')
 	}
@@ -60,7 +51,7 @@ fn opt_ok(data voidptr, option Option) {
 	#option.data = data
 }
 
-pub fn unwrap(opt any) any {
+pub fn unwrap(opt string) string {
 	mut o := Option{}
 	#o = opt
 	if o.state != 0 {
