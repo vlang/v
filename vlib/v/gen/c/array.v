@@ -546,11 +546,10 @@ fn (mut g Gen) gen_array_contains_methods() {
 fn (mut g Gen) gen_array_contains(typ ast.Type, left ast.Expr, right ast.Expr) {
 	fn_name := g.get_array_contains_method(typ)
 	g.write('${fn_name}(')
-	g.write(strings.repeat(`*`, typ.nr_muls() - if typ.share() == .shared_t {
-		1
-	} else {
-		0
-	}))
+	g.write(strings.repeat(`*`, typ.nr_muls()))
+	if typ.share() == .shared_t {
+		g.out.go_back(1)
+	}
 	g.expr(left)
 	if typ.share() == .shared_t {
 		g.write('->val')
