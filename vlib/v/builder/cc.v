@@ -320,7 +320,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.os == .freebsd {
 		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
-		ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
+		if !ccoptions.is_cc_tcc {
+			ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
+		} else {
+			// tcc needs this, otherwise it fails to compile the runetype.h system header with:
+			// /usr/include/runetype.h:94: error: ';' expected (got "const")
+			ccoptions.args << '-D__RUNETYPE_INTERNAL'
+		}
 	}
 
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
