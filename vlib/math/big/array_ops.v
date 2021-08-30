@@ -291,3 +291,36 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 		remainder.delete_last()
 	}
 }
+
+// Shifts the contents of the original array by the given amount of bits to the left.
+// This function assumes that the amount is less than 32. The storage is expected to
+// allocated with zeroes.
+fn shift_digits_left(original []u32, amount u32, mut storage []u32) {
+	mut leftover := u32(0)
+	offset := 32 - amount
+	for index in 0 .. original.len {
+		value := leftover | (original[index] << amount)
+		leftover = (original[index] & (u32(-1) << offset)) >> offset
+		storage[index] = value
+	}
+	if leftover != 0 {
+		storage << leftover
+	}
+}
+
+// Shifts the contents of the original array by the given amount of bits to the right.
+// This function assumes that the amount is less than 32. The storage is expected to
+// be allocated with zeroes.
+fn shift_digits_right(original []u32, amount u32, mut storage []u32) {
+	mut moveover := u32(0)
+	mask := (u32(1) << amount) - 1
+	offset := 32 - amount
+	for index := original.len - 1; index >= 0; index-- {
+		value := (moveover << offset) | (original[index] >> amount)
+		moveover = original[index] & mask
+		storage[index] = value
+	}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
+	}
+}

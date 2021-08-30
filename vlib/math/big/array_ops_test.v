@@ -178,3 +178,27 @@ fn test_divide_digit_array_05() {
 	assert q == [u32(1)]
 	assert r == [u32(1)]
 }
+
+fn test_left_and_right_shift() {
+	a := [u32(1), 1, 1]
+	mut r := [u32(2), 2, 2]
+	mut b := []u32{len: 3, init: 0}
+	shift_digits_left(a, 1, mut b)
+	assert r == b
+	shift_digits_right(r, 1, mut r)
+	assert r == a
+	shift_digits_left(r, 1, mut r)
+	assert r == b
+
+	mut c := [u32(0xffffffff)]
+	shift_digits_left(c, 16, mut c)
+	assert c == [u32(0xfffff0000), 0xffff]
+	shift_digits_right(c, 8, mut c)
+	assert c == [u32(0xfffffff00), 0xff]
+	shift_digits_right(c, 16, mut c)
+	assert c == [u32(0x00ffffff)]
+	shift_digits_right(c, 16, mut c)
+	assert c == [u32(0xff)]
+	shift_digits_right(c, 16, mut c)
+	assert c == []u32{len: 0}
+}

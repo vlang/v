@@ -457,6 +457,47 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
+pub fn (a Integer) lshift(amount u32) Integer {
+	if amount == 0 {
+		return a
+	}
+	normalised_amount := amount & 31
+	digit_offset := int(amount >> 5)
+	mut new_array := []u32{len: a.digits.len + digit_offset, init: 0}
+	for index in 0 .. a.digits.len {
+		new_array[index + digit_offset] = a.digits[index]
+	}
+	if normalised_amount > 0 {
+		shift_digits_left(new_array, normalised_amount, mut new_array)
+	}
+	return Integer{
+		digits: new_array
+		signum: a.signum
+	}
+}
+
+pub fn (a Integer) rshift(amount u32) Integer {
+	if amount == 0 {
+		return a
+	}
+	normalised_amount := amount & 31
+	digit_offset := int(amount >> 5)
+	if digit_offset >= a.digits.len {
+		return zero_int
+	}
+	mut new_array := []u32{len: a.digits.len - digit_offset, init: 0}
+	for index in 0 .. new_array.len {
+		new_array[index] = a.digits[index + digit_offset]
+	}
+	if normalised_amount > 0 {
+		shift_digits_right(new_array, normalised_amount, mut new_array)
+	}
+	return Integer{
+		digits: new_array
+		signum: a.signum
+	}
+}
+
 pub fn (integer Integer) binary_str() string {
 	// We have the zero integer
 	if integer.signum == 0 {
@@ -631,7 +672,10 @@ pub fn (a Integer) factorial() Integer {
 	mut current := a
 	for current.signum != 0 {
 		product *= current
-		current -= one_int
+		current.dec()
 	}
 	return product
 }
+
+// pub fn (a Integer) isqrt() Integer {
+// }

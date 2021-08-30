@@ -267,3 +267,40 @@ fn test_inc_and_dec() {
 	assert a == b
 	assert b == c
 }
+
+fn test_lshift() {
+	assert big.integer_from_int(45).lshift(2) == big.integer_from_int(45 * 4)
+	assert big.integer_from_int(45).lshift(3) == big.integer_from_int(45 * 8)
+	assert big.integer_from_int(45).lshift(4) == big.integer_from_int(45 * 16)
+	assert big.integer_from_int(45).lshift(5) == big.integer_from_int(45 * 32)
+	assert big.integer_from_u64(0xabcedabcde).lshift(20) == big.integer_from_u64(0xabcedabcde00000)
+	assert big.integer_from_bytes([byte(1), 1, 1]).lshift(56) == big.integer_from_bytes([
+		byte(1),
+		1,
+		1,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+	])
+}
+
+fn test_rshift() {
+	assert big.integer_from_int(45).rshift(3) == big.integer_from_int(5)
+	assert big.integer_from_int(0x13374956).rshift(16) == big.integer_from_int(0x1337)
+	assert big.integer_from_bytes([
+		byte(1),
+		1,
+		1,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+	]).rshift(56) == big.integer_from_bytes([byte(1), 1, 1])
+}
