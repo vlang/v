@@ -3105,7 +3105,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut cloned := false
 			if g.is_autofree && right_sym.kind in [.array, .string] {
-				if g.gen_clone_assignment(val, right_sym, false) {
+				if g.gen_clone_assignment(val, unwrapped_val_type, false) {
 					cloned = true
 				}
 			}
@@ -3281,32 +3281,38 @@ fn (mut g Gen) get_ternary_name(name string) string {
 	return g.ternary_names[name]
 }
 
-fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_eq bool) bool {
+fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) bool {
 	if val !is ast.Ident && val !is ast.SelectorExpr {
 		return false
 	}
-	if g.is_autofree && right_sym.kind == .array {
-		// `arr1 = arr2` => `arr1 = arr2.clone()`
+	right_sym := g.table.get_type_symbol(typ)
+	if g.is_autofree {
 		if add_eq {
 			g.write('=')
 		}
-		g.write(' array_clone_static_to_depth(')
-		g.expr(val)
-
-		if ast.Type(right_sym.idx).share() == .shared_t {
-			g.write('->val')
+		if right_sym.kind == .array {
+			// `arr1 = arr2` => `arr1 = arr2.clone()`
+			shared_styp := g.typ(typ.set_nr_muls(0))
+			if typ.share() == .shared_t {
+				g.write('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+			}
+			g.write(' array_clone_static_to_depth(')
+			g.expr(val)
+			if typ.share() == .shared_t {
+				g.write('->val')
+			}
+			elem_type := (right_sym.info as ast.Array).elem_type
+			array_depth := g.get_array_depth(elem_type)
+			g.write(', $array_depth)')
+			if typ.share() == .shared_t {
+				g.write('}, sizeof($shared_styp))')
+			}
+		} else if right_sym.kind == .string {
+			// `str1 = str2` => `str1 = str2.clone()`
+			g.write(' string_clone_static(')
+			g.expr(val)
+			g.write(')')
 		}
-		elem_type := (right_sym.info as ast.Array).elem_type
-		array_depth := g.get_array_depth(elem_type)
-		g.write(', $array_depth)')
-	} else if g.is_autofree && right_sym.kind == .string {
-		if add_eq {
-			g.write('=')
-		}
-		// `str1 = str2` => `str1 = str2.clone()`
-		g.write(' string_clone_static(')
-		g.expr(val)
-		g.write(')')
 	}
 	return true
 }
@@ -5613,7 +5619,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			mut cloned := false
 			if g.is_autofree && !field.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 				g.write('/*clone1*/')
-				if g.gen_clone_assignment(field.expr, field_type_sym, false) {
+				if g.gen_clone_assignment(field.expr, field.typ, false) {
 					cloned = true
 				}
 			}
@@ -5705,7 +5711,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				mut cloned := false
 				if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 					g.write('/*clone1*/')
-					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
+					if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
 						cloned = true
 					}
 				}
