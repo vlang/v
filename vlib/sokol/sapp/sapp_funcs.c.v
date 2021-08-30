@@ -103,3 +103,9 @@ fn C.sapp_win32_get_hwnd() voidptr
 
 // Android: get native activity handle
 fn C.sapp_android_get_native_activity() voidptr
+
+// Toggle full screen
+fn C.sapp_toggle_fullscreen()
+
+// Check if full screen rendering
+fn C.sapp_is_fullscreen() bool
