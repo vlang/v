@@ -3284,11 +3284,6 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym ast.TypeSymbol, add_
 		}
 		g.write(' array_clone_static_to_depth(')
 		g.expr(val)
-		if val is ast.SelectorExpr {
-			if val.field_name == 'done_optionals' {
-				println(ast.Type(right_sym.idx).debug())
-			}
-		}
 
 		if ast.Type(right_sym.idx).share() == .shared_t {
 			g.write('->val')
@@ -3405,10 +3400,10 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	// if v.name.contains('output2') {
 	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	// }
+	free_fn := g.typ(v.typ.set_nr_muls(0)) + '_free'
 	if sym.kind == .array {
 		if sym.has_method('free') {
-			free_method_name := g.typ(v.typ) + '_free'
-			g.autofree_var_call(free_method_name, v)
+			g.autofree_var_call(free_fn, v)
 			return
 		}
 		g.autofree_var_call('array_free', v)
@@ -3439,16 +3434,11 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		return
 	}
 	if sym.has_method('free') {
-		g.autofree_var_call(c_name(sym.name) + '_free', v)
+		g.autofree_var_call(free_fn, v)
 	}
 }
 
 fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
-	if free_fn_name == 'string_free' && g.file.path.contains('cgen.v') && v.name == 'module_built' {
-		// println(v)
-		// print_backtrace()
-		println(g.fn_decl.name)
-	}
 	if v.is_arg {
 		// fn args should not be autofreed
 		return
@@ -3471,7 +3461,23 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		return
 	}
 	if v.typ.is_ptr() {
-		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
+		g.write('\t')
+		if v.typ.share() == .shared_t {
+			g.write(free_fn_name.replace_each(['__shared__', '']))
+		} else {
+			g.write(free_fn_name)
+		}
+		g.write('(')
+		if v.typ.share() == .shared_t {
+			g.write('&')
+		}
+		g.write(strings.repeat(`*`, v.typ.nr_muls() - 1)) // dereference if it is a pointer to a pointer
+		g.write(c_name(v.name))
+		if v.typ.share() == .shared_t {
+			g.write('->val')
+		}
+
+		g.writeln('); // autofreed ptr var')
 	} else {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
