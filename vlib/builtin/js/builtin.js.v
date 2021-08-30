@@ -44,3 +44,9 @@ pub fn exit(c int) {
 	JS.process.exit(c)
 	js_throw('exit($c)')
 }
+
+fn opt_ok(data voidptr, option Option) {
+	#option.state = 0
+	#option.err = none__
+	#option.data = data
+}

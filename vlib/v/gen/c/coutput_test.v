@@ -14,7 +14,7 @@ const diff_cmd = diff.find_working_diff_command() or { '' }
 
 fn test_out_files() ? {
 	println(term.colorize(term.green, '> testing whether .out files match:'))
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	output_path := os.join_path(os.temp_dir(), 'coutput', 'out')
 	os.mkdir_all(output_path) ?
 	defer {
@@ -82,7 +82,7 @@ fn test_out_files() ? {
 
 fn test_c_must_have_files() ? {
 	println(term.colorize(term.green, '> testing whether `.c.must_have` files match:'))
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	output_path := os.join_path(os.temp_dir(), 'coutput', 'c_must_have')
 	os.mkdir_all(output_path) ?
 	defer {

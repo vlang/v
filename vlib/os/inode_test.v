@@ -12,12 +12,12 @@ fn testsuite_begin() {
 	rmdir_all(os.tfolder) or {}
 	assert !is_dir(os.tfolder)
 	mkdir_all(os.tfolder) or { panic(err) }
-	chdir(os.tfolder)
+	chdir(os.tfolder) or {}
 	assert is_dir(os.tfolder)
 }
 
 fn testsuite_end() {
-	chdir(wd_at_startup)
+	chdir(wd_at_startup) or {}
 	rmdir_all(os.tfolder) or { panic(err) }
 	assert !is_dir(os.tfolder)
 }

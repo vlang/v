@@ -57,7 +57,7 @@ fn test_all() {
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
 	os.mkdir_all(wrkdir) or { panic(err) }
-	os.chdir(wrkdir)
+	os.chdir(wrkdir) or {}
 	//
 	only_ordinary_v_files := files.filter(it.ends_with('.v') && !it.ends_with('_test.v'))
 	tests := vtest.filter_vtest_only(only_ordinary_v_files, basepath: valgrind_test_path)

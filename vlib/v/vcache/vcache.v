@@ -77,7 +77,7 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {
 			os.mkdir_all(cprefix_folder) or { panic(err) }
-			os.chmod(cprefix_folder, 0o777)
+			os.chmod(cprefix_folder, 0o777) or { panic(err) }
 		}
 		dlog(@FN, 'new hk')
 		dlog(@FN, '       key: $key')

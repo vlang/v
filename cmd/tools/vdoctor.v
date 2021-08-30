@@ -102,7 +102,7 @@ fn (mut a App) collect_info() {
 	vmodules := os.vmodules_dir()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	a.line('getwd', getwd)
 	a.line('vmodules', vmodules)
 	a.line('vroot', vroot)

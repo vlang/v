@@ -4,7 +4,7 @@ import v.pref
 import v.ast
 
 fn test_macho() {
-	os.chdir(os.temp_dir())
+	os.chdir(os.temp_dir()) or {}
 	mut g := native.Gen{
 		pref: &pref.Preferences{}
 		out_name: 'test.bin'

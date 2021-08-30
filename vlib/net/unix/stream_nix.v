@@ -101,7 +101,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 		os.rm(sock) ?
 	}
 	net.socket_error(C.bind(s.handle, voidptr(&addr), size)) ?
-	os.chmod(sock, 0o777)
+	os.chmod(sock, 0o777) ?
 	net.socket_error(C.listen(s.handle, 128)) ?
 	return &StreamListener{
 		sock: s

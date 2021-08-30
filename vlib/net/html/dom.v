@@ -75,7 +75,7 @@ fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) add_tag_by_type(tag &Tag) {
 	tag_name := tag.name
-	if !(tag_name in dom.tag_type) {
+	if tag_name !in dom.tag_type {
 		dom.tag_type[tag_name] = [tag]
 	} else {
 		mut temp_array := dom.tag_type[tag_name]

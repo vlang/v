@@ -243,3 +243,11 @@ pub fn (mut a array) delete_last() {
 [unsafe]
 pub fn (a array) free() {
 }
+
+// todo: once (a []byte) will work rewrite this
+pub fn (a array) bytestr() string {
+	res := ''
+	#a.arr.forEach((item) => res.str += String.fromCharCode(+item))
+
+	return res
+}
