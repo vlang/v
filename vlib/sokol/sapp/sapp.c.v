@@ -240,7 +240,7 @@ pub fn toggle_fullscreen() {
 	C.sapp_toggle_fullscreen()
 }
 
-// Check if full screen rendering 
+// Check if full screen rendering
 [inline]
 pub fn is_fullscreen() bool {
 	return C.sapp_is_fullscreen()
