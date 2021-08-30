@@ -1443,13 +1443,17 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	}
 
 	g.stmts(it.stmts)
-	g.write('}')
+	g.writeln('}')
+
 	if is_main {
 		g.write(')();')
+	} else if typ != .struct_method {
+		// g.write(';')
 	}
 	if typ == .struct_method || typ == .alias_method {
 		g.writeln('\n')
 	}
+
 	g.fn_decl = voidptr(0)
 }
 
@@ -1901,25 +1905,41 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		}
 	}
 
-	// interfaces require dynamic dispatch. To obtain method table we use getPrototypeOf
-	g.write('Object.getPrototypeOf(')
-	g.expr(it.left)
 	mut ltyp := it.left_type
-	for ltyp.is_ptr() {
-		g.write('.val')
-		ltyp = ltyp.deref()
-	}
-	g.write(').$name .call(')
-	g.expr(it.left)
-	g.write(',')
-	for i, arg in it.args {
-		g.expr(arg.expr)
-		if i != it.args.len - 1 {
-			g.write(', ')
+	mut lsym := g.table.get_type_symbol(ltyp)
+	if lsym.kind == .interface_ {
+		g.write(g.js_name(lsym.name))
+		g.write('.${name}.call(')
+		g.expr(it.left)
+		g.write(',')
+		for i, arg in it.args {
+			g.expr(arg.expr)
+			if i != it.args.len - 1 {
+				g.write(', ')
+			}
 		}
+		// end method call
+		g.write(')')
+	} else {
+		g.write('Object.getPrototypeOf(')
+		g.expr(it.left)
+
+		for ltyp.is_ptr() {
+			g.write('.val')
+			ltyp = ltyp.deref()
+		}
+		g.write(').$name .call(')
+		g.expr(it.left)
+		g.write(',')
+		for i, arg in it.args {
+			g.expr(arg.expr)
+			if i != it.args.len - 1 {
+				g.write(', ')
+			}
+		}
+		// end method call
+		g.write(')')
 	}
-	// end method call
-	g.write(')')
 
 	if call_return_is_optional {
 		// end unwrap
