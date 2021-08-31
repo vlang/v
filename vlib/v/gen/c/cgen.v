@@ -2617,6 +2617,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
 		mut is_auto_heap := false
+		// FIXME: assign_stmt.left_types.len == 0
+		// FIXME: assign_stmt.right_types.len == 0
 		mut var_type := assign_stmt.left_types[i]
 		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
