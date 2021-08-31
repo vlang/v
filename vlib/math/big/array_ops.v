@@ -63,7 +63,7 @@ fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 	if carry == 0 {
 		sum.delete_last()
 	} else {
-		sum[larger_limit - 1] = u32(carry)
+		sum[larger_limit] = u32(carry)
 	}
 }
 

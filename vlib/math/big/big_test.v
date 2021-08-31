@@ -63,6 +63,14 @@ fn test_addition() {
 	assert c.hex() == '5'
 
 	assert (big.integer_from_int(1024) + big.integer_from_int(1024)).hex() == '800'
+
+	fib1 := big.integer_from_string('84885164052257330097714121751630835360966663883732297726369399') or {
+		panic('Cannot read decimal')
+	}
+	fib2 := big.integer_from_string('137347080577163115432025771710279131845700275212767467264610201') or {
+		panic('Cannot read decimal')
+	}
+	assert (fib1 + fib2).str() == '222232244629420445529739893461909967206666939096499764990979600'
 }
 
 fn test_subtraction() {

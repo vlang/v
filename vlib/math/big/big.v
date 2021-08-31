@@ -1,6 +1,6 @@
 module big
 
-const (
+pub const (
 	zero_int = Integer{
 		digits: []u32{len: 0}
 		signum: 0
