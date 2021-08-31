@@ -78,9 +78,9 @@ pub:
 	font_bytes_italic []byte
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
-	enable_dragndrop             bool        // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int = 1     // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int = 2048  // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
+	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 }
 
 pub struct PenConfig {
@@ -232,7 +232,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 
 	// file drop
 	if e.typ == .files_droped {
-		println("File dropped")
+		println('File dropped')
 	}
 }
 
