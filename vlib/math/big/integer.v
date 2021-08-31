@@ -458,6 +458,55 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
+fn check_sign(a Integer) {
+	if a.signum < 0 {
+		panic('Bitwise operations are only supported for nonnegative integers')
+	}
+}
+
+pub fn (a Integer) bitwise_or(b Integer) Integer {
+	check_sign(a)
+	check_sign(b)
+	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	bitwise_or_digit_array(a.digits, b.digits, mut result)
+	return Integer{
+		digits: result
+		signum: if result.len == 0 { 0 } else { 1 }
+	}
+}
+
+pub fn (a Integer) bitwise_and(b Integer) Integer {
+	check_sign(a)
+	check_sign(b)
+	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	bitwise_and_digit_array(a.digits, b.digits, mut result)
+	return Integer{
+		digits: result
+		signum: if result.len == 0 { 0 } else { 1 }
+	}
+}
+
+pub fn (a Integer) bitwise_not() Integer {
+	check_sign(a)
+	mut result := []u32{len: a.digits.len, init: 0}
+	bitwise_not_digit_array(a.digits, mut result)
+	return Integer{
+		digits: result
+		signum: if result.len == 0 { 0 } else { 1 }
+	}
+}
+
+pub fn (a Integer) bitwise_xor(b Integer) Integer {
+	check_sign(a)
+	check_sign(b)
+	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	bitwise_xor_digit_array(a.digits, b.digits, mut result)
+	return Integer{
+		digits: result
+		signum: if result.len == 0 { 0 } else { 1 }
+	}
+}
+
 pub fn (a Integer) lshift(amount u32) Integer {
 	if a.signum == 0 {
 		return a

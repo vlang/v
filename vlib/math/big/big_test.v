@@ -326,3 +326,13 @@ fn test_isqrt() {
 		assert b.isqrt() == a
 	}
 }
+
+fn test_bitwise_ops() {
+	a := big.integer_from_int(1).lshift(512)
+	b := a - big.one_int
+	assert a.bitwise_and(b) == big.zero_int
+	assert b.bitwise_xor(b) == big.zero_int
+	assert b.bitwise_or(b) == b
+	assert b.bitwise_and(b) == b
+	assert b.bitwise_not() == big.zero_int
+}

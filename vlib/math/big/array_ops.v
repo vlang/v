@@ -324,3 +324,56 @@ fn shift_digits_right(original []u32, amount u32, mut storage []u32) {
 		storage.delete_last()
 	}
 }
+
+fn bitwise_or_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+	lower, upper, bigger := if operand_a.len < operand_b.len {
+		operand_a.len, operand_b.len, operand_b
+	} else {
+		operand_b.len, operand_a.len, operand_a
+	}
+	for index in 0 .. lower {
+		storage[index] = operand_a[index] | operand_b[index]
+	}
+	for index in lower .. upper {
+		storage[index] = bigger[index]
+	}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
+	}
+}
+
+fn bitwise_and_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+	lower := util.imin(operand_a.len, operand_b.len)
+	for index in 0 .. lower {
+		storage[index] = operand_a[index] & operand_b[index]
+	}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
+	}
+}
+
+fn bitwise_xor_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+	lower, upper, bigger := if operand_a.len < operand_b.len {
+		operand_a.len, operand_b.len, operand_b
+	} else {
+		operand_b.len, operand_a.len, operand_a
+	}
+	for index in 0 .. lower {
+		storage[index] = operand_a[index] ^ operand_b[index]
+	}
+	for index in lower .. upper {
+		storage[index] = bigger[index]
+	}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
+	}
+}
+
+fn bitwise_not_digit_array(original []u32, mut storage []u32) {
+	for index in 0 .. original.len {
+		storage[index] = ~original[index]
+	}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
+	}
+}

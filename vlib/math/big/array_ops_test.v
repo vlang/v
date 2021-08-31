@@ -202,3 +202,20 @@ fn test_left_and_right_shift() {
 	shift_digits_right(c, 16, mut c)
 	assert c == []u32{len: 0}
 }
+
+fn test_or_digit_array() {
+	a := [u32(10), 10, 10]
+	b := [u32(5), 5, 5]
+	mut c := []u32{len: 3, init: 0}
+	bitwise_or_digit_array(a, b, mut c)
+	assert c == [u32(15), 15, 15]
+
+	bitwise_or_digit_array(a, a, mut c)
+	assert c == a
+
+	x := [u32(10), 10, 10, 42, 42]
+	y := [u32(2), 2, 5, 2]
+	mut d := []u32{len: 5, init: 0}
+	bitwise_or_digit_array(y, x, mut d)
+	assert d == [u32(10), 10, 15, 42, 42]
+}
