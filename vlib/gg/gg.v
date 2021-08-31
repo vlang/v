@@ -229,11 +229,6 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 			// dump(e)
 		}
 	}
-
-	// file drop
-	if e.typ == .files_droped {
-		println('File dropped')
-	}
 }
 
 fn gg_cleanup_fn(user_data voidptr) {
