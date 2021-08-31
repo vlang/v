@@ -2,36 +2,36 @@ module builtin
 
 // used to generate JS throw statements.
 pub fn js_throw(s any) {
-	#throw (s instanceof Error ? s : new Error(s))
+	#throw s
 }
 
-pub fn println(s any) {
+pub fn println(s string) {
 	$if js_freestanding {
-		#print(s.toString())
+		#print(s.str)
 	} $else {
-		#console.log(s.toString())
+		#console.log(s.str)
 	}
 }
 
-pub fn print(s any) {
+pub fn print(s string) {
 	$if js_node {
-		#$process.stdout.write(s.toString())
+		#$process.stdout.write(s.str)
 	} $else {
 		panic('Cannot `print` in a browser, use `println` instead')
 	}
 }
 
-pub fn eprintln(s any) {
+pub fn eprintln(s string) {
 	$if js_freestanding {
-		#print(s.toString())
+		#print(s.str)
 	} $else {
-		#console.error(s.toString())
+		#console.error(s.str)
 	}
 }
 
-pub fn eprint(s any) {
+pub fn eprint(s string) {
 	$if js_node {
-		#$process.stderr.write(s.toString())
+		#$process.stderr.write(s.str)
 	} $else {
 		panic('Cannot `eprint` in a browser, use `println` instead')
 	}
@@ -49,4 +49,13 @@ fn opt_ok(data voidptr, option Option) {
 	#option.state = 0
 	#option.err = none__
 	#option.data = data
+}
+
+pub fn unwrap(opt string) string {
+	mut o := Option{}
+	#o = opt
+	if o.state != 0 {
+		js_throw(o.err)
+	}
+	return opt
 }

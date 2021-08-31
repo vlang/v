@@ -10,13 +10,23 @@ fn (h ExampleHandler) handle(req Request) Response {
 			CommonHeader.content_type: 'text/plain'
 		})
 	}
+	mut status_code := 200
 	res.text = match req.url {
-		'/foo' { 'bar\n' }
-		'/hello' { 'world\n' }
-		'/' { 'foo\nhello\n' }
-		else { 'Not found\n' }
+		'/foo' {
+			'bar\n'
+		}
+		'/hello' {
+			'world\n'
+		}
+		'/' {
+			'foo\nhello\n'
+		}
+		else {
+			status_code = 404
+			'Not found\n'
+		}
 	}
-	res.status_code = if res.text == 'Not found' { 404 } else { 200 }
+	res.status_code = status_code
 	return res
 }
 

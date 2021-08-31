@@ -6,14 +6,6 @@ module builtin
 
 fn (a any) toString()
 
-pub fn unwrap(opt any) any {
-	o := &Option(opt)
-	if o.state != 0 {
-		js_throw(o.err)
-	}
-	return opt
-}
-
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	exit(1)
@@ -32,13 +24,6 @@ pub:
 	code int
 }
 
-pub const none__ = IError(&None__{})
-
-pub struct Option {
-	state byte
-	err   IError = none__
-}
-
 struct None__ {
 	msg  string
 	code int
@@ -46,6 +31,13 @@ struct None__ {
 
 fn (_ None__) str() string {
 	return 'none'
+}
+
+pub const none__ = IError(None__{'', 0})
+
+pub struct Option {
+	state byte
+	err   IError = none__
 }
 
 pub fn (err IError) str() string {

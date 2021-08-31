@@ -127,8 +127,8 @@ fn test_propagation() {
 	println(6)
 }
 
-fn test_q() {
-	// assert foo_ok()? == true
+fn test_q() ? {
+	assert foo_ok() ? == 777
 }
 
 fn or_return_val() int {
