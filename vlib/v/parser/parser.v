@@ -145,7 +145,7 @@ pub fn (mut p Parser) set_path(path string) {
 	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
 		p.inside_test_file = true
 	}
-	before_dot_v := path.before('.v') // also works for .vv and .vsh
+	before_dot_v := path.all_before_last('.v') // also works for .vv and .vsh
 	language := before_dot_v.all_after_last('.')
 	langauge_with_underscore := before_dot_v.all_after_last('_')
 	if language == before_dot_v && langauge_with_underscore == before_dot_v {
