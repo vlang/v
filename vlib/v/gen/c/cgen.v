@@ -794,18 +794,9 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 				styp += sgtyps
 			}
 		}
-		ast.MultiReturn {
-			// TODO: this doesn't belong here, but makes it working for now
-			mut cname := 'multi_return'
-			for mr_typ in sym.info.types {
-				mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
-				cname += '_$mr_type_sym.cname'
-			}
-			return cname
-		}
 		else {}
 	}
-	if is_prefix_struct && styp.starts_with('C__') {
+	if is_prefix_struct && sym.language == .c {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
 			info := sym.info as ast.Struct
