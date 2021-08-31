@@ -26,6 +26,11 @@ pub mut:
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
+	//
+	validate bool // when true, certificate failures will stop further processing
+	verify   string
+	cert     string
+	cert_key string
 }
 
 fn (mut req Request) free() {
