@@ -30,13 +30,13 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		}
 	}
 	if req.cert != '' {
-		res = C.SSL_CTX_use_certificate_file(ctx, req.cert.str, C.SSL_FILETYPE_PEM)
+		res = C.SSL_CTX_use_certificate_file(ctx, &char(req.cert.str), C.SSL_FILETYPE_PEM)
 		if req.validate && res != 1 {
 			return error('http: openssl: SSL_CTX_use_certificate_file failed, res: $res')
 		}
 	}
 	if req.cert_key != '' {
-		res = C.SSL_CTX_use_PrivateKey_file(ctx, req.cert_key.str, C.SSL_FILETYPE_PEM)
+		res = C.SSL_CTX_use_PrivateKey_file(ctx, &char(req.cert_key.str), C.SSL_FILETYPE_PEM)
 		if req.validate && res != 1 {
 			return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
 		}
