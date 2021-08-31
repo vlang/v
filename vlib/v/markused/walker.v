@@ -110,6 +110,13 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			if node.kind == .map {
 				w.table.used_maps++
 			}
+			if node.kind == .struct_ {
+				// the .next() method of the struct will be used for iteration:
+				cond_type_sym := w.table.get_type_symbol(node.cond_type)
+				if next_fn := cond_type_sym.find_method('next') {
+					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+				}
+			}
 		}
 		ast.ForStmt {
 			w.expr(node.cond)
