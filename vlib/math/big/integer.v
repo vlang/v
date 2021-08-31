@@ -1,6 +1,7 @@
 module big
 
 import math.util
+import math.bits
 import strings
 import strconv
 
@@ -458,6 +459,9 @@ pub fn (a Integer) < (b Integer) bool {
 }
 
 pub fn (a Integer) lshift(amount u32) Integer {
+	if a.signum == 0 {
+		return a
+	}
 	if amount == 0 {
 		return a
 	}
@@ -477,6 +481,9 @@ pub fn (a Integer) lshift(amount u32) Integer {
 }
 
 pub fn (a Integer) rshift(amount u32) Integer {
+	if a.signum == 0 {
+		return a
+	}
 	if amount == 0 {
 		return a
 	}
@@ -677,5 +684,30 @@ pub fn (a Integer) factorial() Integer {
 	return product
 }
 
-// pub fn (a Integer) isqrt() Integer {
-// }
+// isqrt returns the closest integer square root of the given integer.
+pub fn (a Integer) isqrt() Integer {
+	if a.signum < 0 {
+		panic('Cannot obtain square root of negative integer')
+	}
+	if a.signum == 0 {
+		return a
+	}
+	if a.digits.len == 1 && a.digits.last() == 1 {
+		return a
+	}
+
+	mut shift := a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
+	if shift & 1 == 1 {
+		shift += 1
+	}
+	mut result := zero_int
+	for shift >= 0 {
+		result = result.lshift(1)
+		larger := result + one_int
+		if (larger * larger).abs_cmp(a.rshift(u32(shift))) <= 0 {
+			result = larger
+		}
+		shift -= 2
+	}
+	return result
+}

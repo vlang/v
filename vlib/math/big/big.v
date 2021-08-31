@@ -9,4 +9,8 @@ const (
 		digits: [u32(1)]
 		signum: 1
 	}
+	two_int = Integer{
+		digits: [u32(2)]
+		signum: 1
+	}
 )

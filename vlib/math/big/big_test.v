@@ -304,3 +304,25 @@ fn test_rshift() {
 		0,
 	]).rshift(56) == big.integer_from_bytes([byte(1), 1, 1])
 }
+
+fn test_isqrt() {
+	for i in 0 .. 1000 {
+		a := big.integer_from_int(i)
+		b := big.integer_from_int(i * i)
+		assert b.isqrt() == a
+	}
+	values := [
+		'314',
+		'213149',
+		'2198614',
+		'318014',
+		'1000000000',
+		'1000131039410',
+		'2148170394871039847019843349714981',
+	]
+	for value in values {
+		a := big.integer_from_string(value) or { panic('Cannot read from decimal') }
+		b := a * a
+		assert b.isqrt() == a
+	}
+}
