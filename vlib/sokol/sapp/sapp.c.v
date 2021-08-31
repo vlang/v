@@ -254,7 +254,6 @@ pub fn get_num_dropped_files() int {
 [inline]
 pub fn get_dropped_file_path(index int) string {
 	unsafe {
-		tmp := C.sapp_get_dropped_file_path(index).vstring()
-		return tmp.clone()
+		return cstring_to_vstring(C.sapp_get_dropped_file_path(index))
 	}
 }
