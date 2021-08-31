@@ -23,6 +23,7 @@ pub enum EventType {
 	update_cursor
 	quit_requested
 	clipboard_pasted
+	files_droped
 	num
 }
 
