@@ -67,7 +67,7 @@ fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 	}
 }
 
-// Subtracts operand_b from operand_b and stores the difference in storage.
+// Subtracts operand_b from operand_a and stores the difference in storage.
 // It assumes operand_a contains the larger "integer" and that storage is
 // the same size as operand_a
 fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
@@ -109,7 +109,7 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	}
 }
 
-// Multiplies the non-negative integers represented in a and b and the product is
+// Multiplies the unsigned (non-negative) integers represented in a and b and the product is
 // stored in storage. It assumes that storage has length equal to the sum of lengths
 // of a and b. Length refers to length of array, that is, digit count.
 fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
@@ -130,7 +130,7 @@ fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	}
 }
 
-// Stores the product of the non-negative integer represented in a and the digit in value
+// Stores the product of the unsigned (non-negative) integer represented in a and the digit in value
 // in the storage array. It assumes storage is pre-initialised and populated with 0's
 fn multiply_array_by_digit(operand_a []u32, value u32, mut storage []u32) {
 	if value == 0 {
