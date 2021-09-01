@@ -233,6 +233,7 @@ fn main() {
 		insert first_article into Article
 		insert second_article into Article
 	}
+	vweb.run(app, 8080)
 }
 ```
 
