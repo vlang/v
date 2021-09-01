@@ -336,9 +336,12 @@ pub fn home_dir() string {
 	}
 }
 
-// expand_tilde_to_home expands the character `~` to the path of the user's home directory.
-// See also `home_dir`.
+// expand_tilde_to_home expands the character `~` in `path` to the user's home directory.
+// See also `home_dir()`.
 pub fn expand_tilde_to_home(path string) string {
+	if path == '~' {
+		return home_dir().trim_right(path_separator)
+	}
 	if path.starts_with('~' + path_separator) {
 		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
 			path_separator)
