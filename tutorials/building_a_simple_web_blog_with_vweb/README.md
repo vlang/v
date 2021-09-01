@@ -263,7 +263,7 @@ Let's fetch the articles in the `index()` action:
 
 ```v ignore
 // blog.v
-pub fn (app App) index() vweb.Result {
+pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
