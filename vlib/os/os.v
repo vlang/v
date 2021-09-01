@@ -340,8 +340,8 @@ pub fn home_dir() string {
 // See also `home_dir`.
 pub fn expand_tilde_to_home(path string) string {
 	if path.starts_with('~' + path_separator) {
-		return path.replace_once('~' + path_separator,
-			home_dir().trim_right(path_separator) + path_separator)
+		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
+			path_separator)
 	}
 	return path
 }
