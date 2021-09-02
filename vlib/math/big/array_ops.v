@@ -202,7 +202,7 @@ fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut 
 }
 
 // Performs division on the non-negative dividend in a by the single digit divisor b. It assumes
-// quotient and remainder are empty zero length arrays with sufficient capacity
+// quotient and remainder are empty zero length arrays without previous allocation
 fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut remainder []u32) {
 	if operand_a.len == 1 {
 		// 1 digit for both dividend and divisor
@@ -241,9 +241,7 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 }
 
 // Performs division on the non-negative dividend in a by the multi digit divisor b. It assumes
-// quotient and remainder are empty zero length arrays with sufficient capacity
-// This is different from divide_digit_array because it depends on this very function
-// after making sure that the divisor is indeed multi-digit.
+// quotient and remainder are empty zero length arrays without allocation
 fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 	for index in 0 .. operand_a.len {
 		remainder << operand_a[index]
