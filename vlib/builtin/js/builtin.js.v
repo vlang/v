@@ -5,9 +5,14 @@ pub fn js_throw(s any) {
 	#throw s
 }
 
+# let globalPrint;
+$if js_freestanding {
+	# globalPrint = globalThis.print
+}
+
 pub fn println(s string) {
 	$if js_freestanding {
-		#print(s.str)
+		#globalPrint(s.str)
 	} $else {
 		#console.log(s.str)
 	}
@@ -23,7 +28,7 @@ pub fn print(s string) {
 
 pub fn eprintln(s string) {
 	$if js_freestanding {
-		#print(s.str)
+		#globalPrint(s.str)
 	} $else {
 		#console.error(s.str)
 	}
