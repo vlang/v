@@ -39,7 +39,7 @@ fn C.tcgetattr(fd int, ptr &C.termios)
 fn C.tcsetattr(fd int, action int, ptr &C.termios)
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() Coord {
+pub fn get_cursor_position() ?Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{
 			x: 0
@@ -71,7 +71,7 @@ pub fn get_cursor_position() Coord {
 	for {
 		w := C.getchar()
 		if w < 0 {
-			panic('.get_cursor_position: error reading input.')
+			return error('Failed to read from stdin')
 		} else if w == `[` || w == `;` {
 			stage++
 		} else if `0` <= w && w <= `9` {
