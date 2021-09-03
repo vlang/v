@@ -85,30 +85,31 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('\n\t\t&& ')
 			}
 			field_type := g.unwrap(field.typ)
+			field_name := c_name(field.name)
 			if field_type.sym.kind == .string {
-				fn_builder.write_string('string__eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('string__eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_sumtype_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_sumtype_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_struct_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_struct_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
 				eq_fn := g.gen_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_arr_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .array_fixed && !field.typ.is_ptr() {
 				eq_fn := g.gen_fixed_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_arr_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .map && !field.typ.is_ptr() {
 				eq_fn := g.gen_map_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_map_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_map_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .alias && !field.typ.is_ptr() {
 				eq_fn := g.gen_alias_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_alias_eq(a.$field.name, b.$field.name)')
+				fn_builder.write_string('${eq_fn}_alias_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .function {
-				fn_builder.write_string('*((voidptr*)(a.$field.name)) == *((voidptr*)(b.$field.name))')
+				fn_builder.write_string('*((voidptr*)(a.$field_name)) == *((voidptr*)(b.$field_name))')
 			} else {
-				fn_builder.write_string('a.$field.name == b.$field.name')
+				fn_builder.write_string('a.$field_name == b.$field_name')
 			}
 		}
 	} else {
