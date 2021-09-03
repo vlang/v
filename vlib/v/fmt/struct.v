@@ -57,11 +57,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
-		if embed.comments.len == 0 {
+
+		pre_comments := embed.comments.filter(it.pos.pos < embed.pos.pos)
+		comments := embed.comments[pre_comments.len..]
+
+		f.comments_before_field(pre_comments)
+		if comments.len == 0 {
 			f.writeln('\t$styp')
 		} else {
 			f.write('\t$styp')
-			f.comments(embed.comments, level: .indent)
+			f.comments(comments, level: .indent)
 		}
 	}
 	mut field_align_i := 0
