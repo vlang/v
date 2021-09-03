@@ -164,8 +164,10 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
 			return false
+		} else if exp_arg_is_ptr && got_arg_is_ptr {
+			continue
 		}
-		if !c.check_basic(got_arg.typ, exp_arg.typ) {
+		if got_arg.typ != exp_arg.typ {
 			return false
 		}
 	}
