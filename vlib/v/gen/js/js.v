@@ -1453,6 +1453,11 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	g.stmts(it.stmts)
 	g.writeln('}')
 
+	for attr in it.attrs {
+		if attr.name == 'export' {
+			g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+		}
+	}
 	if is_main {
 		g.write(')();')
 	} else if typ != .struct_method {
