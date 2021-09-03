@@ -1495,8 +1495,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			name := if node.language == .c {
 				util.no_dots(node.name)
+			} else if node.name in ['array', 'string'] {
+				node.name
 			} else {
-				if node.name in ['array', 'string'] { node.name } else { c_name(node.name) }
+				c_name(node.name)
 			}
 			// TODO For some reason, build fails with autofree with this line
 			// as it's only informative, comment it for now
