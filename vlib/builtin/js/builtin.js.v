@@ -5,9 +5,9 @@ pub fn js_throw(s any) {
 	#throw s
 }
 
-# let globalPrint;
+#let globalPrint;
 $if js_freestanding {
-	# globalPrint = globalThis.print
+	#globalPrint = globalThis.print
 }
 
 pub fn println(s string) {
