@@ -57,5 +57,9 @@ pub fn unwrap(opt string) string {
 	if o.state != 0 {
 		js_throw(o.err)
 	}
-	return opt
+
+	mut res := ''
+	#res = opt.data
+
+	return res
 }
