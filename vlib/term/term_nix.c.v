@@ -25,6 +25,19 @@ pub fn get_terminal_size() (int, int) {
 	return int(w.ws_col), int(w.ws_row)
 }
 
+struct C.termios {
+mut:
+	c_iflag u64
+	c_oflag u64
+	c_cflag u64
+	c_lflag u64
+	// c_cc    &char = 0
+}
+
+fn C.tcgetattr(fd int, ptr &C.termios)
+
+fn C.tcsetattr(fd int, action int, ptr &C.termios)
+
 // get_cursor_position returns a Coord containing the current cursor position
 pub fn get_cursor_position() Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
@@ -33,58 +46,46 @@ pub fn get_cursor_position() Coord {
 			y: 0
 		}
 	}
-	// TODO: use termios.h, C.tcgetattr & C.tcsetattr directly,
-	// instead of using `stty`
-	mut oldsettings := os.execute('stty -g')
-	if oldsettings.exit_code < 0 {
-		oldsettings = os.Result{}
+
+	old_state := &C.termios{}
+	C.tcgetattr(0, old_state)
+	defer {
+		// restore the old terminal state:
+		C.tcsetattr(0, C.TCSANOW, old_state)
 	}
-	os.system('stty -echo -icanon time 0')
-	print('\033[6n')
-	mut ch := int(0)
-	mut i := 0
-	// ESC [ YYY `;` XXX `R`
-	mut reading_x := false
-	mut reading_y := false
+
+	mut state := &C.termios{}
+	C.tcgetattr(0, state)
+
+	state.c_lflag &= ~(u64(C.ICANON) | u64(C.ECHO))
+	C.tcsetattr(0, C.TCSANOW, state)
+
+	print('\e[6n')
+
 	mut x := 0
 	mut y := 0
+	mut stage := byte(0)
+
+	// ESC [ YYY `;` XXX `R`
+
 	for {
-		ch = C.getchar()
-		b := byte(ch)
-		i++
-		if i >= 15 {
-			panic('C.getchar() called too many times')
-		}
-		// state management:
-		if b == `R` {
+		w := C.getchar()
+		if w < 0 {
+			panic('.get_cursor_position: error reading input.')
+		} else if w == `[` || w == `;` {
+			stage++
+		} else if `0` <= w && w <= `9` {
+			match stage {
+				// converting string values to int:
+				1 { y = y * 10 + int(w - `0`) }
+				2 { x = x * 10 + int(w - `0`) }
+				else {}
+			}
+		} else if w == `R` {
 			break
 		}
-		if b == `[` {
-			reading_y = true
-			reading_x = false
-			continue
-		}
-		if b == `;` {
-			reading_y = false
-			reading_x = true
-			continue
-		}
-		// converting string vals to ints:
-		if reading_x {
-			x *= 10
-			x += (b - byte(`0`))
-		}
-		if reading_y {
-			y *= 10
-			y += (b - byte(`0`))
-		}
 	}
-	// restore the old terminal settings:
-	os.system('stty $oldsettings.output')
-	return Coord{
-		x: x
-		y: y
-	}
+	return Coord{x, y}
 }
 
 // set_terminal_title change the terminal title
