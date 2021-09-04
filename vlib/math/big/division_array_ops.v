@@ -5,7 +5,6 @@ import math.bits
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are allocated but of length 0
 fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-
 	for index in 0 .. operand_a.len {
 		remainder << operand_a[index]
 	}
@@ -38,11 +37,11 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 
 	assert left_align_p(divisor[divisor.len - 1], remainder[remainder.len - 1])
 	for bit_idx := int(bit_offset); bit_idx >= 0; bit_idx-- {
-			if greater_equal_from_end(remainder, divisor) {
-				bit_set(mut quotient, bit_idx)
-				subtract_in_place(mut remainder, divisor)
-			}
-			rshift_in_place(mut divisor, 1)
+		if greater_equal_from_end(remainder, divisor) {
+			bit_set(mut quotient, bit_idx)
+			subtract_in_place(mut remainder, divisor)
+		}
+		rshift_in_place(mut divisor, 1)
 	}
 
 	// ajust
@@ -74,7 +73,7 @@ fn bit_set(mut a []u32, n int) {
 fn greater_equal_from_end(a []u32, b []u32) bool {
 	assert a.len >= b.len
 	offset := a.len - b.len
-	for index := a.len -1; index >= offset; index-- {
+	for index := a.len - 1; index >= offset; index-- {
 		if a[index] > b[index - offset] {
 			return true
 		} else if a[index] < b[index - offset] {
@@ -121,7 +120,7 @@ fn subtract_in_place(mut a []u32, b []u32) {
 	mut carry := u32(0)
 	mut new_carry := u32(0)
 	offset := a.len - b.len
-	for index := a.len - b.len; index < a.len; index ++ {
+	for index := a.len - b.len; index < a.len; index++ {
 		if a[index] < (b[index - offset] + carry) {
 			new_carry = 1
 		} else {
