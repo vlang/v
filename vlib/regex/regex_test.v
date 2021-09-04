@@ -612,3 +612,25 @@ fn test_regex_func_replace(){
 	}
 	assert result == txt2
 }
+
+// test quantifier wrong sequences
+const(
+	test_quantifier_sequences_list = [
+		r'+{3}.*+{3}', 
+		r'+{3}.*?{3}', 
+		r'+{3}.**{3}',
+		r'+{3}.*\+{3}*',
+		r'+{3}.*\+{3}+',
+		r'+{3}.*\+{3}??',
+		r'+{3}.*\+{3}{4}'
+	]
+)
+fn test_quantifier_sequences(){
+	for pattern in test_quantifier_sequences_list {
+		re, re_err, err_pos := regex.regex_base(pattern)
+		if re_err != regex.err_syntax_error {
+			eprintln("pattern: $pattern => $re_err")
+		}
+		assert re_err == regex.err_syntax_error
+	}
+}
