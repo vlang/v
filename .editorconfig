@@ -20,5 +20,5 @@ trim_trailing_whitespace = false
 [*.{txt,out}]
 insert_final_newline = false
 
-[Makefile]
+[{Makefile,GNUmakefile}]
 indent_style = tab
