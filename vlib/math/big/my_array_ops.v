@@ -42,62 +42,27 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 	// bit_remainder += first
 	assert left_align_p(divisor[divisor.len - 1], remainder[remainder.len - 1])
 	// println('$bit_offset $byte_offset $bit_remainder')
-	
-	// quotient_bit := bit_offset
-	for bit_idx := int(bit_offset); bit_idx > 0; bit_idx-- {
-		println('rem: $remainder, div: $divisor, quo: $quotient')
+	// println('-------------------------------') // separator!
+	for bit_idx := int(bit_offset); bit_idx >= 0; bit_idx-- {
+		// println('rem: $remainder, div: $divisor, quo: $quotient')
 			if greater_equal_from_end(remainder, divisor) {
 				bit_set(mut quotient, bit_idx)
-				println(quotient)
+				// println(quotient)
 				subtract_in_place(mut remainder, divisor)
 			}
 			rshift_in_place(mut divisor, 1)
 	}
 
-	// for byte_idx := int(byte_offset); byte_idx > 0; byte_idx-- {
-	// 	// println('byte_idx = $byte_idx')
-	// 	mut quot := u32(0)
-	// 	mut bit := u32(1 << 31)
-	// 	for i := 31 - int(first); i >= 0; i-- {
-	// 		// println('i = $i')
-	// 		bit >>= first
-	// 		first = 0 // for the next steps
-	// 		if greater_equal_from_end(remainder, divisor) {
-	// 			quot |= bit
-	// 			println(quot.hex())
-	// 			subtract_in_place(mut remainder, divisor)
-	// 		}
-	// 		bit >>= 1
-	// 		rshift_in_place(mut divisor, 1)
-	// 	}
-	// 	quotient << quot
-	// 	println(quotient)
-	// }
-	// mut quot := u32(0)
-	// mut bit := u32(1 << 31)
-	// for i := int(bit_remainder); i > 0; i-- {
-	// 	println('i remainder = $i; rem: $remainder; div: $divisor')
-	// 	bit >>= first // not 0 if there no byte loop
-	// 	first = 0 // for the next steps
-	// 	if greater_equal_from_end(remainder, divisor) {
-	// 		quot |= bit
-	// 		println(quot.hex())
-	// 		subtract_in_place(mut remainder, divisor)
-	// 	}
-	// 	bit >>= 1
-	// 	rshift_in_place(mut divisor, 1)
-	// }
-	// quotient << quot
-	// println(quotient)
-
-	// quotient.reverse_in_place()
 	// ajust
 	if lead_zer_remainder > lead_zer_divisor {
-		rshift_in_place(mut quotient, lead_zer_remainder - lead_zer_divisor)
+		// rshift_in_place(mut quotient, lead_zer_remainder - lead_zer_divisor)
 		rshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
 	}
 	for remainder.len > 0 && remainder.last() == 0 {
 		remainder.delete_last()
+	}
+	for quotient.len > 0 && quotient.last() == 0 {
+		quotient.delete_last()
 	}
 }
 
