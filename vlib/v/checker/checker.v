@@ -6223,7 +6223,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				low_expr := expr.low
 				high_expr := expr.high
 				if low_expr is ast.IntegerLiteral {
-					if high_expr is ast.IntegerLiteral && cond_type_sym.is_int() {
+					if high_expr is ast.IntegerLiteral
+						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 					} else {
