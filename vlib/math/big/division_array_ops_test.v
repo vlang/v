@@ -2,13 +2,13 @@ module big
 
 import rand
 
-fn test_lshift_in_place () {
+fn test_lshift_in_place() {
 	mut a := [u32(1), 1, 1, 1, 1]
 	lshift_in_place(mut a, 1)
 	assert a == [u32(2), 2, 2, 2, 2]
 	lshift_in_place(mut a, 7)
 	assert a == [u32(256), 256, 256, 256, 256]
-	mut b := [u32(0x80000001) ,0xc0000000 ,0x80000000 ,0x7fffffff]
+	mut b := [u32(0x80000001), 0xc0000000, 0x80000000, 0x7fffffff]
 	lshift_in_place(mut b, 1)
 	assert b == [u32(2), 0x80000001, 1, 0xffffffff]
 	mut c := [u32(0x00ffffff), 0xf0f0f0f0, 1, 0x3fffffff, 1]
@@ -16,7 +16,7 @@ fn test_lshift_in_place () {
 	assert c == [u32(0x3fffffc), 0xc3c3c3c0, 7, 0xfffffffc, 4]
 }
 
-fn test_rshift_in_place () {
+fn test_rshift_in_place() {
 	mut a := [u32(2), 2, 2, 2, 2]
 	rshift_in_place(mut a, 1)
 	assert a == [u32(1), 1, 1, 1, 1]
@@ -28,7 +28,7 @@ fn test_rshift_in_place () {
 	assert a == [u32(0), 0x80000000, 0]
 	mut b := [u32(3), 0x80000001, 1, 0xffffffff]
 	rshift_in_place(mut b, 1)
-	assert b == [u32(0x80000001) ,0xc0000000 ,0x80000000 ,0x7fffffff]
+	assert b == [u32(0x80000001), 0xc0000000, 0x80000000, 0x7fffffff]
 	mut c := [u32(0x03ffffff), 0xc3c3c3c0, 7, 0xfffffffc, 4]
 	rshift_in_place(mut c, 2)
 	assert c == [u32(0x00ffffff), 0xf0f0f0f0, 1, 0x3fffffff, 1]
@@ -104,7 +104,7 @@ fn test_divide_digit_array_04() {
 	assert r == [u32(2)]
 }
 
-fn test_divide_digit_array_05 () {
+fn test_divide_digit_array_05() {
 	a := [u32(2), 4, 5]
 	b := [u32(0), 1]
 	mut q := []u32{cap: a.len - b.len + 1}
@@ -115,7 +115,7 @@ fn test_divide_digit_array_05 () {
 	assert r == [u32(2)]
 }
 
-fn test_divide_digit_array_06 () {
+fn test_divide_digit_array_06() {
 	a := [u32(2), 4, 5, 3]
 	b := [u32(0), 0x8000]
 	mut q := []u32{cap: a.len - b.len + 1}
@@ -149,15 +149,14 @@ fn test_many_divisions() {
 	}
 }
 
-fn random_number(length int) Integer  {
-	numbers := "0123456789"
-		mut stri := ''
-		for _ in 0..length {
-			i := rand.intn(10)
-			nr := numbers[i]
-			stri = stri + nr.ascii_str()
-		}
-	res := integer_from_string(stri) or {panic('error in random_number')}
+fn random_number(length int) Integer {
+	numbers := '0123456789'
+	mut stri := ''
+	for _ in 0 .. length {
+		i := rand.intn(10)
+		nr := numbers[i]
+		stri = stri + nr.ascii_str()
+	}
+	res := integer_from_string(stri) or { panic('error in random_number') }
 	return res
 }
-
