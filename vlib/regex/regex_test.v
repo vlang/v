@@ -340,6 +340,12 @@ find_all_test_suite = [
 		r"@for.+@endfor",
 		[0, 22, 23, 50, 63, 80, 89, 117],
 		['@for something @endfor', '@for something else @endfor', '@for body @endfor', '@for senza dire più @endfor']
+	},
+	Test_find_all{
+		"+++pippo+++\n elvo +++ pippo2 +++ +++ oggi+++",
+		r"\+{3}.*\+{3}",
+		[0, 11, 18, 32, 33, 44],
+		['+++pippo+++', '+++ pippo2 +++', '+++ oggi+++']
 	}
 
 ]
