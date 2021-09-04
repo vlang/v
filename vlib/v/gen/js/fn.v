@@ -1,11 +1,11 @@
 module js
 
 import v.ast
+import v.util
 
-fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
-	g.call_stack << it
-
-	mut name := g.js_name(it.name)
+fn (mut g JsGen) method_call(node ast.CallExpr) {
+	g.call_stack << node
+	it := node
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		g.writeln('(function(){')
@@ -14,9 +14,45 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		g.inc_indent()
 		g.write('return builtin.unwrap(')
 	}
-	sym := g.table.get_type_symbol(it.receiver_type)
-	if sym.kind == .array {
-		if sym.kind == .array && it.name in ['map', 'filter'] {
+	mut unwrapped_rec_type := node.receiver_type
+	if g.table.cur_fn.generic_names.len > 0 {
+		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
+	} else {
+		sym := g.table.get_type_symbol(node.receiver_type)
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
+				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+					sym.info.concrete_types)
+				{
+					unwrapped_rec_type = utyp
+				}
+			}
+			else {}
+		}
+	}
+
+	mut typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
+	mut receiver_type_name := util.no_dots(rec_cc_type)
+	// alias type that undefined this method (not include `str`) need to use parent type
+	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
+		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
+		typ_sym = g.table.get_type_symbol(unwrapped_rec_type)
+	}
+
+	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
+		// g.write('${g.js_name(receiver_type_name)}_name_table')
+		// g.expr(node.left)
+		g.writeln('/* TODO: Interface call */')
+		return
+	}
+
+	left_sym := g.table.get_type_symbol(node.left_type)
+	final_left_sym := g.table.get_final_type_symbol(node.left_type)
+
+	if final_left_sym.kind == .array {
+		if final_left_sym.kind == .array && it.name in ['map', 'filter'] {
 			g.expr(it.left)
 			mut ltyp := it.left_type
 			for ltyp.is_ptr() {
@@ -25,7 +61,7 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			}
 			g.write('.')
 			// Prevent 'it' from getting shadowed inside the match
-			node := it
+
 			g.write(it.name)
 			g.write('(')
 			expr := node.args[0].expr
@@ -33,19 +69,19 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 				ast.AnonFn {
 					g.gen_fn_decl(expr.decl)
 					g.write(')')
-					return true
+					return
 				}
 				ast.Ident {
 					if expr.kind == .function {
 						g.write(g.js_name(expr.name))
 						g.write(')')
-						return true
+						return
 					} else if expr.kind == .variable {
 						v_sym := g.table.get_type_symbol(expr.var_info().typ)
 						if v_sym.kind == .function {
 							g.write(g.js_name(expr.name))
 							g.write(')')
-							return true
+							return
 						}
 					}
 				}
@@ -55,11 +91,10 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 			g.write('it => ')
 			g.expr(node.args[0].expr)
 			g.write(')')
-			return true
+			return
 		}
 
-		left_sym := g.table.get_type_symbol(it.left_type)
-		if left_sym.kind == .array {
+		if final_left_sym.kind == .array {
 			if it.name in special_array_methods {
 				g.expr(it.left)
 				mut ltyp := it.left_type
@@ -70,46 +105,24 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 				g.write('.')
 
 				g.gen_array_method_call(it)
-				return true
+				return
 			}
 		}
 	}
 
-	mut ltyp := it.left_type
-	mut lsym := g.table.get_type_symbol(ltyp)
-	if lsym.kind == .interface_ {
-		g.write(g.js_name(lsym.name))
-		g.write('.${name}.call(')
-		g.expr(it.left)
-		g.write(',')
-		for i, arg in it.args {
-			g.expr(arg.expr)
-			if i != it.args.len - 1 {
-				g.write(', ')
-			}
-		}
-		// end method call
-		g.write(')')
-	} else {
-		g.write('Object.getPrototypeOf(')
-		g.expr(it.left)
+	mut name := util.no_dots('${receiver_type_name}_$node.name')
 
-		for ltyp.is_ptr() {
-			g.write('.val')
-			ltyp = ltyp.deref()
+	name = g.generic_fn_name(node.concrete_types, name, false)
+	g.write('${name}(')
+	g.expr(it.left)
+	g.write(',')
+	for i, arg in it.args {
+		g.expr(arg.expr)
+		if i != it.args.len - 1 {
+			g.write(', ')
 		}
-		g.write(').$name .call(')
-		g.expr(it.left)
-		g.write(',')
-		for i, arg in it.args {
-			g.expr(arg.expr)
-			if i != it.args.len - 1 {
-				g.write(', ')
-			}
-		}
-		// end method call
-		g.write(')')
 	}
+	g.write(')')
 
 	if call_return_is_optional {
 		// end unwrap
@@ -145,14 +158,12 @@ fn (mut g JsGen) gen_method_call(it ast.CallExpr) bool {
 		g.write('})()')
 	}
 	g.call_stack.delete_last()
-	return true
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	if it.is_method {
-		if g.gen_method_call(it) {
-			return
-		}
+		g.method_call(it)
+		return
 	}
 	node := it
 	g.call_stack << it

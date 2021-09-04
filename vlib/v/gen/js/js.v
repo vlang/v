@@ -1351,6 +1351,13 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	unsafe {
 		g.fn_decl = &it
 	}
+	cur_fn_save := g.table.cur_fn
+	defer {
+		g.table.cur_fn = cur_fn_save
+	}
+	unsafe {
+		g.table.cur_fn = &it
+	}
 	node := it
 	mut name := it.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
@@ -1413,10 +1420,10 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
 		if is_varg {
-			g.writeln('$name = new array($arg_name);')
+			g.writeln('$arg_name = new array($arg_name);')
 		} else {
 			if arg.typ.is_ptr() || arg.is_mut {
-				g.writeln('$name = new \$ref($arg_name)')
+				g.writeln('$arg_name = new \$ref($arg_name)')
 			}
 		}
 	}
