@@ -890,9 +890,10 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 	return -2, true, name, i
 }
 
-const(
+const (
 	quntifier_chars = [rune(`+`), `*`, `?`, `{`]
 )
+
 //
 // main compiler
 //
@@ -916,7 +917,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		// println("i: ${i:3d} ch: ${in_txt.str[i]:c}")
 
 		char_tmp, char_len = re.get_char(in_txt, i)
-		
+
 		//
 		// check special cases: $ ^
 		//
@@ -1039,7 +1040,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 		// Quantifiers
 		if char_len == 1 && pc > 0 {
-			mut char_next:= rune(0)
+			mut char_next := rune(0)
 			mut char_next_len := 0
 			if (char_len + i) < in_txt.len {
 				char_next, char_next_len = re.get_char(in_txt, i + char_len)
@@ -1049,7 +1050,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				`?` {
 					// println("q: ${char_tmp:c}")
 					// check illegal quantifier sequences
-					if char_next_len == 1 && char_next in quntifier_chars {
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
 						return regex.err_syntax_error, i
 					}
 					re.prog[pc - 1].rep_min = 0
@@ -1058,7 +1059,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				`+` {
 					// println("q: ${char_tmp:c}")
 					// check illegal quantifier sequences
-					if char_next_len == 1 && char_next in quntifier_chars {
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
 						return regex.err_syntax_error, i
 					}
 					re.prog[pc - 1].rep_min = 1
@@ -1067,7 +1068,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				`*` {
 					// println("q: ${char_tmp:c}")
 					// check illegal quantifier sequences
-					if char_next_len == 1 && char_next in quntifier_chars {
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
 						return regex.err_syntax_error, i
 					}
 					re.prog[pc - 1].rep_min = 0
@@ -1085,7 +1086,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 						// check illegal quantifier sequences
 						if i <= in_txt.len {
 							char_next, char_next_len = re.get_char(in_txt, i)
-							if char_next_len == 1 && char_next in quntifier_chars {
+							if char_next_len == 1 && char_next in regex.quntifier_chars {
 								return regex.err_syntax_error, i
 							}
 						}
