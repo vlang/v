@@ -1,4 +1,3 @@
-// replacement for array_ops.v
 module big
 
 import math.bits
@@ -23,31 +22,24 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 		divisor << operand_b[index]
 	}
 	for _ in 0 .. len_diff + 1 {
-		quotient << u32(0) // would be more efficient initiatilize first
+		quotient << u32(0)
 	}
 
 	lead_zer_remainder := u32(bits.leading_zeros_32(remainder.last()))
 	lead_zer_divisor := u32(bits.leading_zeros_32(divisor.last()))
 	bit_offset := (u32(32) * u32(len_diff)) + (lead_zer_divisor - lead_zer_remainder)
-	// println('$lead_zer_remainder $lead_zer_divisor $bit_offset')
+
 	// align
 	if lead_zer_remainder < lead_zer_divisor {
 		lshift_in_place(mut divisor, lead_zer_divisor - lead_zer_remainder)
 	} else if lead_zer_remainder > lead_zer_divisor {
 		lshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
 	}
-	// mut byte_offset := bit_offset / 32
-	// mut bit_remainder := bit_offset - (byte_offset * 32)
-	// mut first := u32(bits.leading_zeros_32(divisor[divisor.len - 1])) // first digit shorter loop
-	// bit_remainder += first
+
 	assert left_align_p(divisor[divisor.len - 1], remainder[remainder.len - 1])
-	// println('$bit_offset $byte_offset $bit_remainder')
-	// println('-------------------------------') // separator!
 	for bit_idx := int(bit_offset); bit_idx >= 0; bit_idx-- {
-		// println('rem: $remainder, div: $divisor, quo: $quotient')
 			if greater_equal_from_end(remainder, divisor) {
 				bit_set(mut quotient, bit_idx)
-				// println(quotient)
 				subtract_in_place(mut remainder, divisor)
 			}
 			rshift_in_place(mut divisor, 1)
@@ -66,8 +58,9 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 	}
 }
 
-// help routines
+// help routines for cleaner code but inline for performance
 // quicker than BitField.set_bit
+[inline]
 fn bit_set(mut a []u32, n int) {
 	byte_offset := n / 32
 	mask := u32(1) << u32(n % 32)
@@ -88,7 +81,6 @@ fn greater_equal_from_end(a []u32, b []u32) bool {
 			return false
 		}
 	}
-	// return true if remainding a digits are all 0 because we want the subtraction
 	return true
 }
 
@@ -141,6 +133,7 @@ fn subtract_in_place(mut a []u32, b []u32) {
 	assert carry == 0
 }
 
+// for assert
 fn left_align_p(a u32, b u32) bool {
 	return bits.leading_zeros_32(a) == bits.leading_zeros_32(b)
 }
