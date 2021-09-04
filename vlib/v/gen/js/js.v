@@ -146,7 +146,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			tests_inited = true
 		}
 		g.stmts(file.stmts)
-		g.writeln('try { init() } catch (_) {}')
 		// store the current namespace
 		g.escape_namespace()
 	}
@@ -170,17 +169,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
 		}
-		out += 'const $name = (function ('
+		// out += 'const $name = (function ('
 		mut namespace := g.namespaces[node.name]
-		mut first := true
-		for _, val in namespace.imports {
-			if !first {
-				out += ', '
-			}
-			first = false
-			out += val
-		}
-		out += ') {\n\t'
+
 		namespace_code := namespace.out.str()
 		if g.pref.sourcemap {
 			// calculate current output start line
@@ -206,55 +197,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 		// public scope
 		out += '\n'
-		if g.enable_doc {
-			out += '\n\t/* module exports */'
-		}
-		out += '\n\treturn {'
-		// export builtin types
-		if name == 'builtin' {
-			for typ in js.v_types {
-				out += '\n\t\t$typ,'
-			}
-		}
-		for i, pub_var in namespace.pub_vars {
-			out += '\n\t\t$pub_var'
-			if i < namespace.pub_vars.len - 1 {
-				out += ','
-			}
-		}
-		if namespace.pub_vars.len > 0 {
-			out += '\n\t'
-		}
-		out += '};'
-		out += '\n})('
-		first = true
-		for key, _ in namespace.imports {
-			if !first {
-				out += ', '
-			}
-			first = false
-			out += key.replace('.', '_')
-		}
-		out += ');\n'
-		// generate builtin basic type casts
-		if name == 'builtin' {
-			out += '// builtin type casts\n'
-			out += 'const ['
-			for i, typ in js.v_types {
-				if i > 0 {
-					out += ', '
-				}
-				out += '$typ'
-			}
-			out += '] = ['
-			for i, typ in js.v_types {
-				if i > 0 {
-					out += ','
-				}
-				out += '\n\tfunction(val) { return new builtin.${typ}(val) }'
-			}
-			out += '\n]\n'
-		}
 	}
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
@@ -490,6 +432,7 @@ fn (mut g JsGen) get_alias(name string) string {
 }
 
 fn (mut g JsGen) js_name(name_ string) string {
+	/*
 	mut is_js := false
 	is_overload := ['+', '-', '*', '/', '==', '<', '>']
 	mut name := name_
@@ -543,7 +486,12 @@ fn (mut g JsGen) js_name(name_ string) string {
 			}
 		}
 	}
-	return parts.join('.')
+	return parts.join('.')*/
+	name := name_.replace('.', '__')
+	if name in js.js_reserved {
+		return '_v_$name'
+	}
+	return name
 }
 
 fn (mut g JsGen) stmts(stmts []ast.Stmt) {
@@ -1228,9 +1176,6 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
 					g.write('new ')
-					if g.file.mod.name != 'builtin' {
-						g.write('builtin.')
-					}
 					g.write('${g.typ(stmt.left_types.first())}(')
 				}
 				g.expr(val)
@@ -1370,10 +1315,119 @@ fn fn_has_go(node ast.FnDecl) bool {
 	return has_go
 }
 
+// cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
+fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+	mut styp := sym.cname
+	match mut sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if sym.info.is_generic {
+				mut sgtyps := '_T'
+				for gt in sym.info.generic_types {
+					gts := g.table.get_type_symbol(g.unwrap_generic(gt))
+					sgtyps += '_$gts.cname'
+				}
+				styp += sgtyps
+			}
+		}
+		else {}
+	}
+	return styp
+}
+
+fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+	if types.len == 0 {
+		return before
+	}
+
+	mut name := before + '_T'
+	for typ in types {
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
+	}
+	return name
+}
+
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	unsafe {
 		g.fn_decl = &it
 	}
+	node := it
+	mut name := it.name
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+		name = util.replace_op(name)
+	}
+
+	if node.is_method {
+		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return
+		}
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
+	}
+
+	name = g.js_name(name)
+
+	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+
+	has_go := fn_has_go(it)
+	if it.is_pub && !it.is_method {
+		g.push_pub_var(name)
+	}
+	is_main := it.name == 'main.main'
+	g.gen_attrs(it.attrs)
+	if is_main {
+		// there is no concept of main in JS but we do have iife
+		g.writeln('/* program entry point */')
+
+		g.write('(')
+		if has_go {
+			g.write('async ')
+		}
+		g.write('function(')
+	} else if it.is_anon {
+		g.write('function (')
+	} else {
+		c := name[0]
+		if c in [`+`, `-`, `*`, `/`] {
+			name = util.replace_op(name)
+		}
+		// type_name := g.typ(it.return_type)
+		// generate jsdoc for the function
+		g.doc.gen_fn(it)
+		if has_go {
+			g.write('async ')
+		}
+
+		g.write('function ')
+
+		g.write('${name}(')
+		if it.is_pub && !it.is_method {
+			g.push_pub_var(name)
+		}
+	}
+	mut args := it.params
+
+	g.fn_args(args, it.is_variadic)
+	g.write(') {')
+	for i, arg in args {
+		is_varg := i == args.len - 1 && it.is_variadic
+		arg_name := g.js_name(arg.name)
+		if is_varg {
+			g.writeln('$name = new array($arg_name);')
+		} else {
+			if arg.typ.is_ptr() || arg.is_mut {
+				g.writeln('$name = new \$ref($arg_name)')
+			}
+		}
+	}
+	g.stmts(it.stmts)
+	g.writeln('}')
+
+	if is_main {
+		g.write(')();')
+	}
+	g.writeln('')
+	/*
 	if typ == .alias_method || typ == .iface_method {
 		sym := g.table.get_final_type_symbol(it.params[0].typ.set_nr_muls(0))
 		name := g.js_name(sym.name)
@@ -1461,7 +1515,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	if typ == .struct_method || typ == .alias_method || typ == .iface_method {
 		g.writeln('\n')
 	}
-
+	*/
 	g.fn_decl = voidptr(0)
 }
 
@@ -1532,9 +1586,9 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 					g.write('.valueOf()')
 				}
 				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
-				if g.ns.name == 'builtin' {
-					g.write('new ')
-				}
+
+				g.write('new ')
+
 				g.write('byte($val)])')
 			} else {
 				g.expr(it.cond)
@@ -1555,9 +1609,9 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			// cast characters to bytes
 			if val !in ['', '_'] && it.kind == .string {
 				g.write('.map(c => ')
-				if g.ns.name == 'builtin' {
-					g.write('new ')
-				}
+
+				g.write('new ')
+
 				g.write('byte(c))')
 			}
 		}
@@ -1675,9 +1729,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if fn_return_is_optional {
 		tmp := g.new_tmp_var()
 		g.write('const $tmp = new ')
-		if g.ns.name != 'builtin' {
-			g.write('builtin.')
-		}
+
 		g.writeln('Option({});')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
@@ -1739,17 +1791,6 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.writeln('...${etyp}.prototype,')
 	}
 	fns := g.method_fn_decls[name]
-	for field in node.fields {
-		typ := g.typ(field.typ)
-		g.doc.gen_typ(typ)
-		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
-		g.writeln(',')
-	}
-
-	for cfn in fns {
-		g.gen_method_decl(cfn, .struct_method)
-		g.writeln(',')
-	}
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {
@@ -1771,9 +1812,21 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.dec_indent()
 		g.writeln('},')
 	}
+	for field in node.fields {
+		typ := g.typ(field.typ)
+		g.doc.gen_typ(typ)
+		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
+		g.writeln(',')
+	}
 	g.writeln('\$toJS() { return this; }')
-	g.dec_indent()
+
 	g.writeln('};\n')
+	g.dec_indent()
+
+	for cfn in fns {
+		g.gen_method_decl(cfn, .struct_method)
+	}
+
 	if node.is_pub {
 		g.push_pub_var(name)
 	}
@@ -2160,9 +2213,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						g.expr(branch.exprs[sumtype_index])
 					} else {
 						g.write(' instanceof ')
-						if g.ns.name != 'builtin' {
-							g.write('builtin.')
-						}
+
 						g.write('None__')
 					}
 				}
@@ -2437,9 +2488,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			it.right_type
 		} // g.greater_typ(it.left_type, it.right_type)
 		g.write('new ')
-		if g.ns.name != 'builtin' {
-			g.write('builtin.')
-		}
+
 		g.write('${g.typ(greater_typ)}(')
 		g.cast_stack << greater_typ
 		g.write('BigInt((')
@@ -2459,9 +2508,6 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		return
 	}
 	if it.op == .logical_or || it.op == .and {
-		if g.ns.name == 'builtin' {
-			g.write('new ')
-		}
 		g.write('bool(')
 		g.expr(it.left)
 		g.write('.valueOf()')
@@ -2602,9 +2648,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 
 			if is_arithmetic {
-				if g.ns.name == 'builtin' {
-					g.write('new ')
-				}
+				g.write('new ')
+
 				g.write('${g.typ(greater_typ)}(')
 				g.cast_stack << greater_typ
 			}
@@ -2770,9 +2815,8 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if should_cast {
-		if g.file.mod.name == 'builtin' {
-			g.write('new ')
-		}
+		g.write('new ')
+
 		g.write('string(')
 	}
 	g.write('`')
@@ -2810,9 +2854,8 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text = text.replace('"', '\\"')
 	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if true || should_cast {
-		if g.file.mod.name == 'builtin' {
-			g.write('new ')
-		}
+		g.write('new ')
+
 		g.write('string(')
 	}
 	if it.is_raw {
@@ -2885,10 +2928,8 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	tsym := g.table.get_final_type_symbol(it.typ)
 	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
-		if g.ns.name != 'builtin' {
-			g.write('builtin.')
-		}
-		g.write(tsym.kind.str())
+
+		g.write('$tsym.kind.str()')
 		g.write('(BigInt(')
 		g.write(it.expr.val)
 		g.write('n))')
@@ -2906,9 +2947,9 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		if it.typ.is_ptr() {
 			g.write('new \$ref(')
 		}
-		if typ !in js.v_types || g.ns.name == 'builtin' {
-			g.write('new ')
-		}
+
+		g.write('new ')
+
 		g.write('${typ}(')
 	}
 	g.expr(it.expr)
@@ -2947,17 +2988,12 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	if g.cast_stack.len > 0 {
 		if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
 			g.write('new ')
-			if g.ns.name != 'builtin' {
-				g.write('builtin.')
-			}
+
 			g.write('int($it.val)')
 			return
 		}
 	}
 	g.write('new ')
-	if g.ns.name != 'builtin' {
-		g.write('builtin.')
-	}
 
 	g.write('${g.typ(typ)}($it.val)')
 }
@@ -2996,9 +3032,6 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 		}
 	}
 	g.write('new ')
-	if g.ns.name != 'builtin' {
-		g.write('builtin.')
-	}
 
 	g.write('${g.typ(typ)}($it.val)')
 }
@@ -3012,4 +3045,18 @@ fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
 		}
 	}
 	return typ
+}
+
+fn replace_op(s string) string {
+	return match s {
+		'+' { '_plus' }
+		'-' { '_minus' }
+		'*' { '_mult' }
+		'/' { '_div' }
+		'%' { '_mod' }
+		'<' { '_lt' }
+		'>' { '_gt' }
+		'==' { '_eq' }
+		else { '' }
+	}
 }

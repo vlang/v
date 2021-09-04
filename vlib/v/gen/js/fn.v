@@ -162,9 +162,6 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	ret_sym := g.table.get_type_symbol(it.return_type)
 	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
 		g.write('new ')
-		if g.ns.name != 'builtin' {
-			g.write('builtin.')
-		}
 		g.write(ret_sym.name)
 		g.write('(')
 	}
@@ -174,22 +171,18 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.inc_indent()
 		g.writeln('try {')
 		g.inc_indent()
-		g.write('return builtin.unwrap(')
+		g.write('return unwrap(')
 	}
 	if is_print {
 		mut typ := node.args[0].typ
 
 		expr := node.args[0].expr
-		g.write('builtin.$print_method (')
+		g.write('$print_method (')
 		g.gen_expr_to_string(expr, typ)
 		g.write(')')
 		return
 	}
 	g.expr(it.left)
-
-	if name in g.builtin_fns {
-		g.write('builtin.')
-	}
 
 	g.write('${name}(')
 	for i, arg in it.args {
@@ -220,9 +213,9 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			.propagate {
 				panicstr := '`optional not set (\${err})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin.panic($panicstr)')
+					g.writeln('return panic($panicstr)')
 				} else {
-					g.writeln('builtin.js_throw(err)')
+					g.writeln('js_throw(err)')
 				}
 			}
 			else {}
