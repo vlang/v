@@ -1,6 +1,8 @@
 // my arrays-ops-tests.v
 module big
 
+import rand
+
 fn test_lshift_in_place () {
 	mut a := [u32(1), 1, 1, 1, 1]
 	lshift_in_place(mut a, 1)
@@ -116,6 +118,19 @@ fn test_divide_digit_array_05 () {
 	assert r == [u32(2)]
 }
 
+fn test_divide_digit_array_06 () {
+	a := [u32(2), 4, 5, 3]
+	b := [u32(0), 0x8000]
+	// println(integer_from_u32_array(a))
+	// println(integer_from_u32_array(b))
+	mut q := []u32{cap: a.len - b.len + 1}
+	mut r := []u32{cap: a.len}
+
+	divide_digit_array(a, b, mut q, mut r)
+	assert q == [u32(0xa0000), 0x60000]
+	assert r == [u32(2), 4]
+}
+
 // For debugging
 fn integer_from_u32_array(a []u32) Integer {
 	mut res := integer_from_i64(0)
@@ -126,3 +141,28 @@ fn integer_from_u32_array(a []u32) Integer {
 	}
 	return res
 }
+
+fn test_many_divisions() {
+	for _ in 0 .. 100 {
+		a := random_number(30)
+		b := random_number(30)
+		c := a * b
+		assert c / a == b
+		assert c / b == a
+		// q, r := a.div_mod(b)
+		// println('$a / $b = $q; rem: $r')
+	}
+}
+
+fn random_number(length int) Integer  {
+	numbers := "0123456789"
+		mut stri := ''
+		for _ in 0..length {
+			i := rand.intn(10)
+			nr := numbers[i]
+			stri = stri + nr.ascii_str()
+		}
+	res := integer_from_string(stri) or {panic('error in random_number')}
+	return res
+}
+
