@@ -1,4 +1,3 @@
-// my arrays-ops-tests.v
 module big
 
 import rand
@@ -108,8 +107,6 @@ fn test_divide_digit_array_04() {
 fn test_divide_digit_array_05 () {
 	a := [u32(2), 4, 5]
 	b := [u32(0), 1]
-	// println(integer_from_u32_array(a))
-	// println(integer_from_u32_array(b))
 	mut q := []u32{cap: a.len - b.len + 1}
 	mut r := []u32{cap: a.len}
 
@@ -121,8 +118,6 @@ fn test_divide_digit_array_05 () {
 fn test_divide_digit_array_06 () {
 	a := [u32(2), 4, 5, 3]
 	b := [u32(0), 0x8000]
-	// println(integer_from_u32_array(a))
-	// println(integer_from_u32_array(b))
 	mut q := []u32{cap: a.len - b.len + 1}
 	mut r := []u32{cap: a.len}
 
@@ -149,7 +144,7 @@ fn test_many_divisions() {
 		c := a * b
 		assert c / a == b
 		assert c / b == a
-		// q, r := a.div_mod(b)
+		q, r := a.div_mod(b)
 		// println('$a / $b = $q; rem: $r')
 	}
 }
