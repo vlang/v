@@ -133,6 +133,7 @@ fn subtract_in_place(mut a []u32, b []u32) {
 }
 
 // for assert
+[inline]
 fn left_align_p(a u32, b u32) bool {
 	return bits.leading_zeros_32(a) == bits.leading_zeros_32(b)
 }
