@@ -1823,6 +1823,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 									c.error('$expr_name must be added to the `lock` list above',
 										expr.pos)
 								}
+								return '', expr.pos
 							}
 							to_lock = expr_name
 							pos = expr.pos
@@ -1851,6 +1852,22 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
 							expr.pos)
+						return '', expr.pos
+					}
+					c.fail_if_immutable(expr.expr)
+				}
+				.sum_type {
+					sumtype_info := typ_sym.info as ast.SumType
+					mut field_info := sumtype_info.find_field(expr.field_name) or {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
+						return '', pos
+					}
+					if !field_info.is_mut {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('field `$expr.field_name` of sumtype `$type_str` is immutable',
+							expr.pos)
+						return '', expr.pos
 					}
 					c.fail_if_immutable(expr.expr)
 				}
@@ -1858,6 +1875,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// This should only happen in `builtin`
 					if c.file.mod.name != 'builtin' {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
+						return '', expr.pos
 					}
 				}
 				.aggregate, .placeholder {
@@ -1865,6 +1883,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				}
 				else {
 					c.error('unexpected symbol `$typ_sym.kind`', expr.pos)
+					return '', expr.pos
 				}
 			}
 		}
@@ -1891,6 +1910,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		else {
 			if !expr.is_lit() {
 				c.error('unexpected expression `$expr.type_name()`', expr.position())
+				return '', pos
 			}
 		}
 	}

@@ -856,8 +856,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_type_cast_expr(node)
 		}
 		ast.CharLiteral {
-			// todo(playX): char type?
-			g.write("new builtin.string('$node.val')")
+			g.write("new builtin.byte('$node.val')")
 		}
 		ast.Comment {}
 		ast.ConcatExpr {
@@ -1453,7 +1452,14 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 
 	g.stmts(it.stmts)
 	g.writeln('}')
-
+	for attr in it.attrs {
+		match attr.name {
+			'export' {
+				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+			}
+			else {}
+		}
+	}
 	if is_main {
 		g.write(')();')
 	} else if typ != .struct_method {
@@ -1673,7 +1679,23 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 			return
 		}
 	}
-
+	if fn_return_is_optional {
+		tmp := g.new_tmp_var()
+		g.write('const $tmp = new ')
+		if g.ns.name != 'builtin' {
+			g.write('builtin.')
+		}
+		g.writeln('Option({});')
+		g.write('${tmp}.data = ')
+		if it.exprs.len == 1 {
+			g.expr(it.exprs[0])
+		} else { // Multi return
+			g.gen_array_init_values(it.exprs)
+		}
+		g.writeln('')
+		g.write('return $tmp;')
+		return
+	}
 	g.write('return ')
 	if it.exprs.len == 1 {
 		g.expr(it.exprs[0])
