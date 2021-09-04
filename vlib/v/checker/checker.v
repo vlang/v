@@ -2555,6 +2555,15 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				} else if left_name == right_name {
 					c.error('`.sort()` cannot use same argument', node.pos)
 				}
+				if (node.args[0].expr.left !is ast.Ident
+					&& node.args[0].expr.left !is ast.SelectorExpr
+					&& node.args[0].expr.left !is ast.IndexExpr)
+					|| (node.args[0].expr.right !is ast.Ident
+					&& node.args[0].expr.right !is ast.SelectorExpr
+					&& node.args[0].expr.right !is ast.IndexExpr) {
+					c.error('`.sort()` can only use ident, index or selector as argument, \ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
+						node.pos)
+				}
 			} else {
 				c.error(
 					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
