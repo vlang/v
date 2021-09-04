@@ -78,14 +78,13 @@ mut sb := strings.new_builder($lstartlength)\n
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
-		oline := lines[i]
+		line := lines[i]
 		tline_number++
 		start_of_line_pos = end_of_line_pos
-		end_of_line_pos += oline.len + 1
+		end_of_line_pos += line.len + 1
 		$if trace_tmpl ? {
-			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $oline')
+			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $line')
 		}
-		line := oline.trim_space()
 		if is_html_open_tag('style', line) {
 			state = .css
 		} else if line == '</style>' {
@@ -225,8 +224,10 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			source.writeln(line.replace(r'@', r'$').replace(r'$$', r'@').replace(r'.$',
-				r'.@').replace(r"'", r"\'"))
+			source.writeln(line.replace_each([r'@', r'$', r'$$', r'@', r'.$', r'.@', r"'",
+				"')\nsb.write_b(`'`)\nsb.write_string('", '\\',
+				"')\nsb.write_b(92)\nsb.write_string('",
+			]))
 		}
 	}
 	source.writeln(parser.tmpl_str_end)
