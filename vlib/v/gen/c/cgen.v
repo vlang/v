@@ -15,12 +15,12 @@ import v.depgraph
 const (
 	// NB: some of the words in c_reserved, are not reserved in C,
 	// but are in C++, or have special meaning in V, thus need escaping too.
-	c_reserved     = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue',
-		'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern',
-		'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace',
-		'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
-		'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile',
-		'while', 'template', 'stdout', 'stdin', 'stderr']
+	c_reserved     = ['array', 'auto', 'break', 'calloc', 'case', 'char', 'class', 'const',
+		'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export',
+		'extern', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc',
+		'namespace', 'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof',
+		'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned',
+		'void', 'volatile', 'while', 'template', 'stdout', 'stdin', 'stderr']
 	c_reserved_map = string_array_to_map(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -1493,7 +1493,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.sql_stmt(node)
 		}
 		ast.StructDecl {
-			name := if node.language == .c { util.no_dots(node.name) } else { c_name(node.name) }
+			name := if node.language == .c {
+				util.no_dots(node.name)
+			} else if node.name in ['array', 'string'] {
+				node.name
+			} else {
+				c_name(node.name)
+			}
 			// TODO For some reason, build fails with autofree with this line
 			// as it's only informative, comment it for now
 			// g.gen_attrs(node.attrs)

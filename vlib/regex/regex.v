@@ -890,6 +890,10 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 	return -2, true, name, i
 }
 
+const (
+	quntifier_chars = [rune(`+`), `*`, `?`, `{`]
+)
+
 //
 // main compiler
 //
@@ -1036,20 +1040,37 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 		// Quantifiers
 		if char_len == 1 && pc > 0 {
+			mut char_next := rune(0)
+			mut char_next_len := 0
+			if (char_len + i) < in_txt.len {
+				char_next, char_next_len = re.get_char(in_txt, i + char_len)
+			}
 			mut quant_flag := true
 			match byte(char_tmp) {
 				`?` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 0
 					re.prog[pc - 1].rep_max = 1
 				}
 				`+` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 1
 					re.prog[pc - 1].rep_max = regex.max_quantifier
 				}
 				`*` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 0
 					re.prog[pc - 1].rep_max = regex.max_quantifier
 				}
@@ -1062,10 +1083,18 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 						re.prog[pc - 1].rep_min = min
 						re.prog[pc - 1].rep_max = max
 						re.prog[pc - 1].greedy = greedy
+						// check illegal quantifier sequences
+						if i <= in_txt.len {
+							char_next, char_next_len = re.get_char(in_txt, i)
+							if char_next_len == 1 && char_next in regex.quntifier_chars {
+								return regex.err_syntax_error, i
+							}
+						}
 						continue
 					} else {
 						return min, i
 					}
+
 					// TODO: decide if the open bracket can be conform without the close bracket
 					/*
 					// no conform, parse as normal char
