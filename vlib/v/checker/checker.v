@@ -6232,14 +6232,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				low_expr := expr.low
 				high_expr := expr.high
 				if low_expr is ast.IntegerLiteral {
-					if high_expr is ast.IntegerLiteral {
+					if high_expr is ast.IntegerLiteral
+						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 					} else {
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral {
+					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.byte, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 					} else {
