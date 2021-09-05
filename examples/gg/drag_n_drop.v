@@ -13,7 +13,7 @@ const (
 
 struct App {
 mut:
-	gg        &gg.Context
+	gg                &gg.Context
 	dropped_file_list []string = []string{}
 }
 
