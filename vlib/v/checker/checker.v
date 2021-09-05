@@ -4029,7 +4029,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 						if left.name in checker.reserved_type_names {
-							c.error('`$left.name` is reserved type name, cannot be used as the variable name',
+							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}
 					}
