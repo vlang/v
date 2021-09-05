@@ -542,6 +542,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.out_name = cmdline.option(current_args, arg, '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js_node
+					res.output_cross_c = true
 				}
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)

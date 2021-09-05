@@ -750,3 +750,11 @@ fn test_utime() {
 	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }
+
+fn test_expand_tilde_to_home() {
+	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
+	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',
+		'expansion'))
+	assert home_test == home_expansion_test
+	assert os.expand_tilde_to_home('~') == os.home_dir()
+}

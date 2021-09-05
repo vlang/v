@@ -272,14 +272,8 @@ fn escape(s string, mode EncodingMode) string {
 	if space_count == 0 && hex_count == 0 {
 		return s
 	}
-	buf := []byte{len: (64)}
-	mut t := []byte{}
 	required := s.len + 2 * hex_count
-	if required <= buf.len {
-		t = buf[..required]
-	} else {
-		t = []byte{len: required}
-	}
+	mut t := []byte{len: required}
 	if hex_count == 0 {
 		copy(t, s.bytes())
 		for i in 0 .. s.len {

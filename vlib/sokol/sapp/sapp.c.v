@@ -233,3 +233,27 @@ pub fn win32_get_hwnd() voidptr {
 pub fn android_get_native_activity() voidptr {
 	return voidptr(C.sapp_android_get_native_activity())
 }
+
+// Toggle full screen
+[inline]
+pub fn toggle_fullscreen() {
+	C.sapp_toggle_fullscreen()
+}
+
+// Check if full screen rendering
+[inline]
+pub fn is_fullscreen() bool {
+	return C.sapp_is_fullscreen()
+}
+
+[inline]
+pub fn get_num_dropped_files() int {
+	return C.sapp_get_num_dropped_files()
+}
+
+[inline]
+pub fn get_dropped_file_path(index int) string {
+	unsafe {
+		return cstring_to_vstring(C.sapp_get_dropped_file_path(index))
+	}
+}

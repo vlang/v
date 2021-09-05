@@ -233,6 +233,7 @@ fn main() {
 		insert first_article into Article
 		insert second_article into Article
 	}
+	vweb.run(app, 8080)
 }
 ```
 
@@ -263,7 +264,7 @@ Let's fetch the articles in the `index()` action:
 
 ```v ignore
 // blog.v
-pub fn (app App) index() vweb.Result {
+pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }

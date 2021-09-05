@@ -146,11 +146,11 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 }
 
 // sort_with_compare sorts array in-place using given `compare` function as comparator.
-pub fn (mut a array) sort_with_compare(compare voidptr) {
+pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), compare) }
+		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), callback) }
 	}
 }
 

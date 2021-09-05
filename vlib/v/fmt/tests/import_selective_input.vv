@@ -11,14 +11,18 @@ import mod {
 	Unused,
 	StructEmbed, StructField, StructRefField
 	StructMethodArg,
-	StructMethodRet
+	StructMethodArgGeneric,
+	StructMethodRet,
+	StructMethodRetGeneric,
 
 	InterfaceField,
 	InterfaceMethodArg,
 	InterfaceMethodRet,
 
 	FnArg,
+	FnArgGeneric
 	FnRet,
+	FnRetGeneric
 
 	RightOfIs,
 	RightOfAs,
@@ -36,6 +40,10 @@ fn (s Struct) method(v StructMethodArg) StructMethodRet {
 	return StructMethodRet{}
 }
 
+fn (s Struct) method_generic<T>(v StructMethodArgGeneric<T>) StructMethodRetGeneric<T> {
+	return StructMethodRet<T>{}
+}
+
 interface Interface {
 	v InterfaceField
 	f(InterfaceMethodArg) InterfaceMethodRet
@@ -48,6 +56,10 @@ fn f(v FnArg) FnRet {
 	println(Enum.val)
 
 	return FnRet{}
+}
+
+fn f_generic<T>(v FnArgGeneric<T>) FnRetGeneric<T> {
+	return FnRetGeneric<T>{}
 }
 
 struct App {

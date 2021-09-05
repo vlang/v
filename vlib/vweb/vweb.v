@@ -503,7 +503,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 	}
 	// site not found
-	send_string(mut conn, vweb.http_404.bytestr()) or {}
+	// send_string(mut conn, vweb.http_404.bytestr()) or {}
+	app.not_found()
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {

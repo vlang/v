@@ -12,40 +12,49 @@ pub mut:
 }
 
 pub fn new_builder(initial_size int) Builder {
-	return Builder{
-		buf: make(0, initial_size, sizeof(byte))
-		initial_size: initial_size
-	}
+	return Builder{[]byte{cap: initial_size}, 0, initial_size}
 }
 
 pub fn (mut b Builder) write_b(data byte) {
 	b.buf << data
-	b.len++
+}
+
+pub fn (mut b Builder) write(data []byte) ?int {
+	if data.len == 0 {
+		return 0
+	}
+	b.buf << data
+	return data.len
+}
+
+pub fn (b &Builder) byte_at(n int) byte {
+	return b.buf[n]
 }
 
 pub fn (mut b Builder) write_string(s string) {
-	b.buf.push_many(s.str, s.len)
-	// b.buf << []byte(s)  // TODO
-	b.len += s.len
+	if s.len == 0 {
+		return
+	}
+
+	for c in s {
+		b.buf << c
+	}
 }
 
 pub fn (mut b Builder) writeln(s string) {
-	b.buf.push_many(s.str, s.len)
-	// b.buf << []byte(s)  // TODO
-	b.buf << `\n`
-	b.len += s.len + 1
+	if s.len > 0 {
+		b.write_string(s)
+	}
+
+	b.buf << 10
 }
 
-pub fn (b Builder) str() string {
-	x := &byte(b.buf.data)
-	return unsafe { x.vstring_with_len(b.len) }
-}
+pub fn (mut b Builder) str() string {
+	b.buf << byte(0)
+	s := ''
 
-pub fn (mut b Builder) cut(n int) {
-	b.len -= n
-}
+	#for (const c of b.val.buf.arr)
+	#s.str += String.fromCharCode(+c)
 
-pub fn (mut b Builder) free() {
-	b.buf = make(0, b.initial_size, 1)
-	b.len = 0
+	return s
 }

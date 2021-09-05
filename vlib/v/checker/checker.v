@@ -31,6 +31,8 @@ const (
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	reserved_type_names         = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
@@ -1807,6 +1809,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 									c.error('$expr_name must be added to the `lock` list above',
 										expr.pos)
 								}
+								return '', expr.pos
 							}
 							to_lock = expr_name
 							pos = expr.pos
@@ -1835,6 +1838,22 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
 							expr.pos)
+						return '', expr.pos
+					}
+					c.fail_if_immutable(expr.expr)
+				}
+				.sum_type {
+					sumtype_info := typ_sym.info as ast.SumType
+					mut field_info := sumtype_info.find_field(expr.field_name) or {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
+						return '', pos
+					}
+					if !field_info.is_mut {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('field `$expr.field_name` of sumtype `$type_str` is immutable',
+							expr.pos)
+						return '', expr.pos
 					}
 					c.fail_if_immutable(expr.expr)
 				}
@@ -1842,6 +1861,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// This should only happen in `builtin`
 					if c.file.mod.name != 'builtin' {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
+						return '', expr.pos
 					}
 				}
 				.aggregate, .placeholder {
@@ -1849,6 +1869,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				}
 				else {
 					c.error('unexpected symbol `$typ_sym.kind`', expr.pos)
+					return '', expr.pos
 				}
 			}
 		}
@@ -1875,6 +1896,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		else {
 			if !expr.is_lit() {
 				c.error('unexpected expression `$expr.type_name()`', expr.position())
+				return '', pos
 			}
 		}
 	}
@@ -2519,6 +2541,15 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 						node.pos)
 				} else if left_name == right_name {
 					c.error('`.sort()` cannot use same argument', node.pos)
+				}
+				if (node.args[0].expr.left !is ast.Ident
+					&& node.args[0].expr.left !is ast.SelectorExpr
+					&& node.args[0].expr.left !is ast.IndexExpr)
+					|| (node.args[0].expr.right !is ast.Ident
+					&& node.args[0].expr.right !is ast.SelectorExpr
+					&& node.args[0].expr.right !is ast.IndexExpr) {
+					c.error('`.sort()` can only use ident, index or selector as argument, \ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
+						node.pos)
 				}
 			} else {
 				c.error(
@@ -3984,6 +4015,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
+						if left.name in checker.reserved_type_names {
+							c.error('invalid use of reserved type `$left.name` as a variable name',
+								left.pos)
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
@@ -6213,14 +6248,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				low_expr := expr.low
 				high_expr := expr.high
 				if low_expr is ast.IntegerLiteral {
-					if high_expr is ast.IntegerLiteral {
+					if high_expr is ast.IntegerLiteral
+						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 					} else {
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral {
+					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.byte, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 					} else {

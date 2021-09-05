@@ -9,6 +9,7 @@ pub fn repeat(c byte, n int) string {
 }
 
 pub fn repeat_string(s string, n int) string {
+	return ''
 	/*
 	// TODO: uncomment this. It is commented for now, so that `v doc strings` works
 	res := # s.repeat(n)
