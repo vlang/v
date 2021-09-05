@@ -283,8 +283,9 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 
 			if s >= 0 && e > s {
 				tmp_str := tos(in_txt.str + i, in_txt.len - i)
+				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
 				// println("Found: $s:$e [${tmp_str[s..e]}]")
-				res << tmp_str[..e]
+				res << tmp_str[..tmp_e]
 				i += e
 				continue
 			}
