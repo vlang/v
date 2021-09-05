@@ -235,7 +235,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.get_type_symbol(typ)
-	f.mark_import_as_used(sym.name)
+	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	f.mark_import_as_used(name)
 }
 
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
