@@ -6,8 +6,4 @@ fn test_reserved_keywords_array_and_string() {
 	assert res1 == [3, 6, 9, 12]
 	println(res2)
 	assert res2 == [3, 4]
-
-	string := 'hello'
-	println(string)
-	assert string == 'hello'
 }
