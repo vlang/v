@@ -53,7 +53,8 @@ fn main() {
 	check_fail('"$vexe" test $tdir')
 	rel_dir := os.join_path(tdir, rand.ulid())
 	os.mkdir(rel_dir) ?
-	check_ok('cd $rel_dir && "$vexe" test ..${os.path_separator + os.base(ok_fpath)}')
+	os.chdir(rel_dir) ?
+	check_ok('"$vexe" test ..${os.path_separator + os.base(ok_fpath)}')
 }
 
 fn check_ok(cmd string) string {
