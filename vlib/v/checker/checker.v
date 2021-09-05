@@ -1150,7 +1150,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							}
 						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, field_info.typ) or {
+						c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
 							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
