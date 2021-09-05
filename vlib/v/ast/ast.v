@@ -462,12 +462,12 @@ pub struct AutofreeArgVar {
 // function call argument: `f(callarg)`
 pub struct CallArg {
 pub:
-	is_mut   bool
 	share    ShareType
 	comments []Comment
 pub mut:
 	expr            Expr
 	typ             Type
+	is_mut          bool
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Position
 	// tmp_name        string // for autofree
@@ -479,8 +479,9 @@ pub:
 	pos      token.Position
 	comments []Comment
 pub mut:
-	exprs []Expr
-	types []Type
+	exprs      []Expr
+	types      []Type
+	ref_compat []bool // temp hack for compatibility
 }
 
 /*
@@ -504,7 +505,6 @@ pub:
 	is_mut          bool
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
-	is_auto_deref   bool
 	is_inherited    bool
 pub mut:
 	typ        Type
@@ -519,10 +519,11 @@ pub mut:
 	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
-	is_or        bool // `x := foo() or { ... }`
-	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_auto_heap bool // value whoes address goes out of scope
-	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
+	is_or         bool // `x := foo() or { ... }`
+	is_tmp        bool // for tmp for loop vars, so that autofree can skip them
+	is_auto_heap  bool // value whoes address goes out of scope
+	is_stack_obj  bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
+	is_auto_deref bool
 }
 
 // used for smartcasting only
@@ -650,13 +651,14 @@ pub:
 	mut_pos  token.Position
 	comptime bool
 pub mut:
-	scope  &Scope
-	obj    ScopeObject
-	mod    string
-	name   string
-	kind   IdentKind
-	info   IdentInfo
-	is_mut bool
+	scope      &Scope
+	obj        ScopeObject
+	mod        string
+	name       string
+	kind       IdentKind
+	info       IdentInfo
+	is_mut     bool
+	ref_compat bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -707,6 +709,7 @@ pub mut:
 	right      Expr
 	or_block   OrExpr
 	is_option  bool // IfGuard
+	ref_compat bool // to work around existing `x := *y` where `y` is `mut` argument
 }
 
 pub struct IndexExpr {
@@ -753,8 +756,9 @@ pub mut:
 
 pub struct UnsafeExpr {
 pub:
+	pos token.Position
+pub mut:
 	expr Expr
-	pos  token.Position
 }
 
 pub struct LockExpr {
@@ -915,6 +919,7 @@ pub:
 	end_comments []Comment
 pub mut:
 	right         []Expr
+	ref_compat    []bool
 	left          []Expr
 	left_types    []Type
 	right_types   []Type
@@ -1620,15 +1625,11 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 	match expr {
 		Ident {
 			if expr.obj is Var {
-				if expr.obj.is_auto_deref {
-					return true
-				}
+				return expr.obj.is_auto_deref || expr.obj.is_auto_heap
 			}
 		}
 		PrefixExpr {
-			if expr.op == .amp && expr.right.is_auto_deref_var() {
-				return true
-			}
+			return (expr.op == .amp || expr.op == .mul) && expr.right.is_auto_deref_var()
 		}
 		else {}
 	}

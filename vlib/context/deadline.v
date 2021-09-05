@@ -10,6 +10,7 @@ import time
 // A TimerContext carries a timer and a deadline. It embeds a CancelContext to
 // implement done and err. It implements cancel by stopping its timer then
 // delegating to CancelContext.cancel
+[heap]
 pub struct TimerContext {
 	id string
 mut:

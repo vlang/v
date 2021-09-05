@@ -358,7 +358,8 @@ pub fn identity() Mat4 {
 }
 
 // returns *f32 without allocation
-pub fn identity2(mut res &f32) {
+pub fn identity2(res_ &f32) {
+	mut res := unsafe { res_ }
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1

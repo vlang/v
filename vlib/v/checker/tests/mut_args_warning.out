@@ -3,3 +3,8 @@ vlib/v/checker/tests/mut_args_warning.vv:1:8: warning: use `mut f Foo` instead o
       |        ~~~
     2 | fn main() {
     3 |     mut x := [0]
+vlib/v/checker/tests/mut_args_warning.vv:1:8: error: unexpected `mut`
+    1 | fn f(x mut []int) { x[0] = 1 }
+      |        ~~~
+    2 | fn main() {
+    3 |     mut x := [0]

@@ -441,7 +441,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	w.mark_fn_as_used(fn_name)
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
-		if !node.is_method || (node.receiver_type == stmt.receiver.typ) {
+		if !node.is_method || node.receiver_type.set_nr_muls(0) == stmt.receiver.typ.set_nr_muls(0) {
 			w.stmts(stmt.stmts)
 		}
 	}

@@ -1165,7 +1165,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					} else {
 						if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
 							&& !expr_type.is_number() {
-							c.error('reference field must be initialized with reference',
+							c.note('reference field must be initialized with reference',
 								field.pos)
 						}
 					}
@@ -1318,7 +1318,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_name := c.table.type_to_str(right_type)
 			c.error('invalid operator `$node.op` to `$left_name` and `$right_name`', left_right_pos)
 		} else if node.op in [.plus, .minus] {
-			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
+			if !c.inside_unsafe {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
 			}
 			if left_type == ast.voidptr_type {
@@ -1460,22 +1460,6 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
-				}
-			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
-				deref_left_type := if node.left.is_auto_deref_var() {
-					left_type.deref()
-				} else {
-					left_type
-				}
-				deref_right_type := if node.right.is_auto_deref_var() {
-					right_type.deref()
-				} else {
-					right_type
-				}
-				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
-				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
-				if left_name != right_name {
-					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				}
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(left_type)
@@ -1692,7 +1676,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -2328,14 +2312,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position()) {
-					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
-						got_arg_typ_sym := c.table.get_type_symbol(got_arg_typ)
-						if got_arg_typ_sym.kind != .interface_ {
-							c.mark_as_referenced(mut &arg.expr, true)
-						}
-					}
-				}
+				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
 			if exp_arg_typ.has_flag(.generic) {
@@ -2412,6 +2389,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			node.receiver_type = method.params[0].typ
 		}
+		if method.params[0].is_mut {
+			node.receiver_type = node.receiver_type.to_ptr()
+		}
 		if method.generic_names.len != node.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut node)
@@ -2469,10 +2449,19 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			info := field_type_sym.info as ast.FnType
 			node.return_type = info.func.return_type
 			mut earg_types := []ast.Type{}
-			for mut arg in node.args {
+			for i, mut arg in node.args {
 				targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 				arg.typ = targ
-				earg_types << targ
+				mut earg := info.func.params[i].typ
+				if info.func.params[i].is_mut {
+					// work around existing code where `mut` has been forgotten in the call
+					// TODO: make the following an error
+					if !arg.is_mut {
+						c.note('argument should be passed with `mut`', arg.pos)
+						arg.is_mut = true
+					}
+				}
+				earg_types << earg
 			}
 			node.expected_arg_types = earg_types
 			return info.func.return_type
@@ -2493,11 +2482,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			if method_name[0] == `m` {
 				c.fail_if_immutable(node.left)
 			}
-			if node.left.is_auto_deref_var() {
-				ret_type = left_type.deref()
-			} else {
-				ret_type = left_type
-			}
+			ret_type = left_type
 		}
 		'keys' {
 			info := left_type_sym.info as ast.Map
@@ -2617,11 +2602,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
 		node.receiver_type = left_type.to_ptr()
-		if node.left.is_auto_deref_var() {
-			node.return_type = left_type.deref()
-		} else {
-			node.return_type = node.receiver_type.set_nr_muls(0)
-		}
+		node.return_type = node.receiver_type.set_nr_muls(0)
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {
@@ -2978,12 +2959,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
-					&& typ_sym.kind != .interface_ {
-					c.mark_as_referenced(mut &call_arg.expr, true)
-				}
-			}
+			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
 		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), node.language) or {
@@ -3666,9 +3642,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
 					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
@@ -3676,6 +3649,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
+				node.ref_compat << false
 				continue
 			}
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
@@ -3684,23 +3658,20 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
 			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
 			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type {
 			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.note('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
+			node.ref_compat << true
+		} else {
+			node.ref_compat << false
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &node.exprs[i]
+			mut r_expr := unsafe { &node.exprs[i] }
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
@@ -3964,16 +3935,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(right)
 					right_type = right.typ
 				}
-			} else if right is ast.PrefixExpr {
+			} else if mut right is ast.PrefixExpr {
 				if right.op == .amp && right.right is ast.StructInit {
 					right_type = c.expr(right)
+				} else if right.op == .mul && right.right.is_auto_deref_var() {
+					c.note('de-referencing `mut` function arguments is not necessary and will be forbidden, soon',
+						right.pos)
+					right_type = c.expr(right.right)
+					right.ref_compat = true
 				}
 			}
-			if right.is_auto_deref_var() {
-				left_type = c.table.mktyp(right_type.deref())
-			} else {
-				left_type = c.table.mktyp(right_type)
-			}
+			left_type = c.table.mktyp(right_type)
 			if left_type == ast.int_type {
 				if right is ast.IntegerLiteral {
 					mut is_large := right.val.len > 13
@@ -4009,6 +3981,21 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 							c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								right.pos)
+						}
+					}
+				}
+			}
+		}
+		if mut right is ast.UnsafeExpr {
+			if mut right.expr is ast.Ident {
+				if mut right.expr.obj is ast.Var {
+					if right.expr.obj.is_auto_deref || right.expr.obj.is_auto_heap {
+						c.note('`mut` function arg inside `usafe` - assuming referencing for compatibility. You should explict write `&$right.expr.name` or remove the `unsafe` block',
+							right.expr.pos)
+						right.expr.ref_compat = true
+						right_type = right_type.to_ptr()
+						if is_decl {
+							left_type = left_type.to_ptr()
 						}
 					}
 				}
@@ -4057,8 +4044,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								left.obj.typ = left_type
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
-								}
-								if !left_type.is_ptr() {
+								} else if !left_type.is_ptr() {
 									if c.table.get_type_symbol(left_type).is_heap() {
 										left.obj.is_auto_heap = true
 									}
@@ -4129,11 +4115,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		if right_type_unwrapped == 0 {
 			// right type was a generic `T`
+			node.ref_compat << false
 			continue
 		}
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
+			node.ref_compat << false
 			continue
 		}
 		if left_type_unwrapped == 0 {
@@ -4166,7 +4154,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && !left.is_auto_deref_var() {
+		if left_is_ptr {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
@@ -4184,8 +4172,27 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					rtype = rtype.deref()
 				}
 				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+				realright := match right {
+					ast.UnsafeExpr {
+						right.expr
+					}
+					else {
+						right
+					}
+				}
+				if realright.is_auto_deref_var() {
+					c.note('mismatched types `$left_name` and `$right_name` (accepted for compatibility)',
+						node.pos)
+					node.ref_compat << true
+				} else {
+					c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+					node.ref_compat << false
+				}
+			} else {
+				node.ref_compat << false
 			}
+		} else {
+			node.ref_compat << false
 		}
 		// Single side check
 		match node.op {
@@ -4272,8 +4279,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
-			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
 			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
@@ -4483,11 +4489,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				if expr.is_auto_deref_var() {
-					elem_type = c.table.mktyp(typ.deref())
-				} else {
-					elem_type = c.table.mktyp(typ)
-				}
+				elem_type = c.table.mktyp(typ)
 				c.expected_type = elem_type
 				continue
 			}
@@ -4858,7 +4860,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				value_type = value_type.to_ptr()
+				// value_type = value_type.to_ptr()
 				match node.cond {
 					ast.Ident {
 						if node.cond.obj is ast.Var {
@@ -4956,13 +4958,14 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
-		if arg.is_mut && !arg.typ.is_ptr() {
+		if arg.is_mut && !(arg.typ.is_ptr() || arg.expr.is_auto_deref_var()) {
 			c.error('function in `go` statement cannot contain mutable non-reference arguments',
 				arg.expr.position())
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-		&& !node.call_expr.left_type.is_ptr() {
+		&& !(node.call_expr.left_type.is_ptr()
+		|| node.call_expr.left.is_auto_deref_var()) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
@@ -5680,7 +5683,12 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
 		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			type_name := c.table.type_to_str(node.typ)
-			c.error('cannot cast struct to `$type_name`', node.pos)
+			if node.expr.is_auto_deref_var() {
+				c.note('cannot cast struct to `$type_name` - accepted for compatibility',
+					node.pos)
+			} else {
+				c.error('cannot cast struct to `$type_name`', node.pos)
+			}
 		}
 	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
@@ -6212,10 +6220,12 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 			}
 		}
-		if cond_is_auto_heap {
+		is_auto_deref := node.cond.is_auto_deref_var()
+		if cond_is_auto_heap || is_auto_deref {
 			for branch in node.branches {
 				mut v := branch.scope.find_var(cond_var) or { continue }
-				v.is_auto_heap = true
+				v.is_auto_heap = cond_is_auto_heap
+				v.is_auto_deref = is_auto_deref
 			}
 		}
 	}
@@ -6484,11 +6494,17 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 		}
 		ast.Ident {
 			mut is_mut := false
+			mut is_auto_deref := false
+			mut is_auto_heap := false
+			mut is_stack_obj := false
 			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
 			mut orig_type := 0
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
+				is_auto_deref = expr.obj.is_auto_deref
+				is_auto_heap = expr.obj.is_auto_heap
+				is_stack_obj = expr.obj.is_stack_obj
 				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
@@ -6504,6 +6520,9 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
+					is_auto_deref: is_auto_deref
+					is_auto_heap: is_auto_heap
+					is_stack_obj: is_stack_obj
 					smartcasts: smartcasts
 					orig_type: orig_type
 				})
@@ -7121,7 +7140,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
+	if !c.inside_unsafe && is_non_void_pointer {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
@@ -7154,8 +7173,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 						} else {
 							'referenced'
 						}
-						c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-							node.pos)
+						msg := '`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.'
+						// should always be an error but is used too often in existing code
+						c.note(msg, node.pos)
 					}
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
@@ -7260,19 +7280,22 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if !c.inside_fn_arg && !c.inside_unsafe {
 			c.mark_as_referenced(mut &node.right, false)
 		}
-		if node.right.is_auto_deref_var() {
-			return right_type
-		} else {
-			return right_type.to_ptr()
-		}
+		return right_type.to_ptr()
 	}
 	if node.op == .mul {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
+		// allow de-referencing `mut` argument for compatibility
 		if !right_type.is_pointer() {
-			s := c.table.type_to_str(right_type)
-			c.error('invalid indirect of `$s`', node.pos)
+			if node.right.is_auto_deref_var() {
+				c.note('dereferencing `mut` fn-arg/for-value is deprecated and will be forbidden soon',
+					node.pos)
+				node.ref_compat = true
+			} else {
+				s := c.table.type_to_str(right_type)
+				c.error('invalid indirect of `$s`', node.pos)
+			}
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
@@ -7378,8 +7401,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !typ.has_flag(.shared_f)
-		&& !node.left.is_auto_deref_var()) || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !typ.has_flag(.shared_f)) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
@@ -7578,13 +7600,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		} else {
 			// `{'age': 20}`
 			key0_type = c.table.mktyp(c.expr(node.keys[0]))
-			if node.keys[0].is_auto_deref_var() {
-				key0_type = key0_type.deref()
-			}
 			val0_type = c.table.mktyp(c.expr(node.vals[0]))
-			if node.vals[0].is_auto_deref_var() {
-				val0_type = val0_type.deref()
-			}
 		}
 		mut same_key_type := true
 		for i, key in node.keys {
@@ -8144,7 +8160,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// needed for proper error reporting during vweb route checking
 		if node.method_idx < sym.methods.len {
-			sym.methods[node.method_idx].source_fn = voidptr(node)
+			sym.methods[node.method_idx].source_fn = voidptr(unsafe { &node })
 		} else {
 			c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
 				node.pos)
@@ -8154,7 +8170,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
-			if !arg.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
+			if !(arg.typ.is_ptr() || arg.is_mut) { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.get_type_symbol(arg.typ)
 				if arg_typ_sym.kind == .struct_ {
 					info := arg_typ_sym.info as ast.Struct
@@ -8237,7 +8253,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.table.cur_fn = unsafe { node }
+	c.table.cur_fn = unsafe { &node }
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)

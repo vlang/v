@@ -73,7 +73,7 @@ fn calculate_state(seed_data []u32, mut state []u64) []u64 {
 	for j := 1; j < mt19937.nn; j++ {
 		state[j] = u64(6364136223846793005) * (state[j - 1] ^ (state[j - 1] >> 62)) + u64(j)
 	}
-	return *state
+	return state
 }
 
 // seed sets the current random state based on `seed_data`.

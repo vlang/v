@@ -501,7 +501,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(t))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -516,7 +516,7 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(t))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}

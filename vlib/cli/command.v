@@ -9,6 +9,7 @@ pub fn (f FnCommandCallback) str() string {
 
 // Command is a structured representation of a single command
 // or chain of commands.
+[heap]
 pub struct Command {
 pub mut:
 	name            string
@@ -95,7 +96,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 		println('Command with the name `$subcmd.name` already exists')
 		exit(1)
 	}
-	subcmd.parent = unsafe { cmd }
+	subcmd.parent = &cmd
 	cmd.commands << subcmd
 }
 
@@ -103,7 +104,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 // is linked as a chain.
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
-		subcmd.parent = unsafe { cmd }
+		subcmd.parent = &cmd
 		subcmd.posix_mode = cmd.posix_mode
 		subcmd.setup()
 	}
@@ -174,18 +175,15 @@ fn (mut cmd Command) parse_flags() {
 			break
 		}
 		mut found := false
-		for i in 0 .. cmd.flags.len {
-			unsafe {
-				mut flag := &cmd.flags[i]
-				if flag.matches(cmd.args, cmd.posix_mode) {
-					found = true
-					flag.found = true
-					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
-						println('Failed to parse flag `${cmd.args[0]}`: $err')
-						exit(1)
-					}
-					break
+		for mut flag in cmd.flags {
+			if flag.matches(cmd.args, cmd.posix_mode) {
+				found = true
+				flag.found = true
+				cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
+					println('Failed to parse flag `${cmd.args[0]}`: $err')
+					exit(1)
 				}
+				break
 			}
 		}
 		if !found {
@@ -227,19 +225,20 @@ fn (mut cmd Command) parse_commands() {
 	}
 	cmd.check_required_flags()
 	if !isnil(cmd.pre_execute) {
-		cmd.pre_execute(*cmd) or {
+		cmd.pre_execute(cmd) or {
 			eprintln('cli preexecution error: $err')
 			exit(1)
 		}
+		println('done')
 	}
 	if !isnil(cmd.execute) {
-		cmd.execute(*cmd) or {
+		cmd.execute(cmd) or {
 			eprintln('cli execution error: $err')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.post_execute) {
-		cmd.post_execute(*cmd) or {
+		cmd.post_execute(cmd) or {
 			eprintln('cli postexecution error: $err')
 			exit(1)
 		}

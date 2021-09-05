@@ -99,7 +99,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		if node.left is ast.Ident {
 			scope := g.file.scope.innermost(node.pos.pos)
 			if v := scope.find_var(node.left.name) {
-				if m.params[0].typ.is_ptr() && !v.typ.is_ptr() {
+				if (m.params[0].typ.is_ptr() || m.params[0].is_mut) && !v.typ.is_ptr() {
 					g.write('&')
 				}
 			}

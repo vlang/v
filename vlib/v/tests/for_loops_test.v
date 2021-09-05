@@ -70,7 +70,7 @@ fn test_for_string_in_map() {
 fn test_mut_for() {
 	mut vals := [1, 2, 3]
 	for mut val in vals {
-		(*val)++
+		val++
 	}
 	assert vals == [2, 3, 4]
 	println(vals)

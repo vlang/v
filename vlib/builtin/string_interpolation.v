@@ -644,7 +644,7 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 			}
 			// skip empty data
 			if data.fmt != 0 {
-				data.get_fmt_format(mut &res)
+				data.get_fmt_format(mut res)
 			}
 			i++
 		}

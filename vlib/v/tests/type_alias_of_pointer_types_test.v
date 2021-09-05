@@ -60,7 +60,7 @@ fn test_calling_a_function_expecting_a_mut_alias() {
 
 // do not delete this, its generated code eases comparisons with mut_alias
 fn mut_struct(mut p ZZMyStructInt) int {
-	dump(ptr_str(voidptr(p)))
+	dump(ptr_str(voidptr(&p)))
 	return 999
 }
 

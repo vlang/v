@@ -226,6 +226,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		op: op
 		left: left
 		right: right
+		ref_compat: []bool{cap: left.len}
 		comments: comments
 		end_comments: end_comments
 		pos: pos

@@ -21,14 +21,14 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.$node.name'
+		return '${int(node.receiver.typ.set_nr_muls(0))}.$node.name'
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.$node.name'
+		return '${int(node.receiver_type.set_nr_muls(0))}.$node.name'
 	}
 	return node.name
 }
@@ -66,7 +66,9 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 			cur_mod)
 		if node.rec_mut {
 			f.write_string(node.receiver.typ.share().str() + ' ')
-			styp = styp[1..] // remove &
+			if styp.starts_with('&') {
+				styp = styp[1..] // remove &
+			}
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)

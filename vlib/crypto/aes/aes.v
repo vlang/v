@@ -53,7 +53,7 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -69,7 +69,7 @@ pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
 	if dst.len < aes.block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version

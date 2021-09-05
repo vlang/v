@@ -161,7 +161,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_mut: val_is_mut
 				is_auto_deref: val_is_mut
 				is_tmp: true
-				is_stack_obj: true
+				is_stack_obj: val_is_mut
 			})
 		}
 		p.inside_for = false

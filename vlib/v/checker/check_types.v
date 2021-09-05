@@ -157,8 +157,8 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
-		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer()
-		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer()
+		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer() || exp_arg.is_mut
+		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer() || got_arg.is_mut
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
@@ -621,9 +621,6 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					func.name = ''
 					idx := c.table.find_or_register_fn_type(c.mod, func, true, false)
 					to_set = ast.new_type(idx).derive(arg.typ)
-				}
-				if arg.expr.is_auto_deref_var() {
-					to_set = to_set.deref()
 				}
 				// resolve &T &&T ...
 				if param.typ.nr_muls() > 0 && to_set.nr_muls() > 0 {

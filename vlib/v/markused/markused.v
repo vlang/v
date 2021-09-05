@@ -92,14 +92,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'20.slice2',
 		'59.get',
 		'59.set',
-		'65556.last',
-		'65556.pop',
-		'65556.push',
-		'65556.insert_many',
-		'65556.prepend_many',
-		'65556.reverse',
-		'65556.set',
-		'65556.set_unsafe',
+		'20.last',
+		'20.pop',
+		'20.push',
+		'20.insert_many',
+		'20.prepend_many',
+		'20.reverse',
+		'20.set',
+		'20.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
 		'json.decode_string',
 		'json.decode_int',
@@ -140,16 +140,16 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			'20.clone_to_depth_noscan',
 			'20.reverse_noscan',
 			'20.repeat_to_depth_noscan',
-			'65556.pop_noscan',
-			'65556.push_noscan',
-			'65556.push_many_noscan',
-			'65556.insert_noscan',
-			'65556.insert_many_noscan',
-			'65556.prepend_noscan',
-			'65556.prepend_many_noscan',
-			'65556.reverse_noscan',
-			'65556.grow_cap_noscan',
-			'65556.grow_len_noscan',
+			'20.pop_noscan',
+			'20.push_noscan',
+			'20.push_many_noscan',
+			'20.insert_noscan',
+			'20.insert_many_noscan',
+			'20.prepend_noscan',
+			'20.prepend_many_noscan',
+			'20.reverse_noscan',
+			'20.grow_cap_noscan',
+			'20.grow_len_noscan',
 		]
 	}
 
@@ -159,14 +159,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
-			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
+			method_receiver_typename = table.type_to_str(mfn.receiver.typ.set_nr_muls(0))
 		}
-		if method_receiver_typename == '&wyrand.WyRandRNG' {
+		if method_receiver_typename == 'wyrand.WyRandRNG' {
 			// WyRandRNG is the default rand pseudo random generator
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder' {
+		if method_receiver_typename == 'strings.Builder' {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
@@ -195,7 +195,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&sync.Channel' {
+		if method_receiver_typename == 'sync.Channel' {
 			all_fn_root_names << k
 			continue
 		}
@@ -242,7 +242,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
 		if benched_tests_sym := table.find_type('main.BenchedTests') {
-			bts_type := benched_tests_sym.methods[0].params[0].typ
+			bts_type := benched_tests_sym.methods[0].params[0].typ.set_nr_muls(0)
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
 			all_fn_root_names << '${bts_type}.end_testing'
@@ -260,7 +260,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			continue
 		}
 		for itype in interface_info.types {
-			pitype := itype.set_nr_muls(1)
+			pitype := itype.set_nr_muls(0)
 			mut itypes := [itype]
 			if pitype != itype {
 				itypes << pitype
@@ -287,7 +287,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			sym_app := table.get_type_symbol(vgt)
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
-					pvgt := vgt.set_nr_muls(1)
+					pvgt := vgt.set_nr_muls(0)
 					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
 					all_fn_root_names << '${int(pvgt)}.$m.name'
 				}
@@ -321,7 +321,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	}
 
 	mut walker := Walker{
-		table: table
+		table: &table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
@@ -339,10 +339,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		for k, mut mfn in all_fns {
 			mut method_receiver_typename := ''
 			if mfn.is_method {
-				method_receiver_typename = table.type_to_str(mfn.receiver.typ)
+				method_receiver_typename = table.type_to_str(mfn.receiver.typ.set_nr_muls(0))
 			}
 			if k in ['new_map', 'new_map_init', 'map_hash_string']
-				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
+				|| method_receiver_typename == 'map' || method_receiver_typename == 'DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
 			}
@@ -363,8 +363,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			if !mfn.is_method {
 				continue
 			}
-			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
-			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
+			method_receiver_typename := table.type_to_str(mfn.receiver.typ.set_nr_muls(0))
+			if method_receiver_typename in ['map', 'mapnode', 'SortedMap', 'DenseArray'] {
 				walker.used_fns.delete(k)
 			}
 		}

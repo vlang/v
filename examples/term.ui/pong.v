@@ -30,7 +30,7 @@ mut:
 
 fn (mut a App) init() {
 	a.game = &Game{
-		app: a
+		app: &a
 	}
 	w, h := a.tui.window_width, a.tui.window_height
 	a.width = w
@@ -258,7 +258,7 @@ fn (mut g Game) move_player(id int, x int, y int) {
 fn (mut g Game) init() {
 	if g.players.len == 0 {
 		g.players = []Player{len: 2, init: Player{ // <- BUG omitting the init will result in smaller racket sizes???
-			game: g
+			game: &g
 		}}
 	}
 	g.reset()

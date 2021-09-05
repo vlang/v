@@ -272,11 +272,11 @@ mut:
 fn (mut a App) new_game() {
 	mut snake := Snake{
 		body: []BodyPart{len: 1, init: BodyPart{}}
-		app: a
+		app: &a
 	}
 	snake.randomize()
 	mut rat := Rat{
-		app: a
+		app: &a
 	}
 	rat.randomize()
 	a.snake = snake

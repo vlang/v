@@ -7,7 +7,7 @@ mut:
 
 fn (mut p Player) set_name(name string) &Player {
 	p.name = name
-	return unsafe { p } // because of automatic (de)reference of return values
+	return unsafe { &p }
 }
 
 // NB: `p` is declared as a `mut` parameter,

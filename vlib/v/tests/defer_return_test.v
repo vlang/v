@@ -35,7 +35,7 @@ mut:
 }
 
 fn ret_ref(mut x Qwe) &Qwe {
-	return unsafe { x }
+	return unsafe { &x }
 }
 
 fn defer_multi_ret(mut a Qwe) (int, f64) {

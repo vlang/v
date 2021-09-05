@@ -14,7 +14,7 @@ const (
 )
 
 fn main() {
-	mut app := &App{
+	mut app := App{
 		width: 800
 		height: 400
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
@@ -23,6 +23,7 @@ fn main() {
 	app.run()
 }
 
+[heap]
 struct App {
 	pass_action C.sg_pass_action
 mut:
@@ -55,7 +56,7 @@ fn (mut a App) run() {
 	desc := C.sapp_desc{
 		width: a.width
 		height: a.height
-		user_data: a
+		user_data: &a
 		init_userdata_cb: init
 		frame_userdata_cb: frame
 		event_userdata_cb: event

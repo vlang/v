@@ -290,6 +290,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	}
 	mut nr_muls := 0
 	if p.tok.kind == .key_mut || is_shared || is_atomic {
+		if p.tok.kind == .key_mut {
+			p.error_with_pos('unexpected `mut`', p.tok.position())
+		}
 		nr_muls++
 		p.next()
 	}

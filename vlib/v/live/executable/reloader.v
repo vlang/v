@@ -95,14 +95,14 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locked')
 	//
 	if r.cb_locked_before != voidptr(0) {
-		r.cb_locked_before(r)
+		r.cb_locked_before(&r)
 	}
 	//
 	protected_load_lib(mut r, new_lib_path)
 	//
 	r.reloads_ok++
 	if r.cb_locked_after != voidptr(0) {
-		r.cb_locked_after(r)
+		r.cb_locked_after(&r)
 	}
 	//
 	elog(r, 'live mutex unlocking...')
@@ -133,7 +133,7 @@ fn reloader(mut r live.LiveReloadInfo) {
 	mut last_ts := os.file_last_mod_unix(r.original)
 	for {
 		if r.cb_recheck != voidptr(0) {
-			r.cb_recheck(r)
+			r.cb_recheck(&r)
 		}
 		now_ts := os.file_last_mod_unix(r.original)
 		if last_ts != now_ts {
@@ -141,19 +141,19 @@ fn reloader(mut r live.LiveReloadInfo) {
 			last_ts = now_ts
 			r.last_mod_ts = last_ts
 			if r.cb_before != voidptr(0) {
-				r.cb_before(r)
+				r.cb_before(&r)
 			}
 			compile_and_reload_shared_lib(mut r) or {
 				if r.cb_compile_failed != voidptr(0) {
-					r.cb_compile_failed(r)
+					r.cb_compile_failed(&r)
 				}
 				if r.cb_after != voidptr(0) {
-					r.cb_after(r)
+					r.cb_after(&r)
 				}
 				continue
 			}
 			if r.cb_after != voidptr(0) {
-				r.cb_after(r)
+				r.cb_after(&r)
 			}
 		}
 		if r.recheck_period_ms > 0 {

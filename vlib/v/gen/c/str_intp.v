@@ -122,15 +122,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 	if typ == ast.string_type {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
 			g.expr(expr)
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
 			g.expr(expr)
 		}
 	} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
@@ -147,21 +141,12 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 			} else {
 				g.write('(u64)(')
 			}
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
 			g.expr(expr)
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
 			g.expr(expr)
 		}
 	} else {
-		if expr.is_auto_deref_var() {
-			g.write('*')
-		}
 		g.expr(expr)
 	}
 }
