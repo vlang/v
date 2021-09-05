@@ -37,10 +37,13 @@ fn new_tdir() string {
 
 fn cleanup_tdir() {
 	println('... removing tdir: $tdir')
-	os.rmdir_all(tdir) or { panic(err) }
+	os.rmdir_all(tdir) or { eprintln(err) }
 }
 
 fn main() {
+	defer {
+		os.chdir(os.wd_at_startup) or {}
+	}
 	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
 	ok_fpath := os.join_path(tdir, 'single_test.v')
 	os.write_file(ok_fpath, 'fn test_ok(){ assert true }') ?
