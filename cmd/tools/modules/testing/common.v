@@ -266,8 +266,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_item<string>(idx)
-	mut relative_file := os.real_path(dot_relative_file)
+	mut relative_file := os.real_path(p.get_item<string>(idx))
 	mut cmd_options := [ts.vargs]
 	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
 		cmd_options << ' -enable-globals'
