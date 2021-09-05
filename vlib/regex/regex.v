@@ -1690,7 +1690,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 		// we're out of text, manage it
 		if state.i >= in_txt_len || m_state == .new_line {
-			// println("Finished text!!")
+			//println("Finished text!!")
 			src_end = true
 
 			// manage groups
@@ -1748,7 +1748,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 			// program end
 			if ist == regex.ist_prog_end {
-				// println("Program end on end of text!")
+				//println("Program end on end of text!")
 				return state.first_match, state.i
 			}
 
@@ -1768,6 +1768,16 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 			// m_state = .end
 			// break
+
+			// no groups open, check the last token quantifier
+			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min && re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
+					//println("We are in good repetition")
+					return state.first_match, state.i
+				}
+			}
+			
+			//print("No good exit!!")
 			return regex.no_match_found, 0
 		}
 
@@ -2062,7 +2072,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			else if ist == regex.ist_bsls_char {
 				state.match_flag = false
 				tmp_res := re.prog[state.pc].validator(byte(ch))
-				// println("BSLS in_ch: ${ch:c} res: $tmp_res")
+				//println("BSLS in_ch: ${ch:c} res: $tmp_res")
 				if tmp_res {
 					state.match_flag = true
 					l_ist = u32(regex.ist_bsls_char)
@@ -2268,22 +2278,24 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 		// ist_quant_p => quantifier positive test on token
 		else if m_state == .ist_quant_p {
+			//println("Here .ist_quant_p")
 			// exit on first match
 			if (re.flag & regex.f_efm) != 0 {
 				return state.i, state.i + 1
 			}
 
 			rep := re.prog[state.pc].rep
+			//println(rep)
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {
-				// println("ist_quant_p UNDER RANGE")
+				//println("ist_quant_p UNDER RANGE")
 				m_state = .ist_load // continue the loop
 				continue
 			}
 			// range ok, continue loop
 			else if rep >= re.prog[state.pc].rep_min && rep < re.prog[state.pc].rep_max {
-				// println("ist_quant_p IN RANGE")
+				//println("ist_quant_p IN RANGE")
 
 				// check greedy flag, if true exit on minimum
 				if re.prog[state.pc].greedy == true {

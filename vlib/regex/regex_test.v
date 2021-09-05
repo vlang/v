@@ -155,6 +155,10 @@ match_test_suite = [
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
 
+    // backslash on finish string
+    TestItem{"a", r"\S+",0,1},
+    TestItem{"aaaa", r"\S+",0,4},
+    TestItem{"aaaa ", r"\S+",0,4},
 ]
 )
 
