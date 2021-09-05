@@ -10,7 +10,7 @@ import strings
 
 const tmpl_str_start = "sb.write_string('"
 
-const tmpl_str_end = "' ) "
+const tmpl_str_end = "')\n"
 
 enum State {
 	html
@@ -224,10 +224,8 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			source.writeln(line.replace_each([r'@', r'$', r'$$', r'@', r'.$', r'.@', r"'",
-				"')\nsb.write_b(`'`)\nsb.write_string('", '\\',
-				"')\nsb.write_b(92)\nsb.write_string('",
-			]))
+			source.writeln(line.replace_each([r'@', r'$', r'$$', r'@', r'.$', r'.@', r"'", r"\'",
+				'\\', parser.tmpl_str_end + 'sb.write_b(92)\n' + parser.tmpl_str_start]))
 		}
 	}
 	source.writeln(parser.tmpl_str_end)
