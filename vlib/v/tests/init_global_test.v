@@ -121,6 +121,7 @@ fn test_global_shared() {
 	}
 	sem.post()
 	t.wait()
+	eprintln('> a: $a | b: $b')
 	assert (a == 13.75 && b == -35.125) || (a == -35.125 && b == 13.75)
 }
 
@@ -170,5 +171,6 @@ fn test_global_mutex() {
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
 	n := t.wait()
+	eprintln('> n: $n | f1: $f1 | $f2: $f2')
 	assert n > 0
 }
