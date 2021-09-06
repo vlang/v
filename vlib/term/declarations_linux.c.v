@@ -6,6 +6,6 @@ mut:
 	c_oflag int
 	c_cflag int
 	c_lflag int
-	c_line  byte
-	c_cc    [10]int
+	//	c_line  byte
+	c_cc [10]int
 }
