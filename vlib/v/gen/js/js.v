@@ -135,10 +135,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new builtin.int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new builtin.int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new builtin.int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 		if g.is_test && !tests_inited {
@@ -804,7 +804,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_type_cast_expr(node)
 		}
 		ast.CharLiteral {
-			g.write("new builtin.byte('$node.val')")
+			g.write("new byte('$node.val')")
 		}
 		ast.Comment {}
 		ast.ConcatExpr {
@@ -971,9 +971,9 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	src := node.expr.str()
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
 	g.writeln('let $metaname = {}')
-	g.writeln('${metaname}.fpath = new builtin.string("$mod_path");')
-	g.writeln('${metaname}.line_nr = new builtin.int("$line_nr")')
-	g.writeln('${metaname}.fn_name = new builtin.string("$fn_name")')
+	g.writeln('${metaname}.fpath = new string("$mod_path");')
+	g.writeln('${metaname}.line_nr = new int("$line_nr")')
+	g.writeln('${metaname}.fn_name = new string("$fn_name")')
 	metasrc := src
 	g.writeln('${metaname}.src = "$metasrc"')
 
@@ -982,18 +982,18 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 			expr_op_str := node.expr.op.str()
 			expr_left_str := node.expr.left.str()
 			expr_right_str := node.expr.right.str()
-			g.writeln('\t${metaname}.op = new builtin.string("$expr_op_str");')
-			g.writeln('\t${metaname}.llabel = new builtin.string("$expr_left_str");')
-			g.writeln('\t${metaname}.rlabel = new builtin.string("$expr_right_str");')
-			g.write('\t${metaname}.lvalue = new builtin.string("')
+			g.writeln('\t${metaname}.op = new string("$expr_op_str");')
+			g.writeln('\t${metaname}.llabel = new string("$expr_left_str");')
+			g.writeln('\t${metaname}.rlabel = new string("$expr_right_str");')
+			g.write('\t${metaname}.lvalue = new string("')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln('");')
-			g.write('\t${metaname}.rvalue = new builtin.string("')
+			g.write('\t${metaname}.rvalue = new string("')
 			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
 			g.writeln('");')
 		}
 		ast.CallExpr {
-			g.writeln('\t${metaname}.op = new builtin.string("call");')
+			g.writeln('\t${metaname}.op = new string("call");')
 		}
 		else {}
 	}
@@ -1583,7 +1583,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.write('; $i < ')
 		g.expr(it.high)
-		g.writeln('; $i = new builtin.int($i + 1)) {')
+		g.writeln('; $i = new int($i + 1)) {')
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -1705,7 +1705,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 }
 
 fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
-	g.write('new builtin.Option({ state:  new builtin.byte(2),err: ')
+	g.write('new Option({ state:  new byte(2),err: ')
 	g.expr(expr)
 	g.write('})')
 }
@@ -2410,11 +2410,12 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
+		g.write('array_slice(')
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')
 		}
-		g.write('.slice(')
+		g.write(',')
 		if expr.index.has_low {
 			g.expr(expr.index.low)
 		} else {
@@ -2530,7 +2531,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('.valueOf()')
 		g.write(')')
 	} else if it.op == .eq || it.op == .ne {
-		has_operator_overloading := g.table.type_has_method(l_sym, '==')
+		/*has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
 			g.expr(it.left)
 			g.gen_deref_ptr(it.left_type)
@@ -2559,7 +2560,33 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.expr(it.right)
 			g.gen_deref_ptr(it.right_type)
 			g.write(')')
+		}*/
+		node := it
+		left := g.unwrap(node.left_type)
+		right := g.unwrap(node.right_type)
+		has_operator_overloading := g.table.type_has_method(left.sym, '==')
+		if has_operator_overloading || (l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables){
+			if node.op == .ne {
+				g.write('!')
+			}
+			g.write(g.typ(left.unaliased.set_nr_muls(0)))
+			g.write('__eq(')
+			g.expr(node.left)
+			g.gen_deref_ptr(left.typ)
+			g.write(',')
+			g.expr(node.right)
+			g.gen_deref_ptr(right.typ)
+			g.write(')')
+		} else {
+			g.write('vEq(')
+			g.expr(it.left)
+			g.gen_deref_ptr(it.left_type)
+			g.write(', ')
+			g.expr(it.right)
+			g.gen_deref_ptr(it.right_type)
+			g.write(')')
 		}
+
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
@@ -2784,7 +2811,7 @@ fn (mut g JsGen) type_name(raw_type ast.Type) {
 	} else {
 		s = g.table.type_to_str(g.unwrap_generic(typ))
 	}
-	g.write('new builtin.string("$s")')
+	g.write('new string("$s")')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
@@ -2796,7 +2823,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 				return
 			}
 			.typ {
-				g.write('new builtin.int(')
+				g.write('new int(')
 
 				g.write('${int(g.unwrap_generic(it.name_type))}')
 				g.write(')')
@@ -2808,7 +2835,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 					g.type_name(it.name_type)
 					return
 				} else if node.field_name == 'idx' {
-					g.write('new builtin.int(')
+					g.write('new int(')
 					g.write('${int(g.unwrap_generic(it.name_type))}')
 					g.write(')')
 					return
@@ -3074,3 +3101,4 @@ fn replace_op(s string) string {
 		else { '' }
 	}
 }
+

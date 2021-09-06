@@ -96,20 +96,18 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 
 		if final_left_sym.kind == .array {
 			if it.name in special_array_methods {
-				g.expr(it.left)
-				mut ltyp := it.left_type
-				for ltyp.is_ptr() {
-					g.write('.val')
-					ltyp = ltyp.deref()
-				}
-				g.write('.')
-
 				g.gen_array_method_call(it)
 				return
 			}
 		}
 	}
-
+	if final_left_sym.kind == .array
+		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+			// `array_Xyz_clone` => `array_clone`
+			receiver_type_name = 'array'
+		}
+	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
 
 	name = g.generic_fn_name(node.concrete_types, name, false)

@@ -55,7 +55,7 @@ pub fn chown(path string, owner int, group int) {
 pub fn temp_dir() string {
 	mut res := ''
 	$if js_node {
-		#res = new builtin.string($os.tmpdir())
+		#res = new string($os.tmpdir())
 	}
 	return res
 }
@@ -63,7 +63,7 @@ pub fn temp_dir() string {
 pub fn home_dir() string {
 	mut res := ''
 	$if js_node {
-		#res = new builtin.string($os.homedir())
+		#res = new string($os.homedir())
 	}
 	return res
 }
@@ -87,8 +87,8 @@ pub fn execute(cmd string) Result {
 	mut stdout := ''
 	#let commands = cmd.str.split(' ');
 	#let output = $child_process.spawnSync(commands[0],commands.slice(1,commands.length));
-	#exit_code = new builtin.int(output.status)
-	#stdout = new builtin.string(output.stdout + '')
+	#exit_code = new int(output.status)
+	#stdout = newstring(output.stdout + '')
 
 	return Result{
 		exit_code: exit_code

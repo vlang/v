@@ -119,7 +119,7 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 
 pub fn (mut a array) join(separator string) string {
 	mut res := ''
-	#res = new builtin.string(a.val.arr.join(separator +''));
+	#res = new string(a.val.arr.join(separator +''));
 
 	return res
 }
@@ -130,14 +130,14 @@ fn (a array) push(val voidptr) {
 
 pub fn (a array) str() string {
 	mut res := ''
-	#res = new builtin.string(a + '')
+	#res = new string(a + '')
 
 	return res
 }
 
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { let result = []; for (const [key,val] of this.arr.entries()) { result.push([new int(key), val]); } return result[Symbol.iterator](); }
-#array.prototype.map = function(callback) { return new builtin.array(this.arr.map(callback)); }
+#array.prototype.map = function(callback) { return new array(this.arr.map(callback)); }
 #array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
 #array.prototype.any = function (value) {

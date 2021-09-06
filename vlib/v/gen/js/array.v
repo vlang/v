@@ -12,6 +12,7 @@ const (
 
 fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 	node := it
+	g.write('array_')
 	match node.name {
 		'insert' {
 			arg2_sym := g.table.get_type_symbol(node.args[1].typ)
@@ -21,7 +22,13 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 			} else {
 				g.write('insert(')
 			}
-
+			g.expr(it.left)
+			mut ltyp := it.left_type
+			for ltyp.is_ptr() {
+				g.write('.val')
+				ltyp = ltyp.deref()
+			}
+			g.write(',')
 			g.expr(node.args[0].expr)
 			g.write(',')
 			if is_arg2_array {
@@ -43,8 +50,14 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 			} else {
 				g.write('prepend(')
 			}
-
-			if is_arg_array {
+			g.expr(it.left)
+			mut ltyp := it.left_type
+			for ltyp.is_ptr() {
+				g.write('.val')
+				ltyp = ltyp.deref()
+			}
+			g.write(',')
+			if is_arg_array {	
 				g.expr(node.args[0].expr)
 				g.write('.arr, ')
 				g.expr(node.args[0].expr)
@@ -67,9 +80,24 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 			// `users.sort(a.age > b.age)`
 
 			if node.args.len == 0 {
-				g.write('sort()')
+				g.write('_sort(')
+				g.expr(it.left)
+				mut ltyp := it.left_type
+				for ltyp.is_ptr() {
+					g.write('.val')
+					ltyp = ltyp.deref()
+				}
+			
+				g.write(')')
 				return
 			} else {
+				g.expr(it.left)
+				mut ltyp := it.left_type
+				for ltyp.is_ptr() {
+					g.write('.val')
+					ltyp = ltyp.deref()
+				}
+				g.write('.')
 				infix_expr := node.args[0].expr as ast.InfixExpr
 				left_name := infix_expr.left.str()
 				is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)

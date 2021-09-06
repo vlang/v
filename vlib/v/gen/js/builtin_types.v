@@ -113,9 +113,22 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 	}
 	return styp
 }
+pub fn (mut g JsGen) base_type(t ast.Type) string {
+	mut styp := g.cc_type(t,true)
+	return styp
+}
+
+pub fn (mut g JsGen) typ(t ast.Type) string {
+	sym := g.table.get_type_symbol(t)
+	if sym.kind == .voidptr {
+		return 'any'
+	}
+	styp := g.base_type(t)
+	return styp
+}
 
 // V type to JS type
-pub fn (mut g JsGen) typ(t ast.Type) string {
+pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
 	match sym.kind {
@@ -413,6 +426,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					to_jsval: 'this.val.\$toJS()'
 				)
 			}
+			
 			else {}
 		}
 	}

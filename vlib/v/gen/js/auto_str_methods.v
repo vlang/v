@@ -410,9 +410,9 @@ fn styp_to_str_fn_name(styp string) string {
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
 	if str_method_expects_ptr != is_elem_ptr {
 		if is_elem_ptr {
-			return '*'.repeat(typ.nr_muls()), '&'.repeat(typ.nr_muls())
+			return '.val'.repeat(typ.nr_muls()), 'new \$ref('.repeat(typ.nr_muls())
 		} else {
-			return '&', ''
+			return 'new \$ref', ''
 		}
 	}
 	return '', ''
@@ -433,32 +433,24 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		elem_str_fn_name = elem_str_fn_name + '_escaped'
 	}
 
-	g.definitions.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
-	g.definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
-	g.definitions.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
+	g.definitions.writeln('function ${str_fn_name}(a) { return indent_${str_fn_name}(a, 0);}')
+	g.definitions.writeln('function indent_${str_fn_name}(a, indent_count) {')
+	g.definitions.writeln('\tlet sb = strings__new_builder(a.len * 10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("["));')
-	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+	g.definitions.writeln('\tfor (let i = 0; i < a.len; ++i) {')
 	if sym.kind == .function {
-		g.definitions.writeln('\t\tstring x = ${elem_str_fn_name}();')
+		g.definitions.writeln('\t\tlet x = ${elem_str_fn_name}();')
 	} else {
-		if sym.kind == .array_fixed {
-			g.definitions.writeln('\t\t$field_styp it;')
-			g.definitions.writeln('\t\tmemcpy(*($field_styp*)it, (byte*)array_get(a, i), sizeof($field_styp));')
-		} else {
-			g.definitions.writeln('\t\t$field_styp it = *($field_styp*)array_get(a, i);')
-		}
+		g.definitions.writeln('\t\tlet it = a.arr[i];')
+		
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
-				g.definitions.writeln('\t\tstring x = indent_${elem_str_fn_name}(*it, indent_count);')
+				g.definitions.writeln('\t\tlet x = indent_${elem_str_fn_name}(it.val, indent_count);')
 			} else {
-				g.definitions.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
+				g.definitions.writeln('\t\tlet x = indent_${elem_str_fn_name}(it, indent_count);')
 			}
 		} else if sym.kind in [.f32, .f64] {
-			if sym.kind == .f32 {
-				g.definitions.writeln('\t\tstring x = ${str_intp_g32('it')};')
-			} else {
-				g.definitions.writeln('\t\tstring x = ${str_intp_g64('it')};')
-			}
+			g.definitions.writeln('\t\tlet x = new string( it.val + "");')
 		} else if sym.kind == .rune {
 			// Rune are managed at this level as strings
 			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
@@ -470,7 +462,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 			// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-			g.definitions.writeln('\t\tstring x = ${elem_str_fn_name}( $deref it);')
+			g.definitions.writeln('\t\tlet x = ${elem_str_fn_name}( $deref it);')
 		}
 	}
 	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, x);')
@@ -480,8 +472,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 	g.definitions.writeln('\t\t}')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("]"));')
-	g.definitions.writeln('\tstring res = strings__Builder_str(sb);')
-	g.definitions.writeln('\tstrings__Builder_free(sb);')
+	g.definitions.writeln('\tlet res = strings__Builder_str(sb);')
 	g.definitions.writeln('\treturn res;')
 	g.definitions.writeln('}')
 }
@@ -497,12 +488,12 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.gen_str_for_type(typ)
 
-	g.definitions.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
+	g.definitions.writeln('function ${str_fn_name}(a) { return indent_${str_fn_name}(a, 0);}')
 
-	g.definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
-	g.definitions.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
+	g.definitions.writeln('function indent_${str_fn_name}(a, indent_count) {')
+	g.definitions.writeln('\tlet sb = strings__new_builder($info.size * 10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("["));')
-	g.definitions.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
+	g.definitions.writeln('\tfor (let i = 0; i < $info.size; ++i) {')
 	if sym.kind == .function {
 		g.definitions.writeln('\t\tstring x = ${elem_str_fn_name}();')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, x);')
@@ -511,27 +502,25 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
 				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-				g.definitions.writeln('\t\tif ( 0 == a[i] ) {')
+				g.definitions.writeln('\t\tif ( 0 == a.arr[i] ) {')
 				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, new string("0"));')
 				g.definitions.writeln('\t\t}else{')
-				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}( $deref a[i]) );')
+				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i] $deref) );')
 				g.definitions.writeln('\t\t}')
 			} else {
-				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}( $deref a[i]) );')
+				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i]) );')
 			}
 		} else if sym.kind in [.f32, .f64] {
-			if sym.kind == .f32 {
-				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_g32('a[i]')} );')
-			} else {
-				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_g64('a[i]')} );')
-			}
+			
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(a.arr[i].val.toString()) );')
+			
 		} else if sym.kind == .string {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_sq('a[i]')});')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr[i].str);')
 		} else if sym.kind == .rune {
-			tmp_str := str_intp_rune('${elem_str_fn_name}(  $deref a[i])')
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+			//tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
+			//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 		} else {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}( $deref a[i]));')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a[i] $deref));')
 		}
 	}
 	g.definitions.writeln('\t\tif (i < ${info.size - 1}) {')
@@ -539,8 +528,7 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 	g.definitions.writeln('\t\t}')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("]"));')
-	g.definitions.writeln('\tstring res = strings__Builder_str(sb);')
-	g.definitions.writeln('\tstrings__Builder_free(sb);')
+	g.definitions.writeln('\tlet res = strings__Builder_str(sb);')
 	g.definitions.writeln('\treturn res;')
 	g.definitions.writeln('}')
 }
@@ -570,24 +558,19 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		g.gen_str_for_type(val_typ)
 	}
 
-	g.definitions.writeln('static string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
+	g.definitions.writeln('function ${str_fn_name}(m) { return indent_${str_fn_name}(m, 0);}')
 
-	g.definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
-	g.definitions.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
+	g.definitions.writeln('function indent_${str_fn_name}(m, indent_count) { /* gen_str_for_map */')
+	g.definitions.writeln('\tlet sb = strings__new_builder(m.map.length*10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("{"));')
-	g.definitions.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
-	g.definitions.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
-
+	g.definitions.writeln('\tlet i = 0;')
+	g.definitions.writeln('\tfor (let [key,value] of m.map) {')
+	
 	if key_sym.kind == .string {
-		g.definitions.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
-	} else {
-		g.definitions.writeln('\t\t$key_styp key = *($key_styp*)DenseArray_key(&m.key_values, i);')
-	}
-	if key_sym.kind == .string {
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_sq('key')});')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, key);')
 	} else if key_sym.kind == .rune {
-		tmp_str := str_intp_rune('${key_str_fn_name}(key)')
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		//tmp_str := str_intp_rune('${key_str_fn_name}(key)')
+		//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${key_str_fn_name}(key));')
 	}
@@ -595,31 +578,28 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	if val_sym.kind == .function {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
-		tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		//tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value);')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		ptr_str := '*'.repeat(val_typ.nr_muls())
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(*${ptr_str}($val_styp*)DenseArray_value(&m.key_values, i), indent_count));')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
-		tmp_val := '*($val_styp*)DenseArray_value(&m.key_values, i)'
-		if val_sym.kind == .f32 {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_g32(tmp_val)});')
-		} else {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${str_intp_g64(tmp_val)});')
-		}
+		
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value.val + "");')
+		
 	} else if val_sym.kind == .rune {
-		tmp_str := str_intp_rune('${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))')
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+	//	tmp_str := str_intp_rune('${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))')
+	//	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 	} else {
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i)));')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(value));')
 	}
-	g.definitions.writeln('\t\tif (i != m.key_values.len-1) {')
+	g.definitions.writeln('\t\tif (i != m.map.size-1) {')
 	g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, new string(", "));')
 	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t\ti++;')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("}"));')
-	g.definitions.writeln('\tstring res = strings__Builder_str(sb);')
-	g.definitions.writeln('\tstrings__Builder_free(sb);')
+	g.definitions.writeln('\tlet res = strings__Builder_str(sb);')
 	g.definitions.writeln('\treturn res;')
 	g.definitions.writeln('}')
 }
