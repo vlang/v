@@ -193,16 +193,16 @@ mut sb := strings.new_builder($lstartlength)\n
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			source.writeln(parser.tmpl_str_start)
-		} else if state == .html && line.contains('span.') && line.ends_with('{') {
+		} else if state == .html && line.starts_with('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
 			source.writeln('<span class="$class">')
 			in_span = true
-		} else if state == .html && line.contains('.') && line.ends_with('{') {
+		} else if state == .html && line.starts_with('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
 			source.writeln('<div class="$class">')
-		} else if state == .html && line.contains('#') && line.ends_with('{') {
+		} else if state == .html && line.starts_with('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
 			source.writeln('<div id="$class">')
