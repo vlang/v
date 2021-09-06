@@ -44,3 +44,8 @@ pub fn (i any) str() string {
 	return res
 }
 
+pub fn (i int_literal) str() string {
+	res := ''
+	# res.str = i.val.toString()
+	return res
+}

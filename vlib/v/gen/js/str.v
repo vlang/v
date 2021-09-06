@@ -28,9 +28,9 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.string_type {
 		g.expr(expr)
 	} else if typ == ast.bool_type {
-		g.write('new string(')
+		g.write('new string((')
 		g.expr(expr)
-		g.write('.val ? "true" : "false")')
+		g.write(').valueOf() ? "true" : "false")')
 	} else if sym.kind == .none_ {
 		g.write('new string("<none>")')
 	} else if sym.kind == .enum_ {

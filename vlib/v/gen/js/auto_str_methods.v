@@ -220,8 +220,6 @@ fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name strin
 
 fn (mut g JsGen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
 	parent_str_fn_name := g.gen_str_for_type(info.parent_type)
-	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
-
 	g.definitions.writeln('function ${str_fn_name}(it) { return indent_${str_fn_name}(it, 0); }')
 
 	g.definitions.writeln('function indent_${str_fn_name}(it, indent_count) {')
@@ -298,7 +296,7 @@ fn (mut g JsGen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string
 			} else if info.is_multi_allowed {
 				seen << val
 			}
-			g.definitions.writeln('\t\tcase ${s}__$val: return new string("$val");')
+			g.definitions.writeln('\t\tcase ${s}.$val: return new string("$val");')
 		}
 		g.definitions.writeln('\t\tdefault: return new string("unknown enum value");')
 		g.definitions.writeln('\t}')
@@ -339,6 +337,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 				val += ', indent_count'
 			}
 			val += ')'
+			val = val
 			res := '"TODO"'
 			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			fn_builder.write_string(' return $res;')
@@ -348,6 +347,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 				val += ', indent_count'
 			}
 			val += ')'
+			val = val
 			res := '"TODO'
 			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			fn_builder.write_string(' return $res;\n')
@@ -425,7 +425,6 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		typ = sym.info.parent_type
 		sym = g.table.get_type_symbol(typ)
 	}
-	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := g.gen_str_for_type(typ)
@@ -439,7 +438,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("["));')
 	g.definitions.writeln('\tfor (let i = 0; i < a.len; ++i) {')
 	if sym.kind == .function {
-		g.definitions.writeln('\t\tlet x = ${elem_str_fn_name}();')
+		g.definitions.writeln('\t\tlet it = ${elem_str_fn_name}();')
 	} else {
 		g.definitions.writeln('\t\tlet it = a.arr[i];')
 		
@@ -455,6 +454,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 			// Rune are managed at this level as strings
 			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
 		} else if sym.kind == .string {
+			g.definitions.writeln('\t\tlet x = new string(it);')
 			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\'"), $c.si_s_code, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
 		} else {
 			// There is a custom .str() method, so use it.
@@ -520,7 +520,7 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 			//tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
 			//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 		} else {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a[i] $deref));')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i] $deref));')
 		}
 	}
 	g.definitions.writeln('\t\tif (i < ${info.size - 1}) {')
@@ -567,7 +567,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('\tfor (let [key,value] of m.map) {')
 	
 	if key_sym.kind == .string {
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, key);')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(key));')
 	} else if key_sym.kind == .rune {
 		//tmp_str := str_intp_rune('${key_str_fn_name}(key)')
 		//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
@@ -581,7 +581,6 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		//tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value);')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
-		ptr_str := '*'.repeat(val_typ.nr_muls())
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		
@@ -674,8 +673,6 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
-		base_fmt := g.type_to_fmt1(g.unwrap_generic(field.typ))
-
 		// manage prefix and quote symbol for the filed
 		mut quote_str := ''
 		mut prefix := ''
@@ -686,7 +683,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			quote_str = '\\"'
 			prefix = 'C'
 		}
-
+		quote_str = quote_str
 		// first fields doesn't need \n
 		if i == 0 {
 			fn_builder.write_string('res.str += "    $field.name: $ptr_amp$prefix" + ')

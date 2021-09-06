@@ -39,7 +39,6 @@ struct SourcemapHelper {
 struct Namespace {
 	name string
 mut:
-	out              strings.Builder = strings.new_builder(128)
 	pub_vars         []string
 	imports          map[string]string
 	indent           int
@@ -80,6 +79,7 @@ mut:
 	sourcemap             sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 	comptime_var_type_map map[string]ast.Type
 	defer_ifdef           string
+	out 				  strings.Builder = strings.new_builder(128)
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -112,7 +112,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.sourcemap = sg.add_map('', '', g.pref.sourcemap_src_included, 0, 0)
 	}
 	mut tests_inited := false
-
+	
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -121,16 +121,19 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
 	}
-
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
+		if g.enable_doc {
+			g.writeln('/** @namespace $file.mod.name */')
+		}
 		g.is_test = g.pref.is_test
 		// store imports
 		mut imports := []string{}
 		for imp in g.file.imports {
 			imports << imp.mod
 		}
+		
 		graph.add(g.file.mod.name, imports)
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
@@ -156,7 +159,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	deps_resolved := graph.resolve()
 	nodes := deps_resolved.nodes
 
-	mut out := g.hashes() + g.definitions.str()
+	mut out := g.definitions.str() + g.hashes() 
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -164,7 +167,16 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	//	out += eq_fn.data().vstring()
 	//}
 	out += fast_deep_eq_fn
-	for node in nodes {
+	
+	if pref.is_shared {
+		// Export, through CommonJS, the module of the entry file if `-shared` was passed
+		export := nodes[nodes.len - 1].name
+		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
+	}
+	out += '\n'
+	out += g.out.str()
+
+	/*for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
@@ -172,14 +184,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// out += 'const $name = (function ('
 		mut namespace := g.namespaces[node.name]
 
-		namespace_code := namespace.out.str()
+		
 		if g.pref.sourcemap {
 			// calculate current output start line
 			mut current_line := u32(out.count('\n') + 1)
 			mut sm_pos := u32(0)
 			for sourcemap_ns_entry in namespace.sourcemap_helper {
 				// calculate final generated location in output based on position
-				current_segment := namespace_code.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
+				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
 				current_column := if last_nl_pos := current_segment.last_index('\n') {
 					u32(current_segment.len - last_nl_pos - 1)
@@ -193,17 +205,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				sm_pos = sourcemap_ns_entry.ns_pos
 			}
 		}
-		out += namespace_code
+		
 
 		// public scope
 		out += '\n'
-	}
-	if pref.is_shared {
-		// Export, through CommonJS, the module of the entry file if `-shared` was passed
-		export := nodes[nodes.len - 1].name
-		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
-	}
-	out += '\n'
+	}*/
 	if g.pref.sourcemap {
 		out += g.create_sourcemap()
 	}
@@ -371,7 +377,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write_string(util.tabs(g.ns.indent))
+		g.out.write_string(util.tabs(g.ns.indent))
 	}
 	g.empty_line = false
 }
@@ -392,7 +398,7 @@ pub fn (mut g JsGen) write(s string) {
 		verror('g.write: not in a namespace')
 	}
 	g.gen_indent()
-	g.ns.out.write_string(s)
+	g.out.write_string(s)
 }
 
 [inline]
@@ -401,7 +407,7 @@ pub fn (mut g JsGen) writeln(s string) {
 		verror('g.writeln: not in a namespace')
 	}
 	g.gen_indent()
-	g.ns.out.writeln(s)
+	g.out.writeln(s)
 	g.empty_line = true
 }
 
@@ -487,7 +493,14 @@ fn (mut g JsGen) js_name(name_ string) string {
 		}
 	}
 	return parts.join('.')*/
-	name := name_.replace('.', '__')
+	mut is_js := false
+	mut name := name_
+	if name.starts_with('JS.') {
+		name = name[3..]
+		is_js = true
+		return name
+	}
+	name = name_.replace('.', '__')
 	if name in js.js_reserved {
 		return '_v_$name'
 	}
@@ -509,11 +522,11 @@ fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
 		g.ns.sourcemap_helper << SourcemapHelper{
 			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
 			src_line: u32(pos.line_nr + 1)
-			ns_pos: u32(g.ns.out.len)
+			ns_pos: u32(g.out.len)
 		}
 	}
 	if g.pref.is_vlines && g.is_vlines_enabled {
-		g.write(' /* ${pos.line_nr + 1} $g.ns.out.len */ ')
+		g.write(' /* ${pos.line_nr + 1} $g.out.len */ ')
 	}
 }
 
@@ -557,7 +570,7 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 }
 
 fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
-	g.stmt_start_pos = g.ns.out.len
+	g.stmt_start_pos = g.out.len
 	match node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
@@ -660,7 +673,7 @@ fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 }
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
-	g.stmt_start_pos = g.ns.out.len
+	g.stmt_start_pos = g.out.len
 	match node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
@@ -846,7 +859,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_map_init_expr(node)
 		}
 		ast.None {
-			g.write('builtin.none__')
+			g.write('none__')
 		}
 		ast.MatchExpr {
 			g.match_expr(node)
@@ -1040,14 +1053,14 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_fails++;')
 		g.writeln('	cb_assertion_failed($metaname_fail);')
-		g.writeln('	builtin.exit(1);')
+		g.writeln('	exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
-	g.writeln('builtin.exit(1);')
+	g.writeln('eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('exit(1);')
 	g.dec_indent()
 	g.writeln('}')
 }
@@ -1290,10 +1303,13 @@ fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	res := g.fn_gen_type(it)
-	if res == .struct_method {
-		// Struct methods are handled by class generation code.
+	if it.language == .js {
 		return
 	}
+	/*if res == .struct_method {
+		// Struct methods are handled by class generation code.
+		return
+	}*/
 	if g.inside_builtin {
 		g.builtin_fns << it.name
 	}
@@ -1439,7 +1455,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		sym := g.table.get_final_type_symbol(it.params[0].typ.set_nr_muls(0))
 		name := g.js_name(sym.name)
 		if name in js.v_types {
-			g.writeln('builtin.')
+			g.writeln('')
 		}
 		g.writeln('${name}.prototype.$it.name = function ')
 	}
@@ -1665,15 +1681,12 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
 	// TODO Handle joinable expressions
 	// node.is_expr
-	mut name := node.call_expr.name
+	mut name := g.js_name(node.call_expr.name)
 	if node.call_expr.is_method {
 		receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
 		name = receiver_sym.name + '.' + name
 	}
-	// todo: please add a name feild without the mod name for ast.CallExpr
-	if name.starts_with('${node.call_expr.mod}.') {
-		name = name[node.call_expr.mod.len + 1..]
-	}
+
 	g.writeln('await new Promise(function(resolve){')
 	g.inc_indent()
 	g.write('${name}(')
@@ -1837,9 +1850,9 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('};\n')
 	g.dec_indent()
 
-	for cfn in fns {
+	/*for cfn in fns {
 		g.gen_method_decl(cfn, .struct_method)
-	}
+	}*/
 
 	if node.is_pub {
 		g.push_pub_var(name)
@@ -2164,7 +2177,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 						g.expr(stmt.expr)
 						g.writeln(';')
 					} else {
-						g.write('builtin.opt_ok(')
+						g.write('opt_ok(')
 						g.stmt(stmt)
 						g.writeln(', $tmp_var);')
 					}
@@ -2410,7 +2423,11 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		g.write('array_slice(')
+		if left_typ.kind == .array {
+			g.write('array_slice(')
+		} else {
+			g.write('string_slice(')
+		}
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')
@@ -2429,7 +2446,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			if expr.left_type.is_ptr() {
 				g.write('.valueOf()')
 			}
-			g.write('.length')
+			g.write('.len')
 		}
 		g.write(')')
 	} else if left_typ.kind == .map {
@@ -2523,7 +2540,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		return
 	}
 	if it.op == .logical_or || it.op == .and {
-		g.write('bool(')
+		g.write('new bool(')
 		g.expr(it.left)
 		g.write('.valueOf()')
 		g.write(it.op.str())
@@ -2696,6 +2713,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 
 			g.expr(it.left)
+			
 			g.gen_deref_ptr(it.left_type)
 			// g.write('.val')
 			g.write(' $it.op ')

@@ -322,7 +322,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.val = Number(val)'
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
-					eq: 'self.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: '+this'
 				)
 			}
@@ -334,7 +334,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
 					value_of: 'this.val'
 					to_string: 'this.val.toString()'
-					eq: 'self.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: 'this.val'
 				)
 			}
@@ -345,7 +345,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
 					value_of: 'this.val'
 					to_string: 'this.val.toString()'
-					eq: 'self.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: 'this.val'
 				)
 			}
@@ -356,7 +356,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
 					value_of: 'this.val | 0'
 					to_string: 'new string(this.val + "")'
-					eq: 'self.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: '+this'
 				)
 			}
@@ -374,7 +374,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
 					to_jsval: '+this != 0'
-					eq: 'self.val === other.valueOf()'
+					eq: 'new bool(self.val === other.valueOf())'
 				)
 			}
 			'string' {
@@ -385,7 +385,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.str = str.toString(); this.len = this.str.length'
 					value_of: 'this.str'
 					to_string: 'this.str'
-					eq: 'self.str === other.str'
+					eq: 'new bool(self.str === other.str)'
 					has_strfn: false
 					to_jsval: 'this.str'
 				)
@@ -398,7 +398,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.map = map'
 					value_of: 'this'
 					to_string: 'this.map.toString()'
-					eq: 'vEq(self, other)'
+					eq: 'new bool(vEq(self, other))'
 					to_jsval: 'this.map'
 				)
 			}
@@ -410,7 +410,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.arr = arr'
 					value_of: 'this'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
-					eq: 'vEq(self, other)'
+					eq: 'new bool(vEq(self, other))'
 					to_jsval: 'this.arr'
 				)
 			}
@@ -422,7 +422,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.val = any'
 					value_of: 'this.val'
 					to_string: '"&" + this.val'
-					eq: 'self == other' // compare by ptr
+					eq: 'new bool(self == other)' // compare by ptr
 					to_jsval: 'this.val.\$toJS()'
 				)
 			}
