@@ -6,11 +6,11 @@ module ui
 import os
 import time
 
-const (
-	buf_size         = 64
-	ctx_ptr          = &Context(0)
-	stdin_at_startup = u32(0)
-)
+const buf_size = 64
+
+const ctx_ptr = &Context(0)
+
+const stdin_at_startup = u32(0)
 
 struct ExtraContext {
 mut:

@@ -1008,3 +1008,15 @@ pub fn glob(patterns ...string) ?[]string {
 	matches.sort()
 	return matches
 }
+
+pub fn last_error() IError {
+	$if windows {
+		code := int(C.GetLastError())
+		msg := get_error_msg(code)
+		return error_with_code(msg, code)
+	} $else {
+		code := C.errno
+		msg := posix_get_error_msg(code)
+		return error_with_code(msg, code)
+	}
+}
