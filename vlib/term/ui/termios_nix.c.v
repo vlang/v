@@ -21,9 +21,7 @@ fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
-const (
-	termios_at_startup = get_termios()
-)
+const termios_at_startup = get_termios()
 
 [inline]
 fn get_termios() C.termios {
