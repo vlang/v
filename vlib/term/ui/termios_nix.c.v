@@ -10,16 +10,6 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-struct C.termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_line  byte
-	c_cc    [10]int
-}
-
 struct C.winsize {
 	ws_row u16
 	ws_col u16
