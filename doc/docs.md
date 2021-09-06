@@ -1572,6 +1572,28 @@ s := match number {
 }
 ```
 
+A match statement can also to be used as an `if - else if - else` alternative:
+
+```v
+match true {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+} // 'else if2' is printed
+```
+
+or as an `unless` alternative: [unless Ruby](https://www.tutorialspoint.com/ruby/ruby_if_else.htm)
+
+```v
+match false {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+} // 'if' is printed
+```
+
 A match expression returns the value of the final expression from the matching branch.
 
 ```v
