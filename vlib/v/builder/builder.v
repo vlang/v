@@ -89,6 +89,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	if b.pref.check_all {
+		return error('stop_after_checker')
+	}
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
 	util.timing_measure('TRANSFORM')
