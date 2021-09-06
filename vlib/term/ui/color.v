@@ -4,10 +4,9 @@
 
 module ui
 
-const (
-	value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!
-	color_table = init_color_table()
-)
+const value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!
+
+pub const color_table = init_color_table()
 
 [direct_array_access]
 fn init_color_table() []int {

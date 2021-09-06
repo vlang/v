@@ -13,6 +13,10 @@ pub:
 	ws_ypixel u16
 }
 
+fn C.tcgetattr(fd int, ptr &C.termios) int
+
+fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
+
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
 // get_terminal_size returns a number of colums and rows of terminal window.
@@ -21,70 +25,58 @@ pub fn get_terminal_size() (int, int) {
 		return default_columns_size, default_rows_size
 	}
 	w := C.winsize{}
-	C.ioctl(1, u64(C.TIOCGWINSZ), &w)
+	unsafe { C.ioctl(1, u64(C.TIOCGWINSZ), &w) }
 	return int(w.ws_col), int(w.ws_row)
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() Coord {
+pub fn get_cursor_position() ?Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
-		return Coord{
-			x: 0
-			y: 0
-		}
+		return Coord{0, 0}
 	}
-	// TODO: use termios.h, C.tcgetattr & C.tcsetattr directly,
-	// instead of using `stty`
-	mut oldsettings := os.execute('stty -g')
-	if oldsettings.exit_code < 0 {
-		oldsettings = os.Result{}
+
+	old_state := C.termios{}
+	if unsafe { C.tcgetattr(0, &old_state) } != 0 {
+		return os.last_error()
 	}
-	os.system('stty -echo -icanon time 0')
-	print('\033[6n')
-	mut ch := int(0)
-	mut i := 0
-	// ESC [ YYY `;` XXX `R`
-	mut reading_x := false
-	mut reading_y := false
+	defer {
+		// restore the old terminal state:
+		unsafe { C.tcsetattr(0, C.TCSANOW, &old_state) }
+	}
+
+	mut state := C.termios{}
+	if unsafe { C.tcgetattr(0, &state) } != 0 {
+		return os.last_error()
+	}
+	state.c_lflag &= int(~(u32(C.ICANON) | u32(C.ECHO)))
+	unsafe { C.tcsetattr(0, C.TCSANOW, &state) }
+
+	print('\e[6n')
+
 	mut x := 0
 	mut y := 0
+	mut stage := byte(0)
+
+	// ESC [ YYY `;` XXX `R`
+
 	for {
-		ch = C.getchar()
-		b := byte(ch)
-		i++
-		if i >= 15 {
-			panic('C.getchar() called too many times')
-		}
-		// state management:
-		if b == `R` {
+		w := unsafe { C.getchar() }
+		if w < 0 {
+			return error_with_code('Failed to read from stdin', 888)
+		} else if w == `[` || w == `;` {
+			stage++
+		} else if `0` <= w && w <= `9` {
+			match stage {
+				// converting string values to int:
+				1 { y = y * 10 + int(w - `0`) }
+				2 { x = x * 10 + int(w - `0`) }
+				else {}
+			}
+		} else if w == `R` {
 			break
 		}
-		if b == `[` {
-			reading_y = true
-			reading_x = false
-			continue
-		}
-		if b == `;` {
-			reading_y = false
-			reading_x = true
-			continue
-		}
-		// converting string vals to ints:
-		if reading_x {
-			x *= 10
-			x += (b - byte(`0`))
-		}
-		if reading_y {
-			y *= 10
-			y += (b - byte(`0`))
-		}
 	}
-	// restore the old terminal settings:
-	os.system('stty $oldsettings.output')
-	return Coord{
-		x: x
-		y: y
-	}
+	return Coord{x, y}
 }
 
 // set_terminal_title change the terminal title

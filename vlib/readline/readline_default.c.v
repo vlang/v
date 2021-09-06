@@ -10,7 +10,9 @@ module readline
 
 import os
 
-#include <termios.h>
+struct Termios {
+}
+
 // Only use standard os.get_line
 // Need implementation for readline capabilities
 //
