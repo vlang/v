@@ -30,7 +30,7 @@
 #ifndef _STDATOMIC_H_
 #define _STDATOMIC_H_
 #include <sys/cdefs.h>
-#if defined(__cplusplus) && defined(_USING_LIBCXX)
+#if defined(__cplusplus)
 #ifdef __clang__
 #if __has_feature(cxx_atomic)
 #define _STDATOMIC_HAVE_ATOMIC

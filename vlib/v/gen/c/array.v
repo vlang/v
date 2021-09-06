@@ -17,7 +17,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	if g.is_shared {
 		shared_styp = g.typ(array_type.typ.set_flag(.shared_f))
-		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+		g.writeln('($shared_styp*)__dup_shared_array(HEAP($shared_styp, ($shared_styp){.mtx = {0}, .val =')
 	} else if is_amp {
 		array_styp = g.typ(array_type.typ)
 		g.write('HEAP($array_styp, ')
@@ -93,7 +93,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.write('0)')
 		}
 		if g.is_shared {
-			g.write('}, sizeof($shared_styp))')
+			g.write('}, sizeof($shared_styp)))')
 		} else if is_amp {
 			g.write(')')
 		}
@@ -129,7 +129,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	g.write('}))')
 	if g.is_shared {
-		g.write('}, sizeof($shared_styp))')
+		g.write('}, sizeof($shared_styp)))')
 	} else if is_amp {
 		g.write(')')
 	}
