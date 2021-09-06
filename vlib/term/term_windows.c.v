@@ -76,6 +76,8 @@ pub fn get_cursor_position() ?Coord {
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			res.x = info.dwCursorPosition.X
 			res.y = info.dwCursorPosition.Y
+		} else {
+			return os.last_error()
 		}
 	}
 	return res
