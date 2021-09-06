@@ -152,6 +152,36 @@ fn add_in_place(mut a []u32, b []u32) {
 	}
 }
 
+// a := a - b if a < b return the abs of the result
+[inline]
+fn subtract_in_place(mut a []u32, b []u32) {
+	mut carry := u32(0)
+	mut new_carry := u32(0)
+	offset := a.len - b.len
+	for index := a.len - b.len; index < a.len; index++ {
+		if a[index] < (b[index - offset] + carry) {
+			new_carry = 1
+		} else {
+			new_carry = 0
+		}
+		a[index] -= (b[index - offset] + carry)
+		carry = new_carry
+	}
+	if carry != 0 {
+		neg_in_place(mut a)
+	}
+}
+
+[inline]
+fn neg_in_place(mut a []u32) {
+	mut carry := u32(0)
+	for i in 0 .. a.len {
+		partial := a[i] + carry
+		carry = if int(partial) > 0 {u32(1)} else {u32(0)}
+		a[i] = - partial
+	}
+}
+
 // dest must be already initialized with sufficient length
 [inline]
 fn 	clear_first_bits_and_set_some(src []u32, length int, mut dest []u32) {

@@ -59,24 +59,6 @@ fn rshift_in_place(mut a []u32, n u32) {
 	}
 }
 
-// a := a - b supposed a >= b
-[inline]
-fn subtract_in_place(mut a []u32, b []u32) {
-	mut carry := u32(0)
-	mut new_carry := u32(0)
-	offset := a.len - b.len
-	for index := a.len - b.len; index < a.len; index++ {
-		if a[index] < (b[index - offset] + carry) {
-			new_carry = 1
-		} else {
-			new_carry = 0
-		}
-		a[index] -= (b[index - offset] + carry)
-		carry = new_carry
-	}
-	assert carry == 0
-}
-
 // for assert
 [inline]
 fn left_align_p(a u32, b u32) bool {

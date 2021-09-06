@@ -31,16 +31,37 @@ fn test_clear_first_bits_and_set_some() {
 	assert b == [u32(0xffffffff), 0xffffffff, 0x00e0ffff, 0x0]
 }
 
-fn test_divide_digit_array_03() {
-	a := [u32(0), 4]
-	b := [u32(0), 1]
-	mut q := []u32{cap: a.len - b.len + 1}
-	mut r := []u32{cap: a.len}
+fn test_neg_in_place () {
+	mut a := [u32(1), 0, 0]
+	neg_in_place(mut a)
+	assert a == [u32(0xffffffff), 0xffffffff, 0xffffffff]
+	a = [u32(2), 0, 0]
+	neg_in_place(mut a)
+	assert a == [u32(0xfffffffe), 0xffffffff, 0xffffffff]
+	a = [u32(3), 0, 0]
+	neg_in_place(mut a)
+	assert a == [u32(0xfffffffd), 0xffffffff, 0xffffffff]
 
-	divide_digit_array(a, b, mut q, mut r)
-	assert q == [u32(4)]
-	assert r == []u32{len: 0}
+	a = [u32(0), 0, 0]
+	neg_in_place(mut a)
+	assert a == [u32(0), 0, 0]
+
+	a = [u32(0), 0, 1]
+	neg_in_place(mut a)
+	assert a == [u32(0), 0, 0xffffffff]
+
 }
+
+// fn test_divide_digit_array_03() {
+// 	a := [u32(0), 4]
+// 	b := [u32(0), 1]
+// 	mut q := []u32{cap: a.len - b.len + 1}
+// 	mut r := []u32{cap: a.len}
+
+// 	divide_digit_array(a, b, mut q, mut r)
+// 	assert q == [u32(4)]
+// 	assert r == []u32{len: 0}
+// }
 
 // fn test_divide_digit_array_04() {
 // 	a := [u32(2), 4]
