@@ -69,7 +69,7 @@ fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 
 // Subtracts operand_b from operand_a and stores the difference in storage.
 // It assumes operand_a contains the larger "integer" and that storage is
-// the same size as operand_a
+// the same size as operand_a and is 0
 fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// Zero length cases
 	if operand_a.len == 0 {
