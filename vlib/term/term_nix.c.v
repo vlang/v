@@ -15,14 +15,14 @@ pub:
 
 pub struct C.termios {
 mut:
-	c_iflag u32
-	c_oflag u32
-	c_cflag u32
-	c_lflag u32
+	c_iflag int
+	c_oflag int
+	c_cflag int
+	c_lflag int
 	c_cc    [32]byte
 }
 
-fn C.tcgetattr(fd int, ptr &C.termios)
+fn C.tcgetattr(fd int, ptr &C.termios) int
 
 fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
 
@@ -34,7 +34,7 @@ pub fn get_terminal_size() (int, int) {
 		return default_columns_size, default_rows_size
 	}
 	w := C.winsize{}
-	C.ioctl(1, u64(C.TIOCGWINSZ), &w)
+	unsafe { C.ioctl(1, u64(C.TIOCGWINSZ), &w) }
 	return int(w.ws_col), int(w.ws_row)
 }
 
@@ -44,18 +44,21 @@ pub fn get_cursor_position() ?Coord {
 		return Coord{0, 0}
 	}
 
-	old_state := &C.termios{}
-	C.tcgetattr(0, old_state)
+	old_state := C.termios{}
+	if unsafe { C.tcgetattr(0, &old_state) } != 0 {
+		return os.last_error()
+	}
 	defer {
 		// restore the old terminal state:
-		C.tcsetattr(0, C.TCSANOW, old_state)
+		unsafe { C.tcsetattr(0, C.TCSANOW, &old_state) }
 	}
 
-	mut state := &C.termios{}
-	C.tcgetattr(0, state)
-
-	state.c_lflag &= ~(u32(C.ICANON) | u32(C.ECHO))
-	C.tcsetattr(0, C.TCSANOW, state)
+	mut state := C.termios{}
+	if unsafe { C.tcgetattr(0, &state) } != 0 {
+		return os.last_error()
+	}
+	state.c_lflag &= int(~(u32(C.ICANON) | u32(C.ECHO)))
+	unsafe { C.tcsetattr(0, C.TCSANOW, &state) }
 
 	print('\e[6n')
 
@@ -66,7 +69,7 @@ pub fn get_cursor_position() ?Coord {
 	// ESC [ YYY `;` XXX `R`
 
 	for {
-		w := C.getchar()
+		w := unsafe { C.getchar() }
 		if w < 0 {
 			return error_with_code('Failed to read from stdin', 888)
 		} else if w == `[` || w == `;` {
