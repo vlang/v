@@ -219,3 +219,16 @@ fn test_signed_cast() {
 		assert '${u.f:G}' == '-INF'
 	}
 }
+
+fn test_binary() {
+	i := i8(127)
+	u := u8(127)
+	assert '${i:08b}' == '01111111'
+	assert '${u:08b}' == '01111111'
+	assert '${i16(i):08b}' == '01111111'
+	assert '${u16(u):08b}' == '01111111'
+	assert '${int(i):08b}' == '01111111'
+	assert '${u32(u):08b}' == '01111111'
+	assert '${i64(i):08b}' == '01111111'
+	assert '${u64(u):08b}' == '01111111'
+}
