@@ -178,7 +178,7 @@ pub mut:
 	is_parallel         bool
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
-	check_all           bool // same as only_check_syntax, but also runs the checker
+	check_only          bool // same as only_check_syntax, but also runs the checker
 	experimental        bool // enable experimental features
 	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
@@ -247,7 +247,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.only_check_syntax = true
 			}
 			'-check' {
-				res.check_all = true
+				res.check_only = true
 			}
 			'-h', '-help', '--help' {
 				// NB: help is *very important*, just respond to all variations:

@@ -278,7 +278,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	mut warnings := p.warnings
 	mut notices := p.notices 
 
-	if p.pref.check_all {
+	if p.pref.check_only {
 		errors << p.scanner.errors
 		warnings << p.scanner.warnings
 		notices << p.scanner.notices
@@ -1625,7 +1625,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout && !p.pref.check_all {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1643,7 +1643,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 
 		// To avoid getting stuck after an error, the parser
 		// will proceed to the next token.
-		if p.pref.check_all {
+		if p.pref.check_only {
 			p.next()
 		}
 	}
@@ -1665,7 +1665,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout && !p.pref.check_all {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1697,7 +1697,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout && !p.pref.check_all {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
@@ -1718,7 +1718,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout && !p.pref.check_all {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('notice:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
