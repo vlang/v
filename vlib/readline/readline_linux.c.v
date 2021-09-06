@@ -13,32 +13,9 @@ import os
 #include <termios.h>
 #include <sys/ioctl.h>
 
-const cclen = 10
-
-// Termios stores the terminal options on Linux.
-struct C.termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_line  byte
-	c_cc    [cclen]int
-}
-
-struct Termios {
-mut:
-	c_iflag u32
-	c_oflag u32
-	c_cflag u32
-	c_lflag u32
-	c_line  byte
-	c_cc    [cclen]int
-}
-
 fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
 
 fn C.raise(sig int)
 
@@ -70,22 +47,18 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := C.termios{}
-	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
-	// println('> r.orig_termios: $r.orig_termios')
-	// println('>            raw: $raw')
+	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
-	raw.c_cc[C.VMIN] = byte(1)
-	raw.c_cc[C.VTIME] = byte(0)
-	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
-	// println('>   after    raw: $raw')
+	raw.c_cc[C.VMIN] = 1
+	raw.c_cc[C.VTIME] = 0
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -95,19 +68,18 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := C.termios{}
-	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
+	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
-	raw.c_cc[C.VMIN] = byte(1)
-	raw.c_cc[C.VTIME] = byte(0)
-	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
+	raw.c_cc[C.VMIN] = 1
+	raw.c_cc[C.VTIME] = 0
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -116,7 +88,7 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		unsafe { C.tcsetattr(0, C.TCSADRAIN, &C.termios(&r.orig_termios)) }
+		C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&r.orig_termios) })
 		r.is_raw = false
 	}
 }
@@ -150,7 +122,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 	}
 	print(r.prompt)
 	for {
-		unsafe { C.fflush(C.stdout) }
+		C.fflush(C.stdout)
 		c := r.read_char()
 		a := r.analyse(c)
 		if r.execute(a, c) {
@@ -339,7 +311,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 // get_screen_columns returns the number of columns (`width`) in the terminal.
 fn get_screen_columns() int {
 	ws := Winsize{}
-	cols := if unsafe { C.ioctl(1, C.TIOCGWINSZ, &ws) } == -1 { 80 } else { int(ws.ws_col) }
+	cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
 	return cols
 }
 
@@ -570,12 +542,10 @@ fn (mut r Readline) suspend() {
 	r.disable_raw_mode()
 	if !is_standalone {
 		// We have to SIGSTOP the parent v process
-		unsafe {
-			ppid := C.getppid()
-			C.kill(ppid, C.SIGSTOP)
-		}
+		ppid := C.getppid()
+		C.kill(ppid, C.SIGSTOP)
 	}
-	unsafe { C.raise(C.SIGSTOP) }
+	C.raise(C.SIGSTOP)
 	r.enable_raw_mode()
 	r.refresh_line()
 	if r.is_tty {

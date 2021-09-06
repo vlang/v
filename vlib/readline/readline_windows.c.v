@@ -10,10 +10,6 @@ module readline
 
 import os
 
-// needed for parity with readline_default.c.v
-struct Termios {
-}
-
 // Only use standard os.get_line
 // Need implementation for readline capabilities
 //

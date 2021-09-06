@@ -8,7 +8,9 @@ mut:
 	read_buf []byte
 }
 
-const ctx_ptr = &Context(0)
+const (
+	ctx_ptr = &Context(0)
+)
 
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
