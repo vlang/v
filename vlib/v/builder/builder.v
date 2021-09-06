@@ -3,6 +3,7 @@ module builder
 import os
 import v.token
 import v.pref
+import v.errors
 import v.util
 import v.ast
 import v.vmod
@@ -139,7 +140,7 @@ pub fn (mut b Builder) parse_imports() {
 		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
@@ -148,15 +149,16 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
 					imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
-				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
 					ast_file.path, imp.pos)
+				continue
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref)
@@ -167,7 +169,7 @@ pub fn (mut b Builder) parse_imports() {
 				}
 				if name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
+					b.parsed_files[i].errors << b.error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
 						ast_file.path, imp.pos)
 				}
 			}
@@ -461,10 +463,19 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-fn error_with_pos(s string, fpath string, pos token.Position) {
+fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
+	if !b.pref.check_all {
 	ferror := util.formatted_error('builder error:', s, fpath, pos)
 	eprintln(ferror)
 	exit(1)
+	}
+	
+	return errors.Error{
+		file_path: fpath
+		pos: pos
+		reporter: .builder
+		message: s
+	}
 }
 
 [noreturn]
