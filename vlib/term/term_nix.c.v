@@ -19,7 +19,8 @@ mut:
 	c_oflag int
 	c_cflag int
 	c_lflag int
-	c_cc    [32]byte
+	c_line  byte
+	c_cc    [10]int
 }
 
 fn C.tcgetattr(fd int, ptr &C.termios) int
