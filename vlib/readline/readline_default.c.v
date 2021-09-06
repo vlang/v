@@ -10,29 +10,7 @@ module readline
 
 import os
 
-#include <termios.h>
-
-const cclen = 10
-
-// Termios stores the terminal options on Linux.
-struct C.termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_line  byte
-	c_cc    [cclen]int
-}
-
 struct Termios {
-mut:
-	c_iflag u32
-	c_oflag u32
-	c_cflag u32
-	c_lflag u32
-	c_line  byte
-	c_cc    [cclen]int
 }
 
 // Only use standard os.get_line
