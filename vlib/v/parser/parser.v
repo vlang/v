@@ -273,6 +273,17 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 	}
 	p.scope.end_pos = p.tok.pos
+
+	mut errors := p.errors
+	mut warnings := p.warnings
+	mut notices := p.notices 
+
+	if p.pref.check_all {
+		errors << p.scanner.errors
+		warnings << p.scanner.warnings
+		notices << p.scanner.notices
+	}
+
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -286,8 +297,9 @@ pub fn (mut p Parser) parse() &ast.File {
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.table.global_scope
-		errors: p.errors
-		warnings: p.warnings
+		errors: errors
+		warnings: warnings
+		notices: notices
 		global_labels: p.global_labels
 	}
 }
