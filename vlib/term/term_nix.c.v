@@ -13,6 +13,19 @@ pub:
 	ws_ypixel u16
 }
 
+pub struct C.termios {
+mut:
+	c_iflag u32
+	c_oflag u32
+	c_cflag u32
+	c_lflag u32
+	c_cc    [32]byte
+}
+
+fn C.tcgetattr(fd int, ptr &C.termios)
+
+fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
+
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
 // get_terminal_size returns a number of colums and rows of terminal window.
@@ -24,19 +37,6 @@ pub fn get_terminal_size() (int, int) {
 	C.ioctl(1, u64(C.TIOCGWINSZ), &w)
 	return int(w.ws_col), int(w.ws_row)
 }
-
-struct C.termios {
-mut:
-	c_iflag u64
-	c_oflag u64
-	c_cflag u64
-	c_lflag u64
-	// c_cc    &char = 0
-}
-
-fn C.tcgetattr(fd int, ptr &C.termios)
-
-fn C.tcsetattr(fd int, action int, ptr &C.termios)
 
 // get_cursor_position returns a Coord containing the current cursor position
 pub fn get_cursor_position() ?Coord {
@@ -54,7 +54,7 @@ pub fn get_cursor_position() ?Coord {
 	mut state := &C.termios{}
 	C.tcgetattr(0, state)
 
-	state.c_lflag &= ~(u64(C.ICANON) | u64(C.ECHO))
+	state.c_lflag &= ~(u32(C.ICANON) | u32(C.ECHO))
 	C.tcsetattr(0, C.TCSANOW, state)
 
 	print('\e[6n')

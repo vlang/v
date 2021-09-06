@@ -10,12 +10,6 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr(fd int, termios_p &C.termios) int
-
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
-
-fn C.ioctl(fd int, request u64, arg voidptr) int
-
 struct C.termios {
 mut:
 	c_iflag u32
@@ -27,6 +21,12 @@ struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
+
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+
+fn C.ioctl(fd int, request u64, arg voidptr) int
 
 const (
 	termios_at_startup = get_termios()
