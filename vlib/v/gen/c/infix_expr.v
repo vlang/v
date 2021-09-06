@@ -141,11 +141,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.left)
 				if left.typ.has_flag(.shared_f) {
-					if left.typ.is_ptr() {
-						g.write('->val')
-					} else {
-						g.write('.val')
-					}
+					g.write('->val')
 				}
 				g.write(', ')
 				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
@@ -153,11 +149,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				if right.typ.has_flag(.shared_f) {
-					if right.typ.is_ptr() {
-						g.write('->val')
-					} else {
-						g.write('.val')
-					}
+					g.write('->val')
 				}
 				g.write(')')
 			}
@@ -568,10 +560,16 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			elem_type_str := g.typ(array_info.elem_type)
 			elem_sym := g.table.get_type_symbol(array_info.elem_type)
 			g.write('array_push${noscan}((array*)')
-			if !left.typ.is_ptr() {
+			if node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr() {
+			}
+			if !left.typ.is_ptr()
+				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {
 				g.write('&')
 			}
 			g.expr(node.left)
+			if node.left_type.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
 			} else {

@@ -874,7 +874,7 @@ fn (mut g Gen) write_shareds() {
 		done_types << typ
 		sh_typ := '__shared__$base'
 		mtx_typ := 'sync__RwMutex'
-		g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
+		g.shared_types.writeln('struct $sh_typ { $mtx_typ mtx; $base val; };')
 		g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
 		g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
 		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
@@ -2281,17 +2281,17 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.error('cannot convert reference to `shared`', expr.position())
 		}
 		if exp_sym.kind == .array {
-			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+			g.writeln('($shared_styp*)__dup_shared_array(HEAP((shared_styp){.mtx = {0}, .val =')
 		} else if exp_sym.kind == .map {
-			g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
+			g.writeln('($shared_styp*)__dup_shared_map(HEAP(($shared_styp){.mtx = {0}, .val =')
 		} else {
-			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
+			g.writeln('($shared_styp*)__dup${shared_styp}(HEAP(($shared_styp){.mtx = {0}, .val =')
 		}
 		old_is_shared := g.is_shared
 		g.is_shared = false
 		g.expr(expr)
 		g.is_shared = old_is_shared
-		g.writeln('}, sizeof($shared_styp))')
+		g.writeln('}, sizeof($shared_styp)))')
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void
@@ -3294,7 +3294,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) boo
 			// `arr1 = arr2` => `arr1 = arr2.clone()`
 			shared_styp := g.typ(typ.set_nr_muls(0))
 			if typ.share() == .shared_t {
-				g.write('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+				g.write('($shared_styp*)__dup_shared_array(HEAP((shared_styp){.mtx = {0}, .val =')
 			}
 			g.write(' array_clone_static_to_depth(')
 			g.expr(val)
@@ -3305,7 +3305,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) boo
 			array_depth := g.get_array_depth(elem_type)
 			g.write(', $array_depth)')
 			if typ.share() == .shared_t {
-				g.write('}, sizeof($shared_styp))')
+				g.write('}, sizeof($shared_styp)))')
 			}
 		} else if right_sym.kind == .string {
 			// `str1 = str2` => `str1 = str2.clone()`
@@ -3600,11 +3600,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
-					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
+					g.writeln('($shared_styp*)__dup_shared_array(HEAP((shared_styp){.mtx = {0}, .val =')
 				} else if ret_sym.kind == .map {
-					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
+					g.writeln('($shared_styp*)__dup_shared_map(HEAP(($shared_styp){.mtx = {0}, .val =')
 				} else {
-					g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
+					g.writeln('($shared_styp*)__dup${shared_styp}(HEAP((shared_styp){.mtx = {0}, .val =')
 				}
 			}
 			last_stmt_pos := g.stmt_path_pos.last()
@@ -3625,7 +3625,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// println('pos=$node.pos.pos')
 			}
 			if g.is_shared && !ret_type.has_flag(.shared_f) {
-				g.writeln('}, sizeof($shared_styp))')
+				g.writeln('}, sizeof($shared_styp)))')
 			}
 			// if g.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
 			/*
@@ -4483,7 +4483,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	if g.is_shared {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
+		g.writeln('($shared_styp*)__dup_shared_map(HEAP((shared_styp){.mtx = {0}, .val =')
 	} else if is_amp {
 		styp = g.typ(node.typ)
 		g.write('($styp*)memdup(ADDR($styp, ')
@@ -4526,7 +4526,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		g.write('new_map${noscan}(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 	}
 	if g.is_shared {
-		g.write('}, sizeof($shared_styp))')
+		g.write('}, sizeof($shared_styp)))')
 	} else if is_amp {
 		g.write('), sizeof($styp))')
 	}
@@ -5569,7 +5569,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
+		g.writeln('($shared_styp*)__dup${shared_styp}(HEAP((shared_styp){.mtx = {0}, .val =($styp){')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
 		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
@@ -5795,7 +5795,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
-		g.write('}, sizeof($shared_styp))')
+		g.write('}, sizeof($shared_styp)))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
 		g.write(', sizeof($styp))')
 	}
