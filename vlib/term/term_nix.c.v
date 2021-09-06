@@ -13,16 +13,6 @@ pub:
 	ws_ypixel u16
 }
 
-pub struct C.termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_line  byte
-	c_cc    [10]int
-}
-
 fn C.tcgetattr(fd int, ptr &C.termios) int
 
 fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
