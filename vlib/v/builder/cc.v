@@ -489,9 +489,9 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.pref.check_all {
+	if v.pref.check_only {
 		if v.pref.is_verbose {
-			println('builder.cc returning early, since pref.check_all is true')
+			println('builder.cc returning early, since pref.check_only is true')
 		}
 		return
 	}

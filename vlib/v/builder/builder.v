@@ -90,7 +90,7 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
-	if b.pref.check_all {
+	if b.pref.check_only {
 		return error('stop_after_checker')
 	}
 	util.timing_start('TRANSFORM')
@@ -351,7 +351,7 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 		mut nr_warnings := b.checker.warnings.len
 		mut nr_notices := b.checker.notices.len
 
-		if b.pref.check_all {
+		if b.pref.check_only {
 			nr_errors = b.nr_errors
 			nr_warnings = b.nr_warnings
 			nr_notices = b.nr_notices
@@ -361,7 +361,7 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 		wstring := util.bold(nr_warnings.str())
 		nstring := util.bold(nr_notices.str())
 		
-		if b.pref.check_all {
+		if b.pref.check_only {
 			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
 		} else {
 			println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
@@ -387,7 +387,7 @@ fn (mut b Builder) print_warnings_and_errors() {
 		return
 	}
 
-	if b.pref.check_all {
+	if b.pref.check_only {
 		for file in b.parsed_files {
 			if !b.pref.skip_warnings {
 				for err in file.notices {
@@ -541,7 +541,7 @@ struct FunctionRedefinition {
 }
 
 fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
-	if !b.pref.check_all {
+	if !b.pref.check_only {
 		ferror := util.formatted_error('builder error:', s, fpath, pos)
 		eprintln(ferror)
 		exit(1)
