@@ -451,8 +451,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,
-			`_`, `b`, 
-		] {
+			`_`, `b`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -475,7 +474,8 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 			}
 			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`, `b`])
 				|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`, `b`])
-				|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `b`])
+				|| (typ.is_int_literal()
+				&& fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `b`])
 				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
 				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
 				|| (typ.is_string() && fmt !in [`s`, `S`])
