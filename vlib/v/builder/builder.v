@@ -343,27 +343,104 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
-	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+	if b.nr_errors == 0 && b.nr_warnings == 0 && b.nr_notices == 0 {
 		return
 	}
 	if b.pref.is_stats {
-		estring := util.bold(b.checker.errors.len.str())
-		wstring := util.bold(b.checker.warnings.len.str())
-		nstring := util.bold(b.checker.nr_notices.str())
-		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		mut nr_errors := b.checker.errors.len
+		mut nr_warnings := b.checker.warnings.len
+		mut nr_notices := b.checker.notices.len
+
+		if b.pref.check_all {
+			nr_errors = b.nr_errors
+			nr_warnings = b.nr_warnings
+			nr_notices = b.nr_notices
+		}
+
+		estring := util.bold(nr_errors.str())
+		wstring := util.bold(nr_warnings.str())
+		nstring := util.bold(nr_notices.str())
+		
+		if b.pref.check_all {
+			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		} else {
+			println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		}
 	}
 }
 
-fn (b &Builder) print_warnings_and_errors() {
+fn (mut b Builder) print_warnings_and_errors() {
 	defer {
 		b.show_total_warns_and_errors_stats()
 	}
+
+	for file in b.parsed_files {
+		b.nr_errors += file.errors.len
+		b.nr_warnings += file.warnings.len
+		b.nr_notices += file.notices.len
+	}
+
 	if b.pref.output_mode == .silent {
-		if b.checker.nr_errors > 0 {
+		if b.nr_errors > 0 {
 			exit(1)
 		}
 		return
 	}
+
+	if b.pref.check_all {
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.notices {
+					kind := if b.pref.is_verbose {
+						'$err.reporter notice #$b.nr_notices:'
+					} else {
+						'notice:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			for err in file.errors {
+				kind := if b.pref.is_verbose {
+					'$err.reporter error #$b.nr_errors:'
+				} else {
+					'error:'
+				}
+				ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+				eprintln(ferror)
+				if err.details.len > 0 {
+					eprintln('Details: $err.details')
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.warnings {
+					kind := if b.pref.is_verbose {
+						'$err.reporter warning #$b.nr_warnings:'
+					} else {
+						'warning:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		b.show_total_warns_and_errors_stats()
+		exit(1)
+	}
+
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
@@ -465,9 +542,9 @@ struct FunctionRedefinition {
 
 fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
 	if !b.pref.check_all {
-	ferror := util.formatted_error('builder error:', s, fpath, pos)
-	eprintln(ferror)
-	exit(1)
+		ferror := util.formatted_error('builder error:', s, fpath, pos)
+		eprintln(ferror)
+		exit(1)
 	}
 	
 	return errors.Error{
