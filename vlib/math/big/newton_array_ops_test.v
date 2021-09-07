@@ -52,6 +52,44 @@ fn test_neg_in_place () {
 
 }
 
+fn test_substract_2 () {
+	mut a := Integer{ digits: [u32(1), 2, 3, 4]}
+	mut b := Integer{ digits: [u32(1), 2]}
+	mut c := Integer{ digits: []u32{}}
+	subtract_2(a, b, mut c, 5)
+	assert c.digits == [u32(0), 0, 3, 4]
+
+	a = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
+	b = Integer{signum: -1, digits: [u32(1), 2]}
+	subtract_2(a, b, mut c, 5)
+	assert c.digits == [u32(2), 4, 3, 4]
+
+	a = Integer{signum: 1, digits: [u32(1), 2]}
+	b = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
+	subtract_2(a, b, mut c, 5)
+	assert c.digits == [u32(0), 0, 3, 4]
+	assert c.signum == -1
+}
+
+fn test_multiply_2 () {
+	mut a := Integer{digits: [u32(0), 0, 0, 1]}
+	mut b := Integer{digits: [u32(0), 0, 1]}
+	mut c := Integer{digits: []u32{}}
+	multiply_2(a, b, mut c, 7)
+
+	assert c.digits == [u32(0), 0, 0, 0, 0, 1]
+
+	a = zero_int
+	b = Integer{digits: [u32(0), 0, 1]}
+	multiply_2(a, b, mut c, 4)
+
+	assert c.digits == []
+
+	multiply_2(b, a, mut c, 4)
+
+	assert c.digits == []
+}
+
 fn test_divide_digit_array_03() {
 	a := [u32(0), 4]
 	b := [u32(0), 1]
