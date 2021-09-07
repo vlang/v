@@ -1,4 +1,5 @@
 import orm
+import v.ast
 
 fn test_orm_stmt_gen_update() {
 	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
@@ -120,7 +121,7 @@ fn test_orm_table_gen() {
 	query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -136,11 +137,11 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -149,7 +150,7 @@ fn test_orm_table_gen() {
 	alt_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -165,11 +166,11 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, true) or { panic(err) }
@@ -178,7 +179,7 @@ fn test_orm_table_gen() {
 	unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -194,7 +195,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 			attrs: [
 				StructAttribute{
 					name: 'unique'
@@ -203,7 +204,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -212,7 +213,7 @@ fn test_orm_table_gen() {
 	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -228,7 +229,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 			attrs: [
 				StructAttribute{
 					name: 'unique'
@@ -240,7 +241,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 			attrs: [
 				StructAttribute{
