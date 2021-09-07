@@ -106,7 +106,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.skip_running {
 		return
 	}
-	if b.pref.only_check_syntax {
+	if b.pref.only_check_syntax || b.pref.check_only {
 		return
 	}
 	if b.pref.should_output_to_stdout() {

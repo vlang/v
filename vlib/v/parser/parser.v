@@ -273,6 +273,17 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 	}
 	p.scope.end_pos = p.tok.pos
+
+	mut errors := p.errors
+	mut warnings := p.warnings
+	mut notices := p.notices
+
+	if p.pref.check_only {
+		errors << p.scanner.errors
+		warnings << p.scanner.warnings
+		notices << p.scanner.notices
+	}
+
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -286,8 +297,9 @@ pub fn (mut p Parser) parse() &ast.File {
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.table.global_scope
-		errors: p.errors
-		warnings: p.warnings
+		errors: errors
+		warnings: warnings
+		notices: notices
 		global_labels: p.global_labels
 	}
 }
@@ -1613,7 +1625,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1627,6 +1639,12 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 			pos: pos
 			reporter: .parser
 			message: s
+		}
+
+		// To avoid getting stuck after an error, the parser
+		// will proceed to the next token.
+		if p.pref.check_only {
+			p.next()
 		}
 	}
 	if p.pref.output_mode == .silent {
@@ -1647,7 +1665,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1679,7 +1697,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
@@ -1700,7 +1718,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('notice:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
