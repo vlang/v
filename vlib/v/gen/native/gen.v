@@ -386,9 +386,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.gen_assert(node)
 		}
+		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		else {
-			println('native.stmt(): bad node: ' + node.type_name())
+			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
