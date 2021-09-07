@@ -1580,7 +1580,8 @@ match true {
 	3 == 4 { println('else if') }
 	2 == 2 { println('else if2') }
 	else { println('else') }
-} // 'else if2' should be printed
+}
+// 'else if2' should be printed
 ```
 
 or as an `unless` alternative: [unless Ruby](https://www.tutorialspoint.com/ruby/ruby_if_else.htm)
@@ -1591,7 +1592,8 @@ match false {
 	3 == 4 { println('else if') }
 	2 == 2 { println('else if2') }
 	else { println('else') }
-} // 'if' should be printed
+}
+// 'if' should be printed
 ```
 
 A match expression returns the value of the final expression from the matching branch.
