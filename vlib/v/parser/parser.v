@@ -1872,7 +1872,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
 // 2. `f<map[` is generic(e.g. `f<map[string]string>)
 // 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
-// 4. `f<foo<bar` is generic when bar is not typename (f<foo<T>(), in contrast, is not generic!)
+// 4. `f<foo<bar` is generic when bar is not generic T (f<foo<T>(), in contrast, is not generic!)
 // 5. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
 // 6. `f<mod.Foo>` is same as case 3
@@ -1913,7 +1913,7 @@ fn (p &Parser) is_generic_call() bool {
 		}
 		return match kind3 {
 			.gt { true } // case 3
-			.lt { !p.is_typename(tok4) } // case 4
+			.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
 			.comma { p.is_typename(tok2) } // case 5
 			// case 6 and 7
 			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
