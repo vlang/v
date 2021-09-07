@@ -469,6 +469,14 @@ fn test_generic_init() {
 	assert c.name == 'c'
 }
 
+fn return_true<T>(rec int, useless T) T {
+	// foo < bar<T>() should work
+	if rec==0 || 0 < return_true<T>(rec-1, useless) {
+		return T(1)
+	}
+	return T(0)
+}
+
 fn test_generic_detection() {
 	v1, v2 := -1, 1
 
@@ -487,4 +495,5 @@ fn test_generic_detection() {
 	assert multi_generic_args<int, simplemodule.Data>(0, simplemodule.Data{})
 	assert multi_generic_args<[]int, int>([]int{}, 0)
 	assert multi_generic_args<map[int]int, int>(map[int]int{}, 0)
+	assert 0 < return_one<int>(10, 0)
 }
