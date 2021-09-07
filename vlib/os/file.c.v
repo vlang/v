@@ -215,7 +215,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	if x < 0 {
 		return error('could not add newline')
 	}
-	return (written + 1)
+	return written + 1
 }
 
 // write_string writes the string `s` into the file

@@ -39,7 +39,7 @@ pub fn (mut rng PCG32RNG) u32() u32 {
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate >> u64(18)) ^ oldstate) >> u64(27))
 	rot := u32(oldstate >> u64(59))
-	return ((xorshifted >> rot) | (xorshifted << ((-rot) & u32(31))))
+	return (xorshifted >> rot) | (xorshifted << ((-rot) & u32(31)))
 }
 
 // u64 returns a pseudorandom 64-bit unsigned `u64`.
@@ -66,7 +66,7 @@ pub fn (mut rng PCG32RNG) u32n(max u32) u32 {
 	for {
 		r := rng.u32()
 		if r >= threshold {
-			return (r % max)
+			return r % max
 		}
 	}
 	return u32(0)
@@ -83,7 +83,7 @@ pub fn (mut rng PCG32RNG) u64n(max u64) u64 {
 	for {
 		r := rng.u64()
 		if r >= threshold {
-			return (r % max)
+			return r % max
 		}
 	}
 	return u64(0)
