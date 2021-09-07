@@ -469,9 +469,9 @@ fn test_generic_init() {
 	assert c.name == 'c'
 }
 
-fn return_true<T>(rec int, useless T) T {
+fn return_one<T>(rec int, useless T) T {
 	// foo < bar<T>() should work
-	if rec==0 || 0 < return_true<T>(rec-1, useless) {
+	if rec==0 || 0 < return_one<T>(rec-1, useless) {
 		return T(1)
 	}
 	return T(0)
