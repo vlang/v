@@ -1876,7 +1876,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 5. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
 // 6. `f<mod.Foo>` is same as case 3
-// 7. `f<mod.Foo,` is same as case 4
+// 7. `f<mod.Foo,` is same as case 5
 // 8. if there is a &, ignore the & and see if it is a type
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
