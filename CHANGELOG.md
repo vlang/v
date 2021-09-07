@@ -1,3 +1,7 @@
+-## V 0.2.5
+-*Not yet released, changelog is not full*
+- Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`
+
 -## V 0.2.4
 -*Not yet released, changelog is not full*
 - Bare metal support. Vinix OS kernel is now being developed in V.
