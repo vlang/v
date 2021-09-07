@@ -2229,8 +2229,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
 		unwrapped_got_type := g.unwrap_generic(got_type)
-		unwrapped_exp_sym := g.table.get_type_symbol(unwrapped_expected_type)
-		unwrapped_got_sym := g.table.get_type_symbol(unwrapped_got_type)
 
 		expected_deref_type := if expected_is_ptr {
 			unwrapped_expected_type.deref()
