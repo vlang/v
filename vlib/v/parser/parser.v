@@ -1871,13 +1871,14 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // heuristics to detect `func<T>()` from `var < expr`
 // 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
 // 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` and `f<foo<` are generic because `v1 < foo > v2` and `v1 < foo < v2` are invalid syntax
-// 4. `f<Foo,` is generic when Foo is typename.
+// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 4. `f<foo<bar` is generic when bar is not typename (f<foo<T>(), in contrast, is not generic!)
+// 5. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
-// 5. `f<mod.Foo>` is same as case 3
-// 6. `f<mod.Foo,` is same as case 4
-// 7. if there is a &, ignore the & and see if it is a type
-// 10. otherwise, it's not generic
+// 6. `f<mod.Foo>` is same as case 3
+// 7. `f<mod.Foo,` is same as case 4
+// 8. if there is a &, ignore the & and see if it is a type
+// 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
@@ -1911,9 +1912,10 @@ fn (p &Parser) is_generic_call() bool {
 			return true
 		}
 		return match kind3 {
-			.gt, .lt { true } // case 3
-			.comma { p.is_typename(tok2) } // case 4
-			// case 5 and 6
+			.gt { true } // case 3
+			.lt { !p.is_typename(tok4) } // case 4
+			.comma { p.is_typename(tok2) } // case 5
+			// case 6 and 7
 			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
 			else { false }
 		}
