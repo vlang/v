@@ -140,7 +140,8 @@ pub fn (mut b Builder) parse_imports() {
 		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
+					ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
@@ -149,8 +150,8 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
-					imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)',
+					ast_file.path, imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
@@ -360,7 +361,7 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 		estring := util.bold(nr_errors.str())
 		wstring := util.bold(nr_warnings.str())
 		nstring := util.bold(nr_notices.str())
-		
+
 		if b.pref.check_only {
 			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
 		} else {
@@ -546,7 +547,7 @@ fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) error
 		eprintln(ferror)
 		exit(1)
 	}
-	
+
 	return errors.Error{
 		file_path: fpath
 		pos: pos

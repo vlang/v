@@ -276,7 +276,7 @@ pub fn (mut p Parser) parse() &ast.File {
 
 	mut errors := p.errors
 	mut warnings := p.warnings
-	mut notices := p.notices 
+	mut notices := p.notices
 
 	if p.pref.check_only {
 		errors << p.scanner.errors
