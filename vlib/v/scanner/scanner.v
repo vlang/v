@@ -771,7 +771,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.mod, '', 1)
 			}
 			`?` {
-				return s.new_token(.question, '', 1)
+				return s.new_token(.question, '?', 1)
 			}
 			scanner.single_quote, scanner.double_quote {
 				start_line := s.line_nr
