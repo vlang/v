@@ -556,6 +556,13 @@ fn test_regex(){
 			continue
 		}
 
+		// test the match predicate
+		if to.s >= 0 {
+			assert re.matches_string(to.src)
+		} else {
+			assert !re.matches_string(to.src)
+		}
+
 		// rerun to test consistency
 		tmp_str1 := to.src.clone()
 		start1, end1 := re.match_string(tmp_str1)

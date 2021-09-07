@@ -144,6 +144,12 @@ pub fn (mut re RE) match_string(in_txt string) (int, int) {
 	return start, end
 }
 
+// matches_string Checks if the pattern matches the in_txt string
+pub fn (mut re RE) matches_string(in_txt string) bool {
+	start, _ := re.match_string(in_txt)
+	return start != no_match_found
+}
+
 /******************************************************************************
 *
 * Finders
