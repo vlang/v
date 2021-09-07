@@ -1130,7 +1130,11 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 		f.write(' ')
 		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
-			f.expr(expr)
+			if expr is ast.ParExpr {
+				f.expr(expr.expr)
+			} else {
+				f.expr(expr)
+			}
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
