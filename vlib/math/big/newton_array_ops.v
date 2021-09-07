@@ -48,29 +48,33 @@ loop:
 	cmp := compare_digit_array(operand_a, product)
 	if cmp == 0 {
 		unsafe {goto null_remainder}
-	} else if cmp < 0 {
+	} else {
 		for i in 0 .. remainder.len { // remainder can be change by divide_digit_array to calculate slope
 			remainder[i] = u32(0)
 		}
 		for _ in remainder.len .. operand_a.len {
 			remainder << u32(0)
 		}
-		subtract_digit_array(product, operand_a, mut remainder)
-		if compare_digit_array(remainder, operand_b) < 0 {
-			// remainder is negative: add divisor
-			add_in_place(mut remainder, operand_b)
-			unsafe {goto end}
-		}
-	} else { // cmp > 0: the remainder is positive and < quotient => finished
-		subtract_digit_array(operand_a, product, mut remainder)
-		if compare_digit_array(remainder, operand_b) < 0 {
-			unsafe {goto end}
+		if cmp < 0 {
+			subtract_digit_array(product, operand_a, mut remainder)
+			if compare_digit_array(remainder, operand_b) < 0 {
+				// remainder is negative: add divisor
+				add_in_place(mut remainder, operand_b)
+				unsafe {goto end}
+			}
+		} else { // cmp > 0: the remainder is positive and < quotient => finished
+			subtract_digit_array(operand_a, product, mut remainder)
+			if compare_digit_array(remainder, operand_b) < 0 {
+				unsafe {goto end}
+			}
 		}
 	}
 	println('quot: $quotient rem: $remainder derivate: $derivate')
 
 	// ajust result with the differential
 	// estimate slope the first time
+	println('-----------------------')
+	println('step: $step')
 	if step == 0 {
 		clear_first_bits_and_set_some(remainder, operand_b_bit_len, mut derivate)
 		for i in 0 .. remainder.len {
@@ -81,23 +85,37 @@ loop:
 		}
 		step++
 	} else {
-		// // divide derivata by 2
-		// rshift_in_place(mut derivate, 1)
+		step++
+		// divide derivata by 2
+		rshift_in_place(mut derivate, 1)
+
 		// calculate exact slope
-		subtract_in_place(mut save_difference, remainder)
-		println('diff: $save_difference derivate: $derivate')
-		for remainder.len > 0 {
-			remainder.delete_last() // prepare divide_digit_array
-		}
-		for slope.len > 0 {
-			slope.delete_last()
-		}
-		divide_digit_array(derivate, save_difference, mut slope, mut remainder) // ATTENTION reentrance but much smaller numbers
-		for i in 0 .. slope.len {
-			derivate[i] = slope[i]
-		}
-		for derivate.len > slope.len {
-			derivate.delete_last()
+		// subtract_in_place(mut save_difference, remainder)
+		// println('diff: $save_difference derivate: $derivate')
+
+		// for i in 0 .. remainder.len {
+		// 	save_difference[i] = remainder[i]
+		// }
+		// for save_difference.len > remainder.len {
+		// 	save_difference.delete_last()
+		// }
+
+		// for remainder.len > 0 {
+		// 	remainder.delete_last() // prepare divide_digit_array
+		// }
+		// for slope.len > 0 {
+		// 	slope.delete_last()
+		// }
+		// divide_digit_array(derivate, save_difference, mut slope, mut remainder) // ATTENTION reentrance but much smaller numbers
+		// for i in 0 .. slope.len {
+		// 	derivate[i] = slope[i]
+		// }
+		// for derivate.len > slope.len {
+		// 	derivate.delete_last()
+		// }
+	// FOR DEBUG
+		if step >= 4 {
+			unsafe {goto end}
 		}
 	}
 	if cmp > 0 {
