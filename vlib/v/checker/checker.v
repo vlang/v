@@ -2938,7 +2938,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_arg.pos)
 		}
-		if call_arg.is_mut && func.language == .v {
+		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
 				c.error('cannot pass expression as `mut`', call_arg.expr.position())
