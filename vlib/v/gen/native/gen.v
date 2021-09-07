@@ -95,6 +95,10 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	return g.nlines, g.buf.len
 }
 
+pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
+	return &g.table.type_symbols[a]
+}
+
 pub fn (mut g Gen) generate_header() {
 	match g.pref.os {
 		.macos {
@@ -246,10 +250,103 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.expr(expr)
 			g.gen_print_reg(.rax, 3, fd)
 		}
+		ast.IntegerLiteral {
+			g.mov64(.rax, g.allocate_string('$expr.val\n', 2))
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.BoolLiteral {
+			// register 'true' and 'false' strings // g.expr(expr)
+			if expr.val {
+				g.mov64(.rax, g.allocate_string('true', 2))
+			} else {
+				g.mov64(.rax, g.allocate_string('false', 2))
+			}
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.SizeOf {}
+		ast.OffsetOf {
+			styp := g.typ(expr.struct_type)
+			field_name := expr.field
+			if styp.kind == .struct_ {
+				s := styp.info as ast.Struct
+				ptrsz := 4 // should be 8, but for locals is used 8 and C backend shows that too
+				mut off := 0
+				for f in s.fields {
+					if f.name == field_name {
+						g.mov64(.rax, g.allocate_string('$off\n', 2))
+						g.gen_print_reg(.rax, 3, fd)
+						break
+					}
+					off += ptrsz
+				}
+			} else {
+				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
+			}
+		}
+		ast.None {}
+		ast.PostfixExpr {}
+		ast.PrefixExpr {}
+		ast.SelectorExpr {
+			// struct.field
+			g.expr(expr)
+			g.gen_print_reg(.rax, 3, fd)
+			/*
+			field_name := expr.field_name
+g.expr
+			if expr.is_mut {
+				// mutable field access (rw)
+			}
+			*/
+			dump(expr)
+			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
+		}
+		/*
+		ast.AnonFn {}
+		ast.ArrayDecompose {}
+		ast.ArrayInit {}
+		ast.AsCast {}
+		ast.Assoc {}
+		ast.AtExpr {}
+		ast.CTempVar {}
+		ast.CastExpr {}
+		ast.ChanInit {}
+		ast.CharLiteral {}
+		ast.Comment {}
+		ast.ComptimeCall {}
+		ast.ComptimeSelector {}
+		ast.ConcatExpr {}
+		ast.DumpExpr {}
+		ast.EmptyExpr {}
+		ast.EnumVal {}
+		ast.FloatLiteral {}
+		ast.GoExpr {}
+		ast.IfExpr {}
+		ast.IfGuardExpr {}
+		ast.IndexExpr {}
+		ast.InfixExpr {}
+		ast.IsRefType {}
+		ast.Likely {}
+		ast.LockExpr {}
+		ast.MapInit {}
+		ast.MatchExpr {}
+		ast.NodeError {}
+		ast.OrExpr {}
+		ast.ParExpr {}
+		ast.RangeExpr {}
+		ast.SelectExpr {}
+		ast.SqlExpr {}
+		ast.StringInterLiteral {}
+		ast.StructInit {}
+		ast.TypeNode {}
+		ast.TypeOf {}
+		ast.UnsafeExpr {}
+		*/
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
-			g.n_error('expected string as argument for print')
+			//	g.v_error('expected string as argument for print', expr.pos)
+			g.n_error('expected string as argument for print') // , expr.pos)
+			// g.warning('expected string as argument for print')
 		}
 	}
 }
@@ -386,9 +483,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.gen_assert(node)
 		}
+		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		else {
-			println('native.stmt(): bad node: ' + node.type_name())
+			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }

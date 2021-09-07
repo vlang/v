@@ -1,6 +1,27 @@
+struct Foo {
+	a int
+	b int
+	c int
+}
+
 fn test_stdout() {
 	print('Hello ')
 	println('World')
+}
+
+fn test_booleans() {
+	println(true)
+	println(false)
+}
+
+fn test_numbers() {
+	println(123)
+}
+
+fn test_oof() {
+	println(__offsetof(Foo, a))
+	println(__offsetof(Foo, b))
+	println(__offsetof(Foo, c))
 }
 
 fn test_stderr() {
@@ -11,4 +32,6 @@ fn test_stderr() {
 fn main() {
 	test_stdout()
 	test_stderr()
+	test_numbers()
+	test_oof()
 }
