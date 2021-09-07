@@ -3,6 +3,7 @@ module builder
 import os
 import v.token
 import v.pref
+import v.errors
 import v.util
 import v.ast
 import v.vmod
@@ -26,6 +27,9 @@ mut:
 	out_name_js string
 	stats_lines int // size of backend generated source code in lines
 	stats_bytes int // size of backend generated source code in bytes
+	nr_errors   int // accumulated error count of scanner, parser, checker, and builder
+	nr_warnings int // accumulated warning count of scanner, parser, checker, and builder
+	nr_notices  int // accumulated notice count of scanner, parser, checker, and builder
 pub mut:
 	module_search_paths []string
 	parsed_files        []&ast.File
@@ -86,6 +90,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	if b.pref.check_only {
+		return error('stop_after_checker')
+	}
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
 	util.timing_measure('TRANSFORM')
@@ -133,7 +140,8 @@ pub fn (mut b Builder) parse_imports() {
 		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
+					ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
@@ -142,15 +150,16 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
-					imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)',
+					ast_file.path, imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
-				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
 					ast_file.path, imp.pos)
+				continue
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref)
@@ -161,7 +170,7 @@ pub fn (mut b Builder) parse_imports() {
 				}
 				if name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
+					b.parsed_files[i].errors << b.error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
 						ast_file.path, imp.pos)
 				}
 			}
@@ -335,27 +344,107 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
-	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+	if b.nr_errors == 0 && b.nr_warnings == 0 && b.nr_notices == 0 {
 		return
 	}
 	if b.pref.is_stats {
-		estring := util.bold(b.checker.errors.len.str())
-		wstring := util.bold(b.checker.warnings.len.str())
-		nstring := util.bold(b.checker.nr_notices.str())
-		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		mut nr_errors := b.checker.errors.len
+		mut nr_warnings := b.checker.warnings.len
+		mut nr_notices := b.checker.notices.len
+
+		if b.pref.check_only {
+			nr_errors = b.nr_errors
+			nr_warnings = b.nr_warnings
+			nr_notices = b.nr_notices
+		}
+
+		estring := util.bold(nr_errors.str())
+		wstring := util.bold(nr_warnings.str())
+		nstring := util.bold(nr_notices.str())
+
+		if b.pref.check_only {
+			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		} else {
+			println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		}
 	}
 }
 
-fn (b &Builder) print_warnings_and_errors() {
+fn (mut b Builder) print_warnings_and_errors() {
 	defer {
 		b.show_total_warns_and_errors_stats()
 	}
+
+	for file in b.parsed_files {
+		b.nr_errors += file.errors.len
+		b.nr_warnings += file.warnings.len
+		b.nr_notices += file.notices.len
+	}
+
 	if b.pref.output_mode == .silent {
-		if b.checker.nr_errors > 0 {
+		if b.nr_errors > 0 {
 			exit(1)
 		}
 		return
 	}
+
+	if b.pref.check_only {
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.notices {
+					kind := if b.pref.is_verbose {
+						'$err.reporter notice #$b.nr_notices:'
+					} else {
+						'notice:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			for err in file.errors {
+				kind := if b.pref.is_verbose {
+					'$err.reporter error #$b.nr_errors:'
+				} else {
+					'error:'
+				}
+				ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+				eprintln(ferror)
+				if err.details.len > 0 {
+					eprintln('Details: $err.details')
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.warnings {
+					kind := if b.pref.is_verbose {
+						'$err.reporter warning #$b.nr_warnings:'
+					} else {
+						'warning:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		b.show_total_warns_and_errors_stats()
+		if b.nr_errors > 0 {
+			exit(1)
+		}
+		exit(0)
+	}
+
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
@@ -455,10 +544,19 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-fn error_with_pos(s string, fpath string, pos token.Position) {
-	ferror := util.formatted_error('builder error:', s, fpath, pos)
-	eprintln(ferror)
-	exit(1)
+fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
+	if !b.pref.check_only {
+		ferror := util.formatted_error('builder error:', s, fpath, pos)
+		eprintln(ferror)
+		exit(1)
+	}
+
+	return errors.Error{
+		file_path: fpath
+		pos: pos
+		reporter: .builder
+		message: s
+	}
 }
 
 [noreturn]

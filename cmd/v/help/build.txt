@@ -125,6 +125,9 @@ NB: the build flags are shared with the run command too:
       that it uses to detect whether or not to use ANSI colors may not work in all cases.
       These options allow you to override the default detection.
 
+   -check
+      Scans, parses, and checks the files without compiling the program.
+
    -check-syntax
       Only scan and parse the files, but then stop. Useful for very quick syntax checks.
 

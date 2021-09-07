@@ -1768,6 +1768,17 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 			// m_state = .end
 			// break
+
+			// no groups open, check the last token quantifier
+			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min
+					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
+					// println("We are in good repetition")
+					return state.first_match, state.i
+				}
+			}
+
+			// print("No good exit!!")
 			return regex.no_match_found, 0
 		}
 
@@ -2268,12 +2279,14 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 		// ist_quant_p => quantifier positive test on token
 		else if m_state == .ist_quant_p {
+			// println("Here .ist_quant_p")
 			// exit on first match
 			if (re.flag & regex.f_efm) != 0 {
 				return state.i, state.i + 1
 			}
 
 			rep := re.prog[state.pc].rep
+			// println(rep)
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {

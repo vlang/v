@@ -31,6 +31,8 @@ const (
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	reserved_type_names         = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
@@ -1150,7 +1152,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							}
 						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, field_info.typ) or {
+						c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
 							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
@@ -4026,6 +4028,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
+						if left.name in checker.reserved_type_names {
+							c.error('invalid use of reserved type `$left.name` as a variable name',
+								left.pos)
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {

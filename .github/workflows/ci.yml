@@ -32,7 +32,7 @@ jobs:
       - name: v test-fmt
         run: ./v -silent test-fmt
 
-  ## Performance regressions
+      ## Performance regressions
       - name: Clone & Build vmaster/v
         run: |
           git clone --depth=1 https://github.com/vlang/v vmaster/
@@ -319,6 +319,13 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
+      - name: v.c can be compiled and run with -os cross
+        run: |
+          ./v -os cross -o /tmp/v.c cmd/v
+          cc -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          ls -lart v_from_vc
+          ./v_from_vc version
+
       - name: Self tests
         run: VJOBS=1 ./v -silent test-self
 
@@ -396,12 +403,12 @@ jobs:
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-# QTODO
-#      - name: v self compilation with -usecache
-#        run: |
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
+      # QTODO
+      #      - name: v self compilation with -usecache
+      #        run: |
+      #          ./v -o v2 -usecache cmd/v
+      #          ./v2 -o v3 -usecache cmd/v
+      #          ./v3 -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
@@ -448,7 +455,7 @@ jobs:
           ls
 
   #        ./1m
-  #run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
+  # run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
   #    - name: Coveralls GitHub Action
   #      uses: coverallsapp/github-action@v1.0.1
   #      with:
@@ -487,12 +494,12 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-# QTODO
-#      - name: v self compilation with -usecache
-#        run: |
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
+      # QTODO
+      #      - name: v self compilation with -usecache
+      #        run: |
+      #          ./v -o v2 -usecache cmd/v
+      #          ./v2 -o v3 -usecache cmd/v
+      #          ./v3 -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
@@ -749,7 +756,7 @@ jobs:
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
-  ## tcc32
+      ## tcc32
       - name: Build with make.bat -tcc32
         run: |
           Remove-Item -Recurse -Force .\thirdparty\tcc
@@ -838,7 +845,7 @@ jobs:
       - name: Build V
         run: make && sudo ./v symlink
 
-  ## vls
+      ## vls
       - name: Clone tree-sitter-v to ~/.vmodules/tree_sitter_v
         run: git clone --depth 1 https://github.com/nedpals/tree-sitter-v ~/.vmodules/tree_sitter_v
       - name: Clone VLS tree-sitter
@@ -856,13 +863,13 @@ jobs:
       - name: Build VLS master with -prod
         run: pushd vls; v -prod cmd/vls ; popd
 
-  ## vab
+      ## vab
       - name: Clone vab
         run: git clone --depth 1 https://github.com/vlang/vab
       - name: Build vab
         run: cd vab; ../v ./vab.v ; cd ..
 
-  ## gitly
+      ## gitly
       - name: Install markdown
         run: ./v install markdown
       - name: Build Gitly
@@ -874,7 +881,7 @@ jobs:
           ../v -autofree .
           cd ..
 
-  ## vex
+      ## vex
       - name: Install Vex dependencies
         run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
       - name: Install Vex
@@ -884,11 +891,11 @@ jobs:
       - name: Run Vex Tests
         run: ./v test ~/.vmodules/nedpals/vex
 
-  ## vpm modules
+      ## vpm modules
       - name: Install UI through VPM
         run: ./v install ui
 
-  ## libsodium
+      ## libsodium
       - name: Install libsodium-dev package
         run: sudo apt-get install --quiet -y libsodium-dev
       - name: Installl the libsodium wrapper through VPM

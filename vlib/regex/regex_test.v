@@ -155,6 +155,10 @@ match_test_suite = [
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
 
+    // backslash on finish string
+    TestItem{"a", r"\S+",0,1},
+    TestItem{"aaaa", r"\S+",0,4},
+    TestItem{"aaaa ", r"\S+",0,4},
 ]
 )
 
@@ -550,6 +554,13 @@ fn test_regex(){
 			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
+		}
+
+		// test the match predicate
+		if to.s >= 0 {
+			assert re.matches_string(to.src)
+		} else {
+			assert !re.matches_string(to.src)
 		}
 
 		// rerun to test consistency

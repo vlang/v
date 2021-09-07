@@ -76,6 +76,10 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		if fspec == `o` {
 			base = 8 - 2 // our base start from 2
 		}
+		// binary format
+		if fspec == `b` {
+			base = 1 // our base start from 2 we use 1 for binary
+		}
 		if fspec == `c` {
 			fmt_type = .si_c
 		} else {

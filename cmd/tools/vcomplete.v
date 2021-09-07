@@ -94,6 +94,7 @@ const (
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
+		'-check',
 		'-v',
 		'-progress',
 		'-silent',

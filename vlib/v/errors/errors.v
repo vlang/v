@@ -6,6 +6,7 @@ pub enum Reporter {
 	scanner
 	parser
 	checker
+	builder
 	gen
 }
 

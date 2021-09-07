@@ -58,24 +58,25 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.struct_fn_definitions {
-		return ptr_styp
+	fn_name := ptr_styp.replace('struct ', '')
+	if fn_name in g.struct_fn_definitions {
+		return fn_name
 	}
-	g.struct_fn_definitions << ptr_styp
+	g.struct_fn_definitions << fn_name
 	info := left.sym.struct_info()
-	g.type_definitions.writeln('static bool ${ptr_styp}_struct_eq($ptr_styp a, $ptr_styp b); // auto')
+	g.type_definitions.writeln('static bool ${fn_name}_struct_eq($ptr_styp a, $ptr_styp b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static bool ${ptr_styp}_struct_eq($ptr_styp a, $ptr_styp b) {')
+	fn_builder.writeln('static bool ${fn_name}_struct_eq($ptr_styp a, $ptr_styp b) {')
 
 	// overloaded
 	if left.sym.has_method('==') {
-		fn_builder.writeln('\treturn ${ptr_styp}__eq(a, b);')
+		fn_builder.writeln('\treturn ${fn_name}__eq(a, b);')
 		fn_builder.writeln('}')
-		return ptr_styp
+		return fn_name
 	}
 
 	fn_builder.write_string('\treturn ')
@@ -117,7 +118,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	}
 	fn_builder.writeln(';')
 	fn_builder.writeln('}')
-	return ptr_styp
+	return fn_name
 }
 
 fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
