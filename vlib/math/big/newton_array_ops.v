@@ -37,50 +37,52 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 //         x += 1
 //     return (a * x) >> k
 
-	arrays_len := operand_a.len + operand_b.len
-	k := (arrays_len) * 32 - (bits.leading_zeros_32(operand_a.last()) + bits.leading_zeros_32(operand_b.last()))
-	// mut x := Integer.from_i64(i64(t_1 + t_2 * u32_array_to_f64(operand_b)))
-	mut x := integer_from_u32(2)
-	double_array_len := arrays_len * 2 + k
-	mut lastx := integer_from_u32(0)
-	mut temp1 := Integer{signum: 1, digits: []u32{len: double_array_len, init: 0}}
-	mut temp2 := Integer{signum: 1, digits: []u32{len: double_array_len, init: 0}}
-	operand_b_int := Integer{signum: 1, digits: operand_b}
-	pow2_k_plus_1 := pow2(k + 1)
-	println('x = $x')
-	for lastx != x {
-		copy_array(mut lastx.digits, x.digits)
-		// x = (x * (pow2_k_plus_1 - x * operand_b)) >> k
-		multiply_2(x, operand_b_int, mut temp1, double_array_len)
-		subtract_2(pow2_k_plus_1, temp1, mut temp2, double_array_len)
-		multiply_2(x, temp2, mut temp1, double_array_len)
-		rshift_in_place(mut temp1.digits, u32(k))
-		copy_array(mut x.digits, temp1.digits)
-		println('x = $x')
-	}
-	multiply_2(x, operand_b_int, mut temp2, double_array_len)
-	if temp2.abs_cmp(pow2(k)) < 0 { // x * operand_b < pow2(k)
-		add_in_place(mut x.digits, [u32(1)]) // x.inc()
-	}
-	// quotient = operand_a * x
-	operand_a_int := Integer{signum: 1, digits: operand_a}
-	mut quotient_int := Integer{signum: 1, digits: quotient}
-	multiply_2(operand_a_int, x, mut quotient_int, double_array_len)
-	rshift_in_place(mut quotient, u32(k))
+// 	V code working with u64 integers
+// fn unsigned_div_newton(a u64, b u64) u64 {
+//     assert a >= 0 && b > 0
+//     if a <= b {
+//         return 0
+// 	}
+//     k := bit_length(a) + bit_length(b)  // a*b < 2**k
+//     mut x := u64(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
+//     mut lastx := u64(0)
+//     for lastx != x {
+//         lastx = x
+//         x = (x * (pow2(k + 1) - x * b)) >> k
+// 	}
+//     if x*b < pow2(k) {
+//         x += 1
+// 	}
+//     return (a * x) >> k
+// }
 
-	//remainder = operand_a - (quotient * operand_b)
-	clear_u32_array(mut temp1.digits, arrays_len)
-	multiply_digit_array(quotient, operand_b, mut temp1.digits)
-	clear_u32_array(mut remainder, operand_a.len)
-	subtract_digit_array(operand_a, temp1.digits, mut remainder)
+	// tranform back to Integers (local without allocation)
+	a := Integer{signum: 1, digits: operand_a}
+	b := Integer{signum: 1, digits: operand_b}
+	q := Integer{signum: 1, digits: quotient}
+	r := Integer{signum: 1, digits: remainder}
 
-	// clean result
-	for quotient.len > 0 && quotient.last() == 0 {
-		quotient.delete_last()
+    k := bit_length(a) + bit_length(b)  // a*b < 2**k
+    mut x := integer_from_int(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
+    mut lastx := integer_from_int(0)
+    for lastx != x {
+        lastx = x
+        x = (x * (pow2(k + 1) - x * b)) >> k
 	}
-	for remainder.len > 0 && remainder.last() == 0 {
-		remainder.delete_last()
+    if x*b < pow2(k) {
+        x += 1
 	}
+    q = (a * x) >> k
+	r = a - (q * b)
+
+	// for returning []u32
+	quotient = q.digits
+	remainder = r.digits
+}
+
+[inline]
+fn bit_length(a Integer) int {
+	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
 // operations with already allocated result
