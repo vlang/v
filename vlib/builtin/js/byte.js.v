@@ -14,3 +14,10 @@ pub fn (c byte) is_letter() bool {
 
 	return result
 }
+
+pub fn (c byte) str() string {
+	res := ''
+	#res.str = c.val.toString()
+
+	return res
+}

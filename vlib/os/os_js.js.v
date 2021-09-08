@@ -45,7 +45,7 @@ pub fn ls(path string) ?[]string {
 	result := []string{}
 	$if js_node {
 		#let i = 0
-		#$fs.readdirSync(path.str).forEach((path) => result.arr[i++] = new builtin.string(path))
+		#$fs.readdirSync(path.str).forEach((path) => result.arr[i++] = new string(path))
 	}
 	return result
 }

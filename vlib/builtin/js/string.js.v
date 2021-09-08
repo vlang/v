@@ -718,3 +718,11 @@ pub fn (s string) split_into_lines() []string {
 
 	return res
 }
+
+// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+pub fn (s string) replace_once(rep string, with_ string) string {
+	s2 := ''
+	#s2.val = s.str.replace(rep.str,with_.str)
+
+	return s2
+}

@@ -15,7 +15,7 @@ pub fn setenv(key string, val string, overwrite bool) {
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
 	mut res := ''
-	#if ($ENV[key]) res = new builtin.string($ENV[key])
+	#if ($ENV[key]) res = new string($ENV[key])
 
 	return res
 }
