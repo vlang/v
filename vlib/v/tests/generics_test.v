@@ -68,6 +68,7 @@ fn test_postfix_expr() {
 	assert minus_one(i16(-7)) == -8
 	assert minus_one(int(-6)) == -7
 	assert minus_one(i64(-5)) == -6
+
 	// the point is to see if it compiles, more than if the result
 	// is correct, so 1e-6 isn't necessarily the right value to do this
 	// but it's not important
@@ -370,6 +371,7 @@ fn test_generic_fn_with_variadics() {
 	s := 'abc'
 	i := 1
 	abc := Abc{1, 2, 3}
+
 	// these calls should all compile, and print the arguments,
 	// even though the arguments are all a different type and arity:
 	p(s)
@@ -457,16 +459,26 @@ fn test_generic_init() {
 	a << 'a'
 	assert a.len == 1
 	assert a[0] == 'a'
+
 	// map init
 	mut b := new<map[string]string>()
 	assert b.len == 0
 	b['b'] = 'b'
 	assert b.len == 1
 	assert b['b'] == 'b'
+
 	// struct init
 	mut c := new<User>()
 	c.name = 'c'
 	assert c.name == 'c'
+}
+
+fn return_one<T>(rec int, useless T) T {
+	// foo < bar<T>() should work
+	if rec == 0 || 0 < return_one<T>(rec - 1, useless) {
+		return T(1)
+	}
+	return T(0)
 }
 
 fn test_generic_detection() {
@@ -482,9 +494,11 @@ fn test_generic_detection() {
 	assert multi_generic_args<int, string>(0, 's')
 	assert multi_generic_args<Foo1, Foo2>(Foo1{}, Foo2{})
 	assert multi_generic_args<Foo<int>, Foo<int> >(Foo<int>{}, Foo<int>{})
+
 	// TODO: assert multi_generic_args<Foo<int>, Foo<int>>(Foo1{}, Foo2{})
 	assert multi_generic_args<simplemodule.Data, int>(simplemodule.Data{}, 0)
 	assert multi_generic_args<int, simplemodule.Data>(0, simplemodule.Data{})
 	assert multi_generic_args<[]int, int>([]int{}, 0)
 	assert multi_generic_args<map[int]int, int>(map[int]int{}, 0)
+	assert 0 < return_one<int>(10, 0)
 }

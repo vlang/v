@@ -65,7 +65,7 @@ fn min<T>(tree Tree<T>) T {
 			1e100
 		}
 		Node<T> {
-			if tree.value < (min<T>(tree.left)) {
+			if tree.value < min<T>(tree.left) {
 				tree.value
 			} else {
 				min<T>(tree.left)
