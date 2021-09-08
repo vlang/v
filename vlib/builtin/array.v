@@ -150,7 +150,7 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), callback) }
+		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
 	}
 }
 
