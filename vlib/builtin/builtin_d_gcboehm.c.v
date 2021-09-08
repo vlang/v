@@ -58,13 +58,13 @@ $if gcboehm_leak ? {
 // for use with Boehm-GC
 // Do not use them manually. They are automatically chosen when
 // compiled with `-gc boehm` or `-gc boehm_leak`.
-fn C.GC_MALLOC(n size_t) voidptr
+fn C.GC_MALLOC(n usize) voidptr
 
-fn C.GC_MALLOC_ATOMIC(n size_t) voidptr
+fn C.GC_MALLOC_ATOMIC(n usize) voidptr
 
-fn C.GC_MALLOC_UNCOLLECTABLE(n size_t) voidptr
+fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
 
-fn C.GC_REALLOC(ptr voidptr, n size_t) voidptr
+fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 

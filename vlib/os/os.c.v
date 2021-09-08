@@ -13,7 +13,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink(pathname &char, buf &char, bufsiz size_t) int
+fn C.readlink(pathname &char, buf &char, bufsiz usize) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
@@ -531,7 +531,7 @@ pub fn get_raw_line() string {
 			return buf.vstring_with_len(offset)
 		}
 	} $else {
-		max := size_t(0)
+		max := usize(0)
 		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		return unsafe { tos(&byte(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
@@ -567,7 +567,7 @@ pub fn get_raw_stdin() []byte {
 			}
 		}
 	} $else {
-		max := size_t(0)
+		max := usize(0)
 		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		return array{
@@ -996,7 +996,7 @@ pub fn is_atty(fd int) int {
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
+	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size)) ? }
 	f.close()
 }
 

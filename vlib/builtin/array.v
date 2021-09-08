@@ -11,7 +11,7 @@ pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `size_t`)
+	offset int // in bytes (should be `usize`)
 	len    int // length of the array.
 	cap    int // capacity of the array.
 }
@@ -150,7 +150,7 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
 		panic('sort does not work with -freestanding')
 	} $else {
-		unsafe { vqsort(a.data, size_t(a.len), size_t(a.element_size), callback) }
+		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
 	}
 }
 

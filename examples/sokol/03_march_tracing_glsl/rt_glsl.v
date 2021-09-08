@@ -88,7 +88,7 @@ fn create_texture(w int, h int, buf &byte) C.sg_image {
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -105,7 +105,7 @@ fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	mut tmp_sbc := C.sg_image_data{}
 	tmp_sbc.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 	C.sg_update_image(sg_img, &tmp_sbc)
 }
@@ -175,10 +175,10 @@ fn init_cube_glsl(mut app App) {
 	mut vert_buffer_desc := C.sg_buffer_desc{label: c'cube-vertices'}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 
-	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
+	vert_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = C.sg_range{
 		ptr: vertices.data
-		size: size_t(vertices.len * int(sizeof(Vertex_t)))
+		size: usize(vertices.len * int(sizeof(Vertex_t)))
 	}
 
 	vert_buffer_desc.@type = .vertexbuffer
@@ -197,10 +197,10 @@ fn init_cube_glsl(mut app App) {
 	mut index_buffer_desc := C.sg_buffer_desc{label: c'cube-indices'}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
 
-	index_buffer_desc.size = size_t(indices.len * int(sizeof(u16)))
+	index_buffer_desc.size = usize(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = C.sg_range{
 		ptr: indices.data
-		size: size_t(indices.len * int(sizeof(u16)))
+		size: usize(indices.len * int(sizeof(u16)))
 	}
 
 	index_buffer_desc.@type   = .indexbuffer
@@ -283,7 +283,7 @@ fn draw_cube_glsl(app App) {
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := C.sg_range{
 		ptr: &tr_matrix
-		size: size_t(4 * 16)
+		size: usize(4 * 16)
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &vs_uniforms_range)
 
@@ -301,7 +301,7 @@ fn draw_cube_glsl(app App) {
 	]!
 	fs_uniforms_range := C.sg_range{
 		ptr: unsafe { &tmp_fs_params }
-		size: size_t(sizeof(tmp_fs_params))
+		size: usize(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
 

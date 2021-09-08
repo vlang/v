@@ -8,7 +8,7 @@ module rand
 
 #flag darwin -framework Security
 
-fn C.SecRandomCopyBytes(rnd C.SecRandomRef, count size_t, bytes voidptr) int
+fn C.SecRandomCopyBytes(rnd C.SecRandomRef, count usize, bytes voidptr) int
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {

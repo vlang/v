@@ -352,7 +352,7 @@ pub fn expand_tilde_to_home(path string) string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	unsafe { f.write_full_buffer(text.str, size_t(text.len)) ? }
+	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
 	f.close()
 }
 

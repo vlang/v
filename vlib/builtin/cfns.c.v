@@ -1,13 +1,13 @@
 module builtin
 
 // <string.h>
-fn C.memcpy(dest voidptr, const_src voidptr, n size_t) voidptr
+fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
-fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n size_t) int
+fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n usize) int
 
-fn C.memmove(dest voidptr, const_src voidptr, n size_t) voidptr
+fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
-fn C.memset(str voidptr, c int, n size_t) voidptr
+fn C.memset(str voidptr, c int, n usize) voidptr
 
 [trusted]
 fn C.calloc(int, int) &byte
@@ -21,7 +21,7 @@ fn C.free(ptr voidptr)
 [noreturn; trusted]
 fn C.exit(code int)
 
-fn C.qsort(base voidptr, items size_t, item_size size_t, cb C.qsort_callback_func)
+fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
@@ -65,9 +65,9 @@ fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) int
 
-fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
+fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
-fn C.fwrite(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
+fn C.fwrite(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
 fn C.fclose(stream &C.FILE) int
 
@@ -130,7 +130,7 @@ fn C.fgets(str &char, n int, stream &C.FILE) int
 [trusted]
 fn C.sigemptyset() int
 
-fn C.getcwd(buf &char, size size_t) &char
+fn C.getcwd(buf &char, size usize) &char
 
 [trusted]
 fn C.mktime() int
@@ -173,7 +173,7 @@ fn C.getchar() int
 [trusted]
 fn C.strerror(int) &char
 
-fn C.snprintf(str &char, size size_t, format &char, opt ...voidptr) int
+fn C.snprintf(str &char, size usize, format &char, opt ...voidptr) int
 
 fn C.fprintf(voidptr, &char, ...voidptr)
 
@@ -194,7 +194,7 @@ fn C.isatty(fd int) int
 
 fn C.syscall(number int, va ...voidptr) int
 
-fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen size_t) int
+fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) int
 
 [trusted]
 fn C._fileno(int) int
@@ -444,9 +444,9 @@ fn C.dispatch_time(u64, i64) u64
 fn C.dispatch_release(voidptr)
 
 // file descriptor based reading/writing
-fn C.read(fd int, buf voidptr, count size_t) int
+fn C.read(fd int, buf voidptr, count usize) int
 
-fn C.write(fd int, buf voidptr, count size_t) int
+fn C.write(fd int, buf voidptr, count usize) int
 
 fn C.close(fd int) int
 
