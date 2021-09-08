@@ -202,7 +202,7 @@ fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut 
 }
 
 // Performs division on the non-negative dividend in a by the single digit divisor b. It assumes
-// quotient and remainder are empty zero length arrays with sufficient capacity
+// quotient and remainder are empty zero length arrays without previous allocation
 fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut remainder []u32) {
 	if operand_a.len == 1 {
 		// 1 digit for both dividend and divisor
@@ -235,58 +235,6 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 		quotient.delete_last()
 	}
 	remainder << u32(rem)
-	for remainder.len > 0 && remainder.last() == 0 {
-		remainder.delete_last()
-	}
-}
-
-// Performs division on the non-negative dividend in a by the multi digit divisor b. It assumes
-// quotient and remainder are empty zero length arrays with sufficient capacity
-// This is different from divide_digit_array because it depends on this very function
-// after making sure that the divisor is indeed multi-digit.
-fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	for index in 0 .. operand_a.len {
-		remainder << operand_a[index]
-	}
-	for _ in 0 .. operand_b.len {
-		quotient << 0
-	}
-	offset := operand_a.len - operand_b.len
-	divisor_last_index := operand_b.len - 1
-	for index := offset; index >= 0; index-- {
-		dividend_last_index := divisor_last_index + index
-		value_upper := if remainder.len > dividend_last_index + 1 {
-			u64(remainder[dividend_last_index + 1])
-		} else {
-			u64(0)
-		}
-		value_lower := if remainder.len > dividend_last_index {
-			u64(remainder[dividend_last_index])
-		} else {
-			u64(0)
-		}
-		partial := value_lower + (value_upper << 32)
-		mut q := u32(partial / operand_b[divisor_last_index])
-		if q > 0 {
-			mut modified_divisor := []u32{len: operand_b.len + index, init: 0}
-			for i in 0 .. operand_b.len {
-				modified_divisor[index + i] = operand_b[i]
-			}
-
-			mut product := []u32{len: operand_b.len + 1, init: 0}
-			multiply_array_by_digit(modified_divisor, q, mut product)
-			for q > 0 && compare_digit_array(product, remainder) > 0 {
-				q--
-				subtract_digit_array(product, modified_divisor, mut product)
-			}
-			subtract_digit_array(remainder, product, mut remainder)
-		}
-		quotient[index] = q
-	}
-	// Remove leading zeros from quotient and remainder
-	for quotient.len > 0 && quotient.last() == 0 {
-		quotient.delete_last()
-	}
 	for remainder.len > 0 && remainder.last() == 0 {
 		remainder.delete_last()
 	}
