@@ -469,10 +469,11 @@ pub fn merge_types(params ...[]Type) []Type {
 
 pub const (
 	// must be in the same order as the idx consts above
-	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
-		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
-		'thread', 'Error', 'u8']
+	builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64', 'isize',
+		'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string', 'rune',
+		'array', 'map', 'chan', 'size_t', 'any', 'float_literal', 'int_literal', 'thread', 'Error',
+		'u8',
+	]
 )
 
 pub struct MultiReturn {

@@ -11,7 +11,7 @@ pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `size_t`)
+	offset int // in bytes (should be `usize`)
 	len    int // length of the array.
 	cap    int // capacity of the array.
 }
