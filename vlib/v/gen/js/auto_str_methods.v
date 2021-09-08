@@ -324,30 +324,34 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 	for typ in info.types {
 		subtype := g.table.get_type_symbol(typ)
 		mut func_name := g.gen_str_for_type(typ)
-		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
+		sym_has_str_method, _, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
 
 		// str_intp
-		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
+
 		if typ == ast.string_type {
+			/*
 			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
 			val = val
+			*/
 			res := '"TODO"'
 			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			fn_builder.write_string(' return $res;')
 		} else {
+			/*
 			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
 			val = val
+			*/
 			res := '"TODO'
 			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 			fn_builder.write_string(' return $res;\n')
@@ -669,10 +673,12 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
-		// manage prefix and quote symbol for the filed
-		mut quote_str := ''
 		mut prefix := ''
-		sym := g.table.get_type_symbol(g.unwrap_generic(field.typ))
+		// manage prefix and quote symbol for the filed
+		/*
+		mut quote_str := ''
+		
+		
 		if sym.kind == .string {
 			quote_str = "'"
 		} else if field.typ in ast.charptr_types {
@@ -680,6 +686,8 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			prefix = 'C'
 		}
 		quote_str = quote_str
+		*/
+		sym := g.table.get_type_symbol(g.unwrap_generic(field.typ))
 		// first fields doesn't need \n
 		if i == 0 {
 			fn_builder.write_string('res.str += "    $field.name: $ptr_amp$prefix" + ')
