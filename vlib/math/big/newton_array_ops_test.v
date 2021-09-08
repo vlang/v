@@ -93,45 +93,53 @@ fn test_neg_in_place () {
 // }
 
 fn test_multiply_karatsuba () {
-	mut a := integer_from_i64(3)
-	mut b := integer_from_int(0)
-	assert multiply_kara_simpl(a, b) == zero_int
+	// mut a := integer_from_i64(3)
+	// mut b := integer_from_int(0)
+	// assert multiply_kara_simpl(a, b) == zero_int
 
-	a = integer_from_i64(3)
-	b = integer_from_int(1)
-	assert multiply_kara_simpl(a, b) == a
+	// a = integer_from_i64(3)
+	// b = integer_from_int(1)
+	// assert multiply_kara_simpl(a, b) == a
 
-	a = integer_from_i64(0)
-	b = integer_from_int(4)
-	assert multiply_kara_simpl(a, b) == zero_int
+	// a = integer_from_i64(0)
+	// b = integer_from_int(4)
+	// assert multiply_kara_simpl(a, b) == zero_int
 
-	a = integer_from_i64(1)
-	b = integer_from_int(5)
-	assert multiply_kara_simpl(a, b) == b
+	// a = integer_from_i64(1)
+	// b = integer_from_int(5)
+	// assert multiply_kara_simpl(a, b) == b
 
-	a = integer_from_i64(3)
-	b = integer_from_int(0)
-	assert multiply_kara_simpl(a, b) == zero_int
+	// a = integer_from_i64(3)
+	// b = integer_from_int(0)
+	// assert multiply_kara_simpl(a, b) == zero_int
 
-	a = integer_from_i64(1234)
-	b = integer_from_int(567)
-	assert multiply_kara_simpl(a, b) == integer_from_i64(699_678)
+	// a = integer_from_i64(1234)
+	// b = integer_from_int(567)
+	// assert multiply_kara_simpl(a, b) == integer_from_i64(699_678)
+
+	a := integer_from_string('95484736384949495947362') or {panic('error')}
+	b := integer_from_string('39474638493') or {panic('error')}
+	assert multiply_kara_simpl(a, b).str() == '3769225450395285038584683507005466'
 }
 
-// fn test_karatsuba_mult () {
-// 	a := integer_from_string('53575430359313366047421252453000090528070240585276680372187519418517552556246806124659918940784792906379733645877657341259357264284615702179922887873492874019672838874121154927105373025311855709389770910765') or {panic('error')}
-// 	b := integer_from_string('977091076523237491790970633699383779582771973038531457285598238843271083830214915826312193418602834034688531898668229388286706296786321423078510899614439367') or {panic('error')}
-// 	mut c := zero_int
-// 	mut bm := benchmark.start()
-// 	for _ in 0 .. 30 {
-// 		c = multiply_kara_simpl(a, b)
-// 	}
-// 	bm.measure('karatsuba_simple')
-// 	for _ in 0 .. 30 {
-// 		c = a * b
-// 	}
-// 	bm.measure('normal algorithm')
-// }
+fn test_karatsuba_mult () {
+	// a := integer_from_string('53575430359313366047421252453000090528070240585276680372187519418517552556246806124659918940784792906379733645877657341259357264284615702179922887873492874019672838874121154927105373025311855709389770910765') or {panic('error')}
+	// b := integer_from_string('977091076523237491790970633699383779582771973038531457285598238843271083830214915826312193418602834034688531898668229388286706296786321423078510899614439367') or {panic('error')}
+	// mut c := zero_int
+	// c = multiply_kara_simpl(a, b)
+	// assert c.str() == '2870326738185636310582083002944204960055794255221738001194106842064415653480925784641648715791265674796114911597468656933617797402157638328564828390416632963478249728632807000017219478706001121785723174751562256947076941326925110008834025998103883664759029550330886353030418109328922239397312954458564043786657648069722509209216761853741140872889945398348598738378828959722010291637623476850310977648577592885225'
+	// c = a * b
+	// assert c.str() == '52348074924977237255285644820010078601114587486470740900886892189662650320988400136613780986308710610258879824881256666730655821800564143426560480113864123642197317383052431412305975584645367703594190956925565749714310612399025459615546540332117815550470167143256687163102859337019449165214274088466835988832405507818643018779158891710706073875995722420460085755' // result calculated through Julia
+	// mut bm := benchmark.start()
+	// for _ in 0 .. 30 {
+	// 	c = multiply_kara_simpl(a, b)
+	// }
+	// bm.measure('karatsuba_simple')
+	// for _ in 0 .. 30 {
+	// 	c = a * b
+	// }
+	// bm.measure('normal algorithm')
+}
 // results of the test:
 //  SPENT     7.103 ms in karatsuba_simple
 //  SPENT     0.369 ms in normal algorithm

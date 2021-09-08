@@ -157,14 +157,24 @@ fn multiply_kara_simpl(a Integer, b Integer) Integer {
 	if half <= 0 {
 		panic('Unreachable. Both array have 1 length and multiply_array_by_digit should have been called')
 	} else {
+		println('------------------------------')
+		println('a: ${debug_u32_str(a.digits)}')
 		a_l := Integer{signum: 1, digits: a.digits[0..half]}
+		println('a_l: ${debug_u32_str(a_l.digits)}')
 		a_h := Integer{signum: 1, digits: a.digits[half..]}
-		b_l := Integer{signum: 1, digits: a.digits[0..half]}
-		b_h := Integer{signum: 1, digits: a.digits[half..]}
+		println('a_h: ${debug_u32_str(a_h.digits)}')
+		println('b: ${debug_u32_str(b.digits)}')
+		b_l := Integer{signum: 1, digits: b.digits[0..half]}
+		println('b_l: ${debug_u32_str(b_l.digits)}')
+		b_h := Integer{signum: 1, digits: b.digits[half..]}
+		println('b_h: ${debug_u32_str(b_h.digits)}')
 
 		p_1 := multiply_kara_simpl(a_h, b_h)
+		println('p_1: ${debug_u32_str(p_1.digits)}')
 		p_3 := multiply_kara_simpl(a_l, b_l)
-		p_2 := multiply_kara_simpl(a_h + b_l, a_l + b_h) - p_1 - p_3
+		println('p_3: ${debug_u32_str(p_3.digits)}')
+		p_2 := multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
+		println('p_3: ${debug_u32_str(p_3.digits)}')
 
 		return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
 	}
