@@ -15,13 +15,14 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
-pub fn (x isize) str() string {
-	return i64(x).str()
-}
-
-pub fn (x usize) str() string {
-	return u64(x).str()
-}
+// TODO uncomment to have string representation of i/usize
+// pub fn (x isize) str() string {
+// 	return u64(x).str()
+// }
+//
+// pub fn (x usize) str() string {
+// 	return u64(x).str()
+// }
 
 pub fn (x size_t) str() string {
 	return u64(x).str()
