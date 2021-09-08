@@ -20,9 +20,8 @@ const (
 //		the digits with a lower positional value (towards the right
 //		when represented as a string) have a lower index, and vice versa.
 pub struct Integer {
-mut:
 	digits []u32
-pub mut:
+pub:
 	signum int
 }
 

@@ -1,5 +1,7 @@
 module big
 
+// import benchmark
+
 fn test_add_in_place () {
 	mut a := [u32(1), 2, 3]
 	mut b := [u32(5), 6, 7]
@@ -52,42 +54,109 @@ fn test_neg_in_place () {
 
 }
 
-fn test_substract_2 () {
-	mut a := Integer{ digits: [u32(1), 2, 3, 4]}
-	mut b := Integer{ digits: [u32(1), 2]}
-	mut c := Integer{ digits: []u32{}}
-	subtract_2(a, b, mut c, 5)
-	assert c.digits == [u32(0), 0, 3, 4]
+// fn test_substract_2 () {
+// 	mut a := Integer{ digits: [u32(1), 2, 3, 4]}
+// 	mut b := Integer{ digits: [u32(1), 2]}
+// 	mut c := Integer{ digits: []u32{}}
+// 	subtract_2(a, b, mut c, 5)
+// 	assert c.digits == [u32(0), 0, 3, 4]
 
-	a = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
-	b = Integer{signum: -1, digits: [u32(1), 2]}
-	subtract_2(a, b, mut c, 5)
-	assert c.digits == [u32(2), 4, 3, 4]
+// 	a = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
+// 	b = Integer{signum: -1, digits: [u32(1), 2]}
+// 	subtract_2(a, b, mut c, 5)
+// 	assert c.digits == [u32(2), 4, 3, 4]
 
-	a = Integer{signum: 1, digits: [u32(1), 2]}
-	b = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
-	subtract_2(a, b, mut c, 5)
-	assert c.digits == [u32(0), 0, 3, 4]
-	assert c.signum == -1
+// 	a = Integer{signum: 1, digits: [u32(1), 2]}
+// 	b = Integer{signum: 1, digits: [u32(1), 2, 3, 4]}
+// 	subtract_2(a, b, mut c, 5)
+// 	assert c.digits == [u32(0), 0, 3, 4]
+// 	assert c.signum == -1
+// }
+
+// fn test_multiply_2 () {
+// 	mut a := Integer{digits: [u32(0), 0, 0, 1]}
+// 	mut b := Integer{digits: [u32(0), 0, 1]}
+// 	mut c := Integer{digits: []u32{}}
+// 	multiply_2(a, b, mut c, 7)
+
+// 	assert c.digits == [u32(0), 0, 0, 0, 0, 1]
+
+// 	a = zero_int
+// 	b = Integer{digits: [u32(0), 0, 1]}
+// 	multiply_2(a, b, mut c, 4)
+
+// 	assert c.digits == []
+
+// 	multiply_2(b, a, mut c, 4)
+
+// 	assert c.digits == []
+// }
+
+fn test_multiply_karatsuba () {
+	mut a := integer_from_i64(3)
+	mut b := integer_from_int(0)
+	assert multiply_kara_simpl(a, b) == zero_int
+
+	a = integer_from_i64(3)
+	b = integer_from_int(1)
+	assert multiply_kara_simpl(a, b) == a
+
+	a = integer_from_i64(0)
+	b = integer_from_int(4)
+	assert multiply_kara_simpl(a, b) == zero_int
+
+	a = integer_from_i64(1)
+	b = integer_from_int(5)
+	assert multiply_kara_simpl(a, b) == b
+
+	a = integer_from_i64(3)
+	b = integer_from_int(0)
+	assert multiply_kara_simpl(a, b) == zero_int
+
+	a = integer_from_i64(1234)
+	b = integer_from_int(567)
+	assert multiply_kara_simpl(a, b) == integer_from_i64(699_678)
 }
 
-fn test_multiply_2 () {
-	mut a := Integer{digits: [u32(0), 0, 0, 1]}
-	mut b := Integer{digits: [u32(0), 0, 1]}
-	mut c := Integer{digits: []u32{}}
-	multiply_2(a, b, mut c, 7)
+// fn test_karatsuba_mult () {
+// 	a := integer_from_string('53575430359313366047421252453000090528070240585276680372187519418517552556246806124659918940784792906379733645877657341259357264284615702179922887873492874019672838874121154927105373025311855709389770910765') or {panic('error')}
+// 	b := integer_from_string('977091076523237491790970633699383779582771973038531457285598238843271083830214915826312193418602834034688531898668229388286706296786321423078510899614439367') or {panic('error')}
+// 	mut c := zero_int
+// 	mut bm := benchmark.start()
+// 	for _ in 0 .. 30 {
+// 		c = multiply_kara_simpl(a, b)
+// 	}
+// 	bm.measure('karatsuba_simple')
+// 	for _ in 0 .. 30 {
+// 		c = a * b
+// 	}
+// 	bm.measure('normal algorithm')
+// }
+// results of the test:
+//  SPENT     7.103 ms in karatsuba_simple
+//  SPENT     0.369 ms in normal algorithm
+// Not very efficient algorithm with reentrance
 
-	assert c.digits == [u32(0), 0, 0, 0, 0, 1]
+fn test_newton_divide_01 () {
+	a := [u32(699_678)]
+	b := [u32(1234)]
+	mut q := []u32{cap: a.len - b.len + 1}
+	mut r := []u32{cap: a.len}
 
-	a = zero_int
-	b = Integer{digits: [u32(0), 0, 1]}
-	multiply_2(a, b, mut c, 4)
+	divide_array_by_array(a, b, mut q, mut r)
+	assert q == [u32(567)]
+	assert r == []u32{len: 0}
+}
 
-	assert c.digits == []
+fn test_newton_divide_02 () {
+	a := [u32(699_678)]
+	b := [u32(567)]
+	mut q := []u32{cap: a.len - b.len + 1}
+	mut r := []u32{cap: a.len}
 
-	multiply_2(b, a, mut c, 4)
-
-	assert c.digits == []
+	divide_array_by_array(a, b, mut q, mut r)
+	assert q == [u32(1234)]
+	assert r == []u32{len: 0}
 }
 
 fn test_divide_digit_array_03() {
@@ -96,7 +165,7 @@ fn test_divide_digit_array_03() {
 	mut q := []u32{cap: a.len - b.len + 1}
 	mut r := []u32{cap: a.len}
 
-	divide_digit_array(a, b, mut q, mut r)
+	divide_array_by_array(a, b, mut q, mut r)
 	assert q == [u32(4)]
 	assert r == []u32{len: 0}
 }

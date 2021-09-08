@@ -2,6 +2,7 @@ module big
 
 import math.bits
 import math.util
+import strings
 
 
 const t_1 = f64(48)/17
@@ -59,21 +60,28 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 	// tranform back to Integers (local without allocation)
 	a := Integer{signum: 1, digits: operand_a}
 	b := Integer{signum: 1, digits: operand_b}
-	q := Integer{signum: 1, digits: quotient}
-	r := Integer{signum: 1, digits: remainder}
+	mut q := Integer{signum: 1, digits: quotient}
+	mut r := Integer{signum: 1, digits: remainder}
 
     k := bit_length(a) + bit_length(b)  // a*b < 2**k
     mut x := integer_from_int(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
     mut lastx := integer_from_int(0)
+	// println('------------------------------')
+// 	println('x: ${debug_u32_str(x.digits)}')
     for lastx != x {
         lastx = x
-        x = (x * (pow2(k + 1) - x * b)) >> k
+        x = (x * (pow2(k + 1) - x * b)).rshift(u32(k))
+	// println('x: ${debug_u32_str(x.digits)}')
 	}
     if x*b < pow2(k) {
-        x += 1
+        x.inc()
 	}
-    q = (a * x) >> k
+    q = (a * x).rshift(u32(k))
 	r = a - (q * b)
+	if r >= b {
+		q.inc()
+	}
+	r -= b
 
 	// for returning []u32
 	quotient = q.digits
@@ -85,28 +93,92 @@ fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
-// operations with already allocated result
-fn subtract_2(a  Integer, b Integer, mut c Integer, length int) {
-	clear_u32_array(mut c.digits, length)
-	if a.signum == b.signum {
-		if a.abs_cmp(b) >= 0 {
-			subtract_digit_array(a.digits, b.digits, mut c.digits)
-			c.signum = a.signum
-		} else {
-			subtract_digit_array(b.digits, a.digits, mut c.digits)
-			c.signum = - a.signum
-		}
+[inline]
+fn debug_u32_str(a []u32) string {
+	mut sb := strings.new_builder(30)
+	sb.write_string('[')
+	mut first := true
+	for i in 0 .. a.len {
+		if ! first { sb.write_string(', ') }
+		sb.write_string('0x${a[i].hex()}')
+		first = false
+	}
+	sb.write_string(']')
+	return sb.str()
+}
+
+fn multiply_kara_simpl(a Integer, b Integer) Integer {
+	// base case
+	if a.digits.len == 0 || b.digits.len == 0 {
+		return zero_int
+	}
+
+	if a == one_int {
+		return b
+	}
+
+	if b == one_int {
+		return a
+	}
+
+	if b.signum < 0 {
+		return multiply_kara_simpl(a, b.neg()).neg()
+	}
+
+	if b.signum < 0 {
+		return multiply_kara_simpl(a.neg(), b).neg()
+	}
+
+	if a < b {
+		return multiply_kara_simpl(b, a)
+	}
+
+	if b.digits.len <= 1 {
+		mut c := []u32{len: a.digits.len + b.digits.len + 1, init: 0}
+		multiply_array_by_digit(a.digits, b.digits[0], mut c)
+		return Integer{signum: 1, digits: c}
+	}
+	// karatsuba
+	// through the base cases we can pass zero-length arrays to the mult func
+	half := util.imax(a.digits.len, b.digits.len) / 2
+	if half <= 0 {
+		panic('Unreachable. Both array have 1 length and multiply_array_by_digit should have been called')
 	} else {
-		add_digit_array(a.digits, b.digits, mut c.digits)
-		c.signum = a.signum
+		a_l := Integer{signum: 1, digits: a.digits[0..half]}
+		a_h := Integer{signum: 1, digits: a.digits[half..]}
+		b_l := Integer{signum: 1, digits: a.digits[0..half]}
+		b_h := Integer{signum: 1, digits: a.digits[half..]}
+
+		p_1 := multiply_kara_simpl(a_h, b_h)
+		p_3 := multiply_kara_simpl(a_l, b_l)
+		p_2 := multiply_kara_simpl(a_h + b_l, a_l + b_h) - p_1 - p_3
+
+		return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
 	}
 }
 
-fn multiply_2(a Integer, b Integer, mut c Integer, length int) {
-	clear_u32_array(mut c.digits, length)
-	multiply_digit_array(a.digits, b.digits, mut c.digits)
-	c.signum = if a.signum == b.signum { 1 } else { -1 }
-}
+// operations with already allocated result
+// fn subtract_2(a  Integer, b Integer, mut c Integer, length int) {
+// 	clear_u32_array(mut c.digits, length)
+// 	if a.signum == b.signum {
+// 		if a.abs_cmp(b) >= 0 {
+// 			subtract_digit_array(a.digits, b.digits, mut c.digits)
+// 			c.signum = a.signum
+// 		} else {
+// 			subtract_digit_array(b.digits, a.digits, mut c.digits)
+// 			c.signum = - a.signum
+// 		}
+// 	} else {
+// 		add_digit_array(a.digits, b.digits, mut c.digits)
+// 		c.signum = a.signum
+// 	}
+// }
+
+// fn multiply_2(a Integer, b Integer, mut c Integer, length int) {
+// 	clear_u32_array(mut c.digits, length)
+// 	multiply_digit_array(a.digits, b.digits, mut c.digits)
+// 	c.signum = if a.signum == b.signum { 1 } else { -1 }
+// }
 
 fn copy_array(mut dest []u32, src []u32) {
 	min_len := util.imin(dest.len, src.len)
