@@ -347,11 +347,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.expr(node.left)
 		}
 		if node.left_type.has_flag(.shared_f) {
-			if left_is_ptr {
-				g.write('->val')
-			} else {
-				g.write('.val')
-			}
+			g.write('->val')
 		}
 		g.write(', &($key_type_str[]){')
 		g.expr(node.index)
@@ -374,10 +370,13 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.write('(*($elem_type_str*)map_get((map*)')
 		}
-		if !left_is_ptr {
+		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 			g.write('&')
 		}
 		g.expr(node.left)
+		if node.left_type.has_flag(.shared_f) {
+			g.write('->val')
+		}
 		g.write(', &($key_type_str[]){')
 		g.expr(node.index)
 		g.write('}, &($elem_type_str[]){ $zero }))')
