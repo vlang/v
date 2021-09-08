@@ -454,7 +454,7 @@ pub fn (a Integer) < (b Integer) bool {
 		return false
 	}
 	// If they are negative, the one with the larger absolute value is smaller
-	cmp := a.abs_cmp()
+	cmp := a.abs_cmp(b)
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 

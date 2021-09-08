@@ -170,16 +170,16 @@ fn test_divide_digit_array_03() {
 	assert r == []u32{len: 0}
 }
 
-// fn test_divide_digit_array_04() {
-// 	a := [u32(2), 4]
-// 	b := [u32(0), 1]
-// 	mut q := []u32{cap: a.len - b.len + 1}
-// 	mut r := []u32{cap: a.len}
+fn test_divide_digit_array_04() {
+	a := [u32(2), 4]
+	b := [u32(0), 1]
+	mut q := []u32{cap: a.len - b.len + 1}
+	mut r := []u32{cap: a.len}
 
-// 	divide_digit_array(a, b, mut q, mut r)
-// 	assert q == [u32(4)]
-// 	assert r == [u32(2)]
-// }
+	divide_digit_array(a, b, mut q, mut r)
+	assert q == [u32(4)]
+	assert r == [u32(2)]
+}
 
 // fn test_divide_digit_array_05() {
 // 	a := [u32(2), 4, 5]
