@@ -2229,6 +2229,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
 		unwrapped_got_type := g.unwrap_generic(got_type)
+		unwrapped_exp_sym := g.table.get_type_symbol(unwrapped_expected_type)
+		unwrapped_got_sym := g.table.get_type_symbol(unwrapped_got_type)
 
 		expected_deref_type := if expected_is_ptr {
 			unwrapped_expected_type.deref()
@@ -2255,8 +2257,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
-				fname := g.get_sumtype_casting_fn(got_type, expected_type)
-				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
+				g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
+				fname := '${unwrapped_got_sym.cname}_to_sumtype_$unwrapped_exp_sym.cname'
+				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
 					got_is_ptr, got_styp)
 			}
 			return
