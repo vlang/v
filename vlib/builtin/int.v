@@ -8,6 +8,7 @@ module builtin
 //
 
 type u8 = byte
+type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
