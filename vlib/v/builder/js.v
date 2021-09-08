@@ -25,7 +25,6 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 }
 
 pub fn (mut b Builder) compile_js() {
-
 	mut files := b.get_builtin_files()
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
