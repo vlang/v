@@ -50,7 +50,6 @@ pub fn (mut b Builder) writeln(s string) {
 }
 
 pub fn (mut b Builder) str() string {
-	b.buf << byte(0)
 	s := ''
 
 	#for (const c of b.val.buf.arr)

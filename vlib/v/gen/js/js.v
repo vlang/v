@@ -79,7 +79,7 @@ mut:
 	sourcemap             sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 	comptime_var_type_map map[string]ast.Type
 	defer_ifdef           string
-	out 				  strings.Builder = strings.new_builder(128)
+	out                   strings.Builder = strings.new_builder(128)
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -112,7 +112,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.sourcemap = sg.add_map('', '', g.pref.sourcemap_src_included, 0, 0)
 	}
 	mut tests_inited := false
-	
+
 	// Get class methods
 	for file in files {
 		g.file = file
@@ -133,7 +133,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		for imp in g.file.imports {
 			imports << imp.mod
 		}
-		
+
 		graph.add(g.file.mod.name, imports)
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
@@ -159,7 +159,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	deps_resolved := graph.resolve()
 	nodes := deps_resolved.nodes
 
-	mut out := g.definitions.str() + g.hashes() 
+	mut out := g.definitions.str() + g.hashes()
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -167,7 +167,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	//	out += eq_fn.data().vstring()
 	//}
 	out += fast_deep_eq_fn
-	
+
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
 		export := nodes[nodes.len - 1].name
@@ -176,7 +176,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	out += '\n'
 	out += g.out.str()
 
-	/*for node in nodes {
+	/*
+	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
@@ -493,11 +494,10 @@ fn (mut g JsGen) js_name(name_ string) string {
 		}
 	}
 	return parts.join('.')*/
-	mut is_js := false
+
 	mut name := name_
 	if name.starts_with('JS.') {
 		name = name[3..]
-		is_js = true
 		return name
 	}
 	name = name_.replace('.', '__')
@@ -801,11 +801,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.BoolLiteral {
+			g.write('new bool(')
 			if node.val == true {
 				g.write('true')
 			} else {
 				g.write('false')
 			}
+			g.write(')')
 		}
 		ast.CallExpr {
 			g.gen_call_expr(node)
@@ -847,7 +849,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_index_expr(node)
 		}
 		ast.InfixExpr {
-			g.gen_infix_expr(node)
+			g.infix_expr(node)
 		}
 		ast.IntegerLiteral {
 			g.gen_integer_literal_expr(node)
@@ -949,8 +951,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.TypeNode {
 			typ := g.unwrap_generic(node.typ)
 			sym := g.table.get_type_symbol(typ)
-			name := sym.name.replace_once('${g.ns.name}.', '')
-			g.write('$name')
+
+			g.write('${g.js_name(sym.name)}')
 		}
 		ast.Likely {
 			g.write('(')
@@ -1042,24 +1044,24 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('// assert')
 	g.write('if( ')
 	g.expr(a.expr)
-	g.write(' ) {')
+	g.write('.valueOf() ) {')
 	s_assertion := a.expr.str().replace('"', "'")
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok($metaname_ok);')
+		g.writeln('	main__cb_assertion_ok($metaname_ok);')
 		g.writeln('} else {')
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed($metaname_fail);')
+		g.writeln('	main__cb_assertion_failed($metaname_fail);')
 		g.writeln('	exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('eprintln(new string("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
 	g.writeln('exit(1);')
 	g.dec_indent()
 	g.writeln('}')
@@ -1306,7 +1308,8 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.language == .js {
 		return
 	}
-	/*if res == .struct_method {
+	/*
+	if res == .struct_method {
 		// Struct methods are handled by class generation code.
 		return
 	}*/
@@ -1850,7 +1853,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('};\n')
 	g.dec_indent()
 
-	/*for cfn in fns {
+	/*
+	for cfn in fns {
 		g.gen_method_decl(cfn, .struct_method)
 	}*/
 
@@ -2548,7 +2552,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('.valueOf()')
 		g.write(')')
 	} else if it.op == .eq || it.op == .ne {
-		/*has_operator_overloading := g.table.type_has_method(l_sym, '==')
+		/*
+		has_operator_overloading := g.table.type_has_method(l_sym, '==')
 		if has_operator_overloading {
 			g.expr(it.left)
 			g.gen_deref_ptr(it.left_type)
@@ -2582,7 +2587,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		left := g.unwrap(node.left_type)
 		right := g.unwrap(node.right_type)
 		has_operator_overloading := g.table.type_has_method(left.sym, '==')
-		if has_operator_overloading || (l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables){
+		if has_operator_overloading
+			|| (l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables) {
 			if node.op == .ne {
 				g.write('!')
 			}
@@ -2603,7 +2609,6 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 		}
-
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('Array.prototype.push.call(')
 		g.expr(it.left)
@@ -2713,7 +2718,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			}
 
 			g.expr(it.left)
-			
+
 			g.gen_deref_ptr(it.left_type)
 			// g.write('.val')
 			g.write(' $it.op ')
@@ -3119,4 +3124,3 @@ fn replace_op(s string) string {
 		else { '' }
 	}
 }
-

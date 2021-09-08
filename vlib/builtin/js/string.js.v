@@ -8,7 +8,6 @@ pub:
 
 pub fn (s string) slice(a int, b int) string {
 	return string(s.str.slice(a, b))
-	
 }
 
 pub fn (s string) after(dot string) string {
@@ -72,8 +71,7 @@ pub fn (s string) contains(substr string) bool {
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
 	for x in chars.str.split(sep.str) {
-		if s.str.includes(x)
-		{
+		if s.str.includes(x) {
 			return true
 		}
 	}
@@ -82,8 +80,7 @@ pub fn (s string) contains_any(chars string) bool {
 
 pub fn (s string) contains_any_substr(chars []string) bool {
 	for x in chars {
-		if s.str.includes(x.str)
-		{
+		if s.str.includes(x.str) {
 			return true
 		}
 	}
@@ -94,7 +91,6 @@ pub fn (s string) count(substr string) int {
 	// TODO: "error: `[]JS.String` is not a struct" when returning arr.length or arr.len
 	arr := s.str.split(substr.str)
 	return native_str_arr_len(arr)
-
 }
 
 pub fn (s string) ends_with(p string) bool {
@@ -721,4 +717,12 @@ pub fn (s string) split_into_lines() []string {
 	#})
 
 	return res
+}
+
+// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+pub fn (s string) replace_once(rep string, with_ string) string {
+	s2 := ''
+	#s2.val = s.str.replace(rep.str,with_.str)
+
+	return s2
 }

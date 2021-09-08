@@ -1,6 +1,8 @@
 module builtin
+
 import strings
 // used to generate JS throw statements.
+
 pub fn js_throw(s any) {
 	#throw s
 }
@@ -72,9 +74,8 @@ pub fn unwrap(opt string) string {
 pub fn (r rune) str() string {
 	res := ''
 	mut sb := strings.new_builder(5)
-	# res.str = r.valueOf().toString()
+	#res.str = r.valueOf().toString()
 	sb.write_string(res)
-	
+
 	return sb.str()
 }
-

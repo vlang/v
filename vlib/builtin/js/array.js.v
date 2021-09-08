@@ -1,4 +1,5 @@
 module builtin
+
 struct array {
 	arr JS.Array
 pub:
@@ -127,7 +128,6 @@ fn (a array) push(val voidptr) {
 	#a.arr.push(val)
 }
 
-
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { let result = []; for (const [key,val] of this.arr.entries()) { result.push([new int(key), val]); } return result[Symbol.iterator](); }
 #array.prototype.map = function(callback) { return new array(this.arr.map(callback)); }
@@ -245,7 +245,6 @@ pub fn (a array) bytestr() string {
 	return res
 }
 
-
 /*
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
@@ -263,4 +262,3 @@ pub fn (a []string) str() string {
 	res := sb.str()
 	return res
 }*/
-

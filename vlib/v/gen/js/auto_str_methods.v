@@ -441,7 +441,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		g.definitions.writeln('\t\tlet it = ${elem_str_fn_name}();')
 	} else {
 		g.definitions.writeln('\t\tlet it = a.arr[i];')
-		
+
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
 				g.definitions.writeln('\t\tlet x = indent_${elem_str_fn_name}(it.val, indent_count);')
@@ -511,14 +511,12 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i]) );')
 			}
 		} else if sym.kind in [.f32, .f64] {
-			
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(a.arr[i].val.toString()) );')
-			
 		} else if sym.kind == .string {
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr[i].str);')
 		} else if sym.kind == .rune {
-			//tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
-			//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+			// tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
+			// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 		} else {
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i] $deref));')
 		}
@@ -565,12 +563,12 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("{"));')
 	g.definitions.writeln('\tlet i = 0;')
 	g.definitions.writeln('\tfor (let [key,value] of m.map) {')
-	
+
 	if key_sym.kind == .string {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(key));')
 	} else if key_sym.kind == .rune {
-		//tmp_str := str_intp_rune('${key_str_fn_name}(key)')
-		//g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		// tmp_str := str_intp_rune('${key_str_fn_name}(key)')
+		// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${key_str_fn_name}(key));')
 	}
@@ -578,17 +576,15 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	if val_sym.kind == .function {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
-		//tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
+		// tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value);')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
-		
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value.val + "");')
-		
 	} else if val_sym.kind == .rune {
-	//	tmp_str := str_intp_rune('${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))')
-	//	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		//	tmp_str := str_intp_rune('${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))')
+		//	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(value));')
 	}

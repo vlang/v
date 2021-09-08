@@ -9,7 +9,7 @@ const (
 		'insert',
 		'prepend',
 		'index',
-		'contains'
+		'contains',
 	]
 )
 
@@ -25,7 +25,7 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 		}
-		
+
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a, v) {')
 		fn_builder.writeln('\tlet pelem = a.arr;')
@@ -64,7 +64,7 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 	node := it
-	
+
 	match node.name {
 		'index' {
 			g.gen_array_index(node)
@@ -179,7 +179,6 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 	}
 }
 
-
 fn (mut g JsGen) gen_array_index(node ast.CallExpr) {
 	fn_name := g.gen_array_index_method(node.left_type)
 	g.write('${fn_name}(')
@@ -189,6 +188,7 @@ fn (mut g JsGen) gen_array_index(node ast.CallExpr) {
 	g.expr(node.args[0].expr)
 	g.write(')')
 }
+
 fn (mut g JsGen) gen_array_contains(node ast.CallExpr) {
 	fn_name := g.gen_array_contains_method(node.left_type)
 	g.write('${fn_name}(')
@@ -214,14 +214,13 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 		}
-		
+
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a,v) {')
 		fn_builder.writeln('\tfor (let i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
 			fn_builder.writeln('\t\tif (a.arr[i].str ==  v.str) {')
 		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
-			
 			fn_builder.writeln('\t\tif (vEq(a.arr[i], v)) {')
 		} else if elem_sym.kind == .function {
 			fn_builder.writeln('\t\tif (a.arr[i] == v) {')

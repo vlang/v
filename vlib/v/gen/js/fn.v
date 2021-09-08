@@ -52,13 +52,14 @@ fn (mut g JsGen) js_mname(name_ string) string {
 	mut parts := name.split('.')
 	if !is_js {
 		for i, p in parts {
-			if p in js.js_reserved {
+			if p in js_reserved {
 				parts[i] = 'v_$p'
 			}
 		}
 	}
 	return parts.join('.')
 }
+
 fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
@@ -73,6 +74,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.write(')')
 	g.call_stack.delete_last()
 }
+
 fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
@@ -245,8 +247,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
-	
-	if it.is_method &&  g.table.get_type_symbol(it.receiver_type).name.starts_with('JS.') {
+	if it.is_method && g.table.get_type_symbol(it.receiver_type).name.starts_with('JS.') {
 		g.js_method_call(it)
 		return
 	} else if it.name.starts_with('JS.') {

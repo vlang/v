@@ -113,8 +113,9 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 	}
 	return styp
 }
+
 pub fn (mut g JsGen) base_type(t ast.Type) string {
-	mut styp := g.cc_type(t,true)
+	mut styp := g.cc_type(t, true)
 	return styp
 }
 
@@ -370,7 +371,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 			}
 			'bool' {
 				g.gen_builtin_prototype(
-					constructor: 'this.val = +val !== 0'
+					constructor: 'this.val = val instanceof bool ? val.val : +val !== 0'
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
 					to_jsval: '+this != 0'
@@ -426,7 +427,6 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					to_jsval: 'this.val.\$toJS()'
 				)
 			}
-			
 			else {}
 		}
 	}

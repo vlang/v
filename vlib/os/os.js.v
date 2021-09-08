@@ -10,7 +10,7 @@ pub const (
 )
 
 $if js_node {
-	#$process.argv.forEach(function(val,index) { args.arr[index] = new string(val); })
+	#$process.argv.forEach(function(val,index) { os__args.arr[index] = new string(val); })
 }
 
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
