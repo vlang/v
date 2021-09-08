@@ -23,9 +23,9 @@ pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
-// pub fn (x size_t) str() string {
-// 	return u64(x).str()
-// }
+pub fn (x size_t) str() string {
+	return u64(x).str()
+}
 
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
