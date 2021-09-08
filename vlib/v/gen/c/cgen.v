@@ -416,7 +416,8 @@ pub fn (mut g Gen) init() {
 #endif'
 		g.cheaders.writeln(tcc_undef_has_include)
 		g.includes.writeln(tcc_undef_has_include)
-		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
+		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>. Please install build-essentials')) // int64_t etc
+		g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>. Please install build-essentials')) // size_t, ptrdiff_t
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
 			g.cheaders.writeln(c_bare_headers)

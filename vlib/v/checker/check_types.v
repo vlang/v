@@ -254,7 +254,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if idx_lo >= ast.byte_type_idx { // both operands are unsigned
 		return type_hi
 	} else if idx_lo >= ast.i8_type_idx
-		&& (idx_hi <= ast.i64_type_idx || idx_hi == ast.rune_type_idx) { // both signed
+		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (ast.byte_type_idx - ast.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
