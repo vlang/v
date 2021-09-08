@@ -323,7 +323,7 @@ jobs:
       - name: v.c can be compiled and run with -os cross
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
-          cc -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          cc -g -std=gnu11 -w -o v_from_vc /tmp/v.c -I ./thirdparty/stdatomic/nix -lm -lpthread
           ls -lart v_from_vc
           ./v_from_vc version
 
