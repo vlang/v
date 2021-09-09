@@ -224,8 +224,14 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			source.writeln(line.replace_each([r'@', r'$', r'$$', r'@', r'.$', r'.@', r"'", r"\'",
-				'\\', parser.tmpl_str_end + 'sb.write_b(92)\n' + parser.tmpl_str_start]))
+			trailing_bs := parser.tmpl_str_end + 'sb.write_b(92)\n' + parser.tmpl_str_start
+			rline := line.replace_each(['\\', '\\\\', r"'", "\\'", r'@', r'$']).replace_each([
+				r'$$', r'\@', r'.$', r'.@'])
+			if rline.ends_with('\\') {
+				source.writeln(rline[0..rline.len - 2] + trailing_bs)
+			} else {
+				source.writeln(rline)
+			}
 		}
 	}
 	source.writeln(parser.tmpl_str_end)
