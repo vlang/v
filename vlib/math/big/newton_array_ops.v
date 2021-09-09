@@ -66,7 +66,7 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 
     k := bit_length(a) + bit_length(b)  // a*b < 2**k
     mut x := integer_from_int(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
-	initial_guess :=  (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(60)).neg() // / 17 == 0x11
+	initial_guess :=  (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(64)).neg() // / 17 == 0x11
 	if initial_guess > zero_int {
 		x = initial_guess
 	}
