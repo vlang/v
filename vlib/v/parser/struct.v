@@ -181,7 +181,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// struct embedding
 				type_pos = p.tok.position()
 				typ = p.parse_type()
-				ecomments := p.eat_comments()
+				comments << p.eat_comments()
 				type_pos = type_pos.extend(p.prev_tok.position())
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
@@ -203,7 +203,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				embeds << ast.Embed{
 					typ: typ
 					pos: type_pos
-					comments: ecomments
+					comments: comments
 				}
 			} else {
 				// struct field

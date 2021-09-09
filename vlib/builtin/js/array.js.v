@@ -119,7 +119,7 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 
 pub fn (mut a array) join(separator string) string {
 	mut res := ''
-	#res = new builtin.string(a.val.arr.join(separator +''));
+	#res = new string(a.val.arr.join(separator +''));
 
 	return res
 }
@@ -128,16 +128,9 @@ fn (a array) push(val voidptr) {
 	#a.arr.push(val)
 }
 
-pub fn (a array) str() string {
-	mut res := ''
-	#res = new builtin.string(a + '')
-
-	return res
-}
-
 #array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
 #array.prototype.entries = function () { let result = []; for (const [key,val] of this.arr.entries()) { result.push([new int(key), val]); } return result[Symbol.iterator](); }
-#array.prototype.map = function(callback) { return new builtin.array(this.arr.map(callback)); }
+#array.prototype.map = function(callback) { return new array(this.arr.map(callback)); }
 #array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
 #array.prototype.any = function (value) {
@@ -241,7 +234,7 @@ pub fn (mut a array) delete_last() {
 }
 
 [unsafe]
-pub fn (a array) free() {
+pub fn (a &array) free() {
 }
 
 // todo: once (a []byte) will work rewrite this
@@ -251,3 +244,21 @@ pub fn (a array) bytestr() string {
 
 	return res
 }
+
+/*
+pub fn (a []string) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write_string('[')
+	for i in 0 .. a.len {
+		val := a[i]
+		sb.write_string("'")
+		sb.write_string(val)
+		sb.write_string("'")
+		if i < a.len - 1 {
+			sb.write_string(', ')
+		}
+	}
+	sb.write_string(']')
+	res := sb.str()
+	return res
+}*/

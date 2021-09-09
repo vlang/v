@@ -101,7 +101,7 @@ pub fn (mut p Process) stdin_write(s string) {
 pub fn (mut p Process) stdout_slurp() string {
 	p.check_redirection_call('stdout_slurp')
 	mut res := ''
-	#p.val.pid.stdout.on('data', function (data) { res = new builtin.string(data) })
+	#p.val.pid.stdout.on('data', function (data) { res = new string(data) })
 
 	return res
 }

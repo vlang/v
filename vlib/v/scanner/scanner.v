@@ -771,7 +771,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.mod, '', 1)
 			}
 			`?` {
-				return s.new_token(.question, '', 1)
+				return s.new_token(.question, '?', 1)
 			}
 			scanner.single_quote, scanner.double_quote {
 				start_line := s.line_nr
@@ -1336,7 +1336,7 @@ pub fn (mut s Scanner) note(msg string) {
 		line_nr: s.line_nr
 		pos: s.pos
 	}
-	if s.pref.output_mode == .stdout {
+	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		eprintln(util.formatted_error('notice:', msg, s.file_path, pos))
 	} else {
 		s.notices << errors.Notice{
@@ -1358,7 +1358,7 @@ pub fn (mut s Scanner) warn(msg string) {
 		pos: s.pos
 		col: s.current_column() - 1
 	}
-	if s.pref.output_mode == .stdout {
+	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 	} else {
 		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
@@ -1380,7 +1380,7 @@ pub fn (mut s Scanner) error(msg string) {
 		pos: s.pos
 		col: s.current_column() - 1
 	}
-	if s.pref.output_mode == .stdout {
+	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 		exit(1)
 	} else {

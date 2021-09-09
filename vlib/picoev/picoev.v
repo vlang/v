@@ -30,7 +30,7 @@ struct C.sockaddr_storage {}
 
 fn C.atoi() int
 
-fn C.strncasecmp(s1 &char, s2 &char, n size_t) int
+fn C.strncasecmp(s1 &char, s2 &char, n usize) int
 
 struct C.picoev_loop {}
 

@@ -28,9 +28,9 @@ pub fn (resp Response) bytes() []byte {
 
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
-	return ('HTTP/$resp.http_version $resp.status_code $resp.status_msg\r\n' + '${resp.header.render(
+	return 'HTTP/$resp.http_version $resp.status_code $resp.status_msg\r\n' + '${resp.header.render(
 		version: resp.version()
-	)}\r\n' + '$resp.text')
+	)}\r\n' + '$resp.text'
 }
 
 // Parse a raw HTTP response into a Response object

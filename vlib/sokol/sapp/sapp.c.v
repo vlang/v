@@ -245,3 +245,15 @@ pub fn toggle_fullscreen() {
 pub fn is_fullscreen() bool {
 	return C.sapp_is_fullscreen()
 }
+
+[inline]
+pub fn get_num_dropped_files() int {
+	return C.sapp_get_num_dropped_files()
+}
+
+[inline]
+pub fn get_dropped_file_path(index int) string {
+	unsafe {
+		return cstring_to_vstring(C.sapp_get_dropped_file_path(index))
+	}
+}

@@ -512,6 +512,8 @@ typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint8_t byte;
 typedef uint32_t rune;
+typedef size_t usize;
+typedef ptrdiff_t isize;
 typedef float f32;
 typedef double f64;
 typedef int64_t int_literal;

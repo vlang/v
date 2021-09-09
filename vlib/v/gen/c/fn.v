@@ -749,6 +749,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('})')
 		return
+	} else if left_sym.kind == .array && node.name == 'delete' {
+		g.write('array_delete(')
+		if node.left_type.is_ptr() {
+			g.expr(node.left)
+		} else {
+			g.write('&')
+			g.expr(node.left)
+		}
+		g.write(', ')
+		g.expr(node.args[0].expr)
+		g.write(')')
+		return
 	}
 
 	if left_sym.kind in [.sum_type, .interface_] {

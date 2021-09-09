@@ -489,6 +489,12 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
+	if v.pref.check_only {
+		if v.pref.is_verbose {
+			println('builder.cc returning early, since pref.check_only is true')
+		}
+		return
+	}
 	if v.pref.should_output_to_stdout() {
 		// output to stdout
 		content := os.read_file(v.out_name_c) or { panic(err) }

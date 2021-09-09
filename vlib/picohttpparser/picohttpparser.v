@@ -21,14 +21,14 @@ type PPchar = &&char
 
 struct C.phr_header_t {}
 
-fn C.phr_parse_request(buf &char, len size_t, method PPchar, method_len &size_t, path PPchar, path_len &size_t, minor_version &int, headers &C.phr_header, num_headers &size_t, last_len size_t) int
+fn C.phr_parse_request(buf &char, len usize, method PPchar, method_len &usize, path PPchar, path_len &usize, minor_version &int, headers &C.phr_header, num_headers &usize, last_len usize) int
 
-fn C.phr_parse_response(buf &char, len size_t, minor_version &int, status &int, msg PPchar, msg_len &size_t, headers &C.phr_header, num_headers &size_t, last_len size_t) int
+fn C.phr_parse_response(buf &char, len usize, minor_version &int, status &int, msg PPchar, msg_len &usize, headers &C.phr_header, num_headers &usize, last_len usize) int
 
-fn C.phr_parse_headers(buf &char, len size_t, headers &C.phr_header, num_headers &size_t, last_len size_t) int
+fn C.phr_parse_headers(buf &char, len usize, headers &C.phr_header, num_headers &usize, last_len usize) int
 
-fn C.phr_parse_request_path(buf_start &char, len size_t, method PPchar, method_len &size_t, path PPchar, path_len &size_t) int
-fn C.phr_parse_request_path_pipeline(buf_start &char, len size_t, method PPchar, method_len &size_t, path PPchar, path_len &size_t) int
+fn C.phr_parse_request_path(buf_start &char, len usize, method PPchar, method_len &usize, path PPchar, path_len &usize) int
+fn C.phr_parse_request_path_pipeline(buf_start &char, len usize, method PPchar, method_len &usize, path PPchar, path_len &usize) int
 fn C.get_date() &byte
 
 // static inline int u64toa(char* buf, uint64_t value) {

@@ -1,13 +1,20 @@
 module builtin
 
+import strings
 // used to generate JS throw statements.
+
 pub fn js_throw(s any) {
 	#throw s
 }
 
+#let globalPrint;
+$if js_freestanding {
+	#globalPrint = globalThis.print
+}
+
 pub fn println(s string) {
 	$if js_freestanding {
-		#print(s.str)
+		#globalPrint(s.str)
 	} $else {
 		#console.log(s.str)
 	}
@@ -23,7 +30,7 @@ pub fn print(s string) {
 
 pub fn eprintln(s string) {
 	$if js_freestanding {
-		#print(s.str)
+		#globalPrint(s.str)
 	} $else {
 		#console.error(s.str)
 	}
@@ -57,5 +64,18 @@ pub fn unwrap(opt string) string {
 	if o.state != 0 {
 		js_throw(o.err)
 	}
-	return opt
+
+	mut res := ''
+	#res = opt.data
+
+	return res
+}
+
+pub fn (r rune) str() string {
+	res := ''
+	mut sb := strings.new_builder(5)
+	#res.str = r.valueOf().toString()
+	sb.write_string(res)
+
+	return sb.str()
 }

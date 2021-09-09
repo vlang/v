@@ -236,7 +236,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.get_type_symbol(typ)
-	f.mark_import_as_used(sym.name)
+	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	f.mark_import_as_used(name)
 }
 
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
@@ -1130,7 +1131,11 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 		f.write(' ')
 		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
-			f.expr(expr)
+			if expr is ast.ParExpr {
+				f.expr(expr.expr)
+			} else {
+				f.expr(expr)
+			}
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}

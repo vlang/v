@@ -419,7 +419,9 @@ rune // represents a Unicode code point
 
 f32 f64
 
-voidptr, size_t // these are mostly used for C interoperability
+isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
+
+voidptr // this one is mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -1043,6 +1045,7 @@ m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
+println(m.keys()) // ['one', 'two']
 m.delete('two')
 ```
 Maps can have keys of type string, rune, integer, float or voidptr.
@@ -1569,6 +1572,30 @@ s := match number {
 	2 { 'two' }
 	else { 'many' }
 }
+```
+
+A match statement can also to be used as an `if - else if - else` alternative:
+
+```v
+match true {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+}
+// 'else if2' should be printed
+```
+
+or as an `unless` alternative: [unless Ruby](https://www.tutorialspoint.com/ruby/ruby_if_else.htm)
+
+```v
+match false {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+}
+// 'if' should be printed
 ```
 
 A match expression returns the value of the final expression from the matching branch.
@@ -4679,7 +4706,7 @@ struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size size_t
+	size usize
 	// }
 	view C.DataView
 	// }

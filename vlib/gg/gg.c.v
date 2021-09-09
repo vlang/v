@@ -194,6 +194,10 @@ pub fn new_context(cfg Config) &Context {
 		high_dpi: true
 		fullscreen: cfg.fullscreen
 		__v_native_render: cfg.native_rendering
+		// drag&drop
+		enable_dragndrop: cfg.enable_dragndrop
+		max_dropped_files: cfg.max_dropped_files
+		max_dropped_file_path_length: cfg.max_dropped_file_path_length
 	}
 	g.window = window
 	return g
