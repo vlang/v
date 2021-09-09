@@ -8147,6 +8147,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.pos)
 				}
 			}
+			if node.name == 'free' {
+				if node.return_type != ast.void_type {
+					c.error('`.free()` methods should not have a return type', node.return_type_pos)
+				}
+				if !node.receiver.typ.is_ptr() {
+					tname := sym.name.after_char(`.`)
+					c.error('`.free()` methods should be defined on either a `(mut x &$tname)`, or a `(x &$tname)` receiver',
+						node.receiver_pos)
+				}
+				if node.params.len != 1 {
+					c.error('`.free()` methods should have 0 arguments', node.pos)
+				}
+			}
 		}
 		// needed for proper error reporting during vweb route checking
 		if node.method_idx < sym.methods.len {

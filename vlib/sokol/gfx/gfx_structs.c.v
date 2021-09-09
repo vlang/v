@@ -94,8 +94,8 @@ pub:
 	id u32
 }
 
-pub fn (p C.sg_pipeline) free() {
-	C.sg_destroy_pipeline(p)
+pub fn (mut p C.sg_pipeline) free() {
+	C.sg_destroy_pipeline(*p)
 }
 
 pub struct C.sg_bindings {
@@ -276,8 +276,8 @@ pub:
 	id u32
 }
 
-pub fn (s C.sg_shader) free() {
-	C.sg_destroy_shader(s)
+pub fn (mut s C.sg_shader) free() {
+	C.sg_destroy_shader(*s)
 }
 
 pub struct C.sg_pass_desc {
@@ -306,8 +306,8 @@ pub struct C.sg_pass {
 	id u32
 }
 
-pub fn (p C.sg_pass) free() {
-	C.sg_destroy_pass(p)
+pub fn (mut p C.sg_pass) free() {
+	C.sg_destroy_pass(*p)
 }
 
 pub struct C.sg_buffer_desc {
@@ -334,8 +334,8 @@ pub struct C.sg_buffer {
 	id u32
 }
 
-pub fn (b C.sg_buffer) free() {
-	C.sg_destroy_buffer(b)
+pub fn (mut b C.sg_buffer) free() {
+	C.sg_destroy_buffer(*b)
 }
 
 pub struct DepthLayers {
@@ -392,8 +392,8 @@ pub:
 	id u32
 }
 
-pub fn (i C.sg_image) free() {
-	C.sg_destroy_image(i)
+pub fn (mut i C.sg_image) free() {
+	C.sg_destroy_image(*i)
 }
 
 pub const sg_cubeface_num = 6

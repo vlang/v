@@ -140,7 +140,7 @@ pub fn (s string) find_between(start string, end string) string {
 }
 
 // unnecessary in the JS backend, implemented for api parity.
-pub fn (s string) free() {}
+pub fn (s &string) free() {}
 
 pub fn (s string) hash() int {
 	mut h := u32(0)
