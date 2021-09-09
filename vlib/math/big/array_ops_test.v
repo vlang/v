@@ -81,6 +81,14 @@ fn test_subtract_digit_array_03() {
 	assert c == [u32(0), 0, u32(-1), u32(-1), 0, 13]
 }
 
+fn test_subtract_digit_array_04() {
+	a := [u32(0x2), 0x4, 0x5, 0x3]
+	b := [u32(0x0), 0x0, 0x5, 0x3]
+	mut c := []u32{len: a.len}
+	subtract_digit_array(a, b, mut c)
+	assert c == [u32(0x2), 0x4]
+}
+
 fn test_multiply_digit_array_01() {
 	a := [u32(0), 0, 0, 1]
 	b := [u32(0), 0, 1]
