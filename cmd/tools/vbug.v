@@ -1,4 +1,3 @@
-import dl
 import net.urllib
 import os
 import readline
@@ -64,46 +63,6 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 		}
 	}
 	return result.output
-}
-
-type ShellExecuteWin = fn (voidptr, &u16, &u16, &u16, &u16, int)
-
-// open a uri using the default associated application
-fn open_browser(uri string) ? {
-	$if macos {
-		result := os.execute('open "$uri"')
-		if result.exit_code != 0 {
-			return error('unable to open url: $result.output')
-		}
-	} $else $if freebsd || openbsd {
-		result := os.execute('xdg-open "$uri"')
-		if result.exit_code != 0 {
-			return error('unable to open url: $result.output')
-		}
-	} $else $if linux {
-		providers := ['xdg-open', 'x-www-browser', 'www-browser', 'wslview']
-
-		// There are multiple possible providers to open a browser on linux
-		// One of them is xdg-open, another is x-www-browser, then there's www-browser, etc.
-		// Look for one that exists and run it
-		for provider in providers {
-			if os.exists_in_system_path(provider) {
-				result := os.execute('$provider "$uri"')
-				if result.exit_code != 0 {
-					return error('unable to open url: $result.output')
-				}
-				break
-			}
-		}
-	} $else $if windows {
-		handle := dl.open_opt('shell32', dl.rtld_now) ?
-		// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
-		func := ShellExecuteWin(dl.sym_opt(handle, 'ShellExecuteW') ?)
-		func(C.NULL, 'open'.to_wide(), uri.to_wide(), C.NULL, C.NULL, C.SW_SHOWNORMAL)
-		dl.close(handle)
-	} $else {
-		return error('unsupported platform')
-	}
 }
 
 fn ask(msg string) bool {
@@ -199,7 +158,7 @@ $build_output```'
 		println('Your file is too big to be submitted. Head over to the following URL and attach your file.')
 		println(generated_uri)
 	} else {
-		open_browser(generated_uri) or {
+		os.open_uri(generated_uri) or {
 			if is_verbose {
 				eprintln(err)
 			}
