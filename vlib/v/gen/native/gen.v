@@ -16,7 +16,7 @@ pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit'
 
 interface CodeGen {
 mut:
-	g Gen
+	g &Gen
 	gen_exit(mut g Gen, expr ast.Expr)
 	// XXX WHY gen_exit fn (expr ast.Expr)
 }
@@ -58,10 +58,14 @@ enum Size {
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
-			return Arm64{}
+			return Arm64{
+				g: 0
+			}
 		}
 		.amd64 {
-			return Amd64{}
+			return Amd64{
+				g: 0
+			}
 		}
 		else {}
 	}

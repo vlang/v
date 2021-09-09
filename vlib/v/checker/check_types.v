@@ -288,7 +288,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
-	if expected.is_ptr() || expected.is_pointer() {
+	if expected.is_real_pointer() {
 		if got == ast.int_literal_type {
 			return true
 		}

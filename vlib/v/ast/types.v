@@ -246,6 +246,11 @@ pub fn (t Type) str() string {
 	return 'ast.Type(0x$t.hex() = ${u32(t)})'
 }
 
+pub fn (t &Table) type_str(typ Type) string {
+	sym := t.get_type_symbol(typ)
+	return sym.name
+}
+
 // debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
 pub fn (t Type) debug() []string {
 	mut res := []string{}
@@ -307,6 +312,11 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_real_pointer() bool {
+	return typ.is_ptr() || typ.is_pointer()
 }
 
 [inline]

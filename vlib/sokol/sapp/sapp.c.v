@@ -152,7 +152,7 @@ pub fn get_clipboard_string() &char {
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 [inline]
 pub fn run(desc &C.sapp_desc) {
-	g_desc = desc
+	g_desc = *desc
 	C.sapp_run(desc)
 }
 

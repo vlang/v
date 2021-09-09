@@ -6,7 +6,7 @@ import v.token
 
 pub struct Amd64 {
 mut:
-	g Gen
+	g &Gen
 	// arm64 specific stuff for code generation
 }
 
