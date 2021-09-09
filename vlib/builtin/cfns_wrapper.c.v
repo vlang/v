@@ -67,6 +67,6 @@ pub fn vmemset(s voidptr, c int, n int) voidptr {
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 
 [inline; unsafe]
-fn vqsort(base voidptr, nmemb size_t, size size_t, sort_cb FnSortCB) {
+fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	C.qsort(base, nmemb, size, voidptr(sort_cb))
 }

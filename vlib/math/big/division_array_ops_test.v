@@ -145,7 +145,7 @@ fn test_many_divisions() {
 		assert c / a == b
 		assert c / b == a
 		q, r := a.div_mod(b)
-		// println('$a / $b = $q; rem: $r')
+		assert (q * b) + r == a
 	}
 }
 

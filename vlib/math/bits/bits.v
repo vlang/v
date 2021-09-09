@@ -150,7 +150,7 @@ pub fn ones_count_64(x u64) int {
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
 	s := byte(k) & (n - byte(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -161,7 +161,7 @@ pub fn rotate_left_8(x byte, k int) byte {
 pub fn rotate_left_16(x u16, k int) u16 {
 	n := u16(16)
 	s := u16(k) & (n - u16(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -172,7 +172,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 pub fn rotate_left_32(x u32, k int) u32 {
 	n := u32(32)
 	s := u32(k) & (n - u32(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -183,7 +183,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 pub fn rotate_left_64(x u64, k int) u64 {
 	n := u64(64)
 	s := u64(k) & (n - u64(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // --- Reverse ---

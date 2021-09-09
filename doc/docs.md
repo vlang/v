@@ -419,7 +419,9 @@ rune // represents a Unicode code point
 
 f32 f64
 
-voidptr, size_t // these are mostly used for C interoperability
+isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
+
+voidptr // this one is mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -4704,7 +4706,7 @@ struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size size_t
+	size usize
 	// }
 	view C.DataView
 	// }

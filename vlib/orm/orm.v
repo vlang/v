@@ -1,26 +1,38 @@
 module orm
 
 import time
+import v.ast
 
 pub const (
-	num64    = [8, 12]
-	nums     = [5, 6, 7, 9, 10, 11, 16]
-	float    = [13, 14]
-	string   = 18
+	num64    = [ast.i64_type_idx, ast.u64_type_idx]
+	nums     = [
+		ast.i8_type_idx,
+		ast.i16_type_idx,
+		ast.int_type_idx,
+		ast.byte_type_idx,
+		ast.u16_type_idx,
+		ast.u32_type_idx,
+		ast.bool_type_idx,
+	]
+	float    = [
+		ast.f32_type_idx,
+		ast.f64_type_idx,
+	]
+	string   = ast.string_type_idx
 	time     = -2
 	type_idx = {
-		'i8':     5
-		'i16':    6
-		'int':    7
-		'i64':    8
-		'byte':   9
-		'u16':    10
-		'u32':    11
-		'u64':    12
-		'f32':    13
-		'f64':    14
-		'bool':   16
-		'string': 18
+		'i8':     ast.i8_type_idx
+		'i16':    ast.i16_type_idx
+		'int':    ast.int_type_idx
+		'i64':    ast.i64_type_idx
+		'byte':   ast.byte_type_idx
+		'u16':    ast.u16_type_idx
+		'u32':    ast.u32_type_idx
+		'u64':    ast.u64_type_idx
+		'f32':    ast.f32_type_idx
+		'f64':    ast.f64_type_idx
+		'bool':   ast.bool_type_idx
+		'string': ast.string_type_idx
 	}
 	string_max_len = 2048
 )

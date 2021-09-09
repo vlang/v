@@ -44,27 +44,27 @@ see also `v help build`.
          bare_panic(msg string)
             Print "V panic: " + msg, along with an optional backtrace and/or the V commit hash, and then exit.
          [export: 'malloc']
-         __malloc(n size_t) &C.void
+         __malloc(n usize) &C.void
             Allocates n bytes of memory and returns the pointer to the first byte
          [export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
-         realloc(old_area &C.void, new_size size_t) &C.void
+         realloc(old_area &C.void, new_size usize) &C.void
             Allocates a new area of size new_size, copies old_area
             to the new area, and returns a pointer to the new area.
          [export: 'calloc']
-         __calloc(nmemb size_t, size size_t) &C.void
+         __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, src &C.void, n size_t) &C.void
+         memcpy(dest &C.void, src &C.void, n usize) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, src &C.void, n size_t) &C.void
+         memmove(dest &C.void, src &C.void, n usize) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(a &C.void, b &C.void, n size_t) int
+         memcmp(a &C.void, b &C.void, n usize) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(s &C.void) size_t
+         strlen(s &C.void) usize
             Returns the amount of bytes until the first `0`, starting at s
-         memset(s &C.void, c int, n size_t) &C.void
+         memset(s &C.void, c int, n usize) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
             and returns s.
          getchar() int
@@ -72,7 +72,7 @@ see also `v help build`.
             Print "V Panic" + msg, along with an optional backtrace, and then exit.
          vsprintf(str &char, format &char, ap va_list) int
             See `man vsprintf`.
-         vsnprintf(str &char, size size_t, format &char, ap va_list) int
+         vsnprintf(str &char, size usize, format &char, ap va_list) int
             See `man vsnprintf`.
          bare_backtrace() string
             Return a backtrace that can be printed. If backtraces are not

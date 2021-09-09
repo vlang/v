@@ -498,6 +498,13 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 	// struct / enum / placeholder
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
+		if !p.builtin_mod && idx == ast.size_t_type_idx {
+			// don't warn in builtin, there is still the `.str` method
+			if !p.pref.is_fmt {
+				p.warn_with_pos('`size_t` is deprecated, use `usize` instead', p.prev_tok.position())
+			}
+			return ast.new_type(ast.usize_type_idx)
+		}
 		return ast.new_type(idx)
 	}
 	// not found - add placeholder

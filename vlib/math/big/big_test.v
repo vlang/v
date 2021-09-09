@@ -149,6 +149,24 @@ fn test_divmod() {
 	assert h.str() == '2900204736088469'
 }
 
+fn test_comparison() {
+	values := [-3, 13, 52, 6, 41]
+	for value in values {
+		x := big.integer_from_int(value)
+		assert x == x
+		assert x <= x
+		assert x >= x
+	}
+
+	a := big.integer_from_int(-45)
+	b := big.integer_from_int(35)
+
+	assert a < b
+	assert a <= b
+	assert b > a
+	assert b >= a
+}
+
 fn test_conversion() {
 	ten := big.integer_from_int(10)
 

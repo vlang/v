@@ -8,6 +8,7 @@ module builtin
 //
 
 type u8 = byte
+type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
@@ -15,9 +16,17 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
-pub fn (x size_t) str() string {
+pub fn (x isize) str() string {
+	return i64(x).str()
+}
+
+pub fn (x usize) str() string {
 	return u64(x).str()
 }
+
+// pub fn (x size_t) str() string {
+// 	return u64(x).str()
+// }
 
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()

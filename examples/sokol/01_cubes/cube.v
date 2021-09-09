@@ -56,7 +56,7 @@ fn create_texture(w int, h int, buf &u8) C.sg_image {
 	// commen if .dynamic is enabled
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -73,7 +73,7 @@ fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	mut tmp_sbc := C.sg_image_data{}
 	tmp_sbc.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 	C.sg_update_image(sg_img, &tmp_sbc)
 }

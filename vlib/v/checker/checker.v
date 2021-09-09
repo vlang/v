@@ -2679,7 +2679,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 			return ast.void_type
 		}
 		expr := node.args[0].expr
-		if expr !is ast.TypeNode {
+		if expr is ast.TypeNode {
+			sym := c.table.get_type_symbol(expr.typ)
+			if !c.table.known_type(sym.name) {
+				c.error('json.decode: unknown type `$sym.name`', node.pos)
+			}
+		} else {
+			// if expr !is ast.TypeNode {
 			typ := expr.type_name()
 			c.error('json.decode: first argument needs to be a type, got `$typ`', node.pos)
 			return ast.void_type
