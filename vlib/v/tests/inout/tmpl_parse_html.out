@@ -26,11 +26,16 @@ document.getElementById("demo").innerHTML = "Hello JavaScript!";
 const classes = `header ${ isLargeScreen() ? '' :
 `icon-${item.isCollapsed ? 'expander' : 'collapser'}` }`;
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 
 <body>
 <header>
 <h1>TEST</h1>
+<p>TEST</p>
+<a href="example.com">example.com</a>
+<a href="mailto:example@example.com">Email</a>
 </header>
 <pre>
                                   _
