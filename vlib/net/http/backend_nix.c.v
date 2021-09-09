@@ -5,6 +5,8 @@ module http
 
 import strings
 import net.openssl
+import os
+import time
 
 const (
 	is_used = openssl.is_used
@@ -22,21 +24,39 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
 	C.SSL_CTX_set_options(ctx, flags)
 	// Support client certificates:
+	mut verify := req.verify
+	mut cert := req.cert
+	mut cert_key := req.cert_key
+	if req.in_memory_verification {
+		now := time.now().unix.str()
+		verify = os.temp_dir() + '/v_verify' + now
+		cert = os.temp_dir() + '/v_cert' + now
+		cert_key = os.temp_dir() + '/v_cert_key' + now
+		if req.verify != '' {
+			os.write_file(verify, req.verify) ?
+		}
+		if req.cert != '' {
+			os.write_file(cert, req.cert) ?
+		}
+		if req.cert_key != '' {
+			os.write_file(cert_key, req.cert_key) ?
+		}
+	}
 	mut res := 0
 	if req.verify != '' {
-		res = C.SSL_CTX_load_verify_locations(ctx, &char(req.verify.str), 0)
+		res = C.SSL_CTX_load_verify_locations(ctx, &char(verify.str), 0)
 		if req.validate && res != 1 {
 			return error('http: openssl: SSL_CTX_load_verify_locations failed')
 		}
 	}
 	if req.cert != '' {
-		res = C.SSL_CTX_use_certificate_file(ctx, &char(req.cert.str), C.SSL_FILETYPE_PEM)
+		res = C.SSL_CTX_use_certificate_file(ctx, &char(cert.str), C.SSL_FILETYPE_PEM)
 		if req.validate && res != 1 {
 			return error('http: openssl: SSL_CTX_use_certificate_file failed, res: $res')
 		}
 	}
 	if req.cert_key != '' {
-		res = C.SSL_CTX_use_PrivateKey_file(ctx, &char(req.cert_key.str), C.SSL_FILETYPE_PEM)
+		res = C.SSL_CTX_use_PrivateKey_file(ctx, &char(cert_key.str), C.SSL_FILETYPE_PEM)
 		if req.validate && res != 1 {
 			return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
 		}

@@ -23,10 +23,11 @@ pub mut:
 	user_agent string = 'v.http'
 	verbose    bool
 	//
-	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
-	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
-	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
-	cert_key string // the path to a key.pem file, containing private keys for the client certificate(s)
+	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
+	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
+	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
+	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
 pub fn new_request(method Method, url_ string, data string) ?Request {
@@ -128,6 +129,7 @@ pub fn fetch(config FetchConfig) ?Response {
 		verify: config.verify
 		cert: config.cert
 		cert_key: config.cert_key
+		in_memory_verification: config.in_memory_verification
 	}
 	res := req.do() ?
 	return res
