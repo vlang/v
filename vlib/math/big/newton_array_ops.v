@@ -66,16 +66,16 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 
     k := bit_length(a) + bit_length(b)  // a*b < 2**k
     mut x := integer_from_int(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
-	// mut initial_guess := integer_from_int(2)
-	// if k > 64 {
-    	// initial_guess =  ((integer_from_int(48) - integer_from_int(32) * b) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(64) // / 17 == 0x11
-	// }
+	initial_guess :=  (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(60)).neg() // / 17 == 0x11
+	if initial_guess > zero_int {
+		x = initial_guess
+	}
 	mut lastx := integer_from_int(0)
 	mut counter := 0
 	// println('------------------------------')
-// 	println('k: ${k}')
-	// println('initial guess: ${debug_u32_str(initial_guess.digits)}')
-	// println('x$counter: ${debug_u32_str(x.digits)}')
+	// println('k: ${k}')
+	// println('initial guess:${initial_guess.signum} ${debug_u32_str(initial_guess.digits)}')
+	// println('x$counter: ${x.signum} ${debug_u32_str(x.digits)}')
     for lastx != x {
         lastx = x
         x = (x * (pow2(k + 1) - x * b)).rshift(u32(k))
@@ -89,21 +89,25 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 	// println('q * b: ${debug_u32_str((q * b).digits)}')
 	if q * b > a {
 		q.dec()
-		println('q.dec(): ${debug_u32_str(q.digits)}')
+		// println('q.dec(): ${debug_u32_str(q.digits)}')
 	}
-	println('a:${a.signum}, ${debug_u32_str(a.digits)}')
-	println('(q * b): ${debug_u32_str((q * b).digits)}')
+	// println('a:${a.signum}, ${debug_u32_str(a.digits)}')
+	// println('(q * b): ${debug_u32_str((q * b).digits)}')
 	mut r := a - (q * b)
-	println('r:${r.signum}, ${debug_u32_str(r.digits)}')
-	println('q: ${debug_u32_str(q.digits)}')
+	// println('r:${r.signum}, ${debug_u32_str(r.digits)}')
+	// println('q: ${debug_u32_str(q.digits)}')
 	if r >= b {
 		q.inc()
 		r -= b
-		println('q.inc(): ${debug_u32_str(q.digits)}')
-		println('\tb: ${debug_u32_str(b.digits)}')
-		println('\tr:${r.signum}, ${debug_u32_str(r.digits)}')
+		// println('q.inc(): ${debug_u32_str(q.digits)}')
+		// println('\tb: ${debug_u32_str(b.digits)}')
+		// println('\tr:${r.signum}, ${debug_u32_str(r.digits)}')
 	}
 
+	// control
+	// println('initial guess:${initial_guess.signum} ${debug_u32_str(initial_guess.digits)}')
+	// println('bit_length initial guess: ${bit_length(initial_guess)}')
+	// println('bit_length x: ${bit_length(x)}')
 	// for returning []u32
 	quotient = q.digits
 	remainder = r.digits
