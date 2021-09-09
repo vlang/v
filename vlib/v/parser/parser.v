@@ -33,6 +33,7 @@ mut:
 	peek_tok            token.Token
 	table               &ast.Table
 	language            ast.Language
+	fn_language         ast.Language // .c for `fn C.abcd()` declarations
 	inside_test_file    bool // when inside _test.v or _test.vv file
 	inside_if           bool
 	inside_if_expr      bool

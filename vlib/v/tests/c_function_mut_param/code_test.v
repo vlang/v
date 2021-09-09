@@ -2,7 +2,7 @@ module main
 
 #include "@VMODROOT/code.c"
 
-fn C.mut_arg(key &byte, mut val &size_t)
+fn C.mut_arg(key &byte, mut val size_t)
 
 fn test_c_function_mut_param() {
 	key := &byte(1)
