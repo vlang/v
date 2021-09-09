@@ -8,7 +8,7 @@ const (
 	retries = 10000
 )
 
-[kwargs]
+[params]
 pub struct TempFileOptions {
 	path    string = os.temp_dir()
 	pattern string
@@ -45,7 +45,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 		' could not create temporary file in "$d". Retry limit ($util.retries) exhausted. Please ensure write permissions.')
 }
 
-[kwargs]
+[params]
 pub struct TempDirOptions {
 	path    string = os.temp_dir()
 	pattern string

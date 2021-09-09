@@ -247,7 +247,7 @@ fn test_fixed_field() {
 	//}
 }
 */
-[kwargs]
+[params]
 struct Config {
 mut:
 	n   int

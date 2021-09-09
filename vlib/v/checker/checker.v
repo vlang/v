@@ -2061,8 +2061,8 @@ pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn
 			last_typ := f.params.last().typ
 			last_sym := c.table.get_type_symbol(last_typ)
 			if last_sym.info is ast.Struct {
-				is_kwargs := last_sym.info.attrs.filter(it.name == 'kwargs' && !it.has_arg).len > 0
-				if is_kwargs {
+				is_params := last_sym.info.attrs.filter(it.name == 'params' && !it.has_arg).len > 0
+				if is_params {
 					// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
 					node.args << ast.CallArg{
 						expr: ast.StructInit{

@@ -14,7 +14,7 @@ mut:
 	max_type_len int
 }
 
-[kwargs]
+[params]
 struct AddInfoConfig {
 	use_threshold bool
 }

@@ -1,4 +1,4 @@
-[kwargs]
+[params]
 struct Data {
 	array []int
 }
