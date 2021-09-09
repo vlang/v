@@ -60,8 +60,9 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 	// tranform back to Integers (local without allocation)
 	a := Integer{signum: 1, digits: operand_a}
 	b := Integer{signum: 1, digits: operand_b}
-	mut q := Integer{signum: 1, digits: quotient}
-	mut r := Integer{signum: 1, digits: remainder}
+	// we cannot use quotient or remainder; they create bug because they are not null
+	// mut q := Integer{signum: 1, digits: quotient}
+	// mut r := Integer{signum: 1, digits: remainder}
 
     k := bit_length(a) + bit_length(b)  // a*b < 2**k
     mut x := integer_from_int(2)  //  0 < x < 2**(k+1)/b  // initial guess for convergence
@@ -84,21 +85,32 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
     if x*b < pow2(k) {
         x.inc()
 	}
-    q = (a * x).rshift(u32(k))
+    mut q := (a * x).rshift(u32(k))
 	// println('q * b: ${debug_u32_str((q * b).digits)}')
 	if q * b > a {
 		q.dec()
+		println('q.dec(): ${debug_u32_str(q.digits)}')
 	}
-	r = a - (q * b)
-	// println('r: ${debug_u32_str(r.digits)}')
+	println('a:${a.signum}, ${debug_u32_str(a.digits)}')
+	println('(q * b): ${debug_u32_str((q * b).digits)}')
+	mut r := a - (q * b)
+	println('r:${r.signum}, ${debug_u32_str(r.digits)}')
+	println('q: ${debug_u32_str(q.digits)}')
 	if r >= b {
 		q.inc()
 		r -= b
+		println('q.inc(): ${debug_u32_str(q.digits)}')
+		println('\tb: ${debug_u32_str(b.digits)}')
+		println('\tr:${r.signum}, ${debug_u32_str(r.digits)}')
 	}
 
 	// for returning []u32
 	quotient = q.digits
 	remainder = r.digits
+
+	for remainder.len > 0 && remainder.last() == 0 {
+		remainder.delete_last()
+	}
 }
 
 [inline]
@@ -157,24 +169,24 @@ fn multiply_kara_simpl(a Integer, b Integer) Integer {
 	if half <= 0 {
 		panic('Unreachable. Both array have 1 length and multiply_array_by_digit should have been called')
 	} else {
-		println('------------------------------')
-		println('a: ${debug_u32_str(a.digits)}')
+		// println('------------------------------')
+// 		println('a: ${debug_u32_str(a.digits)}')
 		a_l := Integer{signum: 1, digits: a.digits[0..half]}
-		println('a_l: ${debug_u32_str(a_l.digits)}')
+		// println('a_l: ${debug_u32_str(a_l.digits)}')
 		a_h := Integer{signum: 1, digits: a.digits[half..]}
-		println('a_h: ${debug_u32_str(a_h.digits)}')
-		println('b: ${debug_u32_str(b.digits)}')
+		// println('a_h: ${debug_u32_str(a_h.digits)}')
+		// println('b: ${debug_u32_str(b.digits)}')
 		b_l := Integer{signum: 1, digits: b.digits[0..half]}
-		println('b_l: ${debug_u32_str(b_l.digits)}')
+		// println('b_l: ${debug_u32_str(b_l.digits)}')
 		b_h := Integer{signum: 1, digits: b.digits[half..]}
-		println('b_h: ${debug_u32_str(b_h.digits)}')
+		// println('b_h: ${debug_u32_str(b_h.digits)}')
 
 		p_1 := multiply_kara_simpl(a_h, b_h)
-		println('p_1: ${debug_u32_str(p_1.digits)}')
+		// println('p_1: ${debug_u32_str(p_1.digits)}')
 		p_3 := multiply_kara_simpl(a_l, b_l)
-		println('p_3: ${debug_u32_str(p_3.digits)}')
+		// println('p_3: ${debug_u32_str(p_3.digits)}')
 		p_2 := multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
-		println('p_3: ${debug_u32_str(p_3.digits)}')
+		// println('p_3: ${debug_u32_str(p_3.digits)}')
 
 		return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
 	}

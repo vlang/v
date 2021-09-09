@@ -104,7 +104,7 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 		storage[index] = u32(a_digit - b_digit)
 	}
 
-	if storage.last() == 0 {
+	for storage.len > 0 && storage.last() == 0 {
 		storage.delete_last()
 	}
 }
