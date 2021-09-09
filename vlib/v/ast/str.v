@@ -34,50 +34,61 @@ pub fn (node &CallExpr) fkey() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
+pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string) string {
+	mut f := strings.new_builder(30)
+	f.write_string('fn ')
+	if node.inherited_vars.len > 0 {
+		f.write_string('[')
+		for i, var in node.inherited_vars {
+			if i > 0 {
+				f.write_string(', ')
+			}
+			if var.is_mut {
+				f.write_string('mut ')
+			}
+			f.write_string(var.name)
+		}
+		f.write_string('] ')
+	}
+	stringify_fn_after_name(node.decl, mut f, t, cur_mod, m2a)
+	return f.str()
+}
+
 pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
 	}
-	mut receiver := ''
+	f.write_string('fn ')
 	if node.is_method {
+		f.write_string('(')
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
 			cur_mod)
-		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
+			f.write_string(node.receiver.typ.share().str() + ' ')
 			styp = styp[1..] // remove &
 		}
+		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
 		if node.params[0].is_auto_rec {
 			styp = styp.trim('&')
 		}
-		receiver = '($m$node.receiver.name $styp) '
-		/*
-		sym := t.get_type_symbol(node.receiver.typ)
-		name := sym.name.after('.')
-		mut m := if node.rec_mut { 'mut ' } else { '' }
-		if !node.rec_mut && node.receiver.typ.is_ptr() {
-			m = '&'
-		}
-		receiver = '($node.receiver.name $m$name) '
-		*/
+		f.write_string(styp + ') ')
 	}
-	mut name := if node.is_anon { '' } else { node.name }
-	if !node.is_anon && !node.is_method && node.language == .v {
-		name = node.name.all_after_last('.')
+	name := if !node.is_method && node.language == .v {
+		node.name.all_after_last('.')
+	} else {
+		node.name
 	}
-	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
-	// if !node.is_method {
-	// 	if node.language == .c {
-	// 		name = 'C.$name'
-	// 	} else if node.language == .js {
-	// 		name = 'JS.$name'
-	// 	}
-	// }
-	f.write_string('fn $receiver$name')
+	f.write_string(name)
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
+	stringify_fn_after_name(node, mut f, t, cur_mod, m2a)
+	return f.str()
+}
+
+fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
 	if node.generic_names.len > 0 {
 		if node.is_method {
@@ -151,7 +162,6 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 		}
 		f.write_string(' ' + rs)
 	}
-	return f.str()
 }
 
 // Expressions in string interpolations may have to be put in braces if they
@@ -280,16 +290,17 @@ pub fn (x Expr) str() string {
 		}
 		CallExpr {
 			sargs := args2str(x.args)
+			propagate_suffix := if x.or_block.kind == .propagate { ' ?' } else { '' }
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)'
+				return '${x.left.str()}.${x.name}($sargs)$propagate_suffix'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)')
+				return util.strip_main_name('${x.name}($sargs)$propagate_suffix')
 			}
 			if x.mod == '' && x.name == '' {
-				return x.left.str() + '($sargs)'
+				return x.left.str() + '($sargs)$propagate_suffix'
 			}
-			return '${x.mod}.${x.name}($sargs)'
+			return '${x.mod}.${x.name}($sargs)$propagate_suffix'
 		}
 		CharLiteral {
 			return '`$x.val`'

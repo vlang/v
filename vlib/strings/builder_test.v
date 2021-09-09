@@ -2,6 +2,8 @@ import strings
 
 type MyInt = int
 
+const maxn = 100000
+
 fn test_sb() {
 	mut sb := strings.new_builder(100)
 	sb.write_string('hi')
@@ -39,10 +41,6 @@ fn test_sb() {
 	assert final_sb == '1234'
 	//}
 }
-
-const (
-	maxn = 100000
-)
 
 fn test_big_sb() {
 	mut sb := strings.new_builder(100)
@@ -93,4 +91,24 @@ fn test_cut_to() {
 	assert sb.cut_to(0) == 'hel'
 	assert sb.cut_to(32) == ''
 	assert sb.len == 0
+}
+
+fn test_write_rune() {
+	mut sb := strings.new_builder(10)
+	sb.write_rune(`h`)
+	sb.write_rune(`e`)
+	sb.write_rune(`l`)
+	sb.write_rune(`l`)
+	sb.write_rune(`o`)
+	x := sb.str()
+	assert x == 'hello'
+}
+
+fn test_write_runes() {
+	mut sb := strings.new_builder(20)
+	sb.write_runes([`h`, `e`, `l`, `l`, `o`])
+	sb.write_rune(` `)
+	sb.write_runes([`w`, `o`, `r`, `l`, `d`])
+	x := sb.str()
+	assert x == 'hello world'
 }

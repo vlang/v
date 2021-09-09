@@ -79,6 +79,7 @@ mut:
 	inside_defer        bool
 	comp_if_cond        bool
 	defer_vars          []ast.Ident
+	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 }
 
 // for tests
@@ -144,7 +145,7 @@ pub fn (mut p Parser) set_path(path string) {
 	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
 		p.inside_test_file = true
 	}
-	before_dot_v := path.before('.v') // also works for .vv and .vsh
+	before_dot_v := path.all_before_last('.v') // also works for .vv and .vsh
 	language := before_dot_v.all_after_last('.')
 	langauge_with_underscore := before_dot_v.all_after_last('_')
 	if language == before_dot_v && langauge_with_underscore == before_dot_v {
@@ -267,8 +268,22 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.attrs = []
 		}
 		stmts << stmt
+		if p.should_abort {
+			break
+		}
 	}
 	p.scope.end_pos = p.tok.pos
+
+	mut errors := p.errors
+	mut warnings := p.warnings
+	mut notices := p.notices
+
+	if p.pref.check_only {
+		errors << p.scanner.errors
+		warnings << p.scanner.warnings
+		notices << p.scanner.notices
+	}
+
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -282,8 +297,9 @@ pub fn (mut p Parser) parse() &ast.File {
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.table.global_scope
-		errors: p.errors
-		warnings: p.warnings
+		errors: errors
+		warnings: warnings
+		notices: notices
 		global_labels: p.global_labels
 	}
 }
@@ -578,6 +594,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.error('bad top level statement ' + p.tok.str())
 				}
 			}
+		}
+		if p.should_abort {
+			break
 		}
 	}
 	// TODO remove dummy return statement
@@ -1606,7 +1625,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1620,6 +1639,12 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError
 			pos: pos
 			reporter: .parser
 			message: s
+		}
+
+		// To avoid getting stuck after an error, the parser
+		// will proceed to the next token.
+		if p.pref.check_only {
+			p.next()
 		}
 	}
 	if p.pref.output_mode == .silent {
@@ -1640,7 +1665,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		exit(1)
 	}
 	mut kind := 'error:'
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -1649,6 +1674,10 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 		eprintln(ferror)
 		exit(1)
 	} else {
+		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.errors << error
 	}
 	if p.pref.output_mode == .silent {
@@ -1668,10 +1697,14 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('warning:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
+		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
+			p.should_abort = true
+			return
+		}
 		p.warnings << errors.Warning{
 			file_path: p.file_name
 			pos: pos
@@ -1685,7 +1718,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('notice:', s, p.file_name, pos)
 		eprintln(ferror)
 	} else {
@@ -1784,49 +1817,49 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
-	if p.tok.kind == .name {
-		pos := p.tok.position()
-		mut name := p.check_name()
-		if name == '_' {
-			return ast.Ident{
-				tok_kind: p.tok.kind
-				name: '_'
-				comptime: p.comp_if_cond
-				kind: .blank_ident
-				pos: pos
-				info: ast.IdentVar{
-					is_mut: false
-					is_static: false
-				}
-				scope: p.scope
-			}
+	if p.tok.kind != .name {
+		p.error('unexpected token `$p.tok.lit`')
+		return ast.Ident{
+			scope: p.scope
 		}
-		if p.inside_match_body && name == 'it' {
-			// p.warn('it')
-		}
-		if p.expr_mod.len > 0 {
-			name = '${p.expr_mod}.$name'
-		}
+	}
+	pos := p.tok.position()
+	mut name := p.check_name()
+	if name == '_' {
 		return ast.Ident{
 			tok_kind: p.tok.kind
-			kind: .unresolved
-			name: name
+			name: '_'
 			comptime: p.comp_if_cond
-			language: language
-			mod: p.mod
+			kind: .blank_ident
 			pos: pos
-			is_mut: is_mut
-			mut_pos: mut_pos
 			info: ast.IdentVar{
-				is_mut: is_mut
-				is_static: is_static
-				share: ast.sharetype_from_flags(is_shared, is_atomic)
+				is_mut: false
+				is_static: false
 			}
 			scope: p.scope
 		}
 	}
-	p.error('unexpected token `$p.tok.lit`')
+	if p.inside_match_body && name == 'it' {
+		// p.warn('it')
+	}
+	if p.expr_mod.len > 0 {
+		name = '${p.expr_mod}.$name'
+	}
 	return ast.Ident{
+		tok_kind: p.tok.kind
+		kind: .unresolved
+		name: name
+		comptime: p.comp_if_cond
+		language: language
+		mod: p.mod
+		pos: pos
+		is_mut: is_mut
+		mut_pos: mut_pos
+		info: ast.IdentVar{
+			is_mut: is_mut
+			is_static: is_static
+			share: ast.sharetype_from_flags(is_shared, is_atomic)
+		}
 		scope: p.scope
 	}
 }
@@ -1838,13 +1871,14 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // heuristics to detect `func<T>()` from `var < expr`
 // 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
 // 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` and `f<foo<` are generic because `v1 < foo > v2` and `v1 < foo < v2` are invalid syntax
-// 4. `f<Foo,` is generic when Foo is typename.
+// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 4. `f<foo<bar` is generic when bar is not generic T (f<foo<T>(), in contrast, is not generic!)
+// 5. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
-// 5. `f<mod.Foo>` is same as case 3
-// 6. `f<mod.Foo,` is same as case 4
-// 7. if there is a &, ignore the & and see if it is a type
-// 10. otherwise, it's not generic
+// 6. `f<mod.Foo>` is same as case 3
+// 7. `f<mod.Foo,` is same as case 5
+// 8. if there is a &, ignore the & and see if it is a type
+// 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
@@ -1878,9 +1912,10 @@ fn (p &Parser) is_generic_call() bool {
 			return true
 		}
 		return match kind3 {
-			.gt, .lt { true } // case 3
-			.comma { p.is_typename(tok2) } // case 4
-			// case 5 and 6
+			.gt { true } // case 3
+			.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
+			.comma { p.is_typename(tok2) } // case 5
+			// case 6 and 7
 			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
 			else { false }
 		}
@@ -2147,6 +2182,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return map_init
 		}
 		return p.struct_init(false) // short_syntax: false
+	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
+		&& language == .v {
+		// if a == Foo{} {...}
+		return p.struct_init(false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
@@ -2154,6 +2193,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			name := p.check_name()
 			p.check(.dot)
 			field := p.check_name()
+			fkind := match field {
+				'name' { ast.GenericKindField.name }
+				'typ' { ast.GenericKindField.typ }
+				else { ast.GenericKindField.unknown }
+			}
 			pos.extend(p.tok.position())
 			return ast.SelectorExpr{
 				expr: ast.Ident{
@@ -2161,6 +2205,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					scope: p.scope
 				}
 				field_name: field
+				gkind_field: fkind
 				pos: pos
 				scope: p.scope
 			}

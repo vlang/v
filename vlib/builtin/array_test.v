@@ -551,8 +551,8 @@ fn test_in() {
 	assert 1 in a
 	assert 2 in a
 	assert 3 in a
-	assert !(4 in a)
-	assert !(0 in a)
+	assert 4 !in a
+	assert 0 !in a
 	assert 0 !in a
 	assert 4 !in a
 	b := [1, 4, 0]

@@ -133,7 +133,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	// comment for dynamic
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: tf_skl.bmp.buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 
 	simg := C.sg_make_image(&img_desc)
@@ -151,7 +151,7 @@ pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	mut tmp_sbc := C.sg_image_data{}
 	tmp_sbc.subimage[0][0] = C.sg_range{
 		ptr: tf_skl.bmp.buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 	C.sg_update_image(tf_skl.sg_img, &tmp_sbc)
 }

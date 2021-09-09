@@ -181,7 +181,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// struct embedding
 				type_pos = p.tok.position()
 				typ = p.parse_type()
-				ecomments := p.eat_comments()
+				comments << p.eat_comments()
 				type_pos = type_pos.extend(p.prev_tok.position())
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
@@ -203,7 +203,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				embeds << ast.Embed{
 					typ: typ
 					pos: type_pos
-					comments: ecomments
+					comments: comments
 				}
 			} else {
 				// struct field
@@ -514,8 +514,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			line_nr := p.tok.line_nr
 			name := p.check_name()
 
-			if name == 'type_name' {
-				p.error_with_pos('cannot override built-in method `type_name`', method_start_pos)
+			if name in ['type_name', 'type_idx'] {
+				p.error_with_pos('cannot override built-in method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
 			if ts.has_method(name) {

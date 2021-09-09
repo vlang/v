@@ -63,9 +63,13 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options int)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth int)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, ca_file &char, ca_path &char) int
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) int
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
+
+fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
+
+fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
@@ -76,6 +80,8 @@ fn C.SSL_connect(&C.SSL) int
 fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 
 fn C.SSL_get_peer_certificate(ssl &SSL) &C.X509
+
+fn C.X509_free(const_cert &C.X509)
 
 fn C.ERR_clear_error()
 

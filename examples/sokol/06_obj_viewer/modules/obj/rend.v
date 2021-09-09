@@ -35,7 +35,7 @@ pub fn create_texture(w int, h int, buf &byte) C.sg_image {
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: size_t(sz)
+		size: usize(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -73,10 +73,10 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 
-	vert_buffer_desc.size = size_t(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
+	vert_buffer_desc.size = usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	vert_buffer_desc.data = C.sg_range{
 		ptr: obj_buf.vbuf.data
-		size: size_t(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
+		size: usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	}
 
 	vert_buffer_desc.@type = .vertexbuffer
@@ -89,10 +89,10 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 
-	index_buffer_desc.size = size_t(obj_buf.ibuf.len * int(sizeof(u32)))
+	index_buffer_desc.size = usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	index_buffer_desc.data = C.sg_range{
 		ptr: obj_buf.ibuf.data
-		size: size_t(obj_buf.ibuf.len * int(sizeof(u32)))
+		size: usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	}
 
 	index_buffer_desc.@type = .indexbuffer
@@ -236,11 +236,11 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 
 	vs_uniforms_range := C.sg_range{
 		ptr: in_data.vs_data
-		size: size_t(in_data.vs_len)
+		size: usize(in_data.vs_len)
 	}
 	fs_uniforms_range := C.sg_range{
 		ptr: unsafe { &tmp_fs_params }
-		size: size_t(in_data.fs_len)
+		size: usize(in_data.fs_len)
 	}
 
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &vs_uniforms_range)

@@ -21,7 +21,7 @@ struct C.tm {
 fn C.timegm(&C.tm) C.time_t
 
 // fn C.gmtime_r(&tm, &gbuf)
-fn C.localtime_r(t &time_t, tm &C.tm)
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) i64 {
 	return i64(C.timegm(&t))

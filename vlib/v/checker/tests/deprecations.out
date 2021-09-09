@@ -12,7 +12,7 @@ vlib/v/checker/tests/deprecations.vv:67:4: notice: method `Abc.future` will be d
       |       ~~~~~~~~
    68 |     a.past()
    69 |     a.simply_deprecated()
-vlib/v/checker/tests/deprecations.vv:61:2: error: function `past` has been deprecated since 2021-03-01, it will be an error after 2021-08-28; custom message 5
+vlib/v/checker/tests/deprecations.vv:61:2: error: function `past` has been deprecated since 2021-03-01; custom message 5
    59 | fn main() {
    60 |     future()
    61 |     past()
@@ -40,7 +40,7 @@ vlib/v/checker/tests/deprecations.vv:64:2: error: function `ancient` has been de
       |     ~~~~~~~~~
    65 |     //
    66 |     a := Abc{}
-vlib/v/checker/tests/deprecations.vv:68:4: error: method `Abc.past` has been deprecated since 2021-03-01, it will be an error after 2021-08-28; custom message 2
+vlib/v/checker/tests/deprecations.vv:68:4: error: method `Abc.past` has been deprecated since 2021-03-01; custom message 2
    66 |     a := Abc{}
    67 |     a.future()
    68 |     a.past()

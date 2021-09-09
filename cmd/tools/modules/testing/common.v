@@ -212,8 +212,7 @@ pub fn (mut ts TestSession) test() {
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
-		relative_file := dot_relative_file.replace('./', '')
-		file := os.real_path(relative_file)
+		file := os.real_path(dot_relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -267,8 +266,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_item<string>(idx)
-	mut relative_file := dot_relative_file.replace('./', '')
+	mut relative_file := os.real_path(p.get_item<string>(idx))
 	mut cmd_options := [ts.vargs]
 	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
 		cmd_options << ' -enable-globals'
@@ -444,7 +442,7 @@ pub fn building_any_v_binaries_failed() bool {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
-	os.chdir(parent_dir)
+	os.chdir(parent_dir) or { panic(err) }
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
 		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',

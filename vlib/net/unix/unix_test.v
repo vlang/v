@@ -3,14 +3,6 @@ import net.unix
 
 const test_port = os.join_path(os.temp_dir(), 'unix_domain_socket')
 
-fn testsuite_begin() {
-	os.rm(test_port) or {}
-}
-
-fn testsuite_end() {
-	os.rm(test_port) or {}
-}
-
 fn handle_conn(mut c unix.StreamConn) {
 	for {
 		mut buf := []byte{len: 100, init: 0}
@@ -50,6 +42,7 @@ fn echo() ? {
 }
 
 fn test_tcp() {
+	assert os.exists(test_port) == false
 	mut l := unix.listen_stream(test_port) or { panic(err) }
 	go echo_server(mut l)
 	echo() or { panic(err) }

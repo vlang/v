@@ -14,3 +14,13 @@ pub fn (mut m map) delete(key voidptr) {
 pub fn (m &map) free() {}
 
 #map.prototype[Symbol.iterator] = function () { return this.map[Symbol.iterator](); }
+
+#map.prototype.toString = function () {
+#function fmtKey(key) { return typeof key == 'string' ? '\'' + key + '\'' : key}
+#let res = '{'
+#for (const entry of this) {
+#res += fmtKey(entry[0]) + ': ' + entry[0];
+#}
+#res += '}'
+#return res;
+#}

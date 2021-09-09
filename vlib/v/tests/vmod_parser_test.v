@@ -2,7 +2,7 @@ import v.vmod
 import os
 
 fn test_from_file() {
-	os.chdir(os.dir(os.getenv('VEXE')))
+	os.chdir(os.dir(os.getenv('VEXE'))) or {}
 	data := vmod.from_file('./v.mod') or { panic(err) }
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'

@@ -29,7 +29,7 @@ fn test_fmt() {
 		exit(error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }

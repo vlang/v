@@ -129,6 +129,11 @@ fn get_all_commands() []Command {
 		line: '$vexe install nedpals.args'
 		okmsg: '`v install` works.'
 	}
+	res << Command{
+		line: '$vexe -usecache -cg examples/hello_world.v'
+		okmsg: '`v -usecache -cg` works.'
+		rmfile: 'examples/hello_world'
+	}
 	// NB: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:
@@ -151,7 +156,7 @@ fn get_all_commands() []Command {
 fn (mut cmd Command) run() {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}

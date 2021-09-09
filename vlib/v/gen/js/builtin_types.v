@@ -17,7 +17,7 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
-	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' }
+	mut prefix := 'new '
 	match sym.kind {
 		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
 		.float_literal, .size_t {
@@ -30,7 +30,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = '$prefix${g.sym_to_js_typ(sym)}("")'
 		}
 		.map {
-			styp = 'new Map()'
+			styp = 'new map(new Map())'
 		}
 		.array {
 			styp = '$prefix${g.sym_to_js_typ(sym)}()'
@@ -114,8 +114,22 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 	return styp
 }
 
-// V type to JS type
+pub fn (mut g JsGen) base_type(t ast.Type) string {
+	mut styp := g.cc_type(t, true)
+	return styp
+}
+
 pub fn (mut g JsGen) typ(t ast.Type) string {
+	sym := g.table.get_type_symbol(t)
+	if sym.kind == .voidptr {
+		return 'any'
+	}
+	styp := g.base_type(t)
+	return styp
+}
+
+// V type to JS type
+pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
 	match sym.kind {
@@ -132,8 +146,8 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
-		.float_literal, .size_t {
+		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64,
+		.int_literal, .float_literal, .size_t {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
@@ -184,8 +198,9 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 			styp = 'union_sym_type'
 		}
 		.alias {
-			// TODO: Implement aliases
-			styp = 'alias'
+			fsym := g.table.get_final_type_symbol(t)
+			name := g.js_name(fsym.name)
+			styp += '$name'
 		}
 		.enum_ {
 			// NB: We could declare them as TypeScript enums but TS doesn't like
@@ -262,7 +277,7 @@ struct BuiltinPrototypeConfig {
 	constructor   string = 'this.val = val'
 	value_of      string = 'this.val'
 	to_string     string = 'this.val.toString()'
-	eq            string = 'this.val === other.val'
+	eq            string = 'self.val === other.val'
 	to_jsval      string = 'this'
 	extras        string
 	has_strfn     bool
@@ -276,21 +291,22 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	if c.extras.len > 0 {
 		g.writeln('$c.extras,')
 	}
-	for method in g.method_fn_decls[c.typ_name] {
-		g.inside_def_typ_decl = true
-		g.gen_method_decl(method)
-		g.inside_def_typ_decl = false
-		g.writeln(',')
-	}
+
 	g.writeln('valueOf() { return $c.value_of },')
 	g.writeln('toString() { return $c.to_string },')
-	g.writeln('eq(other) { return $c.eq },')
+	// g.writeln('eq(other) { return $c.eq },')
 	g.writeln('\$toJS() { return $c.to_jsval }, ')
 	if c.has_strfn {
 		g.writeln('str() { return new string(this.toString()) }')
 	}
 	g.dec_indent()
 	g.writeln('};\n')
+	g.writeln('function ${c.typ_name}__eq(self,other) { return $c.eq; } ')
+	for method in g.method_fn_decls[c.typ_name] {
+		g.inside_def_typ_decl = true
+		g.gen_method_decl(method, .struct_method)
+		g.inside_def_typ_decl = false
+	}
 }
 
 // generate builtin type definitions, used for casting and methods.
@@ -299,42 +315,67 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64', 'int_literal', 'size_t' {
+			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal', 'size_t' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
-					constructor: 'this.val = val | 0'
-					value_of: 'this.val | 0'
+					constructor: 'this.val = Number(val)'
+					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
-					eq: 'this.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: '+this'
+				)
+			}
+			// u64 and i64 are so big that their values do not fit into JS number so we use BigInt.
+			'u64' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'BigInt(0)'
+					constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
+					value_of: 'this.val'
+					to_string: 'this.val.toString()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
+					to_jsval: 'this.val'
+				)
+			}
+			'i64' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'BigInt(0)'
+					constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
+					value_of: 'this.val'
+					to_string: 'this.val.toString()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
+					to_jsval: 'this.val'
 				)
 			}
 			'byte' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
-					constructor: 'this.val = typeof(val) == "string" ? val.charCodeAt() : (val | 0)'
+					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
 					value_of: 'this.val | 0'
 					to_string: 'new string(this.val + "")'
-					eq: 'this.valueOf() === other.valueOf()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
 					to_jsval: '+this'
 				)
 			}
 			'f32', 'f64', 'float_literal' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
+					constructor: 'this.val = Number(val)'
 					default_value: 'new Number(0)'
 					to_jsval: '+this'
 				)
 			}
 			'bool' {
 				g.gen_builtin_prototype(
-					constructor: 'this.val = +val !== 0'
+					constructor: 'this.val = val instanceof bool ? val.val : +val !== 0'
 					typ_name: typ_name
 					default_value: 'new Boolean(false)'
 					to_jsval: '+this != 0'
+					eq: 'new bool(self.val === other.valueOf())'
 				)
 			}
 			'string' {
@@ -345,7 +386,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.str = str.toString(); this.len = this.str.length'
 					value_of: 'this.str'
 					to_string: 'this.str'
-					eq: 'this.str === other.str'
+					eq: 'new bool(self.str === other.str)'
 					has_strfn: false
 					to_jsval: 'this.str'
 				)
@@ -354,11 +395,11 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					val_name: 'map'
-					default_value: 'new Map()'
+					default_value: 'new map(new Map())'
 					constructor: 'this.map = map'
 					value_of: 'this'
 					to_string: 'this.map.toString()'
-					eq: 'vEq(this, other)'
+					eq: 'new bool(vEq(self, other))'
 					to_jsval: 'this.map'
 				)
 			}
@@ -370,7 +411,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.arr = arr'
 					value_of: 'this'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
-					eq: 'vEq(this, other)'
+					eq: 'new bool(vEq(self, other))'
 					to_jsval: 'this.arr'
 				)
 			}
@@ -382,7 +423,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					constructor: 'this.val = any'
 					value_of: 'this.val'
 					to_string: '"&" + this.val'
-					eq: 'this == other' // compare by ptr
+					eq: 'new bool(self == other)' // compare by ptr
 					to_jsval: 'this.val.\$toJS()'
 				)
 			}

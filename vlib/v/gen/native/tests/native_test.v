@@ -22,7 +22,7 @@ fn test_native() {
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'native')
 	os.mkdir_all(wrkdir) or { panic(err) }
-	os.chdir(wrkdir)
+	os.chdir(wrkdir) or {}
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no native tests found')

@@ -6,64 +6,46 @@ module builtin
 
 fn (a any) toString()
 
-pub fn println(s any) {
-	// Quickfix to properly print basic types
-	// TODO: Add proper detection code for this
-	JS.console.log(s.toString())
-}
-
-pub fn print(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stdout.write(s.toString())
-	// } $else {
-	//	panic('Cannot `print` in a browser, use `println` instead')
-	// }
-}
-
-pub fn eprintln(s any) {
-	JS.console.error(s.toString())
-}
-
-pub fn eprint(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stderr.write(s.toString())
-	// } $else {
-	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
-	// }
-}
-
-// Exits the process in node, and halts execution in the browser
-// because `process.exit` is undefined. Workaround for not having
-// a 'real' way to exit in the browser.
-pub fn exit(c int) {
-	JS.process.exit(c)
-	js_throw('exit($c)')
-}
-
-pub fn unwrap(opt any) any {
-	o := &Option(opt)
-	if o.state != 0 {
-		js_throw(o.err)
-	}
-	return opt
-}
-
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	exit(1)
 }
 
-struct Option {
-	state byte
-	err   Error
+// IError holds information about an error instance
+pub interface IError {
+	msg string
+	code int
 }
 
+// Error is the default implementation of IError, that is returned by e.g. `error()`
 pub struct Error {
 pub:
 	msg  string
 	code int
+}
+
+struct None__ {
+	msg  string
+	code int
+}
+
+fn (_ None__) str() string {
+	return 'none'
+}
+
+pub const none__ = IError(None__{'', 0})
+
+pub struct Option {
+	state byte
+	err   IError = none__
+}
+
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg }
+		else { '$err.type_name(): $err.msg' }
+	}
 }
 
 pub fn (o Option) str() string {
@@ -76,21 +58,27 @@ pub fn (o Option) str() string {
 	return 'Option{ error: "$o.err" }'
 }
 
-pub fn error(s string) Option {
-	return Option{
-		state: 2
-		err: Error{
-			msg: s
-		}
+fn trace_error(x string) {
+	eprintln('> ${@FN} | $x')
+}
+
+// error returns a default error instance containing the error given in `message`.
+// Example: `if ouch { return error('an error occurred') }`
+[inline]
+pub fn error(message string) IError {
+	// trace_error(message)
+	return &Error{
+		msg: message
 	}
 }
 
-pub fn error_with_code(s string, code int) Option {
-	return Option{
-		state: 2
-		err: Error{
-			msg: s
-			code: code
-		}
+// error_with_code returns a default error instance containing the given `message` and error `code`.
+// `if ouch { return error_with_code('an error occurred', 1) }`
+[inline]
+pub fn error_with_code(message string, code int) IError {
+	// trace_error('$message | code: $code')
+	return &Error{
+		msg: message
+		code: code
 	}
 }

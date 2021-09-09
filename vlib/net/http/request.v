@@ -26,6 +26,12 @@ pub mut:
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
+	//
+	validate               bool // when true, certificate failures will stop further processing
+	verify                 string
+	cert                   string
+	cert_key               string
+	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
 fn (mut req Request) free() {

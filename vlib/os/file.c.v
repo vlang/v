@@ -215,13 +215,13 @@ pub fn (mut f File) writeln(s string) ?int {
 	if x < 0 {
 		return error('could not add newline')
 	}
-	return (written + 1)
+	return written + 1
 }
 
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) ?int {
-	unsafe { f.write_full_buffer(s.str, size_t(s.len)) ? }
+	unsafe { f.write_full_buffer(s.str, usize(s.len)) ? }
 	return s.len
 }
 
@@ -274,8 +274,8 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 // write_full_buffer writes a whole buffer of data to the file, starting from the
 // address in `buffer`, no matter how many tries/partial writes it would take.
 [unsafe]
-pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len size_t) ? {
-	if buffer_len <= size_t(0) {
+pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ? {
+	if buffer_len <= usize(0) {
 		return
 	}
 	if !f.is_opened {
@@ -461,6 +461,12 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 		return nbytes
 	}
 	return error('Could not read file')
+}
+
+// read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
+// Returns the amount of bytes read or an error.
+pub fn (f &File) read_into_ptr(ptr &byte, max_size int) ?int {
+	return fread(ptr, 1, max_size, f.cfile)
 }
 
 // **************************** Utility  ops ***********************

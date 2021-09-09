@@ -52,7 +52,7 @@ pub fn from_file(vmod_path string) ?Manifest {
 	if !os.exists(vmod_path) {
 		return error('v.mod: v.mod file not found.')
 	}
-	contents := os.read_file(vmod_path) or { panic('v.mod: cannot parse v.mod') }
+	contents := os.read_file(vmod_path) or { '' }
 	return decode(contents)
 }
 
@@ -189,7 +189,7 @@ fn (mut p Parser) parse() ?Manifest {
 	tokens := p.scanner.tokens
 	mut mn := Manifest{}
 	if tokens[0].typ != .module_keyword {
-		panic('not a valid v.mod')
+		return error('vmod: v.mod files should start with Module')
 	}
 	mut i := 1
 	for i < tokens.len {

@@ -17,7 +17,7 @@ const there_is_grep_available = is_grep_working()
 
 fn test_example_compilation() {
 	vexe := os.getenv('VEXE')
-	os.chdir(os.dir(vexe))
+	os.chdir(os.dir(vexe)) or {}
 	os.mkdir_all(output_dir) or { panic(err) }
 	files := find_test_files()
 	for file in files {

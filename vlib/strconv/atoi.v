@@ -86,6 +86,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	for i in start_index .. s.len {
 		c := s[i]
 		cl := byte_to_lower(c)
+
 		mut d := byte(0)
 		if c == `_` && base0 {
 			// underscore_ok already called

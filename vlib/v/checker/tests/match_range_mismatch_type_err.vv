@@ -1,0 +1,11 @@
+fn main() {
+	x := '1'
+	match x {
+		`0`...`9` {
+			println('0-9')
+		}
+		else {
+			println('!0-9')
+		}
+	}
+}

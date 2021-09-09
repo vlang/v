@@ -83,9 +83,8 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 		}
 	}
 	//
-	source := read_file(filepath) or { '' }
 	position := '$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
-	scontext := source_context(kind, source, pos).join('\n')
+	scontext := source_file_context(kind, filepath, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
@@ -94,12 +93,39 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
-pub fn source_context(kind string, source string, pos token.Position) []string {
+[heap]
+struct LinesCache {
+mut:
+	lines map[string][]string
+}
+
+[unsafe]
+pub fn cached_file2sourcelines(path string) []string {
+	mut static cache := &LinesCache(0)
+	if isnil(cache) {
+		cache = &LinesCache{}
+	}
+	if path.len == 0 {
+		unsafe { cache.lines.free() }
+		unsafe { free(cache) }
+		cache = &LinesCache(0)
+		return []string{}
+	}
+	if res := cache.lines[path] {
+		return res
+	}
+	source := read_file(path) or { '' }
+	res := source.split_into_lines()
+	cache.lines[path] = res
+	return res
+}
+
+pub fn source_file_context(kind string, filepath string, pos token.Position) []string {
 	mut clines := []string{}
-	if source.len == 0 {
+	source_lines := unsafe { cached_file2sourcelines(filepath) }
+	if source_lines.len == 0 {
 		return clines
 	}
-	source_lines := source.split_into_lines()
 	bline := mu.max(0, pos.line_nr - util.error_context_before)
 	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '

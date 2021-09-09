@@ -327,7 +327,7 @@ fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int) {
 			id = i
 		}
 	}
-	return (t < inf), t, id
+	return t < inf, t, id
 }
 
 // some casual random function, try to avoid the 0

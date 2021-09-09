@@ -3,7 +3,7 @@ module doc
 import os
 
 fn testsuite_begin() {
-	os.chdir(@VMODROOT)
+	os.chdir(@VMODROOT) or {}
 	eprintln('>> @VMODROOT: ' + @VMODROOT)
 }
 

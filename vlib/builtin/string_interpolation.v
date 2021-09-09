@@ -252,6 +252,10 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
 				mut hx := strconv.format_int(d, base)
 				if upper_case {
 					tmp := hx
@@ -287,6 +291,10 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
 				mut hx := strconv.format_uint(d, base)
 				if upper_case {
 					tmp := hx

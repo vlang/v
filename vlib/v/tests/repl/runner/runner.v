@@ -117,7 +117,7 @@ pub fn new_options() RunnerOptions {
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
-		os.chdir(os.dir(vexec))
+		os.chdir(os.dir(vexec)) or {}
 		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}

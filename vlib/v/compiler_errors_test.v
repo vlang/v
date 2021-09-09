@@ -9,7 +9,7 @@ import runtime
 import benchmark
 
 const skip_files = [
-	'non_existing.vv' /* minimize commit diff churn, do not remove */,
+	'non_existing.vv', // minimize commit diff churn, do not remove
 ]
 
 const skip_on_ubuntu_musl = [
@@ -51,7 +51,7 @@ mut:
 fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
 	scanner_dir := 'vlib/v/scanner/tests'

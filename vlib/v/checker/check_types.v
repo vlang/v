@@ -164,8 +164,10 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
 			return false
+		} else if exp_arg_is_ptr && got_arg_is_ptr {
+			continue
 		}
-		if !c.check_basic(got_arg.typ, exp_arg.typ) {
+		if got_arg.typ != exp_arg.typ {
 			return false
 		}
 	}
@@ -252,7 +254,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if idx_lo >= ast.byte_type_idx { // both operands are unsigned
 		return type_hi
 	} else if idx_lo >= ast.i8_type_idx
-		&& (idx_hi <= ast.i64_type_idx || idx_hi == ast.rune_type_idx) { // both signed
+		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (ast.byte_type_idx - ast.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
@@ -449,8 +451,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,
-			`_`,
-		] {
+			`b`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -471,9 +472,10 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 			if node.pluss[i] && !typ.is_number() {
 				c.error('plus prefix only allowed for numbers', node.fmt_poss[i])
 			}
-			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`])
-				|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`])
-				|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`])
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`, `b`])
+				|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`, `b`])
+				|| (typ.is_int_literal()
+				&& fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `b`])
 				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
 				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
 				|| (typ.is_string() && fmt !in [`s`, `S`])
@@ -633,7 +635,9 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				}
 			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.get_type_symbol(arg.typ)
-				if arg_sym.kind == .array && param_type_sym.kind == .array {
+				if param.typ.has_flag(.variadic) {
+					to_set = c.table.mktyp(arg.typ)
+				} else if arg_sym.kind == .array && param_type_sym.kind == .array {
 					mut arg_elem_info := arg_sym.info as ast.Array
 					mut param_elem_info := param_type_sym.info as ast.Array
 					mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
@@ -678,8 +682,6 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 						&& c.table.get_type_symbol(param_map_info.value_type).name == gt_name {
 						typ = arg_map_info.value_type
 					}
-				} else if param.typ.has_flag(.variadic) {
-					to_set = c.table.mktyp(arg.typ)
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}

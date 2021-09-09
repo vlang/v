@@ -127,7 +127,7 @@ fn is_alnum(in_char byte) bool {
 	if tmp <= 9 {
 		return true
 	}
-	if tmp == `_` {
+	if in_char == `_` {
 		return true
 	}
 	return false
@@ -159,6 +159,7 @@ fn is_not_digit(in_char byte) bool {
 	return !is_digit(in_char)
 }
 
+/*
 [inline]
 fn is_wordchar(in_char byte) bool {
 	return is_alnum(in_char) || in_char == `_`
@@ -168,6 +169,7 @@ fn is_wordchar(in_char byte) bool {
 fn is_not_wordchar(in_char byte) bool {
 	return !is_alnum(in_char)
 }
+*/
 
 [inline]
 fn is_lower(in_char byte) bool {
@@ -888,6 +890,10 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 	return -2, true, name, i
 }
 
+const (
+	quntifier_chars = [rune(`+`), `*`, `?`, `{`]
+)
+
 //
 // main compiler
 //
@@ -1034,20 +1040,37 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 		// Quantifiers
 		if char_len == 1 && pc > 0 {
+			mut char_next := rune(0)
+			mut char_next_len := 0
+			if (char_len + i) < in_txt.len {
+				char_next, char_next_len = re.get_char(in_txt, i + char_len)
+			}
 			mut quant_flag := true
 			match byte(char_tmp) {
 				`?` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 0
 					re.prog[pc - 1].rep_max = 1
 				}
 				`+` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 1
 					re.prog[pc - 1].rep_max = regex.max_quantifier
 				}
 				`*` {
 					// println("q: ${char_tmp:c}")
+					// check illegal quantifier sequences
+					if char_next_len == 1 && char_next in regex.quntifier_chars {
+						return regex.err_syntax_error, i
+					}
 					re.prog[pc - 1].rep_min = 0
 					re.prog[pc - 1].rep_max = regex.max_quantifier
 				}
@@ -1060,10 +1083,18 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 						re.prog[pc - 1].rep_min = min
 						re.prog[pc - 1].rep_max = max
 						re.prog[pc - 1].greedy = greedy
+						// check illegal quantifier sequences
+						if i <= in_txt.len {
+							char_next, char_next_len = re.get_char(in_txt, i)
+							if char_next_len == 1 && char_next in regex.quntifier_chars {
+								return regex.err_syntax_error, i
+							}
+						}
 						continue
 					} else {
 						return min, i
 					}
+
 					// TODO: decide if the open bracket can be conform without the close bracket
 					/*
 					// no conform, parse as normal char
@@ -1737,6 +1768,17 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 			// m_state = .end
 			// break
+
+			// no groups open, check the last token quantifier
+			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min
+					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
+					// println("We are in good repetition")
+					return state.first_match, state.i
+				}
+			}
+
+			// print("No good exit!!")
 			return regex.no_match_found, 0
 		}
 
@@ -2237,12 +2279,14 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 		// ist_quant_p => quantifier positive test on token
 		else if m_state == .ist_quant_p {
+			// println("Here .ist_quant_p")
 			// exit on first match
 			if (re.flag & regex.f_efm) != 0 {
 				return state.i, state.i + 1
 			}
 
 			rep := re.prog[state.pc].rep
+			// println(rep)
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {

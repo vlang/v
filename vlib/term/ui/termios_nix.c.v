@@ -10,27 +10,18 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr(fd int, termios_p &C.termios) int
-
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
-
-fn C.ioctl(fd int, request u64, arg voidptr) int
-
-struct C.termios {
-mut:
-	c_iflag u32
-	c_lflag u32
-	c_cc    [32]byte
-}
-
 struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
 
-const (
-	termios_at_startup = get_termios()
-)
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+
+fn C.ioctl(fd int, request u64, arg voidptr) int
+
+const termios_at_startup = get_termios()
 
 [inline]
 fn get_termios() C.termios {
@@ -74,11 +65,11 @@ fn (mut ctx Context) termios_setup() ? {
 	if ctx.cfg.capture_events {
 		// Set raw input mode by unsetting ICANON and ECHO,
 		// as well as disable e.g. ctrl+c and ctrl.z
-		termios.c_iflag &= ~u32(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
-		termios.c_lflag &= ~u32(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
+		termios.c_iflag &= ~(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
+		termios.c_lflag &= ~(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
-		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
+		termios.c_lflag &= ~(C.ICANON | C.ECHO)
 	}
 
 	if ctx.cfg.hide_cursor {

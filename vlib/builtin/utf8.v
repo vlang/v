@@ -12,34 +12,38 @@ pub fn utf8_char_len(b byte) int {
 pub fn utf32_to_str(code u32) string {
 	unsafe {
 		mut buffer := malloc_noscan(5)
-		return utf32_to_str_no_malloc(code, buffer)
+		res := utf32_to_str_no_malloc(code, buffer)
+		if res.len == 0 {
+			// the buffer was not used at all
+			free(buffer)
+		}
+		return res
 	}
 }
 
-[unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
-	icode := int(code) // Prevents doing casts everywhere
-	mut res := ''
+[manualfree; unsafe]
+pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 	unsafe {
+		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &byte(buf)
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = byte(icode)
 			buffer[1] = 0
-			res = tos(buffer, 1)
+			return tos(buffer, 1)
 		} else if icode <= 2047 {
 			// 0x7FF
 			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
 			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 0
-			res = tos(buffer, 2)
+			return tos(buffer, 2)
 		} else if icode <= 65535 {
 			// 0xFFFF
 			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
 			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 0
-			res = tos(buffer, 3)
+			return tos(buffer, 3)
 		}
 		// 0x10FFFF
 		else if icode <= 1114111 {
@@ -48,11 +52,10 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[4] = 0
-			res = tos(buffer, 4)
+			return tos(buffer, 4)
 		}
 	}
-	res.is_lit = 1 // let autofree know this string doesn't have to be freed
-	return res
+	return ''
 }
 
 // Convert utf8 to utf32

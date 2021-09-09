@@ -221,6 +221,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
+	if g.pref.is_bare {
+		g.writeln('bare_panic(_SLIT("sort does not work with -freestanding"))')
+		return
+	}
 	info := rec_sym.info as ast.Array
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
@@ -407,7 +411,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		if left_info.elem_type == ast.string_type {
 			g.write('string_clone(')
 		}
-		g.expr(node.args[1].expr)
+		g.expr_with_cast(node.args[1].expr, node.args[1].typ, left_info.elem_type)
 		if left_info.elem_type == ast.string_type {
 			g.write(')')
 		}
@@ -437,13 +441,16 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		g.write(', &($elem_type_str[]){')
-		g.expr(node.args[0].expr)
+		g.expr_with_cast(node.args[0].expr, node.args[0].typ, left_info.elem_type)
 		g.write('})')
 	}
 }
 
 fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
-	unwrap_left_type := g.unwrap_generic(left_type)
+	mut unwrap_left_type := g.unwrap_generic(left_type)
+	if unwrap_left_type.share() == .shared_t {
+		unwrap_left_type = unwrap_left_type.clear_flag(.shared_f)
+	}
 	mut left_sym := g.table.get_type_symbol(unwrap_left_type)
 	left_final_sym := g.table.get_final_type_symbol(unwrap_left_type)
 	mut left_type_str := g.typ(unwrap_left_type).replace('*', '')
@@ -498,10 +505,13 @@ fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 	fn_name := g.gen_array_contains_method(node.left_type)
 	g.write('${fn_name}(')
-	if node.left_type.is_ptr() {
+	if node.left_type.is_ptr() && node.left_type.share() != .shared_t {
 		g.write('*')
 	}
 	g.expr(node.left)
+	if node.left_type.share() == .shared_t {
+		g.write('->val')
+	}
 	g.write(', ')
 	g.expr(node.args[0].expr)
 	g.write(')')
@@ -526,7 +536,7 @@ fn (mut g Gen) gen_array_index_method(left_type ast.Type) string {
 		fn_builder.writeln('\t$elem_type_str* pelem = a.data;')
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(( *pelem, v))) {')
+			fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_array_equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq( *pelem, v)) {')

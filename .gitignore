@@ -49,6 +49,7 @@ fns.txt
 !Dockerfile.cross
 !LICENSE
 !Makefile
+!GNUmakefile
 
 # ignore editor files
 .idea

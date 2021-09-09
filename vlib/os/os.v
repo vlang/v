@@ -4,7 +4,6 @@
 module os
 
 pub const (
-	args          = []string{}
 	max_path_len  = 4096
 	wd_at_startup = getwd()
 )
@@ -337,17 +336,23 @@ pub fn home_dir() string {
 	}
 }
 
+// expand_tilde_to_home expands the character `~` in `path` to the user's home directory.
+// See also `home_dir()`.
+pub fn expand_tilde_to_home(path string) string {
+	if path == '~' {
+		return home_dir().trim_right(path_separator)
+	}
+	if path.starts_with('~' + path_separator) {
+		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
+			path_separator)
+	}
+	return path
+}
+
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	unsafe { f.write_full_buffer(text.str, size_t(text.len)) ? }
-	f.close()
-}
-
-// write_file_array writes the data in `buffer` to a file in `path`.
-pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
+	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
 	f.close()
 }
 
@@ -355,11 +360,11 @@ pub fn write_file_array(path string, buffer array) ? {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if os.args.len == 0 {
+	if args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := os.args[0]
+	mut exepath := args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
@@ -638,25 +643,4 @@ pub fn execute_or_exit(cmd string) Result {
 		exit(1)
 	}
 	return res
-}
-
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
-	}
-}
-
-pub fn glob(patterns ...string) ?[]string {
-	mut matches := []string{}
-	for pattern in patterns {
-		native_glob_pattern(pattern, mut matches) ?
-	}
-	matches.sort()
-	return matches
 }

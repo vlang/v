@@ -33,6 +33,9 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    const > |$ckey|')
 	}
+	if w.used_consts[ckey] {
+		return
+	}
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
@@ -41,6 +44,9 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('  global > |$ckey|')
+	}
+	if w.used_globals[ckey] {
+		return
 	}
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
@@ -109,6 +115,13 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.stmts(node.stmts)
 			if node.kind == .map {
 				w.table.used_maps++
+			}
+			if node.kind == .struct_ {
+				// the .next() method of the struct will be used for iteration:
+				cond_type_sym := w.table.get_type_symbol(node.cond_type)
+				if next_fn := cond_type_sym.find_method('next') {
+					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+				}
 			}
 		}
 		ast.ForStmt {

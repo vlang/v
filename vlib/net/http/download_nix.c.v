@@ -13,7 +13,7 @@ mut:
 	cb      DownloadFn
 }
 */
-fn download_cb(ptr voidptr, size size_t, nmemb size_t, userp voidptr) {
+fn download_cb(ptr voidptr, size usize, nmemb usize, userp voidptr) {
 	/*
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream)

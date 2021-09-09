@@ -10,7 +10,7 @@ fn group_new<T>(val ...T) Group<T> {
 	for i in val {
 		arr << i
 	}
-	mut g := Group{
+	mut g := Group<T>{
 		len: val.len
 		val: arr
 	}
@@ -28,9 +28,27 @@ fn (mut it Group<T>) next() ?T {
 }
 
 fn test_generics_with_embed_generics() {
-	gx := group_new<int>(1, 2, 3)
-	for x in gx.val {
+	gx1 := group_new<int>(1, 2, 3)
+	for x in gx1.val {
 		println(x)
 	}
-	assert gx.val == [1, 2, 3]
+	assert gx1.val == [1, 2, 3]
+
+	gx2 := group_new<f64>(1.1, 2.2, 3.3)
+	for x in gx2.val {
+		println(x)
+	}
+	assert gx2.val == [1.1, 2.2, 3.3]
+
+	gx3 := group_new<bool>(true, true, false)
+	for x in gx3.val {
+		println(x)
+	}
+	assert gx3.val == [true, true, false]
+
+	gx4 := group_new<string>('aa', 'bb', 'cc')
+	for x in gx4.val {
+		println(x)
+	}
+	assert gx4.val == ['aa', 'bb', 'cc']
 }

@@ -96,7 +96,7 @@ fn decode_u64(root &C.cJSON) u64 {
 	if isnil(root) {
 		return u64(0)
 	}
-	return u64(root.valueint)
+	return u64(root.valuedouble)
 }
 
 fn decode_f32(root &C.cJSON) f32 {

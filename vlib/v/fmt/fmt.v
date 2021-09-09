@@ -46,6 +46,7 @@ pub mut:
 	inside_lambda      bool
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
+	fn_scope           &ast.Scope = voidptr(0)
 }
 
 pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
@@ -234,7 +235,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.get_type_symbol(typ)
-	f.mark_import_as_used(sym.name)
+	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	f.mark_import_as_used(name)
 }
 
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
@@ -286,9 +288,9 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
+	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
+	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
-
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
@@ -298,7 +300,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '$imp.mod$imp_alias_suffix'
+	return '$mod$imp_alias_suffix'
 }
 
 //=== Node helpers ===//
@@ -391,8 +393,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
-		ast.NodeError {}
-		ast.EmptyStmt {}
+		ast.EmptyStmt, ast.NodeError {}
 		ast.AsmStmt {
 			f.asm_stmt(node)
 		}
@@ -491,7 +492,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.NodeError {}
 		ast.EmptyExpr {}
 		ast.AnonFn {
-			f.fn_decl(node.decl)
+			f.anon_fn(node)
 		}
 		ast.ArrayDecompose {
 			f.array_decompose(node)
@@ -550,6 +551,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {
 			f.write(node.val)
+			if node.val.ends_with('.') {
+				f.write('0')
+			}
 		}
 		ast.GoExpr {
 			f.go_expr(node)
@@ -868,6 +872,20 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node)
+}
+
+pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
+	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node.decl)
+}
+
+fn (mut f Fmt) fn_body(node ast.FnDecl) {
+	prev_fn_scope := f.fn_scope
+	f.fn_scope = node.scope
+	defer {
+		f.fn_scope = prev_fn_scope
+	}
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
@@ -1007,7 +1025,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
 	f.write('go ')
-	f.expr(node.call_expr)
+	f.call_expr(node.call_expr)
 }
 
 pub fn (mut f Fmt) goto_label(node ast.GotoLabel) {
@@ -1041,16 +1059,26 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
-	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
+	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
+	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
+
+	mut immut_methods := node.methods
+	mut mut_methods := []ast.FnDecl{}
+	for i, method in node.methods {
+		if method.params[0].is_mut {
+			immut_methods = node.methods[..i]
+			mut_methods = node.methods[i..]
+			break
 		}
-		// TODO: alignment, comments, etc.
+	}
+
+	// TODO: alignment, comments, etc.
+	for field in immut_fields {
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}
-	for method in node.methods {
+	for method in immut_methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
@@ -1060,6 +1088,25 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			f.mark_types_import_as_used(param.typ)
 		}
 		f.mark_types_import_as_used(method.return_type)
+	}
+	if mut_fields.len + mut_methods.len > 0 {
+		f.writeln('mut:')
+		for field in mut_fields {
+			mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+			f.writeln('\t$field.name $ft')
+			f.mark_types_import_as_used(field.typ)
+		}
+		for method in mut_methods {
+			f.write('\t')
+			f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+			f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+			f.writeln('')
+			f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+			for param in method.params {
+				f.mark_types_import_as_used(param.typ)
+			}
+			f.mark_types_import_as_used(method.return_type)
+		}
 	}
 	f.writeln('}\n')
 }
@@ -1083,7 +1130,11 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 		f.write(' ')
 		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
-			f.expr(expr)
+			if expr is ast.ParExpr {
+				f.expr(expr.expr)
+			} else {
+				f.expr(expr)
+			}
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
@@ -1500,7 +1551,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	} else {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
-			f.fn_decl(node.left.decl)
+			f.anon_fn(node.left)
 		} else if node.language != .v {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
@@ -1670,12 +1721,18 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	} else if node.kind == .blank_ident {
 		f.write('_')
 	} else {
-		// Force usage of full path to const in the same module:
-		// `println(minute)` => `println(time.minute)`
-		// This makes it clear that a module const is being used
-		// (since V's consts are no longer ALL_CAP).
-		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
-		if !node.name.contains('.') && !f.inside_const {
+		mut is_local := false
+		if !isnil(f.fn_scope) {
+			if _ := f.fn_scope.find_var(node.name) {
+				is_local = true
+			}
+		}
+		if !is_local && !node.name.contains('.') && !f.inside_const {
+			// Force usage of full path to const in the same module:
+			// `println(minute)` => `println(time.minute)`
+			// This makes it clear that a module const is being used
+			// (since V's consts are no longer ALL_CAP).
+			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 			mod := f.cur_mod
 			full_name := mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
@@ -2143,6 +2200,26 @@ pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
 }
 
 pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
+	// !(a in b) => a !in b, !(a is b) => a !is b
+	if node.op == .not && node.right is ast.ParExpr {
+		if node.right.expr is ast.InfixExpr {
+			if node.right.expr.op in [.key_in, .not_in, .key_is, .not_is]
+				&& node.right.expr.right !is ast.InfixExpr {
+				f.expr(node.right.expr.left)
+				if node.right.expr.op == .key_in {
+					f.write(' !in ')
+				} else if node.right.expr.op == .not_in {
+					f.write(' in ')
+				} else if node.right.expr.op == .key_is {
+					f.write(' !is ')
+				} else if node.right.expr.op == .not_is {
+					f.write(' is ')
+				}
+				f.expr(node.right.expr.right)
+				return
+			}
+		}
+	}
 	f.write(node.op.str())
 	f.prefix_expr_cast_expr(node.right)
 	f.or_expr(node.or_block)

@@ -8,11 +8,20 @@ module builtin
 //
 
 type u8 = byte
+type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1
+}
+
+pub fn (x isize) str() string {
+	return i64(x).str()
+}
+
+pub fn (x usize) str() string {
+	return u64(x).str()
 }
 
 pub fn (x size_t) str() string {
@@ -71,7 +80,7 @@ fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		/*
 		// === manual memory move for bare metal ===
 		mut c:= 0
@@ -142,7 +151,7 @@ pub fn (nn u32) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
@@ -196,7 +205,7 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
@@ -233,7 +242,7 @@ pub fn (nn u64) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
@@ -256,13 +265,12 @@ pub fn (b bool) str() string {
 [direct_array_access; inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 	}
 	return unsafe { tos(memdup(&buf[0], len + 1), len) }
@@ -272,13 +280,12 @@ fn u64_to_hex(nn u64, len byte) string {
 [direct_array_access; inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 		if n == 0 {
 			break
@@ -306,7 +313,11 @@ pub fn (nn byte) hex() string {
 // Example: assert i8(10).hex() == '0a'
 // Example: assert i8(15).hex() == '0f'
 pub fn (nn i8) hex() string {
-	return byte(nn).hex()
+	if nn == 0 {
+		return '00'
+	}
+	return u64_to_hex(u64(nn), 2)
+	//return byte(nn).hex()
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.

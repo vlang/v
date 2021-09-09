@@ -6,6 +6,7 @@ fn test_long_encoding() {
 
 	s_original := []byte{len: input_size, init: `a`}
 	s_encoded := base64.encode(s_original)
+	s_encoded_bytes := s_encoded.bytes()
 	s_decoded := base64.decode(s_encoded)
 
 	assert s_encoded.len > s_original.len
@@ -13,6 +14,10 @@ fn test_long_encoding() {
 
 	ebuffer := unsafe { malloc(s_encoded.len) }
 	dbuffer := unsafe { malloc(s_decoded.len) }
+	defer {
+		unsafe { free(ebuffer) }
+		unsafe { free(dbuffer) }
+	}
 	//
 	encoded_size := base64.encode_in_buffer(s_original, ebuffer)
 	mut encoded_in_buf := []byte{len: encoded_size}
@@ -27,7 +32,8 @@ fn test_long_encoding() {
 	assert encoded_in_buf[encoded_size - 3] == `W`
 	assert encoded_in_buf[encoded_size - 2] == `F`
 	assert encoded_in_buf[encoded_size - 1] == `h`
-	assert encoded_in_buf == s_encoded.bytes()
+
+	assert encoded_in_buf == s_encoded_bytes
 
 	decoded_size := base64.decode_in_buffer(s_encoded, dbuffer)
 	assert decoded_size == input_size

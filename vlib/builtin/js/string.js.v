@@ -94,7 +94,10 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) ends_with(p string) bool {
-	return s.str.endsWith(p.str)
+	mut res := false
+	#res.val = s.str.endsWith(p.str)
+
+	return res
 }
 
 pub fn (s string) starts_with(p string) bool {
@@ -133,11 +136,11 @@ pub fn (s string) fields() []string {
 }
 
 pub fn (s string) find_between(start string, end string) string {
-	return string(s.str.slice(s.str.indexOf(start.str), s.str.indexOf(end.str) + 1))
+	return string(s.str.slice(s.str.indexOf(start.str) + 1, s.str.indexOf(end.str)))
 }
 
 // unnecessary in the JS backend, implemented for api parity.
-pub fn (s string) free() {}
+pub fn (s &string) free() {}
 
 pub fn (s string) hash() int {
 	mut h := u32(0)
@@ -463,4 +466,263 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	#for (let x of ret.arr) result.str += String.fromCharCode(x.val)
 
 	return result
+}
+
+// split_nth splits the string based on the passed `delim` substring.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+[direct_array_access]
+pub fn (s string) split_nth(delim string, nth int) []string {
+	mut res := []string{}
+	mut i := 0
+
+	match delim.len {
+		0 {
+			i = 1
+			for ch in s {
+				if nth > 0 && i >= nth {
+					res << s[i..]
+					break
+				}
+				res << ch.str()
+				i++
+			}
+			return res
+		}
+		1 {
+			mut start := 0
+			delim_byte := delim[0]
+
+			for i < s.len {
+				if s[i] == delim_byte {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s[start..i] //.substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+		else {
+			mut start := 0
+			// Take the left part for each delimiter occurence
+			for i <= s.len {
+				is_delim := i + delim.len <= s.len && s[i..i + delim.len] == delim
+				if is_delim {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s[start..i] // .substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+	}
+}
+
+struct RepIndex {
+	idx     int
+	val_idx int
+}
+
+// replace_each replaces all occurences of the string pairs given in `vals`.
+// Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
+[direct_array_access]
+pub fn (s string) replace_each(vals []string) string {
+	if s.len == 0 || vals.len == 0 {
+		return s.clone()
+	}
+
+	if vals.len % 2 != 0 {
+		eprintln('string.replace_each(): odd number of strings')
+		return s.clone()
+	}
+
+	// `rep` - string to replace
+	// `with_` - string to replace with_
+	// Remember positions of all rep strings, and calculate the length
+	// of the new string to do just one allocation.
+
+	mut idxs := []RepIndex{}
+	mut idx := 0
+	mut new_len := s.len
+	s_ := s.clone()
+	#function setCharAt(str,index,chr) {
+	#if(index > str.length-1) return str;
+	#return str.substring(0,index) + chr + str.substring(index+1);
+	#}
+
+	for rep_i := 0; rep_i < vals.len; rep_i = rep_i + 2 {
+		rep := vals[rep_i]
+
+		mut with_ := vals[rep_i + 1]
+		with_ = with_
+
+		for {
+			idx = s_.index_after(rep, idx)
+			if idx == -1 {
+				break
+			}
+
+			for i in 0 .. rep.len {
+				mut j_ := i
+				j_ = j_
+				#s_.str = setCharAt(s_.str,idx + i, String.fromCharCode(127))
+			}
+
+			rep_idx := RepIndex{
+				idx: 0
+				val_idx: 0
+			}
+			// todo: primitives should always be copied
+			#rep_idx.idx = idx.val
+			#rep_idx.val_idx = new int(rep_i.val)
+			idxs << rep_idx
+			idx += rep.len
+			new_len += with_.len - rep.len
+		}
+	}
+
+	if idxs.len == 0 {
+		return s.clone()
+	}
+
+	idxs.sort(a.idx < b.idx)
+
+	mut b := ''
+	#for (let i = 0; i < new_len.val;i++) b.str += String.fromCharCode(127)
+
+	new_len = new_len
+	mut idx_pos := 0
+	mut cur_idx := idxs[idx_pos]
+	mut b_i := 0
+	for i := 0; i < s.len; i++ {
+		if i == cur_idx.idx {
+			rep := vals[cur_idx.val_idx]
+			with_ := vals[cur_idx.val_idx + 1]
+			for j in 0 .. with_.len {
+				mut j_ := j
+
+				j_ = j_
+				#b.str = setCharAt(b.str,b_i, with_.str[j])
+				//#b.str[b_i] = with_.str[j]
+				b_i++
+			}
+			i += rep.len - 1
+			idx_pos++
+			if idx_pos < idxs.len {
+				cur_idx = idxs[idx_pos]
+			}
+		} else {
+			#b.str = setCharAt(b.str,b_i,s.str[i]) //b.str[b_i] = s.str[i]
+			b_i++
+		}
+	}
+
+	return b
+}
+
+// last_index returns the position of the last occurence of the input string.
+fn (s string) last_index_(p string) int {
+	if p.len > s.len || p.len == 0 {
+		return -1
+	}
+	mut i := s.len - p.len
+	for i >= 0 {
+		mut j := 0
+		for j < p.len && s[i + j] == p[j] {
+			j++
+		}
+		if j == p.len {
+			return i
+		}
+		i--
+	}
+	return -1
+}
+
+// last_index returns the position of the last occurence of the input string.
+pub fn (s string) last_index(p string) ?int {
+	idx := s.last_index_(p)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
+pub fn (s string) trim_space() string {
+	res := ''
+	#res.str = s.str.trim()
+
+	return res
+}
+
+pub fn (s string) index_after(p string, start int) int {
+	if p.len > s.len {
+		return -1
+	}
+
+	mut strt := start
+	if start < 0 {
+		strt = 0
+	}
+	if start >= s.len {
+		return -1
+	}
+	mut i := strt
+
+	for i < s.len {
+		mut j := 0
+		mut ii := i
+		for j < p.len && s[ii] == p[j] {
+			j++
+			ii++
+		}
+
+		if j == p.len {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+pub fn (s string) split_into_lines() []string {
+	mut res := []string{}
+	#let i = 0
+	#s.str.split('\n').forEach((str) => {
+	#res.arr[i] = new string(str);
+	#})
+
+	return res
+}
+
+// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+pub fn (s string) replace_once(rep string, with_ string) string {
+	s2 := ''
+	#s2.val = s.str.replace(rep.str,with_.str)
+
+	return s2
 }
