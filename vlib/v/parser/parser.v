@@ -3189,6 +3189,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	generic_types := p.parse_generic_type_list()
 	decl_pos_with_generics := decl_pos.extend(p.prev_tok.position())
 	p.check(.assign)
+	if p.tok.kind == .pipe {
+		// allow starting sum-type with `|`, for better formatting.
+		// for other types of alias, just ignore it, `vfmt` will remove it.
+		p.next()
+	}
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
