@@ -2248,6 +2248,8 @@ struct Node<T> {
 }
 ```
 
+To dereference a reference, use the `*` operator, just like in C.
+
 ## Constants
 
 ```v
