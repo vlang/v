@@ -7428,7 +7428,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			value_sym := c.table.get_type_symbol(info.value_type)
 			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent
 				&& !c.inside_unsafe {
-				c.error('`or {}` block required when indexing a map with sum type value',
+				c.warn('`or {}` block required when indexing a map with sum type value',
 					node.pos)
 			}
 		} else {
