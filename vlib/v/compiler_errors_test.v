@@ -290,7 +290,7 @@ fn (mut task TaskDescription) execute() {
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
-		os.write_file(expected_out_path, '') or { panic(err) }
+		os.create(expected_out_path) or { panic(err) }
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)

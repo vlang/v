@@ -5783,8 +5783,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 				i++
 				continue
 			}
-			if k in c.fn_scope.objects && c.fn_scope.objects[k] is ast.Var {
-				mut vsc := c.fn_scope.objects[k] as ast.Var
+			if k in c.fn_scope.objects && unsafe { c.fn_scope.objects[k] } is ast.Var {
+				mut vsc := unsafe { c.fn_scope.objects[k] } as ast.Var
 				vsc.is_used = true
 				c.fn_scope.objects[k] = vsc
 			}
@@ -7436,6 +7436,12 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			if !c.check_types(index_type, info.key_type) {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
+			}
+			value_sym := c.table.get_type_symbol(info.value_type)
+			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent
+				&& !c.inside_unsafe {
+				c.warn('`or {}` block required when indexing a map with sum type value',
+					node.pos)
 			}
 		} else {
 			index_type := c.expr(node.index)
