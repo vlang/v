@@ -4,8 +4,7 @@
 module json2
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string |
-	u64
+pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string | u64
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {

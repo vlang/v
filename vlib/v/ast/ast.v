@@ -9,25 +9,104 @@ import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
-	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | IsRefType |
-	Likely | LockExpr | MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr |
-	PostfixExpr | PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
+pub type Expr = AnonFn
+	| ArrayDecompose
+	| ArrayInit
+	| AsCast
+	| Assoc
+	| AtExpr
+	| BoolLiteral
+	| CTempVar
+	| CallExpr
+	| CastExpr
+	| ChanInit
+	| CharLiteral
+	| Comment
+	| ComptimeCall
+	| ComptimeSelector
+	| ConcatExpr
+	| DumpExpr
+	| EmptyExpr
+	| EnumVal
+	| FloatLiteral
+	| GoExpr
+	| Ident
+	| IfExpr
+	| IfGuardExpr
+	| IndexExpr
+	| InfixExpr
+	| IntegerLiteral
+	| IsRefType
+	| Likely
+	| LockExpr
+	| MapInit
+	| MatchExpr
+	| NodeError
+	| None
+	| OffsetOf
+	| OrExpr
+	| ParExpr
+	| PostfixExpr
+	| PrefixExpr
+	| RangeExpr
+	| SelectExpr
+	| SelectorExpr
+	| SizeOf
+	| SqlExpr
+	| StringInterLiteral
+	| StringLiteral
+	| StructInit
+	| TypeNode
+	| TypeOf
+	| UnsafeExpr
 
-pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
-	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
-	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
-	Return | SqlStmt | StructDecl | TypeDecl
+pub type Stmt = AsmStmt
+	| AssertStmt
+	| AssignStmt
+	| Block
+	| BranchStmt
+	| CompFor
+	| ConstDecl
+	| DeferStmt
+	| EmptyStmt
+	| EnumDecl
+	| ExprStmt
+	| FnDecl
+	| ForCStmt
+	| ForInStmt
+	| ForStmt
+	| GlobalDecl
+	| GotoLabel
+	| GotoStmt
+	| HashStmt
+	| Import
+	| InterfaceDecl
+	| Module
+	| NodeError
+	| Return
+	| SqlStmt
+	| StructDecl
+	| TypeDecl
 
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
-pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
-	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField
+pub type Node = CallArg
+	| ConstField
+	| EmptyNode
+	| EnumField
+	| Expr
+	| File
+	| GlobalField
+	| IfBranch
+	| MatchBranch
+	| NodeError
+	| Param
+	| ScopeObject
+	| SelectBranch
+	| Stmt
+	| StructField
+	| StructInitField
 
 pub struct TypeNode {
 pub:
@@ -1155,8 +1234,15 @@ pub mut:
 }
 
 // [eax+5] | j | displacement literal (e.g. 123 in [rax + 123] ) | eax | true | `a` | 0.594 | 123 | label_name
-pub type AsmArg = AsmAddressing | AsmAlias | AsmDisp | AsmRegister | BoolLiteral | CharLiteral |
-	FloatLiteral | IntegerLiteral | string
+pub type AsmArg = AsmAddressing
+	| AsmAlias
+	| AsmDisp
+	| AsmRegister
+	| BoolLiteral
+	| CharLiteral
+	| FloatLiteral
+	| IntegerLiteral
+	| string
 
 pub struct AsmRegister {
 pub mut:

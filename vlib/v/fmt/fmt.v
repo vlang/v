@@ -1262,6 +1262,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
+	start_pos := f.out.len
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -1269,19 +1270,27 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := []string{}
-	for t in node.variants {
-		sum_type_names << f.table.type_to_str_using_aliases(t.typ, f.mod2alias)
-	}
+	mut sum_type_names := node.variants.map(f.table.type_to_str_using_aliases(it.typ,
+		f.mod2alias))
 	sum_type_names.sort()
+
+	mut separator := ' | '
+	// if line length is too long, put each type on its own line
+	mut line_length := f.out.len - start_pos
+	for sum_type_name in sum_type_names {
+		// 3 = length of ' = ' or ' | '
+		line_length += 3 + sum_type_name.len
+		if line_length > fmt.max_len.last() {
+			separator = '\n\t| '
+			break
+		}
+	}
+
 	for i, name in sum_type_names {
+		if i > 0 {
+			f.write(separator)
+		}
 		f.write(name)
-		if i < sum_type_names.len - 1 {
-			f.write(' | ')
-		}
-		if i < sum_type_names.len - 1 {
-			f.wrap_long_line(3, true)
-		}
 	}
 
 	f.comments(node.comments, has_nl: false)

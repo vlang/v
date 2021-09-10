@@ -1,7 +1,18 @@
 module ast
 
-pub type ComptTimeConstValue = EmptyExpr | byte | f32 | f64 | i16 | i64 | i8 | int | rune |
-	string | u16 | u32 | u64
+pub type ComptTimeConstValue = EmptyExpr
+	| byte
+	| f32
+	| f64
+	| i16
+	| i64
+	| i8
+	| int
+	| rune
+	| string
+	| u16
+	| u32
+	| u64
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr{}

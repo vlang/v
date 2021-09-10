@@ -16,8 +16,20 @@ import v.pref
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericInst |
-	Interface | Map | MultiReturn | Struct | SumType | Thread
+pub type TypeInfo = Aggregate
+	| Alias
+	| Array
+	| ArrayFixed
+	| Chan
+	| Enum
+	| FnType
+	| GenericInst
+	| Interface
+	| Map
+	| MultiReturn
+	| Struct
+	| SumType
+	| Thread
 
 pub enum Language {
 	v
