@@ -37,8 +37,20 @@ pub const (
 	string_max_len = 2048
 )
 
-pub type Primitive = InfixType | bool | byte | f32 | f64 | i16 | i64 | i8 | int | string |
-	time.Time | u16 | u32 | u64
+pub type Primitive = InfixType
+	| bool
+	| byte
+	| f32
+	| f64
+	| i16
+	| i64
+	| i8
+	| int
+	| string
+	| time.Time
+	| u16
+	| u32
+	| u64
 
 pub enum OperationKind {
 	neq // !=
