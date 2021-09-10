@@ -19,11 +19,12 @@ mut:
 
 struct AppState {
 mut:
-	gg     &gg.Context = 0
-	iidx   int
-	pixels [pheight][pwidth]u32
-	view   ViewRect = ViewRect{-2.1320316, 0.55896836, -1.2200283, 1.47097206}
-	ntasks int      = runtime.nr_jobs()
+	gg      &gg.Context = 0
+	iidx    int
+	pixels  [pheight][pwidth]u32
+	npixels [pheight][pwidth]u32 // all drawing happens here, results are copied with vmemcpy to pixels at the end
+	view    ViewRect = ViewRect{-2.7610033817025625, 1.1788897130338223, -1.824584023871934, 2.1153096311072788}
+	ntasks  int      = runtime.nr_jobs()
 }
 
 const colors = [gx.black, gx.blue, gx.red, gx.green, gx.yellow, gx.orange, gx.purple, gx.white,
@@ -45,6 +46,7 @@ fn (mut state AppState) update() {
 			threads << go state.recalc_lines(cview, start, start + sheight)
 		}
 		threads.wait()
+		unsafe { vmemcpy(&state.pixels[0], &state.npixels[0], int(sizeof(state.pixels))) }
 		println('$state.ntasks threads; $sw.elapsed().milliseconds() ms / frame')
 		oview = cview
 	}
@@ -63,7 +65,7 @@ fn (mut state AppState) recalc_lines(cview ViewRect, ymin f64, ymax f64) {
 					break
 				}
 			}
-			state.pixels[int(y_pixel)][int(x_pixel)] = u32(colors[iter % 8].abgr8())
+			state.npixels[int(y_pixel)][int(x_pixel)] = u32(colors[iter % 8].abgr8())
 		}
 	}
 }
