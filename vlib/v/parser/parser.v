@@ -147,12 +147,12 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 	before_dot_v := path.all_before_last('.v') // also works for .vv and .vsh
 	language := before_dot_v.all_after_last('.')
-	langauge_with_underscore := before_dot_v.all_after_last('_')
-	if language == before_dot_v && langauge_with_underscore == before_dot_v {
+	language_with_underscore := before_dot_v.all_after_last('_')
+	if language == before_dot_v && language_with_underscore == before_dot_v {
 		p.file_backend_mode = .v
 		return
 	}
-	actual_language := if language == before_dot_v { langauge_with_underscore } else { language }
+	actual_language := if language == before_dot_v { language_with_underscore } else { language }
 	match actual_language {
 		'c' {
 			p.file_backend_mode = .c

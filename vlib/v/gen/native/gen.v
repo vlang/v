@@ -16,7 +16,7 @@ pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit'
 
 interface CodeGen {
 mut:
-	g Gen
+	g &Gen
 	gen_exit(mut g Gen, expr ast.Expr)
 	// XXX WHY gen_exit fn (expr ast.Expr)
 }
@@ -26,7 +26,7 @@ pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
-	cgen                 CodeGen
+	code_gen             CodeGen
 	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
@@ -58,10 +58,14 @@ enum Size {
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
-			return Arm64{}
+			return Arm64{
+				g: 0
+			}
 		}
 		.amd64 {
-			return Amd64{}
+			return Amd64{
+				g: 0
+			}
 		}
 		else {}
 	}
@@ -75,12 +79,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		out_name: out_name
 		pref: pref
 		// TODO: workaround, needs to support recursive init
-		cgen: get_backend(pref.arch) or {
+		code_gen: get_backend(pref.arch) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
 	}
-	g.cgen.g = g
+	g.code_gen.g = g
 	g.generate_header()
 	for file in files {
 		if file.warnings.len > 0 {
@@ -400,8 +404,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 }
 
 pub fn (mut g Gen) gen_exit(node ast.Expr) {
-	// check node type and then call the cgen method
-	g.cgen.gen_exit(mut g, node)
+	// check node type and then call the code_gen method
+	g.code_gen.gen_exit(mut g, node)
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -539,7 +543,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 /*
 fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
-	g.cgen.allocate_var(name, size, initial_val)
+	g.code_gen.allocate_var(name, size, initial_val)
 }
 */
 

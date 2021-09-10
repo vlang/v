@@ -76,7 +76,7 @@ mut:
 	cast_stack            []ast.Type
 	call_stack            []ast.CallExpr
 	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
-	sourcemap             sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	sourcemap             &sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 	comptime_var_type_map map[string]ast.Type
 	defer_ifdef           string
 	out                   strings.Builder = strings.new_builder(128)
@@ -98,6 +98,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		ns: 0
 		enable_doc: true
 		file: 0
+		sourcemap: 0
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
@@ -185,7 +186,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// out += 'const $name = (function ('
 		mut namespace := g.namespaces[node.name]
 
-		
+
 		if g.pref.sourcemap {
 			// calculate current output start line
 			mut current_line := u32(out.count('\n') + 1)
@@ -206,7 +207,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				sm_pos = sourcemap_ns_entry.ns_pos
 			}
 		}
-		
+
 
 		// public scope
 		out += '\n'
