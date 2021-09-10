@@ -9,7 +9,7 @@ fn test_macho() {
 		pref: &pref.Preferences{}
 		out_name: 'test.bin'
 		table: ast.new_table()
-		cgen: native.Amd64{
+		code_gen: native.Amd64{
 			g: 0
 		}
 	}
