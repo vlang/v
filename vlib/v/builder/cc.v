@@ -307,7 +307,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.is_shared {
 		ccoptions.linker_flags << '-shared'
-		ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		$if !windows {
+			ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		}
 	}
 	if v.pref.is_bare {
 		ccoptions.args << '-fno-stack-protector'
