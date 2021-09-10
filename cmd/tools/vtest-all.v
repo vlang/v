@@ -69,6 +69,10 @@ fn get_all_commands() []Command {
 		}
 	}
 	res << Command{
+		line: '$vexe run examples/v_script.vsh'
+		okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+	}
+	res << Command{
 		line: '$vexe -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
 		rmfile: 'vtmp'

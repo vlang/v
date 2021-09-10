@@ -107,9 +107,10 @@ jobs:
         run: ./v -W build-tools
       - name: Test v binaries
         run: ./v build-vbinaries
+      - name: Run a VSH script
+        run: ./v run examples/v_script.vsh
       - name: Test v tutorials
-        run: |
-          ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
+        run: ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
 
