@@ -4023,10 +4023,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		// Do not allow `a := 0; b := 0; a = &b`
 		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
 			&& right_type.is_real_pointer() {
-			c.warn(
-				'cannot assign a reference to a value (this will be an error soon) left=${c.table.type_str(left_type)} $left_type.is_ptr() ' +
-				'right=${c.table.type_str(right_type)} $right_type.is_real_pointer() ptr=$right_type.is_ptr()',
-				node.pos)
+			left_sym := c.table.get_type_symbol(left_type)
+			if left_sym.kind != .function {
+				c.warn(
+					'cannot assign a reference to a value (this will be an error soon) left=${c.table.type_str(left_type)} $left_type.is_ptr() ' +
+					'right=${c.table.type_str(right_type)} $right_type.is_real_pointer() ptr=$right_type.is_ptr()',
+					node.pos)
+			}
 		}
 		node.left_types << left_type
 		match mut left {

@@ -51,3 +51,12 @@ fn test_fn_assignment_array() {
 	assert a[0] == 12
 	assert a[1] == 10
 }
+
+fn test_fn_variables_can_be_assigned_pointers() {
+	mut fn_ptr := fn (_ voidptr, _ u64) {}
+	// println(voidptr(fn_ptr))
+	assert fn_ptr != voidptr(0)
+	fn_ptr = voidptr(0)
+	// aprintln(voidptr(fn_ptr))
+	assert fn_ptr == voidptr(0)
+}
