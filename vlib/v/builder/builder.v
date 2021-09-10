@@ -236,7 +236,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_vsh && p.mod.name != 'os' {
+				if b.pref.is_vsh && p.mod.name !in ['os', 'dl'] {
 					deps << 'os'
 				}
 			}
