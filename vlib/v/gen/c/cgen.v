@@ -619,6 +619,14 @@ fn (mut g Gen) typ(t ast.Type) string {
 }
 
 fn (mut g Gen) base_type(t ast.Type) string {
+	if g.pref.nofloat {
+		// todo compile time if for perf?
+		if t == ast.f32_type {
+			return 'u32'
+		} else if t == ast.f64_type {
+			return 'u64'
+		}
+	}
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {

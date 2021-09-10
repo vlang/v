@@ -192,6 +192,7 @@ pub mut:
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
+	nofloat             bool              // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 }
@@ -276,6 +277,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-cstrict' {
 				res.is_cstrict = true
+			}
+			'-nofloat' {
+				res.nofloat = true
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
