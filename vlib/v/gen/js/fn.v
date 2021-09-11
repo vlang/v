@@ -130,9 +130,16 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	}
 
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
-		// g.write('${g.js_name(receiver_type_name)}_name_table')
-		// g.expr(node.left)
-		g.writeln('/* TODO: Interface call */')
+		g.expr(it.left)
+		g.gen_deref_ptr(it.left_type)
+		g.write('.${it.name}(')
+		for i, arg in it.args {
+			g.expr(arg.expr)
+			if i != it.args.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write(')')
 		return
 	}
 
@@ -229,9 +236,9 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			.propagate {
 				panicstr := '`optional not set (\${err})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin.panic($panicstr)')
+					g.writeln('return panic($panicstr)')
 				} else {
-					g.writeln('builtin.js_throw(err)')
+					g.writeln('js_throw(err)')
 				}
 			}
 			else {}
@@ -315,7 +322,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err})`'
+				panicstr := '`optional not set (\${err.val.msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return panic($panicstr)')
 				} else {

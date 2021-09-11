@@ -79,3 +79,12 @@ pub fn (r rune) str() string {
 
 	return sb.str()
 }
+
+fn js_stacktrace() string {
+	stacktrace := ''
+	#let err = new TypeError();
+	#err.name = 'stacktrace: '
+	#stacktrace.str = err.stack
+
+	return stacktrace
+}

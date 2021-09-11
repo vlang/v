@@ -7,7 +7,7 @@ module builtin
 fn (a any) toString()
 
 pub fn panic(s string) {
-	eprintln('V panic: $s')
+	eprintln('V panic: $s\n$js_stacktrace()')
 	exit(1)
 }
 
