@@ -157,6 +157,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.gen_js_main_for_tests()
 	}
 	g.enter_namespace('main')
+	// generate JS methods for interface methods
 	for _, iface_types in g.table.iface_types {
 		for ty in iface_types {
 			sym := g.table.get_type_symbol(ty)
@@ -216,6 +217,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	out += g.out.str()
 
 	/*
+	TODO(playX): Again add support for these doc comments
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
@@ -250,7 +252,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// public scope
 		out += '\n'
 	}*/
-	// generate JS methods for interface methods
 
 	if g.pref.sourcemap {
 		out += g.create_sourcemap()
