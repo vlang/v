@@ -244,7 +244,7 @@ fn parse_form(body string) map[string]string {
 	// ...
 }
 
-struct FileData {
+pub struct FileData {
 pub:
 	filename     string
 	content_type string
