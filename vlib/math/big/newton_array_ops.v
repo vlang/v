@@ -189,9 +189,9 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 		b_h := operand_b[half..]
 		// println('b_h: ${debug_u32_str(b_h)}')
 
-		mut p_1 := []u32{len: a_h.len + b_h.len, init: 0}
-		multiply_kara_simpl(a_h, b_h, mut p_1)
-		// println('p_1: ${debug_u32_str(p_1)}')
+		// use storage for p_1 to avoid allocation and copy later
+		multiply_kara_simpl(a_h, b_h, mut storage)
+		// println('p_1: ${debug_u32_str(storage)}')
 		mut p_3 := []u32{len: a_l.len + b_l.len, init: 0}
 		multiply_kara_simpl(a_l, b_l, mut p_3)
 		// println('p_3: ${debug_u32_str(p_3)}')
@@ -205,17 +205,13 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 // 		println('b_h, b_l: ${debug_u32_str(tmp_2)}')
 		multiply_kara_simpl(tmp_1, tmp_2, mut p_2)
 		// println('p_2: ${debug_u32_str(p_2)}')
-		subtract_in_place(mut p_2, p_1)
+		subtract_in_place(mut p_2, storage)
 		// println('p_2 - p_1: ${debug_u32_str(p_2)}')
 		subtract_in_place(mut p_2, p_3)
 		// println('p_2 - p_1 - p_3: ${debug_u32_str(p_2)}')
 		// println('p_3: ${debug_u32_str(p_3)}')
 
 		// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
-// TODO OPTIMIZATION : USE STORAGE INSTEAD OF P_1
-		for index in 0 .. p_1.len {
-			storage[index] = p_1[index]
-		}
 		lshift_byte_in_place(mut storage, 2 * half)
 		// println('storage with p_1 shift: ${debug_u32_str(storage)}')
 		lshift_byte_in_place(mut p_2, half)
