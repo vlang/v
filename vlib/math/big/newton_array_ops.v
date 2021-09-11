@@ -136,63 +136,96 @@ fn debug_u32_str(a []u32) string {
 	return sb.str()
 }
 
-fn multiply_kara_simpl(a Integer, b Integer) Integer {
-	// base case
-	if a.digits.len == 0 || b.digits.len == 0 {
-		return zero_int
+// karatsuba algorithm
+fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
+	// base case necessary to end recursion
+	if operand_a.len == 0 || operand_b.len == 0 {
+		for storage.len > 0 {
+			storage.delete_last()
+		}
+		return
 	}
 
-	if a == one_int {
-		return b
+	// if a == one_int {
+	// 	return b
+	// }
+
+	// if b == one_int {
+	// 	return a
+	// }
+
+	// if b.signum < 0 {
+	// 	return multiply_kara_simpl(a, b.neg()).neg()
+	// }
+
+	// if b.signum < 0 {
+	// 	return multiply_kara_simpl(a.neg(), b).neg()
+	// }
+
+	if compare_digit_array (operand_a, operand_b) < 0 {
+		multiply_kara_simpl(operand_b, operand_a, mut storage)
+		return
 	}
 
-	if b == one_int {
-		return a
-	}
-
-	if b.signum < 0 {
-		return multiply_kara_simpl(a, b.neg()).neg()
-	}
-
-	if b.signum < 0 {
-		return multiply_kara_simpl(a.neg(), b).neg()
-	}
-
-	if a < b {
-		return multiply_kara_simpl(b, a)
-	}
-
-	if b.digits.len <= 1 {
-		mut c := []u32{len: a.digits.len + b.digits.len + 1, init: 0}
-		multiply_array_by_digit(a.digits, b.digits[0], mut c)
-		return Integer{signum: 1, digits: c}
+	if operand_b.len == 1 {
+		multiply_array_by_digit(operand_a, operand_b[0], mut storage)
+		return 
 	}
 	// karatsuba
 	// through the base cases we can pass zero-length arrays to the mult func
-	half := util.imax(a.digits.len, b.digits.len) / 2
+	half := util.imax(operand_a.len, operand_b.len) / 2
 	if half <= 0 {
 		panic('Unreachable. Both array have 1 length and multiply_array_by_digit should have been called')
 	} else {
 		// println('------------------------------')
-// 		println('a: ${debug_u32_str(a.digits)}')
-		a_l := Integer{signum: 1, digits: a.digits[0..half]}
-		// println('a_l: ${debug_u32_str(a_l.digits)}')
-		a_h := Integer{signum: 1, digits: a.digits[half..]}
-		// println('a_h: ${debug_u32_str(a_h.digits)}')
-		// println('b: ${debug_u32_str(b.digits)}')
-		b_l := Integer{signum: 1, digits: b.digits[0..half]}
-		// println('b_l: ${debug_u32_str(b_l.digits)}')
-		b_h := Integer{signum: 1, digits: b.digits[half..]}
-		// println('b_h: ${debug_u32_str(b_h.digits)}')
+		// println('a: ${debug_u32_str(operand_a)}')
+		a_l := operand_a[0..half]
+		// println('a_l: ${debug_u32_str(a_l)}')
+		a_h := operand_a[half..]
+		// println('a_h: ${debug_u32_str(a_h)}')
+		// println('b: ${debug_u32_str(operand_b)}')
+		b_l := operand_b[0..half]
+		// println('b_l: ${debug_u32_str(b_l)}')
+		b_h := operand_b[half..]
+		// println('b_h: ${debug_u32_str(b_h)}')
 
-		p_1 := multiply_kara_simpl(a_h, b_h)
-		// println('p_1: ${debug_u32_str(p_1.digits)}')
-		p_3 := multiply_kara_simpl(a_l, b_l)
-		// println('p_3: ${debug_u32_str(p_3.digits)}')
-		p_2 := multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
-		// println('p_3: ${debug_u32_str(p_3.digits)}')
+		mut p_1 := []u32{len: a_h.len + b_h.len, init: 0}
+		multiply_kara_simpl(a_h, b_h, mut p_1)
+		// println('p_1: ${debug_u32_str(p_1)}')
+		mut p_3 := []u32{len: a_l.len + b_l.len, init: 0}
+		multiply_kara_simpl(a_l, b_l, mut p_3)
+		// println('p_3: ${debug_u32_str(p_3)}')
+		// multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
+		mut tmp_1 := []u32{len: util.imax(a_h.len, a_l.len) + 1, init: 0}
+		mut tmp_2 := []u32{len: util.imax(b_h.len, b_l.len) + 1, init: 0}
+		add_digit_array(a_h, a_l, mut tmp_1)
+		add_digit_array(b_h, b_l, mut tmp_2)
+		mut p_2 := []u32{len: operand_a.len + operand_b.len + 1, init: 0}
+		// println('a_h, a_l: ${debug_u32_str(tmp_1)}')
+// 		println('b_h, b_l: ${debug_u32_str(tmp_2)}')
+		multiply_kara_simpl(tmp_1, tmp_2, mut p_2)
+		// println('p_2: ${debug_u32_str(p_2)}')
+		subtract_in_place(mut p_2, p_1)
+		// println('p_2 - p_1: ${debug_u32_str(p_2)}')
+		subtract_in_place(mut p_2, p_3)
+		// println('p_2 - p_1 - p_3: ${debug_u32_str(p_2)}')
+		// println('p_3: ${debug_u32_str(p_3)}')
 
-		return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
+		// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
+// TODO OPTIMIZATION : USE STORAGE INSTEAD OF P_1
+		for index in 0 .. p_1.len {
+			storage[index] = p_1[index]
+		}
+		lshift_byte_in_place(mut storage, 2 * half)
+		// println('storage with p_1 shift: ${debug_u32_str(storage)}')
+		lshift_byte_in_place(mut p_2, half)
+		// println('p_2 shift: ${debug_u32_str(p_2)}')
+		add_in_place(mut storage, p_2)
+		add_in_place(mut storage, p_3)
+
+		for storage.len > 0 && storage.last() == 0 {
+			storage.delete_last()
+		}
 	}
 }
 
@@ -244,6 +277,21 @@ fn pow2(k int) Integer {
 	return Integer{signum: 1, digits: ret}
 }
 
+// optimized left shift of full byte(s) in place. byte_nb must be positive
+fn lshift_byte_in_place(mut a []u32, byte_nb int) {
+	a_len := a.len
+	// control or allocate capacity
+	for _ in a_len .. a_len + byte_nb {
+		a << u32(0)
+	}
+	for index := a_len - 1; index >= 0; index-- {
+		a[index + byte_nb] = a[index]
+	}
+	for index in 0 .. byte_nb {
+		a[index] = u32(0)
+	}
+}
+
 // operand b can be greater than operand a
 // the capacity of both array is sufficient
 [inline]
@@ -273,9 +321,43 @@ fn add_in_place(mut a []u32, b []u32) {
 	}
 }
 
-// a := a - b if a < b return the abs of the result
-[inline]
+// a := a - b supposed a >= b
 fn subtract_in_place(mut a []u32, b []u32) {
+	len_a := a.len
+	len_b := b.len
+	max := util.imax(len_a, len_b)
+	min := util.imin(len_a, len_b)
+	mut carry := u32(0)
+	mut new_carry := u32(0)
+	for index in 0 .. min {
+		if a[index] < (b[index] + carry) {
+			new_carry = 1
+		} else {
+			new_carry = 0
+		}
+		a[index] -= (b[index] + carry)
+		carry = new_carry
+	}
+	if len_a >= len_b {
+		for index in min .. max {
+			if a[index] < carry {
+				new_carry = 1
+			} else {
+				new_carry = 0
+			}
+			a[index] -= carry
+			carry = new_carry
+		}
+	} else {
+		panic('b is greater than a')	
+	}
+}
+
+
+// a := a - b supposed a >= b
+// attention the b operand is align with the a operand before the substraction
+[inline]
+fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 	mut carry := u32(0)
 	mut new_carry := u32(0)
 	offset := a.len - b.len
@@ -288,9 +370,7 @@ fn subtract_in_place(mut a []u32, b []u32) {
 		a[index] -= (b[index - offset] + carry)
 		carry = new_carry
 	}
-	if carry != 0 {
-		neg_in_place(mut a)
-	}
+	assert carry == 0
 }
 
 [inline]
