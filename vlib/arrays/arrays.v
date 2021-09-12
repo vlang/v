@@ -4,6 +4,9 @@ module arrays
 // - min / max - return the value of the minumum / maximum
 // - idx_min / idx_max - return the index of the first minumum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - chunk - chunk array to arrays with n elements
+// - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
+// - zip - concat two arrays into one map
 
 // min returns the minimum
 pub fn min<T>(a []T) T {
@@ -152,8 +155,8 @@ pub fn chunk<T>(list []T, size int) [][]T {
 }
 
 pub struct WindowAttribute {
-	size	int
-	step	int = 1
+	size int
+	step int = 1
 }
 
 // get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array.
@@ -193,7 +196,7 @@ pub fn zip<K, V>(list1 []K, list2 []V) map[K]V {
 		list1.len
 	}
 
-	for i in 0..size {
+	for i in 0 .. size {
 		zipped[list1[i]] = list2[i]
 	}
 
