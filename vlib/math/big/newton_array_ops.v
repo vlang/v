@@ -5,12 +5,12 @@ import math.util
 import strings
 
 
-const t_1 = f64(48)/17
-const t_2 = f64(32)/17
+// const t_1 = f64(48)/17
+// const t_2 = f64(32)/17
 
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are allocated but of length 0
-fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
+fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 
 // Pseudo code
 // Express D as M × 2e where 1 ≤ M < 2 (standard floating point representation)
@@ -352,29 +352,11 @@ fn subtract_in_place(mut a []u32, b []u32) {
 			a[index] -= carry
 			carry = new_carry
 		}
-	} else {
-		panic('b is greater than a')	
-	}
-}
-
-
-// a := a - b supposed a >= b
-// attention the b operand is align with the a operand before the substraction
-[inline]
-fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
-	mut carry := u32(0)
-	mut new_carry := u32(0)
-	offset := a.len - b.len
-	for index := a.len - b.len; index < a.len; index++ {
-		if a[index] < (b[index - offset] + carry) {
-			new_carry = 1
-		} else {
-			new_carry = 0
+	} else { // if len.b > len.a return zero
+		for a.len > 0 {
+			a.delete_last()
 		}
-		a[index] -= (b[index - offset] + carry)
-		carry = new_carry
 	}
-	assert carry == 0
 }
 
 [inline]
