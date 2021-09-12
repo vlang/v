@@ -190,8 +190,6 @@ pub fn zip<K, V>(list1 []K, list2 []V) map[K]V {
 
 	size := if list1.len > list2.len {
 		list2.len
-	} else if list1.len < list2.len {
-		list1.len
 	} else {
 		list1.len
 	}
