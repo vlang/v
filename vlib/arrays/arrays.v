@@ -162,10 +162,11 @@ pub struct WindowAttribute {
 // example A: arrays.window([1, 2, 3, 4], size: 2) => [[1, 2], [2, 3], [3, 4]]
 // example B: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window<T>(list []T, attr WindowAttribute) [][]T {
-	// allocate window array
+	// allocate snapshot array
 	mut windows := [][]T{cap: list.len - attr.size + 1}
 
 	for i := 0; true; {
+		// check remaining elements size is less than snapshot size
 		if list.len < i + attr.size {
 			break
 		}
@@ -175,4 +176,26 @@ pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 	}
 
 	return windows
+}
+
+// concat two arrays into one map.
+// map size will be the array size with less size than another.
+// example: arrays.zip<string, int>(['V', 'Lang'], [1, 0, 2]) => {'V': 1, 'Lang': 0}
+pub fn zip<K, V>(list1 []K, list2 []V) map[K]V {
+	// allocate zip map
+	mut zipped := map[K]V{}
+
+	size := if list1.len > list2.len {
+		list2.len
+	} else if list1.len < list2.len {
+		list1.len
+	} else {
+		list1.len
+	}
+
+	for i in 0..size {
+		zipped[list1[i]] = list2[i]
+	}
+
+	return zipped
 }
