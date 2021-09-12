@@ -139,7 +139,7 @@ fn debug_u32_str(a []u32) string {
 // karatsuba algorithm for multiplication
 // possible optimisations:
 // - transform one or all the recurrences in loops
-fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
+fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// base case necessary to end recursion
 	if operand_a.len == 0 || operand_b.len == 0 {
 		for storage.len > 0 {
@@ -165,7 +165,7 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// }
 
 	if compare_digit_array (operand_a, operand_b) < 0 {
-		multiply_kara_simpl(operand_b, operand_a, mut storage)
+		multiply_digit_array(operand_b, operand_a, mut storage)
 		return
 	}
 
@@ -186,18 +186,25 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 	a_h := operand_a[half..]
 	// println('a_h: ${debug_u32_str(a_h)}')
 	// println('b: ${debug_u32_str(operand_b)}')
-	b_l := operand_b[0..half]
-	// println('b_l: ${debug_u32_str(b_l)}')
-	b_h := operand_b[half..]
+	mut b_l := []u32{}
+	mut b_h := []u32{}
+	if half <= operand_b.len {
+		b_l = operand_b[0..half]
+		b_h = operand_b[half..]
+	} else {
+		b_l = unsafe {operand_b}
+		// b_h = []u32{}
+	}
+		// println('b_l: ${debug_u32_str(b_l)}')
 	// println('b_h: ${debug_u32_str(b_h)}')
 
 	// use storage for p_1 to avoid allocation and copy later
-	multiply_kara_simpl(a_h, b_h, mut storage)
+	multiply_digit_array(a_h, b_h, mut storage)
 	// println('p_1: ${debug_u32_str(storage)}')
 	mut p_3 := []u32{len: a_l.len + b_l.len + 1, init: 0}
-	multiply_kara_simpl(a_l, b_l, mut p_3)
+	multiply_digit_array(a_l, b_l, mut p_3)
 	// println('p_3: ${debug_u32_str(p_3)}')
-	// multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
+	// multiply_digit_array(a_h + a_l, b_h + b_l) - p_1 - p_3
 	mut tmp_1 := []u32{len: util.imax(a_h.len, a_l.len) + 1, init: 0}
 	mut tmp_2 := []u32{len: util.imax(b_h.len, b_l.len) + 1, init: 0}
 	add_digit_array(a_h, a_l, mut tmp_1)
@@ -205,7 +212,7 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 	mut p_2 := []u32{len: operand_a.len + operand_b.len + 1, init: 0}
 	// println('a_h, a_l: ${debug_u32_str(tmp_1)}')
 // 		println('b_h, b_l: ${debug_u32_str(tmp_2)}')
-	multiply_kara_simpl(tmp_1, tmp_2, mut p_2)
+	multiply_digit_array(tmp_1, tmp_2, mut p_2)
 	// println('p_2: ${debug_u32_str(p_2)}')
 	subtract_in_place(mut p_2, storage)
 	// println('p_2 - p_1: ${debug_u32_str(p_2)}')

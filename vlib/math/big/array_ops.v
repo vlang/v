@@ -109,10 +109,15 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	}
 }
 
+const karatsuba_limit = 0 // set limit to choose algorithm
 // Multiplies the unsigned (non-negative) integers represented in a and b and the product is
 // stored in storage. It assumes that storage has length equal to the sum of lengths
 // of a and b. Length refers to length of array, that is, digit count.
 fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+	if operand_a.len >= karatsuba_limit || operand_b.len >= karatsuba_limit {
+		karatsuba_multiply_digit_array(operand_a, operand_b, mut storage)
+		return
+	}
 	for b_index in 0 .. operand_b.len {
 		mut carry := u64(0)
 		for a_index in 0 .. operand_a.len {
