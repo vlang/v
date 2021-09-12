@@ -188,11 +188,7 @@ pub fn zip<K, V>(list1 []K, list2 []V) map[K]V {
 	// allocate zip map
 	mut zipped := map[K]V{}
 
-	size := if list1.len > list2.len {
-		list2.len
-	} else {
-		list1.len
-	}
+	size := if list1.len > list2.len { list2.len } else { list1.len }
 
 	for i in 0 .. size {
 		zipped[list1[i]] = list2[i]
