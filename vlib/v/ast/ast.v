@@ -235,10 +235,8 @@ pub mut:
 // root_ident returns the origin ident where the selector started.
 pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
-	for root is SelectorExpr {
-		// TODO: remove this line
-		selector_expr := root as SelectorExpr
-		root = selector_expr.expr
+	for mut root is SelectorExpr {
+		root = root.expr
 	}
 	if root is Ident {
 		return root as Ident
