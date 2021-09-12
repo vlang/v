@@ -1572,7 +1572,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
 				if c.check_types(unwrapped_right_type, left_value_type)
-					|| c.check_types(unwrapped_right_type, left_type) {
+					|| c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
