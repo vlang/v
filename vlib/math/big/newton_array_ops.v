@@ -136,7 +136,9 @@ fn debug_u32_str(a []u32) string {
 	return sb.str()
 }
 
-// karatsuba algorithm
+// karatsuba algorithm for multiplication
+// possible optimisations:
+// - transform one or all the recurrences in loops
 fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// base case necessary to end recursion
 	if operand_a.len == 0 || operand_b.len == 0 {
@@ -176,52 +178,51 @@ fn multiply_kara_simpl(operand_a []u32, operand_b []u32, mut storage []u32) {
 	half := util.imax(operand_a.len, operand_b.len) / 2
 	if half <= 0 {
 		panic('Unreachable. Both array have 1 length and multiply_array_by_digit should have been called')
-	} else {
-		// println('------------------------------')
-		// println('a: ${debug_u32_str(operand_a)}')
-		a_l := operand_a[0..half]
-		// println('a_l: ${debug_u32_str(a_l)}')
-		a_h := operand_a[half..]
-		// println('a_h: ${debug_u32_str(a_h)}')
-		// println('b: ${debug_u32_str(operand_b)}')
-		b_l := operand_b[0..half]
-		// println('b_l: ${debug_u32_str(b_l)}')
-		b_h := operand_b[half..]
-		// println('b_h: ${debug_u32_str(b_h)}')
+	}
+	// println('------------------------------')
+	// println('a: ${debug_u32_str(operand_a)}')
+	a_l := operand_a[0..half]
+	// println('a_l: ${debug_u32_str(a_l)}')
+	a_h := operand_a[half..]
+	// println('a_h: ${debug_u32_str(a_h)}')
+	// println('b: ${debug_u32_str(operand_b)}')
+	b_l := operand_b[0..half]
+	// println('b_l: ${debug_u32_str(b_l)}')
+	b_h := operand_b[half..]
+	// println('b_h: ${debug_u32_str(b_h)}')
 
-		// use storage for p_1 to avoid allocation and copy later
-		multiply_kara_simpl(a_h, b_h, mut storage)
-		// println('p_1: ${debug_u32_str(storage)}')
-		mut p_3 := []u32{len: a_l.len + b_l.len, init: 0}
-		multiply_kara_simpl(a_l, b_l, mut p_3)
-		// println('p_3: ${debug_u32_str(p_3)}')
-		// multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
-		mut tmp_1 := []u32{len: util.imax(a_h.len, a_l.len) + 1, init: 0}
-		mut tmp_2 := []u32{len: util.imax(b_h.len, b_l.len) + 1, init: 0}
-		add_digit_array(a_h, a_l, mut tmp_1)
-		add_digit_array(b_h, b_l, mut tmp_2)
-		mut p_2 := []u32{len: operand_a.len + operand_b.len + 1, init: 0}
-		// println('a_h, a_l: ${debug_u32_str(tmp_1)}')
+	// use storage for p_1 to avoid allocation and copy later
+	multiply_kara_simpl(a_h, b_h, mut storage)
+	// println('p_1: ${debug_u32_str(storage)}')
+	mut p_3 := []u32{len: a_l.len + b_l.len + 1, init: 0}
+	multiply_kara_simpl(a_l, b_l, mut p_3)
+	// println('p_3: ${debug_u32_str(p_3)}')
+	// multiply_kara_simpl(a_h + a_l, b_h + b_l) - p_1 - p_3
+	mut tmp_1 := []u32{len: util.imax(a_h.len, a_l.len) + 1, init: 0}
+	mut tmp_2 := []u32{len: util.imax(b_h.len, b_l.len) + 1, init: 0}
+	add_digit_array(a_h, a_l, mut tmp_1)
+	add_digit_array(b_h, b_l, mut tmp_2)
+	mut p_2 := []u32{len: operand_a.len + operand_b.len + 1, init: 0}
+	// println('a_h, a_l: ${debug_u32_str(tmp_1)}')
 // 		println('b_h, b_l: ${debug_u32_str(tmp_2)}')
-		multiply_kara_simpl(tmp_1, tmp_2, mut p_2)
-		// println('p_2: ${debug_u32_str(p_2)}')
-		subtract_in_place(mut p_2, storage)
-		// println('p_2 - p_1: ${debug_u32_str(p_2)}')
-		subtract_in_place(mut p_2, p_3)
-		// println('p_2 - p_1 - p_3: ${debug_u32_str(p_2)}')
-		// println('p_3: ${debug_u32_str(p_3)}')
+	multiply_kara_simpl(tmp_1, tmp_2, mut p_2)
+	// println('p_2: ${debug_u32_str(p_2)}')
+	subtract_in_place(mut p_2, storage)
+	// println('p_2 - p_1: ${debug_u32_str(p_2)}')
+	subtract_in_place(mut p_2, p_3)
+	// println('p_2 - p_1 - p_3: ${debug_u32_str(p_2)}')
+	// println('p_3: ${debug_u32_str(p_3)}')
 
-		// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
-		lshift_byte_in_place(mut storage, 2 * half)
-		// println('storage with p_1 shift: ${debug_u32_str(storage)}')
-		lshift_byte_in_place(mut p_2, half)
-		// println('p_2 shift: ${debug_u32_str(p_2)}')
-		add_in_place(mut storage, p_2)
-		add_in_place(mut storage, p_3)
+	// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
+	lshift_byte_in_place(mut storage, 2 * half)
+	// println('storage with p_1 shift: ${debug_u32_str(storage)}')
+	lshift_byte_in_place(mut p_2, half)
+	// println('p_2 shift: ${debug_u32_str(p_2)}')
+	add_in_place(mut storage, p_2)
+	add_in_place(mut storage, p_3)
 
-		for storage.len > 0 && storage.last() == 0 {
-			storage.delete_last()
-		}
+	for storage.len > 0 && storage.last() == 0 {
+		storage.delete_last()
 	}
 }
 
