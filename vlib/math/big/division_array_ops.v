@@ -4,7 +4,7 @@ import math.bits
 
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are allocated but of length 0
-fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
+fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 	for index in 0 .. operand_a.len {
 		remainder << operand_a[index]
 	}

@@ -148,23 +148,7 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 		return
 	}
 
-	// if a == one_int {
-	// 	return b
-	// }
-
-	// if b == one_int {
-	// 	return a
-	// }
-
-	// if b.signum < 0 {
-	// 	return multiply_kara_simpl(a, b.neg()).neg()
-	// }
-
-	// if b.signum < 0 {
-	// 	return multiply_kara_simpl(a.neg(), b).neg()
-	// }
-
-	if compare_digit_array (operand_a, operand_b) < 0 {
+	if operand_a.len < operand_b.len {
 		multiply_digit_array(operand_b, operand_a, mut storage)
 		return
 	}
