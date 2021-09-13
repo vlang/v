@@ -1,5 +1,5 @@
-import math.stats
 import math
+import math.stats
 
 fn test_freq() {
 	// Tests were also verified on Wolfram Alpha
@@ -44,8 +44,9 @@ fn test_geometric_mean() {
 	data = [f64(-3.0), f64(67.31), f64(4.4), f64(1.89)]
 	o = stats.geometric_mean(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert o.str() == 'nan' || o.str() == '-nan' || o.str() == '-1.#IND00' || o == f64(0)
-		|| o.str() == '-nan(ind)' // Because in math it yields a complex number
+	ok := o.str() == 'nan' || o.str() == '-nan' || o.str() == '-1.#IND00' || o == f64(0)
+		|| o.str() == '-nan(ind)'
+	assert ok // Because in math it yields a complex number
 	data = [f64(12.0), f64(7.88), f64(76.122), f64(54.83)]
 	o = stats.geometric_mean(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
@@ -68,33 +69,33 @@ fn test_harmonic_mean() {
 	assert tst_res(o.str(), '16.555477')
 }
 
-fn test_median() {
+fn test_median_for_sorted_data() {
 	// Tests were also verified on Wolfram Alpha
 	// Assumes sorted array
 
 	// Even
 	mut data := [f64(2.7), f64(4.45), f64(5.9), f64(10.0)]
-	mut o := stats.median(data)
+	mut o := stats.median_for_sorted_data(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '5.175000')
 	data = [f64(-3.0), f64(1.89), f64(4.4), f64(67.31)]
-	o = stats.median(data)
+	o = stats.median_for_sorted_data(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '3.145000')
 	data = [f64(7.88), f64(12.0), f64(54.83), f64(76.122)]
-	o = stats.median(data)
+	o = stats.median_for_sorted_data(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '33.415000')
 
 	// Odd
 	data = [f64(2.7), f64(4.45), f64(5.9), f64(10.0), f64(22)]
-	o = stats.median(data)
+	o = stats.median_for_sorted_data(data)
 	assert o == f64(5.9)
 	data = [f64(-3.0), f64(1.89), f64(4.4), f64(9), f64(67.31)]
-	o = stats.median(data)
+	o = stats.median_for_sorted_data(data)
 	assert o == f64(4.4)
 	data = [f64(7.88), f64(3.3), f64(12.0), f64(54.83), f64(76.122)]
-	o = stats.median(data)
+	o = stats.median_for_sorted_data(data)
 	assert o == f64(12.0)
 }
 
@@ -194,18 +195,18 @@ fn test_sample_stddev() {
 	assert tst_res(o.str(), '33.263639')
 }
 
-fn test_mean_absdev() {
+fn test_absdev() {
 	// Tests were also verified on Wolfram Alpha
 	mut data := [f64(10.0), f64(4.45), f64(5.9), f64(2.7)]
-	mut o := stats.mean_absdev(data)
+	mut o := stats.absdev(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '2.187500')
 	data = [f64(-3.0), f64(67.31), f64(4.4), f64(1.89)]
-	o = stats.mean_absdev(data)
+	o = stats.absdev(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '24.830000')
 	data = [f64(12.0), f64(7.88), f64(76.122), f64(54.83)]
-	o = stats.mean_absdev(data)
+	o = stats.absdev(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert tst_res(o.str(), '27.768000')
 }
@@ -255,14 +256,14 @@ fn test_passing_empty() {
 	assert stats.mean(data) == f64(0)
 	assert stats.geometric_mean(data) == f64(0)
 	assert stats.harmonic_mean(data) == f64(0)
-	assert stats.median(data) == f64(0)
+	assert stats.median_for_sorted_data(data) == f64(0)
 	assert stats.mode(data) == f64(0)
 	assert stats.rms(data) == f64(0)
 	assert stats.population_variance(data) == f64(0)
 	assert stats.sample_variance(data) == f64(0)
 	assert stats.population_stddev(data) == f64(0)
 	assert stats.sample_stddev(data) == f64(0)
-	assert stats.mean_absdev(data) == f64(0)
+	assert stats.absdev(data) == f64(0)
 	assert stats.min(data) == f64(0)
 	assert stats.max(data) == f64(0)
 	assert stats.range(data) == f64(0)
