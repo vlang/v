@@ -469,8 +469,9 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
 	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
-		method_name := g.generic_fn_name((left.sym.info as ast.Struct).concrete_types,
-			left.sym.cname + '_' + util.replace_op(node.op.str()), true)
+		concrete_types := (left.sym.info as ast.Struct).concrete_types
+		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
+		method_name = g.generic_fn_name(concrete_types, method_name, true)
 		g.write(method_name)
 		g.write('(')
 		g.expr(node.left)
