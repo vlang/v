@@ -161,7 +161,8 @@ pub struct WindowAttribute {
 
 // get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array.
 // - `size` - snapshot size
-// - `step` - gap size between each snapshot, default is 1.
+// - `step` - gap size between each snapshot, default is 1.  
+//   
 // example A: arrays.window([1, 2, 3, 4], size: 2) => [[1, 2], [2, 3], [3, 4]]
 // example B: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window<T>(list []T, attr WindowAttribute) [][]T {
