@@ -377,7 +377,8 @@ pub fn range<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	return max<T>(data) - min<T>(data)
+	min, max := minmax<T>(data)
+	return max - min
 }
 
 [inline]
