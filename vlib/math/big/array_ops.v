@@ -109,10 +109,14 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	}
 }
 
-const karatsuba_limit = 1_000_000 // set limit to choose algorithm
+const karatsuba_multiplication_limit = 1_000_000
 
+// set limit to choose algorithm
+
+[inline]
 fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
-	if operand_a.len >= karatsuba_limit || operand_b.len >= karatsuba_limit {
+	if operand_a.len >= big.karatsuba_multiplication_limit
+		|| operand_b.len >= big.karatsuba_multiplication_limit {
 		karatsuba_multiply_digit_array(operand_a, operand_b, mut storage)
 	} else {
 		simple_multiply_digit_array(operand_a, operand_b, mut storage)
@@ -252,8 +256,9 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 
 const newton_division_limit = 10_000
 
+[inline]
 fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	if operand_a.len  >= newton_division_limit {
+	if operand_a.len >= big.newton_division_limit {
 		newton_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
 	} else {
 		binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
