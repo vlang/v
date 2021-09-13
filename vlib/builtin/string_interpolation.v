@@ -414,14 +414,16 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			.si_g32 {
 				// println("HERE: g32")
 				if use_default_str {
-					mut f := data.d.d_f32.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f32.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f32 == strconv.single_plus_zero {
@@ -482,14 +484,16 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			.si_g64 {
 				// println("HERE: g64")
 				if use_default_str {
-					mut f := data.d.d_f64.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f64.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f64 == strconv.double_plus_zero {

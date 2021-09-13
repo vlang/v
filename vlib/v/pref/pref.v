@@ -290,36 +290,36 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					}
 					'boehm_full' {
 						res.gc_mode = .boehm_full
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
 					}
 					'boehm_incr' {
 						res.gc_mode = .boehm_incr
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_incr')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_incr')
 					}
 					'boehm_full_opt' {
 						res.gc_mode = .boehm_full_opt
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_incr_opt' {
 						res.gc_mode = .boehm_incr_opt
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_incr')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_incr')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm' {
 						res.gc_mode = .boehm_full_opt // default mode
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_leak' {
 						res.gc_mode = .boehm_leak
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_leak')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_leak')
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
@@ -529,7 +529,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-d', '-define' {
 				if current_args.len > 1 {
 					define := current_args[1]
-					parse_define(mut res, define)
+					res.parse_define(define)
 				}
 				i++
 			}
@@ -631,7 +631,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 		}
 	}
 	if res.is_debug {
-		parse_define(mut res, 'debug')
+		res.parse_define('debug')
 	}
 
 	// res.use_cache = true
@@ -818,7 +818,7 @@ pub fn get_host_arch() Arch {
 	return Arch(C.__V_architecture)
 }
 
-fn parse_define(mut prefs Preferences, define string) {
+fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d $define'
