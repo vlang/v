@@ -386,72 +386,78 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 
 			// float and double
 			if ch in [`f`, `F`] {
-				v_sprintf_panic(p_index, pt.len)
-				x := unsafe { *(&f64(pt[p_index])) }
-				positive := x >= f64(0.0)
-				len1 = if len1 >= 0 { len1 } else { def_len1 }
-				s := format_fl_old(f64(x),
-					pad_ch: pad_ch
-					len0: len0
-					len1: len1
-					positive: positive
-					sign_flag: sign
-					allign: allign
-				)
-				res.write_string(if ch == `F` { s.to_upper() } else { s })
+				$if !nofloat ? {
+					v_sprintf_panic(p_index, pt.len)
+					x := unsafe { *(&f64(pt[p_index])) }
+					positive := x >= f64(0.0)
+					len1 = if len1 >= 0 { len1 } else { def_len1 }
+					s := format_fl_old(f64(x),
+						pad_ch: pad_ch
+						len0: len0
+						len1: len1
+						positive: positive
+						sign_flag: sign
+						allign: allign
+					)
+					res.write_string(if ch == `F` { s.to_upper() } else { s })
+				}
 				status = .reset_params
 				p_index++
 				i++
 				continue
 			} else if ch in [`e`, `E`] {
-				v_sprintf_panic(p_index, pt.len)
-				x := unsafe { *(&f64(pt[p_index])) }
-				positive := x >= f64(0.0)
-				len1 = if len1 >= 0 { len1 } else { def_len1 }
-				s := format_es_old(f64(x),
-					pad_ch: pad_ch
-					len0: len0
-					len1: len1
-					positive: positive
-					sign_flag: sign
-					allign: allign
-				)
-				res.write_string(if ch == `E` { s.to_upper() } else { s })
+				$if !nofloat ? {
+					v_sprintf_panic(p_index, pt.len)
+					x := unsafe { *(&f64(pt[p_index])) }
+					positive := x >= f64(0.0)
+					len1 = if len1 >= 0 { len1 } else { def_len1 }
+					s := format_es_old(f64(x),
+						pad_ch: pad_ch
+						len0: len0
+						len1: len1
+						positive: positive
+						sign_flag: sign
+						allign: allign
+					)
+					res.write_string(if ch == `E` { s.to_upper() } else { s })
+				}
 				status = .reset_params
 				p_index++
 				i++
 				continue
 			} else if ch in [`g`, `G`] {
-				v_sprintf_panic(p_index, pt.len)
-				x := unsafe { *(&f64(pt[p_index])) }
-				positive := x >= f64(0.0)
-				mut s := ''
-				tx := fabs(x)
-				if tx < 999_999.0 && tx >= 0.00001 {
-					// println("Here g format_fl [$tx]")
-					len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
-					s = format_fl_old(x,
-						pad_ch: pad_ch
-						len0: len0
-						len1: len1
-						positive: positive
-						sign_flag: sign
-						allign: allign
-						rm_tail_zero: true
-					)
-				} else {
-					len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
-					s = format_es_old(x,
-						pad_ch: pad_ch
-						len0: len0
-						len1: len1
-						positive: positive
-						sign_flag: sign
-						allign: allign
-						rm_tail_zero: true
-					)
+				$if !nofloat ? {
+					v_sprintf_panic(p_index, pt.len)
+					x := unsafe { *(&f64(pt[p_index])) }
+					positive := x >= f64(0.0)
+					mut s := ''
+					tx := fabs(x)
+					if tx < 999_999.0 && tx >= 0.00001 {
+						// println("Here g format_fl [$tx]")
+						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
+						s = format_fl_old(x,
+							pad_ch: pad_ch
+							len0: len0
+							len1: len1
+							positive: positive
+							sign_flag: sign
+							allign: allign
+							rm_tail_zero: true
+						)
+					} else {
+						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
+						s = format_es_old(x,
+							pad_ch: pad_ch
+							len0: len0
+							len1: len1
+							positive: positive
+							sign_flag: sign
+							allign: allign
+							rm_tail_zero: true
+						)
+					}
+					res.write_string(if ch == `G` { s.to_upper() } else { s })
 				}
-				res.write_string(if ch == `G` { s.to_upper() } else { s })
 				status = .reset_params
 				p_index++
 				i++

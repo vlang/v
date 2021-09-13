@@ -80,7 +80,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	if typ.has_flag(.variadic) {
-		str_fn_name := g.gen_str_for_type(typ)
+		str_fn_name := g.gen_str_method_for_type(typ)
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
@@ -93,7 +93,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
-			str_fn_name := g.gen_str_for_type(typ)
+			str_fn_name := g.gen_str_method_for_type(typ)
 			g.write('${str_fn_name}(')
 			g.enum_expr(expr)
 			g.write(')')
@@ -106,7 +106,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
 		is_ptr := typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
-		str_fn_name := g.gen_str_for_type(typ)
+		str_fn_name := g.gen_str_method_for_type(typ)
 		if is_ptr && !is_var_mut {
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
 		}
@@ -132,7 +132,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			// g.write(')')
 		}
 	} else {
-		str_fn_name := g.gen_str_for_type(typ)
+		str_fn_name := g.gen_str_method_for_type(typ)
 		g.write('${str_fn_name}(')
 		if expr.is_auto_deref_var() {
 			g.write('*')

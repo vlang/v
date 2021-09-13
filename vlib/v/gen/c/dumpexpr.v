@@ -21,7 +21,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		to_string_fn_name := g.gen_str_for_type(dump_type)
+		to_string_fn_name := g.gen_str_method_for_type(dump_type)
 		is_ptr := ast.Type(dump_type).is_ptr()
 		ptr_asterisk := if is_ptr { '*' } else { '' }
 		dump_sym := g.table.get_type_symbol(dump_type)
