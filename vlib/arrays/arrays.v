@@ -245,7 +245,7 @@ pub fn flatten<T>(list [][]T) []T {
 	mut required_size := 0
 
 	for e1 in list {
-		for e2 in e1 {
+		for _ in e1 {
 			required_size += 1
 		}
 	}
