@@ -1435,13 +1435,19 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = left_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
-					if left_name == right_name {
-						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
-							left_right_pos)
+					if left_sym.kind == .struct_
+						&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+						return_type = left_type
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						left_name := c.table.type_to_str(left_type)
+						right_name := c.table.type_to_str(right_type)
+						if left_name == right_name {
+							c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
+								left_right_pos)
+						} else {
+							c.error('mismatched types `$left_name` and `$right_name`',
+								left_right_pos)
+						}
 					}
 				}
 			} else if right_sym.kind in [.array, .array_fixed, .map, .struct_] {
