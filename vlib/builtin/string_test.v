@@ -910,3 +910,9 @@ fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
 }
+
+fn test_index_any() {
+	x := 'abcdefghij'
+	assert x.index_any('ef') == 4
+	assert x.index_any('fe') == 4
+}

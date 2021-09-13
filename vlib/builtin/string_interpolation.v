@@ -252,6 +252,10 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
 				mut hx := strconv.format_int(d, base)
 				if upper_case {
 					tmp := hx
@@ -287,6 +291,10 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
 				mut hx := strconv.format_uint(d, base)
 				if upper_case {
 					tmp := hx
@@ -345,75 +353,81 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 		match typ {
 			// floating point
 			.si_f32 {
-				// println("HERE: f32")
-				if use_default_str {
-					mut f := data.d.d_f32.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: f32")
+					if use_default_str {
+						mut f := data.d.d_f32.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						// println("HERE: f32 format")
+						// println(data.d.d_f32)
+						if data.d.d_f32 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_fl(data.d.d_f32, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					// println("HERE: f32 format")
-					// println(data.d.d_f32)
-					if data.d.d_f32 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_fl(data.d.d_f32, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_f64 {
-				// println("HERE: f64")
-				if use_default_str {
-					mut f := data.d.d_f64.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f64 < 0 {
-						bf.positive = false
-					}
-					f_union := strconv.Float64u{
-						f: data.d.d_f64
-					}
-					if f_union.u == strconv.double_minus_zero {
-						bf.positive = false
-					}
+				$if !nofloat ? {
+					// println("HERE: f64")
+					if use_default_str {
+						mut f := data.d.d_f64.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f64 < 0 {
+							bf.positive = false
+						}
+						f_union := strconv.Float64u{
+							f: data.d.d_f64
+						}
+						if f_union.u == strconv.double_minus_zero {
+							bf.positive = false
+						}
 
-					mut f := strconv.format_fl(data.d.d_f64, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+						mut f := strconv.format_fl(data.d.d_f64, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_g32 {
 				// println("HERE: g32")
 				if use_default_str {
-					mut f := data.d.d_f32.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f32.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f32 == strconv.single_plus_zero {
@@ -474,14 +488,16 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			.si_g64 {
 				// println("HERE: g64")
 				if use_default_str {
-					mut f := data.d.d_f64.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f64.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f64 == strconv.double_plus_zero {
@@ -540,55 +556,59 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 			}
 			.si_e32 {
-				// println("HERE: e32")
-				bf.len1 = 6
-				if use_default_str {
-					mut f := data.d.d_f32.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: e32")
+					bf.len1 = 6
+					if use_default_str {
+						mut f := data.d.d_f32.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f32 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_es(data.d.d_f32, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f32 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_es(data.d.d_f32, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_e64 {
-				// println("HERE: e64")
-				bf.len1 = 6
-				if use_default_str {
-					mut f := data.d.d_f64.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: e64")
+					bf.len1 = 6
+					if use_default_str {
+						mut f := data.d.d_f64.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f64 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_es(data.d.d_f64, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f64 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_es(data.d.d_f64, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			// runes

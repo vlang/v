@@ -81,10 +81,11 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.type_has_method(left.sym, '==')
+	has_defined_eq_operator := g.table.type_has_method(left.sym, '==')
+	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
 	if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
 		g.gen_plain_infix_expr(node)
-	} else if (left.typ.idx() == ast.string_type_idx || (!has_operator_overloading
+	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
 		&& (node.right as ast.StringLiteral).val == '' {
 		// `str == ''` -> `str.len == 0` optimization
@@ -93,11 +94,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write(')')
 		arrow := if left.typ.is_ptr() { '->' } else { '.' }
 		g.write('${arrow}len $node.op 0')
-	} else if has_operator_overloading {
+	} else if has_defined_eq_operator {
 		if node.op == .ne {
 			g.write('!')
 		}
-		g.write(g.typ(left.unaliased.set_nr_muls(0)))
+		if has_alias_eq_op_overload {
+			g.write(g.typ(left.typ.set_nr_muls(0)))
+		} else {
+			g.write(g.typ(left.unaliased.set_nr_muls(0)))
+		}
 		g.write('__eq(')
 		g.write('*'.repeat(left.typ.nr_muls()))
 		g.expr(node.left)
@@ -463,19 +468,31 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	method := g.table.type_find_method(left.sym, node.op.str()) or {
-		g.gen_plain_infix_expr(node)
-		return
+	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
+		concrete_types := (left.sym.info as ast.Struct).concrete_types
+		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
+		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		g.write(method_name)
+		g.write('(')
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
+	} else {
+		method := g.table.type_find_method(left.sym, node.op.str()) or {
+			g.gen_plain_infix_expr(node)
+			return
+		}
+		left_styp := g.typ(left.typ.set_nr_muls(0))
+		g.write(left_styp)
+		g.write('_')
+		g.write(util.replace_op(node.op.str()))
+		g.write('(')
+		g.op_arg(node.left, method.params[0].typ, left.typ)
+		g.write(', ')
+		g.op_arg(node.right, method.params[1].typ, right.typ)
+		g.write(')')
 	}
-	left_styp := g.typ(left.typ.set_nr_muls(0))
-	g.write(left_styp)
-	g.write('_')
-	g.write(util.replace_op(node.op.str()))
-	g.write('(')
-	g.op_arg(node.left, method.params[0].typ, left.typ)
-	g.write(', ')
-	g.op_arg(node.right, method.params[1].typ, right.typ)
-	g.write(')')
 }
 
 // infix_expr_left_shift_op generates code for the `<<` operator

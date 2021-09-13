@@ -9,25 +9,104 @@ import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
-	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | IsRefType |
-	Likely | LockExpr | MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr |
-	PostfixExpr | PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | TypeNode | TypeOf | UnsafeExpr
+pub type Expr = AnonFn
+	| ArrayDecompose
+	| ArrayInit
+	| AsCast
+	| Assoc
+	| AtExpr
+	| BoolLiteral
+	| CTempVar
+	| CallExpr
+	| CastExpr
+	| ChanInit
+	| CharLiteral
+	| Comment
+	| ComptimeCall
+	| ComptimeSelector
+	| ConcatExpr
+	| DumpExpr
+	| EmptyExpr
+	| EnumVal
+	| FloatLiteral
+	| GoExpr
+	| Ident
+	| IfExpr
+	| IfGuardExpr
+	| IndexExpr
+	| InfixExpr
+	| IntegerLiteral
+	| IsRefType
+	| Likely
+	| LockExpr
+	| MapInit
+	| MatchExpr
+	| NodeError
+	| None
+	| OffsetOf
+	| OrExpr
+	| ParExpr
+	| PostfixExpr
+	| PrefixExpr
+	| RangeExpr
+	| SelectExpr
+	| SelectorExpr
+	| SizeOf
+	| SqlExpr
+	| StringInterLiteral
+	| StringLiteral
+	| StructInit
+	| TypeNode
+	| TypeOf
+	| UnsafeExpr
 
-pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
-	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
-	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
-	Return | SqlStmt | StructDecl | TypeDecl
+pub type Stmt = AsmStmt
+	| AssertStmt
+	| AssignStmt
+	| Block
+	| BranchStmt
+	| CompFor
+	| ConstDecl
+	| DeferStmt
+	| EmptyStmt
+	| EnumDecl
+	| ExprStmt
+	| FnDecl
+	| ForCStmt
+	| ForInStmt
+	| ForStmt
+	| GlobalDecl
+	| GotoLabel
+	| GotoStmt
+	| HashStmt
+	| Import
+	| InterfaceDecl
+	| Module
+	| NodeError
+	| Return
+	| SqlStmt
+	| StructDecl
+	| TypeDecl
 
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
-pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
-	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField
+pub type Node = CallArg
+	| ConstField
+	| EmptyNode
+	| EnumField
+	| Expr
+	| File
+	| GlobalField
+	| IfBranch
+	| MatchBranch
+	| NodeError
+	| Param
+	| ScopeObject
+	| SelectBranch
+	| Stmt
+	| StructField
+	| StructInitField
 
 pub struct TypeNode {
 pub:
@@ -156,10 +235,8 @@ pub mut:
 // root_ident returns the origin ident where the selector started.
 pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
-	for root is SelectorExpr {
-		// TODO: remove this line
-		selector_expr := root as SelectorExpr
-		root = selector_expr.expr
+	for mut root is SelectorExpr {
+		root = root.expr
 	}
 	if root is Ident {
 		return root as Ident
@@ -1105,16 +1182,6 @@ pub:
 	pos      token.Position
 }
 
-// NB: &string(x) gets parsed as PrefixExpr{ right: CastExpr{...} }
-// TODO: that is very likely a parsing bug. It should get parsed as just
-// CastExpr{...}, where .typname is '&string' instead.
-// The current situation leads to special cases in vfmt and cgen
-// (see prefix_expr_cast_expr in fmt.v, and .is_amp in cgen.v)
-// .in_prexpr is also needed because of that, because the checker needs to
-// show warnings about the deprecated C->V conversions `string(x)` and
-// `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
-// 2021/07/17: TODO: since 6edfb2c, the above is fixed at the parser level,
-// we need to remove the hacks/special cases in vfmt and the checker too.
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`
@@ -1155,8 +1222,15 @@ pub mut:
 }
 
 // [eax+5] | j | displacement literal (e.g. 123 in [rax + 123] ) | eax | true | `a` | 0.594 | 123 | label_name
-pub type AsmArg = AsmAddressing | AsmAlias | AsmDisp | AsmRegister | BoolLiteral | CharLiteral |
-	FloatLiteral | IntegerLiteral | string
+pub type AsmArg = AsmAddressing
+	| AsmAlias
+	| AsmDisp
+	| AsmRegister
+	| BoolLiteral
+	| CharLiteral
+	| FloatLiteral
+	| IntegerLiteral
+	| string
 
 pub struct AsmRegister {
 pub mut:

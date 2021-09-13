@@ -36,10 +36,10 @@ fn (e Employee) to_json() string {
 
 fn (mut e Employee) from_json(any json2.Any) {
 	mp := any.as_map()
-	e.name = mp['name'].str()
-	e.age = mp['age'].int()
-	e.salary = mp['salary'].f32()
-	e.title = JobTitle(mp['title'].int())
+	e.name = mp['name'] or { 0 }.str()
+	e.age = mp['age'] or { 0 }.int()
+	e.salary = mp['salary'] or { 0 }.f32()
+	e.title = JobTitle(mp['title'] or { 0 }.int())
 }
 
 fn test_simple() {
@@ -84,11 +84,11 @@ fn test_character_unescape() {
 	}
 	lines := obj.as_map()
 	eprintln('$lines')
-	assert lines['newline'].str() == 'new\nline'
-	assert lines['tab'].str() == '\ttab'
-	assert lines['backslash'].str() == 'back\\slash'
-	assert lines['quotes'].str() == '"quotes"'
-	assert lines['slash'].str() == '/dev/null'
+	assert lines['newline'] or { 0 }.str() == 'new\nline'
+	assert lines['tab'] or { 0 }.str() == '\ttab'
+	assert lines['backslash'] or { 0 }.str() == 'back\\slash'
+	assert lines['quotes'] or { 0 }.str() == '"quotes"'
+	assert lines['slash'] or { 0 }.str() == '/dev/null'
 }
 
 struct User2 {
@@ -109,8 +109,8 @@ fn (mut u User2) from_json(an json2.Any) {
 			}
 		}
 		match field.name {
-			'age' { u.age = mp[js_field_name].int() }
-			'nums' { u.nums = mp[js_field_name].arr().map(it.int()) }
+			'age' { u.age = mp[js_field_name] or { 0 }.int() }
+			'nums' { u.nums = mp[js_field_name] or { 0 }.arr().map(it.int()) }
 			else {}
 		}
 	}
@@ -140,12 +140,12 @@ fn (mut u User) from_json(an json2.Any) {
 			}
 		}
 		match field.name {
-			'age' { u.age = mp[js_field_name].int() }
-			'nums' { u.nums = mp[js_field_name].arr().map(it.int()) }
-			'last_name' { u.last_name = mp[js_field_name].str() }
-			'is_registered' { u.is_registered = mp[js_field_name].bool() }
-			'typ' { u.typ = mp[js_field_name].int() }
-			'pets' { u.pets = mp[js_field_name].str() }
+			'age' { u.age = mp[js_field_name] or { 0 }.int() }
+			'nums' { u.nums = mp[js_field_name] or { 0 }.arr().map(it.int()) }
+			'last_name' { u.last_name = mp[js_field_name] or { 0 }.str() }
+			'is_registered' { u.is_registered = mp[js_field_name] or { 0 }.bool() }
+			'typ' { u.typ = mp[js_field_name] or { 0 }.int() }
+			'pets' { u.pets = mp[js_field_name] or { 0 }.str() }
 			else {}
 		}
 	}
@@ -212,8 +212,8 @@ fn (mut c Color) from_json(an json2.Any) {
 	mp := an.as_map()
 	$for field in Color.fields {
 		match field.name {
-			'space' { c.space = mp[field.name].str() }
-			'point' { c.point = mp[field.name].str() }
+			'space' { c.space = mp[field.name] or { 0 }.str() }
+			'point' { c.point = mp[field.name] or { 0 }.str() }
 			else {}
 		}
 	}

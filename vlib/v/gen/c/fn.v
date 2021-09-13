@@ -749,6 +749,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('})')
 		return
+	} else if left_sym.kind == .array && node.name == 'delete' {
+		g.write('array_delete(')
+		if node.left_type.is_ptr() {
+			g.expr(node.left)
+		} else {
+			g.write('&')
+			g.expr(node.left)
+		}
+		g.write(', ')
+		g.expr(node.args[0].expr)
+		g.write(')')
+		return
 	}
 
 	if left_sym.kind in [.sum_type, .interface_] {
@@ -783,7 +795,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if rec_type.has_flag(.shared_f) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
-		g.gen_str_for_type(rec_type)
+		g.gen_str_method_for_type(rec_type)
 	}
 	mut has_cast := false
 	if left_sym.kind == .map && node.name in ['clone', 'move'] {

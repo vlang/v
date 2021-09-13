@@ -9,7 +9,7 @@ fn random_clamped() f64 {
 
 pub fn activation(a f64) f64 {
 	ap := (-a) / 1
-	return (1 / (1 + math.exp(ap)))
+	return 1 / (1 + math.exp(ap))
 }
 
 fn round(a int, b f64) int {

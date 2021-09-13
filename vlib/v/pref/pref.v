@@ -178,6 +178,7 @@ pub mut:
 	is_parallel         bool
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
+	check_only          bool // same as only_check_syntax, but also runs the checker
 	experimental        bool // enable experimental features
 	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
@@ -191,6 +192,7 @@ pub mut:
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
+	nofloat             bool              // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 }
@@ -245,6 +247,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-check-syntax' {
 				res.only_check_syntax = true
 			}
+			'-check' {
+				res.check_only = true
+			}
 			'-h', '-help', '--help' {
 				// NB: help is *very important*, just respond to all variations:
 				res.is_help = true
@@ -273,6 +278,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-cstrict' {
 				res.is_cstrict = true
 			}
+			'-nofloat' {
+				res.nofloat = true
+				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
@@ -281,36 +290,36 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					}
 					'boehm_full' {
 						res.gc_mode = .boehm_full
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
 					}
 					'boehm_incr' {
 						res.gc_mode = .boehm_incr
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_incr')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_incr')
 					}
 					'boehm_full_opt' {
 						res.gc_mode = .boehm_full_opt
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_incr_opt' {
 						res.gc_mode = .boehm_incr_opt
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_incr')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_incr')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm' {
 						res.gc_mode = .boehm_full_opt // default mode
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_full')
-						parse_define(mut res, 'gcboehm_opt')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_leak' {
 						res.gc_mode = .boehm_leak
-						parse_define(mut res, 'gcboehm')
-						parse_define(mut res, 'gcboehm_leak')
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_leak')
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
@@ -520,7 +529,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-d', '-define' {
 				if current_args.len > 1 {
 					define := current_args[1]
-					parse_define(mut res, define)
+					res.parse_define(define)
 				}
 				i++
 			}
@@ -622,7 +631,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 		}
 	}
 	if res.is_debug {
-		parse_define(mut res, 'debug')
+		res.parse_define('debug')
 	}
 
 	// res.use_cache = true
@@ -809,7 +818,7 @@ pub fn get_host_arch() Arch {
 	return Arch(C.__V_architecture)
 }
 
-fn parse_define(mut prefs Preferences, define string) {
+fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d $define'

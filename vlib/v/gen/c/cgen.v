@@ -15,12 +15,12 @@ import v.depgraph
 const (
 	// NB: some of the words in c_reserved, are not reserved in C,
 	// but are in C++, or have special meaning in V, thus need escaping too.
-	c_reserved     = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue',
-		'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern',
-		'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace',
-		'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
-		'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile',
-		'while', 'template', 'stdout', 'stdin', 'stderr']
+	c_reserved     = ['array', 'auto', 'break', 'calloc', 'case', 'char', 'class', 'const',
+		'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export',
+		'extern', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc',
+		'namespace', 'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof',
+		'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned',
+		'void', 'volatile', 'while', 'template', 'stdout', 'stdin', 'stderr']
 	c_reserved_map = string_array_to_map(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -416,7 +416,8 @@ pub fn (mut g Gen) init() {
 #endif'
 		g.cheaders.writeln(tcc_undef_has_include)
 		g.includes.writeln(tcc_undef_has_include)
-		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h> . Please install build-essentials')) // int64_t etc
+		g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>. Please install build-essentials')) // int64_t etc
+		g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>. Please install build-essentials')) // size_t, ptrdiff_t
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
 			g.cheaders.writeln(c_bare_headers)
@@ -618,6 +619,14 @@ fn (mut g Gen) typ(t ast.Type) string {
 }
 
 fn (mut g Gen) base_type(t ast.Type) string {
+	if g.pref.nofloat {
+		// todo compile time if for perf?
+		if t == ast.f32_type {
+			return 'u32'
+		} else if t == ast.f64_type {
+			return 'u64'
+		}
+	}
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
@@ -1493,7 +1502,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.sql_stmt(node)
 		}
 		ast.StructDecl {
-			name := if node.language == .c { util.no_dots(node.name) } else { c_name(node.name) }
+			name := if node.language == .c {
+				util.no_dots(node.name)
+			} else if node.name in ['array', 'string'] {
+				node.name
+			} else {
+				c_name(node.name)
+			}
 			// TODO For some reason, build fails with autofree with this line
 			// as it's only informative, comment it for now
 			// g.gen_attrs(node.attrs)
@@ -2023,8 +2038,17 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	exp_styp := g.typ(expected_type)
 	got_styp := g.typ(got_type)
 	if expected_type != ast.void_type {
-		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
-		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
+		unwrapped_expected_type := g.unwrap_generic(expected_type)
+		unwrapped_got_type := g.unwrap_generic(got_type)
+		unwrapped_exp_sym := g.table.get_type_symbol(unwrapped_expected_type)
+		unwrapped_got_sym := g.table.get_type_symbol(unwrapped_got_type)
+
+		expected_deref_type := if expected_is_ptr {
+			unwrapped_expected_type.deref()
+		} else {
+			unwrapped_expected_type
+		}
+		got_deref_type := if got_is_ptr { unwrapped_got_type.deref() } else { unwrapped_got_type }
 		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
 			mut is_already_sum_type := false
 			scope := g.file.scope.innermost(expr.position().pos)
@@ -2044,9 +2068,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
-				g.write_sumtype_casting_fn(got_type, expected_type)
-				fname := '${got_sym.cname}_to_sumtype_$exp_sym.cname'
-				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
+				g.write_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
+				fname := '${unwrapped_got_sym.cname}_to_sumtype_$unwrapped_exp_sym.cname'
+				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
 					got_is_ptr, got_styp)
 			}
 			return
@@ -2221,8 +2245,15 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.CharLiteral {
 			g.write("'$arg.val'")
 		}
-		ast.IntegerLiteral, ast.FloatLiteral {
+		ast.IntegerLiteral {
 			g.write('\$$arg.val')
+		}
+		ast.FloatLiteral {
+			if g.pref.nofloat {
+				g.write('\$$arg.val.int()')
+			} else {
+				g.write('\$$arg.val')
+			}
 		}
 		ast.BoolLiteral {
 			g.write('\$$arg.val.str()')
@@ -3427,7 +3458,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('${styp}__$node.val')
 		}
 		ast.FloatLiteral {
-			g.write(node.val)
+			if g.pref.nofloat {
+				g.write(node.val.int().str())
+			} else {
+				g.write(node.val)
+			}
 		}
 		ast.GoExpr {
 			g.go_expr(node)

@@ -16,7 +16,7 @@ pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit'
 
 interface CodeGen {
 mut:
-	g Gen
+	g &Gen
 	gen_exit(mut g Gen, expr ast.Expr)
 	// XXX WHY gen_exit fn (expr ast.Expr)
 }
@@ -26,7 +26,7 @@ pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
-	cgen                 CodeGen
+	code_gen             CodeGen
 	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
@@ -58,10 +58,14 @@ enum Size {
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
-			return Arm64{}
+			return Arm64{
+				g: 0
+			}
 		}
 		.amd64 {
-			return Amd64{}
+			return Amd64{
+				g: 0
+			}
 		}
 		else {}
 	}
@@ -75,12 +79,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		out_name: out_name
 		pref: pref
 		// TODO: workaround, needs to support recursive init
-		cgen: get_backend(pref.arch) or {
+		code_gen: get_backend(pref.arch) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
 	}
-	g.cgen.g = g
+	g.code_gen.g = g
 	g.generate_header()
 	for file in files {
 		if file.warnings.len > 0 {
@@ -93,6 +97,10 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	}
 	g.generate_footer()
 	return g.nlines, g.buf.len
+}
+
+pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
+	return &g.table.type_symbols[a]
 }
 
 pub fn (mut g Gen) generate_header() {
@@ -246,10 +254,103 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.expr(expr)
 			g.gen_print_reg(.rax, 3, fd)
 		}
+		ast.IntegerLiteral {
+			g.mov64(.rax, g.allocate_string('$expr.val\n', 2))
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.BoolLiteral {
+			// register 'true' and 'false' strings // g.expr(expr)
+			if expr.val {
+				g.mov64(.rax, g.allocate_string('true', 2))
+			} else {
+				g.mov64(.rax, g.allocate_string('false', 2))
+			}
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.SizeOf {}
+		ast.OffsetOf {
+			styp := g.typ(expr.struct_type)
+			field_name := expr.field
+			if styp.kind == .struct_ {
+				s := styp.info as ast.Struct
+				ptrsz := 4 // should be 8, but for locals is used 8 and C backend shows that too
+				mut off := 0
+				for f in s.fields {
+					if f.name == field_name {
+						g.mov64(.rax, g.allocate_string('$off\n', 2))
+						g.gen_print_reg(.rax, 3, fd)
+						break
+					}
+					off += ptrsz
+				}
+			} else {
+				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
+			}
+		}
+		ast.None {}
+		ast.PostfixExpr {}
+		ast.PrefixExpr {}
+		ast.SelectorExpr {
+			// struct.field
+			g.expr(expr)
+			g.gen_print_reg(.rax, 3, fd)
+			/*
+			field_name := expr.field_name
+g.expr
+			if expr.is_mut {
+				// mutable field access (rw)
+			}
+			*/
+			dump(expr)
+			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
+		}
+		/*
+		ast.AnonFn {}
+		ast.ArrayDecompose {}
+		ast.ArrayInit {}
+		ast.AsCast {}
+		ast.Assoc {}
+		ast.AtExpr {}
+		ast.CTempVar {}
+		ast.CastExpr {}
+		ast.ChanInit {}
+		ast.CharLiteral {}
+		ast.Comment {}
+		ast.ComptimeCall {}
+		ast.ComptimeSelector {}
+		ast.ConcatExpr {}
+		ast.DumpExpr {}
+		ast.EmptyExpr {}
+		ast.EnumVal {}
+		ast.FloatLiteral {}
+		ast.GoExpr {}
+		ast.IfExpr {}
+		ast.IfGuardExpr {}
+		ast.IndexExpr {}
+		ast.InfixExpr {}
+		ast.IsRefType {}
+		ast.Likely {}
+		ast.LockExpr {}
+		ast.MapInit {}
+		ast.MatchExpr {}
+		ast.NodeError {}
+		ast.OrExpr {}
+		ast.ParExpr {}
+		ast.RangeExpr {}
+		ast.SelectExpr {}
+		ast.SqlExpr {}
+		ast.StringInterLiteral {}
+		ast.StructInit {}
+		ast.TypeNode {}
+		ast.TypeOf {}
+		ast.UnsafeExpr {}
+		*/
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
-			g.n_error('expected string as argument for print')
+			//	g.v_error('expected string as argument for print', expr.pos)
+			g.n_error('expected string as argument for print') // , expr.pos)
+			// g.warning('expected string as argument for print')
 		}
 	}
 }
@@ -303,8 +404,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 }
 
 pub fn (mut g Gen) gen_exit(node ast.Expr) {
-	// check node type and then call the cgen method
-	g.cgen.gen_exit(mut g, node)
+	// check node type and then call the code_gen method
+	g.code_gen.gen_exit(mut g, node)
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -386,9 +487,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.gen_assert(node)
 		}
+		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		else {
-			println('native.stmt(): bad node: ' + node.type_name())
+			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
@@ -441,7 +543,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 /*
 fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
-	g.cgen.allocate_var(name, size, initial_val)
+	g.code_gen.allocate_var(name, size, initial_val)
 }
 */
 

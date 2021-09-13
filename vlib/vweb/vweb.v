@@ -141,7 +141,7 @@ pub mut:
 	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
-	files             map[string][]FileData
+	files             map[string][]http.FileData
 	header            http.Header // response headers
 	done              bool
 	page_gen_start    i64
@@ -427,7 +427,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				send_string(mut conn, vweb.http_400.bytestr()) or {}
 				return
 			}
-			form, files := parse_multipart_form(req.data, boundary[0][9..])
+			form, files := http.parse_multipart_form(req.data, boundary[0][9..])
 			for k, v in form {
 				app.form[k] = v
 			}

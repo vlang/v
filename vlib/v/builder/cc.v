@@ -307,7 +307,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.is_shared {
 		ccoptions.linker_flags << '-shared'
-		ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		$if !windows {
+			ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		}
 	}
 	if v.pref.is_bare {
 		ccoptions.args << '-fno-stack-protector'
@@ -486,6 +488,12 @@ fn (mut v Builder) cc() {
 	if v.pref.only_check_syntax {
 		if v.pref.is_verbose {
 			println('builder.cc returning early, since pref.only_check_syntax is true')
+		}
+		return
+	}
+	if v.pref.check_only {
+		if v.pref.is_verbose {
+			println('builder.cc returning early, since pref.check_only is true')
 		}
 		return
 	}

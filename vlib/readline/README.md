@@ -1,6 +1,6 @@
 # Readline
 
-The `readline` module let you await and read user input
+The `readline` module lets you await and read user input
 from a terminal in an easy and structured manner.
 
 The module provides an easy way to prompt the user for

@@ -6,7 +6,7 @@ import v.token
 
 pub struct Amd64 {
 mut:
-	g Gen
+	g &Gen
 	// arm64 specific stuff for code generation
 }
 
@@ -763,6 +763,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	eprintln('call fn ($n)')
 	addr := g.fn_addr[n]
 	if addr == 0 {
+		// g.warning('fn addr of `$name` = 0')
 		g.n_error('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)

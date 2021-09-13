@@ -44,7 +44,7 @@ fn (s &Scope) dont_lookup_parent() bool {
 pub fn (s &Scope) find(name string) ?ScopeObject {
 	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
-			return sc.objects[name]
+			return unsafe { sc.objects[name] }
 		}
 		if sc.dont_lookup_parent() {
 			break
@@ -104,7 +104,7 @@ pub fn (s &Scope) known_var(name string) bool {
 }
 
 pub fn (mut s Scope) update_var_type(name string, typ Type) {
-	mut obj := s.objects[name]
+	mut obj := unsafe { s.objects[name] }
 	if mut obj is Var {
 		if obj.typ != typ {
 			obj.typ = typ

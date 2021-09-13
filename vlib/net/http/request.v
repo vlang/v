@@ -27,10 +27,11 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 	//
-	validate bool // when true, certificate failures will stop further processing
-	verify   string
-	cert     string
-	cert_key string
+	validate               bool // when true, certificate failures will stop further processing
+	verify                 string
+	cert                   string
+	cert_key               string
+	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
 fn (mut req Request) free() {
@@ -243,7 +244,7 @@ fn parse_form(body string) map[string]string {
 	// ...
 }
 
-struct FileData {
+pub struct FileData {
 pub:
 	filename     string
 	content_type string
@@ -260,7 +261,7 @@ struct MultiplePathAttributesError {
 	code int
 }
 
-fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
+pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	sections := body.split(boundary)
 	fields := sections[1..sections.len - 1]
 	mut form := map[string]string{}

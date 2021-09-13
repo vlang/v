@@ -131,7 +131,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
-		g.write('), sizeof($array_styp))')
+		g.write(')')
 	}
 }
 

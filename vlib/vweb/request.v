@@ -85,42 +85,6 @@ fn parse_form(body string) map[string]string {
 	// ...
 }
 
-fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
-	sections := body.split(boundary)
-	fields := sections[1..sections.len - 1]
-	mut form := map[string]string{}
-	mut files := map[string][]FileData{}
-
-	for field in fields {
-		// TODO: do not split into lines; do same parsing for HTTP body
-		lines := field.split('\n')[1..]
-		disposition := parse_disposition(lines[0])
-		// Grab everything between the double quotes
-		name := disposition['name'] or { continue }
-		// Parse files
-		// TODO: filename*
-		if 'filename' in disposition {
-			filename := disposition['filename']
-			// Parse Content-Type header
-			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
-				continue
-			}
-			mut ct := lines[1].split_nth(':', 2)[1]
-			ct = ct.trim_left(' \t').trim_right('\r')
-			data := lines_to_string(field.len, lines, 3, lines.len - 1)
-			files[name] << FileData{
-				filename: filename
-				content_type: ct
-				data: data
-			}
-			continue
-		}
-		data := lines_to_string(field.len, lines, 2, lines.len - 1)
-		form[name] = data
-	}
-	return form, files
-}
-
 // Parse the Content-Disposition header of a multipart form
 // Returns a map of the key="value" pairs
 // Example: parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}

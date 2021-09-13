@@ -122,28 +122,33 @@ pub mut:
 	typ Type
 }
 
-pub fn (f Fn) new_method_with_receiver_type(new_type Type) Fn {
-	mut new_method := f
-	new_method.params = f.params.clone()
-	for i in 1 .. new_method.params.len {
-		if new_method.params[i].typ == new_method.params[0].typ {
-			new_method.params[i].typ = new_type
+pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
+	unsafe {
+		mut new_method := f
+		new_method.params = f.params.clone()
+		for i in 1 .. new_method.params.len {
+			if new_method.params[i].typ == new_method.params[0].typ {
+				new_method.params[i].typ = new_type
+			}
 		}
+		new_method.params[0].typ = new_type
+
+		return *new_method
 	}
-	new_method.params[0].typ = new_type
-	return new_method
 }
 
-pub fn (f FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
-	mut new_method := f
-	new_method.params = f.params.clone()
-	for i in 1 .. new_method.params.len {
-		if new_method.params[i].typ == new_method.params[0].typ {
-			new_method.params[i].typ = new_type
+pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+	unsafe {
+		mut new_method := f
+		new_method.params = f.params.clone()
+		for i in 1 .. new_method.params.len {
+			if new_method.params[i].typ == new_method.params[0].typ {
+				new_method.params[i].typ = new_type
+			}
 		}
+		new_method.params[0].typ = new_type
+		return *new_method
 	}
-	new_method.params[0].typ = new_type
-	return new_method
 }
 
 fn (p &Param) equals(o &Param) bool {
@@ -1107,10 +1112,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
 		return typ.deref()
-	}
-	// TODO: remove when map_string is removed
-	if typ_sym.name == 'map_string' {
-		return string_type
 	}
 	return void_type
 }

@@ -216,6 +216,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = .js
 	}
+	p.fn_language = language
 	if language != .v {
 		for fna in p.attrs {
 			if fna.name == 'export' {
@@ -249,6 +250,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// rec.language was initialized with language variable.
 		// So language is changed only if rec.language has been changed.
 		language = rec.language
+		p.fn_language = language
 	}
 	mut name := ''
 	name_pos := p.tok.position()
@@ -992,6 +994,9 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
 	if sym.kind == .alias {
 		atyp := (sym.info as ast.Alias).parent_type
 		p.check_fn_mutable_arguments(atyp, pos)
+		return
+	}
+	if p.fn_language == .c {
 		return
 	}
 	p.error_with_pos(

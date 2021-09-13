@@ -739,12 +739,12 @@ fn (s string) index_kmp(p string) int {
 
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
-	for c in chars {
-		idx := s.index_(c.ascii_str())
-		if idx == -1 {
-			continue
+	for i, ss in s {
+		for c in chars {
+			if c == ss {
+				return i
+			}
 		}
-		return idx
 	}
 	return -1
 }

@@ -61,7 +61,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	}
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: img.data
-		size: size_t(img.nr_channels * img.width * img.height)
+		size: usize(img.nr_channels * img.width * img.height)
 	}
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true
@@ -120,7 +120,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: 0
-		size: size_t(0)
+		size: usize(0)
 	}
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true
@@ -139,7 +139,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
 pub fn (mut img Image) update_pixel_data(buf &byte) {
 	mut data := C.sg_image_data{}
 	data.subimage[0][0].ptr = buf
-	data.subimage[0][0].size = size_t(img.width * img.height * img.nr_channels)
+	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
 	gfx.update_image(img.simg, &data)
 }
 

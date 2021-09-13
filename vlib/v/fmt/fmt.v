@@ -235,7 +235,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.get_type_symbol(typ)
-	f.mark_import_as_used(sym.name)
+	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	f.mark_import_as_used(name)
 }
 
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
@@ -712,7 +713,7 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.is_assign = true
 	f.write(' $node.op.str() ')
 	for i, val in node.right {
-		f.prefix_expr_cast_expr(val)
+		f.expr(val)
 		if i < node.right.len - 1 {
 			f.write(', ')
 		}
@@ -1129,7 +1130,11 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 		f.write(' ')
 		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
-			f.expr(expr)
+			if expr is ast.ParExpr {
+				f.expr(expr.expr)
+			} else {
+				f.expr(expr)
+			}
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
@@ -1257,6 +1262,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
+	start_pos := f.out.len
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -1264,19 +1270,27 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := []string{}
-	for t in node.variants {
-		sum_type_names << f.table.type_to_str_using_aliases(t.typ, f.mod2alias)
-	}
+	mut sum_type_names := node.variants.map(f.table.type_to_str_using_aliases(it.typ,
+		f.mod2alias))
 	sum_type_names.sort()
+
+	mut separator := ' | '
+	// if line length is too long, put each type on its own line
+	mut line_length := f.out.len - start_pos
+	for sum_type_name in sum_type_names {
+		// 3 = length of ' = ' or ' | '
+		line_length += 3 + sum_type_name.len
+		if line_length > fmt.max_len.last() {
+			separator = '\n\t| '
+			break
+		}
+	}
+
 	for i, name in sum_type_names {
+		if i > 0 {
+			f.write(separator)
+		}
 		f.write(name)
-		if i < sum_type_names.len - 1 {
-			f.write(' | ')
-		}
-		if i < sum_type_names.len - 1 {
-			f.wrap_long_line(3, true)
-		}
 	}
 
 	f.comments(node.comments, has_nl: false)
@@ -2216,7 +2230,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 		}
 	}
 	f.write(node.op.str())
-	f.prefix_expr_cast_expr(node.right)
+	f.expr(node.right)
 	f.or_expr(node.or_block)
 }
 
@@ -2425,26 +2439,6 @@ pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
 		f.indent--
 	}
 	f.write('}')
-}
-
-pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
-	mut is_pe_amp_ce := false
-	if node is ast.PrefixExpr {
-		if node.right is ast.CastExpr && node.op == .amp {
-			mut ce := node.right
-			ce.typname = f.table.get_type_symbol(ce.typ).name
-			is_pe_amp_ce = true
-			f.expr(ce)
-		}
-	} else if node is ast.CastExpr {
-		last := f.out.cut_last(1)
-		if last != '&' {
-			f.out.write_string(last)
-		}
-	}
-	if !is_pe_amp_ce {
-		f.expr(node)
-	}
 }
 
 fn (mut f Fmt) trace(fbase string, message string) {

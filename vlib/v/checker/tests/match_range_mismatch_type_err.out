@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_range_mismatch_type_err.vv:4:3: error: mismatched range types
+    2 |     x := '1'
+    3 |     match x {
+    4 |         `0`...`9` {
+      |         ~~~
+    5 |             println('0-9')
+    6 |         }

@@ -798,10 +798,11 @@ fn main() {
 		*/
 	}
 	{
+		/*
 		// test rune sort
 		mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 		bs.sort()
-		println(bs)
+		println(bs)*/
 
 		/*
 		bs.sort(a > b)

@@ -1,5 +1,6 @@
 module vweb
 
+import net.http
 import io
 
 struct StringReader {
@@ -114,9 +115,9 @@ Content-Disposition: form-data; name=\"${names[1]}\"
 ${contents[1]}
 --------------------------$boundary--
 "
-	form, files := parse_multipart_form(data, boundary)
+	form, files := http.parse_multipart_form(data, boundary)
 	assert files == {
-		names[0]: [FileData{
+		names[0]: [http.FileData{
 			filename: file
 			content_type: ct
 			data: contents[0]

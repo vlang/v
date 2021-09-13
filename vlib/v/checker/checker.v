@@ -31,6 +31,8 @@ const (
 	valid_comp_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	reserved_type_names         = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
@@ -1150,7 +1152,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							}
 						}
 					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, field_info.typ) or {
+						c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
 							c.error('cannot assign to field `$field_info.name`: $err.msg',
 								field.pos)
 						}
@@ -1433,13 +1435,19 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = left_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
-					if left_name == right_name {
-						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
-							left_right_pos)
+					if left_sym.kind == .struct_
+						&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+						return_type = left_type
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						left_name := c.table.type_to_str(left_type)
+						right_name := c.table.type_to_str(right_type)
+						if left_name == right_name {
+							c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
+								left_right_pos)
+						} else {
+							c.error('mismatched types `$left_name` and `$right_name`',
+								left_right_pos)
+						}
 					}
 				}
 			} else if right_sym.kind in [.array, .array_fixed, .map, .struct_] {
@@ -1570,7 +1578,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
 				if c.check_types(unwrapped_right_type, left_value_type)
-					|| c.check_types(unwrapped_right_type, left_type) {
+					|| c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
@@ -2136,7 +2144,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if left_type == ast.void_type {
-		c.error('`void` type has no methods', node.left.position())
+		// No need to print this error, since this means that the variable is unknown,
+		// and there already was an error before.
+		// c.error('`void` type has no methods', node.left.position())
 		return ast.void_type
 	}
 	mut has_generic := false // x.foo<T>() instead of x.foo<int>()
@@ -2677,7 +2687,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 			return ast.void_type
 		}
 		expr := node.args[0].expr
-		if expr !is ast.TypeNode {
+		if expr is ast.TypeNode {
+			sym := c.table.get_type_symbol(expr.typ)
+			if !c.table.known_type(sym.name) {
+				c.error('json.decode: unknown type `$sym.name`', node.pos)
+			}
+		} else {
+			// if expr !is ast.TypeNode {
 			typ := expr.type_name()
 			c.error('json.decode: first argument needs to be a type, got `$typ`', node.pos)
 			return ast.void_type
@@ -2930,7 +2946,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_arg.pos)
 		}
-		if call_arg.is_mut && func.language == .v {
+		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
 				c.error('cannot pass expression as `mut`', call_arg.expr.position())
@@ -3883,8 +3899,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
-			c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
-				node.pos)
+			if node.left_types.len > 0 && node.left_types[0] != ast.void_type {
+				// If it's a void type, it's an unknown variable, already had an error earlier.
+				c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
+					node.pos)
+			}
 		} else {
 			c.error('assignment mismatch: $node.left.len variable(s) $right_len value(s)',
 				node.pos)
@@ -4012,6 +4031,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
+		// Do not allow `a := 0; b := 0; a = &b`
+		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
+			&& right_type.is_real_pointer() {
+			left_sym := c.table.get_type_symbol(left_type)
+			if left_sym.kind != .function {
+				c.warn(
+					'cannot assign a reference to a value (this will be an error soon) left=${c.table.type_str(left_type)} $left_type.is_ptr() ' +
+					'right=${c.table.type_str(right_type)} $right_type.is_real_pointer() ptr=$right_type.is_ptr()',
+					node.pos)
+			}
+		}
 		node.left_types << left_type
 		match mut left {
 			ast.Ident {
@@ -4026,6 +4056,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
+						if left.name in checker.reserved_type_names {
+							c.error('invalid use of reserved type `$left.name` as a variable name',
+								left.pos)
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
@@ -5730,7 +5764,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 }
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
-	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+	sym := c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+	node.sym = *sym
 	if node.is_env {
 		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
 			c.error(err.msg, node.env_pos)
@@ -5759,8 +5794,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 				i++
 				continue
 			}
-			if k in c.fn_scope.objects && c.fn_scope.objects[k] is ast.Var {
-				mut vsc := c.fn_scope.objects[k] as ast.Var
+			if k in c.fn_scope.objects && unsafe { c.fn_scope.objects[k] } is ast.Var {
+				mut vsc := unsafe { c.fn_scope.objects[k] } as ast.Var
 				vsc.is_used = true
 				c.fn_scope.objects[k] = vsc
 			}
@@ -6232,14 +6267,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				low_expr := expr.low
 				high_expr := expr.high
 				if low_expr is ast.IntegerLiteral {
-					if high_expr is ast.IntegerLiteral {
+					if high_expr is ast.IntegerLiteral
+						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 					} else {
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral {
+					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.byte, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 					} else {
@@ -7412,6 +7448,12 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
 			}
+			value_sym := c.table.get_type_symbol(info.value_type)
+			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent
+				&& !c.inside_unsafe {
+				c.warn('`or {}` block required when indexing a map with sum type value',
+					node.pos)
+			}
 		} else {
 			index_type := c.expr(node.index)
 			c.check_index(typ_sym, node.index, index_type, node.pos, false)
@@ -7757,7 +7799,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	sym := c.table.get_type_symbol(node.table_expr.typ)
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
-	c.cur_orm_ts = sym
+	c.cur_orm_ts = *sym
 	info := sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
@@ -7855,7 +7897,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
-	c.cur_orm_ts = table_sym
+	c.cur_orm_ts = *table_sym
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `$table_sym.name`', node.pos)
 		return ast.void_type
@@ -8058,7 +8100,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
 	if node.name == 'main.main' {
-		c.main_fn_decl_node = node
+		c.main_fn_decl_node = *node
 	}
 	if node.return_type != ast.void_type {
 		if ct_attr_idx := node.attrs.find_comptime_define() {
@@ -8132,6 +8174,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if field_sym.kind == .function {
 					c.error('type `$sym.name` has both field and method named `$node.name`',
 						node.pos)
+				}
+			}
+			if node.name == 'free' {
+				if node.return_type != ast.void_type {
+					c.error('`.free()` methods should not have a return type', node.return_type_pos)
+				}
+				if !node.receiver.typ.is_ptr() {
+					tname := sym.name.after_char(`.`)
+					c.error('`.free()` methods should be defined on either a `(mut x &$tname)`, or a `(x &$tname)` receiver',
+						node.receiver_pos)
+				}
+				if node.params.len != 1 {
+					c.error('`.free()` methods should have 0 arguments', node.pos)
 				}
 			}
 		}
