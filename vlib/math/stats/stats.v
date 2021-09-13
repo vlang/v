@@ -119,16 +119,13 @@ pub fn rms<T>(data []T) T {
 // Population Variance of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn population_variance<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
 	data_mean := mean<T>(data)
-	mut sum := T(0)
-	for v in data {
-		sum += (v - data_mean) * (v - data_mean)
-	}
-	return sum / T(data.len)
+	return population_variance_mean<T>(data, data_mean)
 }
 
 // Measure of Dispersion / Spread
@@ -150,16 +147,13 @@ pub fn population_variance_mean<T>(data []T, mean T) T {
 // Sample Variance of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn sample_variance<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
 	data_mean := mean<T>(data)
-	mut sum := T(0)
-	for v in data {
-		sum += (v - data_mean) * (v - data_mean)
-	}
-	return sum / T(data.len - 1)
+	return sample_variance_mean<T>(data, data_mean)
 }
 
 // Measure of Dispersion / Spread
@@ -181,6 +175,7 @@ pub fn sample_variance_mean<T>(data []T, mean T) T {
 // Population Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn population_stddev<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -192,49 +187,49 @@ pub fn population_stddev<T>(data []T) T {
 // Population Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn population_stddev_mean<T>(data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	return math.sqrt(population_variance_mean<T>(data, mean))
+	return T(math.sqrt(f64(population_variance_mean<T>(data, mean))))
 }
 
 // Measure of Dispersion / Spread
 // Sample Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn sample_stddev<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	return math.sqrt(sample_variance<T>(data))
+	return T(math.sqrt(f64(sample_variance<T>(data))))
 }
 
 // Measure of Dispersion / Spread
 // Sample Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
+[inline]
 pub fn sample_stddev_mean<T>(data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	return math.sqrt(sample_variance_mean<T>(data, mean))
+	return T(math.sqrt(f64(sample_variance_mean<T>(data, mean))))
 }
 
 // Measure of Dispersion / Spread
 // Mean Absolute Deviation of the given input array
 // Based on
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
+[inline]
 pub fn absdev<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
 	data_mean := mean<T>(data)
-	mut sum := T(0)
-	for v in data {
-		sum += math.abs(v - data_mean)
-	}
-	return sum / T(data.len)
+	return absdev_mean<T>(data, data_mean)
 }
 
 // Measure of Dispersion / Spread
@@ -253,16 +248,13 @@ pub fn absdev_mean<T>(data []T, mean T) T {
 }
 
 // Sum of squares
+[inline]
 pub fn tss<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
 	data_mean := mean<T>(data)
-	mut tss := T(0)
-	for v in data {
-		tss += (v - data_mean) * (v - data_mean)
-	}
-	return tss
+	return tss_mean<T>(data, data_mean)
 }
 
 // Sum of squares about the mean
