@@ -2144,7 +2144,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if left_type == ast.void_type {
-		c.error('`void` type has no methods', node.left.position())
+		// No need to print this error, since this means that the variable is unknown,
+		// and there already was an error before.
+		// c.error('`void` type has no methods', node.left.position())
 		return ast.void_type
 	}
 	mut has_generic := false // x.foo<T>() instead of x.foo<int>()

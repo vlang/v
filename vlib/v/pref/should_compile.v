@@ -30,6 +30,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.starts_with('.#') {
 			continue
 		}
+		if prefs.nofloat && file.ends_with('float.c.v') {
+			continue
+		}
 		if file.contains('_d_') {
 			if prefs.compile_defines_all.len == 0 {
 				continue
