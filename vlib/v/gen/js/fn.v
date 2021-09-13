@@ -2,6 +2,7 @@ module js
 
 import v.ast
 import v.util
+import v.parser
 
 fn (mut g JsGen) js_mname(name_ string) string {
 	mut is_js := false
@@ -234,9 +235,9 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err})`'
+				panicstr := '`optional not set (\${err.val.msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return panic($panicstr)')
+					g.writeln('return builtin__panic($panicstr)')
 				} else {
 					g.writeln('js_throw(err)')
 				}
@@ -268,7 +269,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	node := it
 	g.call_stack << it
 	mut name := g.js_name(it.name)
+
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
+	if name in parser.builtin_functions {
+		name = 'builtin__$name'
+	}
 	print_method := name
 	ret_sym := g.table.get_type_symbol(it.return_type)
 	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
@@ -324,7 +329,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			.propagate {
 				panicstr := '`optional not set (\${err.val.msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return panic($panicstr)')
+					g.writeln('return builtin__panic($panicstr)')
 				} else {
 					g.writeln('js_throw(err)')
 				}

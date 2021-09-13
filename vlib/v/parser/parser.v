@@ -13,7 +13,7 @@ import v.errors
 import os
 import hash.fnv1a
 
-const (
+pub const (
 	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
 )
 

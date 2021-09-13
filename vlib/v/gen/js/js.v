@@ -9,6 +9,7 @@ import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
+import v.parser
 
 struct MutArg {
 	tmp_var string
@@ -1101,14 +1102,14 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 		metaname_fail := g.gen_assert_metainfo(a)
 		g.writeln('	g_test_fails++;')
 		g.writeln('	main__cb_assertion_failed($metaname_fail);')
-		g.writeln('	exit(1);')
+		g.writeln('	builtin__exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('eprintln(new string("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
-	g.writeln('exit(1);')
+	g.writeln('builtin__eprintln(new string("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	g.writeln('builtin__exit(1);')
 	g.dec_indent()
 	g.writeln('}')
 }
@@ -1440,7 +1441,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
-
+	if name in parser.builtin_functions {
+		name = 'builtin__$name'
+	}
 	has_go := fn_has_go(it)
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
