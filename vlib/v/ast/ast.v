@@ -235,10 +235,8 @@ pub mut:
 // root_ident returns the origin ident where the selector started.
 pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
-	for root is SelectorExpr {
-		// TODO: remove this line
-		selector_expr := root as SelectorExpr
-		root = selector_expr.expr
+	for mut root is SelectorExpr {
+		root = root.expr
 	}
 	if root is Ident {
 		return root as Ident
@@ -1184,16 +1182,6 @@ pub:
 	pos      token.Position
 }
 
-// NB: &string(x) gets parsed as PrefixExpr{ right: CastExpr{...} }
-// TODO: that is very likely a parsing bug. It should get parsed as just
-// CastExpr{...}, where .typname is '&string' instead.
-// The current situation leads to special cases in vfmt and cgen
-// (see prefix_expr_cast_expr in fmt.v, and .is_amp in cgen.v)
-// .in_prexpr is also needed because of that, because the checker needs to
-// show warnings about the deprecated C->V conversions `string(x)` and
-// `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
-// 2021/07/17: TODO: since 6edfb2c, the above is fixed at the parser level,
-// we need to remove the hacks/special cases in vfmt and the checker too.
 pub struct CastExpr {
 pub:
 	arg Expr // `n` in `string(buf, n)`

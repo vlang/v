@@ -140,7 +140,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				f.indent++
 				inc_indent = true
 			}
-			f.prefix_expr_cast_expr(field.default_expr)
+			f.expr(field.default_expr)
 			if inc_indent {
 				f.indent--
 				inc_indent = false
@@ -207,7 +207,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.write(', ')
 		}
 		for i, field in node.fields {
-			f.prefix_expr_cast_expr(field.expr)
+			f.expr(field.expr)
 			if i < node.fields.len - 1 {
 				f.write(', ')
 			}
@@ -257,7 +257,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			}
 			for i, field in node.fields {
 				f.write('$field.name: ')
-				f.prefix_expr_cast_expr(field.expr)
+				f.expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
 					if i < node.fields.len - 1 {

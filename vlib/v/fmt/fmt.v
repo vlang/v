@@ -713,7 +713,7 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.is_assign = true
 	f.write(' $node.op.str() ')
 	for i, val in node.right {
-		f.prefix_expr_cast_expr(val)
+		f.expr(val)
 		if i < node.right.len - 1 {
 			f.write(', ')
 		}
@@ -2230,7 +2230,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 		}
 	}
 	f.write(node.op.str())
-	f.prefix_expr_cast_expr(node.right)
+	f.expr(node.right)
 	f.or_expr(node.or_block)
 }
 
@@ -2439,26 +2439,6 @@ pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
 		f.indent--
 	}
 	f.write('}')
-}
-
-pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
-	mut is_pe_amp_ce := false
-	if node is ast.PrefixExpr {
-		if node.right is ast.CastExpr && node.op == .amp {
-			mut ce := node.right
-			ce.typname = f.table.get_type_symbol(ce.typ).name
-			is_pe_amp_ce = true
-			f.expr(ce)
-		}
-	} else if node is ast.CastExpr {
-		last := f.out.cut_last(1)
-		if last != '&' {
-			f.out.write_string(last)
-		}
-	}
-	if !is_pe_amp_ce {
-		f.expr(node)
-	}
 }
 
 fn (mut f Fmt) trace(fbase string, message string) {

@@ -1113,10 +1113,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 		// bytes[0] is a byte, not byte*
 		return typ.deref()
 	}
-	// TODO: remove when map_string is removed
-	if typ_sym.name == 'map_string' {
-		return string_type
-	}
 	return void_type
 }
 
