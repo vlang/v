@@ -106,24 +106,3 @@ fn test_window() {
 	assert window<int>(x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window<int>([]int{}, size: 2) == [][]int{}
 }
-
-fn test_zip() {
-	mut x := [1, 2, 3]
-	mut y := ['one', 'two', 'three']
-
-	assert zip<int, string>(x, y) == {
-		1: 'one'
-		2: 'two'
-		3: 'three'
-	}
-
-	x << [4, 5]
-	y << 'four'
-
-	assert zip<int, string>(x, y) == {
-		1: 'one'
-		2: 'two'
-		3: 'three'
-		4: 'four'
-	}
-}

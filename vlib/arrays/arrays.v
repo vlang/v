@@ -180,19 +180,3 @@ pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 
 	return windows
 }
-
-// concat two arrays into one map.
-// map size will be the array size with less size than another.
-// example: arrays.zip<string, int>(['V', 'Lang'], [1, 0, 2]) => {'V': 1, 'Lang': 0}
-pub fn zip<K, V>(list1 []K, list2 []V) map[K]V {
-	// allocate zip map
-	mut zipped := map[K]V{}
-
-	size := if list1.len > list2.len { list2.len } else { list1.len }
-
-	for i in 0 .. size {
-		zipped[list1[i]] = list2[i]
-	}
-
-	return zipped
-}
