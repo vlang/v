@@ -106,3 +106,11 @@ fn test_window() {
 	assert window<int>(x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window<int>([]int{}, size: 2) == [][]int{}
 }
+
+fn test_sum() {
+	x := [1, 2, 3, 4, 5]
+
+	assert sum<int>(x) or { 0 } == 15
+	assert sum<f64>([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
+	assert sum<int>([]int{}) or { 0 } == 0
+}
