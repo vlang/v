@@ -114,3 +114,25 @@ fn test_sum() {
 	assert sum<f64>([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
 	assert sum<int>([]int{}) or { 0 } == 0
 }
+
+fn test_reduce() {
+	x := [1, 2, 3, 4, 5]
+
+	assert reduce<int, int>(x, fn (t1 int, t2 int) int {
+		return t1 + t2
+	}) or { 0 } == 15
+	assert reduce<string, byte>(['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
+		return t1 + t2
+	}) or { '' } == 'Hello' // For the sake please use array's join instead. 
+}
+
+fn test_fold() {
+	x := [1, 2, 3, 4, 5]
+
+	assert fold<int, int>(x, 5, fn (r int, t int) int {
+		return r + t
+	}) == 20
+	assert fold<string, int>(['H', 'e', 'l', 'l', 'l'], 0, fn (r int, t string) int {
+		return r + t[0]
+	}) == 497
+}

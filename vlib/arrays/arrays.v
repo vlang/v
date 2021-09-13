@@ -203,3 +203,31 @@ pub fn sum<T>(list []T) ?T {
 		return head
 	}
 }
+
+pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
+	if list.len == 0 {
+		return error('Cannot reduce array of nothing.')
+	} else {
+		mut value := list[0]
+
+		for i, e in list {
+			if i == 0 {
+				continue
+			} else {
+				value = reduce_op(value, e)
+			}
+		}
+
+		return value
+	}
+}
+
+pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
+	mut value := init
+
+	for e in list {
+		value = fold_op(value, e)
+	}
+
+	return value
+}
