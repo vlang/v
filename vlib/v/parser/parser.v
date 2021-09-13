@@ -2244,7 +2244,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				pos: type_pos
 			}
 		}
-		
+
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
