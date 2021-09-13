@@ -186,6 +186,7 @@ pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 // NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded.
 // which means you can only pass array of numbers for now.
 // Future work: Fix generic operator overloading detection issue.
+// usage: `arrays.sum<int>([1, 2, 3, 4, 5])?` => `15`
 pub fn sum<T>(list []T) ?T {
 	if list.len == 0 {
 		return error('Cannot sum up array of nothing.')
@@ -204,6 +205,9 @@ pub fn sum<T>(list []T) ?T {
 	}
 }
 
+// accumulates values with the first element and applying providing operation to current accumulator value and each elements.
+// if the array is empty, then returns error.
+// usage: `arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })?` => `120`
 pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	if list.len == 0 {
 		return error('Cannot reduce array of nothing.')
@@ -222,6 +226,8 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
+// accumulates values with providing initial value and applying providing operation to current accumulator value and each elements.
+// usage: `arrays.fold<string, byte>(['H', 'e', 'l', 'l', 'o'], 0, fn (r int, t string) int { return r + t[0] })` => `149`
 pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 	mut value := init
 
