@@ -4,6 +4,9 @@ module arrays
 // - min / max - return the value of the minumum / maximum
 // - idx_min / idx_max - return the index of the first minumum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - chunk - chunk array to arrays with n elements
+// - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
+// - zip - concat two arrays into one map
 
 // min returns the minimum
 pub fn min<T>(a []T) T {
@@ -123,4 +126,57 @@ pub fn group<T>(lists ...[]T) [][]T {
 	}
 
 	return [][]T{}
+}
+
+// chunk array to arrays with n elements
+// example: arrays.chunk([1, 2, 3], 2) => [[1, 2], [3]]
+pub fn chunk<T>(list []T, size int) [][]T {
+	// allocate chunk array
+	mut chunks := [][]T{cap: list.len / size + if list.len % size == 0 { 0 } else { 1 }}
+
+	for i := 0; true; {
+		// check chunk size is greater than remaining element size
+		if list.len < i + size {
+			// check if there's no more element to chunk
+			if list.len <= i {
+				break
+			}
+
+			chunks << list[i..]
+
+			break
+		}
+
+		chunks << list[i..i + size]
+		i += size
+	}
+
+	return chunks
+}
+
+pub struct WindowAttribute {
+	size int
+	step int = 1
+}
+
+// get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array.
+// - `size` - snapshot size
+// - `step` - gap size between each snapshot, default is 1.
+// example A: arrays.window([1, 2, 3, 4], size: 2) => [[1, 2], [2, 3], [3, 4]]
+// example B: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
+pub fn window<T>(list []T, attr WindowAttribute) [][]T {
+	// allocate snapshot array
+	mut windows := [][]T{cap: list.len - attr.size + 1}
+
+	for i := 0; true; {
+		// check remaining elements size is less than snapshot size
+		if list.len < i + attr.size {
+			break
+		}
+
+		windows << list[i..i + attr.size]
+		i += attr.step
+	}
+
+	return windows
 }

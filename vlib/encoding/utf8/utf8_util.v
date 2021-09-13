@@ -73,9 +73,6 @@ pub fn get_uchar(s string, index int) int {
 }
 
 // raw_index - get the raw chracter from the string by the given index value.
-// example: '我是V Lang'.raw_index(1) => '是'
-
-// raw_index - get the raw chracter from the string by the given index value.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
 pub fn raw_index(s string, index int) string {
 	mut r := []rune{}

@@ -85,3 +85,24 @@ fn test_group() {
 	assert z2 == [[8, 2], [9, 1]]
 	assert group<int>(x, []int{}) == [][]int{}
 }
+
+fn test_chunk() {
+	x := [1, 2, 3, 4, 5]
+	y := ['a', 'b', 'c', 'd', 'e', 'f']
+
+	z1 := chunk<int>(x, 2)
+	assert z1 == [[1, 2], [3, 4], [5]]
+	z2 := chunk<string>(y, 3)
+	assert z2 == [['a', 'b', 'c'], ['d', 'e', 'f']]
+	assert chunk<int>([]int{}, 2) == [][]int{}
+}
+
+fn test_window() {
+	x := [1, 2, 3, 4, 5, 6]
+
+	assert window<int>(x, size: 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5],
+		[4, 5, 6],
+	]
+	assert window<int>(x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
+	assert window<int>([]int{}, size: 2) == [][]int{}
+}
