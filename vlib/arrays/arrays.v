@@ -237,3 +237,46 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 
 	return value
 }
+
+// flattens n + 1 dimensional array into n dimensional array
+// usage: `arrays.flatten<int>([[1, 2, 3], [4, 5]])` => `[1, 2, 3, 4, 5]`
+pub fn flatten<T>(list [][]T) []T {
+	// calculate required capacity
+	mut required_size := 0
+
+	for e1 in list {
+		for e2 in e1 {
+			required_size += 1
+		}
+	}
+
+	// allocate flattened array
+	mut result := []T{cap: required_size}
+
+	for e1 in list {
+		for e2 in e1 {
+			result << e2
+		}
+	}
+
+	return result
+}
+
+// grouping list of elements with given key selector.
+// usage: `arrays.assort<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len })` => `{1: ['H'], 2: ['el', 'lo']}`
+pub fn assort<K, V>(list []V, assort_op fn (v V) K) map[K][]V {
+	mut result := map[K][]V{}
+
+	for v in list {
+		key := assort_op(v)
+
+		// check if key exists, if not, then create a new array with matched value, otherwise append.
+		if key in result {
+			result[key] << v
+		} else {
+			result[key] = [v]
+		}
+	}
+
+	return result
+}

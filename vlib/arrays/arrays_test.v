@@ -118,12 +118,15 @@ fn test_sum() {
 fn test_reduce() {
 	x := [1, 2, 3, 4, 5]
 
-	assert reduce<int, int>(x, fn (t1 int, t2 int) int {
+	assert reduce<int>(x, fn (t1 int, t2 int) int {
 		return t1 + t2
 	}) or { 0 } == 15
-	assert reduce<string, byte>(['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
+	assert reduce<string>(['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
 		return t1 + t2
-	}) or { '' } == 'Hello' // For the sake please use array's join instead. 
+	}) or { '' } == 'Hello' // For the sake please use array's join instead.
+	assert reduce<int>([]int{}, fn (t1 int, t2 int) int {
+		return 0
+	}) or { -1 } == -1
 }
 
 fn test_fold() {
@@ -135,4 +138,28 @@ fn test_fold() {
 	assert fold<string, int>(['H', 'e', 'l', 'l', 'l'], 0, fn (r int, t string) int {
 		return r + t[0]
 	}) == 497
+	assert fold<int, int>([]int{}, -1, fn (t1 int, t2 int) int {
+		return 0
+	}) == -1
+}
+
+fn test_flatten() {
+	x := [[1, 2, 3], [4, 5, 6]]
+
+	assert flatten<int>(x) == [1, 2, 3, 4, 5, 6]
+	assert flatten<int>([[]int{}]) == []
+}
+
+fn test_assort() {
+	x := ['H', 'el', 'l', 'o ']
+
+	assert assort<int, string>(x, fn (v string) int {
+		return v.len
+	}) == {
+		1: ['H', 'l']
+		2: ['el', 'o ']
+	}
+	assert assort<int, int>([]int{}, fn (v int) int {
+		return 0
+	}) == map[int][]int{}
 }
