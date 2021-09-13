@@ -22,7 +22,7 @@ const (
 		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
 		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
 		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map']
+		'Array', 'Map', 'print']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array', 'any']
@@ -1440,7 +1440,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
-
+	if name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
+		name = 'builtin__$name'
+	}
 	has_go := fn_has_go(it)
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
