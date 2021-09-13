@@ -44,7 +44,7 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		rshift_in_place(mut divisor, 1)
 	}
 
-	// ajust
+	// adjust
 	if lead_zer_remainder > lead_zer_divisor {
 		// rshift_in_place(mut quotient, lead_zer_remainder - lead_zer_divisor)
 		rshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
@@ -61,7 +61,7 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 // quicker than BitField.set_bit
 [inline]
 fn bit_set(mut a []u32, n int) {
-	byte_offset := n / 32
+	byte_offset := n >> 5
 	mask := u32(1) << u32(n % 32)
 	assert a.len >= byte_offset
 	a[byte_offset] |= mask
@@ -84,7 +84,7 @@ fn greater_equal_from_end(a []u32, b []u32) bool {
 }
 
 // a := a - b supposed a >= b
-// attention the b operand is align with the a operand before the substraction
+// attention the b operand is align with the a operand before the subtraction
 [inline]
 fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 	mut carry := u32(0)
