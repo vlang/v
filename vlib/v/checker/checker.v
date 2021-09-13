@@ -3899,8 +3899,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
-			c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
-				node.pos)
+			if node.left_types.len > 0 && node.left_types[0] != ast.void_type {
+				// If it's a void type, it's an unknown variable, already had an error earlier.
+				c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
+					node.pos)
+			}
 		} else {
 			c.error('assignment mismatch: $node.left.len variable(s) $right_len value(s)',
 				node.pos)
