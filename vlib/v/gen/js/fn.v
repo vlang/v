@@ -2,6 +2,7 @@ module js
 
 import v.ast
 import v.util
+import v.parser
 
 fn (mut g JsGen) js_mname(name_ string) string {
 	mut is_js := false
@@ -268,7 +269,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	node := it
 	g.call_stack << it
 	mut name := g.js_name(it.name)
+
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
+	if name in parser.builtin_functions {
+		name = 'builtin__$name'
+	}
 	print_method := name
 	ret_sym := g.table.get_type_symbol(it.return_type)
 	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
@@ -288,7 +293,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		mut typ := node.args[0].typ
 
 		expr := node.args[0].expr
-		g.write('builtin__$print_method (')
+		g.write('$print_method (')
 		g.gen_expr_to_string(expr, typ)
 		g.write(')')
 		return
