@@ -280,6 +280,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-nofloat' {
 				res.nofloat = true
+				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
