@@ -533,6 +533,7 @@ pub fn (h Header) keys() []string {
 	return h.data.keys()
 }
 
+[params]
 pub struct HeaderRenderConfig {
 	version      Version
 	coerce       bool

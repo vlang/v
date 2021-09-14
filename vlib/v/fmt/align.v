@@ -14,6 +14,7 @@ mut:
 	max_type_len int
 }
 
+[params]
 struct AddInfoConfig {
 	use_threshold bool
 }

@@ -795,7 +795,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if rec_type.has_flag(.shared_f) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
-		g.gen_str_for_type(rec_type)
+		g.gen_str_method_for_type(rec_type)
 	}
 	mut has_cast := false
 	if left_sym.kind == .map && node.name in ['clone', 'move'] {
