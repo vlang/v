@@ -266,7 +266,32 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
 	has_operator_overloading := g.table.type_has_method(left.sym, '<')
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
+	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
+		if node.op in [.le, .ge] {
+			g.write('!')
+		}
+		concrete_types := (left.sym.info as ast.Struct).concrete_types
+		mut method_name := left.sym.cname + '__lt'
+		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		g.write(method_name)
+		if node.op in [.lt, .ge] {
+			g.write('(')
+			g.write('*'.repeat(left.typ.nr_muls()))
+			g.expr(node.left)
+			g.write(', ')
+			g.write('*'.repeat(right.typ.nr_muls()))
+			g.expr(node.right)
+			g.write(')')
+		} else {
+			g.write('(')
+			g.write('*'.repeat(right.typ.nr_muls()))
+			g.expr(node.right)
+			g.write(', ')
+			g.write('*'.repeat(left.typ.nr_muls()))
+			g.expr(node.left)
+			g.write(')')
+		}
+	} else if left.sym.kind == right.sym.kind && has_operator_overloading {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}

@@ -2812,16 +2812,28 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					else { 'unknown op' }
 				}
 				g.expr(left)
-				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-				method := g.table.type_find_method(left_sym, extracted_op) or {
-					// the checker will most likely have found this, already...
-					g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
-						assign_stmt.pos)
-					ast.Fn{}
+				if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
+					concrete_types := (left_sym.info as ast.Struct).concrete_types
+					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
+					method_name = g.generic_fn_name(concrete_types, method_name, true)
+					g.write(' = ${method_name}(')
+					g.expr(left)
+					g.write(', ')
+					g.expr(val)
+					g.writeln(');')
+					return
+				} else {
+					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					method := g.table.type_find_method(left_sym, extracted_op) or {
+						// the checker will most likely have found this, already...
+						g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
+							assign_stmt.pos)
+						ast.Fn{}
+					}
+					op_expected_left = method.params[0].typ
+					op_expected_right = method.params[1].typ
+					op_overloaded = true
 				}
-				op_expected_left = method.params[0].typ
-				op_expected_right = method.params[1].typ
-				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
