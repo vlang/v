@@ -2088,15 +2088,17 @@ pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn
 		if min_required_params == nr_args + 1 {
 			last_typ := f.params.last().typ
 			last_sym := c.table.get_type_symbol(last_typ)
-			if last_sym.kind == .struct_ {
-				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
-				node.args << ast.CallArg{
-					expr: ast.StructInit{
-						typ: last_typ
+			if last_sym.info is ast.Struct {
+				is_params := last_sym.info.attrs.filter(it.name == 'params' && !it.has_arg).len > 0
+				if is_params {
+					// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
+					node.args << ast.CallArg{
+						expr: ast.StructInit{
+							typ: last_typ
+						}
 					}
-					typ: last_typ
+					return
 				}
-				return
 			}
 		}
 		c.error('expected $min_required_params arguments, but got $nr_args', node.pos)
@@ -3899,11 +3901,12 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
-			if node.left_types.len > 0 && node.left_types[0] != ast.void_type {
+			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
-				c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
-					node.pos)
+				return
 			}
+			c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
+				node.pos)
 		} else {
 			c.error('assignment mismatch: $node.left.len variable(s) $right_len value(s)',
 				node.pos)

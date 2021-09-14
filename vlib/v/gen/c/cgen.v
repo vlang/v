@@ -2245,8 +2245,15 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.CharLiteral {
 			g.write("'$arg.val'")
 		}
-		ast.IntegerLiteral, ast.FloatLiteral {
+		ast.IntegerLiteral {
 			g.write('\$$arg.val')
+		}
+		ast.FloatLiteral {
+			if g.pref.nofloat {
+				g.write('\$$arg.val.int()')
+			} else {
+				g.write('\$$arg.val')
+			}
 		}
 		ast.BoolLiteral {
 			g.write('\$$arg.val.str()')
@@ -3451,7 +3458,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('${styp}__$node.val')
 		}
 		ast.FloatLiteral {
-			g.write(node.val)
+			if g.pref.nofloat {
+				g.write(node.val.int().str())
+			} else {
+				g.write(node.val)
+			}
 		}
 		ast.GoExpr {
 			g.go_expr(node)
