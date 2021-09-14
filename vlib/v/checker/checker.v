@@ -4288,6 +4288,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				.mult_assign { '*' }
 				else { 'unknown op' }
 			}
+			if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
+				continue
+			}
 			if method := left_sym.find_method(extracted_op) {
 				if method.return_type != left_type {
 					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',

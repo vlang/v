@@ -35,7 +35,7 @@ fn (m1 Matrix<T>) < (m2 Matrix<T>) bool {
 }
 
 fn test_generic_operator_overload() {
-	a1 := from_array([[1, 2, 3], [4, 5, 6]])
+	mut a1 := from_array([[1, 2, 3], [4, 5, 6]])
 	a2 := from_array([[7, 8, 9], [10, 11, 12]])
 
 	plus_ret := a1 + a2
@@ -43,6 +43,12 @@ fn test_generic_operator_overload() {
 	assert plus_ret.row == 2
 	assert plus_ret.col == 3
 	assert plus_ret.data == [[8, 10, 12], [14, 16, 18]]
+
+	a1 += a2
+	println(a1)
+	assert a1.row == 2
+	assert a1.col == 3
+	assert a1.data == [[15, 18, 21], [24, 27, 30]]
 
 	eq_ret := a1 == a2
 	println(eq_ret)
