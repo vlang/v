@@ -26,10 +26,33 @@ fn (m1 Matrix<T>) + (m2 Matrix<T>) Matrix<T> {
 	return res
 }
 
+fn (m1 Matrix<T>) == (m2 Matrix<T>) bool {
+	return m1.row == m2.row && m1.col == m2.col && m1.data == m2.data
+}
+
+fn (m1 Matrix<T>) < (m2 Matrix<T>) bool {
+	return m1.row < m2.row && m1.col < m2.col
+}
+
 fn test_generic_operator_overload() {
-	result := from_array([[1, 2, 3], [4, 5, 6]]) + from_array([[7, 8, 9], [10, 11, 12]])
-	println(result)
-	assert result.row == 2
-	assert result.col == 3
-	assert result.data == [[8, 10, 12], [14, 16, 18]]
+	a1 := from_array([[1, 2, 3], [4, 5, 6]])
+	a2 := from_array([[7, 8, 9], [10, 11, 12]])
+
+	plus_ret := a1 + a2
+	println(plus_ret)
+	assert plus_ret.row == 2
+	assert plus_ret.col == 3
+	assert plus_ret.data == [[8, 10, 12], [14, 16, 18]]
+
+	eq_ret := a1 == a2
+	println(eq_ret)
+	assert !eq_ret
+
+	ne_ret := a1 != a2
+	println(ne_ret)
+	assert ne_ret
+
+	lt_ret := a1 < a2
+	println(lt_ret)
+	assert !lt_ret
 }

@@ -266,7 +266,17 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
 	has_operator_overloading := g.table.type_has_method(left.sym, '<')
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
+	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
+		concrete_types := (left.sym.info as ast.Struct).concrete_types
+		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
+		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		g.write(method_name)
+		g.write('(')
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
+	} else if left.sym.kind == right.sym.kind && has_operator_overloading {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}

@@ -1527,6 +1527,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.gt, .lt, .ge, .le {
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
+			} else if left_sym.kind == .struct_
+				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+				return ast.bool_type
 			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
 				&& node.op in [.eq, .lt] {
 				if !(left_sym.has_method(node.op.str()) && right_sym.has_method(node.op.str())) {
