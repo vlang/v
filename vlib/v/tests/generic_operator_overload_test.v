@@ -55,4 +55,16 @@ fn test_generic_operator_overload() {
 	lt_ret := a1 < a2
 	println(lt_ret)
 	assert !lt_ret
+
+	le_ret := a1 <= a2
+	println(le_ret)
+	assert le_ret
+
+	gt_ret := a1 > a2
+	println(gt_ret)
+	assert !gt_ret
+
+	ge_ret := a1 >= a2
+	println(ge_ret)
+	assert ge_ret
 }
