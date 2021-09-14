@@ -1356,11 +1356,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.key_in, .not_in {
 			match right_final.kind {
 				.array {
-					elem_type := right_final.array_info().elem_type
-					// if left_default.kind != right_sym.kind {
-					c.check_expected(left_type, elem_type) or {
-						c.error('left operand to `$node.op` does not match the array element type: $err.msg',
-							left_right_pos)
+					if left_sym.kind !in [.sum_type, .interface_] {
+						elem_type := right_final.array_info().elem_type
+						c.check_expected(left_type, elem_type) or {
+							c.error('left operand to `$node.op` does not match the array element type: $err.msg',
+								left_right_pos)
+						}
 					}
 				}
 				.map {
@@ -4522,8 +4523,10 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			c.check_expected(typ, elem_type) or {
-				c.error('invalid array element: $err.msg', expr.position())
+			if expr !is ast.TypeNode {
+				c.check_expected(typ, elem_type) or {
+					c.error('invalid array element: $err.msg', expr.position())
+				}
 			}
 		}
 		if node.is_fixed {

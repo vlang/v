@@ -313,6 +313,15 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	}
 }
 
+fn (mut g Gen) infix_expr_in_sumtype_interface_array(infix_exprs []ast.InfixExpr) {
+	for i in 0 .. infix_exprs.len {
+		g.infix_expr_is_op(infix_exprs[i])
+		if i != infix_exprs.len - 1 {
+			g.write(' || ')
+		}
+	}
+}
+
 // infix_expr_in_op generates code for `in` and `!in`
 fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
@@ -321,6 +330,26 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('!')
 	}
 	if right.unaliased_sym.kind == .array {
+		if left.sym.kind in [.sum_type, .interface_] {
+			if mut node.right is ast.ArrayInit {
+				if node.right.exprs.len > 0 {
+					mut infix_exprs := []ast.InfixExpr{}
+					for i in 0 .. node.right.exprs.len {
+						infix_exprs << ast.InfixExpr{
+							op: .key_is
+							left: node.left
+							left_type: node.left_type
+							right: node.right.exprs[i]
+							right_type: node.right.expr_types[i]
+						}
+					}
+					g.write('(')
+					g.infix_expr_in_sumtype_interface_array(infix_exprs)
+					g.write(')')
+					return
+				}
+			}
+		}
 		if mut node.right is ast.ArrayInit {
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`

@@ -44,6 +44,7 @@ mut:
 	inside_unsafe_fn    bool
 	inside_str_interp   bool
 	inside_array_lit    bool
+	inside_in_array     bool
 	or_is_handled       bool       // ignore `or` in this expression
 	builtin_mod         bool       // are we in the `builtin` module?
 	mod                 string     // current module name
@@ -2233,6 +2234,18 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
+		if p.inside_in_array && ((lit0_is_capital && !known_var && language == .v)
+			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
+			&& p.peek_token(2).lit[0].is_capital())
+			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0) {
+			type_pos := p.tok.position()
+			typ := p.parse_type()
+			return ast.TypeNode{
+				typ: typ
+				pos: type_pos
+			}
+		}
+
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
