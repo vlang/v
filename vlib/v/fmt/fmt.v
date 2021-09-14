@@ -133,6 +133,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
+[params]
 pub struct RemoveNewLineConfig {
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }

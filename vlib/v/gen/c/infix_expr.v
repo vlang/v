@@ -266,7 +266,32 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
 	has_operator_overloading := g.table.type_has_method(left.sym, '<')
-	if left.sym.kind == right.sym.kind && has_operator_overloading {
+	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
+		if node.op in [.le, .ge] {
+			g.write('!')
+		}
+		concrete_types := (left.sym.info as ast.Struct).concrete_types
+		mut method_name := left.sym.cname + '__lt'
+		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		g.write(method_name)
+		if node.op in [.lt, .ge] {
+			g.write('(')
+			g.write('*'.repeat(left.typ.nr_muls()))
+			g.expr(node.left)
+			g.write(', ')
+			g.write('*'.repeat(right.typ.nr_muls()))
+			g.expr(node.right)
+			g.write(')')
+		} else {
+			g.write('(')
+			g.write('*'.repeat(right.typ.nr_muls()))
+			g.expr(node.right)
+			g.write(', ')
+			g.write('*'.repeat(left.typ.nr_muls()))
+			g.expr(node.left)
+			g.write(')')
+		}
+	} else if left.sym.kind == right.sym.kind && has_operator_overloading {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
@@ -313,6 +338,15 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	}
 }
 
+fn (mut g Gen) infix_expr_in_sumtype_interface_array(infix_exprs []ast.InfixExpr) {
+	for i in 0 .. infix_exprs.len {
+		g.infix_expr_is_op(infix_exprs[i])
+		if i != infix_exprs.len - 1 {
+			g.write(' || ')
+		}
+	}
+}
+
 // infix_expr_in_op generates code for `in` and `!in`
 fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
@@ -321,6 +355,26 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('!')
 	}
 	if right.unaliased_sym.kind == .array {
+		if left.sym.kind in [.sum_type, .interface_] {
+			if mut node.right is ast.ArrayInit {
+				if node.right.exprs.len > 0 {
+					mut infix_exprs := []ast.InfixExpr{}
+					for i in 0 .. node.right.exprs.len {
+						infix_exprs << ast.InfixExpr{
+							op: .key_is
+							left: node.left
+							left_type: node.left_type
+							right: node.right.exprs[i]
+							right_type: node.right.expr_types[i]
+						}
+					}
+					g.write('(')
+					g.infix_expr_in_sumtype_interface_array(infix_exprs)
+					g.write(')')
+					return
+				}
+			}
+		}
 		if mut node.right is ast.ArrayInit {
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`

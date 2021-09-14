@@ -247,6 +247,7 @@ fn test_fixed_field() {
 	//}
 }
 */
+[params]
 struct Config {
 mut:
 	n   int

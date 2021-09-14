@@ -162,8 +162,9 @@ pub struct WindowAttribute {
 // get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array.
 // - `size` - snapshot size
 // - `step` - gap size between each snapshot, default is 1.
-// example A: arrays.window([1, 2, 3, 4], size: 2) => [[1, 2], [2, 3], [3, 4]]
-// example B: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
+//
+// example A: `arrays.window([1, 2, 3, 4], size: 2)` => `[[1, 2], [2, 3], [3, 4]]`
+// example B: `arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2)` => `[[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]`
 pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 	// allocate snapshot array
 	mut windows := [][]T{cap: list.len - attr.size + 1}
@@ -179,4 +180,103 @@ pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 	}
 
 	return windows
+}
+
+// sum up array, return nothing when array has no elements
+// NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded.
+// which means you can only pass array of numbers for now.
+// Future work: Fix generic operator overloading detection issue.
+// usage: `arrays.sum<int>([1, 2, 3, 4, 5])?` => `15`
+pub fn sum<T>(list []T) ?T {
+	if list.len == 0 {
+		return error('Cannot sum up array of nothing.')
+	} else {
+		mut head := list[0]
+
+		for i, e in list {
+			if i == 0 {
+				continue
+			} else {
+				head += e
+			}
+		}
+
+		return head
+	}
+}
+
+// accumulates values with the first element and applying providing operation to current accumulator value and each elements.
+// if the array is empty, then returns error.
+// usage: `arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })?` => `120`
+pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
+	if list.len == 0 {
+		return error('Cannot reduce array of nothing.')
+	} else {
+		mut value := list[0]
+
+		for i, e in list {
+			if i == 0 {
+				continue
+			} else {
+				value = reduce_op(value, e)
+			}
+		}
+
+		return value
+	}
+}
+
+// accumulates values with providing initial value and applying providing operation to current accumulator value and each elements.
+// usage: `arrays.fold<string, byte>(['H', 'e', 'l', 'l', 'o'], 0, fn (r int, t string) int { return r + t[0] })` => `149`
+pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
+	mut value := init
+
+	for e in list {
+		value = fold_op(value, e)
+	}
+
+	return value
+}
+
+// flattens n + 1 dimensional array into n dimensional array
+// usage: `arrays.flatten<int>([[1, 2, 3], [4, 5]])` => `[1, 2, 3, 4, 5]`
+pub fn flatten<T>(list [][]T) []T {
+	// calculate required capacity
+	mut required_size := 0
+
+	for e1 in list {
+		for _ in e1 {
+			required_size += 1
+		}
+	}
+
+	// allocate flattened array
+	mut result := []T{cap: required_size}
+
+	for e1 in list {
+		for e2 in e1 {
+			result << e2
+		}
+	}
+
+	return result
+}
+
+// grouping list of elements with given key selector.
+// usage: `arrays.assort<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len })` => `{1: ['H'], 2: ['el', 'lo']}`
+pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
+	mut result := map[K][]V{}
+
+	for v in list {
+		key := grouping_op(v)
+
+		// check if key exists, if not, then create a new array with matched value, otherwise append.
+		if key in result {
+			result[key] << v
+		} else {
+			result[key] = [v]
+		}
+	}
+
+	return result
 }

@@ -237,16 +237,7 @@ fn find_msvc(m64_target bool) ?MsvcResult {
 			'%ProgramFiles(x86)%'
 		}
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		mut target_arch := 'X64'
-		if host_arch == 'X86' {
-			if !m64_target {
-				target_arch = 'X86'
-			}
-		} else if host_arch == 'X64' {
-			if !m64_target {
-				target_arch = 'X86'
-			}
-		}
+		target_arch := if !m64_target { 'X86' } else { 'X64' }
 		wk := find_windows_kit_root(target_arch) or { return error('Unable to find windows sdk') }
 		vs := find_vs(vswhere_dir, host_arch, target_arch) or {
 			return error('Unable to find visual studio')

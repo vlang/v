@@ -1356,11 +1356,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.key_in, .not_in {
 			match right_final.kind {
 				.array {
-					elem_type := right_final.array_info().elem_type
-					// if left_default.kind != right_sym.kind {
-					c.check_expected(left_type, elem_type) or {
-						c.error('left operand to `$node.op` does not match the array element type: $err.msg',
-							left_right_pos)
+					if left_sym.kind !in [.sum_type, .interface_] {
+						elem_type := right_final.array_info().elem_type
+						c.check_expected(left_type, elem_type) or {
+							c.error('left operand to `$node.op` does not match the array element type: $err.msg',
+								left_right_pos)
+						}
 					}
 				}
 				.map {
@@ -1527,6 +1528,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.gt, .lt, .ge, .le {
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
+			} else if left_sym.kind == .struct_
+				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+				return ast.bool_type
 			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
 				&& node.op in [.eq, .lt] {
 				if !(left_sym.has_method(node.op.str()) && right_sym.has_method(node.op.str())) {
@@ -2088,15 +2092,17 @@ pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn
 		if min_required_params == nr_args + 1 {
 			last_typ := f.params.last().typ
 			last_sym := c.table.get_type_symbol(last_typ)
-			if last_sym.kind == .struct_ {
-				// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
-				node.args << ast.CallArg{
-					expr: ast.StructInit{
-						typ: last_typ
+			if last_sym.info is ast.Struct {
+				is_params := last_sym.info.attrs.filter(it.name == 'params' && !it.has_arg).len > 0
+				if is_params {
+					// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
+					node.args << ast.CallArg{
+						expr: ast.StructInit{
+							typ: last_typ
+						}
 					}
-					typ: last_typ
+					return
 				}
-				return
 			}
 		}
 		c.error('expected $min_required_params arguments, but got $nr_args', node.pos)
@@ -3899,11 +3905,12 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
-			if node.left_types.len > 0 && node.left_types[0] != ast.void_type {
+			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
-				c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
-					node.pos)
+				return
 			}
+			c.error('assignment mismatch: $node.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
+				node.pos)
 		} else {
 			c.error('assignment mismatch: $node.left.len variable(s) $right_len value(s)',
 				node.pos)
@@ -4282,6 +4289,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				.mult_assign { '*' }
 				else { 'unknown op' }
 			}
+			if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
+				continue
+			}
 			if method := left_sym.find_method(extracted_op) {
 				if method.return_type != left_type {
 					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
@@ -4519,8 +4529,10 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			c.check_expected(typ, elem_type) or {
-				c.error('invalid array element: $err.msg', expr.position())
+			if expr !is ast.TypeNode {
+				c.check_expected(typ, elem_type) or {
+					c.error('invalid array element: $err.msg', expr.position())
+				}
 			}
 		}
 		if node.is_fixed {

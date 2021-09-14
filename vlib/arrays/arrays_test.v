@@ -106,3 +106,60 @@ fn test_window() {
 	assert window<int>(x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window<int>([]int{}, size: 2) == [][]int{}
 }
+
+fn test_sum() {
+	x := [1, 2, 3, 4, 5]
+
+	assert sum<int>(x) or { 0 } == 15
+	assert sum<f64>([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
+	assert sum<int>([]int{}) or { 0 } == 0
+}
+
+fn test_reduce() {
+	x := [1, 2, 3, 4, 5]
+
+	assert reduce<int>(x, fn (t1 int, t2 int) int {
+		return t1 + t2
+	}) or { 0 } == 15
+	assert reduce<string>(['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
+		return t1 + t2
+	}) or { '' } == 'Hello' // For the sake please use array's join instead.
+	assert reduce<int>([]int{}, fn (t1 int, t2 int) int {
+		return 0
+	}) or { -1 } == -1
+}
+
+fn test_fold() {
+	x := [1, 2, 3, 4, 5]
+
+	assert fold<int, int>(x, 5, fn (r int, t int) int {
+		return r + t
+	}) == 20
+	assert fold<string, int>(['H', 'e', 'l', 'l', 'l'], 0, fn (r int, t string) int {
+		return r + t[0]
+	}) == 497
+	assert fold<int, int>([]int{}, -1, fn (t1 int, t2 int) int {
+		return 0
+	}) == -1
+}
+
+fn test_flatten() {
+	x := [[1, 2, 3], [4, 5, 6]]
+
+	assert flatten<int>(x) == [1, 2, 3, 4, 5, 6]
+	assert flatten<int>([[]int{}]) == []
+}
+
+fn test_group_by() {
+	x := ['H', 'el', 'l', 'o ']
+
+	assert group_by<int, string>(x, fn (v string) int {
+		return v.len
+	}) == {
+		1: ['H', 'l']
+		2: ['el', 'o ']
+	}
+	assert group_by<int, int>([]int{}, fn (v int) int {
+		return 0
+	}) == map[int][]int{}
+}
