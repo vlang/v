@@ -150,16 +150,16 @@ fn test_flatten() {
 	assert flatten<int>([[]int{}]) == []
 }
 
-fn test_assort() {
+fn test_group_by() {
 	x := ['H', 'el', 'l', 'o ']
 
-	assert assort<int, string>(x, fn (v string) int {
+	assert group_by<int, string>(x, fn (v string) int {
 		return v.len
 	}) == {
 		1: ['H', 'l']
 		2: ['el', 'o ']
 	}
-	assert assort<int, int>([]int{}, fn (v int) int {
+	assert group_by<int, int>([]int{}, fn (v int) int {
 		return 0
 	}) == map[int][]int{}
 }

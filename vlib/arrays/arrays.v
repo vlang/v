@@ -264,11 +264,11 @@ pub fn flatten<T>(list [][]T) []T {
 
 // grouping list of elements with given key selector.
 // usage: `arrays.assort<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len })` => `{1: ['H'], 2: ['el', 'lo']}`
-pub fn assort<K, V>(list []V, assort_op fn (v V) K) map[K][]V {
+pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 	mut result := map[K][]V{}
 
 	for v in list {
-		key := assort_op(v)
+		key := grouping_op(v)
 
 		// check if key exists, if not, then create a new array with matched value, otherwise append.
 		if key in result {
