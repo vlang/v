@@ -8,10 +8,10 @@ module arrays
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - zip - concat two arrays into one map
 
-// min returns the minimum
-pub fn min<T>(a []T) T {
+// min returns the minimum value in the array
+pub fn min<T>(a []T) ?T {
 	if a.len == 0 {
-		panic('.min called on an empty array')
+		return error('.min called on an empty array')
 	}
 	mut val := a[0]
 	for e in a {
@@ -22,10 +22,10 @@ pub fn min<T>(a []T) T {
 	return val
 }
 
-// max returns the maximum
-pub fn max<T>(a []T) T {
+// max returns the maximum the maximum value in the array
+pub fn max<T>(a []T) ?T {
 	if a.len == 0 {
-		panic('.max called on an empty array')
+		return error('.max called on an empty array')
 	}
 	mut val := a[0]
 	for e in a {
@@ -36,10 +36,10 @@ pub fn max<T>(a []T) T {
 	return val
 }
 
-// idx_min returns the index of the first minimum
-pub fn idx_min<T>(a []T) int {
+// idx_min returns the index of the minimum value in the array
+pub fn idx_min<T>(a []T) ?int {
 	if a.len == 0 {
-		panic('.idx_min called on an empty array')
+		return error('.idx_min called on an empty array')
 	}
 	mut idx := 0
 	mut val := a[0]
@@ -52,10 +52,10 @@ pub fn idx_min<T>(a []T) int {
 	return idx
 }
 
-// idx_max returns the index of the first maximum
-pub fn idx_max<T>(a []T) int {
+// idx_max returns the index of the maximum value in the array
+pub fn idx_max<T>(a []T) ?int {
 	if a.len == 0 {
-		panic('.idx_max called on an empty array')
+		return error('.idx_max called on an empty array')
 	}
 	mut idx := 0
 	mut val := a[0]

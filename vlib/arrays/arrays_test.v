@@ -1,45 +1,63 @@
 module arrays
 
-fn test_min() {
+fn test_min()? {
 	a := [8, 2, 6, 4]
-	assert min<int>(a) == 2
-	assert min<int>(a[2..]) == 4
+	mut ri := min(a)?
+	assert ri == 2
+	ri = min(a[2..])?
+	assert ri == 4
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert min<f32>(b) == f32(1.1)
-	assert min<f32>(b[..2]) == f32(3.1)
+	mut rf := min(b)?
+	assert rf == f32(1.1)
+	rf = min(b[..2])?
+	assert rf == f32(3.1)
 	c := [byte(4), 9, 3, 1]
-	assert min<byte>(c) == byte(1)
-	assert min<byte>(c[..3]) == byte(3)
+	mut rb := min(c)?
+	assert rb == byte(1)
+	rb = min(c[..3])?
+	assert rb == byte(3)
 }
 
-fn test_max() {
+fn test_max()? {
 	a := [8, 2, 6, 4]
-	assert max<int>(a) == 8
-	assert max<int>(a[1..]) == 6
+	mut ri := max(a)?
+	assert ri == 8
+	ri = max(a[1..])?
+	assert ri == 6
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert max<f32>(b) == f32(9.1)
-	assert max<f32>(b[..3]) == f32(5.1)
+	mut rf := max(b)?
+	assert rf == f32(9.1)
+	rf = max(b[..3])?
+	assert rf == f32(5.1)
 	c := [byte(4), 9, 3, 1]
-	assert max<byte>(c) == byte(9)
-	assert max<byte>(c[2..]) == byte(3)
+	mut rb := max(c)?
+	assert rb == byte(9)
+	rb = max(c[2..])?
+	assert rb == byte(3)
 }
 
-fn test_idx_min() {
+fn test_idx_min()? {
 	a := [8, 2, 6, 4]
-	assert idx_min<int>(a) == 1
+	ri := idx_min(a)?
+	assert ri == 1
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert idx_min<f32>(b) == 2
+	rf := idx_min(b)?
+	assert rf == 2
 	c := [byte(4), 9, 3, 1]
-	assert idx_min<byte>(c) == 3
+	rb := idx_min(c)?
+	assert rb == 3
 }
 
-fn test_idx_max() {
+fn test_idx_max()? {
 	a := [8, 2, 6, 4]
-	assert idx_max<int>(a) == 0
+	ri := idx_max(a)?
+	assert ri == 0
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert idx_max<f32>(b) == 3
+	rf := idx_max(b)?
+	assert rf == 3
 	c := [byte(4), 9, 3, 1]
-	assert idx_max<byte>(c) == 1
+	rb := idx_max(c)?
+	assert rb == 1
 }
 
 fn test_merge() {
