@@ -248,7 +248,7 @@ pub fn (mut ts TestSession) test() {
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
-			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
+			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
 	ts.show_list_of_failed_tests()
@@ -287,7 +287,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or { panic(err) }
+			os.rm(generated_binary_fpath) or {}
 		}
 	}
 	if !ts.vargs.contains('fmt') {
@@ -347,7 +347,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or { panic(err) }
+			os.rm(generated_binary_fpath) or {}
 		}
 	}
 	return pool.no_result
