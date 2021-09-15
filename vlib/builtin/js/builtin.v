@@ -44,7 +44,7 @@ pub fn (err IError) str() string {
 	return match err {
 		None__ { 'none' }
 		Error { err.msg }
-		else { '${typeof(err)}: $err.msg' }
+		else { 'Error: $err.msg' }
 	}
 }
 
