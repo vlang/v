@@ -271,8 +271,6 @@ fn (mut s Scanner) eat_to_end_of_line() {
 [direct_array_access; inline]
 fn (mut s Scanner) identify_key() string {
 	start := s.pos
-	s.pos++
-	s.col++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !(util.is_key_char(c) || c.is_digit() || c == `_` || c == `-`) {
@@ -282,7 +280,6 @@ fn (mut s Scanner) identify_key() string {
 		s.col++
 	}
 	key := s.text[start..s.pos]
-	// s.pos--
 	return key
 }
 
@@ -329,4 +326,10 @@ fn (mut s Scanner) identify_number() string {
 	}
 	key := s.text[start..s.pos]
 	return key
+}
+
+pub fn (mut s Scanner) excerpt(pos int, margin int) string {
+	start := if pos > 0 && pos >= margin { pos - margin } else { 0 }
+	end := if pos + margin < s.text.len { pos + margin } else { s.text.len }
+	return s.text[start..end].replace('\n', r'\n')
 }
