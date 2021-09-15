@@ -212,7 +212,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return s
+		return '$s'
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
