@@ -6,6 +6,7 @@ module http
 import io
 import net
 import net.urllib
+import rand
 import strings
 import time
 
@@ -261,6 +262,43 @@ struct MultiplePathAttributesError {
 	code int
 }
 
+// multipart_form_body converts form and file data into a multipart/form
+// HTTP request body. It is the inverse of parse_multipart_form. Returns
+// (body, boundary).
+// NB: Form keys should not contain quotes
+fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
+	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+	boundary := rand.string_from_set(alpha_numeric, 64)
+
+	mut sb := strings.new_builder(1024)
+	for name, value in form {
+		sb.write_string('\r\n--')
+		sb.write_string(boundary)
+		sb.write_string('\r\nContent-Disposition: form-data; name="')
+		sb.write_string(name)
+		sb.write_string('"\r\n\r\n')
+		sb.write_string(value)
+	}
+	for name, fs in files {
+		for f in fs {
+			sb.write_string('\r\n--')
+			sb.write_string(boundary)
+			sb.write_string('\r\nContent-Disposition: form-data; name="')
+			sb.write_string(name)
+			sb.write_string('"; filename="')
+			sb.write_string(f.filename)
+			sb.write_string('"\r\nContent-Type: ')
+			sb.write_string(f.content_type)
+			sb.write_string('\r\n\r\n')
+			sb.write_string(f.data)
+		}
+	}
+	sb.write_string('\r\n--')
+	sb.write_string(boundary)
+	sb.write_string('--')
+	return sb.str(), boundary
+}
+
 pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	sections := body.split(boundary)
 	fields := sections[1..sections.len - 1]
@@ -275,8 +313,7 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		name := disposition['name'] or { continue }
 		// Parse files
 		// TODO: filename*
-		if 'filename' in disposition {
-			filename := disposition['filename']
+		if filename := disposition['filename'] {
 			// Parse Content-Type header
 			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
 				continue
