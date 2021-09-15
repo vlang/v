@@ -4275,9 +4275,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
 			&& ((left_sym.kind == .struct_ && right_sym.kind == .struct_)
 			|| left_sym.kind == .alias) {
-			left_name := c.table.type_to_str(left_type)
-			right_name := c.table.type_to_str(right_type)
-			parent_sym := c.table.get_final_type_symbol(left_type)
+			left_name := c.table.type_to_str(left_type_unwrapped)
+			right_name := c.table.type_to_str(right_type_unwrapped)
+			parent_sym := c.table.get_final_type_symbol(left_type_unwrapped)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
 				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
 			}
@@ -4293,7 +4293,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				continue
 			}
 			if method := left_sym.find_method(extracted_op) {
-				if method.return_type != left_type {
+				if method.return_type != left_type_unwrapped {
 					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
 						node.pos)
 				}
