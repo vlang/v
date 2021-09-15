@@ -12,6 +12,10 @@ import x.toml.parser
 
 pub type Any = []Any | bool | f64 | i64 | map[string]Any | string // TODO add more builtin types - or use json2.Any + Date etc. ??
 
+pub fn (a Any) string() string {
+	return a as string
+}
+
 // Config is used to configure the toml parser.
 // Only one of the fields `text` or `file_path`, is allowed to be set at time of configuration.
 pub struct Config {
@@ -138,26 +142,31 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
 	key_split := key.split('.')
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
-	value := values[key_split[0]]
-	// `match` isn't currently very suitable for these types of sum type constructs...
-	if value is map[string]ast.Value {
-		m := (value as map[string]ast.Value)
-		next_key := key_split[1..].join('.')
-		if next_key == '' {
-			return d.ast_to_any(value)
+	if key_split[0] in values.keys() {
+		value := values[key_split[0]] or {
+			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
-		return d.get_map_value_as_any(m, next_key)
+		// `match` isn't currently very suitable for these types of sum type constructs...
+		if value is map[string]ast.Value {
+			m := (value as map[string]ast.Value)
+			next_key := key_split[1..].join('.')
+			if next_key == '' {
+				return d.ast_to_any(value)
+			}
+			return d.get_map_value_as_any(m, next_key)
+		}
+		/*
+		else if value is []ast.Value {
+			a := (value as []ast.Value)
+			mut aa := []Any
+			for val in a {
+				aa << d.ast_to_any(a)
+			}
+			return aa
+		}*/
+		return d.ast_to_any(value)
 	}
-	/*
-	else if value is []ast.Value {
-		a := (value as []ast.Value)
-		mut aa := []Any
-		for val in a {
-			aa << d.ast_to_any(a)
-		}
-		return aa
-	}*/
-	return d.ast_to_any(value)
+	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
 
 /*

@@ -60,8 +60,9 @@ fn (mut p Parser) check(check_token token.Kind) {
 	if p.tok.kind == check_token {
 		p.next()
 	} else {
+		excerpt := p.scanner.excerpt(p.tok.pos, 10)
 		panic(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected token "$check_token" but found "$p.tok.kind"')
+			' expected token "$check_token" but found "$p.tok.kind" in this text "...${excerpt}..."')
 	}
 }
 
@@ -73,8 +74,9 @@ fn (mut p Parser) expect(expected_token token.Kind) {
 	if p.tok.kind == expected_token {
 		return
 	} else {
+		excerpt := p.scanner.excerpt(p.tok.pos, 10)
 		panic(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected token "$expected_token" but found "$p.tok.kind"')
+			' expected token "$expected_token" but found "$p.tok.kind" in this text "...${excerpt}..."')
 	}
 }
 
@@ -409,15 +411,20 @@ pub fn (mut p Parser) eof() ast.EOF {
 
 fn (mut p Parser) table_exists(key string) bool {
 	if key == '' {
-		return true
+		return true // root table
 	}
 	mut t := p.root.table as map[string]ast.Value
+	return p.table_exists_r(key, t)
+}
+
+fn (mut p Parser) table_exists_r(key string, table map[string]ast.Value) bool {
 	ks := key.split('.')
 	for i in 0 .. ks.len {
 		k := ks[i]
-		if k in t {
-			if t[k] is map[string]ast.Value {
-				continue
+		if k in table.keys() {
+			val := table[k] or { ast.Null{} }
+			if val is map[string]ast.Value {
+				return p.table_exists_r(ks[1..].join('.'), val)
 			} else {
 				return false
 			}
@@ -438,12 +445,19 @@ fn (mut p Parser) find_table(key string) map[string]ast.Value {
 	ks := key.split('.')
 	for i in 0 .. ks.len {
 		k := ks[i]
-		if k in t {
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'located "$k" ...')
-			if t[k] is map[string]ast.Value {
-				t = t[k] as map[string]ast.Value
-			} else {
-				panic(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a table')
+		// Workaround overly eager: "warning: `or {}` block required when indexing a map with sum type value"
+		if k in t.keys() {
+			if val := t[k] or {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' this should never happen. Key "$k" was checked')
+			}
+			{
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'located "$k" ...')
+				if val is map[string]ast.Value {
+					t = val as map[string]ast.Value
+				} else {
+					panic(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a table')
+				}
 			}
 		} else {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating new table for "$k" ...')
