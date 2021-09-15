@@ -124,7 +124,7 @@ mut:
 }
 
 fn (mut g Gen) get_str_fn(typ ast.Type) string {
-	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0)
+	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0).clear_flag(.variadic)
 	if g.pref.nofloat {
 		if typ == ast.f32_type {
 			unwrapped = ast.u32_type
@@ -132,7 +132,10 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	styp := g.typ(unwrapped.idx())
+	if typ.has_flag(.optional) {
+		unwrapped.set_flag(.optional)
+	}
+	styp := g.typ(unwrapped)
 	mut sym := g.table.get_type_symbol(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
@@ -141,14 +144,10 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
-	mut str_type := StrType{
+	g.str_types << StrType{
 		typ: unwrapped
 		styp: styp
 	}
-	if typ.has_flag(.optional) {
-		str_type.typ.set_flag(.optional)
-	}
-	g.str_types << str_type
 	return str_fn_name
 }
 
