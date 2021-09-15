@@ -71,7 +71,13 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	str_types              []string    // types that need automatic str() generation
+	array_fn_definitions   []string    // array equality functions that have been defined
+	map_fn_definitions     []string    // map equality functions that have been defined
+	struct_fn_definitions  []string    // struct equality functions that have been defined
 	sumtype_fn_definitions []string    // sumtype equality functions that have been defined
+	alias_fn_definitions   []string    // alias equality functions that have been defined
+	auto_fn_definitions    []string    // auto generated functions defination list
+	anon_fn_definitions    []string    // anon generated functions defination list
 	method_fn_decls        map[string][]ast.FnDecl
 	builtin_fns            []string // Functions defined in `builtin`
 	empty_line             bool
