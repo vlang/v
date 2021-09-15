@@ -103,3 +103,12 @@ false = false'
 	assert value_false != toml.Any(true)
 	assert value_false as bool != true
 }
+
+fn test_single_letter_key() {
+	toml_txt := '[v]
+open_sourced = "Jun 22 2019 20:20:28"'
+	toml_doc := toml.parse(toml_txt)
+
+	value := toml_doc.value('v.open_sourced').string()
+	assert value == 'Jun 22 2019 20:20:28'
+}
