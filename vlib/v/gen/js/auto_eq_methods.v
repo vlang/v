@@ -167,7 +167,6 @@ fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 	}
 	g.array_fn_definitions << ptr_styp
 	elem := g.unwrap(left.sym.array_info().elem_type)
-	ptr_elem_styp := g.typ(elem.typ)
 
 	mut fn_builder := strings.new_builder(512)
 	defer {
@@ -273,7 +272,6 @@ fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 	}
 	g.map_fn_definitions << ptr_styp
 	value := g.unwrap(left.sym.map_info().value_type)
-	ptr_value_styp := g.typ(value.typ)
 
 	mut fn_builder := strings.new_builder(512)
 	defer {
