@@ -12,7 +12,15 @@ pub fn (k Key) str() string {
 	return k.text
 }
 
-pub type Value = Bool | Date | DateTime | Number | Quoted | Time | []Value | map[string]Value
+pub type Value = Bool
+	| Date
+	| DateTime
+	| Null
+	| Number
+	| Quoted
+	| Time
+	| []Value
+	| map[string]Value
 
 pub struct Comment {
 pub:
@@ -26,6 +34,14 @@ pub fn (c Comment) str() string {
 	s += '  pos:  $c.pos\n'
 	s += '}'
 	return s
+}
+
+// Null is used in sumtype checks as a "default" value when nothing else is possible.
+pub struct Null {
+}
+
+pub fn (n Null) str() string {
+	return 'Null'
 }
 
 pub struct Quoted {
