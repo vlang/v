@@ -12,6 +12,18 @@ import x.toml.parser
 
 pub type Any = []Any | bool | f64 | i64 | map[string]Any | string // TODO add more builtin types - or use json2.Any + Date etc. ??
 
+pub fn (a Any) bool() bool {
+	return a as bool
+}
+
+pub fn (a Any) f64() f64 {
+	return a as f64
+}
+
+pub fn (a Any) i64() i64 {
+	return a as i64
+}
+
 pub fn (a Any) string() string {
 	return a as string
 }

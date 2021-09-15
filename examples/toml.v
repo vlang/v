@@ -17,5 +17,7 @@ enabled = true'
 fn main() {
 	doc := toml.parse(toml_text)
 	title := doc.value('title').string()
-	println(title)
+	println('title: "$title"')
+	net_ip := doc.value('network.ip').string()
+	println('network IP: "$net_ip"')
 }
