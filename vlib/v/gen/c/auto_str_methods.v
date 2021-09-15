@@ -123,7 +123,7 @@ mut:
 	typ ast.Type
 }
 
-fn (mut g Gen) get_str_fn(_typ ast.Type) string {
+fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0)
 	if g.pref.nofloat {
 		if typ == ast.f32_type {
