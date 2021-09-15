@@ -73,16 +73,16 @@ pub mut:
 	returns        bool
 	scope_returns  bool
 	mod            string // current module name
-	is_builtin_mod bool   // are we in `builtin`?
-	inside_unsafe  bool
-	inside_const   bool
-	inside_anon_fn bool
-	inside_ref_lit bool
-	inside_defer   bool
-	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
-	inside_ct_attr bool // true inside [if expr]
-	skip_flags     bool // should `#flag` and `#include` be skipped
-	fn_level       int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	is_builtin_mod bool   // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	inside_unsafe  bool   // true inside `unsafe {}` blocks
+	inside_const   bool   // true inside `const ( ... )` blocks
+	inside_anon_fn bool   // true inside `fn() { ... }()`
+	inside_ref_lit bool   // true inside `a := &something`
+	inside_defer   bool   // true inside `defer {}` blocks
+	inside_fn_arg  bool   // `a`, `b` in `a.f(b)`
+	inside_ct_attr bool   // true inside `[if expr]`
+	skip_flags     bool   // should `#flag` and `#include` be skipped
+	fn_level       int    // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	ct_cond_stack  []ast.Expr
 mut:
 	files                            []ast.File
@@ -104,6 +104,7 @@ mut:
 	inside_selector_expr     bool
 	inside_println_arg       bool
 	inside_decl_rhs          bool
+	inside_if_guard          bool // true inside the guard condition of `if x := opt() {}`
 	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
 }
 
@@ -5480,7 +5481,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			return c.if_expr(mut node)
 		}
 		ast.IfGuardExpr {
+			old_inside_if_guard := c.inside_if_guard
+			c.inside_if_guard = true
 			node.expr_type = c.expr(node.expr)
+			c.inside_if_guard = old_inside_if_guard
 			if !node.expr_type.has_flag(.optional) {
 				mut no_opt := true
 				match mut node.expr {
@@ -5997,8 +6001,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						if mut obj.expr is ast.IfGuardExpr {
 							// new variable from if guard shouldn't have the optional flag for further use
 							// a temp variable will be generated which unwraps it
-							if_guard_var_type := c.expr(obj.expr.expr)
-							typ = if_guard_var_type.clear_flag(.optional)
+							typ = obj.expr.expr_type.clear_flag(.optional)
 						} else {
 							typ = c.expr(obj.expr)
 						}
@@ -7462,7 +7465,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 			value_sym := c.table.get_type_symbol(info.value_type)
 			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent
-				&& !c.inside_unsafe {
+				&& !c.inside_unsafe && !c.inside_if_guard {
 				c.warn('`or {}` block required when indexing a map with sum type value',
 					node.pos)
 			}
