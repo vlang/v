@@ -139,7 +139,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		}
 	}
 	for mut stmt in ast_file.stmts {
-		if stmt is ast.ConstDecl || stmt is ast.ExprStmt {
+		if stmt in [ast.ConstDecl, ast.ExprStmt] {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
@@ -1971,8 +1971,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			if arg.typ != ast.string_type {
 				continue
 			}
-			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral
-				|| arg.expr is ast.SelectorExpr {
+			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
 				// Simple expressions like variables, string literals, selector expressions
 				// (`x.field`) can't result in allocations and don't need to be assigned to
 				// temporary vars.
@@ -1982,8 +1981,8 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.args[i].is_tmp_autofree = true
 		}
 		// TODO copy pasta from above
-		if node.receiver_type == ast.string_type && !(node.left is ast.Ident
-			|| node.left is ast.StringLiteral || node.left is ast.SelectorExpr) {
+		if node.receiver_type == ast.string_type
+			&& node.left !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
 			node.free_receiver = true
 		}
 	}
@@ -3882,8 +3881,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, right in node.right {
-		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
-			|| right is ast.MatchExpr {
+		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr] {
 			right_type := c.expr(right)
 			if i == 0 {
 				right_type0 = right_type
@@ -3940,7 +3938,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
 		if !is_decl && !is_blank_ident {
-			if left is ast.Ident || left is ast.SelectorExpr {
+			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
 			}
 			left_type = c.expr(left)
@@ -4942,8 +4940,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	if node.cond is ast.InfixExpr {
 		infix := node.cond
 		if infix.op == .key_is {
-			if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
-				&& infix.right is ast.TypeNode {
+			if infix.left in [ast.Ident, ast.SelectorExpr] && infix.right is ast.TypeNode {
 				is_variable := if mut infix.left is ast.Ident {
 					infix.left.kind == .variable
 				} else {
@@ -6698,8 +6695,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
 				}
-				if (node.left is ast.Ident || node.left is ast.SelectorExpr)
-					&& node.right is ast.TypeNode {
+				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
 					is_variable := if mut node.left is ast.Ident {
 						node.left.kind == .variable
 					} else {
@@ -6984,7 +6980,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 							// c.error('`$sym.name` is not an interface', cond.right.position())
 						}
 						return false
-					} else if cond.left is ast.SelectorExpr || cond.left is ast.TypeNode {
+					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
 						return false
@@ -7148,7 +7144,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	mut has_complexity := false
 	for s in stmts {
 		if s is ast.ExprStmt {
-			if s.expr is ast.IfExpr || s.expr is ast.MatchExpr {
+			if s.expr in [ast.IfExpr, ast.MatchExpr] {
 				has_complexity = true
 				break
 			}
