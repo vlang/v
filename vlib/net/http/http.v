@@ -81,8 +81,8 @@ pub fn post_form(url string, data map[string]string) ?Response {
 }
 
 pub struct PostMultipartFormConfig {
-	form map[string]string,
-	files map[string][]FileData,
+	form  map[string]string
+	files map[string][]FileData
 }
 
 // post_multipart_form sends a POST HTTP request to the URL with multipart form data
