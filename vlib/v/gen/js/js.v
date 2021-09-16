@@ -558,11 +558,9 @@ fn (mut g JsGen) js_name(name_ string) string {
 }
 
 fn (mut g JsGen) stmts(stmts []ast.Stmt) {
-	g.inc_indent()
 	for stmt in stmts {
 		g.stmt(stmt)
 	}
-	g.dec_indent()
 }
 
 [inline]
@@ -1275,7 +1273,9 @@ fn (mut g JsGen) gen_attrs(attrs []ast.Attr) {
 
 fn (mut g JsGen) gen_block(it ast.Block) {
 	g.writeln('{')
+	g.inc_indent()
 	g.stmts(it.stmts)
+	g.dec_indent()
 	g.writeln('}')
 }
 
@@ -1362,11 +1362,6 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	if it.language == .js {
 		return
 	}
-	/*
-	if res == .struct_method {
-		// Struct methods are handled by class generation code.
-		return
-	}*/
 	if g.inside_builtin {
 		g.builtin_fns << it.name
 	}
