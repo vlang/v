@@ -15,16 +15,16 @@ fn main() {
 		eprintln('`n` must be between 3 and 200!')
 		exit(1)
 	}
-	
+
 	print('\n')
 	title := ' Rule 110 V Implementation '
 	title_len := title.len
 	if n > title_len {
-		for _ in 0 .. (n - title_len)/2 {
+		for _ in 0 .. (n - title_len) / 2 {
 			print('=')
 		}
 		print(title)
-		for _ in 0 .. (n - title_len)/2 {
+		for _ in 0 .. (n - title_len) / 2 {
 			print('=')
 		}
 	} else {
@@ -37,8 +37,7 @@ fn main() {
 	}
 	print('\n')
 
-	//println('Random generated first automaton content: $generation_bin')
-
+	// println('Random generated first automaton content: $generation_bin')
 	for _ in 0 .. n {
 		print_generation(generation_bin)
 		next_generation(mut generation_bin)
@@ -58,15 +57,15 @@ fn next_generation(mut gen []int) {
 	mut prev := 0
 	mut curr := 0
 	mut next := 0
-	for i in 0 .. arr.len  {
-		if (i-1) % gen.len < 0 {
+	for i in 0 .. arr.len {
+		if (i - 1) % gen.len < 0 {
 			prev = gen[gen.len - 1]
 		} else {
-			prev = gen[(i-1) % gen.len]
+			prev = gen[(i - 1) % gen.len]
 		}
 		curr = gen[i]
-		next = gen[(i+1) % gen.len]
-			
+		next = gen[(i + 1) % gen.len]
+
 		if prev == 1 {
 			if curr == 1 {
 				if next == 1 { // 111
