@@ -128,6 +128,24 @@ ${contents[1]}
 	}
 }
 
+fn test_multipart_form_body() {
+	files := {
+		'foo': [FileData{
+			filename: 'bar.v'
+			content_type: 'application/octet-stream'
+			data: 'baz'
+		}]
+	}
+	form := {
+		'fooz': 'buzz'
+	}
+
+	body, boundary := multipart_form_body(form, files)
+	parsed_form, parsed_files := parse_multipart_form(body, boundary)
+	assert parsed_files == files
+	assert parsed_form == form
+}
+
 fn test_parse_large_body() ? {
 	body := 'A'.repeat(101) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
