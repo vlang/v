@@ -12,6 +12,9 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	g.sumtype_fn_definitions << ptr_styp
 	info := left.sym.sumtype_info()
 	mut fn_builder := strings.new_builder(512)
+	defer {
+		g.definitions.writeln(fn_builder.str())
+	}
 	fn_builder.writeln('function ${ptr_styp}_sumtype_eq(a,b) {')
 	fn_builder.writeln('\tlet aProto = Object.getPrototypeOf(a);')
 	fn_builder.writeln('\tlet bProto = Object.getPrototypeOf(b);')
@@ -48,7 +51,7 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	}
 	fn_builder.writeln('\treturn new bool(false);')
 	fn_builder.writeln('}')
-	g.definitions.writeln(fn_builder.str())
+
 	return ptr_styp
 }
 
