@@ -95,3 +95,10 @@ pub fn execute(cmd string) Result {
 		output: stdout
 	}
 }
+
+pub fn is_atty(fd int) int {
+	res := 0
+	#res.val = +tty.isatty(fd.val)
+
+	return res
+}
