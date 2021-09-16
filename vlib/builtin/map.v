@@ -480,7 +480,6 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 		// Key not found, insert key with zero-value
 		m.set(key, zero)
 	}
-	assert false
 	return voidptr(0)
 }
 
