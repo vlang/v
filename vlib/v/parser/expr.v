@@ -480,7 +480,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if is_key_in {
 		p.inside_in_array = false
 	}
-
 	p.expecting_type = prev_expecting_type
 	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit
 		&& (right as ast.ArrayInit).exprs.len == 1 {
@@ -512,6 +511,9 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			or_kind = .propagate
 		}
 		p.or_is_handled = false
+	}
+	if op == .unsigned_right_shift {
+		println(left.type)
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InfixExpr{

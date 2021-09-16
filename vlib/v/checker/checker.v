@@ -1594,6 +1594,17 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.right_shift {
 			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
+		.unsigned_right_shift {
+			if left_type.is_int_literal() {
+				
+			} else if !left_type.is_signed() {
+
+			}
+
+			println(left_type)
+
+			return c.check_shift(left_type, right_type, left_pos, right_pos)
+		}
 		.key_is, .not_is {
 			right_expr := node.right
 			mut typ := match right_expr {
