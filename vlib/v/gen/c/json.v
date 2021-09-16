@@ -117,6 +117,8 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 		mut is_raw := false
 		mut is_skip := false
 		mut is_required := false
+		mut is_omit_empty := false
+
 		for attr in field.attrs {
 			match attr.name {
 				'json' {
@@ -130,6 +132,9 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				}
 				'required' {
 					is_required = true
+				}
+				'omitempty' {
+					is_omit_empty = true
 				}
 				else {}
 			}
@@ -184,6 +189,9 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 		}
 		// Encoding
 		mut enc_name := js_enc_name(field_type)
+		if is_omit_empty {
+			enc.writeln('\t if (val.${c_name(field.name)} != ${g.type_default(field.typ)}) \n')
+		}
 		if !is_js_prim(field_type) {
 			if field_sym.kind == .alias {
 				ainfo := field_sym.info as ast.Alias
