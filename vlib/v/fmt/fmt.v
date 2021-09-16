@@ -211,12 +211,15 @@ pub fn (mut f Fmt) short_module(name string) string {
 	}
 	if name.ends_with('>') {
 		x := name.trim_suffix('>').split('<')
-		if x.len == 2 {
-			main := f.short_module(x[0])
-			genlist := x[1].split(',')
+		main := f.short_module(x[0])
+		mut res := '$main'
+		for i in 1..x.len {
+			genlist := x[i].split(',')
 			genshorts := genlist.map(f.short_module(it)).join(',')
-			return '$main<$genshorts>'
+			res += '<$genshorts'
 		}
+		res += '>'
+		return res
 	}
 	vals := name.split('.')
 	if vals.len < 2 {
