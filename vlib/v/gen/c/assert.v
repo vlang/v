@@ -12,19 +12,11 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut node := original_assert_statement
 	g.writeln('// assert')
 	if mut node.expr is ast.InfixExpr {
-		if mut node.expr.left is ast.CallExpr {
-			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
-		} else if mut node.expr.left is ast.ParExpr {
-			if node.expr.left.expr is ast.CallExpr {
-				node.expr.left = g.new_ctemp_var_then_gen(node.expr.left.expr, node.expr.left_type)
-			}
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			node.expr.left = subst_expr
 		}
-		if mut node.expr.right is ast.CallExpr {
-			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
-		} else if mut node.expr.right is ast.ParExpr {
-			if node.expr.right.expr is ast.CallExpr {
-				node.expr.right = g.new_ctemp_var_then_gen(node.expr.right.expr, node.expr.right_type)
-			}
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			node.expr.right = subst_expr
 		}
 	}
 	g.inside_ternary++
@@ -58,6 +50,39 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
 	}
+}
+
+struct UnsupportedAssertCtempTransform {
+	msg  string
+	code int
+}
+
+const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
+
+fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+	match expr {
+		ast.CallExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
+		}
+		ast.ParExpr {
+			if expr.expr is ast.CallExpr {
+				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.CallExpr {
+				sym := g.table.get_final_type_symbol(g.unwrap_generic(expr.expr.return_type))
+				if sym.kind == .struct_ {
+					if (sym.info as ast.Struct).is_union {
+						return c.unsupported_ctemp_assert_transform
+					}
+				}
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {}
+	}
+	return c.unsupported_ctemp_assert_transform
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
