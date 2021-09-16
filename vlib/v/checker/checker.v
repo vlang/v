@@ -6709,6 +6709,8 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 				}
 			}
 		}
+	} else if node is ast.Likely {
+		c.smartcast_if_conds(node.expr, mut scope)
 	}
 }
 
