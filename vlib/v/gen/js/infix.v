@@ -91,17 +91,88 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
-		// TODO: Actually generate equality methods
-		if node.op == .ne {
-			g.write('!')
+		match left.sym.kind {
+			.alias {
+				ptr_typ := g.gen_alias_equality_fn(left.typ)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_alias_eq(')
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			.array {
+				ptr_typ := g.gen_array_equality_fn(left.unaliased.clear_flag(.shared_f))
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_arr_eq(')
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			.array_fixed {
+				ptr_typ := g.gen_fixed_array_equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_arr_eq(')
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			.map {
+				ptr_typ := g.gen_map_equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_map_eq(')
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			.struct_ {
+				ptr_typ := g.gen_struct_equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_struct_eq(')
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			.sum_type {
+				ptr_typ := g.gen_sumtype_equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_sumtype_eq(')
+
+				g.expr(node.left)
+				g.gen_deref_ptr(node.left_type)
+				g.write(', ')
+				g.expr(node.right)
+				g.gen_deref_ptr(node.right_type)
+				g.write(')')
+			}
+			else {}
 		}
-		g.write('vEq(')
-		g.expr(node.left)
-		g.gen_deref_ptr(node.left_type)
-		g.write(',')
-		g.expr(node.right)
-		g.gen_deref_ptr(node.right_type)
-		g.write(')')
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
