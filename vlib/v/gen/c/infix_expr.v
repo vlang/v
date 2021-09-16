@@ -63,7 +63,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		elem_styp := g.typ(elem_type)
-		g.register_chan_push_optional_call(elem_styp, styp)
+		g.register_chan_push_optional_fn(elem_styp, styp)
 		g.write('Option_void $tmp_opt = __Option_${styp}_pushval(')
 	} else {
 		g.write('__${styp}_pushval(')
@@ -114,7 +114,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
 		match left.sym.kind {
 			.alias {
-				ptr_typ := g.gen_alias_equality_fn(left.typ)
+				ptr_typ := g.equality_fn(left.typ)
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -131,7 +131,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.array {
-				ptr_typ := g.gen_array_equality_fn(left.unaliased.clear_flag(.shared_f))
+				ptr_typ := g.equality_fn(left.unaliased.clear_flag(.shared_f))
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -141,11 +141,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.left)
 				if left.typ.has_flag(.shared_f) {
-					if left.typ.is_ptr() {
-						g.write('->val')
-					} else {
-						g.write('.val')
-					}
+					g.write('->val')
 				}
 				g.write(', ')
 				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
@@ -153,16 +149,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				if right.typ.has_flag(.shared_f) {
-					if right.typ.is_ptr() {
-						g.write('->val')
-					} else {
-						g.write('.val')
-					}
+					g.write('->val')
 				}
 				g.write(')')
 			}
 			.array_fixed {
-				ptr_typ := g.gen_fixed_array_equality_fn(left.unaliased)
+				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -184,7 +176,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.map {
-				ptr_typ := g.gen_map_equality_fn(left.unaliased)
+				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -201,7 +193,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct_ {
-				ptr_typ := g.gen_struct_equality_fn(left.unaliased)
+				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -218,7 +210,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.sum_type {
-				ptr_typ := g.gen_sumtype_equality_fn(left.unaliased)
+				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
 				}
@@ -385,19 +377,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				return
 			}
 		}
-		fn_name := g.gen_array_contains_method(node.right_type)
-		g.write('(${fn_name}(')
-		if right.typ.is_ptr() && right.typ.share() != .shared_t {
-			g.write('*')
-		}
-		g.expr(node.right)
-		if right.typ.share() == .shared_t {
-			g.write('->val')
-		}
-		g.write(', ')
-		g.expr(node.left)
-		g.write('))')
-		return
+		g.gen_array_contains(node.right_type, node.right, node.left)
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
@@ -437,7 +417,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 		if is_str {
 			g.write('string__eq(')
 		} else if is_array {
-			ptr_typ := g.gen_array_equality_fn(right.elem_type)
+			ptr_typ := g.equality_fn(right.elem_type)
 			g.write('${ptr_typ}_arr_eq(')
 		}
 		g.expr(left)
@@ -580,10 +560,16 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			elem_type_str := g.typ(array_info.elem_type)
 			elem_sym := g.table.get_type_symbol(array_info.elem_type)
 			g.write('array_push${noscan}((array*)')
-			if !left.typ.is_ptr() {
+			if node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr() {
+			}
+			if !left.typ.is_ptr()
+				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {
 				g.write('&')
 			}
 			g.expr(node.left)
+			if node.left_type.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
 			} else {

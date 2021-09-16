@@ -14,7 +14,6 @@ pub fn (mut g Gen) gen_c_main() {
 	main_fn_start_pos := g.out.len
 
 	is_sokol := 'sokol' in g.table.imports
-
 	if (g.pref.os == .android && g.pref.is_apk) || (g.pref.os == .ios && is_sokol) {
 		g.gen_c_android_sokol_main()
 	} else {

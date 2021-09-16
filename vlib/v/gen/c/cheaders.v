@@ -23,14 +23,14 @@ const c_current_commit_hash_default = '
 
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
-struct __shared_map { map val; sync__RwMutex mtx; };
+struct __shared_map { sync__RwMutex mtx; map val; };
 static inline voidptr __dup_shared_map(voidptr src, int sz) {
 	__shared_map* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
 typedef struct __shared_array __shared_array;
-struct __shared_array { array val; sync__RwMutex mtx; };
+struct __shared_array { sync__RwMutex mtx; array val; };
 static inline voidptr __dup_shared_array(voidptr src, int sz) {
 	__shared_array* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
@@ -451,6 +451,7 @@ voidptr memdup(voidptr src, int sz);
 
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
+	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
 
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)

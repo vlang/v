@@ -5,13 +5,52 @@ module c
 import strings
 import v.ast
 
+fn (mut g Gen) equality_fn(typ ast.Type) string {
+	g.needed_equality_fns << typ.set_nr_muls(0)
+	return g.typ(g.unwrap_generic(typ).set_nr_muls(0))
+}
+
+fn (mut g Gen) gen_equality_fns() {
+	for needed_typ in g.needed_equality_fns {
+		if needed_typ in g.generated_eq_fns {
+			continue
+		}
+		sym := g.table.get_type_symbol(needed_typ)
+		match sym.kind {
+			.sum_type {
+				g.gen_sumtype_equality_fn(needed_typ)
+			}
+			.struct_ {
+				g.gen_struct_equality_fn(needed_typ)
+			}
+			.array {
+				g.gen_array_equality_fn(needed_typ)
+			}
+			.array_fixed {
+				g.gen_fixed_array_equality_fn(needed_typ)
+			}
+			.map {
+				g.gen_map_equality_fn(needed_typ)
+			}
+			.alias {
+				g.gen_alias_equality_fn(needed_typ)
+			}
+			else {
+				verror('could not generate equality function for type $sym.kind')
+			}
+		}
+	}
+}
+
 fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.sumtype_fn_definitions {
+
+	if left_type in g.generated_eq_fns {
 		return ptr_styp
 	}
-	g.sumtype_fn_definitions << ptr_styp
+	g.generated_eq_fns << left_type
+
 	info := left.sym.sumtype_info()
 	g.type_definitions.writeln('static bool ${ptr_styp}_sumtype_eq($ptr_styp a, $ptr_styp b); // auto')
 
@@ -59,10 +98,10 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
 	fn_name := ptr_styp.replace('struct ', '')
-	if fn_name in g.struct_fn_definitions {
+	if left_type in g.generated_eq_fns {
 		return fn_name
 	}
-	g.struct_fn_definitions << fn_name
+	g.generated_eq_fns << left_type
 	info := left.sym.struct_info()
 	g.type_definitions.writeln('static bool ${fn_name}_struct_eq($ptr_styp a, $ptr_styp b); // auto')
 
@@ -124,10 +163,10 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.alias_fn_definitions {
+	if left_type in g.generated_eq_fns {
 		return ptr_styp
 	}
-	g.alias_fn_definitions << ptr_styp
+	g.generated_eq_fns << left_type
 	info := left.sym.info as ast.Alias
 	g.type_definitions.writeln('static bool ${ptr_styp}_alias_eq($ptr_styp a, $ptr_styp b); // auto')
 
@@ -164,10 +203,10 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.array_fn_definitions {
+	if left_type in g.generated_eq_fns {
 		return ptr_styp
 	}
-	g.array_fn_definitions << ptr_styp
+	g.generated_eq_fns << left_type
 	elem := g.unwrap(left.sym.array_info().elem_type)
 	ptr_elem_styp := g.typ(elem.typ)
 	g.type_definitions.writeln('static bool ${ptr_styp}_arr_eq($ptr_styp a, $ptr_styp b); // auto')
@@ -216,10 +255,10 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.array_fn_definitions {
+	if left_type in g.generated_eq_fns {
 		return ptr_styp
 	}
-	g.array_fn_definitions << ptr_styp
+	g.generated_eq_fns << left_type
 	elem_info := left.sym.array_fixed_info()
 	elem := g.unwrap(elem_info.elem_type)
 	size := elem_info.size
@@ -266,10 +305,10 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	if ptr_styp in g.map_fn_definitions {
+	if left_type in g.generated_eq_fns {
 		return ptr_styp
 	}
-	g.map_fn_definitions << ptr_styp
+	g.generated_eq_fns << left_type
 	value := g.unwrap(left.sym.map_info().value_type)
 	ptr_value_styp := g.typ(value.typ)
 	g.type_definitions.writeln('static bool ${ptr_styp}_map_eq($ptr_styp a, $ptr_styp b); // auto')
