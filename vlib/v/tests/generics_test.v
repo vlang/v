@@ -481,7 +481,6 @@ fn return_one<T>(rec int, useless T) T {
 	return T(0)
 }
 
-/*
 struct MultiLevel<T> {
 	foo T
 }
@@ -504,7 +503,6 @@ fn test_multi_level_generics() {
 	assert three.foo.foo.foo == 10
 	assert print_multilevel_foo<MultiLevel<int>>(two) == 10
 }
-*/
 
 fn test_generic_detection() {
 	v1, v2 := -1, 1
