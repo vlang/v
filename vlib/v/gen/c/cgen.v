@@ -2647,7 +2647,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut ident := ast.Ident{
 			scope: 0
 		}
-		left_sym := g.table.get_type_symbol(var_type)
+		left_sym := g.table.get_type_symbol(g.unwrap_generic(var_type))
 		if left is ast.Ident {
 			ident = left
 			// id_info := ident.var_info()
