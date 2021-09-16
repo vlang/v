@@ -279,24 +279,24 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.writeln('')
 	g.writeln('globalThis.VTEST=1')
 	if g.pref.is_stats {
-		g.writeln('let bt = start_testing($all_tfuncs.len, "$g.pref.path")')
+		g.writeln('let bt = main__start_testing(new int($all_tfuncs.len), new string("$g.pref.path"))')
 	}
 	for tname in all_tfuncs {
 		tcname := g.js_name(tname)
 
 		if g.pref.is_stats {
-			g.writeln('bt.testing_step_start("$tcname")')
+			g.writeln('main__BenchedTests_testing_step_start(bt,new string("$tcname"))')
 		}
 
 		g.writeln('try { ${tcname}(); } catch (_e) {} ')
 		if g.pref.is_stats {
-			g.writeln('bt.testing_step_end();')
+			g.writeln('main__BenchedTests_testing_step_end(bt);')
 		}
 	}
 
 	g.writeln('')
 	if g.pref.is_stats {
-		g.writeln('bt.end_testing();')
+		g.writeln('main__BenchedTests_end_testing(bt);')
 	}
 	g.dec_indent()
 	g.writeln('}')
@@ -555,6 +555,11 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 	}
 }
 
+fn (mut g JsGen) gen_alias_type_decl(node ast.AliasTypeDecl) {
+	name := if g.ns.name == 'builtin' { node.name } else { '${g.js_name(g.ns.name)}__$node.name' }
+	g.writeln('function ${name}(val) { return val;  }')
+}
+
 fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
 	match node {
@@ -758,7 +763,12 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_struct_decl(node)
 		}
 		ast.TypeDecl {
-			// skip JS has no typedecl
+			match node {
+				ast.AliasTypeDecl {
+					g.gen_alias_type_decl(node)
+				}
+				else {}
+			}
 		}
 	}
 }
@@ -1278,7 +1288,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
-	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+	sym := g.table.get_final_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	match mut sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -2211,11 +2221,12 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.valueOf()')
 		}
 		g.write('.arr')
-		g.write('[+')
+		g.write('[Number(')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
+		g.write('.valueOf()')
 		g.cast_stack.delete_last()
-		g.write(']')
+		g.write(')]')
 	}
 }
 
