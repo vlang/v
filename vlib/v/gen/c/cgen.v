@@ -2722,9 +2722,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		right_sym := g.table.get_type_symbol(unwrapped_val_type)
 		unaliased_right_sym := g.table.get_final_type_symbol(unwrapped_val_type)
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
-			&& (val is ast.Ident || val is ast.IndexExpr || val is ast.CallExpr
-			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit)
-			|| val is ast.SelectorExpr)
+			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr]
+			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit))
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
 		if val_type.has_flag(.optional) {
@@ -2877,7 +2876,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						}
 					}
 				}
-				if left is ast.Ident || left is ast.SelectorExpr {
+				if left in [ast.Ident, ast.SelectorExpr] {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_var || is_decl {
@@ -3826,7 +3825,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('.data)')
 	}
 	// struct embedding
-	if sym.info is ast.Struct || sym.info is ast.Aggregate {
+	if sym.info in [ast.Struct, ast.Aggregate] {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()
@@ -3985,8 +3984,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
-					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
-						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+					if stmt.expr in [ast.CallExpr, ast.IfExpr, ast.MatchExpr]
+						|| (stmt.expr is ast.IndexExpr
 						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
 						return true
 					}
@@ -4012,8 +4011,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if is_expr && !need_tmp_var {
 		g.inside_ternary++
 	}
-	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
-		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
+	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
+		ast.FloatLiteral,
+	] {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
@@ -4336,8 +4336,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					// send expression
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
-					if expr.right is ast.Ident || expr.right is ast.IndexExpr
-						|| expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
+					if expr.right in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.StructInit] {
 						// addressable objects in the `C` output
 						objs << expr.right
 						tmp_objs << ''
