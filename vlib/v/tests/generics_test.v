@@ -481,6 +481,35 @@ fn return_one<T>(rec int, useless T) T {
 	return T(0)
 }
 
+struct MultiLevel<T> {
+	foo T
+}
+
+fn get_multilevel_foo<T>(bar MultiLevel<T>) int {
+	return bar.foo.foo
+}
+
+fn get_multilevel_foo_2<T, U>(bar T, baz U) int {
+	return bar.foo.foo + baz.foo.foo
+}
+
+fn test_multi_level_generics() {
+	one := MultiLevel<int>{
+		foo: 10
+	}
+	two := MultiLevel<MultiLevel<int>>{
+		foo: one
+	}
+	assert two.foo.foo == 10
+	three := MultiLevel<MultiLevel<MultiLevel<int>>>{
+		foo: two
+	}
+	assert three.foo.foo.foo == 10
+	assert get_multilevel_foo<MultiLevel<int>>(two) == 10
+	assert get_multilevel_foo_2<MultiLevel<MultiLevel<int>>, MultiLevel<MultiLevel<int>>>(two,
+		two) == 20
+}
+
 fn test_generic_detection() {
 	v1, v2 := -1, 1
 
@@ -493,7 +522,7 @@ fn test_generic_detection() {
 	// generic
 	assert multi_generic_args<int, string>(0, 's')
 	assert multi_generic_args<Foo1, Foo2>(Foo1{}, Foo2{})
-	assert multi_generic_args<Foo<int>, Foo<int> >(Foo<int>{}, Foo<int>{})
+	assert multi_generic_args<Foo<int>, Foo<int>>(Foo<int>{}, Foo<int>{})
 
 	// TODO: assert multi_generic_args<Foo<int>, Foo<int>>(Foo1{}, Foo2{})
 	assert multi_generic_args<simplemodule.Data, int>(simplemodule.Data{}, 0)

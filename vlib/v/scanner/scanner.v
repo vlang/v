@@ -916,9 +916,14 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
-					if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
-						s.pos += 2
-						return s.new_token(.right_shift_assign, '', 3)
+					if s.pos + 2 < s.text.len {
+						if s.text[s.pos + 2] == `=` {
+							s.pos += 2
+							return s.new_token(.right_shift_assign, '', 3)
+						} else if s.text[s.pos + 2] in [`(`, `)`, `{`, `>`, `,`] {
+							// multi-level generics such as Foo<Bar<baz>>{ }, func<Bar<baz>>( ), etc
+							return s.new_token(.gt, '', 1)
+						}
 					}
 					s.pos++
 					return s.new_token(.right_shift, '', 2)
