@@ -1702,8 +1702,8 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
-					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
-						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+					if stmt.expr in [ast.CallExpr, ast.IfExpr, ast.MatchExpr]
+						|| (stmt.expr is ast.IndexExpr
 						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
 						return true
 					}
@@ -1867,9 +1867,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary = true
 	}
 
-	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
-		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral
-		|| node.cond is ast.CallExpr {
+	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
+		ast.FloatLiteral, ast.CallExpr] {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
