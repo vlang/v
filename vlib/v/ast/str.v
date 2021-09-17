@@ -149,8 +149,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 				f.write_string('...')
 			}
 			if s[s.len - 1] == `>` {
-				short_module_s := s.split('<').map(it.after('.')).join('<')
-				f.write_string(short_module_s)
+				f.write_string(s.split('<').map(it.after('.')).join('<'))
 			} else {
 				f.write_string(s)
 			}
