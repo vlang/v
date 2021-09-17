@@ -1588,7 +1588,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			f.write(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias))
+			f.write(f.short_module(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)))
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
