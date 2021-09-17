@@ -920,7 +920,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						if s.text[s.pos + 2] == `=` {
 							s.pos += 2
 							return s.new_token(.right_shift_assign, '', 3)
-						} else if s.text[s.pos + 2] in [`(`, `)`, `{`, `}`, `>`, `,`] {
+						} else if s.text[s.pos + 2] in [`(`, `)`, `{`, `>`, `,`] {
 							// multi-level generics such as Foo<Bar<baz>>{ }, func<Bar<baz>>( ), etc
 							return s.new_token(.gt, '', 1)
 						}
