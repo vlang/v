@@ -1382,10 +1382,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		line_break := f.array_init_break[f.array_init_depth - 1]
 		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
-			if i == 0 || should_decrease_arr_penalty(node.exprs[i - 1]) {
+			if i == 0
+				|| node.exprs[i - 1] in [ast.ArrayInit, ast.StructInit, ast.MapInit, ast.CallExpr] {
 				penalty--
 			}
-			if should_decrease_arr_penalty(expr) {
+			if expr in [ast.ArrayInit, ast.StructInit, ast.MapInit, ast.CallExpr] {
 				penalty--
 			}
 		}
@@ -1502,13 +1503,6 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			f.write('{}')
 		}
 	}
-}
-
-fn should_decrease_arr_penalty(e ast.Expr) bool {
-	if e is ast.ArrayInit || e is ast.StructInit || e is ast.MapInit || e is ast.CallExpr {
-		return true
-	}
-	return false
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
@@ -1794,8 +1788,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				cur_pos := f.out.len
 				f.expr(branch.cond)
 				cond_len := f.out.len - cur_pos
-				is_cond_wrapped := cond_len > 0
-					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
+				is_cond_wrapped := cond_len > 0 && branch.cond in [ast.IfGuardExpr, ast.CallExpr]
 					&& f.out.last_n(cond_len).contains('\n')
 				if is_cond_wrapped {
 					f.writeln('')
