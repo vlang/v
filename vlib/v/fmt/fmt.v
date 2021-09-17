@@ -213,7 +213,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 		x := name.trim_suffix('>').split('<')
 		main := f.short_module(x[0])
 		mut res := '$main'
-		for i in 1..x.len {
+		for i in 1 .. x.len {
 			genlist := x[i].split(',')
 			genshorts := genlist.map(f.short_module(it)).join(',')
 			res += '<$genshorts'
