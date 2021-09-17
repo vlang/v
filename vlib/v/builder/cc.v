@@ -92,7 +92,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 				if v.pref.is_verbose {
 					eprintln('>> remove tmp file: $tmpfile')
 				}
-				os.rm(tmpfile) or { panic(err) }
+				os.rm(tmpfile) or {}
 			}
 		}
 		return
