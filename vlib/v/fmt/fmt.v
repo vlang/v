@@ -210,12 +210,10 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return f.mod2alias[name]
 	}
 	if name.ends_with('>') {
-		x := name.trim_suffix('>').split('<')
-		main := f.short_module(x[0])
-		mut res := '$main'
-		for i in 1 .. x.len {
-			genlist := x[i].split(',')
-			genshorts := genlist.map(f.short_module(it)).join(',')
+		generic_levels := name.trim_suffix('>').split('<')
+		mut res := '${f.short_module(x[0])}'
+		for i in 1 .. generic_levels.len {
+			genshorts := generic_levels[i].split(',').map(f.short_module(it)).join(',')
 			res += '<$genshorts'
 		}
 		res += '>'
