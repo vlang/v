@@ -149,7 +149,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		return
 	}
 	v.pref.vrun_elog('remove run executable: $exefile')
-	os.rm(exefile) or { panic(err) }
+	os.rm(exefile) or {}
 }
 
 // 'strings' => 'VROOT/vlib/strings'
