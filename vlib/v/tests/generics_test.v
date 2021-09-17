@@ -485,8 +485,12 @@ struct MultiLevel<T> {
 	foo T
 }
 
-fn print_multilevel_foo<T>(bar MultiLevel<T>) int {
+fn get_multilevel_foo<T>(bar MultiLevel<T>) int {
 	return bar.foo.foo
+}
+
+fn get_multilevel_foo_2<T, U>(bar T, baz U) int {
+	return bar.foo.foo + baz.foo.foo
 }
 
 fn test_multi_level_generics() {
@@ -501,7 +505,9 @@ fn test_multi_level_generics() {
 		foo: two
 	}
 	assert three.foo.foo.foo == 10
-	assert print_multilevel_foo<MultiLevel<int>>(two) == 10
+	assert get_multilevel_foo<MultiLevel<int>>(two) == 10
+	assert get_multilevel_foo_2<MultiLevel<MultiLevel<int>>, MultiLevel<MultiLevel<int>>>(two,
+		two) == 20
 }
 
 fn test_generic_detection() {
