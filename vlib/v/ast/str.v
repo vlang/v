@@ -148,7 +148,12 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 			if node.is_variadic && is_last_arg {
 				f.write_string('...')
 			}
-			f.write_string(s)
+			if s[s.len - 1] == `>` {
+				short_module_s := s.trim_suffix('>').split('<').map(it.after('.')).join('<') + '>'
+				f.write_string(short_module_s)
+			} else {
+				f.write_string(s)
+			}
 		}
 		if !is_last_arg {
 			f.write_string(', ')
