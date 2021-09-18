@@ -3204,7 +3204,9 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 fn (mut g Gen) autofree_variable(v ast.Var) {
 	sym := g.table.get_type_symbol(v.typ)
 	// if v.name.contains('output2') {
-	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	if g.is_autofree {
+		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	}
 	// }
 	if sym.kind == .array {
 		if sym.has_method('free') {
@@ -3241,6 +3243,8 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	}
 	if sym.has_method('free') {
 		g.autofree_var_call(c_name(sym.name) + '_free', v)
+	} else if v.typ.is_real_pointer() {
+		g.autofree_var_call('free', v)
 	}
 }
 
