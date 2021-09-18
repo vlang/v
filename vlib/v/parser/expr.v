@@ -512,9 +512,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 		p.or_is_handled = false
 	}
-	if op == .unsigned_right_shift {
-		println(left.type)
-	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InfixExpr{
 		left: left

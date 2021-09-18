@@ -133,7 +133,9 @@ pub enum Kind {
 
 pub const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
-		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign, .unsigned_right_shift_assign]
+		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+		.unsigned_right_shift_assign,
+	]
 )
 
 const (
