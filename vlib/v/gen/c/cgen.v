@@ -1692,7 +1692,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('; ++$i) {')
 	} else if node.kind == .array {
 		// `for num in nums {`
-		// g.writeln('// FOR IN array')
 		styp := g.typ(node.val_type)
 		val_sym := g.table.get_type_symbol(node.val_type)
 		mut cond_var := ''
@@ -1789,8 +1788,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 	} else if node.kind == .map {
-		// `for key, val in map {
-		// g.writeln('// FOR IN map')
+		// `for key, val in map {`
 		mut cond_var := ''
 		if node.cond is ast.Ident {
 			cond_var = g.expr_string(node.cond)
@@ -1810,7 +1808,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.empty_line = true
 		g.writeln('int $map_len = $cond_var${arw_or_pt}key_values.len;')
 		g.writeln('for (int $idx = 0; $idx < $map_len; ++$idx ) {')
-		// TODO: don't have this check when the map has no deleted elements
 		g.indent++
 		diff := g.new_tmp_var()
 		g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
@@ -1824,11 +1821,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		if node.key_var != '_' {
 			key_styp := g.typ(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
-			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
-			if node.key_type == ast.string_type {
-				g.writeln('$key = string_clone($key);')
-			}
+			g.writeln('$key_styp $key = *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
 		}
 		if node.val_var != '_' {
 			val_sym := g.table.get_type_symbol(node.val_type)
