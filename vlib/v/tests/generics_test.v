@@ -545,7 +545,7 @@ fn test_generic_detection() {
 	assert multi_generic_args<[]int, int>([]int{}, 0)
 	assert multi_generic_args<map[int]int, int>(map[int]int{}, 0)
 	assert 0 < return_one<int>(10, 0)
-	
+
 	// "the hardest cases"
 	foo, bar, baz := 1, 2, 16
 	res1, res2 := foo < bar, baz >> (foo + 1 - 1)
