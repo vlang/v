@@ -36,6 +36,7 @@ pub mut:
 	is_inter_end      bool
 	is_enclosed_inter bool
 	line_comment      string
+	last_lt           int
 	// prev_tok                 TokenKind
 	is_started                  bool
 	is_print_line_on_error      bool
@@ -917,12 +918,32 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						if s.text[s.pos + 2] == `=` {
-							s.pos += 2
-							return s.new_token(.right_shift_assign, '', 3)
-						} else if s.text[s.pos + 2] in [`(`, `)`, `{`, `>`, `,`] {
-							// multi-level generics such as Foo<Bar<baz>>{ }, func<Bar<baz>>( ), etc
-							return s.new_token(.gt, '', 1)
+						mut non_space_pos := s.pos + 2
+						for s.text[non_space_pos] == ` ` {
+							non_space_pos++
+						}
+						match s.text[non_space_pos] {
+							`=` {
+								s.pos += 2
+								return s.new_token(.right_shift_assign, '', 3)
+							}
+							`)`, `{`, `}`, `,`, `>` {
+								return s.new_token(.gt, '', 1)
+							}
+							`(` {
+								for i in s.last_lt + 1 .. s.pos {
+									ch := s.text[i]
+									if !(ch.is_letter() || ch.is_digit() || ch in [` `, `,`, `>`]) {
+										s.pos++
+										return s.new_token(.right_shift, '', 2)
+									}
+								}
+								return s.new_token(.gt, '', 1)
+							}
+							else {
+								s.pos++
+								return s.new_token(.right_shift, '', 2)
+							}
 						}
 					}
 					s.pos++
@@ -946,6 +967,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.arrow, '', 2)
 				} else {
+					s.last_lt = s.pos
 					return s.new_token(.lt, '', 1)
 				}
 			}
