@@ -33,7 +33,7 @@ fn test_out_files() ? {
 		print(term.colorize(term.magenta, 'v run $relpath') + ' == ' +
 			term.colorize(term.magenta, out_relpath) + ' ')
 		pexe := os.join_path(output_path, '${basename}.exe')
-		compilation := os.execute('$vexe -o $pexe $path')
+		compilation := os.execute('"$vexe" -o "$pexe" "$path"')
 		ensure_compilation_succeeded(compilation)
 		res := os.execute(pexe)
 		if res.exit_code < 0 {

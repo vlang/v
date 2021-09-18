@@ -287,16 +287,16 @@ pub fn (mut v Builder) cc_msvc() {
 	a << ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
 	if v.pref.is_prod {
 		a << '/O2'
-		a << '/MD'
-		a << '/DNDEBUG'
-	} else {
-		a << '/MDd'
-		a << '/D_DEBUG'
 	}
 	if v.pref.is_debug {
+		a << '/MDd'
+		a << '/D_DEBUG'
 		// /Zi generates a .pdb
 		// /Fd sets the pdb file name (so its not just vc140 all the time)
 		a << ['/Zi', '/Fd"$out_name_pdb"']
+	} else {
+		a << '/MD'
+		a << '/DNDEBUG'
 	}
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
