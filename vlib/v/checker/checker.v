@@ -1599,6 +1599,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			modified_left_type := if !left_type.is_int() {
 				c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
 					left_pos)
+				0
 			} else if left_type.is_int_literal() {
 				// int literal => i64
 				13
@@ -1614,6 +1615,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// i128 	=> u128 NOT IMPLEMENTED YET
 				left_type.idx() + 5
 			}
+
+			if modified_left_type == 0 {
+				return ast.void_type
+			}	
 
 			node = ast.InfixExpr{
 				left: ast.CastExpr{
@@ -4319,6 +4324,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				modified_left_type := if !left_type.is_int() {
 					c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
 						node.pos)
+					0
 				} else if left_type.is_int_literal() {
 					// int literal => i64
 					13
