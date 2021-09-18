@@ -306,22 +306,35 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if show_stats {
 		ts.append_message(.ok, term.h_divider('-'))
-		status := os.system(cmd)
-		if status == 0 {
-			ts.benchmark.ok()
-			tls_bench.ok()
-		} else {
+		mut status := os.system(cmd)
+		if status != 0 {
+			details := get_test_details(file)
+			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
+			for retry := 1; retry <= details.retry; retry++ {
+				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				os.setenv('VTEST_RETRY', '$retry', true)
+				status = os.system(cmd)
+				if status == 0 {
+					unsafe {
+						goto test_passed_system
+					}
+				}
+			}
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
+		} else {
+			test_passed_system:
+			ts.benchmark.ok()
+			tls_bench.ok()
 		}
 	} else {
 		if testing.show_start {
 			ts.append_message(.info, '                 starting $relative_file ...')
 		}
-		r := os.execute(cmd)
+		mut r := os.execute(cmd)
 		if r.exit_code < 0 {
 			ts.failed = true
 			ts.benchmark.fail()
@@ -331,6 +344,18 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
+			details := get_test_details(file)
+			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
+			for retry := 1; retry <= details.retry; retry++ {
+				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				os.setenv('VTEST_RETRY', '$retry', true)
+				r = os.execute(cmd)
+				if r.exit_code == 0 {
+					unsafe {
+						goto test_passed_execute
+					}
+				}
+			}
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
@@ -338,6 +363,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
 			ts.add_failed_cmd(cmd)
 		} else {
+			test_passed_execute:
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if !testing.hide_oks {
@@ -483,4 +509,20 @@ pub fn setup_new_vtmp_folder() string {
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
+}
+
+pub struct TestDetails {
+pub mut:
+	retry int
+}
+
+pub fn get_test_details(file string) TestDetails {
+	mut res := TestDetails{}
+	lines := os.read_lines(file) or { [] }
+	for line in lines {
+		if line.starts_with('// vtest retry:') {
+			res.retry = line.all_after(':').trim_space().int()
+		}
+	}
+	return res
 }
