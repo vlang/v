@@ -1618,7 +1618,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			if modified_left_type == 0 {
 				return ast.void_type
-			}	
+			}
 
 			node = ast.InfixExpr{
 				left: ast.CastExpr{
