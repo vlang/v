@@ -628,7 +628,8 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if field.typ.has_flag(.optional) {
 				// TODO: Remove this error when optional fields feature will be implemented
-				c.error('field `$field.name` is optinal, but optional field currently unsupported', field.pos)
+				c.error('field `$field.name` is optinal, but optional field currently unsupported',
+					field.pos)
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
