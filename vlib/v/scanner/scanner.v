@@ -919,7 +919,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						// first eat the possible spaces `>> (` => `>>(`
+						// first eat the possible spaces eg `>> (` => `>>(`
 						mut non_space_pos := s.pos + 2
 						for s.text[non_space_pos].is_space() {
 							non_space_pos++
@@ -933,15 +933,15 @@ fn (mut s Scanner) text_scan() token.Token {
 							`)`, `{`, `}`, `,`, `>` {
 								return s.new_token(.gt, '', 1)
 							}
-							// notice two-level generic call and shift-right share `>>(` patterns
+							// notice two-level generic call and shift-right share the rest patterns
 							// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
 							// which is hard but could be discriminated by my following algorithm
 							// @SleepyRoy if you have smarter algorithm :-)
-							`(` {
+							else {
 								// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
 								// here we set the limit 100 which should be nice for real cases
 								if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-									// ...Bar<int, []Foo, [20]f64, map[string][]bool>>( =>
+									// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
 									// int, []Foo, [20]f64, map[string][]bool =>
 									// int, Foo, f64, bool
 									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
@@ -955,10 +955,6 @@ fn (mut s Scanner) text_scan() token.Token {
 									}
 									return s.new_token(.gt, '', 1)
 								}
-								s.pos++
-								return s.new_token(.right_shift, '', 2)
-							}
-							else {
 								s.pos++
 								return s.new_token(.right_shift, '', 2)
 							}
