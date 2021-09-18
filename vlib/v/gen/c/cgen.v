@@ -3243,7 +3243,8 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	}
 	if sym.has_method('free') {
 		g.autofree_var_call(c_name(sym.name) + '_free', v)
-	} else if v.typ.is_real_pointer() {
+	} else if v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+		// Free user reference types
 		g.autofree_var_call('free', v)
 	}
 }
