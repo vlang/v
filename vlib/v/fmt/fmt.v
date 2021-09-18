@@ -1534,7 +1534,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.comments(arg.comments)
 	}
 	if node.is_method {
-		if node.name in ['map', 'filter'] {
+		if node.name in ['map', 'filter', 'all', 'any'] {
 			f.inside_lambda = true
 			defer {
 				f.inside_lambda = false
