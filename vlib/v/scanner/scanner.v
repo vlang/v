@@ -943,7 +943,7 @@ fn (mut s Scanner) text_scan() token.Token {
 									// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
 									// int, []Foo, [20]f64, map[string][]bool =>
 									// int, Foo, f64, bool
-									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().after(']'))
+									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
 									// if any typ is neither builtin nor Type, then the case is not generics
 									for typ in typs {
 										if typ !in ast.builtin_type_names && !(typ[0].is_capital()
