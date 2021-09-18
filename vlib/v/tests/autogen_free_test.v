@@ -2,7 +2,7 @@ struct Info {
 	name  string
 	notes []string
 	maps  map[int]int
-	info  SubInfo
+	info  []SubInfo
 }
 
 struct SubInfo {
