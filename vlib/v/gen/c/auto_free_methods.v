@@ -19,7 +19,7 @@ fn (mut g Gen) gen_free_method_for_type(typ ast.Type) string {
 	} else if sym.kind == .array {
 		return 'array_free'
 	}
-	
+
 	if sym.has_method('free') {
 		return fn_name
 	}
