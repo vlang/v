@@ -938,9 +938,10 @@ fn (mut s Scanner) text_scan() token.Token {
 							// which is hard but could be discriminated by my following algorithm
 							// @SleepyRoy if you have smarter algorithm :-)
 							`(` {
-								// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long				
+								// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
+								// here we set the limit 100 which should be nice for real cases
 								if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-									// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
+									// ...Bar<int, []Foo, [20]f64, map[string][]bool>>( =>
 									// int, []Foo, [20]f64, map[string][]bool =>
 									// int, Foo, f64, bool
 									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
