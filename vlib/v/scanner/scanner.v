@@ -934,7 +934,7 @@ fn (mut s Scanner) text_scan() token.Token {
 								return s.new_token(.gt, '', 1)
 							}
 							// notice two-level generic call and shift-right share `>>(` patterns
-							// such as `foo<Baz, Bar<int>>(a)` vs `Foo{}<Foo{}, bar>>(baz) := a, b`
+							// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
 							// which is hard but could be discriminated by my following algorithm
 							// @SleepyRoy if you have smarter algorithm :-)
 							`(` {
