@@ -1,4 +1,12 @@
 fn test_unsigned_right_shift_expr() {
+	a := $if x64 {
+		u64(9223372036854775805)
+	} $else $if x32 {
+		u32(2147483645)
+	} $else {
+		0
+	}
+	assert isize(-5) ^>^ 1 == a
 	assert i64(-5) ^>^ 1 == 9223372036854775805
 	assert -5 ^>^ 1 == 9223372036854775805 // because type int literal's size is equals to i64
 	assert int(-5) ^>^ 1 == 2147483645
