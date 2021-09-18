@@ -947,7 +947,7 @@ fn (mut s Scanner) text_scan() token.Token {
 									// if any typ is neither builtin nor Type, then the case is not generics
 									for typ in typs {
 										if typ !in ast.builtin_type_names && !typ[0].is_capital()
-											&& typ[1..].bytes().any(!it.is_alnum()) {
+											&& typ[1..].bytes().any(!c.is_alnum()) {
 											s.pos++
 											return s.new_token(.right_shift, '', 2)
 										}
