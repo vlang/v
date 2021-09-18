@@ -429,22 +429,22 @@ pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage
 	return value
 }
 
-pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
+pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ? {
 	if n > flag.max_args_number {
-		panic('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
 	}
 	if n <= 0 {
-		panic('flag.limit_free_args_to_at_least expect n to be a positive number')
+		return error('flag.limit_free_args_to_at_least expect n to be a positive number')
 	}
 	fs.min_free_args = n
 }
 
-pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
+pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ? {
 	if n > flag.max_args_number {
-		panic('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
 	}
 	if n < 0 {
-		panic('flag.limit_free_args_to_exactly expect n to be a non negative number')
+		return error('flag.limit_free_args_to_exactly expect n to be a non negative number')
 	}
 	fs.min_free_args = n
 	fs.max_free_args = n
@@ -452,9 +452,9 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
 
 // this will cause an error in finalize() if free args are out of range
 // (min, ..., max)
-pub fn (mut fs FlagParser) limit_free_args(min int, max int) {
+pub fn (mut fs FlagParser) limit_free_args(min int, max int) ? {
 	if min > max {
-		panic('flag.limit_free_args expect min < max, got $min >= $max')
+		return error('flag.limit_free_args expect min < max, got $min >= $max')
 	}
 	fs.min_free_args = min
 	fs.max_free_args = max

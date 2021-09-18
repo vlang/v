@@ -2,6 +2,7 @@ module os
 
 #const $fs = require('fs');
 #const $path = require('path');
+#const tty = require('tty')
 
 pub const (
 	path_delimiter = '/'
@@ -94,4 +95,11 @@ pub fn execute(cmd string) Result {
 		exit_code: exit_code
 		output: stdout
 	}
+}
+
+pub fn is_atty(fd int) int {
+	res := 0
+	#res.val = +tty.isatty(fd.val)
+
+	return res
 }

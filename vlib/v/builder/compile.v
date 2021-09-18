@@ -149,7 +149,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		return
 	}
 	v.pref.vrun_elog('remove run executable: $exefile')
-	os.rm(exefile) or { panic(err) }
+	os.rm(exefile) or {}
 }
 
 // 'strings' => 'VROOT/vlib/strings'
@@ -257,6 +257,9 @@ pub fn (v &Builder) get_user_files() []string {
 	}
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
+	}
+	if v.pref.backend.is_js() && v.pref.is_stats && v.pref.is_test {
+		user_files << os.join_path(preludes_path, 'stats_import.js.v')
 	}
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')

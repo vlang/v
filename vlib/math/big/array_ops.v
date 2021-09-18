@@ -109,10 +109,24 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	}
 }
 
+const karatsuba_multiplication_limit = 1_000_000
+
+// set limit to choose algorithm
+
+[inline]
+fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+	if operand_a.len >= big.karatsuba_multiplication_limit
+		|| operand_b.len >= big.karatsuba_multiplication_limit {
+		karatsuba_multiply_digit_array(operand_a, operand_b, mut storage)
+	} else {
+		simple_multiply_digit_array(operand_a, operand_b, mut storage)
+	}
+}
+
 // Multiplies the unsigned (non-negative) integers represented in a and b and the product is
 // stored in storage. It assumes that storage has length equal to the sum of lengths
 // of a and b. Length refers to length of array, that is, digit count.
-fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
+fn simple_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	for b_index in 0 .. operand_b.len {
 		mut carry := u64(0)
 		for a_index in 0 .. operand_a.len {
@@ -237,6 +251,17 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 	remainder << u32(rem)
 	for remainder.len > 0 && remainder.last() == 0 {
 		remainder.delete_last()
+	}
+}
+
+const newton_division_limit = 10_000
+
+[inline]
+fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
+	if operand_a.len >= big.newton_division_limit {
+		newton_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
+	} else {
+		binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
 	}
 }
 

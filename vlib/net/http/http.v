@@ -80,6 +80,22 @@ pub fn post_form(url string, data map[string]string) ?Response {
 	)
 }
 
+pub struct PostMultipartFormConfig {
+	form  map[string]string
+	files map[string][]FileData
+}
+
+// post_multipart_form sends a POST HTTP request to the URL with multipart form data
+pub fn post_multipart_form(url string, conf PostMultipartFormConfig) ?Response {
+	body, boundary := multipart_form_body(conf.form, conf.files)
+	return fetch(
+		method: .post
+		url: url
+		header: new_header(key: .content_type, value: 'multipart/form-data; boundary="$boundary"')
+		data: body
+	)
+}
+
 // put sends a PUT HTTP request to the URL with a string data
 pub fn put(url string, data string) ?Response {
 	return fetch(

@@ -34,15 +34,15 @@ fn test_rshift_in_place() {
 	assert c == [u32(0x00ffffff), 0xf0f0f0f0, 1, 0x3fffffff, 1]
 }
 
-fn test_subtract_in_place() {
+fn test_subtract_align_last_byte_in_place() {
 	mut a := [u32(2), 2, 2, 2, 2]
 	mut b := [u32(1), 1, 2, 1, 1]
-	subtract_in_place(mut a, b)
+	subtract_align_last_byte_in_place(mut a, b)
 	assert a == [u32(1), 1, 0, 1, 1]
 
 	a = [u32(0), 0, 0, 0, 1]
 	b = [u32(0), 0, 1]
-	subtract_in_place(mut a, b)
+	subtract_align_last_byte_in_place(mut a, b)
 	assert a == [u32(0), 0, 0, 0, 0]
 
 	a = [u32(0), 0, 0, 0, 1, 13]
@@ -51,7 +51,7 @@ fn test_subtract_in_place() {
 	mut d := [u32(0), 0, 0]
 	d << b // to have same length
 	subtract_digit_array(a, d, mut c)
-	subtract_in_place(mut a, b)
+	subtract_align_last_byte_in_place(mut a, b)
 	assert a == [u32(0), 0, 0, u32(-1), 0, 12]
 	assert c == a
 }
@@ -124,17 +124,6 @@ fn test_divide_digit_array_06() {
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == [u32(0xa0000), 0x60000]
 	assert r == [u32(2), 4]
-}
-
-// For debugging
-fn integer_from_u32_array(a []u32) Integer {
-	mut res := integer_from_i64(0)
-	mut multiplicand := integer_from_u32(1)
-	for i in 0 .. a.len {
-		res += integer_from_u32(a[i]) * multiplicand
-		multiplicand = multiplicand.lshift(32)
-	}
-	return res
 }
 
 fn test_many_divisions() {

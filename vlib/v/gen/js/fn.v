@@ -3,6 +3,7 @@ module js
 import v.ast
 import v.util
 import v.parser
+import strings
 
 fn (mut g JsGen) js_mname(name_ string) string {
 	mut is_js := false
@@ -347,4 +348,179 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.write(')')
 	}
 	g.call_stack.delete_last()
+}
+
+enum FnGenType {
+	function
+	struct_method
+	alias_method
+	iface_method
+}
+
+fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
+	if it.is_method && g.table.get_type_symbol(it.params[0].typ).kind == .alias {
+		return .alias_method
+	} else if it.is_method && g.table.get_type_symbol(it.params[0].typ).kind == .interface_ {
+		return .iface_method
+	} else if it.is_method || it.no_body {
+		return .struct_method
+	} else {
+		return .function
+	}
+}
+
+fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
+	res := g.fn_gen_type(it)
+	if it.language == .js {
+		return
+	}
+	if g.inside_builtin {
+		g.builtin_fns << it.name
+	}
+	cur_fn_decl := g.fn_decl
+	g.gen_method_decl(it, res)
+	g.fn_decl = cur_fn_decl
+}
+
+fn fn_has_go(node ast.FnDecl) bool {
+	mut has_go := false
+	for stmt in node.stmts {
+		if stmt is ast.ExprStmt {
+			if stmt.expr is ast.GoExpr {
+				has_go = true
+				break
+			}
+		}
+	}
+	return has_go
+}
+
+fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+	if types.len == 0 {
+		return before
+	}
+
+	mut name := before + '_T'
+	for typ in types {
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
+	}
+	return name
+}
+
+fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
+	unsafe {
+		g.fn_decl = &it
+	}
+	cur_fn_save := g.table.cur_fn
+	defer {
+		g.table.cur_fn = cur_fn_save
+	}
+	unsafe {
+		g.table.cur_fn = &it
+	}
+	node := it
+	mut name := it.name
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+		name = util.replace_op(name)
+	}
+
+	if node.is_method {
+		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return
+		}
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
+	}
+
+	name = g.js_name(name)
+
+	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	if name in parser.builtin_functions {
+		name = 'builtin__$name'
+	}
+	has_go := fn_has_go(it)
+	if it.is_pub && !it.is_method {
+		g.push_pub_var(name)
+	}
+	is_main := it.name == 'main.main'
+	g.gen_attrs(it.attrs)
+	if is_main {
+		// there is no concept of main in JS but we do have iife
+		g.writeln('/* program entry point */')
+
+		// g.write('(')
+		if has_go {
+			g.write('async ')
+		}
+		g.write('function js_main(')
+	} else if it.is_anon {
+		g.write('function (')
+	} else {
+		c := name[0]
+		if c in [`+`, `-`, `*`, `/`] {
+			name = util.replace_op(name)
+		}
+		// type_name := g.typ(it.return_type)
+		// generate jsdoc for the function
+		g.doc.gen_fn(it)
+		if has_go {
+			g.write('async ')
+		}
+
+		g.write('function ')
+
+		g.write('${name}(')
+		if it.is_pub && !it.is_method {
+			g.push_pub_var(name)
+		}
+	}
+	mut args := it.params
+
+	g.fn_args(args, it.is_variadic)
+	g.write(') {')
+	for i, arg in args {
+		is_varg := i == args.len - 1 && it.is_variadic
+		arg_name := g.js_name(arg.name)
+		if is_varg {
+			g.writeln('$arg_name = new array($arg_name);')
+		} else {
+			if arg.typ.is_ptr() || arg.is_mut {
+				g.writeln('$arg_name = new \$ref($arg_name)')
+			}
+		}
+	}
+	g.stmts(it.stmts)
+	g.writeln('}')
+
+	if is_main {
+		// g.write(')')
+	}
+	g.writeln('')
+
+	for attr in it.attrs {
+		match attr.name {
+			'export' {
+				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+			}
+			else {}
+		}
+	}
+
+	g.fn_decl = voidptr(0)
+}
+
+fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
+	for i, arg in args {
+		name := g.js_name(arg.name)
+		is_varg := i == args.len - 1 && is_variadic
+		if is_varg {
+			g.write('...$name')
+		} else {
+			g.write(name)
+		}
+		// if its not the last argument
+		if i < args.len - 1 {
+			g.write(', ')
+		}
+	}
 }

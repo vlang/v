@@ -46,7 +46,7 @@ fn main() {
 	for hf in hfields.split(',') {
 		mhf.names[hf] = true
 	}
-	fp.limit_free_args_to_at_least(1)
+	fp.limit_free_args_to_at_least(1) ?
 	rest_of_args := fp.remaining_parameters()
 	for vfile in rest_of_args {
 		file := get_abs_path(vfile)

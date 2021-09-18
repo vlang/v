@@ -9,12 +9,6 @@ import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
-import v.parser
-
-struct MutArg {
-	tmp_var string
-	expr    ast.Expr = ast.empty_expr()
-}
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
@@ -51,36 +45,43 @@ mut:
 struct JsGen {
 	pref &pref.Preferences
 mut:
-	table                 &ast.Table
-	definitions           strings.Builder
-	ns                    &Namespace
-	namespaces            map[string]&Namespace
-	doc                   &JsDoc
-	enable_doc            bool
-	file                  &ast.File
-	tmp_count             int
-	inside_ternary        bool
-	inside_loop           bool
-	inside_map_set        bool // map.set(key, value)
-	inside_builtin        bool
-	inside_if_optional    bool
-	generated_builtin     bool
-	inside_def_typ_decl   bool
-	is_test               bool
-	stmt_start_pos        int
-	defer_stmts           []ast.DeferStmt
-	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types             []string    // types that need automatic str() generation
-	method_fn_decls       map[string][]ast.FnDecl
-	builtin_fns           []string // Functions defined in `builtin`
-	empty_line            bool
-	cast_stack            []ast.Type
-	call_stack            []ast.CallExpr
-	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
-	sourcemap             &sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
-	comptime_var_type_map map[string]ast.Type
-	defer_ifdef           string
-	out                   strings.Builder = strings.new_builder(128)
+	table                  &ast.Table
+	definitions            strings.Builder
+	ns                     &Namespace
+	namespaces             map[string]&Namespace
+	doc                    &JsDoc
+	enable_doc             bool
+	file                   &ast.File
+	tmp_count              int
+	inside_ternary         bool
+	inside_loop            bool
+	inside_map_set         bool // map.set(key, value)
+	inside_builtin         bool
+	inside_if_optional     bool
+	generated_builtin      bool
+	inside_def_typ_decl    bool
+	is_test                bool
+	stmt_start_pos         int
+	defer_stmts            []ast.DeferStmt
+	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types              []string    // types that need automatic str() generation
+	array_fn_definitions   []string    // array equality functions that have been defined
+	map_fn_definitions     []string    // map equality functions that have been defined
+	struct_fn_definitions  []string    // struct equality functions that have been defined
+	sumtype_fn_definitions []string    // sumtype equality functions that have been defined
+	alias_fn_definitions   []string    // alias equality functions that have been defined
+	auto_fn_definitions    []string    // auto generated functions defination list
+	anon_fn_definitions    []string    // anon generated functions defination list
+	method_fn_decls        map[string][]ast.FnDecl
+	builtin_fns            []string // Functions defined in `builtin`
+	empty_line             bool
+	cast_stack             []ast.Type
+	call_stack             []ast.CallExpr
+	is_vlines_enabled      bool // is it safe to generate #line directives when -g is passed
+	sourcemap              &sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	comptime_var_type_map  map[string]ast.Type
+	defer_ifdef            string
+	out                    strings.Builder = strings.new_builder(128)
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -278,24 +279,24 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.writeln('')
 	g.writeln('globalThis.VTEST=1')
 	if g.pref.is_stats {
-		g.writeln('let bt = start_testing($all_tfuncs.len, "$g.pref.path")')
+		g.writeln('let bt = main__start_testing(new int($all_tfuncs.len), new string("$g.pref.path"))')
 	}
 	for tname in all_tfuncs {
 		tcname := g.js_name(tname)
 
 		if g.pref.is_stats {
-			g.writeln('bt.testing_step_start("$tcname")')
+			g.writeln('main__BenchedTests_testing_step_start(bt,new string("$tcname"))')
 		}
 
 		g.writeln('try { ${tcname}(); } catch (_e) {} ')
 		if g.pref.is_stats {
-			g.writeln('bt.testing_step_end();')
+			g.writeln('main__BenchedTests_testing_step_end(bt);')
 		}
 	}
 
 	g.writeln('')
 	if g.pref.is_stats {
-		g.writeln('bt.end_testing();')
+		g.writeln('main__BenchedTests_end_testing(bt);')
 	}
 	g.dec_indent()
 	g.writeln('}')
@@ -482,62 +483,6 @@ fn (mut g JsGen) get_alias(name string) string {
 }
 
 fn (mut g JsGen) js_name(name_ string) string {
-	/*
-	mut is_js := false
-	is_overload := ['+', '-', '*', '/', '==', '<', '>']
-	mut name := name_
-	if name.starts_with('JS.') {
-		name = name[3..]
-		is_js = true
-	}
-	ns := get_ns(name)
-	name = if name in is_overload {
-		match name {
-			'+' {
-				'\$add'
-			}
-			'-' {
-				'\$sub'
-			}
-			'/' {
-				'\$div'
-			}
-			'*' {
-				'\$mul'
-			}
-			'%' {
-				'\$mod'
-			}
-			'==' {
-				'eq'
-			}
-			'>' {
-				'\$gt'
-			}
-			'<' {
-				'\$lt'
-			}
-			else {
-				''
-			}
-		}
-	} else if g.ns == 0 {
-		name
-	} else if ns == g.ns.name {
-		name.split('.').last()
-	} else {
-		g.get_alias(name)
-	}
-	mut parts := name.split('.')
-	if !is_js {
-		for i, p in parts {
-			if p in js.js_reserved {
-				parts[i] = 'v_$p'
-			}
-		}
-	}
-	return parts.join('.')*/
-
 	mut name := name_
 	if name.starts_with('JS.') {
 		name = name[3..]
@@ -551,11 +496,9 @@ fn (mut g JsGen) js_name(name_ string) string {
 }
 
 fn (mut g JsGen) stmts(stmts []ast.Stmt) {
-	g.inc_indent()
 	for stmt in stmts {
 		g.stmt(stmt)
 	}
-	g.dec_indent()
 }
 
 [inline]
@@ -610,6 +553,11 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 			}
 		}
 	}
+}
+
+fn (mut g JsGen) gen_alias_type_decl(node ast.AliasTypeDecl) {
+	name := if g.ns.name == 'builtin' { node.name } else { '${g.js_name(g.ns.name)}__$node.name' }
+	g.writeln('function ${name}(val) { return val;  }')
 }
 
 fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
@@ -815,7 +763,12 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_struct_decl(node)
 		}
 		ast.TypeDecl {
-			// skip JS has no typedecl
+			match node {
+				ast.AliasTypeDecl {
+					g.gen_alias_type_decl(node)
+				}
+				else {}
+			}
 		}
 	}
 }
@@ -1268,7 +1221,9 @@ fn (mut g JsGen) gen_attrs(attrs []ast.Attr) {
 
 fn (mut g JsGen) gen_block(it ast.Block) {
 	g.writeln('{')
+	g.inc_indent()
 	g.stmts(it.stmts)
+	g.dec_indent()
 	g.writeln('}')
 }
 
@@ -1331,59 +1286,9 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 	g.expr(it.expr)
 }
 
-enum FnGenType {
-	function
-	struct_method
-	alias_method
-	iface_method
-}
-
-fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
-	if it.is_method && g.table.get_type_symbol(it.params[0].typ).kind == .alias {
-		return .alias_method
-	} else if it.is_method && g.table.get_type_symbol(it.params[0].typ).kind == .interface_ {
-		return .iface_method
-	} else if it.is_method || it.no_body {
-		return .struct_method
-	} else {
-		return .function
-	}
-}
-
-fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
-	res := g.fn_gen_type(it)
-	if it.language == .js {
-		return
-	}
-	/*
-	if res == .struct_method {
-		// Struct methods are handled by class generation code.
-		return
-	}*/
-	if g.inside_builtin {
-		g.builtin_fns << it.name
-	}
-	cur_fn_decl := g.fn_decl
-	g.gen_method_decl(it, res)
-	g.fn_decl = cur_fn_decl
-}
-
-fn fn_has_go(node ast.FnDecl) bool {
-	mut has_go := false
-	for stmt in node.stmts {
-		if stmt is ast.ExprStmt {
-			if stmt.expr is ast.GoExpr {
-				has_go = true
-				break
-			}
-		}
-	}
-	return has_go
-}
-
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
-	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+	sym := g.table.get_final_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	match mut sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -1399,231 +1304,6 @@ fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		else {}
 	}
 	return styp
-}
-
-fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
-	if types.len == 0 {
-		return before
-	}
-
-	mut name := before + '_T'
-	for typ in types {
-		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
-	}
-	return name
-}
-
-fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
-	unsafe {
-		g.fn_decl = &it
-	}
-	cur_fn_save := g.table.cur_fn
-	defer {
-		g.table.cur_fn = cur_fn_save
-	}
-	unsafe {
-		g.table.cur_fn = &it
-	}
-	node := it
-	mut name := it.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
-		name = util.replace_op(name)
-	}
-
-	if node.is_method {
-		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
-		if unwrapped_rec_sym.kind == .placeholder {
-			return
-		}
-		name = g.cc_type(node.receiver.typ, false) + '_' + name
-	}
-
-	name = g.js_name(name)
-
-	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
-	if name in parser.builtin_functions {
-		name = 'builtin__$name'
-	}
-	has_go := fn_has_go(it)
-	if it.is_pub && !it.is_method {
-		g.push_pub_var(name)
-	}
-	is_main := it.name == 'main.main'
-	g.gen_attrs(it.attrs)
-	if is_main {
-		// there is no concept of main in JS but we do have iife
-		g.writeln('/* program entry point */')
-
-		// g.write('(')
-		if has_go {
-			g.write('async ')
-		}
-		g.write('function js_main(')
-	} else if it.is_anon {
-		g.write('function (')
-	} else {
-		c := name[0]
-		if c in [`+`, `-`, `*`, `/`] {
-			name = util.replace_op(name)
-		}
-		// type_name := g.typ(it.return_type)
-		// generate jsdoc for the function
-		g.doc.gen_fn(it)
-		if has_go {
-			g.write('async ')
-		}
-
-		g.write('function ')
-
-		g.write('${name}(')
-		if it.is_pub && !it.is_method {
-			g.push_pub_var(name)
-		}
-	}
-	mut args := it.params
-
-	g.fn_args(args, it.is_variadic)
-	g.write(') {')
-	for i, arg in args {
-		is_varg := i == args.len - 1 && it.is_variadic
-		arg_name := g.js_name(arg.name)
-		if is_varg {
-			g.writeln('$arg_name = new array($arg_name);')
-		} else {
-			if arg.typ.is_ptr() || arg.is_mut {
-				g.writeln('$arg_name = new \$ref($arg_name)')
-			}
-		}
-	}
-	g.stmts(it.stmts)
-	g.writeln('}')
-
-	if is_main {
-		// g.write(')')
-	}
-	g.writeln('')
-
-	for attr in it.attrs {
-		match attr.name {
-			'export' {
-				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
-			}
-			else {}
-		}
-	}
-	/*
-	if typ == .alias_method || typ == .iface_method {
-		sym := g.table.get_final_type_symbol(it.params[0].typ.set_nr_muls(0))
-		name := g.js_name(sym.name)
-		if name in js.v_types {
-			g.writeln('')
-		}
-		g.writeln('${name}.prototype.$it.name = function ')
-	}
-	has_go := fn_has_go(it)
-	is_main := it.name == 'main.main'
-	g.gen_attrs(it.attrs)
-	if is_main {
-		// there is no concept of main in JS but we do have iife
-		g.writeln('/* program entry point */')
-
-		g.write('(')
-		if has_go {
-			g.write('async ')
-		}
-		g.write('function(')
-	} else if it.is_anon {
-		g.write('function (')
-	} else {
-		mut name := g.js_name(it.name)
-		c := name[0]
-		if c in [`+`, `-`, `*`, `/`] {
-			name = util.replace_op(name)
-		}
-		// type_name := g.typ(it.return_type)
-		// generate jsdoc for the function
-		g.doc.gen_fn(it)
-		if has_go {
-			g.write('async ')
-		}
-		if !it.is_method {
-			g.write('function ')
-		} else {
-			if it.attrs.contains('js_getter') {
-				g.write('get ')
-			} else if it.attrs.contains('js_setter') {
-				g.write('set ')
-			}
-		}
-		g.write('${name}(')
-		if it.is_pub && !it.is_method {
-			g.push_pub_var(name)
-		}
-	}
-	mut args := it.params
-	if it.is_method {
-		args = args[1..]
-	}
-	g.fn_args(args, it.is_variadic)
-	if it.is_method {
-		if args.len > 0 {
-			g.write(', ')
-		}
-		if it.params[0].is_mut || it.params[0].typ.is_ptr() {
-			g.write('${it.params[0].name} = new \$ref(this)')
-		} else {
-			g.write('${it.params[0].name} = this')
-		}
-	}
-	g.writeln(') {')
-	for i, arg in args {
-		is_varg := i == args.len - 1 && it.is_variadic
-		name := g.js_name(arg.name)
-		if is_varg {
-			g.writeln('$name = new array($name);')
-		} else {
-			if arg.typ.is_ptr() || arg.is_mut {
-				g.writeln('$name = new \$ref($name)')
-			}
-		}
-	}
-
-	g.stmts(it.stmts)
-	g.writeln('}')
-	for attr in it.attrs {
-		match attr.name {
-			'export' {
-				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
-			}
-			else {}
-		}
-	}
-	if is_main {
-		g.write(')();')
-	} else if typ != .struct_method {
-		// g.write(';')
-	}
-	if typ == .struct_method || typ == .alias_method || typ == .iface_method {
-		g.writeln('\n')
-	}
-	*/
-	g.fn_decl = voidptr(0)
-}
-
-fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
-	for i, arg in args {
-		name := g.js_name(arg.name)
-		is_varg := i == args.len - 1 && is_variadic
-		if is_varg {
-			g.write('...$name')
-		} else {
-			g.write(name)
-		}
-		// if its not the last argument
-		if i < args.len - 1 {
-			g.write(', ')
-		}
-	}
 }
 
 fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
@@ -1911,11 +1591,6 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('};\n')
 	g.dec_indent()
 
-	/*
-	for cfn in fns {
-		g.gen_method_decl(cfn, .struct_method)
-	}*/
-
 	if node.is_pub {
 		g.push_pub_var(name)
 	}
@@ -2027,8 +1702,8 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
-					if stmt.expr is ast.CallExpr || stmt.expr is ast.IfExpr
-						|| stmt.expr is ast.MatchExpr || (stmt.expr is ast.IndexExpr
+					if stmt.expr in [ast.CallExpr, ast.IfExpr, ast.MatchExpr]
+						|| (stmt.expr is ast.IndexExpr
 						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
 						return true
 					}
@@ -2192,9 +1867,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary = true
 	}
 
-	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
-		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral
-		|| node.cond is ast.CallExpr {
+	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
+		ast.FloatLiteral, ast.CallExpr] {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
@@ -2546,11 +2220,12 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.valueOf()')
 		}
 		g.write('.arr')
-		g.write('[+')
+		g.write('[Number(')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
+		g.write('.valueOf()')
 		g.cast_stack.delete_last()
-		g.write(']')
+		g.write(')]')
 	}
 }
 
@@ -2610,37 +2285,6 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('.valueOf()')
 		g.write(')')
 	} else if it.op == .eq || it.op == .ne {
-		/*
-		has_operator_overloading := g.table.type_has_method(l_sym, '==')
-		if has_operator_overloading {
-			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
-			g.write('.eq(')
-			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
-			g.write(')')
-			// Shallow equatables
-		} else if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
-			// wrap left expr in parens so binary operations will work correctly.
-			g.write('(')
-			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
-			g.write(')')
-			g.write('.eq(')
-			g.cast_stack << int(l_sym.kind)
-			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
-			g.cast_stack.delete_last()
-			g.write(')')
-		} else {
-			g.write('vEq(')
-			g.expr(it.left)
-			g.gen_deref_ptr(it.left_type)
-			g.write(', ')
-			g.expr(it.right)
-			g.gen_deref_ptr(it.right_type)
-			g.write(')')
-		}*/
 		node := it
 		left := g.unwrap(node.left_type)
 		right := g.unwrap(node.right_type)

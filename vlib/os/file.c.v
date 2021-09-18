@@ -370,7 +370,7 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 // A read call is either stopped, if the buffer is full, a newline was read or EOF.
 pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 	if buf.len == 0 {
-		panic(@FN + ': `buf.len` == 0')
+		return error(@FN + ': `buf.len` == 0')
 	}
 	newline := 10
 	mut c := 0
@@ -409,7 +409,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 // Returns the number of read bytes, or an error.
 pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
-		panic(@FN + ': `buf.len` == 0')
+		return error(@FN + ': `buf.len` == 0')
 	}
 	$if x64 {
 		$if windows {

@@ -366,3 +366,17 @@ fn test_pretty() {
 	"name":	"Bob"
 }'
 }
+
+struct Foo3 {
+	name string
+	age  int    [omitempty]
+}
+
+fn test_omit_empty() {
+	foo := Foo3{'Bob', 0}
+	assert json.encode_pretty(foo) == '{
+	"name":	"Bob"
+}'
+	// println('omitempty:')
+	// println(json.encode_pretty(foo))
+}

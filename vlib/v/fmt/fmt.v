@@ -210,13 +210,14 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return f.mod2alias[name]
 	}
 	if name.ends_with('>') {
-		x := name.trim_suffix('>').split('<')
-		if x.len == 2 {
-			main := f.short_module(x[0])
-			genlist := x[1].split(',')
-			genshorts := genlist.map(f.short_module(it)).join(',')
-			return '$main<$genshorts>'
+		generic_levels := name.trim_suffix('>').split('<')
+		mut res := '${f.short_module(generic_levels[0])}'
+		for i in 1 .. generic_levels.len {
+			genshorts := generic_levels[i].split(',').map(f.short_module(it)).join(',')
+			res += '<$genshorts'
 		}
+		res += '>'
+		return res
 	}
 	vals := name.split('.')
 	if vals.len < 2 {
@@ -1381,10 +1382,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		line_break := f.array_init_break[f.array_init_depth - 1]
 		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
-			if i == 0 || should_decrease_arr_penalty(node.exprs[i - 1]) {
+			if i == 0
+				|| node.exprs[i - 1] in [ast.ArrayInit, ast.StructInit, ast.MapInit, ast.CallExpr] {
 				penalty--
 			}
-			if should_decrease_arr_penalty(expr) {
+			if expr in [ast.ArrayInit, ast.StructInit, ast.MapInit, ast.CallExpr] {
 				penalty--
 			}
 		}
@@ -1503,13 +1505,6 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	}
 }
 
-fn should_decrease_arr_penalty(e ast.Expr) bool {
-	if e is ast.ArrayInit || e is ast.StructInit || e is ast.MapInit || e is ast.CallExpr {
-		return true
-	}
-	return false
-}
-
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
 	f.mark_types_import_as_used(node.typ)
 	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
@@ -1585,14 +1580,10 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			f.write(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias))
+			f.write(f.short_module(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)))
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
-		}
-		// avoid `<Foo<int>>` => `<Foo<int> >`
-		if f.out.last_n(1) == '>' {
-			f.write(' ')
 		}
 		f.write('>')
 	}
@@ -1797,8 +1788,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				cur_pos := f.out.len
 				f.expr(branch.cond)
 				cond_len := f.out.len - cur_pos
-				is_cond_wrapped := cond_len > 0
-					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
+				is_cond_wrapped := cond_len > 0 && branch.cond in [ast.IfGuardExpr, ast.CallExpr]
 					&& f.out.last_n(cond_len).contains('\n')
 				if is_cond_wrapped {
 					f.writeln('')

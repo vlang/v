@@ -120,10 +120,11 @@ pub fn (mut g JsGen) base_type(t ast.Type) string {
 }
 
 pub fn (mut g JsGen) typ(t ast.Type) string {
-	sym := g.table.get_type_symbol(t)
+	sym := g.table.get_final_type_symbol(t)
 	if sym.kind == .voidptr {
 		return 'any'
 	}
+
 	styp := g.base_type(t)
 	return styp
 }
