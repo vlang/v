@@ -2472,6 +2472,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		c.fail_if_unreadable(node.left, left_type, 'receiver')
 		return ast.string_type
+	} else if method_name == 'free' {
+		return ast.void_type
 	}
 	// call struct field fn type
 	// TODO: can we use SelectorExpr for all? this dosent really belong here
