@@ -1599,10 +1599,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			modified_left_type := if !left_type.is_int() {
 				c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
 					left_pos)
-				0
+				ast.void_type_idx
 			} else if left_type.is_int_literal() {
 				// int literal => i64
-				13
+				ast.u32_type_idx
 			} else if left_type.is_unsigned() {
 				left_type
 			} else {
@@ -1613,7 +1613,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// i64  	=> u64
 				// isize	=> usize
 				// i128 	=> u128 NOT IMPLEMENTED YET
-				left_type.idx() + 5
+				left_type.idx() + ast.u32_type_idx - ast.int_type_idx
 			}
 
 			if modified_left_type == 0 {
@@ -4324,10 +4324,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				modified_left_type := if !left_type.is_int() {
 					c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
 						node.pos)
-					0
+					ast.void_type_idx
 				} else if left_type.is_int_literal() {
 					// int literal => i64
-					13
+					ast.u32_type_idx
 				} else if left_type.is_unsigned() {
 					left_type
 				} else {
@@ -4338,7 +4338,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					// i64  	=> u64
 					// isize	=> usize
 					// i128 	=> u128 NOT IMPLEMENTED YET
-					left_type.idx() + 5
+					left_type.idx() + ast.u32_type_idx - ast.int_type_idx
 				}
 
 				node = ast.AssignStmt{
