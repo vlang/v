@@ -378,7 +378,7 @@ pub enum Precedence {
 	eq // == or !=
 	// less_greater // > or <
 	sum // + - | ^
-	product // * / << >> &
+	product // * / << >> >>> &
 	// mod // %
 	prefix // -X or !X
 	postfix // ++ or --
@@ -394,7 +394,7 @@ pub fn build_precedences() []Precedence {
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
 	p[Kind.question] = .postfix
-	// `*` |  `/` | `%` | `<<` | `>>` | `&`
+	// `*` |  `/` | `%` | `<<` | `>>` | `>>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
 	p[Kind.mod] = .product

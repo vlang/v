@@ -5557,10 +5557,11 @@ This lists operators for [primitive types](#primitive-types) only.
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer
+>>>  unsigned right shift	integer >> unsigned integer
 
 
 Precedence    Operator
-    5             *  /  %  <<  >>  &
+    5             *  /  %  <<  >> >>> &
     4             +  -  |  ^
     3             ==  !=  <  <=  >  >=
     2             &&
@@ -5570,5 +5571,5 @@ Precedence    Operator
 Assignment Operators
 +=   -=   *=   /=   %=
 &=   |=   ^=
->>=  <<=
+>>=  <<=  >>>=
 ```
