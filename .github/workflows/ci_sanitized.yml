@@ -160,13 +160,13 @@ jobs:
           echo $VFLAGS
           .\make.bat -msvc
           .\v.exe self
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: Self tests (/fsanitize=address)
-        run: |
-          .\v.exe -cflags "/fsanitize=address" test-self
+      ##      - name: Install dependencies
+      ##        run: |
+      ##          .\v.exe setup-freetype
+      ##          .\.github\workflows\windows-install-sqlite.bat
+      ##      - name: Self tests (TODO: /fsanitize=address)
+      ##        run: |
+      ##          .\v.exe -cflags "/fsanitize=address" test-self
 
   tests-sanitize-address-gcc:
     needs: no-scheduling
