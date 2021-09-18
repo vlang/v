@@ -947,9 +947,10 @@ fn (mut s Scanner) text_scan() token.Token {
 									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
 									// if any typ is neither builtin nor Type, then the case is not generics
 									for typ in typs {
-										if typ.len > 0 && typ !in ast.builtin_type_names
+										if typ.len == 0
+											|| (typ !in ast.builtin_type_names
 											&& !(typ[0].is_capital()
-											&& typ[1..].bytes().all(it.is_alnum())) {
+											&& typ[1..].bytes().all(it.is_alnum()))) {
 											s.pos++
 											return s.new_token(.right_shift, '', 2)
 										}
