@@ -55,7 +55,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					if is_html {
 						g.inside_vweb_tmpl = true
 					}
-					g.stmts(stmt.stmts.filter(!(it is ast.Return)))
+					g.stmts(stmt.stmts.filter(it !is ast.Return))
 					g.inside_vweb_tmpl = false
 					break
 				}
