@@ -179,12 +179,12 @@ fn test_reassignment() {
 	assert x3 == 777
 }
 
-struct Person {
-mut:
-	name  string
-	age   int
-	title ?string
-}
+// struct Person {
+// mut:
+// 	name  string
+// 	age   int
+// 	title ?string
+// }
 
 fn test_field_or() {
 	name := foo_str() or { 'nada' }
@@ -207,15 +207,15 @@ fn test_field_or() {
 	*/
 }
 
-struct Thing {
-mut:
-	opt ?int
-}
-
-struct Thing2 {
-mut:
-	opt ?Thing
-}
+// struct Thing {
+// mut:
+//	opt ?int
+//}
+//
+// struct Thing2 {
+// mut:
+//	opt ?Thing
+//}
 
 fn test_opt_field() {
 	/*
@@ -359,10 +359,10 @@ fn test_optional_sum_type() {
 	assert false
 }
 
-struct MultiOptionalFieldTest {
-	a ?int
-	b ?int
-}
+// struct MultiOptionalFieldTest {
+//	a ?int
+//	b ?int
+//}
 
 fn foo() ?int {
 	return 0
