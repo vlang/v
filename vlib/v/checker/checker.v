@@ -1173,6 +1173,10 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					node.fields[i].typ = expr_type
 					node.fields[i].expected_type = field_info.typ
 				}
+				if field_info.typ.has_flag(.optional) {
+					c.error('field `$field_info.name` is optional, but initialization of optional fields currently unsupported',
+						field.pos)
+				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
