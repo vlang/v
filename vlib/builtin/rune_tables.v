@@ -628,12 +628,14 @@ pub:
 fn (r rune) is_excluding_latin(table &RangeTable) bool {
 	r16 := &table.r16
 	off := table.latin_offset
-	if r16.len > off && u32(r) < u32(r16[r16.len - 1].hi) {
-		return is_16(r16[off..], u16(r))
-	}
-	r32 := &table.r32
-	if r32.len > 0 && r >= rune(r32[0].lo) {
-		return is_32(r32, u32(r))
+	unsafe {
+		if r16.len > off && u32(r) < u32(r16[r16.len - 1].hi) {
+			return is_16(r16[off..], u16(r))
+		}
+		r32 := &table.r32
+		if r32.len > 0 && r >= rune(r32[0].lo) {
+			return is_32(r32, u32(r))
+		}
 	}
 	return false
 }
