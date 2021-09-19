@@ -11,6 +11,7 @@ import v.pref
 import v.util
 import v.vet
 import v.errors
+import v.ast
 
 const (
 	single_quote = `'`
@@ -36,6 +37,7 @@ pub mut:
 	is_inter_end      bool
 	is_enclosed_inter bool
 	line_comment      string
+	last_lt           int = -1 // position of latest <
 	// prev_tok                 TokenKind
 	is_started                  bool
 	is_print_line_on_error      bool
@@ -917,12 +919,49 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						if s.text[s.pos + 2] == `=` {
-							s.pos += 2
-							return s.new_token(.right_shift_assign, '', 3)
-						} else if s.text[s.pos + 2] in [`(`, `)`, `{`, `>`, `,`] {
-							// multi-level generics such as Foo<Bar<baz>>{ }, func<Bar<baz>>( ), etc
-							return s.new_token(.gt, '', 1)
+						// first eat the possible spaces eg `>> (` => `>>(`
+						mut non_space_pos := s.pos + 2
+						for non_space_pos < s.text.len && s.text[non_space_pos].is_space() {
+							non_space_pos++
+						}
+						match s.text[non_space_pos] {
+							`=` {
+								s.pos += 2
+								return s.new_token(.right_shift_assign, '', 3)
+							}
+							// definite generic cases such as Foo<Bar<int>>{}
+							`)`, `{`, `}`, `,`, `>`, `[`, `]` {
+								return s.new_token(.gt, '', 1)
+							}
+							// notice two-level generic call and shift-right share the rest patterns
+							// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
+							// which is hard but could be discriminated by my following algorithm
+							// @SleepyRoy if you have smarter algorithm :-)
+							else {
+								// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
+								// here we set the limit 100 which should be nice for real cases
+								if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
+									// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
+									// int, []Foo, [20]f64, map[string][]bool =>
+									// int, Foo, f64, bool
+									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
+									// if any typ is neither builtin nor Type, then the case is not generics
+									for typ in typs {
+										if typ.len == 0 {
+											s.pos++
+											return s.new_token(.right_shift, '', 2)
+										}
+										if typ !in ast.builtin_type_names && !(typ[0].is_capital()
+											&& typ[1..].bytes().all(it.is_alnum())) {
+											s.pos++
+											return s.new_token(.right_shift, '', 2)
+										}
+									}
+									return s.new_token(.gt, '', 1)
+								}
+								s.pos++
+								return s.new_token(.right_shift, '', 2)
+							}
 						}
 					}
 					s.pos++
@@ -946,6 +985,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.arrow, '', 2)
 				} else {
+					s.last_lt = s.pos
 					return s.new_token(.lt, '', 1)
 				}
 			}
