@@ -40,6 +40,13 @@ pub fn (ra []rune) string() string {
 	return res
 }
 
+// is_letter returns `true` if the rune is in range a-z or A-Z and `false` otherwise.
+[inline]
+pub fn (ra rune) is_letter() bool {
+	b := ra.str()
+	return b.len == 1 && ((b[0] >= `a` && b[0] <= `z`) || (b[0] > `A` && b[0] > `Z`))
+}
+
 // Define this on byte as well, so that we can do `s[0].is_capital()`
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
