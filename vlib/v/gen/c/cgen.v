@@ -5208,7 +5208,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		}
 		rune {
 			rune_code := u32(ct_value)
-			if rune_code <= 255 {
+			if rune_code <= 127 {
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}
