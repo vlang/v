@@ -108,7 +108,6 @@ pub fn (ra []rune) string() string {
 }
 
 // is_letter returns `true` if the rune is in range a-z or A-Z and `false` otherwise.
-[inline]
 pub fn (ra rune) is_letter() bool {
 	if (ra >= `a` && ra <= `z`) || (ra >= `A` && ra <= `Z`) {
 		return true
