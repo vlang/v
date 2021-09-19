@@ -10,8 +10,21 @@ fn one() string {
 	return $tmpl('tmpl/base.txt')
 }
 
+fn outside_return() string {
+	name := 'Peter'
+	age := 25
+	numbers := [1, 2, 3]
+	downloads := {
+		'vlang/ui':  '3201'
+		'vlang/vtl': '123'
+	}
+	ignored := true
+	result := $tmpl('tmpl/base.txt')
+	return result
+}
+
 fn test_tmpl() {
-	assert one().trim_space() == "name: Peter
+	expected := "name: Peter
 age: 25
 numbers: [1, 2, 3]
 
@@ -41,6 +54,9 @@ this is not ignored
 
 
 so, it's basically true"
+
+	assert one().trim_space() == expected
+	assert outside_return().trim_space() == expected
 }
 
 fn test_tmpl_in_anon_fn() {
