@@ -9,6 +9,73 @@ import strings
 // updated. if you uncomment it you will see the issue
 // type rune = int
 
+const (
+	letters = [
+		`À`,
+		`Á`,
+		`Â`,
+		`Ã`,
+		`Ä`,
+		`Å`,
+		`Æ`,
+		`Ç`,
+		`È`,
+		`É`,
+		`Ê`,
+		`Ë`,
+		`Ì`,
+		`Í`,
+		`Î`,
+		`Ï`,
+		`Ð`,
+		`Ñ`,
+		`Ò`,
+		`Ó`,
+		`Ô`,
+		`Õ`,
+		`Ö`,
+		`Ø`,
+		`Ù`,
+		`Ú`,
+		`Û`,
+		`Ü`,
+		`Ý`,
+		`Þ`,
+		`ß`,
+		`à`,
+		`á`,
+		`â`,
+		`ã`,
+		`ä`,
+		`å`,
+		`æ`,
+		`ç`,
+		`è`,
+		`é`,
+		`ê`,
+		`ë`,
+		`ì`,
+		`í`,
+		`î`,
+		`ï`,
+		`ð`,
+		`ñ`,
+		`ò`,
+		`ó`,
+		`ô`,
+		`õ`,
+		`ö`,
+		`ø`,
+		`ù`,
+		`ú`,
+		`û`,
+		`ü`,
+		`ý`,
+		`þ`,
+		`ÿ`,
+	]
+)
+
 pub fn (c rune) str() string {
 	return utf32_to_str(u32(c))
 	/*
@@ -43,8 +110,12 @@ pub fn (ra []rune) string() string {
 // is_letter returns `true` if the rune is in range a-z or A-Z and `false` otherwise.
 [inline]
 pub fn (ra rune) is_letter() bool {
-	b := ra.str()
-	return b.len == 1 && ((b[0] >= `a` && b[0] <= `z`) || (b[0] >= `A` && b[0] <= `Z`))
+	if (ra >= `a` && ra <= `z`) || (ra >= `A` && ra <= `Z`) {
+		return true
+	} else if ra in letters {
+		return true
+	}
+	return ra.is_excluding_latin(letter_table)
 }
 
 // Define this on byte as well, so that we can do `s[0].is_capital()`
