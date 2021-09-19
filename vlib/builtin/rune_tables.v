@@ -6,7 +6,8 @@ module builtin
 // There is no need to investigate unicodes' type like letter yourself.
 
 const (
-	max_latin_1 = `ÿ` // '\u00FF'
+	max_latin_1  = '\u00FF' // `ÿ`
+	max_latin_1r = max_latin_1.runes()[0]
 )
 
 const letter_table = &RangeTable{
@@ -640,8 +641,8 @@ fn (r rune) is_excluding_latin(table &RangeTable) bool {
 const linear_max = 18
 
 fn is_16(ranges []Range16, r u16) bool {
-	if ranges.len <= linear_max && r <= max_latin_1 {
-		for i, range in ranges {
+	if ranges.len <= linear_max && r <= max_latin_1r {
+		for range in ranges {
 			if r < range.lo {
 				return false
 			}
@@ -671,8 +672,8 @@ fn is_16(ranges []Range16, r u16) bool {
 }
 
 fn is_32(ranges []Range32, r u32) bool {
-	if ranges.len <= linear_max && r <= max_latin_1 {
-		for i, range in ranges {
+	if ranges.len <= linear_max && r <= max_latin_1r {
+		for range in ranges {
 			if r < range.lo {
 				return false
 			}
