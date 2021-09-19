@@ -42,8 +42,8 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
-		mut cur_line := ""
-		
+		mut cur_line := ''
+
 		if !is_html {
 			cur_line = g.go_before_stmt(0)
 		}
