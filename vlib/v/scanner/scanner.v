@@ -929,11 +929,6 @@ fn (mut s Scanner) text_scan() token.Token {
 								s.pos += 2
 								return s.new_token(.right_shift_assign, '', 3)
 							}
-							// definite shift-right cases
-							`0`...`9` {
-								s.pos++
-								return s.new_token(.right_shift, '', 2)
-							}
 							// definite generic cases such as Foo<Bar<int>>{}
 							`)`, `{`, `}`, `,`, `>`, `[`, `]` {
 								return s.new_token(.gt, '', 1)
