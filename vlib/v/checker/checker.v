@@ -7956,7 +7956,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
 	for i, column in node.updated_columns {
-		field := node.fields.filter(it.name == column)[0]
+		x := node.fields.filter(it.name == column)
+		if x.len == 0 {
+			c.error('type `$table_sym.name` has no field named `$column`', node.pos)
+			continue
+		}
+		field := x[0]
 		node.updated_columns[i] = c.fetch_field_name(field)
 	}
 	if node.kind == .update {
