@@ -10,7 +10,7 @@ const (
 	max_latin_1r = max_latin_1.runes()[0]
 )
 
-const letter_table = &RangeTable{
+const letter_table = RangeTable{
 	r16: [
 		Range16{0x0041, 0x005a, 1},
 		Range16{0x0061, 0x007a, 1},
