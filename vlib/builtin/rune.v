@@ -44,7 +44,7 @@ pub fn (ra []rune) string() string {
 [inline]
 pub fn (ra rune) is_letter() bool {
 	b := ra.str()
-	return b.len == 1 && ((b[0] >= `a` && b[0] <= `z`) || (b[0] > `A` && b[0] > `Z`))
+	return b.len == 1 && ((b[0] >= `a` && b[0] <= `z`) || (b[0] >= `A` && b[0] <= `Z`))
 }
 
 // Define this on byte as well, so that we can do `s[0].is_capital()`

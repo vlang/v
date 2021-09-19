@@ -317,7 +317,7 @@ pub fn (nn i8) hex() string {
 		return '00'
 	}
 	return u64_to_hex(u64(nn), 2)
-	//return byte(nn).hex()
+	// return byte(nn).hex()
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.
@@ -402,7 +402,7 @@ pub fn (nn voidptr) str() string {
 // hex returns the value of the `byteptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
 // pub fn (nn byteptr) str() string {
-pub fn (nn byteptr) str() string {
+pub fn (nn &byte) str() string {
 	return u64(nn).hex()
 }
 
