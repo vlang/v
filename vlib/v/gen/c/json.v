@@ -91,6 +91,13 @@ $enc_fn_dec {
 			verror('json: $sym.name is not struct')
 		}
 		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
+	} else if sym.kind == .sum_type {
+		enc.writeln('\to = cJSON_CreateObject();')
+		// Structs. Range through fields
+		if sym.info !is ast.SumType {
+			verror('json: $sym.name is not a sumtype')
+		}
+		g.gen_sumtype_enc_dec(sym.info, styp, mut enc, mut dec)
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
@@ -107,6 +114,40 @@ $enc_fn_dec {
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())
+}
+
+[inline]
+fn (mut g Gen) gen_sumtype_enc_dec(type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
+	info := type_info as ast.SumType
+
+	for variant in info.variants {
+		g.gen_json_for_type(variant)
+		variant_name := g.table.get_type_symbol(variant)
+		variant_name_unmangled := variant_name.name.split('.').last()
+		variant_option_styp := g.register_optional(variant)
+
+		parent_symbol_idx := (g.table.find_type(styp.replace('__', '.')) or { verror('Cannot find type of `$styp` in symbol table') }).idx
+		g.write_sumtype_casting_fn(variant, parent_symbol_idx)
+		g.definitions.writeln('static inline $styp ${variant_name.cname}_to_sumtype_${styp}(${variant_name.cname}* x);')
+
+		// ENCODING
+		enc.writeln('\tif (val._typ == $variant) {')
+		enc.writeln('\t\tcJSON_AddItemToObject(o, "${variant_name_unmangled}", json__encode_${variant_name.cname}(*val._$variant_name.cname));\n')
+		enc.writeln('\t}')
+
+		// DECODING
+		dec.writeln('\tif (strcmp("$variant_name_unmangled", root->child->string) == 0) {')
+			if is_js_prim(variant_name.name) {
+				tmp := g.new_tmp_var()
+				gen_js_get(styp, tmp, variant_name_unmangled, mut dec, true)
+				dec.writeln('\t\t${variant_name.cname} value = (${js_dec_name(variant_name.name)})(jsonroot_$tmp);')
+			} else {
+				dec.writeln('\t\t${variant_option_styp} opt_value = json__decode_${variant_name.cname}(js_get(root,"$variant_name_unmangled"));')
+				dec.writeln('\t\t${variant_name.cname} value = *(${variant_name.cname}*)(opt_value.data);')
+			}
+			dec.writeln('\t\tres = ${variant_name.cname}_to_sumtype_${styp}(&value);')
+		dec.writeln('\t}')
+	}
 }
 
 [inline]
