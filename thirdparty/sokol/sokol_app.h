@@ -3235,7 +3235,7 @@ _SAPP_OBJC_RELEASE( menu_bar );
     #endif
     _sapp.valid = true;
    // __v_
-    if (!_sapp.__v_native_render) {
+  if (!_sapp.__v_native_render) {
     if (_sapp.fullscreen) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
         [_sapp.macos.window toggleFullScreen:self];
@@ -3243,7 +3243,9 @@ _SAPP_OBJC_RELEASE( menu_bar );
     else {
         [_sapp.macos.window center];
     }
-   }
+  }
+    NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+    [NSApp activateIgnoringOtherApps:YES];
   // __v C
     ///////////////////////////////////////////////////////
     // Create a child view for native rendering
