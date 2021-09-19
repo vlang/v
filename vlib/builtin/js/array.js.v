@@ -2,27 +2,30 @@ module builtin
 
 /// Internal representation of `array` type. It is used to implement slices and to make slices behave correctly
 /// it simply stores reference to original array and to index them properly it does index array relative to `index_start`.
-struct ArrayBuffer {
+struct array_buffer {
 	arr         JS.Array
-	index_start int = 0
-	len         int = 0
-	cap         int = 0
+	index_start int
+	len         int
+	cap         int
 }
 
 // TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
-fn (a ArrayBuffer) get(ix int) voidptr {
+fn (a array_buffer) get(ix int) voidptr {
 	mut res := voidptr(0)
 	#res = a.arr[a.index_start.val + ix.val];
 
 	return res
 }
 
-fn (mut a ArrayBuffer) set(ix int, val voidptr) {
+fn (mut a array_buffer) set(ix int, val voidptr) {
 	#a.arr[a.index_start.val + ix.val] = val;
 }
 
+#array_buffer.prototype.get = function(ix) { return array_buffer_get(this,ix);}
+#array_buffer.prototype.set = function(ix,val) { array_buffer_set(this,ix,val); }
+
 struct array {
-	arr JS.Array
+	arr array_buffer
 pub:
 	len int
 	cap int
@@ -64,10 +67,10 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		panic('array.repeat: count is negative: $count')
 	}
 	mut arr := empty_array()
-	#let tmp = new Array(a.arr.length * +count);
+	#let tmp = new Array(a.arr.arr.length * +count);
 	#tmp.fill(a.arr);
 	#
-	#arr.arr = flatArray(tmp,depth+1);
+	#arr.arr.arr = flatArray(tmp,depth+1);
 
 	return arr
 }
@@ -93,23 +96,23 @@ pub fn (a array) repeat(count int) array {
 	}
 }
 
-fn empty_array() array {
-	mut arr := array{}
-	#arr = new array([])
+#function makeEmptyArray() { return new array(new array_buffer({})); }
 
-	return arr
+fn JS.makeEmptyArray() array
+fn empty_array() array {
+	return JS.makeEmptyArray()
 }
 
 fn (a &array) set_len(i int) {
-	#a.arr.length=i
+	#a.arr.arr.length=i
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	#a.val.arr.sort(compare)
+	#a.val.arr.arr.sort(compare)
 }
 
 pub fn (mut a array) sort() {
-	#a.val.arr.sort($sortComparator)
+	#a.val.arr.arr.sort($sortComparator)
 }
 
 pub fn (a array) index(v string) int {
@@ -125,17 +128,18 @@ pub fn (a array) index(v string) int {
 
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
-	#result = new array(a.arr.arr.slice(start,end))
+	#let slice = a.arr.arr.slice(start,end)
+	#result = new array(new array_buffer({arr: a.arr.arr, len: new int(slice.length),cap: new int(slice.length),index_start: new int(start)}))
 
 	return result
 }
 
 pub fn (mut a array) insert(i int, val voidptr) {
-	#a.val.ar.arrr.splice(i,0,val)
+	#a.val.arr.arr.splice(i,0,val)
 }
 
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
-	#a.val.arr.arr.splice(i,0,...val.slice(0,+size))
+	#a.val.arr.arr.splice(i,0,...val.arr.slice(0,+size))
 }
 
 pub fn (mut a array) join(separator string) string {
@@ -171,6 +175,11 @@ fn (a array) push(val voidptr) {
 #
 #return true;
 #}
+//#Object.defineProperty(array_buffer.prototype,"len", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } })
+//#Object.defineProperty(array_buffer.prototype,"cap", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } })
+#
+#
+#function v_makeSlice(array) { Object.defineProperty(array,'len', {get: function() { return this.arr.len; }, set: function(l) { this.arr.len = l; }}) }
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
@@ -193,7 +202,7 @@ pub fn (mut a array) prepend_many(val voidptr, size int) {
 }
 
 pub fn (a array) reverse() array {
-	mut res := array{}
+	mut res := empty_array()
 	#res.arr.arr = Array.from(a.arr).reverse()
 
 	return res
@@ -203,7 +212,7 @@ pub fn (mut a array) reverse_in_place() {
 	#a.val.arr.arr.reverse()
 }
 
-#array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
+#array.prototype.$includes = function (elem) { return this.arr.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
 
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.

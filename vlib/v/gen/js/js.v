@@ -141,10 +141,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
 			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 		if g.is_test && !tests_inited {
@@ -1603,17 +1603,17 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
-	g.write('new array(')
+	g.write('new array(new array_buffer({arr: ')
 	g.inc_indent()
 
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
-		g.writeln('(function() {')
+		g.writeln('(function(length) {')
 		g.inc_indent()
 		g.writeln('const $t1 = [];')
-		g.write('for (let $t2 = 0; $t2 < ')
-		g.expr(it.len_expr)
+		g.write('for (let $t2 = 0; $t2 < length')
+
 		g.writeln('; $t2++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
@@ -1629,7 +1629,14 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('};')
 		g.writeln('return $t1;')
 		g.dec_indent()
-		g.write('})()')
+		g.write('})(')
+		g.expr(it.len_expr)
+		g.write('),len: new int(')
+		g.expr(it.len_expr)
+		g.write(')')
+		g.write(', cap: new int(')
+		g.expr(it.len_expr)
+		g.write(')')
 	} else if it.is_fixed && it.exprs.len == 1 {
 		// [100]byte codegen
 		t1 := g.new_tmp_var()
@@ -1654,23 +1661,31 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('};')
 		g.writeln('return $t1;')
 		g.dec_indent()
-		g.write('})()')
+		g.write('})(), len: new int(')
+		g.expr(it.exprs[0])
+		g.write('), cap: new int(')
+		g.expr(it.exprs[0])
+		g.write(')')
 	} else {
-		g.gen_array_init_values(it.exprs)
+		c := g.gen_array_init_values(it.exprs)
+		g.write(', len: new int($c), cap: new int($c)')
 	}
 	g.dec_indent()
-	g.write(')')
+	g.write('}))')
 }
 
-fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
+fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) int {
 	g.write('[')
+	mut c := 0
 	for i, expr in exprs {
 		g.expr(expr)
 		if i < exprs.len - 1 {
 			g.write(', ')
 		}
+		c++
 	}
 	g.write(']')
+	return c
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
@@ -2219,7 +2234,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')
 		}
-		g.write('.arr')
+		g.write('.arr.arr')
 		g.write('[Number(')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
@@ -2319,7 +2334,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('.val')
 			ltyp = ltyp.deref()
 		}
-		g.write('.arr,')
+		g.write('.arr.arr,')
 		array_info := l_sym.info as ast.Array
 		// arr << [1, 2]
 		if r_sym.kind == .array && array_info.elem_type != it.right_type {

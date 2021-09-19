@@ -236,15 +236,15 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr,...')
+			g.write('.arr.arr,...')
 			g.expr(node.right)
 			g.gen_deref_ptr(right.typ)
-			g.write('.arr')
+			g.write('.arr.arr')
 			g.write(')')
 		} else {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr,')
+			g.write('.arr.arr,')
 			g.expr(node.right)
 			g.write(')')
 		}
