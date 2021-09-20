@@ -141,6 +141,25 @@ pub fn is_punct(s string, index int) bool {
 	return is_uchar_punct(get_uchar(s, index))
 }
 
+// is_control return true if the rune is control code
+pub fn is_control(r rune) bool {
+	// control codes are all below 0xff
+	if r > max_latin_1 {
+		return false
+	}
+	return props[byte(r)] == 1
+}
+
+// is_letter returns true if the rune is unicode letter or in unicode category L
+pub fn is_letter(r rune) bool {
+	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
+		return true
+	} else if r <= max_latin_1 {
+		return props[byte(r)] & p_l_mask != 0
+	}
+	return is_excluding_latin(letter_table, r)
+}
+
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
 pub fn is_uchar_punct(uchar int) bool {
 	return find_punct_in_table(uchar, utf8.unicode_punct_western) != 0
