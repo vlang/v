@@ -8,7 +8,7 @@ fn test_unsigned_right_shift_expr() {
 	}
 	assert isize(-5) +>> 1 == a
 	assert i64(-5) +>> 1 == 9223372036854775805
-	assert -5 +>> 1 == 9223372036854775805 // because type int literal's size is equals to i64
+	assert -5 +>> 1 == 2147483645 // because type int literal's size is equals to i64
 	assert int(-5) +>> 1 == 2147483645
 	assert i16(-5) +>> 1 == 32765
 	assert i8(-5) +>> 1 == 125
