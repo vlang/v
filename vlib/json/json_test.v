@@ -50,7 +50,7 @@ enum Animal {
 	cat
 }
 
-type Entity = Animal | Item | Human | string | time.Time
+type Entity = Animal | Human | Item | string | time.Time
 
 struct SomeGame {
 	title  string

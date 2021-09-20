@@ -153,9 +153,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 			gen_js_get(variant_typ, tmp, unmagled_variant_name, mut dec, false)
 			dec.writeln('\t\t$variant_typ value = time__unix(json__decode_i64(jsonroot_$tmp));')
 		} else {
-			gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp,
-				unmagled_variant_name, mut dec, false)
-			// dec.writeln('\t\tOption_${variant_typ} $tmp = json__decode_${variant_typ}(js_get(root, "$unmagled_variant_name"));')
+			gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp, unmagled_variant_name, mut
+				dec, false)
 			dec.writeln('\t\t$variant_typ value = *($variant_typ*)(${tmp}.data);')
 		}
 		dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&value);')
