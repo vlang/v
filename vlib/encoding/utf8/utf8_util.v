@@ -144,7 +144,7 @@ pub fn is_punct(s string, index int) bool {
 // is_control return true if the rune is control code
 pub fn is_control(r rune) bool {
 	// control codes are all below 0xff
-	if r > max_latin_1.runes()[0] {
+	if r > max_latin_1 {
 		return false
 	}
 	return props[byte(r)] == 1
@@ -154,7 +154,7 @@ pub fn is_control(r rune) bool {
 pub fn is_letter(r rune) bool {
 	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
 		return true
-	} else if r <= max_latin_1.runes()[0] {
+	} else if r <= max_latin_1 {
 		return props[byte(r)] & p_l_mask != 0
 	}
 	return is_excluding_latin(letter_table, r)

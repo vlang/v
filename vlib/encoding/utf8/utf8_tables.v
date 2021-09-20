@@ -535,7 +535,7 @@ const props = [
 // These tables are based on Go lang's tables: https://cs.opensource.google/go/go/+/refs/tags/go1.17.1:src/unicode/tables.go.
 // There is no need to investigate unicodes' type like letter yourself.
 const (
-	max_latin_1 = '\u00FF' // `ÿ`
+	max_latin_1 = rune(0x00ff) // '\u00FF' // `ÿ`
 )
 
 const letter_table = RangeTable{
@@ -1169,7 +1169,7 @@ fn is_excluding_latin(table &RangeTable, r rune) bool {
 const linear_max = 18
 
 fn is_16(ranges []Range16, r u16) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1.runes()[0] {
+	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false
@@ -1200,7 +1200,7 @@ fn is_16(ranges []Range16, r u16) bool {
 }
 
 fn is_32(ranges []Range32, r u32) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1.runes()[0] {
+	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false
