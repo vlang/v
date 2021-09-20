@@ -64,6 +64,7 @@ pub mut:
 
 /*
 How the .toplevel_comments mode works:
+
 In this mode, the scanner scans *everything* at once, before parsing starts,
 including all the comments, and stores the results in an buffer s.all_tokens.
 
