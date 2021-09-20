@@ -270,6 +270,9 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 }
 
 fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) {
+	// println(table_name)
+	// println(expr)
+	// println(node)
 	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
 	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
 	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
