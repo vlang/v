@@ -416,13 +416,12 @@ pub const (
 	array_type_idx         = 22
 	map_type_idx           = 23
 	chan_type_idx          = 24
-	size_t_type_idx        = 25
-	any_type_idx           = 26
-	float_literal_type_idx = 27
-	int_literal_type_idx   = 28
-	thread_type_idx        = 29
-	error_type_idx         = 30
-	u8_type_idx            = 31
+	any_type_idx           = 25
+	float_literal_type_idx = 26
+	int_literal_type_idx   = 27
+	thread_type_idx        = 28
+	error_type_idx         = 29
+	u8_type_idx            = 30
 )
 
 pub const (
@@ -493,9 +492,7 @@ pub const (
 	// must be in the same order as the idx consts above
 	builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64', 'isize',
 		'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string', 'rune',
-		'array', 'map', 'chan', 'size_t', 'any', 'float_literal', 'int_literal', 'thread', 'Error',
-		'u8',
-	]
+		'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
 )
 
 pub struct MultiReturn {
@@ -538,7 +535,6 @@ pub enum Kind {
 	f32
 	f64
 	char
-	size_t
 	rune
 	bool
 	none_
@@ -680,7 +676,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
 	t.register_type_symbol(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
-	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
 	t.register_type_symbol(
 		kind: .float_literal
@@ -775,7 +770,6 @@ pub fn (k Kind) str() string {
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
-		.size_t { 'size_t' }
 		.none_ { 'none' }
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
@@ -1095,7 +1089,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
 			}
 		}
-		.alias, .any, .size_t, .aggregate, .placeholder, .enum_ {
+		.alias, .any, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}

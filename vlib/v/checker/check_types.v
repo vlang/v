@@ -19,14 +19,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		if got.is_number() && expected.is_number() {
 			return
 		}
-		// mode_t - currently using u32 as mode_t for C fns
-		// if got.idx() in [ast.int_type_idx, ast.u32_type_idx] && expected.idx() in [ast.int_type_idx, ast.u32_type_idx] {
-		// 	return
-		// }
-		// allow number to be used as size_t
-		if got.is_number() && expected.idx() == ast.size_t_type_idx {
-			return
-		}
 		// allow bool & int to be used interchangeably for C functions
 		if (got.idx() == ast.bool_type_idx
 			&& expected.idx() in [ast.int_type_idx, ast.int_literal_type_idx])

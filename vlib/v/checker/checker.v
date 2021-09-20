@@ -2592,7 +2592,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					'\ne.g. `users.sort(a.id < b.id)`', node.pos)
 			}
 		} else if !(c.table.get_type_symbol(elem_typ).has_method('<')
-			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.to_ptr(), ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type, ast.size_t_type_idx]) {
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.to_ptr(), ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
 			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
 				node.pos)
 		}
