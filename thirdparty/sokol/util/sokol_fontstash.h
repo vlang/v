@@ -112,7 +112,7 @@
             sgl_load_pipeline(...);
             sgl_begin_triangles();
             for each vertex:
-                sg_v2f_t2f_c1i(...);
+                sgl_v2f_t2f_c1i(...);
             sgl_end();
             sgl_pop_pipeline();
             sgl_disable_texture();
@@ -1645,8 +1645,8 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
             shd_desc.fs.byte_code = _sfons_fs_bytecode_wgpu;
             shd_desc.fs.byte_code_size = sizeof(_sfons_fs_bytecode_wgpu);
         #else
-            shd_desc.vs.source = _sfons_vs_src_dummy;
-            shd_desc.fs.source = _sfons_fs_src_dummy;
+            shd_desc.vs.source = _sfons_vs_source_dummy;
+            shd_desc.fs.source = _sfons_fs_source_dummy;
         #endif
         shd_desc.label = "sfons-shader";
         sfons->shd = sg_make_shader(&shd_desc);
