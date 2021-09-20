@@ -110,6 +110,54 @@ $enc_fn_dec {
 }
 
 [inline]
+fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder) {
+	info := sym.info as ast.SumType
+	typ := sym.idx
+
+	for variant in info.variants {
+		variant_typ := g.typ(variant)
+		variant_sym := g.table.get_type_symbol(variant)
+		unmangled_variant_name := variant_sym.name.split('.').last()
+
+		g.gen_json_for_type(variant)
+		g.write_sumtype_casting_fn(variant, typ)
+		g.definitions.writeln('static inline $sym.cname ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
+
+		// ENCODING
+		enc.writeln('\tif (val._typ == $variant) {')
+		if variant_sym.kind == .enum_ {
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmangled_variant_name", json__encode_u64(*val._$variant_typ));')
+		} else if variant_sym.name == 'time.Time' {
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmangled_variant_name", json__encode_i64(val._$variant_typ->_v_unix));')
+		} else {
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmangled_variant_name", json__encode_${variant_typ}(*val._$variant_typ));')
+		}
+		enc.writeln('\t}')
+
+		// DECODING
+		dec.writeln('\tif (strcmp("$variant_sym.name", root->child->string) == 0) {')
+		tmp := g.new_tmp_var()
+		if is_js_prim(variant_typ) {
+			gen_js_get(variant_typ, tmp, variant_sym.name, mut dec, false)
+			dec.writeln('\t\t$variant_typ value = (${js_dec_name(variant_sym.name)})(jsonroot_$tmp);')
+		} else if variant_sym.kind == .enum_ {
+			gen_js_get(variant_typ, tmp, variant_sym.name, mut dec, false)
+			dec.writeln('\t\t$variant_typ value = json__decode_u64(jsonroot_$tmp);')
+		} else if variant_sym.name == 'time.Time' {
+			gen_js_get(variant_typ, tmp, variant_sym.name, mut dec, false)
+			dec.writeln('\t\t$variant_typ value = time__unix(json__decode_i64(jsonroot_$tmp));')
+		} else {
+			gen_js_get_opt(js_dec_name(variant_sym.cname), variant_typ, sym.cname, tmp,
+				variant_sym.name, mut dec, false)
+			// dec.writeln('\t\tOption_${variant_typ} $tmp = json__decode_${variant_typ}(js_get(root, "$variant_sym.name"));')
+			dec.writeln('\t\t$variant_typ value = *($variant_typ*)(${tmp}.data);')
+		}
+		dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&value);')
+		dec.writeln('\t}')
+	}
+}
+
+[inline]
 fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
 	info := type_info as ast.Struct
 	for field in info.fields {
