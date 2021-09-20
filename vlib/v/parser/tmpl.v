@@ -67,7 +67,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	source.writeln('
 import strings
 // === vweb html template ===
-fn vweb_tmpl_${fn_name}() {
+fn vweb_tmpl_${fn_name}() string {
 mut sb := strings.new_builder($lstartlength)\n
 
 ')
@@ -237,6 +237,7 @@ mut sb := strings.new_builder($lstartlength)\n
 	}
 	source.writeln(parser.tmpl_str_end)
 	source.writeln('_tmpl_res_$fn_name := sb.str() ')
+	source.writeln('return _tmpl_res_$fn_name')
 	source.writeln('}')
 	source.writeln('// === end of vweb html template ===')
 	result := source.str()

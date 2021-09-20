@@ -1274,6 +1274,13 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
+// is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
+// Example: assert byte(`V`) == true
+[inline]
+pub fn (c byte) is_alnum() bool {
+	return c.is_letter() || c.is_digit()
+}
+
 // free allows for manually freeing the memory occupied by the string
 [manualfree; unsafe]
 pub fn (s &string) free() {

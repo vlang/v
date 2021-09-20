@@ -42,6 +42,12 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
+		mut cur_line := ''
+
+		if !is_html {
+			cur_line = g.go_before_stmt(0)
+		}
+
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
 				// insert stmts from vweb_tmpl fn
@@ -49,19 +55,24 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					if is_html {
 						g.inside_vweb_tmpl = true
 					}
-					g.stmts(stmt.stmts)
+					g.stmts(stmt.stmts.filter(it !is ast.Return))
 					g.inside_vweb_tmpl = false
 					break
 				}
 			}
 		}
+
 		if is_html {
 			// return vweb html template
 			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
 		} else {
 			// return $tmpl string
 			fn_name := g.fn_decl.name.replace('.', '__')
-			g.writeln('return _tmpl_res_$fn_name;')
+			g.write(cur_line)
+			if g.inside_return {
+				g.write('return ')
+			}
+			g.write('_tmpl_res_$fn_name')
 		}
 		return
 	}

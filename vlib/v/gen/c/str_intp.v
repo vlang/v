@@ -91,6 +91,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 				ast.i64_type { fmt_type = .si_i64 }
 				ast.u64_type { fmt_type = .si_u64 }
 				ast.u32_type { fmt_type = .si_u32 }
+				ast.usize_type { fmt_type = .si_u64 }
+				ast.isize_type { fmt_type = .si_i64 }
 				else { fmt_type = .si_i32 }
 			}
 		}

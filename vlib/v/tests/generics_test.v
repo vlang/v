@@ -481,6 +481,50 @@ fn return_one<T>(rec int, useless T) T {
 	return T(0)
 }
 
+struct MultiLevel<T> {
+	foo T
+}
+
+fn get_multilevel_foo<T>(bar MultiLevel<T>) int {
+	return bar.foo.foo
+}
+
+fn get_multilevel_foo_2<T, U>(bar T, baz U) int {
+	return bar.foo.foo + baz.foo.foo
+}
+
+fn test_multi_level_generics() {
+	one := MultiLevel<int>{
+		foo: 10
+	}
+	two := MultiLevel<MultiLevel<int>>{
+		foo: one
+	}
+	assert two.foo.foo == 10
+	three := MultiLevel<MultiLevel<MultiLevel<int>>>{
+		foo: two
+	}
+	assert three.foo.foo.foo == 10
+	assert get_multilevel_foo<MultiLevel<int>>(two) == 10
+	assert get_multilevel_foo_2<MultiLevel<MultiLevel<int>>, MultiLevel<MultiLevel<int>>>(two,
+		two) == 20
+}
+
+struct Empty {}
+
+fn (e1 Empty) < (e2 Empty) bool {
+	return true
+}
+
+struct TandU<T, U> {
+	t T
+	u U
+}
+
+fn boring_function<T>(t T) bool {
+	return true
+}
+
 fn test_generic_detection() {
 	v1, v2 := -1, 1
 
@@ -493,7 +537,7 @@ fn test_generic_detection() {
 	// generic
 	assert multi_generic_args<int, string>(0, 's')
 	assert multi_generic_args<Foo1, Foo2>(Foo1{}, Foo2{})
-	assert multi_generic_args<Foo<int>, Foo<int> >(Foo<int>{}, Foo<int>{})
+	assert multi_generic_args<Foo<int>, Foo<int>>(Foo<int>{}, Foo<int>{})
 
 	// TODO: assert multi_generic_args<Foo<int>, Foo<int>>(Foo1{}, Foo2{})
 	assert multi_generic_args<simplemodule.Data, int>(simplemodule.Data{}, 0)
@@ -501,4 +545,43 @@ fn test_generic_detection() {
 	assert multi_generic_args<[]int, int>([]int{}, 0)
 	assert multi_generic_args<map[int]int, int>(map[int]int{}, 0)
 	assert 0 < return_one<int>(10, 0)
+
+	// "the hardest cases"
+	foo, bar, baz := 1, 2, 16
+	res1, res2 := foo < bar, baz >> (foo + 1 - 1)
+	assert res1
+	assert res2 == 8
+	res3, res4 := Empty{} < Empty{}, baz >> (foo + 1 - 1)
+	assert res3
+	assert res4 == 8
+	assert boring_function<TandU<Empty, int>>(TandU<Empty, int>{
+		t: Empty{}
+		u: 10
+	})
+
+	assert boring_function<MultiLevel<MultiLevel<int>>>(MultiLevel<MultiLevel<int>>{
+		foo: MultiLevel<int>{
+			foo: 10
+		}
+	})
+
+	assert boring_function<TandU<MultiLevel<int>, []int>>(TandU<MultiLevel<int>, []int>{
+		t: MultiLevel<int>{
+			foo: 10
+		}
+		u: [10]
+	})
+
+	// this final case challenges your scanner :-)
+	assert boring_function<TandU<TandU<int,MultiLevel<Empty>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty>>, map[string][]int>{
+		t: TandU<int,MultiLevel<Empty>>{
+			t: 20
+			u: MultiLevel<Empty>{
+				foo: Empty{}
+			}
+		}
+		u: {
+			'bar': [40]
+		}
+	})
 }

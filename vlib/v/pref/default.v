@@ -141,8 +141,14 @@ pub fn (mut p Preferences) fill_with_defaults() {
 fn (mut p Preferences) find_cc_if_cross_compiling() {
 	if p.os == .windows {
 		$if !windows {
-			// Cross compiling to Windows
-			p.ccompiler = 'x86_64-w64-mingw32-gcc'
+			// Allow for explicit overrides like `v -showcc -cc msvc -os windows file.v`,
+			// so that the flag passing can be debugged on other OSes too, not only
+			// on windows (building will stop later, when -showcc already could display all
+			// options).
+			if p.ccompiler != 'msvc' {
+				// Cross compiling to Windows
+				p.ccompiler = 'x86_64-w64-mingw32-gcc'
+			}
 		}
 	}
 	if p.os == .linux {

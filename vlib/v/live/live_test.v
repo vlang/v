@@ -1,6 +1,8 @@
 import os
 import time
 
+// vtest retry: 4
+
 /*
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
 

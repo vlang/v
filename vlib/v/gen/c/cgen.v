@@ -3204,7 +3204,9 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 fn (mut g Gen) autofree_variable(v ast.Var) {
 	sym := g.table.get_type_symbol(v.typ)
 	// if v.name.contains('output2') {
-	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	if g.is_autofree {
+		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
+	}
 	// }
 	if sym.kind == .array {
 		if sym.has_method('free') {
@@ -3241,6 +3243,9 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	}
 	if sym.has_method('free') {
 		g.autofree_var_call(c_name(sym.name) + '_free', v)
+	} else if v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+		// Free user reference types
+		g.autofree_var_call('free', v)
 	}
 }
 
@@ -4824,6 +4829,12 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
+
+	g.inside_return = true
+	defer {
+		g.inside_return = false
+	}
+
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
@@ -4833,10 +4844,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 
-	g.inside_return = true
-	defer {
-		g.inside_return = false
-	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
@@ -5203,7 +5210,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		}
 		rune {
 			rune_code := u32(ct_value)
-			if rune_code <= 255 {
+			if rune_code <= 127 {
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}

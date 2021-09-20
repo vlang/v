@@ -24,6 +24,7 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(utyp)
 	styp := g.typ(utyp)
+	g.register_optional(utyp)
 	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
@@ -39,8 +40,6 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	// cJSON_Parse(str) call is added by the compiler
 	// Code gen decoder
 	dec_fn_name := js_dec_name(styp)
-	// Make sure that this optional type actually exists
-	g.register_optional(utyp)
 	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
 $dec_fn_dec {
@@ -91,6 +90,13 @@ $enc_fn_dec {
 			verror('json: $sym.name is not struct')
 		}
 		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
+	} else if sym.kind == .sum_type {
+		enc.writeln('\to = cJSON_CreateObject();')
+		// Structs. Range through fields
+		if sym.info !is ast.SumType {
+			verror('json: $sym.name is not a sumtype')
+		}
+		g.gen_sumtype_enc_dec(sym, mut enc, mut dec)
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
