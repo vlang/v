@@ -138,6 +138,10 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 }
 
+pub const cc_to_windows = 'x86_64-w64-mingw32-gcc'
+
+pub const cc_to_linux = 'clang'
+
 fn (mut p Preferences) find_cc_if_cross_compiling() {
 	if p.os == .windows {
 		$if !windows {
@@ -147,14 +151,14 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 			// options).
 			if p.ccompiler != 'msvc' {
 				// Cross compiling to Windows
-				p.ccompiler = 'x86_64-w64-mingw32-gcc'
+				p.ccompiler = vcross_compiler_name(pref.cc_to_windows)
 			}
 		}
 	}
 	if p.os == .linux {
 		$if !linux {
 			// Cross compiling to Linux
-			p.ccompiler = 'clang'
+			p.ccompiler = vcross_compiler_name(pref.cc_to_linux)
 		}
 	}
 }
@@ -209,4 +213,12 @@ pub fn vexe_path() string {
 	real_vexe_path := os.real_path(os.executable())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
+}
+
+pub fn vcross_compiler_name(vccname_default string) string {
+	vccname := os.getenv('VCROSS_COMPILER_NAME')
+	if vccname != '' {
+		return vccname
+	}
+	return vccname_default
 }

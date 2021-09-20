@@ -119,7 +119,12 @@ see also `v help build`.
       explicitly supported platforms without source changes.
 
    -m32, -m64
-      Specify whether 32-bit or 64-bit machine code is generated.
+      Whether 32-bit or 64-bit machine code will be generated.
+      NB: if you need to produce 32-bit code, *and* you are cross compiling
+      to another OS, you may need to also set the environment variable
+      VCROSS_COMPILER_NAME, in order to override the default cross compiler,
+      that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
+      `clang` for targeting Linux from other operating systems).
 
    -sanitize
       Pass flags related to sanitization to the C compiler.
