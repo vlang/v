@@ -64,24 +64,19 @@ pub mut:
 
 /*
 How the .toplevel_comments mode works:
-
 In this mode, the scanner scans *everything* at once, before parsing starts,
 including all the comments, and stores the results in an buffer s.all_tokens.
-
 Then .scan() just returns s.all_tokens[ s.tidx++ ] *ignoring* the
 comment tokens. In other words, by default in this mode, the parser
 *will not see any comments* inside top level statements, so it has
 no reason to complain about them.
-
 When the parser determines, that it is outside of a top level statement,
 it tells the scanner to backtrack s.tidx to the current p.tok index,
 then it changes .is_inside_toplvl_statement to false , and refills its
 lookahead buffer (i.e. p.peek_tok), from the scanner.
-
 In effect, from the parser's point of view, the next tokens, that it will
 receive with p.next(), will be the same, as if comments are not ignored
 anymore, *between* top level statements.
-
 When the parser determines, that it is going again inside a top level
 statement, it does the same, this time setting .is_inside_toplvl_statement
 to true, again refilling the lookahead buffer => calling .next() in this
@@ -919,56 +914,46 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						// first eat the possible spaces eg `>> (` => `>>(`
-						mut non_space_pos := s.pos + 2
-						for non_space_pos < s.text.len && s.text[non_space_pos].is_space() {
-							non_space_pos++
-						}
-						match s.text[non_space_pos] {
-							`=` {
-								s.pos += 2
-								return s.new_token(.right_shift_assign, '', 3)
+						if s.text[s.pos + 2] == `=` {
+							s.pos += 2
+							return s.new_token(.right_shift_assign, '', 3)
+						} else {
+							// peek the next non-space char
+							mut non_space_pos := s.pos + 2
+							for non_space_pos < s.text.len && s.text[non_space_pos].is_space() {
+								non_space_pos++
 							}
-							// definite generic cases such as Foo<Bar<int>>{}
-							`)`, `{`, `}`, `,`, `>`, `[`, `]` {
-								return s.new_token(.gt, '', 1)
-							}
-							// notice two-level generic call and shift-right share the rest patterns
+							// an algorithm to discriminate two-level generic call and shift-right patterns
 							// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
-							// which is hard but could be discriminated by my following algorithm
 							// @SleepyRoy if you have smarter algorithm :-)
-							else {
-								// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
-								// here we set the limit 100 which should be nice for real cases
-								if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-									// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
-									// int, []Foo, [20]f64, map[string][]bool =>
-									// int, Foo, f64, bool
-									typs := s.text[s.last_lt + 1..s.pos].trim_right('>').split(',').map(it.trim_space().trim_right('>').after(']'))
-									// if any typ is neither builtin nor Type, then the case is not generics
-									for typ in typs {
-										if typ.len == 0 {
-											s.pos++
-											return s.new_token(.right_shift, '', 2)
-										}
-										if typ !in ast.builtin_type_names && !(typ[0].is_capital()
-											&& typ[1..].bytes().all(it.is_alnum())) {
-											s.pos++
-											return s.new_token(.right_shift, '', 2)
-										}
+							// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
+							// here we set the limit 100 which should be nice for real cases
+							if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
+								// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
+								// int, []Foo, [20]f64, map[string][]bool =>
+								// int, Foo, f64, bool
+								typs := s.text[s.last_lt + 1..s.pos].split(',').map(it.trim_space().trim_right('>').after(']'))
+								// if any typ is neither builtin nor Type, then the case is not generics
+								for typ in typs {
+									// TODO: combine two ifs once logic shortcut with `.all()` is fixed
+									if typ.len == 0 {
+										s.pos++
+										return s.new_token(.right_shift, '', 2)
 									}
-									return s.new_token(.gt, '', 1)
+									if !(typ[0].is_capital() && typ[1..].bytes().all(it.is_alnum())
+										&& typ !in ast.builtin_type_names) {
+										s.pos++
+										return s.new_token(.right_shift, '', 2)
+									}
 								}
-								s.pos++
-								return s.new_token(.right_shift, '', 2)
+								return s.new_token(.gt, '', 1)
 							}
 						}
 					}
 					s.pos++
 					return s.new_token(.right_shift, '', 2)
-				} else {
-					return s.new_token(.gt, '', 1)
 				}
+				return s.new_token(.gt, '', 1)
 			}
 			`<` {
 				if nextc == `=` {
