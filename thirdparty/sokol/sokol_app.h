@@ -3,6 +3,13 @@
 #endif
 #ifndef SOKOL_APP_INCLUDED
 /*
+    V language IMPORTANT NOTE:
+    all the V patch in this code are marked with:
+    // __v_ start
+    // __v_ end
+*/
+
+/*
     sokol_app.h -- cross-platform application wrapper
 
     Project URL: https://github.com/floooh/sokol
@@ -1370,8 +1377,9 @@ typedef struct sapp_desc {
     bool html5_premultiplied_alpha;     // HTML5 only: whether the rendered pixels use premultiplied alpha convention
     bool html5_ask_leave_site;          // initial state of the internal html5_ask_leave_site flag (see sapp_html5_ask_leave_site())
     bool ios_keyboard_resizes_canvas;   // if true, showing the iOS keyboard shrinks the canvas
-        /* V patches */
+    // __v_ start
     bool __v_native_render;             /* V patch to allow for native rendering */
+    // __v_ end
 } sapp_desc;
 
 /* HTML5 specific: request and response structs for
@@ -1787,7 +1795,7 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 
 /*== MACOS DECLARATIONS ======================================================*/
 #if defined(_SAPP_MACOS)
-// __v_
+// __v_ start
 @interface SokolWindow : NSWindow {
 }
 @end
@@ -1801,7 +1809,7 @@ MyView2* g_view;
 - (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
 - (BOOL)canBecomeMainWindow { return YES; }
 @end
-// __v_
+// __v_ end
 
 @interface _sapp_macos_app_delegate : NSObject<NSApplicationDelegate>
 @end
@@ -1821,9 +1829,11 @@ MyView2* g_view;
 typedef struct {
     uint32_t flags_changed_store;
     uint8_t mouse_buttons;
+    // __v_ start
 //    NSWindow* window;
 //    SokolWindow* window; // __v_
     _sapp_macos_window* window; // __v_
+    // __v_ end
     NSTrackingArea* tracking_area;
     _sapp_macos_app_delegate* app_dlg;
     _sapp_macos_window_delegate* win_dlg;
@@ -2294,8 +2304,8 @@ typedef struct {
     _sapp_mouse_t mouse;
     _sapp_clipboard_t clipboard;
     _sapp_drop_t drop;
-        sapp_icon_desc default_icon_desc;
-        uint32_t* default_icon_pixels;
+    sapp_icon_desc default_icon_desc;
+    uint32_t* default_icon_pixels;
     #if defined(_SAPP_MACOS)
         _sapp_macos_t macos;
     #elif defined(_SAPP_IOS)
@@ -2325,8 +2335,9 @@ typedef struct {
     wchar_t window_title_wide[_SAPP_MAX_TITLE_LENGTH];   /* UTF-32 or UCS-2 */
     sapp_keycode keycodes[SAPP_MAX_KEYCODES];
 
-    /* V patches */
+    // __v_ start
     bool __v_native_render;             /* V patch to allow for native rendering */
+    // __v_ end
 } _sapp_t;
 static _sapp_t _sapp;
 
@@ -2355,9 +2366,11 @@ _SOKOL_PRIVATE void _sapp_call_init(void) {
 }
 
 _SOKOL_PRIVATE void _sapp_call_frame(void) {
+    // __v_ start
     if (_sapp.__v_native_render) {
         return;
     }
+    // __v_ end
     if (_sapp.init_called && !_sapp.cleanup_called) {
         if (_sapp.desc.frame_cb) {
             _sapp.desc.frame_cb();
@@ -2368,7 +2381,7 @@ _SOKOL_PRIVATE void _sapp_call_frame(void) {
     }
 }
 
-// __v_
+// __v_ start
 _SOKOL_PRIVATE void _sapp_call_frame_native(void) {
 //puts("_sapp_call_frame_native()");
 //printf("init called=%d cleanup_called=%d\n", _sapp.init_called,_sapp.cleanup_called);
@@ -2381,7 +2394,7 @@ _SOKOL_PRIVATE void _sapp_call_frame_native(void) {
         }
    }
 }
-
+// __v_ end
 
 _SOKOL_PRIVATE void _sapp_call_cleanup(void) {
     if (!_sapp.cleanup_called) {
@@ -2496,7 +2509,9 @@ _SOKOL_PRIVATE void _sapp_init_state(const sapp_desc* desc) {
     _sapp.dpi_scale = 1.0f;
     _sapp.fullscreen = _sapp.desc.fullscreen;
     _sapp.mouse.shown = true;
+    // __v_ start
     _sapp.__v_native_render = _sapp.desc.__v_native_render;
+    // __v_end
 }
 
 _SOKOL_PRIVATE void _sapp_discard_state(void) {
@@ -3110,7 +3125,9 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     }
 }
 
+// __v_ start
 #include "sokol_app2.h" // __v_
+// __v_ end
 
 @implementation _sapp_macos_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
@@ -3129,7 +3146,10 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         _sapp.framebuffer_height = _sapp.window_height;
     }
     _sapp.dpi_scale = (float)_sapp.framebuffer_width / (float) _sapp.window_width;
-    const NSUInteger style =  _sapp.desc.fullscreen ? NSWindowStyleMaskBorderless : // __v_
+    const NSUInteger style =  
+        // __v_ start
+        _sapp.desc.fullscreen ? NSWindowStyleMaskBorderless : // __v_
+        // __v_ end
         NSWindowStyleMaskTitled |
         NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable |
@@ -3145,33 +3165,31 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp.macos.window.acceptsMouseMovedEvents = YES;
     _sapp.macos.window.restorable = YES;
 
-
-
-   // _v__
-   _sapp.macos.window.backgroundColor = [NSColor whiteColor];
+    // _v__ start
+    _sapp.macos.window.backgroundColor = [NSColor whiteColor];
 
     // Quit menu
     NSMenu* menu_bar = [[NSMenu alloc] init];
-NSMenuItem* app_menu_item = [[NSMenuItem alloc] init];
-[menu_bar addItem:app_menu_item];
-NSApp.mainMenu = menu_bar;
-NSMenu* app_menu = [[NSMenu alloc] init];
-NSString* window_title_as_nsstring = [NSString stringWithUTF8String:_sapp.window_title];
-// `quit_title` memory will be owned by the NSMenuItem, so no need to release it ourselves
-NSString* quit_title =  [@"Quit " stringByAppendingString:window_title_as_nsstring];
-NSMenuItem* quit_menu_item = [[NSMenuItem alloc]
-    initWithTitle:quit_title
-    action:@selector(terminate:)
-    keyEquivalent:@"q"];
-[app_menu addItem:quit_menu_item];
-app_menu_item.submenu = app_menu;
-_SAPP_OBJC_RELEASE( window_title_as_nsstring );
-_SAPP_OBJC_RELEASE( app_menu );
-_SAPP_OBJC_RELEASE( app_menu_item );
-_SAPP_OBJC_RELEASE( menu_bar );
+    NSMenuItem* app_menu_item = [[NSMenuItem alloc] init];
+    [menu_bar addItem:app_menu_item];
+    NSApp.mainMenu = menu_bar;
+    NSMenu* app_menu = [[NSMenu alloc] init];
+    NSString* window_title_as_nsstring = [NSString stringWithUTF8String:_sapp.window_title];
+    // `quit_title` memory will be owned by the NSMenuItem, so no need to release it ourselves
+    NSString* quit_title =  [@"Quit " stringByAppendingString:window_title_as_nsstring];
+    NSMenuItem* quit_menu_item = [[NSMenuItem alloc]
+        initWithTitle:quit_title
+        action:@selector(terminate:)
+        keyEquivalent:@"q"];
+    [app_menu addItem:quit_menu_item];
+    app_menu_item.submenu = app_menu;
+    _SAPP_OBJC_RELEASE( window_title_as_nsstring );
+    _SAPP_OBJC_RELEASE( app_menu );
+    _SAPP_OBJC_RELEASE( app_menu_item );
+    _SAPP_OBJC_RELEASE( menu_bar );
 
 
-  // _v__
+  // _v__ end
 
     _sapp.macos.win_dlg = [[_sapp_macos_window_delegate alloc] init];
     _sapp.macos.window.delegate = _sapp.macos.win_dlg;
@@ -3234,8 +3252,8 @@ _SAPP_OBJC_RELEASE( menu_bar );
         timer_obj = nil;
     #endif
     _sapp.valid = true;
-   // __v_
-  if (!_sapp.__v_native_render) {
+   // __v_ start
+  if (!_sapp.__v_native_render) { // __v_
     if (_sapp.fullscreen) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
         [_sapp.macos.window toggleFullScreen:self];
@@ -3243,10 +3261,11 @@ _SAPP_OBJC_RELEASE( menu_bar );
     else {
         [_sapp.macos.window center];
     }
-  }
+  } // __v_
+  // __v_ end
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
     [NSApp activateIgnoringOtherApps:YES];
-  // __v C
+  // __v start
     ///////////////////////////////////////////////////////
     // Create a child view for native rendering
     if (_sapp.__v_native_render) {
@@ -3274,10 +3293,14 @@ _SAPP_OBJC_RELEASE( menu_bar );
 
 }
    //////////////////////////////////
+// __v_ end
 
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
+
+// __v_ start
 //    [NSEvent setMouseCoalescingEnabled:NO];
+// __v_ end
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -3357,10 +3380,10 @@ _SAPP_OBJC_RELEASE( menu_bar );
 
 @implementation _sapp_macos_window
 
-// __v_
+// __v_ start
 - (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
 - (BOOL)canBecomeMainWindow { return YES; }
-// __v_
+// __v_ end
 
 - (instancetype)initWithContentRect:(NSRect)contentRect
                           styleMask:(NSWindowStyleMask)style
