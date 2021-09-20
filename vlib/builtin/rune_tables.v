@@ -6,7 +6,7 @@ module builtin
 // There is no need to investigate unicodes' type like letter yourself.
 
 const (
-	max_latin_1  = '\u00FF' // `ÿ`
+	max_latin_1 = '\u00FF' // `ÿ`
 )
 
 const letter_table = RangeTable{
