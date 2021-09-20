@@ -92,7 +92,7 @@ $enc_fn_dec {
 		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
 	} else if sym.kind == .sum_type {
 		enc.writeln('\to = cJSON_CreateObject();')
-		// Structs. Range through fields
+		// Sumtypes. Range through variants of sumtype
 		if sym.info !is ast.SumType {
 			verror('json: $sym.name is not a sumtype')
 		}
@@ -123,6 +123,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 	for variant in info.variants {
 		variant_typ := g.typ(variant)
 		variant_sym := g.table.get_type_symbol(variant)
+		unmagled_variant_name := variant_sym.name.split('.').last()
 
 		g.gen_json_for_type(variant)
 		g.write_sumtype_casting_fn(variant, typ)
@@ -131,11 +132,11 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		// ENCODING
 		enc.writeln('\tif (val._typ == $variant) {')
 		if variant_sym.kind == .enum_ {
-			enc.writeln('\t\tcJSON_AddItemToObject(o, "$variant_sym.name", json__encode_u64(*val._$variant_typ));')
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmagled_variant_name", json__encode_u64(*val._$variant_typ));')
 		} else if variant_sym.name == 'time.Time' {
-			enc.writeln('\t\tcJSON_AddItemToObject(o, "$variant_sym.name", json__encode_i64(val._$variant_typ->_v_unix));')
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmagled_variant_name", json__encode_i64(val._$variant_typ->_v_unix));')
 		} else {
-			enc.writeln('\t\tcJSON_AddItemToObject(o, "$variant_sym.name", json__encode_${variant_typ}(*val._$variant_typ));')
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmagled_variant_name", json__encode_${variant_typ}(*val._$variant_typ));')
 		}
 		enc.writeln('\t}')
 
