@@ -959,7 +959,7 @@ fn (mut s Scanner) text_scan() token.Token {
 											return s.new_token(.right_shift, '', 2)
 										}
 										if typ !in ast.builtin_type_names && !(typ[0].is_capital()
-											&& typ[1..].bytes().all(c.is_alnum())) {
+											&& typ[1..].bytes().all(it.is_alnum())) {
 											s.pos++
 											return s.new_token(.right_shift, '', 2)
 										}
