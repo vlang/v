@@ -318,7 +318,7 @@ pub fn (ra []rune) string() string {
 pub fn (ra rune) is_letter() bool {
 	if (ra >= `a` && ra <= `z`) || (ra >= `A` && ra <= `Z`) {
 		return true
-	} else if ra <= max_latin_1r {
+	} else if ra <= max_latin_1.runes()[0] {
 		return props[byte(ra)] & p_l_mask != 0
 	}
 	return ra.is_excluding_latin(letter_table)
