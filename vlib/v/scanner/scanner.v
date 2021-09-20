@@ -738,6 +738,13 @@ fn (mut s Scanner) text_scan() token.Token {
 				} else if nextc == `=` {
 					s.pos++
 					return s.new_token(.plus_assign, '', 2)
+				} else if s.pos + 2 < s.text.len && nextc == `>` && s.text[s.pos + 2] == `>` {
+					if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+						s.pos += 4
+						return s.new_token(.unsigned_right_shift_assign, '', 4)
+					}
+					s.pos += 3
+					return s.new_token(.unsigned_right_shift, '', 3)
 				}
 				return s.new_token(.plus, '', 1)
 			}
@@ -762,13 +769,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.xor_assign, '', 2)
-				} else if s.pos + 2 < s.text.len && nextc == `>` && s.text[s.pos + 2] == `^` {
-					if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
-						s.pos += 4
-						return s.new_token(.unsigned_right_shift_assign, '', 4)
-					}
-					s.pos += 3
-					return s.new_token(.unsigned_right_shift, '', 3)
 				}
 				return s.new_token(.xor, '', 1)
 			}
@@ -959,7 +959,7 @@ fn (mut s Scanner) text_scan() token.Token {
 											return s.new_token(.right_shift, '', 2)
 										}
 										if typ !in ast.builtin_type_names && !(typ[0].is_capital()
-											&& typ[1..].bytes().all(it.is_alnum())) {
+											&& typ[1..].bytes().all(c.is_alnum())) {
 											s.pos++
 											return s.new_token(.right_shift, '', 2)
 										}
