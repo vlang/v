@@ -7,7 +7,7 @@ $if windows {
 		#include <ws2tcpip.h>
 		#include <afunix.h>
 	} $else {
-		#include "@VROOT/vlib/net/afunix.h"
+		#include "@VMODROOT/vlib/net/afunix.h"
 	}
 } $else {
 	#include <sys/un.h>

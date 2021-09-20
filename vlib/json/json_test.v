@@ -37,6 +37,48 @@ fn test_decode_top_level_array() {
 	assert x[1].age == 31
 }
 
+struct Usr {
+	name string
+}
+
+struct Item {
+	tag string
+}
+
+enum Animal {
+	dog // Will be encoded as `0`
+	cat
+}
+
+type Entity = Animal | Item | Usr | string | time.Time
+
+struct SomeGame {
+	title  string
+	player Entity
+	other  []Entity
+}
+
+fn test_encode_decode_sumtype() ? {
+	game := SomeGame{
+		title: 'Super Mega Game'
+		player: Usr{'PoopLord69'}
+		other: [
+			Entity(Item{'Pen'}),
+			Item{'Cookie'},
+			Animal.dog,
+			'Stool',
+			time.now(),
+		]
+	}
+
+	enc := json.encode(game)
+	dec := json.decode(SomeGame, enc) ?
+
+	assert game.title == dec.title
+	assert game.player == dec.player
+	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
+}
+
 fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
 	result := json.decode(T, payload) ?
 	return result

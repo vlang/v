@@ -4829,6 +4829,12 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
+
+	g.inside_return = true
+	defer {
+		g.inside_return = false
+	}
+
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
@@ -4838,10 +4844,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 
-	g.inside_return = true
-	defer {
-		g.inside_return = false
-	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
@@ -5208,7 +5210,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 		}
 		rune {
 			rune_code := u32(ct_value)
-			if rune_code <= 255 {
+			if rune_code <= 127 {
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}

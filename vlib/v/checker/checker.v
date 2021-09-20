@@ -1173,6 +1173,10 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					node.fields[i].typ = expr_type
 					node.fields[i].expected_type = field_info.typ
 				}
+				if field_info.typ.has_flag(.optional) {
+					c.error('field `$field_info.name` is optional, but initialization of optional fields currently unsupported',
+						field.pos)
+				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
@@ -8050,7 +8054,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
 	for i, column in node.updated_columns {
-		field := node.fields.filter(it.name == column)[0]
+		x := node.fields.filter(it.name == column)
+		if x.len == 0 {
+			c.error('type `$table_sym.name` has no field named `$column`', node.pos)
+			continue
+		}
+		field := x[0]
 		node.updated_columns[i] = c.fetch_field_name(field)
 	}
 	if node.kind == .update {
