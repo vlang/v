@@ -37,7 +37,7 @@ fn test_decode_top_level_array() {
 	assert x[1].age == 31
 }
 
-struct Usr {
+struct Human {
 	name string
 }
 
@@ -50,7 +50,7 @@ enum Animal {
 	cat
 }
 
-type Entity = Animal | Item | Usr | string | time.Time
+type Entity = Animal | Human | Item | string | time.Time
 
 struct SomeGame {
 	title  string
@@ -61,7 +61,7 @@ struct SomeGame {
 fn test_encode_decode_sumtype() ? {
 	game := SomeGame{
 		title: 'Super Mega Game'
-		player: Usr{'PoopLord69'}
+		player: Human{'Monke'}
 		other: [
 			Entity(Item{'Pen'}),
 			Item{'Cookie'},
@@ -70,9 +70,14 @@ fn test_encode_decode_sumtype() ? {
 			time.now(),
 		]
 	}
+	eprintln('Game: $game')
 
 	enc := json.encode(game)
+	eprintln('Encoded Game: $enc')
+
 	dec := json.decode(SomeGame, enc) ?
+
+	eprintln('Decoded Game: $dec')
 
 	assert game.title == dec.title
 	assert game.player == dec.player
