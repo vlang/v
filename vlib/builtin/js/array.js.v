@@ -18,7 +18,7 @@ fn (a array_buffer) get(ix int) voidptr {
 }
 
 fn (mut a array_buffer) set(ix int, val voidptr) {
-	#a.arr[a.index_start.val + ix.val] = val;
+	#a.val.arr[a.val.index_start.valueOf() + ix.valueOf()] = val;
 }
 
 #array_buffer.prototype.get = function(ix) { return array_buffer_get(this,ix);}
@@ -29,6 +29,21 @@ struct array {
 pub:
 	len int
 	cap int
+}
+
+fn v_sort(mut arr array, comparator fn (voidptr, voidptr) int) {
+	mut need_iter := true
+	for need_iter {
+		need_iter = false
+		for i := 1; i < arr.len; i++ {
+			if comparator(arr[i], arr[i - 1]) != 1 {
+				tmp := arr[i]
+				arr[i] = arr[i - 1]
+				arr[i - 1] = tmp
+				need_iter = true
+			}
+		}
+	}
 }
 
 #function flatIntoArray(target, source, sourceLength, targetIndex, depth) {
@@ -108,6 +123,18 @@ fn (a &array) set_len(i int) {
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
+	for i := 0; i < a.len; i++ {
+		#if (compare(a[i],a[i-1]).valueOf())
+
+		{
+			tmp := a[i]
+			a[i] = a[i - 1]
+			a[i - 1] = tmp
+		}
+	}
+}
+
+pub fn (mut a array) sort_with_compare_old(compare voidptr) {
 	#a.val.arr.arr.sort(compare)
 }
 
@@ -251,12 +278,7 @@ pub fn (a array) first() voidptr {
 #
 #}
 
-pub fn (a array) contains(key voidptr) bool {
-	#for (let i = 0; i < a.arr.arr.length;i++)
-	#if (vEq(a.arr.get(i),key)) return new bool(true);
-
-	return false
-}
+pub fn (a array) contains(key voidptr) bool
 
 // delete_last effectively removes last element of an array.
 pub fn (mut a array) delete_last() {
