@@ -1599,6 +1599,50 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.right_shift {
 			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
+		.unsigned_right_shift {
+			modified_left_type := if !left_type.is_int() {
+				c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
+					left_pos)
+				ast.void_type_idx
+			} else if left_type.is_int_literal() {
+				// int literal => i64
+				ast.u32_type_idx
+			} else if left_type.is_unsigned() {
+				left_type
+			} else {
+				// signed types' idx adds with 5 will get correct relative unsigned type
+				// i8 		=> byte
+				// i16 		=> u16
+				// int  	=> u32
+				// i64  	=> u64
+				// isize	=> usize
+				// i128 	=> u128 NOT IMPLEMENTED YET
+				left_type.idx() + ast.u32_type_idx - ast.int_type_idx
+			}
+
+			if modified_left_type == 0 {
+				return ast.void_type
+			}
+
+			node = ast.InfixExpr{
+				left: ast.CastExpr{
+					expr: node.left
+					typ: modified_left_type
+					typname: c.table.type_str(modified_left_type)
+					pos: node.pos
+				}
+				left_type: left_type
+				op: .right_shift
+				right: node.right
+				right_type: right_type
+				is_stmt: false
+				pos: node.pos
+				auto_locked: node.auto_locked
+				or_block: node.or_block
+			}
+
+			return c.check_shift(left_type, right_type, left_pos, right_pos)
+		}
 		.key_is, .not_is {
 			right_expr := node.right
 			mut typ := match right_expr {
@@ -4273,6 +4317,60 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					&& !c.table.get_final_type_symbol(right_type_unwrapped).is_int() {
 					c.error('operator $node.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
+				}
+			}
+			.unsigned_right_shift_assign {
+				if node.left.len != 1 || node.right.len != 1 {
+					c.error('unsupported operation: unable to lower expression for unsigned shift assignment.',
+						node.pos)
+				}
+
+				modified_left_type := if !left_type.is_int() {
+					c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
+						node.pos)
+					ast.void_type_idx
+				} else if left_type.is_int_literal() {
+					// int literal => i64
+					ast.u32_type_idx
+				} else if left_type.is_unsigned() {
+					left_type
+				} else {
+					// signed types' idx adds with 5 will get correct relative unsigned type
+					// i8 		=> byte
+					// i16 		=> u16
+					// int  	=> u32
+					// i64  	=> u64
+					// isize	=> usize
+					// i128 	=> u128 NOT IMPLEMENTED YET
+					left_type.idx() + ast.u32_type_idx - ast.int_type_idx
+				}
+
+				node = ast.AssignStmt{
+					op: .assign
+					pos: node.pos
+					comments: node.comments
+					end_comments: node.end_comments
+					left: node.left
+					right: [
+						ast.Expr(ast.InfixExpr{
+							left: ast.CastExpr{
+								expr: node.left[0]
+								typ: modified_left_type
+								typname: c.table.type_str(modified_left_type)
+								pos: node.pos
+							}
+							op: .right_shift
+							right: node.right[0]
+							left_type: modified_left_type
+							right_type: right_type
+							pos: node.pos
+						}),
+					]
+					left_types: node.left_types
+					right_types: node.right_types
+					is_static: node.is_static
+					is_simple: node.is_simple
+					has_cross_var: node.has_cross_var
 				}
 			}
 			else {}

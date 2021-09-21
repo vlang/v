@@ -936,17 +936,45 @@ fn (mut s Scanner) text_scan() token.Token {
 							for typ in typs {
 								// TODO: combine two ifs once logic shortcut with `.all()` is fixed
 								if typ.len == 0 {
+									if s.text[s.pos + 2] == `>` {
+										if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+											s.pos += 3
+											return s.new_token(.unsigned_right_shift_assign,
+												'', 4)
+										}
+										s.pos += 2
+										return s.new_token(.unsigned_right_shift, '',
+											3)
+									}
 									s.pos++
 									return s.new_token(.right_shift, '', 2)
 								}
 								if !(typ[0].is_capital() && typ[1..].bytes().all(it.is_alnum()))
 									&& typ !in ast.builtin_type_names {
+									if s.text[s.pos + 2] == `>` {
+										if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+											s.pos += 3
+											return s.new_token(.unsigned_right_shift_assign,
+												'', 4)
+										}
+										s.pos += 2
+										return s.new_token(.unsigned_right_shift, '',
+											3)
+									}
 									s.pos++
 									return s.new_token(.right_shift, '', 2)
 								}
 							}
 							return s.new_token(.gt, '', 1)
 						}
+					}
+					if s.text[s.pos + 2] == `>` {
+						if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+							s.pos += 3
+							return s.new_token(.unsigned_right_shift_assign, '', 4)
+						}
+						s.pos += 2
+						return s.new_token(.unsigned_right_shift, '', 3)
 					}
 					s.pos++
 					return s.new_token(.right_shift, '', 2)

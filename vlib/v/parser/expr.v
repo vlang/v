@@ -480,7 +480,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if is_key_in {
 		p.inside_in_array = false
 	}
-
 	p.expecting_type = prev_expecting_type
 	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit
 		&& (right as ast.ArrayInit).exprs.len == 1 {

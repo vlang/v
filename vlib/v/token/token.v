@@ -48,6 +48,7 @@ pub enum Kind {
 	str_dollar
 	left_shift // <<
 	right_shift // >>
+	unsigned_right_shift // >>>
 	not_in // !in
 	not_is // !is
 	assign // =
@@ -62,6 +63,7 @@ pub enum Kind {
 	and_assign // &=
 	right_shift_assign // <<=
 	left_shift_assign // >>=
+	unsigned_right_shift_assign // >>>=
 	lcbr // {
 	rcbr // }
 	lpar // (
@@ -131,7 +133,9 @@ pub enum Kind {
 
 pub const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
-		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign]
+		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+		.unsigned_right_shift_assign,
+	]
 )
 
 const (
@@ -238,6 +242,7 @@ fn build_token_str() []string {
 	s[Kind.or_assign] = '|='
 	s[Kind.and_assign] = '&='
 	s[Kind.right_shift_assign] = '>>='
+	s[Kind.unsigned_right_shift_assign] = '>>>='
 	s[Kind.left_shift_assign] = '<<='
 	s[Kind.lcbr] = '{'
 	s[Kind.rcbr] = '}'
@@ -254,6 +259,7 @@ fn build_token_str() []string {
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
 	s[Kind.right_shift] = '>>'
+	s[Kind.unsigned_right_shift] = '>>>'
 	s[Kind.comment] = 'comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
@@ -372,7 +378,7 @@ pub enum Precedence {
 	eq // == or !=
 	// less_greater // > or <
 	sum // + - | ^
-	product // * / << >> &
+	product // * / << >> >>> &
 	// mod // %
 	prefix // -X or !X
 	postfix // ++ or --
@@ -388,12 +394,13 @@ pub fn build_precedences() []Precedence {
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
 	p[Kind.question] = .postfix
-	// `*` |  `/` | `%` | `<<` | `>>` | `&`
+	// `*` |  `/` | `%` | `<<` | `>>` | `>>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
 	p[Kind.mod] = .product
 	p[Kind.left_shift] = .product
 	p[Kind.right_shift] = .product
+	p[Kind.unsigned_right_shift] = .product
 	p[Kind.amp] = .product
 	p[Kind.arrow] = .product
 	// `+` |  `-` |  `|` | `^`
@@ -419,6 +426,7 @@ pub fn build_precedences() []Precedence {
 	// <<= | *= | ...
 	p[Kind.left_shift_assign] = .assign
 	p[Kind.right_shift_assign] = .assign
+	p[Kind.unsigned_right_shift_assign] = .assign
 	p[Kind.mult_assign] = .assign
 	p[Kind.xor_assign] = .assign
 	p[Kind.key_in] = .in_as
@@ -474,7 +482,7 @@ pub fn (kind Kind) is_prefix() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
-		.right_shift, .arrow]
+		.right_shift, .unsigned_right_shift, .arrow]
 }
 
 // Pass ast.builtin_type_names
