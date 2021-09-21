@@ -1,10 +1,10 @@
 module sapp
 
 const (
-	sapp_max_touchpoints = 8
+	sapp_max_touchpoints  = 8
 	sapp_max_mousebuttons = 3
-	sapp_max_keycodes = 512
-	sapp_max_iconimages = 8
+	sapp_max_keycodes     = 512
+	sapp_max_iconimages   = 8
 )
 
 pub struct C.sapp_range {
@@ -15,14 +15,14 @@ pub:
 
 pub struct C.sapp_image_desc {
 pub:
-	width int
+	width  int
 	height int
 	pixels C.spp_range
 }
 
 pub struct C.sapp_icon_desc {
 	sokol_default bool
-	images [sapp_max_iconimages]C.sapp_image_desc
+	images        [sapp_max_iconimages]C.sapp_image_desc
 }
 
 pub struct C.sapp_desc {
