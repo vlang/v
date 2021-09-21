@@ -76,8 +76,13 @@ pub fn texture(img C.sg_image) {
 
 // pipeline stack functions
 [inline]
+pub fn load_default_pipeline() {
+	C.sgl_load_default_pipeline()
+}
+
+[inline]
 pub fn default_pipeline() {
-	C.sgl_default_pipeline()
+	C.sgl_load_default_pipeline()
 }
 
 [inline]

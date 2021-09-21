@@ -1,5 +1,30 @@
 module sapp
 
+const (
+	sapp_max_touchpoints  = 8
+	sapp_max_mousebuttons = 3
+	sapp_max_keycodes     = 512
+	sapp_max_iconimages   = 8
+)
+
+pub struct C.sapp_range {
+pub:
+	ptr  voidptr
+	size usize
+}
+
+pub struct C.sapp_image_desc {
+pub:
+	width  int
+	height int
+	pixels C.spp_range
+}
+
+pub struct C.sapp_icon_desc {
+	sokol_default bool
+	images        [sapp_max_iconimages]C.sapp_image_desc
+}
+
 pub struct C.sapp_desc {
 pub:
 	init_cb    fn () // these are the user-provided callbacks without user data
@@ -29,6 +54,7 @@ pub:
 	enable_dragndrop             bool  // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int   // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int   // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	icon                         C.sapp_icon_desc
 	// backend-specific options
 	gl_force_gles2                bool  // if true, setup GLES2/WebGL even if GLES3/WebGL2 is available
 	win32_console_utf8            bool  // if true, set the output console codepage to UTF-8
@@ -60,7 +86,7 @@ pub:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [8]C.sapp_touchpoint
+	touches            [sapp_max_touchpoints]C.sapp_touchpoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
@@ -83,7 +109,7 @@ pub:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [8]C.sapp_touchpoint
+	touches            [sapp_max_touchpoints]C.sapp_touchpoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int

@@ -22,7 +22,7 @@ fn C.sgl_disable_texture()
 fn C.sgl_texture(img C.sg_image)
 
 // pipeline stack functions
-fn C.sgl_default_pipeline()
+fn C.sgl_load_default_pipeline()
 fn C.sgl_load_pipeline(pip C.sgl_pipeline)
 fn C.sgl_push_pipeline()
 fn C.sgl_pop_pipeline()
