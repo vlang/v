@@ -608,6 +608,41 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	}
 }
 
+fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
+	match node {
+		ast.CallExpr {
+			if node.left_type != 0 && g.table.get_type_symbol(node.left_type).kind == .array
+				&& node.name in ['all', 'any', 'filter', 'map'] {
+				return true
+			}
+		}
+		ast.IndexExpr {
+			return g.need_tmp_var_in_array_call(node.left)
+		}
+		ast.InfixExpr {
+			return g.need_tmp_var_in_array_call(node.left)
+				|| g.need_tmp_var_in_array_call(node.right)
+		}
+		ast.ParExpr {
+			return g.need_tmp_var_in_array_call(node.expr)
+		}
+		ast.PostfixExpr {
+			return g.need_tmp_var_in_array_call(node.expr)
+		}
+		ast.PrefixExpr {
+			return g.need_tmp_var_in_array_call(node.right)
+		}
+		ast.RangeExpr {
+			return g.need_tmp_var_in_array_call(node.low) || g.need_tmp_var_in_array_call(node.high)
+		}
+		ast.SelectorExpr {
+			return g.need_tmp_var_in_array_call(node.expr)
+		}
+		else {}
+	}
+	return false
+}
+
 // infix_expr_and_or_op generates code for `&&` and `||`
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 	if node.right is ast.IfExpr {
@@ -630,24 +665,20 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			return
 		}
 		g.inside_ternary = prev_inside_ternary
-	} else if node.right is ast.CallExpr {
-		if node.right.left_type != 0 {
-			sym := g.table.get_type_symbol(node.right.left_type)
-			if sym.kind == .array && node.right.name in ['map', 'filter', 'all', 'any'] {
-				tmp := g.new_tmp_var()
-				cur_line := g.go_before_stmt(0).trim_space()
-				g.empty_line = true
-				g.write('bool $tmp = (')
-				g.expr(node.left)
-				g.writeln(');')
-				g.stmt_path_pos << g.out.len
-				g.write('$cur_line $tmp $node.op.str() ')
-				g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
-				g.expr(node.right)
-				g.infix_left_var_name = ''
-				return
-			}
-		}
+	} else if g.need_tmp_var_in_array_call(node.right) {
+		// if a == 0 || arr.any(it.is_letter())
+		tmp := g.new_tmp_var()
+		cur_line := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		g.write('bool $tmp = (')
+		g.expr(node.left)
+		g.writeln(');')
+		g.stmt_path_pos << g.out.len
+		g.write('$cur_line $tmp $node.op.str() ')
+		g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
+		g.expr(node.right)
+		g.infix_left_var_name = ''
+		return
 	}
 	g.gen_plain_infix_expr(node)
 }
