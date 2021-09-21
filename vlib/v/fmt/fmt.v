@@ -1376,7 +1376,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		pos := expr.position()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << pos.line_nr > last_line_nr
+				f.array_init_break << pos.line_nr > last_line_nr || f.line_len + expr.position().len > fmt.max_len[3]
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1462,7 +1462,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				}
 				last_comment_was_inline = cmt.is_inline
 			}
+		} else if i == node.exprs.len - 1 && !line_break {
+			is_new_line = false
 		}
+
 		mut put_comma := !set_comma
 		if has_comments && !last_comment_was_inline {
 			put_comma = false
