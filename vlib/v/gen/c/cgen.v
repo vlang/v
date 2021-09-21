@@ -4798,6 +4798,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	g.writeln('}')
+	g.stmt_path_pos << g.out.len
 	if needs_tmp_var {
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
