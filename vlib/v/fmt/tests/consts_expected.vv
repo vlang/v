@@ -23,8 +23,7 @@ const (
 
 const (
 	i_am_a_very_long_constant_name_so_i_stand_alone_and_my_length_is_over_90_characters = [
-		'testforit',
-	]
+		'testforit']
 )
 
 pub const (
