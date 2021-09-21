@@ -1,17 +1,28 @@
-fn test_unsigned_right_shift_expr() {
-	a := $if x64 {
-		u64(9223372036854775805)
-	} $else $if x32 {
-		u32(2147483645)
-	} $else {
-		0
+const answer_u64 = u64(9223372036854775805)
+
+const (
+	answer_u32 = u32(2147483645)
+	answer_u16 = u16(32765)
+	answer_u8  = u8(125)
+)
+
+fn test_unsigned_right_shift_expr_isize_usize() {
+	$if x32 {
+		assert isize(-5) +>> 1 == answer_u32
+		assert usize(-5) +>> 1 == answer_u32
 	}
-	assert isize(-5) +>> 1 == a
-	assert i64(-5) +>> 1 == 9223372036854775805
-	assert -5 +>> 1 == 2147483645 // because type int literal's size is equals to i64
-	assert int(-5) +>> 1 == 2147483645
-	assert i16(-5) +>> 1 == 32765
-	assert i8(-5) +>> 1 == 125
+	$if x64 {
+		assert isize(-5) +>> 1 == answer_u64
+		assert usize(-5) +>> 1 == answer_u64
+	}
+}
+
+fn test_unsigned_right_shift_expr() {
+	assert i64(-5) +>> 1 == answer_u64
+	assert -5 +>> 1 == answer_u32 // because int literal's size defaults to int's size, without an explicit cast
+	assert int(-5) +>> 1 == answer_u32
+	assert i16(-5) +>> 1 == answer_u16
+	assert i8(-5) +>> 1 == answer_u8
 }
 
 fn test_unsigned_right_shift_assignment() {
@@ -19,7 +30,7 @@ fn test_unsigned_right_shift_assignment() {
 	x +>>= 1
 	y +>>= 1
 	z +>>= 1
-	assert x == 9223372036854775805
-	assert y == 2147483645
-	assert z == 2147483645
+	assert x == answer_u64
+	assert y == answer_u32
+	assert z == answer_u32
 }
