@@ -43,6 +43,61 @@ pub fn parse_rfc2822(s string) ?Time {
 	}
 }
 
+// ----- rfc3339 -----
+const (
+	err_invalid_3339 = 'Invalid 3339 format'
+)
+
+// parse_rfc3339 returns time from a date string in RFC 3339 datetime format.
+pub fn parse_rfc3339(s string) ?Time {
+	if s == '' {
+		return error(time.err_invalid_3339 + ' cannot parse empty string')
+	}
+	mut t := parse_iso8601(s) or { Time{} }
+	// If parse_iso8601 DID NOT result in default values (i.e. date was parsed correctly)
+	if t != Time{} {
+		return t
+	}
+
+	t_i := s.index('T') or { -1 }
+	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
+
+	// Check if s is date only
+	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
+		year, month, day := parse_iso8601_date(s) ?
+		t = new_time(Time{
+			year: year
+			month: month
+			day: day
+		})
+		return t
+	}
+	// Check if s is time only
+	if !parts[0].contains('-') && parts[0].contains(':') {
+		mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0]) ?
+		t = new_time(Time{
+			hour: hour_
+			minute: minute_
+			second: second_
+			microsecond: microsecond_
+		})
+		if is_local_time {
+			return t // Time is already local time
+		}
+		mut unix_time := t.unix
+		if unix_offset < 0 {
+			unix_time -= (-unix_offset)
+		} else if unix_offset > 0 {
+			unix_time += unix_offset
+		}
+		t = unix2(i64(unix_time), t.microsecond)
+		return t
+	}
+
+	return error(time.err_invalid_3339 + '. Could not parse "$s"')
+}
+
 // ----- iso8601 -----
 const (
 	err_invalid_8601 = 'Invalid 8601 Format'
