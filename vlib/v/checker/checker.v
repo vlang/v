@@ -2234,9 +2234,17 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		method = m
 		has_method = true
 	} else {
-		if left_type_sym.info is ast.Struct {
-			if left_type_sym.info.parent_type != 0 {
-				type_sym := c.table.get_type_symbol(left_type_sym.info.parent_type)
+		if left_type_sym.kind in [.struct_, .sum_type, .interface_] {
+			mut parent_type := ast.void_type
+			if left_type_sym.info is ast.Struct {
+				parent_type = left_type_sym.info.parent_type
+			} else if left_type_sym.info is ast.SumType {
+				parent_type = left_type_sym.info.parent_type
+			} else if left_type_sym.info is ast.Interface {
+				parent_type = left_type_sym.info.parent_type
+			}
+			if parent_type != 0 {
+				type_sym := c.table.get_type_symbol(parent_type)
 				if m := c.table.type_find_method(type_sym, method_name) {
 					method = m
 					has_method = true
