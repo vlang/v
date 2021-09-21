@@ -198,15 +198,19 @@ mut sb := strings.new_builder($lstartlength)\n
 			class := line.find_between('span.', '{').trim_space()
 			source.writeln('<span class="$class">')
 			in_span = true
-		} else if state == .html && line.starts_with('.') && line.ends_with('{') {
+		} else if state == .html && line.trim_space().starts_with('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
+			trimmed := line.trim_space()
+			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 			source.writeln('<div class="$class">')
 		} else if state == .html && line.starts_with('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
 			source.writeln('<div id="$class">')
-		} else if state == .html && line == '}' {
+		} else if state == .html && line.trim_space() == '}' {
+			trimmed := line.trim_space()
+			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 			if in_span {
 				source.writeln('</span>')
 				in_span = false

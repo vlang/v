@@ -35,8 +35,17 @@ const classes = `header ${ isLargeScreen() ? '' :
 <h1>TEST</h1>
 <p>TEST</p>
 <div class="hello">
-	<b>hi</b><br>
+	<div class="hello2">
+		<b>hi</b><br>
+	</div>
 </div>
+
+<b>embedded</b>
+
+<div class="embedded">
+	hello
+</div>
+
 <a href="example.com">example.com</a>
 <a href="mailto:example@example.com">Email</a>
 </header>
