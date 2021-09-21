@@ -117,11 +117,13 @@ ${contents[1]}
 "
 	form, files := http.parse_multipart_form(data, boundary)
 	assert files == {
-		names[0]: [http.FileData{
-			filename: file
-			content_type: ct
-			data: contents[0]
-		}]
+		names[0]: [
+			http.FileData{
+				filename: file
+				content_type: ct
+				data: contents[0]
+			},
+		]
 	}
 
 	assert form == {

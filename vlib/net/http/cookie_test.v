@@ -250,8 +250,7 @@ const (
 				&http.Cookie{
 					name: 'cookie-3'
 					value: 'v3'
-				},
-			]
+				}]
 			raw: 'cookie-1=v1; cookie-2=v2; cookie-3=v3'
 		},
 	]
@@ -302,8 +301,7 @@ const (
 				path: '/'
 				http_only: true
 				raw: 'ASP.NET_SessionId=foo; path=/; HttpOnly'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -315,8 +313,7 @@ const (
 				value: 'foo'
 				same_site: .same_site_default_mode
 				raw: 'samesitedefault=foo; SameSite'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -328,8 +325,7 @@ const (
 				value: 'foo'
 				same_site: .same_site_lax_mode
 				raw: 'samesitelax=foo; SameSite=Lax'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -341,8 +337,7 @@ const (
 				value: 'foo'
 				same_site: .same_site_strict_mode
 				raw: 'samesitestrict=foo; SameSite=Strict'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -354,8 +349,7 @@ const (
 				value: 'foo'
 				same_site: .same_site_none_mode
 				raw: 'samesitenone=foo; SameSite=None'
-			},
-			]
+			}]
 		},
 		// Make sure we can properly read back the Set-Cookie headers we create
 		// for values containing spaces or commas:
@@ -368,8 +362,7 @@ const (
 				name: 'special-1'
 				value: 'a z'
 				raw: 'special-1=a z'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -380,8 +373,7 @@ const (
 				name: 'special-2'
 				value: ' z'
 				raw: 'special-2=" z"'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -392,8 +384,7 @@ const (
 				name: 'special-3'
 				value: 'a '
 				raw: 'special-3="a "'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -404,8 +395,7 @@ const (
 				name: 'special-4'
 				value: ' '
 				raw: 'special-4=" "'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -416,8 +406,7 @@ const (
 				name: 'special-5'
 				value: 'a,z'
 				raw: 'special-5=a,z'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -428,8 +417,7 @@ const (
 				name: 'special-6'
 				value: ',z'
 				raw: 'special-6=",z"'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
 			header: {
@@ -440,8 +428,7 @@ const (
 				name: 'special-7'
 				value: ','
 				raw: 'special-8=","'
-			},
-			]
+			}]
 		}
 		// TODO(bradfitz): users have reported seeing this in the
 		// wild, but do browsers handle it? RFC 6265 just says "don't

@@ -428,11 +428,9 @@ fn test_multi_array_clone() {
 	a3_1[0][0][1] = 0
 	a3_2[0][1][0] = 0
 	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5],
-		[6, 6],
-	]]
+		[6, 6]]]
 	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5],
-		[6, 6],
-	]]
+		[6, 6]]]
 	// 3d array_string
 	mut b3_1 := [[['1', '1'], ['2', '2'], ['3', '3']], [['4', '4'],
 		['5', '5'], ['6', '6']]]
@@ -1339,19 +1337,22 @@ fn test_struct_array_of_multi_type_in() {
 			'aaa': '111'
 		}
 	}
-	people := [Person{
-		name: 'ivan'
-		nums: [1, 2, 3]
-		kv: {
-			'aaa': '111'
-		}
-	}, Person{
-		name: 'bob'
-		nums: [2]
-		kv: {
-			'bbb': '222'
-		}
-	}]
+	people := [
+		Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		},
+		Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		},
+	]
 	println(ivan in people)
 	assert ivan in people
 }
@@ -1364,19 +1365,22 @@ fn test_struct_array_of_multi_type_index() {
 			'aaa': '111'
 		}
 	}
-	people := [Person{
-		name: 'ivan'
-		nums: [1, 2, 3]
-		kv: {
-			'aaa': '111'
-		}
-	}, Person{
-		name: 'bob'
-		nums: [2]
-		kv: {
-			'bbb': '222'
-		}
-	}]
+	people := [
+		Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		},
+		Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		},
+	]
 	println(people.index(ivan))
 	assert people.index(ivan) == 0
 }

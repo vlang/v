@@ -429,11 +429,9 @@ pub const (
 		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
 		usize_type_idx, int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		isize_type_idx,
-	]
+		isize_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx,
-	]
+		usize_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
 		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
@@ -710,8 +708,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
 	res := t.kind in [.i8, .i16, .int, .i64, .isize, .byte, .u16, .u32, .u64, .usize, .int_literal,
-		.rune,
-	]
+		.rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_number()
 	}

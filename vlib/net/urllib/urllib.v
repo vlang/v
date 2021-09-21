@@ -54,8 +54,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
 		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
-			`"`,
-		] {
+			`"`] {
 			return false
 		}
 	}

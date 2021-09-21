@@ -528,12 +528,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			// field_names << name
 			args2, _, is_variadic := p.fn_args() // TODO merge ast.Param and ast.Arg to avoid this
-			mut args := [ast.Param{
-				name: 'x'
-				is_mut: is_mut
-				typ: typ
-				is_hidden: true
-			}]
+			mut args := [
+				ast.Param{
+					name: 'x'
+					is_mut: is_mut
+					typ: typ
+					is_hidden: true
+				},
+			]
 			args << args2
 			mut method := ast.FnDecl{
 				name: name

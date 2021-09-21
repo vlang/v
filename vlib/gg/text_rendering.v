@@ -42,8 +42,7 @@ pub fn system_font_path() string {
 		'FreeSans.ttf', 'DejaVuSans.ttf']
 	$if macos {
 		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
-			'/Library/Fonts/Arial.ttf',
-		]
+			'/Library/Fonts/Arial.ttf']
 		for font in fonts {
 			if os.is_file(font) {
 				return font
@@ -53,8 +52,7 @@ pub fn system_font_path() string {
 	$if android {
 		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
 			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
-			'/etc/fallback_fonts.xml',
-		]
+			'/etc/fallback_fonts.xml']
 		font_locations := ['/system/fonts', '/data/fonts']
 		for xml_file in xml_files {
 			if os.is_file(xml_file) && os.is_readable(xml_file) {

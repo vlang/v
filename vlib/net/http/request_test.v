@@ -116,11 +116,13 @@ ${contents[1]}
 "
 	form, files := parse_multipart_form(data, boundary)
 	assert files == {
-		names[0]: [FileData{
-			filename: file
-			content_type: ct
-			data: contents[0]
-		}]
+		names[0]: [
+			FileData{
+				filename: file
+				content_type: ct
+				data: contents[0]
+			},
+		]
 	}
 
 	assert form == {
@@ -130,11 +132,13 @@ ${contents[1]}
 
 fn test_multipart_form_body() {
 	files := {
-		'foo': [FileData{
-			filename: 'bar.v'
-			content_type: 'application/octet-stream'
-			data: 'baz'
-		}]
+		'foo': [
+			FileData{
+				filename: 'bar.v'
+				content_type: 'application/octet-stream'
+				data: 'baz'
+			},
+		]
 	}
 	form := {
 		'fooz': 'buzz'

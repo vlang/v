@@ -27,8 +27,7 @@ fn cast<T>(obj Any) ?T {
 
 fn test_any_values() {
 	arr := [make_any(true), make_any(false), make_any(7), make_any('cat'),
-		make_any([3.1415926535]),
-	]
+		make_any([3.1415926535])]
 	for elm in arr {
 		if b := cast<bool>(elm) {
 			println(!b)

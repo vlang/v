@@ -1376,7 +1376,8 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		pos := expr.position()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << pos.line_nr > last_line_nr || f.line_len + expr.position().len > fmt.max_len[3]
+				f.array_init_break << pos.line_nr > last_line_nr
+					|| f.line_len + expr.position().len > fmt.max_len[3]
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
@@ -2351,8 +2352,12 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each(["$fmt.bs'", "'",
-			'$fmt.bs"', '"'])
+		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each([
+			"$fmt.bs'",
+			"'",
+			'$fmt.bs"',
+			'"',
+		])
 		if use_double_quote {
 			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
 			f.write('"$s"')

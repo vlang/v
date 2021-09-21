@@ -295,8 +295,7 @@ fn js_dec_name(typ string) string {
 
 fn is_js_prim(typ string) bool {
 	return typ in ['int', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64',
-		'byte',
-	]
+		'byte']
 }
 
 fn (mut g Gen) decode_array(value_type ast.Type) string {

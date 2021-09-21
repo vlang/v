@@ -1215,8 +1215,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 					return regex.err_syntax_error, 0
 				}
 				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
-					regex.ist_group_start,
-				] {
+					regex.ist_group_start] {
 					// println("Next dot char check is PC: ${pc2}")
 					re.prog[pc1].dot_check_pc = pc2
 					break

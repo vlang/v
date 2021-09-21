@@ -101,8 +101,7 @@ fn test_format_ss_micro() {
 
 fn test_smonth() {
 	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
-		'Dec',
-	]
+		'Dec']
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
