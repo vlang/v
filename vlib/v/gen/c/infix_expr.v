@@ -630,6 +630,24 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			return
 		}
 		g.inside_ternary = prev_inside_ternary
+	} else if node.right is ast.CallExpr {
+		if node.right.left_type != 0 {
+			sym := g.table.get_type_symbol(node.right.left_type)
+			if sym.kind == .array && node.right.name in ['map', 'filter', 'all', 'any'] {
+				tmp := g.new_tmp_var()
+				cur_line := g.go_before_stmt(0).trim_space()
+				g.empty_line = true
+				g.write('bool $tmp = (')
+				g.expr(node.left)
+				g.writeln(');')
+				g.stmt_path_pos << g.out.len
+				g.write('$cur_line $tmp $node.op.str() ')
+				g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
+				g.expr(node.right)
+				g.infix_left_var_name = ''
+				return
+			}
+		}
 	}
 	g.gen_plain_infix_expr(node)
 }

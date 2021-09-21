@@ -602,11 +602,15 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
+	g.writeln('bool $tmp = false;')
+	if g.infix_left_var_name.len > 0 {
+		g.writeln('if ($g.infix_left_var_name) {')
+		g.indent++
+	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('bool $tmp = false;')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
@@ -654,6 +658,10 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.stmt_path_pos << g.out.len
 	}
 	g.write('\n')
+	if g.infix_left_var_name.len > 0 {
+		g.indent--
+		g.writeln('}')
+	}
 	g.write(s)
 	g.write(tmp)
 }
@@ -666,11 +674,15 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
+	g.writeln('bool $tmp = true;')
+	if g.infix_left_var_name.len > 0 {
+		g.writeln('if ($g.infix_left_var_name) {')
+		g.indent++
+	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('bool $tmp = true;')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
@@ -718,6 +730,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.stmt_path_pos << g.out.len
 	}
 	g.write('\n')
+	if g.infix_left_var_name.len > 0 {
+		g.indent--
+		g.writeln('}')
+	}
 	g.write(s)
 	g.write(tmp)
 }
