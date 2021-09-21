@@ -1377,7 +1377,8 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.position().len > fmt.max_len[3]
+					|| (f.line_len + expr.position().len > fmt.max_len[3]
+					&& expr !in [ast.ArrayInit, ast.StructInit, ast.MapInit, ast.CallExpr])
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
