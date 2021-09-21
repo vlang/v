@@ -132,9 +132,15 @@ fn test_all() {
 		'custom_comptime_define_if_flag.vv',
 	])
 	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-g run', '.g.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-cg run', '.cg.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
 	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', [
 		'custom_comptime_define_if_debug.vv',
 	])

@@ -6,8 +6,7 @@ const (
 		1e+23, 1e+24, 1e+25, 1e+26, 1e+27, 1e+28, 1e+29, 1e+30, 1e+31]
 	pow10postab32 = [f64(1e+00), 1e+32, 1e+64, 1e+96, 1e+128, 1e+160, 1e+192, 1e+224, 1e+256, 1e+288]
 	pow10negtab32 = [f64(1e-00), 1e-32, 1e-64, 1e-96, 1e-128, 1e-160, 1e-192, 1e-224, 1e-256, 1e-288,
-		1e-320,
-	]
+		1e-320]
 )
 
 // powf returns base raised to the provided power. (float32)

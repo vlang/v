@@ -1165,11 +1165,13 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	g.tmp_count2++
 	mut scope := g.file.scope.innermost(node.pos.pos)
 	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
-	mut args := [ast.CallArg{
-		typ: node.receiver_type
-		expr: node.left
-		is_tmp_autofree: node.free_receiver
-	}]
+	mut args := [
+		ast.CallArg{
+			typ: node.receiver_type
+			expr: node.left
+			is_tmp_autofree: node.free_receiver
+		},
+	]
 	args << node.args
 	// for i, arg in node.args {
 	for i, arg in args {

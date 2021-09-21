@@ -31,8 +31,7 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
 	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday',
-	]
+		'Sunday']
 )
 
 // Time contains various time units for a point in time.

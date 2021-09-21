@@ -348,8 +348,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
 					'new_map_init_noscan_key', 'new_map_init_noscan_value',
-					'new_map_init_noscan_key_value',
-				] {
+					'new_map_init_noscan_key_value'] {
 					walker.fn_decl(mut mfn)
 				}
 			}

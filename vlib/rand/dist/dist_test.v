@@ -9,8 +9,7 @@ const (
 	error = 0.05
 	// The seeds used (for reproducible testing)
 	seeds = [[u32(0xffff24), 0xabcd], [u32(0x141024), 0x42851],
-		[u32(0x1452), 0x90cd],
-	]
+		[u32(0x1452), 0x90cd]]
 )
 
 fn test_bernoulli() {

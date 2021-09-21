@@ -330,8 +330,7 @@ pub fn is_key(key string) bool {
 [inline]
 pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub,
-		.eof,
-	]
+		.eof]
 }
 
 [inline]
