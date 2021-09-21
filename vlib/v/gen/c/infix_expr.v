@@ -626,6 +626,15 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 		ast.ParExpr {
 			return g.need_tmp_var_in_array_call(node.expr)
 		}
+		ast.PostfixExpr {
+			return g.need_tmp_var_in_array_call(node.expr)
+		}
+		ast.PrefixExpr {
+			return g.need_tmp_var_in_array_call(node.right)
+		}
+		ast.RangeExpr {
+			return g.need_tmp_var_in_array_call(node.low) || g.need_tmp_var_in_array_call(node.high)
+		}
 		ast.SelectorExpr {
 			return g.need_tmp_var_in_array_call(node.expr)
 		}
