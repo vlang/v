@@ -1,17 +1,22 @@
-// fixes https://github.com/vlang/v/issues/11564, test is copied from the code by https://github.com/ken0x0a
+// fixes https://github.com/vlang/v/issues/11564, test is copied from the code by https://github.com/ken0x0a and formatted
 import x.json2
 
 struct SA {}
+
 struct SB {}
+
 struct SC {}
+
 type Sum = SA | SB | SC
+
 struct App {
 	s map[string]Sum
 	t bool
 }
+
 fn test_init_multiple_branches() ? {
 	mut m := map[string]json2.Any{}
-	app := App {
+	app := App{
 		t: m['t'] or { 0 }.bool()
 		s: if a := m['a'] {
 			println('a => $a')
