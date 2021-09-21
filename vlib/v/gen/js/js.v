@@ -82,6 +82,7 @@ mut:
 	comptime_var_type_map  map[string]ast.Type
 	defer_ifdef            string
 	out                    strings.Builder = strings.new_builder(128)
+	array_sort_fn          map[string]bool
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -1121,7 +1122,26 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write('const ')
 				}
 			}
-			g.expr(left)
+			mut array_set := false
+			match left {
+				ast.IndexExpr {
+					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
+					array_set = true
+					g.write('.arr.set(')
+					g.write('new int(')
+					g.cast_stack << ast.int_type_idx
+					g.expr(left.index)
+					g.write('.valueOf()')
+					g.cast_stack.delete_last()
+					g.write('),')
+				}
+				else {
+					g.expr(left)
+				}
+			}
 			mut is_ptr := false
 			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
 				is_ptr = true
@@ -1142,7 +1162,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					} else {
 						g.write('.val')
 					}
-					g.write(' = ')
+					if !array_set {
+						g.write(' = ')
+					}
 					g.expr(left)
 
 					match op {
@@ -1181,7 +1203,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						}
 					}
 				} else {
-					g.write(' $op ')
+					if op == .assign && array_set {
+					} else {
+						g.write(' $op ')
+					}
 				}
 				// TODO: Multiple types??
 				should_cast :=
@@ -1201,6 +1226,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write(')')
 					g.cast_stack.delete_last()
 				}
+			}
+			if array_set {
+				g.write(')')
 			}
 			if semicolon {
 				if g.inside_loop {
@@ -2234,13 +2262,13 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')
 		}
-		g.write('.arr.arr')
-		g.write('[Number(')
+		g.write('.arr.get(')
+		g.write('new int(')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
 		g.write('.valueOf()')
 		g.cast_stack.delete_last()
-		g.write(')]')
+		g.write('))')
 	}
 }
 
@@ -2250,6 +2278,12 @@ fn (mut g JsGen) gen_deref_ptr(ty ast.Type) {
 		g.write('.val')
 		t = t.deref()
 	}
+}
+
+fn (mut g JsGen) expr_string(expr ast.Expr) string {
+	pos := g.out.len
+	g.expr(expr)
+	return g.out.cut_to(pos).trim_space()
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
