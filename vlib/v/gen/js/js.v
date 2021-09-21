@@ -20,9 +20,9 @@ const (
 		'Array', 'Map']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array', 'any']
+		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'any']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
-		.int_literal, .float_literal, .size_t, .bool, .string]
+		.int_literal, .float_literal, .bool, .string]
 )
 
 struct SourcemapHelper {
