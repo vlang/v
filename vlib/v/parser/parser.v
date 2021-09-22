@@ -865,7 +865,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	mut arch := pref.arch_from_string(p.tok.lit) or { pref.Arch._auto }
 	mut is_volatile := false
 	mut is_goto := false
-	if p.tok.lit == 'volatile' && p.tok.kind == .name {
+	if p.tok.kind == .key_volatile {
 		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
 		is_volatile = true
 		p.next()
