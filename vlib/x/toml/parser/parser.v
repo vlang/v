@@ -55,9 +55,7 @@ pub fn (mut p Parser) init() ? {
 // of the generated AST.
 pub fn (mut p Parser) parse() ?&ast.Root {
 	p.init() ?
-	p.root_table() or {
-		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' failed parsing root table: "$err"')
-	}
+	p.root_table() ?
 	p.ast_root.table = p.root_map
 	return p.ast_root
 }
@@ -283,7 +281,7 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse $p.tok.kind ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..." token:\n$p.tok')
+					' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
