@@ -124,6 +124,7 @@ pub enum Kind {
 	key_union
 	key_pub
 	key_static
+	key_volatile
 	key_unsafe
 	keyword_end
 	_end_
@@ -298,6 +299,7 @@ fn build_token_str() []string {
 	s[Kind.key_global] = '__global'
 	s[Kind.key_union] = 'union'
 	s[Kind.key_static] = 'static'
+	s[Kind.key_volatile] = 'volatile'
 	s[Kind.key_as] = 'as'
 	s[Kind.key_defer] = 'defer'
 	s[Kind.key_match] = 'match'

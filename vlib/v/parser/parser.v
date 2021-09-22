@@ -1820,6 +1820,10 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
+	is_volatile := p.tok.kind == .key_volatile
+	if is_volatile {
+		p.next()
+	}
 	if p.tok.kind != .name {
 		p.error('unexpected token `$p.tok.lit`')
 		return ast.Ident{
@@ -1838,6 +1842,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			info: ast.IdentVar{
 				is_mut: false
 				is_static: false
+				is_volatile: false
 			}
 			scope: p.scope
 		}
@@ -1861,6 +1866,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		info: ast.IdentVar{
 			is_mut: is_mut
 			is_static: is_static
+			is_volatile: is_volatile
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
 		}
 		scope: p.scope

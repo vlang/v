@@ -703,6 +703,7 @@ pub mut:
 	typ         Type
 	is_mut      bool
 	is_static   bool
+	is_volatile bool
 	is_optional bool
 	share       ShareType
 }
@@ -996,6 +997,7 @@ pub mut:
 	left_types    []Type
 	right_types   []Type
 	is_static     bool // for translated code only
+	is_volatile   bool // for disabling variable access optimisations (needed for hardware drivers)
 	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 }
