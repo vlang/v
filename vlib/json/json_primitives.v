@@ -10,7 +10,7 @@ module json
 
 struct C.cJSON {
 	valueint    int
-	valuedouble f32
+	valuedouble f64
 	valuestring &char
 }
 
@@ -78,6 +78,13 @@ fn decode_byte(root &C.cJSON) byte {
 	return byte(root.valueint)
 }
 
+fn decode_u8(root &C.cJSON) u8 {
+	if isnil(root) {
+		return byte(0)
+	}
+	return byte(root.valueint)
+}
+
 fn decode_u16(root &C.cJSON) u16 {
 	if isnil(root) {
 		return u16(0)
@@ -103,14 +110,26 @@ fn decode_f32(root &C.cJSON) f32 {
 	if isnil(root) {
 		return f32(0)
 	}
-	return root.valuedouble
+	return f32(root.valuedouble)
 }
 
 fn decode_f64(root &C.cJSON) f64 {
 	if isnil(root) {
 		return f64(0)
 	}
-	return f64(root.valuedouble)
+	return root.valuedouble
+}
+
+fn decode_rune(root &C.cJSON) rune {
+	if isnil(root) {
+		return rune(0)
+	}
+	if isnil(root.valuestring) {
+		return rune(0)
+	}
+
+	// TODO: Parse as runes, bypassing string casting...?
+	return unsafe { tos_clone(&byte(root.valuestring)).runes().first() }
 }
 
 fn decode_string(root &C.cJSON) string {
@@ -153,6 +172,10 @@ fn encode_byte(val byte) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
+fn encode_u8(val u8) &C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
 fn encode_u16(val u16) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
@@ -175,6 +198,10 @@ fn encode_f64(val f64) &C.cJSON {
 
 fn encode_bool(val bool) &C.cJSON {
 	return C.cJSON_CreateBool(val)
+}
+
+fn encode_rune(val rune) &C.cJSON {
+	return C.cJSON_CreateString(&char(val.str().str))
 }
 
 fn encode_string(val string) &C.cJSON {
