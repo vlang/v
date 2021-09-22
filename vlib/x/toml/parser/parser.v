@@ -4,6 +4,7 @@
 module parser
 
 import x.toml.ast
+import x.toml.checker
 import x.toml.util
 import x.toml.token
 import x.toml.scanner
@@ -51,10 +52,13 @@ pub fn (mut p Parser) init() ? {
 	p.next() ?
 }
 
-// validate_root validates the parsed `ast.Node` nodes in the
+// run_checker validates the parsed `ast.Node` nodes in the
 // the generated AST.
-fn (mut p Parser) validate_root() ? {
-
+fn (mut p Parser) run_checker() ? {
+	chckr := checker.Checker{
+		scanner: p.scanner
+	}
+	chckr.check(p.root_map) ?
 }
 
 // parse starts parsing the input and returns the root
@@ -62,7 +66,7 @@ fn (mut p Parser) validate_root() ? {
 pub fn (mut p Parser) parse() ?&ast.Root {
 	p.init() ?
 	p.root_table() ?
-	p.validate_root() ?
+	p.run_checker() ?
 	p.ast_root.table = p.root_map
 	return p.ast_root
 }
@@ -295,7 +299,7 @@ pub fn (mut p Parser) root_table() ? {
 }
 
 // excerpt returns a string of the characters surrounding `Parser.tok.pos`
-fn (mut p Parser) excerpt() string {
+fn (p Parser) excerpt() string {
 	return p.scanner.excerpt(p.tok.pos, 10)
 }
 

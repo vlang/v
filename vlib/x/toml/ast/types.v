@@ -15,15 +15,7 @@ pub fn (k Key) str() string {
 
 // Node is a sumtype representing all possible value types
 // found in a TOML document.
-pub type Node = Bool
-	| Date
-	| DateTime
-	| Null
-	| Number
-	| Quoted
-	| Time
-	| []Node
-	| map[string]Node
+pub type Node = Bool | Date | DateTime | Null | Number | Quoted | Time | []Node | map[string]Node
 
 pub fn (v Node) to_json() string {
 	match v {

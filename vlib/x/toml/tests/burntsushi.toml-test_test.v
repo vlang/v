@@ -31,10 +31,10 @@ const (
 		'string/basic-unknown-escape.toml',
 		// Integer
 		'integer/trailing-us-hex.toml',
-		'integer/leading-zero-sign-2.toml',
+		//'integer/leading-zero-sign-2.toml',
 		'integer/double-us.toml',
 		'integer/capital-bin.toml',
-		'integer/leading-zero-1.toml',
+		//'integer/leading-zero-1.toml',
 		'integer/us-after-bin.toml',
 		'integer/positive-hex.toml',
 		'integer/negative-bin.toml',
@@ -209,6 +209,8 @@ fn test_burnt_sushi_tomltest() {
 		if invalid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $invalid_exceptions.len valid TOML files...')
 		}
+
+		// assert false
 	} else {
 		println('No test data directory found in "$test_root"')
 		assert true
