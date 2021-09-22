@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module token
 
+// Position represents a position in a TOML document.
 pub struct Position {
 pub:
 	len     int // length of the literal in the source
