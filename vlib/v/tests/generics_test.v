@@ -510,9 +510,9 @@ fn test_multi_level_generics() {
 		two) == 20
 }
 
-struct Empty {}
+struct Empty_ {}
 
-fn (e1 Empty) < (e2 Empty) bool {
+fn (e1 Empty_) < (e2 Empty_) bool {
 	return true
 }
 
@@ -551,11 +551,11 @@ fn test_generic_detection() {
 	res1, res2 := foo < bar, baz >> (foo + 1 - 1)
 	assert res1
 	assert res2 == 8
-	res3, res4 := Empty{} < Empty{}, baz >> (foo + 1 - 1)
+	res3, res4 := Empty_{} < Empty_{}, baz >> (foo + 1 - 1)
 	assert res3
 	assert res4 == 8
-	assert boring_function<TandU<Empty, int>>(TandU<Empty, int>{
-		t: Empty{}
+	assert boring_function<TandU<Empty_, int>>(TandU<Empty_, int>{
+		t: Empty_{}
 		u: 10
 	})
 
@@ -573,11 +573,11 @@ fn test_generic_detection() {
 	})
 
 	// this final case challenges your scanner :-)
-	assert boring_function<TandU<TandU<int,MultiLevel<Empty>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty>>, map[string][]int>{
-		t: TandU<int,MultiLevel<Empty>>{
+	assert boring_function<TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>{
+		t: TandU<int,MultiLevel<Empty_>>{
 			t: 20
-			u: MultiLevel<Empty>{
-				foo: Empty{}
+			u: MultiLevel<Empty_>{
+				foo: Empty_{}
 			}
 		}
 		u: {
