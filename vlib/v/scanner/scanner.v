@@ -919,62 +919,41 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						if s.text[s.pos + 2] == `=` {
-							s.pos += 2
-							return s.new_token(.right_shift_assign, '', 3)
-						} else if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-							// an algorithm to discriminate two-level generic call and shift-right patterns
-							// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
-							// @SleepyRoy if you have smarter algorithm :-)
-							// almost correct heuristics: 2-level generic call's last <T> cannot be extremely long
-							// here we set the limit 100 which should be nice for real cases
-							// ...Bar<int, []Foo, [20]f64, map[string][]bool>> =>
-							// int, []Foo, [20]f64, map[string][]bool =>
-							// int, Foo, f64, bool
+						// an algorithm to decide it's generic or non-generic
+						// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
+						// @SleepyRoy if you have smarter algorithm :-)
+						// almost correct heuristics: last <T> of generic cannot be extremely long
+						// here we set the limit 100 which should be nice for real cases
+						// e.g. ...Bar<int, []Foo<int>, Baz_, [20]f64, map[string][]bool>> =>
+						// <int, Baz_, [20]f64, map[string][]bool => int, Baz_, f64, bool
+						mut is_generic := true
+						if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
 							typs := s.text[s.last_lt + 1..s.pos].split(',').map(it.trim_space().trim_right('>').after(']'))
-							// if any typ is neither Type nor builtin, then the case is shift-right
+							// if any typ is neither Type nor builtin, then the case is non-generic
 							for typ in typs {
-								// TODO: combine two ifs once logic shortcut with `.all()` is fixed
-								if typ.len == 0 {
-									if s.text[s.pos + 2] == `>` {
-										if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
-											s.pos += 3
-											return s.new_token(.unsigned_right_shift_assign,
-												'', 4)
-										}
-										s.pos += 2
-										return s.new_token(.unsigned_right_shift, '',
-											3)
-									}
-									s.pos++
-									return s.new_token(.right_shift, '', 2)
-								}
-								if !(typ[0].is_capital() && typ[1..].bytes().all(it.is_alnum()))
-									&& typ !in ast.builtin_type_names {
-									if s.text[s.pos + 2] == `>` {
-										if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
-											s.pos += 3
-											return s.new_token(.unsigned_right_shift_assign,
-												'', 4)
-										}
-										s.pos += 2
-										return s.new_token(.unsigned_right_shift, '',
-											3)
-									}
-									s.pos++
-									return s.new_token(.right_shift, '', 2)
+								if typ.len == 0
+									|| (!(typ[0].is_capital() && typ[1..].bytes().all(it.is_alnum()
+									|| it == `_`)) && typ !in ast.builtin_type_names) {
+									is_generic = false
+									break
 								}
 							}
+						} else {
+							is_generic = false
+						}
+						if is_generic {
 							return s.new_token(.gt, '', 1)
+						} else if s.text[s.pos + 2] == `=` {
+							s.pos += 2
+							return s.new_token(.right_shift_assign, '', 3)
+						} else if s.text[s.pos + 2] == `>` {
+							if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+								s.pos += 3
+								return s.new_token(.unsigned_right_shift_assign, '', 4)
+							}
+							s.pos += 2
+							return s.new_token(.unsigned_right_shift, '', 3)
 						}
-					}
-					if s.text[s.pos + 2] == `>` {
-						if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
-							s.pos += 3
-							return s.new_token(.unsigned_right_shift_assign, '', 4)
-						}
-						s.pos += 2
-						return s.new_token(.unsigned_right_shift, '', 3)
 					}
 					s.pos++
 					return s.new_token(.right_shift, '', 2)
