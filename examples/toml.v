@@ -37,7 +37,7 @@ hosts = [
 ]'
 
 fn main() {
-	doc := toml.parse(toml_text)
+	doc := toml.parse(toml_text) or { panic(err) }
 	title := doc.value('title').string()
 	println('title: "$title"')
 	ip := doc.value('servers.alpha.ip').string()
