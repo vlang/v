@@ -35,7 +35,8 @@ mut:
 // Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
 pub struct Config {
 pub:
-	scanner &scanner.Scanner
+	scanner    &scanner.Scanner
+	run_checks bool = true
 }
 
 // new_parser returns a new, stack allocated, `Parser`.
@@ -55,10 +56,12 @@ pub fn (mut p Parser) init() ? {
 // run_checker validates the parsed `ast.Node` nodes in the
 // the generated AST.
 fn (mut p Parser) run_checker() ? {
-	chckr := checker.Checker{
-		scanner: p.scanner
+	if p.config.run_checks {
+		chckr := checker.Checker{
+			scanner: p.scanner
+		}
+		chckr.check(p.root_map) ?
 	}
-	chckr.check(p.root_map) ?
 }
 
 // parse starts parsing the input and returns the root

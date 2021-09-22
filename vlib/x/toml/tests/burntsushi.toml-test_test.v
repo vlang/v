@@ -31,36 +31,25 @@ const (
 		'string/basic-unknown-escape.toml',
 		// Integer
 		'integer/trailing-us-hex.toml',
-		//'integer/leading-zero-sign-2.toml',
 		'integer/double-us.toml',
 		'integer/capital-bin.toml',
-		//'integer/leading-zero-1.toml',
 		'integer/us-after-bin.toml',
-		'integer/positive-hex.toml',
-		'integer/negative-bin.toml',
 		'integer/invalid-bin.toml',
 		'integer/trailing-us-oct.toml',
 		'integer/us-after-oct.toml',
 		'integer/negative-hex.toml',
-		'integer/leading-zero-sign-1.toml',
 		'integer/invalid-oct.toml',
 		'integer/trailing-us.toml',
 		'integer/trailing-us-bin.toml',
-		'integer/negative-oct.toml',
-		'integer/positive-bin.toml',
 		'integer/us-after-hex.toml',
-		'integer/positive-oct.toml',
-		'integer/leading-zero-2.toml',
 		// Encoding
 		'encoding/bad-utf8-in-comment.toml',
 		'encoding/bad-utf8-in-string.toml',
 		// Float
 		'float/exp-double-us.toml',
 		'float/trailing-point-plus.toml',
-		'float/leading-zero-neg.toml',
 		'float/exp-leading-us.toml',
 		'float/trailing-point-min.toml',
-		'float/leading-zero-plus.toml',
 		'float/nan_underscore.toml',
 		'float/nan-incomplete-1.toml',
 		'invalid/float/exp-point-1.toml',
@@ -87,10 +76,6 @@ const (
 		'table/llbrace.toml',
 		'table/injection-1.toml',
 		'table/duplicate-table-array.toml',
-		// Boolean
-		'bool/mixed-case.toml',
-		'bool/wrong-case-true.toml',
-		'bool/wrong-case-false.toml',
 		// Array
 		'array/tables-1.toml',
 		'array/no-close-2.toml',
@@ -207,9 +192,10 @@ fn test_burnt_sushi_tomltest() {
 		}
 		println('$invalid/$invalid_test_files.len TOML files was parsed correctly')
 		if invalid_exceptions.len > 0 {
-			println('TODO Skipped parsing of $invalid_exceptions.len valid TOML files...')
+			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
 		}
 
+		// NOTE uncomment to see list of skipped files
 		// assert false
 	} else {
 		println('No test data directory found in "$test_root"')

@@ -23,6 +23,9 @@ fn (c Checker) visit(node &ast.Node) ? {
 		ast.Number {
 			c.check_number(node) ?
 		}
+		ast.Bool {
+			c.check_boolean(node) ?
+		}
 		else {
 			// println('ok')
 		}
@@ -47,6 +50,11 @@ fn (c Checker) check_number(num ast.Number) ? {
 	is_sign_prefixed := lit[0] in [`+`, `-`]
 	if is_sign_prefixed { // +/- ...
 		n := lit[1..]
+		if n.starts_with('0x') || n.starts_with('0o') || n.starts_with('0b') {
+			ascii = byte(lit[0]).ascii_str()
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' hex, octal and binary numbers can not start with `$ascii` "$lit" in ...${c.excerpt(num.pos)}...')
+		}
 		// is_first_digit = byte(n[0]).is_digit()
 		if lit.len > 1 && n.starts_with('0') {
 			ascii = byte(n[0]).ascii_str()
@@ -63,4 +71,13 @@ fn (c Checker) check_number(num ast.Number) ? {
 				' numbers can not start with `$ascii` "$lit" in ...${c.excerpt(num.pos)}...')
 		}
 	}
+}
+
+fn (c Checker) check_boolean(b ast.Bool) ? {
+	lit := b.text
+	if lit in ['true', 'false'] {
+		return
+	}
+	return error(@MOD + '.' + @STRUCT + '.' + @FN +
+		' boolean values can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
 }
