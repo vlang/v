@@ -952,6 +952,14 @@ fn (mut s Scanner) text_scan() token.Token {
 							}
 							return s.new_token(.gt, '', 1)
 						}
+						if s.text[s.pos + 2] == `>` {
+							if s.pos + 3 < s.text.len && s.text[s.pos + 3] == `=` {
+								s.pos += 3
+								return s.new_token(.unsigned_right_shift_assign, '', 4)
+							}
+							s.pos += 2
+							return s.new_token(.unsigned_right_shift, '', 3)
+						}
 					}
 					s.pos++
 					return s.new_token(.right_shift, '', 2)
