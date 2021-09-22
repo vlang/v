@@ -63,6 +63,11 @@ pub mut:
 	output_file_name string // log output to this file
 }
 
+// get_level gets the internal logging level.
+pub fn (mut l Log) get_level() Level {
+	return l.level
+}
+
 // set_level sets the internal logging to `level`.
 pub fn (mut l Log) set_level(level Level) {
 	l.level = level
