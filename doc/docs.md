@@ -5530,6 +5530,7 @@ type
 typeof
 union
 unsafe
+volatile
 __offsetof
 ```
 See also [V Types](#v-types).

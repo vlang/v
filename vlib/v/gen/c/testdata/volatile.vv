@@ -1,0 +1,4 @@
+mut volatile zzz := 123
+mut volatile pzzz := &zzz
+println(zzz)
+println(&int(voidptr(pzzz)))

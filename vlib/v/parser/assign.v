@@ -156,6 +156,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		}
 	}
 	mut is_static := false
+	mut is_volatile := false
 	for i, lx in left {
 		match mut lx {
 			ast.Ident {
@@ -173,6 +174,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 									lx.pos)
 							}
 							is_static = true
+						}
+						if iv.is_volatile {
+							is_volatile = true
 						}
 					}
 					r0 := right[0]
@@ -232,5 +236,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr
 		is_static: is_static
+		is_volatile: is_volatile
 	}
 }

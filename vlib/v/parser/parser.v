@@ -865,7 +865,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	mut arch := pref.arch_from_string(p.tok.lit) or { pref.Arch._auto }
 	mut is_volatile := false
 	mut is_goto := false
-	if p.tok.lit == 'volatile' && p.tok.kind == .name {
+	if p.tok.kind == .key_volatile {
 		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
 		is_volatile = true
 		p.next()
@@ -1820,6 +1820,10 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_static {
 		p.next()
 	}
+	is_volatile := p.tok.kind == .key_volatile
+	if is_volatile {
+		p.next()
+	}
 	if p.tok.kind != .name {
 		p.error('unexpected token `$p.tok.lit`')
 		return ast.Ident{
@@ -1838,6 +1842,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			info: ast.IdentVar{
 				is_mut: false
 				is_static: false
+				is_volatile: false
 			}
 			scope: p.scope
 		}
@@ -1861,6 +1866,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		info: ast.IdentVar{
 			is_mut: is_mut
 			is_static: is_static
+			is_volatile: is_volatile
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
 		}
 		scope: p.scope

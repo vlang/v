@@ -2374,6 +2374,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
 		g.write('static ')
 	}
+	if assign_stmt.is_volatile {
+		g.write('volatile ')
+	}
 	mut return_type := ast.void_type
 	is_decl := assign_stmt.op == .decl_assign
 	g.assign_op = assign_stmt.op

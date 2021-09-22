@@ -1719,6 +1719,9 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		if var_info.is_static {
 			f.write('static ')
 		}
+		if var_info.is_volatile {
+			f.write('volatile ')
+		}
 	}
 	f.write_language_prefix(node.language)
 	if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
