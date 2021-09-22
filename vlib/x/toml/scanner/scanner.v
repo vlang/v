@@ -37,13 +37,14 @@ pub:
 }
 
 // new_scanner returns a new heap allocated `Scanner` instance.
-pub fn new_scanner(config Config) ? &Scanner {
+pub fn new_scanner(config Config) ?&Scanner {
 	config.input.validate() ?
 	mut text := config.input.text
 	file_path := config.input.file_path
 	if os.is_file(file_path) {
 		text = os.read_file(file_path) or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' Could not read "$file_path": "$err.msg"')
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' Could not read "$file_path": "$err.msg"')
 		}
 	}
 	mut s := &Scanner{
@@ -487,7 +488,8 @@ fn (mut s Scanner) extract_number() ?string {
 	s.col--
 	start := s.pos
 	if !(byte(s.at()).is_digit() || s.at() in [`+`, `-`]) {
-		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' ${byte(s.at()).ascii_str()} is not a number')
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' ${byte(s.at()).ascii_str()} is not a number')
 	}
 	s.pos++
 	s.col++

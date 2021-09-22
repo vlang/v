@@ -713,7 +713,7 @@ pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 		// Look for any THH:MM:SS or <space>HH:MM:SS
 		if (p.peek_tok.kind == .bare && (p.peek_tok.lit.starts_with('T')
 			|| p.peek_tok.lit.starts_with('t'))) || p.peek_tok.kind == .whitespace {
-			p.next() ?// Advance to token with Txx or whitespace special case
+			p.next() ? // Advance to token with Txx or whitespace special case
 			if p.tok.lit.starts_with('T') || p.tok.lit.starts_with('t') {
 				lit += p.tok.lit[0].ascii_str() //'T' or 't'
 			} else {
