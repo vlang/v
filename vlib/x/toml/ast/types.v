@@ -1,21 +1,16 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
 
 import x.toml.token
-// import x.toml.util
 
-// Key is a sumtype representing all types of keys found in a TOML document.
+// Key is a sumtype representing all types of keys that
+// can be found in a TOML document.
 pub type Key = Bare | Bool | Null | Number | Quoted
 
 pub fn (k Key) str() string {
 	return k.text
-}
-
-// has_dot returns true if this key has a dot/period character in it.
-pub fn (k Key) has_dot() bool {
-	return k.text.contains('.')
 }
 
 // Value is a sumtype representing all possible value types
@@ -32,25 +27,27 @@ pub type Value = Bool
 
 pub fn (v Value) to_json() string {
 	match v {
-		Quoted, Time {
+		Quoted, Date, DateTime, Time {
 			return '"$v.text"'
 		}
-		Bool, Date, DateTime, Null, Number {
+		Bool, Null, Number {
 			return v.text
 		}
 		map[string]Value {
 			mut str := '{'
 			for key, val in v {
-				str += ' "$key": ${val.to_json()}'
+				str += ' "$key": $val.to_json(),'
 			}
+			str = str.trim_right(',')
 			str += ' }'
 			return str
 		}
 		[]Value {
 			mut str := '['
 			for val in v {
-				str += ' ${val.to_json()}'
+				str += ' $val.to_json(),'
 			}
+			str = str.trim_right(',')
 			str += ' ]'
 			return str
 		}
@@ -66,14 +63,15 @@ pub fn (dtt DateTimeType) str() string {
 }
 
 // value queries a value from the map.
+// `key` should be in "dotted" form e.g.: `"a.b.c.d"`
 pub fn (v map[string]Value) value(key string) &Value {
 	null := &Value(Null{})
 	key_split := key.split('.')
-	//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
 	if key_split[0] in v.keys() {
 		value := v[key_split[0]] or {
 			return null
-			//return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+			// return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
 		if value is map[string]Value {
@@ -87,18 +85,15 @@ pub fn (v map[string]Value) value(key string) &Value {
 		return &value
 	}
 	return null
-	//return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
-
 
 // value queries a value from the map.
 pub fn (v map[string]Value) exists(key string) bool {
 	key_split := key.split('.')
-	//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
 	if key_split[0] in v.keys() {
-		value := v[key_split[0]] or {
-			return false
-		}
+		value := v[key_split[0]] or { return false }
 		// `match` isn't currently very suitable for these types of sum type constructs...
 		if value is map[string]Value {
 			m := (value as map[string]Value)

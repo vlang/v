@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -15,17 +15,19 @@ pub struct Parser {
 pub:
 	config Config
 mut:
-	scanner &scanner.Scanner
-
+	scanner   &scanner.Scanner
 	prev_tok  token.Token
 	tok       token.Token
 	peek_tok  token.Token
 	skip_next bool
+	// The root map (map is called table in TOML world)
+	root_map     map[string]ast.Value
+	root_map_key string
 	// Array of Tables state
 	last_aot       string
 	last_aot_index int
 	// Root of the tree
-	root &ast.Root = &ast.Root{}
+	ast_root &ast.Root = &ast.Root{}
 }
 
 // Config is used to configure a Scanner instance.
@@ -45,6 +47,7 @@ pub fn new_parser(config Config) Parser {
 
 // init initializes the parser.
 pub fn (mut p Parser) init() {
+	p.root_map = map[string]ast.Value{}
 	p.next()
 }
 
@@ -52,8 +55,9 @@ pub fn (mut p Parser) init() {
 // of the generated AST.
 pub fn (mut p Parser) parse() &ast.Root {
 	p.init()
-	p.root.table = ast.Value(p.root_table())
-	return p.root
+	p.root_table()
+	p.ast_root.table = p.root_map
+	return p.ast_root
 }
 
 // next forwards the parser to the next token.
@@ -98,20 +102,65 @@ fn (mut p Parser) expect(expected_token token.Kind) {
 	}
 }
 
-// find_in_table returns a reference to a map if found in `table` given a "flat path" key ('aa.bb.cc').
+// find_table returns a reference to a map if found in the root table given a "dotted" key ('a.b.c').
+// If some segments of the key does not exist in the root table find_table will
+// allocate a new map for each segment. This behavior is needed because you can
+// reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
+	mut t := &map[string]ast.Value{}
+	unsafe {
+		t = &p.root_map
+	}
+	if p.root_map_key == '' {
+		return t
+	}
+
+	return p.find_in_table(mut t, p.root_map_key)
+}
+
+pub fn (mut p Parser) sub_table_key(key string) (string, string) {
+	mut ks := key.split('.')
+	last := ks.last()
+	ks.delete_last()
+	return ks.join('.'), last
+}
+
+// find_sub_table returns a reference to a map if found in `table` given a "dotted" key ('aa.bb.cc').
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
-// reference maps by multiple keys "flat path" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key_str string) ?&map[string]ast.Value {
+// reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
+	mut ky := p.root_map_key + '.' + key
+	if p.root_map_key == '' {
+		ky = key
+	}
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$ky" in map ${ptr_str(p.root_map)}')
+	mut t := &map[string]ast.Value{}
+	unsafe {
+		t = &p.root_map
+	}
+	if ky == '' {
+		return t
+	}
+
+	return p.find_in_table(mut t, ky)
+}
+
+// find_in_table returns a reference to a map if found in `table` given a "dotted" key ('aa.bb.cc').
+// If some segments of the key does not exist in the input map find_in_table will
+// allocate a new map for the segment. This behavior is needed because you can
+// reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) ?&map[string]ast.Value {
 	// NOTE This code is the result of much trial and error.
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key_str" in map ${ptr_str(table)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(table)}')
 	mut t := &map[string]ast.Value{}
 	unsafe {
 		t = &table
 	}
-	mut ks := key_str.split('.')
+	ks := key.split('.')
 	unsafe {
 		for k in ks {
 			if k in t.keys() {
@@ -143,7 +192,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key_str stri
 	return t
 }
 
-pub fn (mut p Parser) nested_key() string {
+pub fn (mut p Parser) sub_key() string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key...')
 	key := p.key()
 	mut text := key.str()
@@ -158,12 +207,10 @@ pub fn (mut p Parser) nested_key() string {
 	return text
 }
 
-// root_table parses next tokens into a map of `ast.Value`s.
-// The V map type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) root_table() map[string]ast.Value {
+// root_table parses next tokens into the root map of `ast.Value`s.
+// The V `map` type is corresponding to a "table" in TOML.
+pub fn (mut p Parser) root_table() {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing root table...')
-
-	mut table := map[string]ast.Value{}
 
 	for p.tok.kind != .eof {
 		if !p.skip_next {
@@ -186,92 +233,51 @@ pub fn (mut p Parser) root_table() map[string]ast.Value {
 				if p.peek_tok.kind == .assign
 					|| (p.tok.kind == .number && p.peek_tok.kind == .minus) {
 					key, val := p.key_value()
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @1 "$key.str()" = $val.to_json() into ${ptr_str(table)}')
-					table[key.str()] = val
-				} else if p.peek_tok.kind == .period {
 
-					mut text := p.nested_key()
+					t := p.find_table() or { panic(err) }
+					unsafe {
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val.to_json() in table ${ptr_str(t)}')
+						t[key.str()] = val
+					}
+				} else if p.peek_tok.kind == .period {
+					subkey := p.sub_key()
 
 					p.check(.assign)
 					val := p.value()
 
-					//table.value(text)
-					mut ks := text.split('.')
-					last := ks.last()
-					ks.delete_last()
+					sub_table, key := p.sub_table_key(subkey)
 
-					mut t := p.find_in_table(mut table, ks.join('.')) or { panic(err) }
-					//println(@MOD + '.' + @STRUCT + '.' + @FN + ' inserting key $last in ${ptr_str(t)}')
+					t := p.find_sub_table(sub_table) or { panic(err) }
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @2 "$last" = $val.to_json() into ${ptr_str(t)}')
-						t[last] = val
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val.to_json() in table ${ptr_str(t)}')
+						t[key] = val
 					}
 				} else {
-					panic(@MOD + '.' + @STRUCT + '.' + @FN + ' dead end at "$p.tok.kind" "$p.tok.lit"')
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
+						' dead end at "$p.tok.kind" "$p.tok.lit"')
 				}
 			}
 			.lsbr {
 				p.check(.lsbr) // '[' bracket
 
 				if p.tok.kind == .lsbr {
-					p.array_of_tables(mut &table)
+					p.array_of_tables(mut &p.root_map)
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if p.peek_tok.kind == .period {
-					mut text := p.nested_key()
-					//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed nested key `$text` now at "$p.tok.kind" "$p.tok.lit"')
-
+					p.root_map_key = p.sub_key()
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr)
-
-					mut ks := text.split('.')
-
-					/*
-					table.exist()
-					table.value(text)
-					*/
-
-					/*
-					///
-
-					last := ks.last()
-					ks.delete_last()
-
-					mut t := p.find_in_table(mut table, ks.join('.')) or { panic(err) }
-					t[ks.last()] = ast.Value(p.root_table())
-
-					///
-					*/
-
-
-					mut t := p.find_in_table(mut table, text) or { panic(err) }
-					p.table(mut t)
-					// println(@MOD + '.' + @STRUCT + '.' + @FN + ' inserting into key ${ks.last()} ')
-					unsafe {
-						val := ast.Value(t)
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @3 "$ks.last()" = $val.to_json() into ${ptr_str(t)}')
-						t[ks.last()] = val
-					}
 				} else {
 					key := p.key()
+					p.root_map_key = key.str()
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.next()
 					p.expect(.rsbr)
-
-					///
-					/*
-					table[key.str()] = ast.Value(p.root_table())
-					*/
-					///
-
-					mut t := map[string]ast.Value{}
-					p.table(mut t)
-					val := ast.Value(t)
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @4 "$key.str()" = $val.to_json() into ${ptr_str(table)}')
-					table[key.str()] = val
-
 				}
 			}
 			.eof {
-				return table
+				return
 			}
 			else {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -279,7 +285,6 @@ pub fn (mut p Parser) root_table() map[string]ast.Value {
 			}
 		}
 	}
-	return table
 }
 
 // excerpt returns a string of the characters surrounding `Parser.tok.pos`
@@ -287,10 +292,10 @@ fn (mut p Parser) excerpt() string {
 	return p.scanner.excerpt(p.tok.pos, 10)
 }
 
-// table parses next tokens into a map of `ast.Value`s.
+// inline_table parses next tokens into a map of `ast.Value`s.
 // The V map type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) table(mut tbl map[string]ast.Value) {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing into table...')
+pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
 
 	for p.tok.kind != .eof {
 		p.next()
@@ -309,11 +314,7 @@ pub fn (mut p Parser) table(mut tbl map[string]ast.Value) {
 				continue
 			}
 			.rcbr {
-				// p.expect(.rsbr) // ']' bracket
-				//$if debug {
-				//	flat := arr.str().replace('\n', r'\n')
-				//	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed table: $flat . Currently @ token "$p.tok.kind"')
-				//}
+				// ']' bracket
 				return
 			}
 			.bare, .quoted, .boolean, .number, .underscore {
@@ -321,69 +322,25 @@ pub fn (mut p Parser) table(mut tbl map[string]ast.Value) {
 					key, val := p.key_value()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key.str()" = $val.to_json() into ${ptr_str(tbl)}')
 					tbl[key.str()] = val
-
 				} else if p.peek_tok.kind == .period {
-					mut text := p.nested_key()
-
+					subkey := p.sub_key()
 					p.check(.assign)
-
 					val := p.value()
 
-					mut ks := text.split('.')
-					last := ks.last()
-					ks.delete_last()
+					sub_table, key := p.sub_table_key(subkey)
 
-					mut t := p.find_in_table(mut tbl, ks.join('.')) or { panic(err) }
+					mut t := p.find_in_table(mut tbl, sub_table) or { panic(err) }
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$last" = $val.to_json() into ${ptr_str(t)}')
-						t[last] = val
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+						t[key] = val
 					}
 				} else {
-					panic(@MOD + '.' + @STRUCT + '.' + @FN + ' dead end at "$p.tok.kind" "$p.tok.lit"')
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
+						' dead end at "$p.tok.kind" "$p.tok.lit"')
 				}
 			}
 			.lsbr {
-
-				///
-
-				//tbl[key.str()] = ast.Value(p.root_table())
-
-				///
-
-				p.check(.lsbr) // '[' bracket
-
-				if p.peek_tok.kind == .period {
-					mut text := p.nested_key()
-					//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key `$text` now at "$p.tok.kind" "$p.tok.lit"')
-
-					p.expect(.rsbr)
-
-					ks := text.split('.')
-
-					mut t := p.find_in_table(mut tbl, text) or { panic(err) }
-					p.table(mut t)
-					unsafe {
-						val := ast.Value(t)
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "$ks.last()" = $val.to_json() into ${ptr_str(t)}')
-						t[ks.last()] = val //ast.Value(t)
-					}
-				} else {
-					key := p.key()
-					p.next()
-					p.expect(.rsbr)
-
-					///
-					val := ast.Value(p.root_table())
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @8 "$key.str()" = $val.to_json() into ${ptr_str(tbl)}')
-					tbl[key.str()] = val
-					///
-
-					//mut t := map[string]ast.Value{}
-					//p.table(mut t)
-					//tbl[key.str()] = ast.Value(t)
-
-				}
-
+				panic(@MOD + '.' + @STRUCT + '.' + @FN + ' dead end at "$p.tok.kind" "$p.tok.lit"')
 			}
 			.eof {
 				return
@@ -469,7 +426,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) {
 		mut t_arr := &(table[p.last_aot] as []ast.Value)
 		t_arr << map[string]ast.Value{}
 		p.last_aot_index = 0
-		//panic(@MOD + '.' + @STRUCT + '.' + @FN +
+		// panic(@MOD + '.' + @STRUCT + '.' + @FN +
 		//	' last accessed key "$p.last_aot" is not "$first". (excerpt): "...${p.excerpt()}..."')
 	}
 
@@ -536,7 +493,7 @@ pub fn (mut p Parser) array() []ast.Value {
 			}
 			.lcbr {
 				mut t := map[string]ast.Value{}
-				p.table(mut t)
+				p.inline_table(mut t)
 				// table[key_str] = ast.Value(t)
 				ast.Value(t)
 			}
@@ -577,7 +534,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-// key parses and returns an `ast.Key` type.
+// key parse and returns an `ast.Key` type.
 // Keys are the token(s) appearing before an assignment operator (=).
 pub fn (mut p Parser) key() ast.Key {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key from "$p.tok.lit" ...')
@@ -627,7 +584,7 @@ pub fn (mut p Parser) key() ast.Key {
 	return key
 }
 
-// key_value parses and returns a pair `ast.Key` and `ast.Value` type.
+// key_value parse and returns a pair `ast.Key` and `ast.Value` type.
 // see also `key()` and `value()`
 pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
@@ -635,11 +592,11 @@ pub fn (mut p Parser) key_value() (ast.Key, ast.Value) {
 	p.next()
 	p.check(.assign) // Assignment operator
 	value := p.value()
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = ${value.to_json()}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = $value.to_json()')
 	return key, value
 }
 
-// value parses and returns an `ast.Value` type.
+// value parse and returns an `ast.Value` type.
 // values are the token(s) appearing after an assignment operator (=).
 pub fn (mut p Parser) value() ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value...')
@@ -663,7 +620,7 @@ pub fn (mut p Parser) value() ast.Value {
 		.lcbr {
 			// TODO make table olt for inline tables
 			mut t := map[string]ast.Value{}
-			p.table(mut t)
+			p.inline_table(mut t)
 			// table[key_str] = ast.Value(t)
 			ast.Value(t)
 		}
@@ -677,11 +634,11 @@ pub fn (mut p Parser) value() ast.Value {
 	if value is ast.Null {
 		panic(@MOD + '.' + @STRUCT + '.' + @FN + ' expected .quoted value')
 	}*/
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed value ${value.to_json()}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed value $value.to_json()')
 	return value
 }
 
-// number_or_date parses and returns an `ast.Value` type as
+// number_or_date parse and returns an `ast.Value` type as
 // one of [`ast.Date`, `ast.Time`, `ast.DateTime`, `ast.Number`]
 pub fn (mut p Parser) number_or_date() ast.Value {
 	// Handle Date/Time
@@ -702,7 +659,7 @@ pub fn (mut p Parser) number_or_date() ast.Value {
 	return ast.Value(p.number())
 }
 
-// bare parses and returns an `ast.Bare` type.
+// bare parse and returns an `ast.Bare` type.
 pub fn (mut p Parser) bare() ast.Bare {
 	return ast.Bare{
 		text: p.tok.lit
@@ -710,7 +667,7 @@ pub fn (mut p Parser) bare() ast.Bare {
 	}
 }
 
-// quoted parses and returns an `ast.Quoted` type.
+// quoted parse and returns an `ast.Quoted` type.
 pub fn (mut p Parser) quoted() ast.Quoted {
 	return ast.Quoted{
 		text: p.tok.lit
@@ -718,7 +675,7 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 	}
 }
 
-// boolean parses and returns an `ast.Bool` type.
+// boolean parse and returns an `ast.Bool` type.
 pub fn (mut p Parser) boolean() ast.Bool {
 	if p.tok.lit !in ['true', 'false'] {
 		panic(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -730,7 +687,7 @@ pub fn (mut p Parser) boolean() ast.Bool {
 	}
 }
 
-// number parses and returns an `ast.Number` type.
+// number parse and returns an `ast.Number` type.
 pub fn (mut p Parser) number() ast.Number {
 	return ast.Number{
 		text: p.tok.lit
@@ -782,7 +739,7 @@ pub fn (mut p Parser) date_time() ast.DateTimeType {
 	}
 }
 
-// date parses and returns an `ast.Date` type.
+// date parse and returns an `ast.Date` type.
 pub fn (mut p Parser) date() ast.Date {
 	// Date
 	mut lit := p.tok.lit
@@ -805,7 +762,7 @@ pub fn (mut p Parser) date() ast.Date {
 	}
 }
 
-// time parses and returns an `ast.Time` type.
+// time parse and returns an `ast.Time` type.
 pub fn (mut p Parser) time() ast.Time {
 	// Time
 	mut lit := p.tok.lit

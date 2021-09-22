@@ -18,7 +18,8 @@ const (
 // `git clone git@github.com:BurntSushi/toml-test.git burntsushi/toml-test`
 fn test_burnt_sushi_tomltest() {
 	this_file := @FILE
-	test_root := os.join_path(os.dir(this_file), 'testdata', 'burntsushi', 'toml-test', 'tests')
+	test_root := os.join_path(os.dir(this_file), 'testdata', 'burntsushi', 'toml-test',
+		'tests')
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
 		println('Testing $valid_test_files.len valid TOML files...')
@@ -30,11 +31,11 @@ fn test_burnt_sushi_tomltest() {
 				println('OK   [$i/$valid_test_files.len] "$valid_test_file"...')
 				toml_doc := toml.parse_file(valid_test_file)
 
-				//parsed_json := toml_doc.to_json().replace(' ','')
-				//mut test_suite_json := os.read_file(valid_test_file.all_before_last('.')+'.json') or { panic(err) }
-				//test_suite_json = test_suite_json.replace('\n ','').replace(' ','')
-				//println(test_suite_json.replace('\n ','').replace(' ',''))
-				//assert parsed_json == test_suite_json
+				// parsed_json := toml_doc.to_json().replace(' ','')
+				// mut test_suite_json := os.read_file(valid_test_file.all_before_last('.')+'.json') or { panic(err) }
+				// test_suite_json = test_suite_json.replace('\n ','').replace(' ','')
+				// println(test_suite_json.replace('\n ','').replace(' ',''))
+				// assert parsed_json == test_suite_json
 				valid++
 			} else {
 				e++

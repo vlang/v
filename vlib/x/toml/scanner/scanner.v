@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
@@ -69,8 +69,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'current char "$ascii"')
 
 		is_sign := byte_c in [`+`, `-`]
-		is_signed_number := is_sign && byte(s.at()).is_digit()
-			&& !byte(s.peek_n(-1)).is_digit()
+		is_signed_number := is_sign && byte(s.at()).is_digit() && !byte(s.peek_n(-1)).is_digit()
 
 		// TODO (+/-)nan & (+/-)inf
 		/*

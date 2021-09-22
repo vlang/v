@@ -191,7 +191,7 @@ pub fn (a Any) to_json() string {
 		map[string]Any {
 			mut str := '{'
 			for key, val in a {
-				str += ' "$key": ${val.to_json()}'
+				str += ' "$key": $val.to_json()'
 			}
 			str += ' }'
 			return str
@@ -199,7 +199,7 @@ pub fn (a Any) to_json() string {
 		[]Any {
 			mut str := '['
 			for val in a {
-				str += ' ${val.to_json()}'
+				str += ' $val.to_json()'
 			}
 			str += ' ]'
 			return str
