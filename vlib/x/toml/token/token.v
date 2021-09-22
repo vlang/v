@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module token
 
+// Token holds information about the current scan of bytes.
 pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons
@@ -13,6 +14,7 @@ pub:
 	len     int    // length of the literal
 }
 
+// Kind represents a logical type of entity found in any given TOML document.
 pub enum Kind {
 	unknown
 	eof
@@ -22,6 +24,7 @@ pub enum Kind {
 	quoted // 'foo', "foo", """foo""" or '''foo'''
 	plus // +
 	minus // -
+	underscore // _
 	comma // ,
 	colon // :
 	hash // # comment
@@ -34,7 +37,7 @@ pub enum Kind {
 	cr // \r carrige return
 	tab // \t character
 	whitespace // ` `
-	dot // .
+	period // .
 	_end_
 }
 

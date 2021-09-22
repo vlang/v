@@ -6,12 +6,20 @@ module ast
 import x.toml.token
 // import x.toml.util
 
-pub type Key = Bare | Quoted
+// Key is a sumtype representing all types of keys found in a TOML document.
+pub type Key = Bare | Bool | Null | Number | Quoted
 
 pub fn (k Key) str() string {
 	return k.text
 }
 
+// has_dot returns true if this key has a dot/period character in it.
+pub fn (k Key) has_dot() bool {
+	return k.text.contains('.')
+}
+
+// Value is a sumtype representing all possible value types
+// found in a TOML document.
 pub type Value = Bool
 	| Date
 	| DateTime
@@ -21,6 +29,89 @@ pub type Value = Bool
 	| Time
 	| []Value
 	| map[string]Value
+
+pub fn (v Value) to_json() string {
+	match v {
+		Quoted, Time {
+			return '"$v.text"'
+		}
+		Bool, Date, DateTime, Null, Number {
+			return v.text
+		}
+		map[string]Value {
+			mut str := '{'
+			for key, val in v {
+				str += ' "$key": ${val.to_json()}'
+			}
+			str += ' }'
+			return str
+		}
+		[]Value {
+			mut str := '['
+			for val in v {
+				str += ' ${val.to_json()}'
+			}
+			str += ' ]'
+			return str
+		}
+	}
+}
+
+// DateTimeType is a sumtype representing all possible date types
+// found in a TOML document.
+pub type DateTimeType = Date | DateTime | Time
+
+pub fn (dtt DateTimeType) str() string {
+	return dtt.text
+}
+
+// value queries a value from the map.
+pub fn (v map[string]Value) value(key string) &Value {
+	null := &Value(Null{})
+	key_split := key.split('.')
+	//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	if key_split[0] in v.keys() {
+		value := v[key_split[0]] or {
+			return null
+			//return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+		}
+		// `match` isn't currently very suitable for these types of sum type constructs...
+		if value is map[string]Value {
+			m := (value as map[string]Value)
+			next_key := key_split[1..].join('.')
+			if next_key == '' {
+				return &value
+			}
+			return m.value(next_key)
+		}
+		return &value
+	}
+	return null
+	//return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+}
+
+
+// value queries a value from the map.
+pub fn (v map[string]Value) exists(key string) bool {
+	key_split := key.split('.')
+	//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	if key_split[0] in v.keys() {
+		value := v[key_split[0]] or {
+			return false
+		}
+		// `match` isn't currently very suitable for these types of sum type constructs...
+		if value is map[string]Value {
+			m := (value as map[string]Value)
+			next_key := key_split[1..].join('.')
+			if next_key == '' {
+				return true
+			}
+			return m.exists(next_key)
+		}
+		return true
+	}
+	return false
+}
 
 pub struct Comment {
 pub:
@@ -38,10 +129,13 @@ pub fn (c Comment) str() string {
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
+pub:
+	text string
+	pos  token.Position
 }
 
 pub fn (n Null) str() string {
-	return 'Null'
+	return n.text
 }
 
 pub struct Quoted {
@@ -132,13 +226,15 @@ pub fn (t Time) str() string {
 
 pub struct DateTime {
 pub:
+	text string
+	pos  token.Position
 	date Date
 	time Time
-	pos  token.Position
 }
 
 pub fn (dt DateTime) str() string {
 	mut str := typeof(dt).name + '{\n'
+	str += '  text:  \'$dt.text\'\n'
 	str += '  date:  \'$dt.date\'\n'
 	str += '  time:  \'$dt.time\'\n'
 	str += '  pos:  $dt.pos\n'

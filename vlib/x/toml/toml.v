@@ -9,23 +9,10 @@ import x.toml.util
 import x.toml.input
 import x.toml.scanner
 import x.toml.parser
+import time
 
-pub type Any = []Any | bool | f64 | i64 | map[string]Any | string // TODO add more builtin types - or use json2.Any + Date etc. ??
-
-pub fn (a Any) bool() bool {
-	return a as bool
-}
-
-pub fn (a Any) f64() f64 {
-	return a as f64
-}
-
-pub fn (a Any) i64() i64 {
-	return a as i64
-}
-
-pub fn (a Any) string() string {
-	return a as string
+// Null is used in sumtype checks as a "default" value when nothing else is possible.
+pub struct Null {
 }
 
 // Config is used to configure the toml parser.
@@ -78,12 +65,12 @@ pub fn parse_text(text string) Doc {
 	}
 }
 
-// parse is a convenience function that parses the TOML document provided in `input`.
-// parse automatically try to determine if type of `input` is a file or text.
+// parse parses the TOML document provided in `input`.
+// parse automatically try to determine if the type of `input` is a file or text.
 // For explicit parsing of input see `parse_file` or `parse_text`.
 pub fn parse(toml string) Doc {
 	mut input_config := input.Config{}
-	if os.is_file(toml) {
+	if !toml.contains('\n') && os.is_file(toml) {
 		input_config = input.Config{
 			file_path: toml
 		}
@@ -103,6 +90,11 @@ pub fn parse(toml string) Doc {
 	return Doc{
 		ast: p.parse()
 	}
+}
+
+// value queries a value from the TOML document.
+pub fn (d Doc) to_json() string {
+	return d.ast.to_json()
 }
 
 // value queries a value from the TOML document.
@@ -144,6 +136,32 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 			aa << d.ast_to_any(val)
 		}
 		return aa
+	} else if value is ast.Date || value is ast.Time || value is ast.DateTime {
+		mut tim := time.Time{}
+		if value is ast.Date {
+			date_str := (value as ast.Date).text
+			// TODO add rfc 3339 parser to time module?
+			tim = time.parse_rfc3339(date_str) or {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' failed converting "$date_str" to iso8601: $err')
+			}
+		} else if value is ast.Time {
+			time_str := (value as ast.Time).text
+			// TODO add rfc 3339 parser to time module?
+			tim = time.parse_rfc3339(time_str) or {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' failed converting "$time_str" to rfc3339: $err')
+			}
+		} else {
+			// value is ast.DateTime
+			datetime_str := (value as ast.DateTime).text
+			// TODO add rfc 3339 parser to time module?
+			tim = time.parse_rfc3339(datetime_str) or {
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+					' failed converting "$datetime_str" to rfc3339: $err')
+			}
+		}
+		return Any(tim)
 	}
 
 	// TODO add more types
@@ -151,6 +169,7 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 	return Any('')
 }
 
+// get_map_value_as_any returns the value found at `key` in the map `values` as `Any` type.
 fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
 	key_split := key.split('.')
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
@@ -167,69 +186,7 @@ fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
 			}
 			return d.get_map_value_as_any(m, next_key)
 		}
-		/*
-		else if value is []ast.Value {
-			a := (value as []ast.Value)
-			mut aa := []Any
-			for val in a {
-				aa << d.ast_to_any(a)
-			}
-			return aa
-		}*/
 		return d.ast_to_any(value)
 	}
 	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
-
-/*
-fn (d Doc) get_map_value(values map[string]Any, key string) Any {
-	key_split := key.split('.')
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
-	value := values[key_split[0]]
-	// `match` isn't currently very suitable for these types of sum type constructs...
-	if value is map[string]Any {
-		m := (value as map[string]Any)
-		return d.get_map_value(m, key_split[1..].join('.'))
-	} else if value is []Any {
-		// TODO array support
-	}
-
-	return value
-}
-*/
-
-/*
-// map_value queries a value from `value_map`.
-fn (d Doc) get_map_value(value_map map[string]ast.Value, key string) Any {
-	key_split := key.split('.')
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
-	value := value_map[key_split[0]]
-	// `match` isn't currently very suitable for these types of sum type constructs...
-	if value is ast.Quoted {
-		return Any((value as ast.Quoted).text)
-	} else if value is ast.Number {
-		str := (value as ast.Number).text
-		if str.contains('.') {
-			return Any(str.f64())
-		}
-		return Any(str.i64())
-	} else if value is ast.Bool {
-		str := (value as ast.Bool).text
-		if str == 'true' {
-			return Any(true)
-		}
-		return Any(false)
-	} else if value is map[string]ast.Value {
-		m := (value as map[string]ast.Value)
-		return d.get_map_value(m, key_split[1..].join('.'))
-	} else if value is []ast.Value {
-		a := (value as []ast.Value)
-		for val in a {
-		}
-		return d.get_array_value(m, key_split[1..].join('.'))
-	}
-	// TODO add more types
-	panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
-	return Any('')
-}
-*/

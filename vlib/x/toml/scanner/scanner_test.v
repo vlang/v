@@ -71,30 +71,6 @@ fn test_peek_n() {
 	assert s.next() == -1
 }
 
-/*
-fn test_back() {
-	mut s := scanner.new_scanner(input: scan_input)
-	assert s.next() == `a`
-	s.back()
-	assert s.next() == `a`
-	assert s.next() == `b`
-	s.back()
-	assert s.next() == `b`
-	assert s.next() == `c`
-	assert s.next() == -1
-}
-
-fn test_back_n() {
-	mut s := scanner.new_scanner(input: scan_input)
-	assert s.next() == `a`
-	s.back_n(10)
-	assert s.next() == `a`
-	assert s.next() == `b`
-	assert s.next() == `c`
-	s.back_n(2)
-	assert s.next() == `b`
-}
-*/
 fn test_reset() {
 	mut s := scanner.new_scanner(input: scan_input)
 	assert s.next() == `a`

@@ -23,3 +23,7 @@ pub fn (r Root) str() string {
 	s += '}'
 	return s
 }
+
+pub fn (r Root) to_json() string {
+	return r.table.to_json()
+}
