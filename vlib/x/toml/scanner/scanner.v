@@ -70,12 +70,12 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'current char "$ascii"')
 
 		is_sign := byte_c in [`+`, `-`]
-		is_signed_number := is_sign && byte(s.at()).is_digit() && !byte(s.peek_n(-1)).is_digit()
+		is_signed_number := is_sign && byte(s.at()).is_digit() && !byte(s.peek(-1)).is_digit()
 
 		// TODO (+/-)nan & (+/-)inf
 		/*
-		mut is_nan := s.peek_n(1) == `n` && s.peek_n(2) == `a` && s.peek_n(3) == `n`
-		mut is_inf := s.peek_n(1) == `i` && s.peek_n(2) == `n` && s.peek_n(3) == `f`
+		mut is_nan := s.peek(1) == `n` && s.peek(2) == `a` && s.peek(3) == `n`
+		mut is_inf := s.peek(1) == `i` && s.peek(2) == `n` && s.peek(3) == `f`
 		if is_nan || is_inf {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a special number "$key" ($key.len)')
 			return s.new_token(.number, key, key.len)
@@ -107,8 +107,8 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				}
 				// Date-Time in RFC 3339 is allowed to have a space between the date and time in supplement to the 'T'
 				// so we allow space characters to slip through to the parser if the space is between two digits...
-				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+byte(s.peek_n(-1)).ascii_str()+'" < "$ascii" > "'+byte(s.at()).ascii_str()+'"')
-				if c == ` ` && byte(s.peek_n(-1)).is_digit() && byte(s.at()).is_digit() {
+				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+byte(s.peek(-1)).ascii_str()+'" < "$ascii" > "'+byte(s.at()).ascii_str()+'"')
+				if c == ` ` && byte(s.peek(-1)).is_digit() && byte(s.at()).is_digit() {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified, what could be, a space between a RFC 3339 date and time ("$ascii") ($ascii.len)')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
 				}
@@ -254,10 +254,10 @@ pub fn (s &Scanner) at() byte {
 	return -1
 }
 
-// peek_n returns the character code from the input text at position + `n`.
-// peek_n returns `-1` if it can't peek `n` characters ahead.
+// peek returns the character code from the input text at position + `n`.
+// peek returns `-1` if it can't peek `n` characters ahead.
 [direct_array_access; inline]
-pub fn (s &Scanner) peek_n(n int) int {
+pub fn (s &Scanner) peek(n int) int {
 	if s.pos + n < s.text.len {
 		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
 		if n - 1 < 0 && s.pos + n - 1 >= 0 {
@@ -428,13 +428,13 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c')
 
 		if c == quote {
-			if s.peek_n(1) == quote && s.peek_n(2) == quote {
-				if s.peek_n(3) == -1 {
+			if s.peek(1) == quote && s.peek(2) == quote {
+				if s.peek(3) == -1 {
 					s.pos += 3
 					s.col += 3
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'returning at $c.ascii_str() `$lit`')
 					return lit
-				} else if s.peek_n(3) != quote {
+				} else if s.peek(3) != quote {
 					// lit += c.ascii_str()
 					// lit += quote.ascii_str()
 					s.pos += 3
@@ -453,22 +453,22 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 	c := s.at()
 	mut lit := c.ascii_str()
-	if s.peek_n(1) == byte(92) {
+	if s.peek(1) == byte(92) {
 		lit += lit
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
 		return lit, 1
-	} else if s.peek_n(1) == quote {
-		if (!is_multiline && s.peek_n(2) == `\n`)
-			|| (is_multiline && s.peek_n(2) == quote && s.peek_n(3) == quote && s.peek_n(4) == `\n`) {
+	} else if s.peek(1) == quote {
+		if (!is_multiline && s.peek(2) == `\n`)
+			|| (is_multiline && s.peek(2) == quote && s.peek(3) == quote && s.peek(4) == `\n`) {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'ignore special case escaped `$lit` at end of string')
 			return '', 0
 		}
 		lit += quote.ascii_str()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
 		return lit, 1
-	} else if s.peek_n(1) == `u` && byte(s.peek_n(2)).is_hex_digit()
-		&& byte(s.peek_n(3)).is_hex_digit() && byte(s.peek_n(4)).is_hex_digit()
-		&& byte(s.peek_n(5)).is_hex_digit() {
+	} else if s.peek(1) == `u` && byte(s.peek(2)).is_hex_digit()
+		&& byte(s.peek(3)).is_hex_digit() && byte(s.peek(4)).is_hex_digit()
+		&& byte(s.peek(5)).is_hex_digit() {
 		lit += s.text[s.pos + 1..s.pos + 6] //.ascii_str()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
 		return lit, 4
@@ -487,14 +487,17 @@ fn (mut s Scanner) extract_number() ?string {
 	s.pos--
 	s.col--
 	start := s.pos
-	if !(byte(s.at()).is_digit() || s.at() in [`+`, `-`]) {
+
+	mut c := s.at()
+	is_digit := byte(c).is_digit()
+	if !(is_digit || c in [`+`, `-`]) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' ${byte(s.at()).ascii_str()} is not a number')
+			' ${byte(c).ascii_str()} is not a number at ${s.excerpt(s.pos, 10)}')
 	}
 	s.pos++
 	s.col++
 	for s.pos < s.text.len {
-		c := s.at()
+		c = s.at()
 		if !(byte(c).is_hex_digit() || c in [`_`, `.`, `x`, `o`, `b`]) {
 			break
 		}
