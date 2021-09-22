@@ -139,7 +139,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.inside_lambda = true
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0)
+	s := g.go_before_stmt(0).trim_space()
 	// println('filter s="$s"')
 	ret_typ := g.typ(node.return_type)
 	// inp_typ := g.typ(node.receiver_type)
@@ -210,7 +210,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	g.write('\n')
 	if g.infix_left_var_name.len > 0 {
 		g.indent--
 		g.writeln('}')
@@ -326,7 +325,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0)
+	s := g.go_before_stmt(0).trim_space()
 	// println('filter s="$s"')
 	sym := g.table.get_type_symbol(node.return_type)
 	if sym.kind != .array {
@@ -388,12 +387,12 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\tarray_push${noscan}((array*)&$tmp, &it); \n\t\t}')
+	g.writeln('\t\tarray_push${noscan}((array*)&$tmp, &it);')
+	g.writeln('\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	g.write('\n')
 	if g.infix_left_var_name.len > 0 {
 		g.indent--
 		g.writeln('}')
@@ -614,7 +613,7 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 
 fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0)
+	s := g.go_before_stmt(0).trim_space()
 	sym := g.table.get_type_symbol(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
@@ -670,12 +669,13 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\t$tmp = true;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('\t\t$tmp = true;')
+	g.writeln('\t\tbreak;')
+	g.writeln('\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	g.write('\n')
 	if g.infix_left_var_name.len > 0 {
 		g.indent--
 		g.writeln('}')
@@ -686,7 +686,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 
 fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0)
+	s := g.go_before_stmt(0).trim_space()
 	sym := g.table.get_type_symbol(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
@@ -742,12 +742,13 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		}
 	}
 	g.writeln(')) {')
-	g.writeln('\t\t$tmp = false;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('\t\t$tmp = false;')
+	g.writeln('\t\tbreak;')
+	g.writeln('\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	g.write('\n')
 	if g.infix_left_var_name.len > 0 {
 		g.indent--
 		g.writeln('}')
