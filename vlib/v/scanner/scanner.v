@@ -919,7 +919,6 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						mut is_non_generic := true
 						// an algorithm to decide it's generic or non-generic
 						// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
 						// @SleepyRoy if you have smarter algorithm :-)
@@ -927,6 +926,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						// here we set the limit 100 which should be nice for real cases
 						// e.g. ...Bar<int, []Foo<int>, Baz_, [20]f64, map[string][]bool>> =>
 						// <int, Baz_, [20]f64, map[string][]bool => int, Baz_, f64, bool
+						mut is_generic := false
 						if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
 							typs := s.text[s.last_lt + 1..s.pos].split(',').map(it.trim_space().trim_right('>').after(']'))
 							// if any typ is neither Type nor builtin, then the case is non-generic
@@ -934,12 +934,12 @@ fn (mut s Scanner) text_scan() token.Token {
 								if typ.len == 0
 									|| (!(typ[0].is_capital() && typ[1..].bytes().all(it.is_alnum()
 									|| it == `_`)) && typ !in ast.builtin_type_names) {
-									is_non_generic = false
 									break
 								}
 							}
+							is_generic = true
 						}
-						if !is_non_generic {
+						if is_generic {
 							return s.new_token(.gt, '', 1)
 						} else if s.text[s.pos + 2] == `=` {
 							s.pos += 2
