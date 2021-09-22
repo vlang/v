@@ -191,21 +191,23 @@ pub fn (a Any) to_json() string {
 		map[string]Any {
 			mut str := '{'
 			for key, val in a {
-				str += ' "$key": $val.to_json()'
+				str += ' "$key": $val.to_json(),'
 			}
+			str = str.trim_right(',')
 			str += ' }'
 			return str
 		}
 		[]Any {
 			mut str := '['
 			for val in a {
-				str += ' $val.to_json()'
+				str += ' $val.to_json(),'
 			}
+			str = str.trim_right(',')
 			str += ' ]'
 			return str
 		}
 		time.Time {
-			return a.format_ss_micro()
+			return '"$a.format_ss_micro()"'
 		}
 	}
 }
