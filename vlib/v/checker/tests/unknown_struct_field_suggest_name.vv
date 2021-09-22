@@ -1,0 +1,14 @@
+
+struct Points {
+	xxxx   []int
+	yyyy   []int
+	zzzz   []int
+}
+
+fn main() {
+	p := Points{[1], [2], [3]}
+	println('p: $p')
+    for x in p.xxxa {
+    	println('x: $x')
+    }
+}

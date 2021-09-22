@@ -7,7 +7,7 @@ enum Color {
 	yellow = 3
 }
 
-struct Aaa{
+struct Aaa {
 	color Color
 }
 
@@ -21,4 +21,6 @@ fn main() {
 	println(a.color)
 	println('interp: ${col}')
 	println('interp: ${a.color}')
+	println((Color.orange))
+	println([Color.orange, Color.green][0])
 }

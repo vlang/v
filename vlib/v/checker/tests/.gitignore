@@ -1,3 +1,4 @@
 *.v
 *.c
 !*_test.v
+!modules/**/*.v

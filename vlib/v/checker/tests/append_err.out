@@ -1,0 +1,20 @@
+vlib/v/checker/tests/append_err.vv:3:7: error: cannot append `string` to `[]int`
+    1 | fn main() {
+    2 |     mut l := []int{}
+    3 |     l << 'test'
+      |          ~~~~~~
+    4 |     
+    5 |     _ = l << 3
+vlib/v/checker/tests/append_err.vv:5:8: error: array append cannot be used in an expression
+    3 |     l << 'test'
+    4 |     
+    5 |     _ = l << 3
+      |           ~~
+    6 |     _ = (l << 3).len
+    7 | }
+vlib/v/checker/tests/append_err.vv:6:9: error: array append cannot be used in an expression
+    4 |     
+    5 |     _ = l << 3
+    6 |     _ = (l << 3).len
+      |            ~~
+    7 | }

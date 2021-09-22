@@ -1,0 +1,6 @@
+fn test(param) {
+}
+
+fn main() {
+	test(0)
+}

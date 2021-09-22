@@ -1,0 +1,7 @@
+vlib/v/checker/tests/var_duplicate_const.vv:4:5: error: duplicate of a const name `size`
+    2 |
+    3 | fn main() {
+    4 |     size := 11
+      |     ~~~~
+    5 |     println(main.size)
+    6 | }

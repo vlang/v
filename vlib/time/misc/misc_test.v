@@ -3,7 +3,7 @@ import rand
 
 fn test_random() {
 	// guarantee CI test stability, by seeding the random number generator with a known seed
-	rand.seed(0)
+	rand.seed([u32(0), 0])
 	t1 := tmisc.random()
 	t2 := tmisc.random()
 	t3 := tmisc.random()

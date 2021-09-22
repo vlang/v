@@ -3,4 +3,8 @@
 
 int cadd(int a, int b);
 
+struct MyStruct {
+    int UppercaseField;
+};
+
 #endif

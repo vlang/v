@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generics_fn_called_outside_of_generic_fn.vv:4:2: error: generic fn using generic types cannot be called outside of generic fn
+    2 |
+    3 | fn main() {
+    4 |     foo<T>()
+      |     ~~~~~~~~
+    5 | }

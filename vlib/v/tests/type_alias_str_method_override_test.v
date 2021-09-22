@@ -6,7 +6,7 @@ fn (h Human) str() string {
 	return 'Human: $h.name'
 }
 
-type Person Human
+type Person = Human
 
 fn (h Person) str() string {
 	return 'Person: $h.name'

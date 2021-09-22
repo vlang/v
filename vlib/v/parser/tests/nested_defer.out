@@ -1,0 +1,7 @@
+vlib/v/parser/tests/nested_defer.vv:5:3: error: `defer` blocks cannot be nested
+    3 |     defer {
+    4 |         a = 12
+    5 |         defer {
+      |         ~~~~~
+    6 |             a = 13
+    7 |         }

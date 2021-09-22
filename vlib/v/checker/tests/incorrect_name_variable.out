@@ -1,4 +1,4 @@
-vlib/v/checker/tests/incorrect_name_variable.v:2:2: error: variable name `_abc` cannot start with `_`
+vlib/v/checker/tests/incorrect_name_variable.vv:2:2: error: variable name `_abc` cannot start with `_`
     1 | fn main() {
     2 |     _abc := 1
       |     ~~~~

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows int
+    1 | enum Color {
+    2 |     red
+    3 |     green = 2147483648
+      |             ~~~~~~~~~~
+    4 |     blue
+    5 | }

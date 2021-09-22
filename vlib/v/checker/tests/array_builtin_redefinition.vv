@@ -1,0 +1,11 @@
+type Abc = int
+
+// fn (a []Abc) filter() int { return 0 }
+// fn (a []Abc) clone() int { return 0 }
+// fn (a []Abc) repeat() int { return 0 }
+// fn (a []Abc) reverse() int { return 0 }
+fn (a []Abc) map() int { return 0 }
+// fn (a []Abc) slice() int { return 0 }
+// fn (a []Abc) sort() int { return 0 }
+// fn (a []Abc) contains() int { return 0 }
+// fn (a []Abc) index() int { return 0 }

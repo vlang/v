@@ -1,0 +1,13 @@
+xyz 0.0.2
+-----------------------------------------------
+Usage: xyz [NUMBER]...
+   or: xyz OPTION
+
+Description: description line 1
+description line 2
+
+Options:
+  -h, --help                display this help and exit
+  --version                 output version information and exit
+footer 1
+footer 2

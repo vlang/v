@@ -1,8 +1,10 @@
 Usage:
-  v search keyword1 [keyword2] [...]
-  ^^^^^^^^^^^^^^^^^ will search https://vpm.vlang.io/ for matching modules,
-                    and will show details about them
+  v search KEYWORD[...]
+    Searches https://vpm.vlang.io/ for matching KEYWORDs and displays the
+    details
+
 Options:
   -help         - Show usage info.
   -v            - Print more details about the performed operation.
-  -server-url   - When doing network operations, use this vpm server. Can be given multiple times.
+  -server-url   - When doing network operations, use this vpm server. Can be
+                  given multiple times.

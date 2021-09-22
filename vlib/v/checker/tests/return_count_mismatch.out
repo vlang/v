@@ -1,0 +1,34 @@
+vlib/v/checker/tests/return_count_mismatch.vv:2:9: error: unexpected argument, current function does not return anything
+    1 | fn v() {
+    2 |     return 3
+      |            ^
+    3 | }
+    4 |
+vlib/v/checker/tests/return_count_mismatch.vv:7:2: error: expected `int` argument
+    5 | fn f() int
+    6 | {
+    7 |     return
+      |     ~~~~~~
+    8 | }
+    9 |
+vlib/v/checker/tests/return_count_mismatch.vv:12:2: error: expected `(int, string)` arguments
+   10 | fn g() (int, string)
+   11 | {
+   12 |     return
+      |     ~~~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/return_count_mismatch.vv:17:2: error: expected 1 argument, but got 2
+   15 | fn ff() int
+   16 | {
+   17 |     return 2, ''
+      |     ~~~~~~~~~~~~
+   18 | }
+   19 |
+vlib/v/checker/tests/return_count_mismatch.vv:22:2: error: expected 2 arguments, but got 1
+   20 | fn gg() (int, string)
+   21 | {
+   22 |     return 3
+      |     ~~~~~~~~
+   23 | }
+   24 |

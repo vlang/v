@@ -1,0 +1,5 @@
+vlib/v/parser/tests/invalid_attribute_c.vv:1:6: error: unexpected token `[`, an argument is expected after `:`
+    1 | [bar:[]
+      |      ^
+    2 | fn my_fn_with_invalid_attr() {
+    3 | }

@@ -1,0 +1,24 @@
+fn v() {
+	return 3
+}
+
+fn f() int
+{
+	return
+}
+
+fn g() (int, string)
+{
+	return
+}
+
+fn ff() int
+{
+	return 2, ''
+}
+
+fn gg() (int, string)
+{
+	return 3
+}
+

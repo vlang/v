@@ -1,0 +1,5 @@
+module main
+
+fn main() {
+	curr_time := time.now()
+}

@@ -4,17 +4,17 @@ fn test_anyfloat() {
 	c := f32(6.75) / 3.0
 	d := 16.5 / f32(2)
 	assert a == 51.515
-	assert typeof(a) == 'f64'
+	assert typeof(a).name == 'f64'
 	assert b == f64(15.3)
-	assert typeof(b) == 'f64'
+	assert typeof(b).name == 'f64'
 	assert c == 2.25
-	assert typeof(c) == 'f32'
+	assert typeof(c).name == 'f32'
 	assert d == 8.25
-	assert typeof(d) == 'f32'
+	assert typeof(d).name == 'f32'
 }
 
 fn g(x f32) f32 {
-	return x*x
+	return x * x
 }
 
 fn fabs(x f32) f32 {
@@ -26,7 +26,7 @@ fn test_call() {
 	r := g(f32(c) / 255.0)
 	assert fabs(r - 3.890949634755863) <= 1.e-6
 }
-		
+
 struct Tx {
 	x f32
 }
@@ -37,16 +37,16 @@ fn (s Tx) get() f32 {
 
 fn test_struct_init() {
 	c := 503
-	d := Tx {
-		x:  g(f32(c) / 255.0)
+	d := Tx{
+		x: g(f32(c) / 255.0)
 	}
 	assert fabs(d.get() - 3.890949634755863) < 1.e-6
 }
 
 fn struct_init_return() Tx {
 	c := 503
-	return Tx {
-		x:  g(f32(c) / 255.0)
+	return Tx{
+		x: g(f32(c) / 255.0)
 	}
 }
 
@@ -57,8 +57,8 @@ fn test_struct_init_return() {
 
 fn struct_init_ref_return() &Tx {
 	c := 503
-	return &Tx {
-		x:  g(f32(c) / 255.0)
+	return &Tx{
+		x: g(f32(c) / 255.0)
 	}
 }
 
@@ -79,4 +79,22 @@ fn test_f32_int() {
 	assert c + b == -0.25
 	d := u64(300)
 	assert d + c == 316.75
+}
+
+fn test_rune() {
+	a := 3
+	mut b := rune(67)
+	b = a
+	assert b == rune(3)
+	b = rune(67)
+	mut x := 5
+	x = int(b)
+	assert x == 67
+	c := b + a
+	assert c == rune(70)
+	assert typeof(c).name == 'rune'
+	d := i64(12)
+	e := b + d
+	assert e == i64(79)
+	assert typeof(e).name == 'i64'
 }

@@ -1,0 +1,27 @@
+vlib/v/checker/tests/println_can_not_print_void_expressions.vv:3:2: error: `print` can not print void expressions
+    1 | fn blabla() {}
+    2 | fn main() {
+    3 |     print(blabla())
+      |     ~~~~~~~~~~~~~~~
+    4 |     println(blabla())
+    5 |     eprint(blabla())
+vlib/v/checker/tests/println_can_not_print_void_expressions.vv:4:2: error: `println` can not print void expressions
+    2 | fn main() {
+    3 |     print(blabla())
+    4 |     println(blabla())
+      |     ~~~~~~~~~~~~~~~~~
+    5 |     eprint(blabla())
+    6 |     eprintln(blabla())
+vlib/v/checker/tests/println_can_not_print_void_expressions.vv:5:2: error: `eprint` can not print void expressions
+    3 |     print(blabla())
+    4 |     println(blabla())
+    5 |     eprint(blabla())
+      |     ~~~~~~~~~~~~~~~~
+    6 |     eprintln(blabla())
+    7 | }
+vlib/v/checker/tests/println_can_not_print_void_expressions.vv:6:2: error: `eprintln` can not print void expressions
+    4 |     println(blabla())
+    5 |     eprint(blabla())
+    6 |     eprintln(blabla())
+      |     ~~~~~~~~~~~~~~~~~~
+    7 | }

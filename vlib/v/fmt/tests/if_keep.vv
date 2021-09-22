@@ -1,0 +1,11 @@
+fn void_type_array_cond() {
+	if fg == [] {
+		stack.ctx.reset_color()
+	}
+}
+
+fn multi_dimensional_array_cond() {
+	if t.data == [][]string{} {
+		return error('Table.data should not be empty.')
+	}
+}

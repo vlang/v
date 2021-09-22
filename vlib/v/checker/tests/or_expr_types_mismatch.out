@@ -1,0 +1,14 @@
+vlib/v/checker/tests/or_expr_types_mismatch.vv:3:19: error: wrong return type `none` in the `or {}` block, expected `string`
+    1 | fn get_map() ?string {
+    2 |     m := {1: 'a', 2: 'b'}
+    3 |     return m[1] or { none }
+      |                      ~~~~
+    4 | }
+    5 |
+vlib/v/checker/tests/or_expr_types_mismatch.vv:8:19: error: wrong return type `none` in the `or {}` block, expected `int`
+    6 | fn get_array() ?int {
+    7 |     a := [1, 2, 3]
+    8 |     return a[4] or { none }
+      |                      ~~~~
+    9 | }
+   10 |

@@ -1,0 +1,4 @@
+vlib/v/checker/tests/error_with_comment_with_lf_ending.vv:2:6: error: unexpected name `should`
+    1 | // Empty lines don't cause an issue but as soon as there's a comment with a CRLF ending, it fails
+    2 | This should cause an error!
+      |      ~~~~~~

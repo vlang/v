@@ -14,14 +14,14 @@ import math
 import os
 import strconv
 
-fn evala(i, j int) int {
-	return ((i + j) * (i + j + 1) / 2 + i + 1)
+fn evala(i int, j int) int {
+	return (i + j) * (i + j + 1) / 2 + i + 1
 }
 
 fn times(mut v []f64, u []f64) {
-	for i in 0..v.len {
+	for i in 0 .. v.len {
 		mut a := f64(0)
-		for j in 0..u.len {
+		for j in 0 .. u.len {
 			a += u[j] / f64(evala(i, j))
 		}
 		v[i] = a
@@ -29,9 +29,9 @@ fn times(mut v []f64, u []f64) {
 }
 
 fn times_trans(mut v []f64, u []f64) {
-	for i in 0..v.len {
+	for i in 0 .. v.len {
 		mut a := f64(0)
-		for j in 0..u.len {
+		for j in 0 .. u.len {
 			a += u[j] / f64(evala(j, i))
 		}
 		v[i] = a
@@ -39,30 +39,27 @@ fn times_trans(mut v []f64, u []f64) {
 }
 
 fn a_times_transp(mut v []f64, u []f64) {
-	mut x := []f64{len:u.len, init:0}
+	mut x := []f64{len: u.len, init: 0}
 	times(mut x, u)
 	times_trans(mut v, x)
-
 }
 
 fn main() {
-	args := os.args
 	mut n := 0
-	if args.len == 2 {
-		n = strconv.atoi(args[1])
-	}
-	else {
+	if os.args.len == 2 {
+		n = strconv.atoi(os.args[1]) or { 0 }
+	} else {
 		n = 0
 	}
-	mut u := []f64{len:n, init:1}
-	mut v := []f64{len:n, init:1}
-	for _ in 0..10 {
+	mut u := []f64{len: n, init: 1}
+	mut v := []f64{len: n, init: 1}
+	for _ in 0 .. 10 {
 		a_times_transp(mut v, u)
 		a_times_transp(mut u, v)
 	}
 	mut vbv := f64(0)
 	mut vv := f64(0)
-	for i in 0..n {
+	for i in 0 .. n {
 		vbv += u[i] * v[i]
 		vv += v[i] * v[i]
 	}

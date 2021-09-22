@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -8,13 +8,14 @@ module rand
 
 #flag darwin -framework Security
 
-fn C.SecRandomCopyBytes() int
+fn C.SecRandomCopyBytes(rnd C.SecRandomRef, count usize, bytes voidptr) int
 
+// read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := malloc(bytes_needed)
-	status := C.SecRandomCopyBytes(0, bytes_needed, buffer)
+	mut buffer := []byte{len: bytes_needed}
+	status := C.SecRandomCopyBytes(C.SecRandomRef(0), bytes_needed, buffer.data)
 	if status != 0 {
-		return read_error
+		return IError(&ReadError{})
 	}
-	return c_array_to_bytes_tmp(bytes_needed, buffer)
+	return buffer
 }

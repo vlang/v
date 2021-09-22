@@ -8,10 +8,20 @@ fn new_st() MyStruct {
 
 fn get_st() MyStruct {
 	r := new_st()
-	return {r|s:'6'}
+	return MyStruct{
+		...r
+		s: '6'
+	}
 }
 
 fn main() {
-    s := get_st()
-    println(s)
+	s := get_st()
+	println(s)
+	$if prod {
+		println('prod mode is on')
+		assert true
+	} $else {
+		println('prod mode is off')
+		assert false
+	}
 }

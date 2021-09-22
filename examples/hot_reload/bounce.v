@@ -8,20 +8,20 @@ import time
 
 struct Game {
 mut:
-	gg       &gg.Context
-	x        int
-	y        int
-	dy       int
-	dx       int
-	height   int
-	width    int
-	draw_fn  voidptr
+	gg      &gg.Context
+	x       int
+	y       int
+	dy      int
+	dx      int
+	height  int
+	width   int
+	draw_fn voidptr
 }
 
 const (
-	window_width = 400
+	window_width  = 400
 	window_height = 300
-	width = 50
+	width         = 50
 )
 
 fn main() {
@@ -33,31 +33,32 @@ fn main() {
 		width: window_width
 		draw_fn: 0
 	}
-	game.gg = gg.new_context({
+	game.gg = gg.new_context(
 		width: window_width
 		height: window_height
 		font_size: 20
-		use_ortho: true
 		user_data: game
 		window_title: 'Hot code reloading demo'
 		create_window: true
 		frame_fn: frame
 		bg_color: gx.white
-	})
+		font_path: gg.system_font_path()
+	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')
 	go game.run()
 	game.gg.run()
 }
 
-
 // Try uncommenting or changing the lines inside the live functions.
 // Guess what will happen:
 [live]
-fn frame (mut game Game) {
+fn frame(mut game Game) {
 	game.gg.begin()
+	game.gg.draw_text_def(10, 5, 'Modify examples/hot_reload/bounce.v to get instant updates')
 	game.gg.draw_rect(game.x, game.y, width, width, gx.blue)
-	game.gg.draw_rect(window_width - width - game.x + 10, 200 - game.y + width, width, width, gx.rgb(228, 10, 55))
+	game.gg.draw_rect(window_width - width - game.x + 10, 200 - game.y + width, width,
+		width, gx.rgb(228, 10, 55))
 	game.gg.draw_rect(game.x - 25, 250 - game.y, width, width, gx.rgb(28, 240, 55))
 	game.gg.end()
 }
@@ -78,10 +79,6 @@ fn (mut game Game) update_model() {
 fn (mut game Game) run() {
 	for {
 		game.update_model()
-		//glfw.post_empty_event() // Refresh
-		time.sleep_ms(17) // 60fps
+		time.sleep(16 * time.millisecond) // 60fps
 	}
 }
-
-
-

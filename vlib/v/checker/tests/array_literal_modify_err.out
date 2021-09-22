@@ -1,0 +1,12 @@
+vlib/v/checker/tests/array_literal_modify_err.vv:2:24: error: array append cannot be used in an expression
+    1 | fn main() {
+    2 |     mut nums := [1, 2, 3] << 4
+      |                           ~~
+    3 |     println(nums)
+    4 | }
+vlib/v/checker/tests/array_literal_modify_err.vv:3:2: error: `println` can not print void expressions
+    1 | fn main() {
+    2 |     mut nums := [1, 2, 3] << 4
+    3 |     println(nums)
+      |     ~~~~~~~~~~~~~
+    4 | }

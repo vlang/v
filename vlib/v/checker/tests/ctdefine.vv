@@ -1,0 +1,6 @@
+module notmain
+
+[if test]
+fn only_called_in_test() string {
+	return 'bah'
+}

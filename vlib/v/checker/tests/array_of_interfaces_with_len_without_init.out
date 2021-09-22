@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_of_interfaces_with_len_without_init.vv:14:37: error: cannot instantiate an array of interfaces without also giving a default `init:` value
+   12 | 
+   13 | fn main() {
+   14 |     mut parsed_lines := []MObject{len: 9}
+      |                                        ^
+   15 |     println(parsed_lines)
+   16 | }

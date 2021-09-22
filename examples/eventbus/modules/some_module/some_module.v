@@ -7,28 +7,28 @@ const (
 )
 
 pub struct Work {
-	pub:
+pub:
 	hours int
 }
 
-pub struct Error {
-	pub:
+pub struct MyError {
+pub:
 	message string
 }
 
-pub fn do_work(){
+pub fn do_work() {
 	work := Work{20}
-	for i in 0..20 {
-		println("working...")
+	for i in 0 .. 20 {
+		println('working...')
 		if i == 15 {
-			error := &Error{"There was an error."}
-			eb.publish("error", work, error)
-			eb.publish("error", work, error)
+			error := &MyError{'There was an error.'}
+			some_module.eb.publish('error', work, error)
+			some_module.eb.publish('error', work, error)
 			return
 		}
 	}
 }
 
 pub fn get_subscriber() eventbus.Subscriber {
-	return eb.subscriber
+	return *some_module.eb.subscriber
 }

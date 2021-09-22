@@ -20,8 +20,9 @@ extern "C" {
 #endif
 
 #if !defined(_SSIZE_T_DEFINED) && !defined(_SSIZE_T_DEFINED_) &&               \
-    !defined(_SSIZE_T) && !defined(_SSIZE_T_) && !defined(__ssize_t_defined)
-#define _SSIZE_T
+    !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined) &&              \
+    !defined(_SSIZE_T) && !defined(_SSIZE_T_) && !defined(_SSIZE_T_DECLARED)
+
 // 64-bit Windows is the only mainstream platform
 // where sizeof(long) != sizeof(void*)
 #ifdef _WIN64
@@ -29,6 +30,15 @@ typedef long long ssize_t; /* byte count or error */
 #else
 typedef long ssize_t; /* byte count or error */
 #endif
+
+#define _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED_
+#define __DEFINED_ssize_t
+#define __ssize_t_defined
+#define _SSIZE_T
+#define _SSIZE_T_
+#define _SSIZE_T_DECLARED
+
 #endif
 
 #ifndef MAX_PATH
@@ -80,6 +90,16 @@ extern struct zip_t *zip_open(const char *zipname, int level, char mode);
  * @param zip zip archive handler.
  */
 extern void zip_close(struct zip_t *zip);
+
+/**
+ * Determines if the archive has a zip64 end of central directory headers.
+ *
+ * @param zip zip archive handler.
+ *
+ * @return the return code - 1 (true), 0 (false), negative number (< 0) on
+ *         error.
+ */
+extern int zip_is64(struct zip_t *zip);
 
 /**
  * Opens an entry by name in the zip archive.
@@ -292,7 +312,30 @@ extern int zip_create(const char *zipname, const char *filenames[], size_t len);
 extern int zip_extract(const char *zipname, const char *dir,
                        int (*on_extract_entry)(const char *filename, void *arg),
                        void *arg);
+// temporary working unzip solution
+extern int zip_extract_without_callback(const char *zipname, const char *dir);
 
+/**
+ * Extracts a zip archive stream into directory.
+ *
+ * If on_extract is not NULL, the callback will be called after
+ * successfully extracted each zip entry.
+ * Returning a negative value from the callback will cause abort and return an
+ * error. The last argument (void *arg) is optional, which you can use to pass
+ * data to the on_extract callback.
+ *
+ * @param stream zip archive stream.
+ * @param size stream size.
+ * @param dir output directory.
+ * @param on_extract on extract callback.
+ * @param arg opaque pointer.
+ *
+ * @return the return code - 0 on success, negative number (< 0) on error.
+ */
+extern int zip_extract_stream(const char *stream, size_t size, const char *dir,
+                              int (*on_extract)(const char *filename,
+                                                void *arg),
+                              void *arg);
 /** @} */
 
 #ifdef __cplusplus

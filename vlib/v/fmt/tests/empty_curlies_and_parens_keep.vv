@@ -1,0 +1,44 @@
+const ()
+
+const (
+)
+
+struct Bar {}
+
+struct Bar2 {
+}
+
+interface Spam {}
+
+interface Spam2 {
+}
+
+enum Baz {}
+
+enum Baz2 {
+}
+
+fn foo() {}
+
+fn foo2() {
+}
+
+fn main() {
+	arr := []int{}
+	x := 1
+	for s in arr {}
+	for s in arr {
+	}
+	for i := 0; i < 5; i++ {}
+	for j := 0; j < 5; j++ {
+	}
+	for false {}
+	for false {
+	}
+	defer {}
+	defer {
+	}
+	unsafe {}
+	unsafe {
+	}
+}

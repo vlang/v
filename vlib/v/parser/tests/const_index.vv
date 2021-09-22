@@ -1,0 +1,22 @@
+// must not parse 4[deprecated] as index expression
+const x = 4
+[deprecated]
+fn g() {
+	a := [3]
+	// indexing is currently allowed on next line
+	_ = a
+	[0]
+}
+
+const y = 5
+[deprecated]
+fn h() {}
+
+const z = 6
+[typedef]
+struct C.Foo{}
+
+// test implicit main allows indexing on next line
+a := [3]
+_ := a
+[0]

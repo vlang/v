@@ -1,0 +1,12 @@
+fn get_typ() Type {
+	{
+		{
+			// The opening brace should be put on a new line here for readability
+			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
+				call_expr.generic_types)
+			{
+				return typ
+			}
+		}
+	}
+}

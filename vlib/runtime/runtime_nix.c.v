@@ -1,19 +1,11 @@
 module runtime
 
-fn nr_cpus_nix() int {
-	$if linux {
-		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
-	}
-	$if macos {
-		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
-	}
-	$if solaris {
-		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
-	}
-	return 1
-}
+fn C.sysconf(name int) i64
 
-fn nr_cpus_win() int {
-	eprintln('nr_cpus_win should be callable only for windows')
+// nr_cpus returns the number of virtual CPU cores found on the system.
+pub fn nr_cpus() int {
+	$if linux || macos || solaris {
+		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
+	}
 	return 1
 }

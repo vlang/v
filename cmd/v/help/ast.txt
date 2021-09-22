@@ -1,0 +1,12 @@
+Usage:
+  v ast [options] path_to_source.v
+
+  Generate AST json file from v source file.
+
+Options:
+  -w
+    generate ast json file, and watch for changes.
+  -c
+    generate ast json file and c file, and watch for changes.
+  -p
+    print the json string to stdout.

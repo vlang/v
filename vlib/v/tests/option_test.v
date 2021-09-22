@@ -3,13 +3,20 @@ fn opt_err_with_code() ?string {
 }
 
 fn test_err_with_code() {
+	if w := opt_err_with_code() {
+		assert false
+		_ := w
+	} else {
+		assert err.msg == 'hi'
+		assert err.code == 137
+	}
 	v := opt_err_with_code() or {
-		assert err == 'hi'
-		assert errcode == 137
+		assert err.msg == 'hi'
+		assert err.code == 137
 		return
 	}
 	assert false
-	println(v) // suppress not used error
+	_ := v
 }
 
 fn opt_err() ?string {
@@ -18,7 +25,7 @@ fn opt_err() ?string {
 
 fn test_err() {
 	v := opt_err() or {
-		assert err == 'hi'
+		assert err.msg == 'hi'
 		return
 	}
 	assert false
@@ -43,9 +50,7 @@ fn test_option_for_base_type_without_variable() {
 		0
 	}
 	assert val == 42
-	val = ret_none() or {
-		return
-	}
+	val = ret_none() or { return }
 	assert false
 	// This is invalid:
 	// x := 5 or {
@@ -69,7 +74,7 @@ fn test_if_else_opt() {
 	if _ := err_call(false) {
 		assert false
 	} else {
-		assert true
+		assert err.msg.len != 0
 	}
 }
 
@@ -94,54 +99,50 @@ fn foo_str() ?string {
 }
 
 fn propagate_optional(b bool) ?int {
-	a := err_call(b)?
+	a := err_call(b) ?
 	return a
 }
 
 fn propagate_different_type(b bool) ?bool {
-	err_call(b)?
+	err_call(b) ?
 	return true
 }
 
 fn test_propagation() {
-	a := propagate_optional(true) or {
-		0
-	}
+	println(1)
+	a := propagate_optional(true) or { 0 }
+	println(2)
 	assert a == 42
+	println(3)
 	if _ := propagate_optional(false) {
 		assert false
 	}
-	b := propagate_different_type(true) or {
-		false
-	}
+	println(4)
+	b := propagate_different_type(true) or { false }
 	assert b == true
+	println(5)
 	if _ := propagate_different_type(false) {
 		assert false
 	}
+	println(6)
 }
 
-fn test_q() {
-	// assert foo_ok()? == true
+fn test_q() ? {
+	assert foo_ok() ? == 777
 }
 
 fn or_return_val() int {
-	a := ret_none() or {
-		return 1
-	}
+	a := ret_none() or { return 1 }
 	return a
 }
 
 fn or_return_error() ?int {
-	a := ret_none() or {
-		return error('Nope')
-	}
+	a := ret_none() or { return error('Nope') }
 	return a
 }
 
 fn or_return_none() ?int {
-	a := ret_none() or {
-		return none
-	}
+	a := ret_none() or { return none }
 	return a
 }
 
@@ -150,12 +151,12 @@ fn test_or_return() {
 	if _ := or_return_error() {
 		assert false
 	} else {
-		assert true
+		assert err.msg.len != 0
 	}
 	if _ := or_return_none() {
 		assert false
 	} else {
-		assert true
+		assert err.msg.len == 0
 	}
 }
 
@@ -167,7 +168,7 @@ fn test_reassignment() {
 	assert x2 == 777
 	x2 = 100
 	assert x2 == 100
-	x2 += 1
+	x2++
 	assert x2 == 101
 	//
 	mut x3 := 0
@@ -186,9 +187,7 @@ mut:
 }
 
 fn test_field_or() {
-	name := foo_str() or {
-		'nada'
-	}
+	name := foo_str() or { 'nada' }
 	assert name == 'something'
 	/*
 	QTODO
@@ -218,8 +217,6 @@ mut:
 	opt ?Thing
 }
 
-
-
 fn test_opt_field() {
 	/*
 	QTODO
@@ -234,7 +231,7 @@ fn opt_ptr(a &int) ?&int {
 	if isnil(a) {
 		return none
 	}
-	return a
+	return unsafe { a }
 }
 
 fn test_opt_ptr() {
@@ -244,13 +241,9 @@ fn test_opt_ptr() {
 	else {
 	}
 	a := 3
-	mut r := opt_ptr(&a) or {
-		&int(0)
-	}
+	mut r := opt_ptr(&a) or { &int(0) }
 	assert r == &a
-	r = opt_ptr(&int(0)) or {
-		return
-	}
+	r = opt_ptr(&int(0)) or { return }
 	assert false
 }
 
@@ -274,36 +267,115 @@ fn test_multi_return_opt() {
 	}
 }
 */
-fn foo() ? {
-	return error('something')
-}
-
-fn test_optional_void() {
-	foo() or {
-		println(err)
-		assert err == 'something'
-		return
-	}
-}
-
-fn bar() ? {
-	return error('bar error')
-}
-
-fn test_optional_void_only_question() {
-	bar() or {
-		println(err)
-		assert err == 'bar error'
-		return
-	}
-}
-
-fn test_optional_void_with_empty_or() {
-	foo() or {}
-	assert true
-}
 
 fn test_optional_val_with_empty_or() {
 	ret_none() or {}
 	assert true
+}
+
+fn test_optional_void_return_types_of_anon_fn() {
+	f := fn (i int) ? {
+		if i == 0 {
+			return error('0')
+		}
+
+		return
+	}
+
+	f(0) or {
+		assert err.msg == '0'
+		return
+	}
+}
+
+struct Foo {
+	f fn (int) ?
+}
+
+fn test_option_void_return_types_of_anon_fn_in_struct() {
+	foo := Foo{
+		f: fn (i int) ? {
+			if i == 0 {
+				return error('0')
+			}
+
+			return
+		}
+	}
+
+	foo.f(0) or {
+		assert err.msg == '0'
+		return
+	}
+}
+
+type AA = BB | CC
+
+struct BB {
+	str string
+}
+
+struct CC {
+	str string
+}
+
+fn optional_sum_type(a int) ?AA {
+	match a {
+		1 {
+			return BB{'Test'}
+		}
+		2 {
+			return CC{'Test'}
+		}
+		else {
+			return error('Wrong number')
+		}
+	}
+}
+
+fn test_optional_sum_type() {
+	res1 := optional_sum_type(1) or {
+		assert false
+		BB{}
+	}
+	res2 := optional_sum_type(2) or {
+		assert false
+		CC{}
+	}
+	if res1 is BB {
+		assert res1.str == 'Test'
+	} else {
+		assert false
+	}
+	if res2 is CC {
+		assert res2.str == 'Test'
+	} else {
+		assert false
+	}
+	optional_sum_type(3) or {
+		assert true
+		return
+	}
+	assert false
+}
+
+struct MultiOptionalFieldTest {
+	a ?int
+	b ?int
+}
+
+fn foo() ?int {
+	return 0
+}
+
+fn foo2() ?int {
+	for _ in 0 .. 5 {
+		return foo() or { continue }
+	}
+	return 0
+}
+
+fn test_return_or() {
+	x := foo2() or { return }
+	assert x == 0
 }

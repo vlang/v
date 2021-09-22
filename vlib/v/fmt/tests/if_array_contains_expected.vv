@@ -1,0 +1,6 @@
+fn main() {
+	if ['aaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbb', 'ccccccccccccccccccccccccc',
+		'dddddddddddddddddddddd'].contains('foo')
+	{
+	}
+}

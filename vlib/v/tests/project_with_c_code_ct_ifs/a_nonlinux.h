@@ -1,0 +1,1 @@
+char *version = "non-linux";

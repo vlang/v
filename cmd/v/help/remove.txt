@@ -1,8 +1,8 @@
 Usage:
- a) v remove module [module] [module] [...]
-    ^^^^^^^^^^^^ will remove the listed modules
- b) v remove
-    ^^^^^^^^^^^^ will remove ALL installed modules
+  v remove [MODULE...]
+    Removes all listed MODULEs.
+	If no MODULE is provided, removes ALL installed modules.
+
 Options:
   -help        - Show usage info.
   -v           - Print more details about the performed operation.

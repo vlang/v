@@ -1,0 +1,5 @@
+vlib/v/parser/tests/map_init_void2.vv:1:19: error: expecting type declaration
+    1 | fn f(m map[string]) {
+      |                   ^
+    2 |     println('illegal function')
+    3 | }

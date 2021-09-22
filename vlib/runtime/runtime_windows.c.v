@@ -2,15 +2,20 @@ module runtime
 
 import os
 
-fn nr_cpus_win() int {
-	mut nr := int(C.GetCurrentProcessorNumber())
+[typedef]
+struct C.SYSTEM_INFO {
+	dwNumberOfProcessors u32
+}
+
+fn C.GetSystemInfo(&C.SYSTEM_INFO)
+
+// nr_cpus returns the number of virtual CPU cores found on the system.
+pub fn nr_cpus() int {
+	sinfo := C.SYSTEM_INFO{}
+	C.GetSystemInfo(&sinfo)
+	mut nr := int(sinfo.dwNumberOfProcessors)
 	if nr == 0 {
 		nr = os.getenv('NUMBER_OF_PROCESSORS').int()
 	}
 	return nr
-}
-
-fn nr_cpus_nix() int {
-	eprintln('nr_cpus_nix should be callable only for nix platforms')
-	return 1
 }

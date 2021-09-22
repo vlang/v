@@ -1,0 +1,6 @@
+vlib/v/checker/tests/selector_expr_optional_err.vv:4:46: error: cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`
+    2 | 
+    3 | fn main() {
+    4 |     println(http.get('https://httpbin.org/').status_code)
+      |                                              ~~~~~~~~~~~
+    5 | }

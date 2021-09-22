@@ -16,19 +16,24 @@ Be careful, if you introduce a breaking change and rebuild V, you will no longer
 be able to use V to build itself. So it's a good idea to make a backup copy of a
 working compiler executable.
 
-But don't worry, you can always simply run `make`, it will download the C
-version of the compiler and rebuild it from scratch.
+But don't worry, you can always simply run `make` (or `make.bat`), it will
+download the C version of the compiler and rebuild it from scratch.
+
+The architecture of the compiler is very simple and has three distinct steps:
+
+Parse/generate AST (`v.parser`) => Check types (`v.checker`)
+=> Generate C/JavaScript/machine code (`v.gen`)
 
 
 The main files are:
 
-1. `cmd/v/v.v`. The entry point.
+1. `cmd/v/v.v` The entry point.
 
 - V figures out the build mode.
 - Constructs the compiler object (`struct V`).
 - Creates a list of .v files that need to be parsed.
 - Creates a parser object for each file and runs `parse()` on them.
-- The correct backend is called (C, JS, x64), and a binary is compiled.
+- The correct backend is called (C, JS, native), and a binary is compiled.
 
 2. `v/scanner` The scanner's job is to parse a list of characters and convert
 them to tokens.
@@ -44,22 +49,22 @@ unresolved. They are resolved later in the type checker.
 contains all types, consts, and functions, as well as several helpers to search
 for objects by name, register new objects, modify types' fields, etc.
 
-6. `v/checker`. Type checker and resolver. It processes the AST and makes sure
+6. `v/checker` Type checker and resolver. It processes the AST and makes sure
 the types are correct. Unresolved types are resolved, type information is added
 to the AST.
 
-7. `v/gen` C backend. It simply walks the AST and generates C code that can be
+7. `v/gen/c` C backend. It simply walks the AST and generates C code that can be
 compiled with Clang, GCC, Visual Studio, and TCC.
 
 8. `json.v` defines the json code generation. This file will be removed once V
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
-9. `v/gen/x64` is the directory with all the machine code generation logic. It
+9. `v/gen/native` is the directory with all the machine code generation logic. It
 defines a set of functions that translate assembly instructions to machine code
 and build the binary from scratch byte by byte. It manually builds all headers,
 segments, sections, symtable, relocations, etc. Right now it only has basic
-support of the x64 platform/ELF format.
+support of the native platform (ELF, MACHO format).
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.
@@ -88,14 +93,17 @@ making pullrequests, and you can just do normal git operations such as:
 6. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
 
-Here the UI shows a dialog with a button to make a new pull request based on
-the new pushed branch.
-(Example dialog: https://url4e.com/gyazo/images/364edc04.png)
+   Here the UI shows a dialog with a button to make a new pull request based on
+   the new pushed branch.
+   (Example dialog: https://url4e.com/gyazo/images/364edc04.png)
+
 8. After making your pullrequest (aka, PR), you can continue to work on the
 branch `fix_alabala` ... just do again `git push pullrequest` when you have more
 commits.
+
 9. If there are merge conflicts, or a branch lags too much behind V's master,
 you can do the following:
+
    1. `git pull --rebase origin master` # solve conflicts and do
    `git rebase --continue`
    2. `git push pullrequest -f` # this will overwrite your current remote branch
@@ -108,6 +116,7 @@ main V repository's master, then `git checkout master`, as well as
 (these are actually used by `v up`) and git can always do it cleanly.
 
 Git is very flexible, so there are other ways to accomplish the same thing.
+See the [GitHub flow](https://guides.github.com/introduction/git-handbook/#github), for more information.
 
 ## Using Github's hub CLI tool
 
@@ -134,7 +143,7 @@ feature/bugfix* that you make.
 
 ### Testing your commits locally:
 You can test locally whether your changes have not broken something by
-running: `v test-compiler`
+running: `v test-all`. See `TESTS.md` for more details.
 
 ### Publishing your commits to GitHub:
 
@@ -156,3 +165,35 @@ which tests have failed and then fix them by making more changes. Just use
 `git push pullrequest` to publish your changes. The CI tests will
 run with your updated code. Use `hub ci-status --verbose` to monitor
 their status.
+
+## Flags
+
+V allows you to pass custom flags using `-d my_flag` that can then be checked
+at compile time (see the documentation about
+[compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
+There are numerous flags that can be passed when building the compiler
+with `v self` or when creating a copy of the compiler, that will help
+you when debugging.
+
+Beware that the flags must be passed when building the compiler,
+not the program, so do for example: `v -d time_parsing cmd/v` or
+`v -d trace_checker self`.
+Some flags can make the compiler very verbose, so it is recommended
+to create a copy of the compiler rather than replacing it with `v self`.
+
+| Flag | Usage |
+|------|-------|
+| `debugautostr` | Prints informations about `.str()` method auto-generated by the compiler during C generation |
+| `debugscanner` | Prints debug information during the scanning phase |
+| `debug_codegen` | Prints automatically generated V code during the scanning phase |
+| `debug_interface_table` | Prints generated interfaces during C generation |
+| `debug_interface_type_implements` | Prints debug information when checking that a type implements in interface |
+| `print_vweb_template_expansions` | Prints vweb compiled HTML files |
+| `time_checking` | Prints the time spent checking files and other related informations |
+| `time_parsing` | Prints the time spent parsing files and other related informations |
+| `trace_ccoptions` | Prints options passed down to the C compiler |
+| `trace_checker` | Prints informations about the statements being checked |
+| `trace_gen` | Prints strings written to the generated C file. Beware, this flag is very verbose |
+| `trace_parser` | Prints informations about parsed statements and expressions |
+| `trace_thirdparty_obj_files` | Prints informations about built thirdparty obj files |
+| `trace_use_cache` | Prints informations about cache use |

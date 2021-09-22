@@ -1,0 +1,3 @@
+for by in 'abc' {
+   println(string(by))
+}

@@ -1,0 +1,5 @@
+vlib/v/scanner/tests/dec_consecutively_separator_err.vv:2:7: error: undefined ident: `_20`
+    1 | fn main() {
+    2 |     _ := _20
+      |          ~~~
+    3 | }

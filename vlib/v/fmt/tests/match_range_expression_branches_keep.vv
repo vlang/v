@@ -1,0 +1,15 @@
+pub fn str_escaped(b byte) string {
+	str := match b {
+		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
+		7 { '`\\a`' }
+		8 { '`\\b`' }
+		9 { '`\\t`' }
+		10 { '`\\n`' }
+		11 { '`\\v`' }
+		12 { '`\\f`' }
+		13 { '`\\r`' }
+		32...126 { b.str() }
+		else { '0x' + b.hex() }
+	}
+	return str
+}

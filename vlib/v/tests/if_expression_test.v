@@ -22,11 +22,7 @@ fn test_if_expression_with_stmts() {
 	}
 	assert a == 1
 	mut b := 0
-	b = if false {
-		42
-	} else {
-		24
-	}
+	b = if false { 42 } else { 24 }
 	assert b == 24
 }
 
@@ -156,4 +152,64 @@ fn test_lots_of_if_expressions() {
 		}
 	}
 	assert a == 1
+}
+
+fn test_if_expr_with_infix() {
+	a := if true { 1 } else { 0 } + 5
+	assert a == 6
+}
+
+fn test_multi_if_expr_with_infix() {
+	a := if 1 == 0 {
+		1
+	} else if 1 == 0 {
+		2
+	} else {
+		3
+	} + 4
+	assert a == 7
+}
+
+fn test_if_expr_with_array_map() {
+	num_string := '2 3'
+
+	assigned := if num_string.len > 1 { num_string.split(' ').map(it.int()) } else { [
+			789,
+		] }
+
+	println(assigned)
+	assert assigned == [2, 3]
+}
+
+fn test_if_epxr_with_array_conditions() {
+	num_arr := [1, 2, 3]
+	if num_arr == [] {
+		assert false
+	}
+	str_arr := [['foo'], ['bar']]
+	if str_arr == [][]string{} {
+		assert false
+	}
+}
+
+fn min<T>(a T, b T) T {
+	return if a < b { a } else { b }
+}
+
+fn test_if_expr_with_fn_generic() {
+	assert min(42, 13) == 13
+}
+
+fn test_if_expr_with_complex_array_methods() {
+	mut ret := []string{}
+	entries := ['a', 'b', 'c']
+
+	if false {
+		ret = entries.map(it.capitalize())
+	} else if entries.any(it == 'a') {
+		ret = entries.map(it)
+	}
+
+	println(ret)
+	assert ret == ['a', 'b', 'c']
 }

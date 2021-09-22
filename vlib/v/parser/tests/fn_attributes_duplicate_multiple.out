@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fn_attributes_duplicate_multiple.vv:2:2: error: duplicate attribute `inline`
+    1 | [inline]
+    2 | [inline]
+      |  ~~~~~~
+    3 | fn foo() {}
+    4 |

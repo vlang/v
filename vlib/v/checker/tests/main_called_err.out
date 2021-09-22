@@ -1,4 +1,4 @@
-vlib/v/checker/tests/main_called_err.v:2:2: error: the `main` function cannot be called in the program
+vlib/v/checker/tests/main_called_err.vv:2:2: error: the `main` function cannot be called in the program
     1 | fn main() {
     2 |     main()
       |     ~~~~~~

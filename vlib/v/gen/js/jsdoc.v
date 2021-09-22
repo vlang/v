@@ -4,7 +4,7 @@ import v.ast
 
 struct JsDoc {
 mut:
-	gen        &JsGen
+	gen &JsGen
 }
 
 fn new_jsdoc(gen &JsGen) &JsDoc {
@@ -14,12 +14,16 @@ fn new_jsdoc(gen &JsGen) &JsDoc {
 }
 
 fn (mut d JsDoc) write(s string) {
-	if !d.gen.enable_doc { return }
+	if !d.gen.enable_doc {
+		return
+	}
 	d.gen.write(s)
 }
 
 fn (mut d JsDoc) writeln(s string) {
-	if !d.gen.enable_doc { return }
+	if !d.gen.enable_doc {
+		return
+	}
 	d.gen.writeln(s)
 }
 
@@ -45,7 +49,9 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
 		d.write('$field.name?: ${d.gen.typ(field.typ)}')
-		if i < fields.len - 1 { d.write(', ') }
+		if i < fields.len - 1 {
+			d.write(', ')
+		}
 	}
 	d.writeln('}} init')
 	d.writeln('*/')
@@ -58,12 +64,12 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 	if it.is_deprecated {
 		d.writeln(' * @deprecated')
 	}
-	for i, arg in it.args {
-		if it.is_method && i == 0 {
+	for i, arg in it.params {
+		if (it.is_method || it.receiver.typ == 0) && i == 0 {
 			continue
 		}
 		arg_type_name := d.gen.typ(arg.typ)
-		is_varg := i == it.args.len - 1 && it.is_variadic
+		is_varg := i == it.params.len - 1 && it.is_variadic
 		name := d.gen.js_name(arg.name)
 		if is_varg {
 			d.writeln(' * @param {...$arg_type_name} $name')
@@ -73,4 +79,18 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 	}
 	d.writeln(' * @returns {$type_name}')
 	d.writeln('*/')
+}
+
+fn (mut d JsDoc) gen_interface(it ast.InterfaceDecl) {
+	name := d.gen.js_name(it.name)
+	d.writeln('/**')
+	d.writeln(' * @interface $name')
+	d.writeln(' * @typedef $name')
+	for method in it.methods {
+		// Skip receiver
+		typ := d.gen.fn_typ(method.params[1..], method.return_type)
+		method_name := d.gen.js_name(method.name)
+		d.writeln(' * @property {$typ} $method_name')
+	}
+	d.writeln(' */\n')
 }

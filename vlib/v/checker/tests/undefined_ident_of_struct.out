@@ -1,0 +1,7 @@
+vlib/v/checker/tests/undefined_ident_of_struct.vv:4:2: error: undefined ident: `f`
+    2 |
+    3 | fn get()  {
+    4 |     f.a = 'test'
+      |     ^
+    5 | }
+    6 |

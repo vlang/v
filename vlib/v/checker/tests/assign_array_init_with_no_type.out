@@ -1,0 +1,12 @@
+vlib/v/checker/tests/assign_array_init_with_no_type.vv:2:11: error: array_init: no type specified (maybe: `[]Type{}` instead of `[]`)
+    1 | fn main() {
+    2 |     mut x := []
+      |              ~~
+    3 |     println(x)
+    4 | }
+vlib/v/checker/tests/assign_array_init_with_no_type.vv:3:2: error: `println` can not print void expressions
+    1 | fn main() {
+    2 |     mut x := []
+    3 |     println(x)
+      |     ~~~~~~~~~~
+    4 | }

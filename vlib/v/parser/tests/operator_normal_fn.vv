@@ -1,0 +1,3 @@
+fn +(x int) int {
+	return 5 + x
+}

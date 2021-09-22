@@ -1,0 +1,4 @@
+## this folder is the first one that will be put in vmodules.
+## V uses that to put there its cache too.
+## Just ignore it for now.
+cache/

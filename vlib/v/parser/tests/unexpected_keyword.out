@@ -1,0 +1,7 @@
+vlib/v/parser/tests/unexpected_keyword.vv:5:12: error: expecting method name
+    3 | }
+    4 |
+    5 | fn (s Abc) import(name string) {
+      |            ~~~~~~
+    6 |     println(name)
+    7 | }

@@ -7,11 +7,16 @@ mut:
 	breed string
 }
 
+
 struct Bird {
 	breed string
 }
 
-fn (mut c Cat) name() string {
+fn new_cat(breed string) Cat {
+	return Cat{breed}
+}
+
+fn (c &Cat) name() string {
 	if c.breed != '' {
 		assert c.breed == 'Persian'
 	}
@@ -27,7 +32,7 @@ fn (c &Cat) speak(s string) {
 }
 
 fn (c Cat) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(c)}, breed:${c.breed}'
+	return '$pet_name the ${typeof(c).name}, breed:$c.breed'
 }
 
 fn (mut c Cat) set_breed(new string) {
@@ -50,7 +55,7 @@ fn (d Dog) name() string {
 }
 
 fn (d Dog) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(d)}, breed:${d.breed}'
+	return '$pet_name the ${typeof(d).name}, breed:$d.breed'
 }
 
 fn (mut d Dog) set_breed(new string) {
@@ -96,11 +101,13 @@ fn perform_speak(a Animal) {
 	assert name == 'Dog' || name == 'Cat'
 	if a is Dog {
 		assert name == 'Dog'
+		assert a.breed == 'Labrador Retriever' // test smart casting
+		println(a.breed)
 	}
 	println(a.name())
-	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
-	assert is_dog_or_cat(a) // TODO: fix compiler error
+  assert is_dog_or_cat(a) // TODO: fix compiler error
 }
 
 fn perform_speak_on_ptr(a &Animal) {
@@ -113,9 +120,9 @@ fn perform_speak_on_ptr(a &Animal) {
 		assert name == 'Dog'
 	}
 	println(a.name())
-	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
-	assert is_dog_or_cat(a) // TODO: fix compiler error
+  assert is_dog_or_cat(a) // TODO: fix compiler error
 }
 
 fn test_perform_speak() {
@@ -132,10 +139,12 @@ fn test_perform_speak() {
 	perform_speak(Cat{
 		breed: 'Persian'
 	})
+	perform_speak(new_cat('Persian'))
 	perform_speak_on_ptr(cat)
 	perform_speak_on_ptr(Cat{
 		breed: 'Persian'
 	})
+	perform_speak_on_ptr(new_cat('Persian'))
 	handle_animals([dog, cat])
 	/*
 	f := Foo {
@@ -144,7 +153,7 @@ fn test_perform_speak() {
 	*/
 }
 
-fn change_animal_breed(a &Animal, new string) {
+fn change_animal_breed(mut a Animal, new string) {
 	a.set_breed(new)
 }
 
@@ -154,7 +163,7 @@ fn test_interface_ptr_modification() {
 		breed: 'Persian'
 	}
 	// TODO Should fail and require `mut cat`
-	change_animal_breed(cat, 'Siamese')
+	change_animal_breed(mut cat, 'Siamese')
 	assert cat.breed == 'Siamese'
 }
 
@@ -210,6 +219,7 @@ fn (f RegTest) register() {
 }
 
 fn handle_reg(r Register) {
+	r.register()
 }
 
 fn test_register() {
@@ -222,6 +232,50 @@ fn test_register() {
 interface Speaker2 {
 	name() string
 	speak()
+	return_speaker() Speaker2
+	return_speaker2() ?Speaker2
+}
+
+struct Boss {
+mut:
+	name string
+}
+
+fn (b Boss) name() string {
+	return b.name
+}
+
+fn (b Boss) speak() {
+	println("i'm $b.name")
+}
+
+fn (b &Boss) return_speaker() Speaker2 {
+	return b
+}
+
+fn (mut b Boss) return_speaker2() ?Speaker2 {
+	if b.name == 'richard' {
+		return none
+	}
+	b.name = 'boss'
+	return b
+}
+
+fn return_speaker2(mut sp Speaker2) Speaker2 {
+	s := sp.return_speaker()
+	s2 := sp.return_speaker2() or { return *sp }
+	s.speak()
+	s2.speak()
+	return s2
+}
+
+fn test_interface_returning_interface() {
+	mut b := Boss{'bob'}
+	assert b.name == 'bob'
+	s2 := return_speaker2(mut b)
+	if s2 is Boss {
+		assert s2.name == 'boss'
+	}
 }
 
 struct Foo {
@@ -313,6 +367,7 @@ fn new_animal2() Animal {
 }
 
 /*
+// TODO
 fn animal_match(a Animal) {
 	match a {
 		Dog { println('(dog)') }
@@ -321,3 +376,28 @@ fn animal_match(a Animal) {
 	}
 }
 */
+
+interface II {
+mut:
+	my_field int
+}
+
+struct AA {
+	BB
+}
+
+struct BB {
+	pad [10]byte
+mut:
+	my_field int
+}
+
+fn main() {
+	mut aa := AA{}
+	mut ii := II(aa)
+	assert ii.my_field == 0
+	aa.my_field = 123
+	assert ii.my_field == 123
+	ii.my_field = 1234
+	assert aa.my_field == 1234
+}

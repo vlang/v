@@ -1,0 +1,52 @@
+name: vab CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  vab-compiles-v-examples:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    steps:
+    - uses: actions/setup-java@v2
+      with:
+        distribution: 'adopt'
+        java-version: 8
+
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+
+    - name: Clone vab
+      run: git clone --depth 1 https://github.com/vlang/vab
+    - name: Build vab
+      run: cd vab; ../v ./vab.v ; cd ..
+
+    - name: Run tests
+      run: ./v test vab
+
+    - name: Build vab
+      run: ./v -g vab/vab.v
+
+    - name: Run vab --help
+      run: vab/vab --help
+
+    - name: Run vab doctor
+      run: |
+        export VEXE=./v
+        vab/vab doctor
+
+    - name: Build graphical V examples as APK
+      run: |
+        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
+        mkdir apks
+        export VEXE=./v
+        for example in "${v_examples[@]}"; do
+          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
+          vab/vab --api 29 --build-tools '29.0.0' -v 3 examples/$example -o apks/$safe_name.apk
+        done

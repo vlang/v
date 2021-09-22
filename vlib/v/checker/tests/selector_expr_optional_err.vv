@@ -1,0 +1,5 @@
+import net.http
+
+fn main() {
+    println(http.get('https://httpbin.org/').status_code)
+}

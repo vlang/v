@@ -1,6 +1,7 @@
-vlib/v/checker/tests/assign_expr_type_err_a.v:3:2: error: operator <<= not defined on left operand type `f64`
+vlib/v/checker/tests/assign_expr_type_err_a.vv:3:2: error: operator <<= not defined on left operand type `f64`
     1 | fn main() {
     2 |     mut foo := 0.5
     3 |     foo <<= 1
       |     ~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

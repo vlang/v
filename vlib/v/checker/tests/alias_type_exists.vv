@@ -1,5 +1,1 @@
-type Pigeon Bird
-
-fn main() {
-
-}
+type Pigeon = Bird

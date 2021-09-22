@@ -1,0 +1,7 @@
+vlib/v/checker/tests/warnings_for_string_c2v_calls.vv:8:7: error: to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)
+    6 |         p[2] = `z`
+    7 |     }
+    8 |     x := string(p)
+      |          ~~~~~~~~~
+    9 |     eprintln('x: $x')
+   10 |     eprintln('x.len: $x.len')

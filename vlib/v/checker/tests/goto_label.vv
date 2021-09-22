@@ -1,0 +1,33 @@
+fn f() {unsafe {
+	goto f1 // forward
+	goto f2
+	f1:
+	goto a1
+	_ = fn(){
+		goto f1
+		goto f2
+		goto a1
+		a1:
+		goto a1
+	}
+	f2:
+	goto a1
+	goto f1 // back
+	goto f2
+}}
+
+fn g() {unsafe {
+	goto g1 // forward
+	g1:
+	goto f1
+	goto a1
+	goto g1 // back
+	goto undefined
+}}
+
+// implicit main
+unsafe {
+	goto m1
+	m1:
+	goto m1
+}

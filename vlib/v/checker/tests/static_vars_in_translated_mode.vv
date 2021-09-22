@@ -1,0 +1,12 @@
+fn counter() int {
+	mut static icounter := 0
+	icounter++
+	return icounter
+}
+
+fn main() {
+	println(unsafe { counter() })
+	println(unsafe { counter() })
+	println(unsafe { counter() })
+	println(unsafe { counter() })
+}

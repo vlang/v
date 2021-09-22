@@ -1,0 +1,170 @@
+name: Build binary artifacts
+
+on:
+  push:
+    tags:
+      - weekly.**
+      - 0.**
+
+jobs:
+
+  build-linux:
+    runs-on: ubuntu-20.04
+    env:
+      CC: gcc
+    steps:
+      - uses: actions/checkout@v1
+      - name: Compile
+        run: |
+           make -j4
+           ./v -cc $CC -o v -prod cmd/v
+           ./v -prod cmd/tools/vup.v
+           ./v -prod cmd/tools/vdoctor.v
+      - name: Create artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux
+          path: |
+            .
+            ./cmd/tools/vup
+            ./cmd/tools/vdoctor
+            !./.git
+            !./vc
+            !./v_old
+      - name: Create binary only artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: linux-binary
+          path: ./v
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Compile
+        env:
+          CC: clang
+        run: |
+          make -j4
+          ./v -cc $CC -o v -prod cmd/v
+          ./v -prod cmd/tools/vup.v
+          ./v -prod cmd/tools/vdoctor.v
+      - name: Create artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos
+          path: |
+            .
+            ./cmd/tools/vup
+            ./cmd/tools/vdoctor
+            !./.git
+            !./vc
+            !./v_old
+      - name: Create binary only artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos-binary
+          path: ./v
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: msys2/setup-msys2@v2
+      - name: Compile
+        run: |
+          .\make.bat
+          .\v.exe cmd\tools\vup.v
+          .\v.exe cmd\tools\vdoctor.v
+      - name: Create artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: windows
+          path: |
+            .
+            ./cmd/tools/vup.exe
+            ./cmd/tools/vdoctor.exe
+            !./.git
+            !./vc
+            !./v_old.exe
+      - name: Create binary only artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: windows-binary
+          path: ./v.exe
+
+  release:
+    name: Create Github Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Get short tag name
+        uses: jungwinter/split@v1
+        id: split
+        with:
+          msg: ${{ github.ref }}
+          seperator: /
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.split.outputs._2 }}
+          name: ${{ steps.split.outputs._2 }}
+          commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+  publish:
+    needs: [release]
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        version: [linux, macos, windows]
+    steps:
+      - uses: actions/checkout@v1
+      - name: Fetch artifacts
+        uses: actions/download-artifact@v1
+        with:
+          name: ${{ matrix.version }}
+          path: ./${{ matrix.version }}
+      - name: Build Zip Archives
+        run: |
+          mkdir -p workdir/
+          mv ${{ matrix.version }}/ workdir/v/
+          cd workdir/v/
+          chmod 755 v || true
+          chmod 755 v.exe || true
+          chmod 755 thirdparty/tcc/tcc.exe || true
+          chmod 755 cmd/tools/vup || true
+          chmod 755 cmd/tools/vup.exe || true
+          chmod 755 cmd/tools/vdoctor || true
+          chmod 755 cmd/tools/vdoctor.exe || true
+          rm -rf v_old v_old.exe
+          cd ..
+          zip -r9 --symlinks ../v_${{ matrix.version }}.zip v/*
+          cd ..
+          rm -rf workdir/
+      - name: Get short tag name
+        uses: jungwinter/split@v1
+        id: split
+        with:
+          msg: ${{ github.ref }}
+          seperator: /
+      - name: Get release
+        id: get_release_info
+        uses: leahlundqvist/get-release@v1.3.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tag_name: ${{ steps.split.outputs._2 }}
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+          asset_path: ./v_${{ matrix.version }}.zip
+          asset_name: v_${{ matrix.version }}.zip
+          asset_content_type: application/zip

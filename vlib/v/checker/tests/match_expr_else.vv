@@ -1,7 +1,7 @@
-type A = int | string | f64
+type AA = int | string | f64
 
 fn main() {
-	x := A('test')
+	x := AA('test')
 	_ = match x {
 		int {
 			'int'

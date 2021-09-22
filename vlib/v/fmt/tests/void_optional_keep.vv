@@ -3,7 +3,5 @@ fn tt() ? {
 }
 
 fn main() {
-	tt() or {
-		panic('$err')
-	}
+	tt() or { panic('$err') }
 }

@@ -1,0 +1,5 @@
+struct Foo {
+	a int
+__global:
+	g string
+}

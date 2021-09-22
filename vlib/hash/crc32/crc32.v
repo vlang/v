@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -23,10 +23,10 @@ mut:
 	table []u32
 }
 
-fn(mut c Crc32) generate_table(poly int) {
-	for i in 0..256 {
+fn (mut c Crc32) generate_table(poly int) {
+	for i in 0 .. 256 {
 		mut crc := u32(i)
-		for _ in 0..8 {
+		for _ in 0 .. 8 {
 			if crc & u32(1) == u32(1) {
 				crc = (crc >> 1) ^ u32(poly)
 			} else {
@@ -37,19 +37,19 @@ fn(mut c Crc32) generate_table(poly int) {
 	}
 }
 
-fn(c &Crc32) sum32(b []byte) u32 {
+fn (c &Crc32) sum32(b []byte) u32 {
 	mut crc := ~u32(0)
-	for i in 0..b.len {
-		crc = c.table[byte(crc)^b[i]] ^ (crc >> 8)
+	for i in 0 .. b.len {
+		crc = c.table[byte(crc) ^ b[i]] ^ (crc >> 8)
 	}
 	return ~crc
 }
 
-pub fn(c &Crc32) checksum(b []byte) u32 {
+pub fn (c &Crc32) checksum(b []byte) u32 {
 	return c.sum32(b)
 }
 
-// pass the polinomial to use
+// pass the polynomial to use
 pub fn new(poly int) &Crc32 {
 	mut c := &Crc32{}
 	c.generate_table(poly)
@@ -58,6 +58,6 @@ pub fn new(poly int) &Crc32 {
 
 // calculate crc32 using ieee
 pub fn sum(b []byte) u32 {
-	c := new(int(ieee))
+	c := new(int(crc32.ieee))
 	return c.sum32(b)
 }

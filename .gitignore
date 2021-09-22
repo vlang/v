@@ -1,5 +1,11 @@
-# ignore all build binaries
-*
+# ignore sub-level build binaries and v binary
+*/**/*
+v
+v.exe
+v2
+v2.exe
+vdbg
+vdbg.exe
 !*/
 !*.*
 *.exe
@@ -22,6 +28,8 @@ a.out
 /v.c
 /v.*.c
 /v.c.out
+/v_old
+/v_old.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
@@ -41,6 +49,7 @@ fns.txt
 !Dockerfile.cross
 !LICENSE
 !Makefile
+!GNUmakefile
 
 # ignore editor files
 .idea
@@ -56,16 +65,37 @@ fns.txt
 *.swp
 *.swo
 *.swn
+.env
 
 # ignore debugger files
 cachegrind.out.*
 .gdb_history
 *.dSYM
+*.def
 
 # ignore system files
 .DS_Store
 ._*
 thumbs.db
-/.symlink/*
+/.symlink
+/.bin
 
 _docs
+
+# ignore vs databases
+*.suo
+*.VC.db
+*.rsp
+
+# ignore cmd/tools/.disable_autorecompilation, which some package managers use.
+cmd/tools/.disable_autorecompilation
+
+test.bin
+
+# ignore codespace env
+.venv/
+.direnv/
+shell.nix
+default.nix
+flake.nix
+.envrc

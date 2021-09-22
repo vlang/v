@@ -1,0 +1,13 @@
+vlib/v/checker/tests/noreturn_with_non_empty_loop_at_end.vv:4:6: error: [noreturn] functions should end with a call to another [noreturn] function, or with an infinite `for {}` loop
+    2 | fn another() {
+    3 |     eprintln(@FN)
+    4 |     for {
+      |         ^
+    5 |         break
+    6 |     }
+vlib/v/checker/tests/noreturn_with_non_empty_loop_at_end.vv:18:2: error: unreachable code after a [noreturn] call
+   16 |     eprintln('start')
+   17 |     abc()
+   18 |     eprintln('done')
+      |     ~~~~~~~~~~~~~~~~
+   19 | }

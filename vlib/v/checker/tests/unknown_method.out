@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unknown_method.v:7:12: error: unknown method: `Test.sdd`
+vlib/v/checker/tests/unknown_method.vv:7:12: error: unknown method or field: `Test.sdd`
     5 | fn main() {
     6 |     t := Test{}
     7 |     println(t.sdd())

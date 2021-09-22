@@ -1,0 +1,20 @@
+import v.ast
+
+struct Data {
+	a fn (stmt ast.Stmt, vp voidptr) bool
+}
+
+pub fn (a []Data) reduce(iter fn (int, int) int, accum_start int) int {
+	iter(accum_start)
+}
+
+pub fn test_anon_fn_void(func fn ()) int {
+	return 0
+}
+
+fn C.HasAnonFnWithNamedParams(cb fn (c C.bar, d voidptr))
+
+// NB: the signature of both anonymus functions should only differs in the param name
+fn anon_fn_param_has_no_name(f fn (int) string) {}
+
+fn anon_fn_with_named_param(func fn (a int) string) {}

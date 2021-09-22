@@ -1,7 +1,7 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-import fractions
+import math.fractions
 import math
 
 fn test_half() {
@@ -69,27 +69,33 @@ fn test_140710_232() {
 }
 
 fn test_pi_1_digit() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-2).equals(fractions.fraction(22, 7))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-2).equals(fractions.fraction(22,
+		7))
 }
 
 fn test_pi_2_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-3).equals(fractions.fraction(22, 7))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-3).equals(fractions.fraction(22,
+		7))
 }
 
 fn test_pi_3_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-4).equals(fractions.fraction(333, 106))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-4).equals(fractions.fraction(333,
+		106))
 }
 
 fn test_pi_4_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-5).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-5).equals(fractions.fraction(355,
+		113))
 }
 
 fn test_pi_5_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-6).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-6).equals(fractions.fraction(355,
+		113))
 }
 
 fn test_pi_6_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-7).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-7).equals(fractions.fraction(355,
+		113))
 }
 
 fn test_pi_7_digits() {
@@ -123,15 +129,18 @@ fn test_pi_12_digits() {
 }
 
 fn test_phi_1_digit() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-2).equals(fractions.fraction(5, 3))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-2).equals(fractions.fraction(5,
+		3))
 }
 
 fn test_phi_2_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-3).equals(fractions.fraction(21, 13))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-3).equals(fractions.fraction(21,
+		13))
 }
 
 fn test_phi_3_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-4).equals(fractions.fraction(55, 34))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-4).equals(fractions.fraction(55,
+		34))
 }
 
 fn test_phi_4_digits() {

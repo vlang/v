@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fixed_array_non_const_size_err.vv:4:12: error: non-constant array bound `size`
+    2 |     size := 2
+    3 |
+    4 |     array := [size]int{}
+      |               ~~~~
+    5 |
+    6 |     println(array)

@@ -1,0 +1,13 @@
+fn foo1(foo1 int) {
+	foo1(foo1 + 1)
+}
+
+fn foo2() {
+	foo2 := 1
+	foo2(foo2)
+}
+
+fn main() {
+	foo1(5)
+	foo2()
+}

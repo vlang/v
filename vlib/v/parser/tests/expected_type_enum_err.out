@@ -1,0 +1,6 @@
+vlib/v/parser/tests/expected_type_enum_err.vv:6:12: error: expected type is not an enum (`rune`)
+    4 |
+    5 | fn main() {
+    6 |     if `c` == .bar {}
+      |               ~~~~
+    7 | }

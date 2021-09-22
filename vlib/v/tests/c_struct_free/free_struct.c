@@ -1,0 +1,3 @@
+struct foo {
+	int free;
+};

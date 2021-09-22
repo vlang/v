@@ -1,6 +1,0 @@
-mut a := [1,2,3] // comment
-// test comment
-a << 4
-a
-===output===
-[1, 2, 3, 4]

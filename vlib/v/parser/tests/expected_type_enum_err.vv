@@ -1,0 +1,7 @@
+module main
+
+enum Test { bar }
+
+fn main() {
+	if `c` == .bar {}
+}

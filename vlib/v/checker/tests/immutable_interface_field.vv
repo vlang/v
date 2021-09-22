@@ -1,0 +1,16 @@
+struct Aaa {
+	i1 int
+}
+
+interface Bbb {
+	i1 int
+}
+
+fn mutate_interface(mut b Bbb) {
+	b.i1 = 2
+}
+
+fn main() {
+	mut a := Aaa{1}
+	mutate_interface(mut a)
+}

@@ -1,13 +1,12 @@
 module websocket
 
-import time
 import rand
-import math
 import crypto.sha1
 import encoding.base64
 
-fn htonl64(payload_len u64) byteptr {
-	mut ret := malloc(8)
+// htonl64 converts payload length to header bits
+fn htonl64(payload_len u64) []byte {
+	mut ret := []byte{len: 8}
 	ret[0] = byte(((payload_len & (u64(0xff) << 56)) >> 56) & 0xff)
 	ret[1] = byte(((payload_len & (u64(0xff) << 48)) >> 48) & 0xff)
 	ret[2] = byte(((payload_len & (u64(0xff) << 40)) >> 40) & 0xff)
@@ -19,34 +18,37 @@ fn htonl64(payload_len u64) byteptr {
 	return ret
 }
 
+// create_masking_key returs a new masking key to use when masking websocket messages
 fn create_masking_key() []byte {
-	t := time.ticks()
-	tseq := t % 23237671
-	mut rnd := rand.new_pcg32(u64(t), u64(tseq))
-	mask_bit := byte(rnd.bounded_next(u32(math.max_i32)))
-	buf := [`0`].repeat(4)
-	C.memcpy(buf.data, &mask_bit, 4)
+	mask_bit := byte(rand.intn(255))
+	buf := []byte{len: 4, init: `0`}
+	unsafe { C.memcpy(buf.data, &mask_bit, 4) }
 	return buf
 }
 
-fn create_key_challenge_response(seckey string) string {
+// create_key_challenge_response creates a key challange response from security key
+fn create_key_challenge_response(seckey string) ?string {
+	if seckey.len == 0 {
+		return error('unexpected seckey lengt zero')
+	}
 	guid := '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 	sha1buf := seckey + guid
-	hash := sha1.sum(sha1buf.bytes())
-	hashstr := string(byteptr(hash.data))
-	b64 := base64.encode(hashstr)
+	shabytes := sha1buf.bytes()
+	hash := sha1.sum(shabytes)
+	b64 := base64.encode(hash)
 	unsafe {
-		sha1buf.free()
 		hash.free()
+		shabytes.free()
 	}
 	return b64
 }
 
+// get_nonce creates a randomized array used in handshake process
 fn get_nonce(nonce_size int) string {
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
 	for i in 0 .. nonce_size {
-		nonce[i] = alphanum[rand.next(61)]
+		nonce[i] = alphanum[rand.intn(alphanum.len)]
 	}
-	return tos(nonce.data, nonce.len).clone()
+	return unsafe { tos(nonce.data, nonce.len) }.clone()
 }

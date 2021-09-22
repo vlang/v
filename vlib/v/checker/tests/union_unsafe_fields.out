@@ -1,0 +1,13 @@
+vlib/v/checker/tests/union_unsafe_fields.vv:10:9: error: reading a union field (or its address) requires `unsafe`
+    8 |     mut u := Uf32{u: 3}
+    9 |     u.f = 3.3 // ok
+   10 |     _ := u.u
+      |            ^
+   11 |     return &u.f
+   12 | }
+vlib/v/checker/tests/union_unsafe_fields.vv:11:12: error: reading a union field (or its address) requires `unsafe`
+    9 |     u.f = 3.3 // ok
+   10 |     _ := u.u
+   11 |     return &u.f
+      |               ^
+   12 | }

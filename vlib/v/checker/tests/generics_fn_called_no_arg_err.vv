@@ -1,0 +1,15 @@
+struct Queue<T>{
+    buffer []T
+}
+
+fn new_queue<T>() Queue<T> {
+    q := Queue<T>{
+        buffer: []T{cap: 1024}
+    }
+    return q
+}
+
+fn main() {
+    q := new_queue()
+    println(q)
+}

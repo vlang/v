@@ -1,0 +1,15 @@
+struct St {
+mut:
+	a int
+}
+
+fn change(mut a St) {
+	a.a++
+}
+
+fn main() {
+	mut x := St{
+		a: 0
+	}
+	go change(mut x)
+}

@@ -1,12 +1,13 @@
 Usage:
-  v install module [module] [module] [...]
-  ^^^^^^^^^^^^^ will install the modules you specified
+  v install [MODULE...]
+    Installs each MODULE.
 
-You can also do `v install` directly if you have dependencies stored
-inside the `v.mod` file. This will automatically installs the modules
-specified inside of it.
+    If no MODULEs, the modules listed in the `v.mod` file are installed instead.
 
 Options:
+  --vpm         - [Default] Install from vpm
+  --git         - Install from git repository url
+  --hg          - Install from mercurial repository url
   -help         - Show usage info.
   -v            - Print more details about the performed operation.
   -server-url   - When doing network operations, use this vpm server. Can be given multiple times.

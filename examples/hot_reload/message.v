@@ -2,7 +2,7 @@ module main
 
 // Build this example with `v -live message.v`
 import time
-import live
+import v.live
 
 [live]
 fn print_message() {
@@ -13,6 +13,6 @@ fn print_message() {
 fn main() {
 	for {
 		print_message()
-		time.sleep_ms(500)
+		time.sleep(500 * time.millisecond)
 	}
 }

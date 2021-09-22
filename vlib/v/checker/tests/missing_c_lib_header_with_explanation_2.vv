@@ -1,0 +1,6 @@
+module main
+
+// The following header file is intentionally missing.
+// The part after `#` is an explanation message, that V will
+// show, when it is not found:
+#include <missing/folder/header.h> # Please install missing C library

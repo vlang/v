@@ -1,0 +1,21 @@
+fn main() {
+	a1 := [1,2,3,4].filter(fn(a int, b int) bool { return a > 0 })
+	println(a1)
+
+	a2 := [1,2,3,4].filter(fn(a string) bool { return a.len > 0 })
+	println(a2)
+
+	a3 := [1,2,3,4].filter(fil1)
+	println(a3)
+
+	a4 := [1,2,3,4].filter(fil2)
+	println(a4)
+}
+
+fn fil1(a int, b int) bool {
+	return a > 0
+}
+
+fn fil2(a string) bool {
+	return a.len > 0
+}

@@ -1,7 +1,13 @@
-vlib/v/checker/tests/map_init_key_duplicate_err.v:5:3: error: duplicate key "foo" in map literal
+vlib/v/checker/tests/map_init_key_duplicate_err.vv:5:3: error: duplicate key "foo" in map literal
     3 |         'foo': 'bar'
     4 |         'abc': 'abc'
     5 |         'foo': 'bar'
       |         ~~~~~
     6 |     }
     7 |     println(a)
+vlib/v/checker/tests/map_init_key_duplicate_err.vv:9:15: error: duplicate key "2" in map literal
+    7 |     println(a)
+    8 |
+    9 |     _ = {2:0 3:0 2:0}
+      |                  ^
+   10 | }

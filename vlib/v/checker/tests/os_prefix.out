@@ -1,0 +1,18 @@
+vlib/v/checker/tests/os_prefix.vv:1:8: warning: module 'os' is imported but never used
+    1 | import os
+      |        ~~
+    2 |
+    3 | fn main() {
+vlib/v/checker/tests/os_prefix.vv:5:12: error: unknown function: execute
+    3 | fn main() {
+    4 |     cmd := "ls"
+    5 |     result := execute(cmd)
+      |               ~~~~~~~~~~~~
+    6 |     println(result)
+    7 | }
+vlib/v/checker/tests/os_prefix.vv:6:2: error: `println` can not print void expressions
+    4 |     cmd := "ls"
+    5 |     result := execute(cmd)
+    6 |     println(result)
+      |     ~~~~~~~~~~~~~~~
+    7 | }

@@ -1,5 +1,5 @@
 /*
- Test for backtrace capability
+Test for backtrace capability
 */
 fn a_method() {
 	print_backtrace()

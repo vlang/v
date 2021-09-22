@@ -1,0 +1,38 @@
+fn dump_of_int() {
+	x := dump(1) + 1
+	assert x == 2
+}
+
+fn dump_of_string() {
+	x := dump('a') + 'b'
+	assert x == 'ab'
+}
+
+struct Point {
+mut:
+	x int
+	y int
+	z int
+}
+
+fn dump_of_struct() {
+	p := Point{1, 2, 3}
+	mut p_mut := Point{1, 2, 3}
+	p_ptr := &Point{1, 2, 3}
+
+	mut x1 := dump(p)
+	mut x2 := dump(p_mut)
+	mut x3 := dump(p_ptr)
+	x1.x += 100
+	x2.x += 100
+	x3.x += 100
+	assert x1 == Point{101, 2, 3}
+	assert x2 == Point{101, 2, 3}
+	assert x3 == Point{101, 2, 3}
+}
+
+fn main() {
+	dump_of_int()
+	dump_of_string()
+	dump_of_struct()
+}

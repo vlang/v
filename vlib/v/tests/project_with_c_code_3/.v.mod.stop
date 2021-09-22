@@ -1,0 +1,4 @@
+Do not delete this file.
+It is used by V to stop the lookup for v.mod,
+so that the top level vlib/v.mod is not found,
+if you delete mod1/v.mod .

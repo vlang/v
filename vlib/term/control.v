@@ -1,7 +1,8 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module term
+
 // Sources for ANSI Control Sequences
 // https://github.com/RajeshPatkarInstitute/Panim
 // https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html
@@ -13,8 +14,8 @@ module term
 // Setting cursor to the given position
 // x is the x coordinate
 // y is the y coordinate
-pub fn set_cursor_position(x int, y int) {
-	print('\x1b[$y;$x' + 'H')
+pub fn set_cursor_position(c Coord) {
+	print('\x1b[$c.y;$c.x' + 'H')
 }
 
 // n is number of cells
@@ -46,6 +47,7 @@ pub fn cursor_back(n int) {
 // type: 1 -> current cursor position to beginning of the screen
 // type: 2 -> clears entire screen
 // type: 3 -> clears entire screen and also delete scrollback buffer
+
 pub fn erase_display(t string) {
 	print('\x1b[' + t + 'J')
 }
@@ -58,8 +60,9 @@ pub fn erase_tobeg() {
 	erase_display('1')
 }
 
+// clears entire screen and returns cursor to top left-corner
 pub fn erase_clear() {
-	erase_display('2')
+	print('\033[H\033[J')
 }
 
 pub fn erase_del_clear() {
@@ -94,4 +97,12 @@ pub fn show_cursor() {
 // Will make cursor invisible
 pub fn hide_cursor() {
 	print('\x1b[?25l')
+}
+
+// clear_previous_line - useful for progressbars.
+// It moves the cursor to start of line, then 1 line above,
+// then erases the line. In effect the next println will overwrite
+// the previous content.
+pub fn clear_previous_line() {
+	print('\r\x1b[1A\x1b[2K')
 }

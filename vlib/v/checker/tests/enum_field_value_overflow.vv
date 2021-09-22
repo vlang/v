@@ -1,0 +1,5 @@
+enum Color {
+	red
+	green = 2147483648
+	blue
+}

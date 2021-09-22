@@ -1,5 +1,12 @@
 import os
 
+struct KeepAnyLanguagePrefixVariation {
+	x  C.bar
+	y  &C.bar
+	z  []C.bar
+	z2 []&C.bar
+}
+
 fn foo(a []os.File) {
 }
 
@@ -19,4 +26,21 @@ type Expr = IfExpr | IntegerLiteral
 
 fn exprs(e []Expr) {
 	println(e.len)
+}
+
+struct KeepStructEmbed {
+	User
+pub:
+	a int
+	b int
+}
+
+struct KeepMultiLineDefaultExprsIndent {
+	buttons []PeriodButton = [PeriodButton{
+		period: pr.Period.m1
+		text: 'M1'
+	}, PeriodButton{
+		period: pr.Period.m5
+		text: 'M5'
+	}]
 }

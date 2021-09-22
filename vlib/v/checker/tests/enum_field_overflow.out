@@ -1,0 +1,6 @@
+vlib/v/checker/tests/enum_field_overflow.vv:4:2: error: enum value overflows
+    2 |     red
+    3 |     green = 2147483647
+    4 |     blue
+      |     ~~~~
+    5 | }

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_declare_element_c.vv:3:8: error: non-name `arr[1][0]` on left side of `:=` 
+    1 | fn main() {
+    2 |     arr := [[1, 2], [0, 3]]
+    3 |     arr[1][0] := 1
+      |           ~~~
+    4 | }

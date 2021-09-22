@@ -1,0 +1,7 @@
+vlib/v/checker/tests/optional_or_block_none_err.vv:18:3: error: wrong return type `none` in the `or {}` block, expected `Animal`
+   16 | fn main() {
+   17 |     mut dog := new_animal(9) or {
+   18 |         none
+      |         ~~~~
+   19 |     }
+   20 |

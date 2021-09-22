@@ -1,0 +1,8 @@
+fn opt() ? {}
+
+fn thing() ?string {
+	defer {
+		opt()
+	}
+	return 'ok'
+}

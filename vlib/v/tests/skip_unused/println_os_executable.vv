@@ -1,0 +1,7 @@
+import os
+
+fn main() {
+	x := os.args[0]
+	last_segment := x.replace('\\', '/').all_after('vlib/v/tests/skip_unused/').replace('.exe', '')
+	println(last_segment)
+}

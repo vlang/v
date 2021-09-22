@@ -1,16 +1,18 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
 
 import os
 
-pub fn download_file(url, out string) bool {
-	println('download file url=$url out=$out')
-	s := get(url) or {
-		return false
+pub fn download_file(url string, out string) ? {
+	$if debug_http ? {
+		println('download file url=$url out=$out')
 	}
-	os.write_file(out, s.text)
-	return true
+	s := get(url) or { return err }
+	if s.status() != .ok {
+		return error('received http code $s.status_code')
+	}
+	os.write_file(out, s.text) ?
 	// download_file_with_progress(url, out, empty, empty)
 }

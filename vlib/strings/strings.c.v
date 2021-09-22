@@ -5,11 +5,12 @@ pub fn repeat(c byte, n int) string {
 	if n <= 0 {
 		return ''
 	}
-	mut bytes := &byte(0)
-	unsafe { bytes = malloc(n + 1) }
-	C.memset( bytes, c, n )
-	bytes[n] = `0`
-	return string( bytes, n )
+	mut bytes := unsafe { malloc_noscan(n + 1) }
+	unsafe {
+		C.memset(bytes, c, n)
+		bytes[n] = `0`
+	}
+	return unsafe { bytes.vstring_with_len(n) }
 }
 
 // strings.repeat_string - gives you `n` repetitions of the substring `s`
@@ -20,15 +21,18 @@ pub fn repeat_string(s string, n int) string {
 		return ''
 	}
 	slen := s.len
-	blen := slen*n
-	mut bytes := &byte(0)
-	unsafe { bytes = malloc(blen + 1) }
-	for bi in 0..n {
-		bislen := bi*slen
-		for si in 0..slen {
-			bytes[bislen+si] = s[si]
+	blen := slen * n
+	mut bytes := unsafe { malloc_noscan(blen + 1) }
+	for bi in 0 .. n {
+		bislen := bi * slen
+		for si in 0 .. slen {
+			unsafe {
+				bytes[bislen + si] = s[si]
+			}
 		}
 	}
-	bytes[blen] = `0`
-	return string( bytes, blen )
+	unsafe {
+		bytes[blen] = `0`
+	}
+	return unsafe { bytes.vstring_with_len(blen) }
 }

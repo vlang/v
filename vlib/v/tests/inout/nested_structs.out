@@ -1,11 +1,11 @@
-Aaa {
+Aaa{
     test: false
-    b: Bbb {
+    b: Bbb{
         pass: false
         name: ''
     }
 }
-Bbb {
+&Bbb{
     pass: false
     name: ''
 }

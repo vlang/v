@@ -1,0 +1,13 @@
+fn (v JS.String) toString() JS.String
+
+fn (v JS.String) toMultiRet() (JS.String, int)
+
+fn JS.Math.abs(f64) f64
+
+fn main() {
+	JS.Math.abs(0)
+}
+
+fn object_ref_optional() ?&C.File {
+	return error('')
+}

@@ -1,0 +1,16 @@
+prefix=/usr
+libdir=${prefix}/lib/x86_64-linux-gnu
+includedir=${prefix}/include
+
+bindir=${prefix}/bin
+glib_genmarshal=${bindir}/glib-genmarshal
+gobject_query=${bindir}/gobject-query
+glib_mkenums=${bindir}/glib-mkenums
+
+Name: GLib
+Description: C Utility Library
+Version: 2.64.3
+Requires.private: libpcre >=  8.31
+Libs: -L${libdir} -lglib-2.0
+Libs.private: -pthread
+Cflags: -I${includedir}/glib-2.0 -I${libdir}/glib-2.0/include

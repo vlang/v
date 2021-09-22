@@ -7,11 +7,11 @@ assignees: ''
 
 ---
 
+<!-- You can use `v doctor` to fill up the next fields -->
+
 #### V version:
 
-
 #### OS:
-
 
 #### C Compiler:
 

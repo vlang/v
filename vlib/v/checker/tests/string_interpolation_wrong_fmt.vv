@@ -1,0 +1,24 @@
+fn interpolate_str() string {
+	a := 'hallo'
+	x := '>${a:8.3s}<'
+	y := '${a:G}'
+	z := '${a:d}'
+	return x + y + z
+}
+
+fn interpolate_f64() string {
+	b := 1367.57
+	x := '>${b:20s}<'
+	y := '${b:d}'
+	return x + y
+}
+
+fn interpolate_int() string {
+	u := u32(15)
+	s := -12
+	x := '${u:13d}'
+	y := '${s:04u}'
+	z := '${s:f}'
+	q := '${u:v}'
+	return x + y + z + q
+}

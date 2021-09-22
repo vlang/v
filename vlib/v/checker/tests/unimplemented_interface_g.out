@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unimplemented_interface_g.v:12:13: error: `Cat` incorrectly implements method `speak` of interface `Animal`, expected `speak(s string)`
+vlib/v/checker/tests/unimplemented_interface_g.vv:12:13: error: `Cat` incorrectly implements method `speak` of interface `Animal`, expected `speak(s string)`
    10 |     mut animals := []Animal{}
    11 |     mut cats := []Cat{}
    12 |     animals << cats

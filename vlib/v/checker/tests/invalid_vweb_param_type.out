@@ -1,0 +1,7 @@
+vlib/v/checker/tests/invalid_vweb_param_type.vv:8:24: error: invalid type `[]bool` for parameter `list` in vweb app method `index`
+    6 | 
+    7 | ['/:list'; get]
+    8 | fn (mut app App) index(list []bool) vweb.Result {
+      |                        ~~~~
+    9 |     return app.text('')
+   10 | }

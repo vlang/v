@@ -1,0 +1,13 @@
+fn main() {
+	if '10' {
+		println('10')
+	}
+
+	if 5 {
+		println(5)
+	}
+
+	if println('v') {
+		println('println')
+	}
+}

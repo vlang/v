@@ -1,0 +1,5 @@
+vlib/v/parser/tests/map_init_void.vv:2:18: error: map value type cannot be void
+    1 | fn main() {
+    2 |     m := map[string]{}
+      |                     ^
+    3 | }

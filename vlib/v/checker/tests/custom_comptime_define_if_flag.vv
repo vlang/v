@@ -1,0 +1,13 @@
+// Calls to edebug/1 should be executed only when `-d mydebug` is passed on the CLI
+// Otherwise they will not be present *at all* in the generated code.
+[if mydebug ?]
+fn edebug(message string) {
+	println('message: $message')
+}
+
+fn main() {
+	println('start')
+	edebug('verbose message')
+	edebug('debugging system')
+	println('end')
+}

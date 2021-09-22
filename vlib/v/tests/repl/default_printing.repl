@@ -1,6 +1,5 @@
-num := 1 string := 'Hello'
+num := 1
 num
-string
 ===output===
 1
-Hello
+

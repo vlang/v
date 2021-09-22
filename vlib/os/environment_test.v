@@ -1,4 +1,5 @@
 import os
+import time
 
 fn test_getenv() {
 	// VEXE is set by the V builtin test runner
@@ -33,4 +34,16 @@ fn test_environ() {
 	assert all['myvar1'] == 'bar1'
 	assert all['myvar2'] == 'bar2'
 	assert all['myvar_not_defined'] == ''
+}
+
+fn test_setenv_var_not_exists() {
+	key := time.new_time(time.now()).unix
+	os.setenv('foo$key', 'bar', false)
+	assert os.getenv('foo$key') == 'bar'
+}
+
+fn test_getenv_empty_var() {
+	key := time.new_time(time.now()).unix
+	os.setenv('empty$key', '""', false)
+	assert os.getenv('empty$key') == '""'
 }

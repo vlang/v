@@ -1,0 +1,17 @@
+fn main() {}
+
+fn foo() string {
+    if true {
+        if true {
+            return ''
+        }
+
+        if true {
+            return ''
+        } else {
+            return ''
+        }
+    } else {
+        return ''
+    }
+}

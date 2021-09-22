@@ -1,0 +1,6 @@
+[] fn tt() {
+	println('text')
+}
+fn main() {
+	tt()
+}

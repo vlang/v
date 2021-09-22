@@ -27,15 +27,7 @@ fn main() {
 }
 
 fn init(user_data voidptr) {
-	desc := C.sg_desc{
-		mtl_device: sapp.metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp.metal_get_drawable
-		d3d11_device: sapp.d3d11_get_device()
-		d3d11_device_context: sapp.d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
-	}
+	desc := sapp.create_desc() // C.sg_desc{
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
@@ -63,7 +55,7 @@ fn draw() {
 	// line(0, 0, 500, 500)
 }
 
-fn draw_hollow_rect(x, y, w, h f32) {
+fn draw_hollow_rect(x f32, y f32, w f32, h f32) {
 	sgl.begin_line_strip()
 	sgl.v2f(x, y)
 	sgl.v2f(x + w, y)
@@ -73,7 +65,7 @@ fn draw_hollow_rect(x, y, w, h f32) {
 	sgl.end()
 }
 
-fn draw_filled_rect(x, y, w, h f32) {
+fn draw_filled_rect(x f32, y f32, w f32, h f32) {
 	sgl.begin_quads()
 	sgl.v2f(x, y)
 	sgl.v2f(x + w, y)

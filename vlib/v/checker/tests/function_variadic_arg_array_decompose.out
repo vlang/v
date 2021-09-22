@@ -1,0 +1,6 @@
+vlib/v/checker/tests/function_variadic_arg_array_decompose.vv:11:10: error: too many arguments in call to `sum`
+    9 | fn main() {
+   10 |     b := [5, 6, 7]
+   11 |     println(sum(1, 2, ...b))
+      |             ~~~~~~~~~~~~~~~
+   12 | }

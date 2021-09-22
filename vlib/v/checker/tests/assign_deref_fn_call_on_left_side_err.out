@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assign_deref_fn_call_on_left_side_err.vv:8:2: error: cannot dereference a function call on the left side of an assignment, use a temporary variable
+    6 |
+    7 | fn main() {
+    8 |     *foo('s') = 1
+      |     ^
+    9 | }

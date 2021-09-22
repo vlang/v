@@ -1,11 +1,13 @@
+import strconv
+
 fn test_common_atoi() {
 	// test common cases
-	assert "70zzz".int() == 70
-	assert "2901issue".int() == 2901
+	assert '70zzz'.int() == 70
+	assert '2901issue'.int() == 2901
 	assert '234232w'.int() == 234232
 	assert '-9009x'.int() == -9009
 	assert '0y'.int() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.int() == 12
 	assert '-0000012'.int() == -12
@@ -21,7 +23,7 @@ fn test_common_atoi() {
 	assert '10_000_000'.int() == 10000000
 
 	for n in -10000 .. 100000 {
-		s := n.str()+"z"
+		s := n.str() + 'z'
 		assert s.int() == n
 	}
 }
@@ -29,11 +31,11 @@ fn test_common_atoi() {
 fn test_unsigned_cast() {
 	// tests for u16
 
-    // test common cases
-	assert "70zzz".u16() == 70
-	assert "2901issue".u16() == 2901
+	// test common cases
+	assert '70zzz'.u16() == 70
+	assert '2901issue'.u16() == 2901
 	assert '0y'.u16() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.u16() == 12
 	assert '0x001F'.u16() == 31
@@ -43,13 +45,13 @@ fn test_unsigned_cast() {
 
 	// tests for u32
 
-    // test common cases
-	assert "70zzz".u32() == 70
-	assert "2901issue".u32() == 2901
+	// test common cases
+	assert '70zzz'.u32() == 70
+	assert '2901issue'.u32() == 2901
 	assert '234232w'.u32() == 234232
 	assert '-9009x'.u32() == 0
 	assert '0y'.u32() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.u32() == 12
 	assert '-0000012'.u32() == 0
@@ -64,20 +66,20 @@ fn test_unsigned_cast() {
 	assert '-0x00_0_f_ff'.u32() == 0
 	assert '10_000_000'.u32() == 10000000
 
-	for n in 0 .. 100 {
-		s := n.str()+"z"
+	for n in 0 .. u32(100) {
+		s := n.str() + 'z'
 		assert s.u32() == n
 	}
 
 	// tests for u64
 
-    // test common cases
-	assert "70zzz".u64() == 70
-	assert "2901issue".u64() == 2901
+	// test common cases
+	assert '70zzz'.u64() == 70
+	assert '2901issue'.u64() == 2901
 	assert '234232w'.u64() == 234232
 	assert '-9009x'.u64() == 0
 	assert '0y'.u64() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.u64() == 12
 	assert '-0000012'.u64() == 0
@@ -92,23 +94,22 @@ fn test_unsigned_cast() {
 	assert '-0x00_0_f_ff'.u64() == 0
 	assert '10_000_000'.u64() == 10000000
 
-	for n in 0 .. 10000 {
-		s := n.str()+"z"
+	for n in 0 .. u64(10000) {
+		s := n.str() + 'z'
 		assert s.u64() == n
 	}
-
 }
 
 fn test_signed_cast() {
 	// tests for i64
 
-    // test common cases
-	assert "70zzz".i64() == 70
-	assert "2901issue".i64() == 2901
+	// test common cases
+	assert '70zzz'.i64() == 70
+	assert '2901issue'.i64() == 2901
 	assert '234232w'.i64() == 234232
 	assert '-9009x'.i64() == -9009
 	assert '0y'.i64() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.i64() == 12
 	assert '-0000012'.i64() == -12
@@ -124,19 +125,19 @@ fn test_signed_cast() {
 	assert '10_000_000'.i64() == 10000000
 
 	for n in -10000 .. 100000 {
-		s := n.str()+"z"
+		s := n.str() + 'z'
 		assert s.i64() == n
 	}
 
 	// tests for i8
 
-    // test common cases
-	assert "70zzz".i8() == 70
-	assert "29issue".i8() == 29
+	// test common cases
+	assert '70zzz'.i8() == 70
+	assert '29issue'.i8() == 29
 	assert '22w'.i8() == 22
 	assert '-90x'.i8() == -90
 	assert '0y'.i8() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.i8() == 12
 	assert '-0000012'.i8() == -12
@@ -152,19 +153,19 @@ fn test_signed_cast() {
 	assert '10_0'.i8() == 100
 
 	for n in -10 .. 100 {
-		s := n.str()+"z"
+		s := n.str() + 'z'
 		assert s.i8() == n
 	}
 
 	// tests for i16
 
-    // test common cases
-	assert "70zzz".i16() == 70
-	assert "2901issue".i16() == 2901
+	// test common cases
+	assert '70zzz'.i16() == 70
+	assert '2901issue'.i16() == 2901
 	assert '2342w'.i16() == 2342
 	assert '-9009x'.i16() == -9009
 	assert '0y'.i16() == 0
-	
+
 	// test lead zeros
 	assert '0000012'.i16() == 12
 	assert '-0000012'.i16() == -12
@@ -180,7 +181,76 @@ fn test_signed_cast() {
 	assert '10_0'.i16() == 100
 
 	for n in -100 .. 100 {
-		s := n.str()+"z"
+		s := n.str() + 'z'
 		assert s.i16() == n
 	}
+
+	// test g format
+	unsafe {
+		mut u := strconv.Float64u{
+			u: strconv.double_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.double_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.double_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
+	}
+	unsafe {
+		mut u := strconv.Float32u{
+			u: strconv.single_plus_zero
+		}
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_minus_zero
+		assert '${u.f:g}' == '0'
+		assert '${u.f:G}' == '0'
+		u.u = strconv.single_plus_infinity
+		assert '${u.f:g}' == '+inf'
+		assert '${u.f:G}' == '+INF'
+		u.u = strconv.single_minus_infinity
+		assert '${u.f:g}' == '-inf'
+		assert '${u.f:G}' == '-INF'
+	}
+}
+
+fn test_binary() {
+	i := i8(127)
+	u := u8(127)
+	assert '${i:08b}' == '01111111'
+	assert '${u:08b}' == '01111111'
+	assert '${i16(i):08b}' == '01111111'
+	assert '${u16(u):08b}' == '01111111'
+	assert '${int(i):08b}' == '01111111'
+	assert '${u32(u):08b}' == '01111111'
+	assert '${i64(i):08b}' == '01111111'
+	assert '${u64(u):08b}' == '01111111'
+
+	n := i8(-1)
+	assert '${u8(-1):08b}' == '11111111'
+	assert '${u16(n):08b}' == '1111111111111111'
+	assert '${u32(n):08b}' == '11111111111111111111111111111111'
+	assert '${u64(n):08b}' == '1111111111111111111111111111111111111111111111111111111111111111'
+}
+
+fn test_binary32() {
+	i := int(0x7fff_ffff)
+	u := u32(0x7fff_ffff)
+	assert '${i:032b}' == '01111111111111111111111111111111'
+	assert '${u:032b}' == '01111111111111111111111111111111'
+	assert '${i64(i):032b}' == '01111111111111111111111111111111'
+	assert '${u64(u):032b}' == '01111111111111111111111111111111'
+}
+
+fn test_binary64() {
+	i := i64(0x7fff_ffff_ffff_ffff)
+	u := u64(0x7fff_ffff_ffff_ffff)
+	assert '${i:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
+	assert '${u:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
 }

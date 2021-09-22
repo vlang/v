@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_expr_non_void_stmt_last.vv:9:4: error: `match` expression requires an expression as the last statement of every branch
+    7 |         }
+    8 |         []int {
+    9 |             return arr.str()
+      |             ~~~~~~~~~~~~~~~~
+   10 |         }
+   11 |     }

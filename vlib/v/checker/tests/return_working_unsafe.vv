@@ -1,0 +1,7 @@
+fn main() {}
+
+fn foo() string {
+    unsafe {
+        return ''
+    }
+}

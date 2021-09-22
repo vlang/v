@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fractions
@@ -73,13 +73,13 @@ fn eval_cf(whole i64, den []i64) Fraction {
 // within the default epsilon value (1.0e-4). This means the result will
 // be accurate to 3 places after the decimal.
 pub fn approximate(val f64) Fraction {
-	return approximate_with_eps(val, default_eps)
+	return approximate_with_eps(val, fractions.default_eps)
 }
 
 // approximate_with_eps returns a Fraction
-pub fn approximate_with_eps(val, eps f64) Fraction {
+pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if val == 0.0 {
-		return zero
+		return fractions.zero
 	}
 	if eps < 0.0 {
 		panic('Epsilon value cannot be negative.')
@@ -96,12 +96,12 @@ pub fn approximate_with_eps(val, eps f64) Fraction {
 		return fraction(whole, 1)
 	}
 	mut d := []i64{}
-	mut partial := zero
+	mut partial := fractions.zero
 	// We must complete the approximation within the maximum number of
 	// itertations allowed. If we can't panic.
 	// Empirically tested: the hardest constant to approximate is the
 	// golden ratio (math.phi) and for f64s, it only needs 38 iterations.
-	for _ in 0 .. max_iterations {
+	for _ in 0 .. fractions.max_iterations {
 		// We calculate the reciprocal. That's why the numerator is
 		// always 1.
 		frac = 1.0 / frac
@@ -115,5 +115,5 @@ pub fn approximate_with_eps(val, eps f64) Fraction {
 		}
 		frac -= f64(den)
 	}
-	panic("Couldn\'t converge. Please create an issue on https://github.com/vlang/v")
+	panic("Couldn't converge. Please create an issue on https://github.com/vlang/v")
 }

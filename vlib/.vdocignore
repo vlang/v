@@ -1,0 +1,16 @@
+builtin/bare
+builtin/js
+builtin/linux_bare
+dl/example
+oldgg/
+os/bare
+os2/
+net/websocket/examples
+uiold/
+v/tests/
+v/checker/tests/
+v/gen/js/tests/
+v/gen/x64/tests/
+v/gen/tests/
+v/preludes_js/
+vweb/tests

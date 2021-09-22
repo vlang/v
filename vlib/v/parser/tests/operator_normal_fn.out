@@ -1,0 +1,5 @@
+vlib/v/parser/tests/operator_normal_fn.vv:1:4: error: cannot use operator overloading with normal functions
+    1 | fn +(x int) int {
+      |    ^
+    2 |     return 5 + x
+    3 | }

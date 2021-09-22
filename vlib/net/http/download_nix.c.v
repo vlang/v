@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -13,7 +13,7 @@ mut:
 	cb      DownloadFn
 }
 */
-fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
+fn download_cb(ptr voidptr, size usize, nmemb usize, userp voidptr) {
 	/*
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream)
@@ -21,10 +21,10 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
 	data.cb(data.written)
 	//#data->cb(data->written); // TODO
 	return written
-*/
+	*/
 }
 
-pub fn download_file_with_progress(url, out string, cb DownloadFn, cb_finished fn()) {
+pub fn download_file_with_progress(url string, out string, cb DownloadFn, cb_finished fn ()) {
 	/*
 	curl := C.curl_easy_init()
 	if isnil(curl) {
@@ -45,7 +45,7 @@ pub fn download_file_with_progress(url, out string, cb DownloadFn, cb_finished f
 	C.curl_easy_cleanup(curl)
 	C.fclose(fp)
 	cb_finished()
-*/
+	*/
 }
 
 fn empty() {

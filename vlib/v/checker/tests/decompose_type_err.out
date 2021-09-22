@@ -1,0 +1,6 @@
+vlib/v/checker/tests/decompose_type_err.vv:4:13: error: decomposition can only be used on arrays
+    2 |
+    3 | fn main() {
+    4 |     varargs(...123)
+      |                ~~~
+    5 | }

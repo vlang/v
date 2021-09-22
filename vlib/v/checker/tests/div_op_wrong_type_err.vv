@@ -1,0 +1,10 @@
+struct Aaa{}
+fn main() {
+    println(Aaa{} / 10)
+    println(10 / Aaa{})
+    println([1,2,3] / 10)
+    println(10 / [1,2,3])
+	a := map[string]int
+    println(a / 10)
+    println(10 / a)
+}

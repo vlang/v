@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unknown_generic_type.vv:6:13: error: unknown type `Foo`
+    4 |
+    5 | fn main() {
+    6 |     x := decode<Foo>('{"name": "test"}')?
+      |                ~~~~~
+    7 |     println(x)
+    8 | }

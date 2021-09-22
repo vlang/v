@@ -1,6 +1,7 @@
-vlib/v/checker/tests/assign_expr_type_err_d.v:3:9: error: operator /= not defined on right operand type `bool`
+vlib/v/checker/tests/assign_expr_type_err_d.vv:3:9: error: operator /= not defined on right operand type `bool`
     1 | fn main() {
     2 |     mut foo := 1.5
     3 |     foo /= true
       |            ~~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

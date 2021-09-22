@@ -1,0 +1,9 @@
+type Foo = int
+fn (_ Foo) f()
+
+fn f()
+
+fn main() {
+	Foo(0).f()
+	f()
+}

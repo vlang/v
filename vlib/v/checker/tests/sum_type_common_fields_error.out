@@ -1,0 +1,6 @@
+vlib/v/checker/tests/sum_type_common_fields_error.vv:53:14: error: field `val` does not exist or have the same type in all sumtype variants
+   51 |     assert m[2].name == '64bit integer'
+   52 |     assert m[3].name == 'string'
+   53 |     assert m[0].val == 123
+      |                 ~~~
+   54 | }

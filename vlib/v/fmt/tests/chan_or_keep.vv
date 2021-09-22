@@ -1,0 +1,33 @@
+const n = 1000
+
+fn f(ch chan int) {
+	mut s := 0
+	for _ in 0 .. n {
+		s += <-ch or {
+			println('Something went wrong:')
+			println('got $err')
+		}
+	}
+	assert s == n * (n + 1) / 2
+	ch.close()
+}
+
+fn do_send(ch chan int, val int) ?int {
+	ch <- val ?
+	return val + 1
+}
+
+fn do_send_2(ch chan int, val int) ?int {
+	ch <- val or { return error('could not send') }
+	return val + 1
+}
+
+fn main() {
+	ch := chan int{}
+	go f(ch)
+	mut s := 1
+	for {
+		s = do_send(ch, s) or { break }
+	}
+	assert s == n + 1
+}

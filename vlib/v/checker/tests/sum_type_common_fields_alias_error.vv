@@ -1,0 +1,38 @@
+type Main = Sub1 | Sub2 | Sub3
+
+// NB: the subtypes will have a common `name` field, of the same `string`
+// type, except Sub3, which has `name` of type AliasedString.
+
+type AliasedString = string
+
+struct Sub1 {
+mut:
+	name string
+}
+
+struct Sub2 {
+mut:
+	name string
+}
+
+struct Sub3 {
+mut:
+	name AliasedString
+}
+
+fn main() {
+	mut m := []Main{}
+	m << Sub1{
+		name: 'abc'
+	}
+	m << Sub2{
+		name: 'def'
+	}
+	m << Sub3{
+		name: 'xyz'
+	}
+	println(m)
+	assert m[0].name == 'abc'
+	assert m[1].name == 'def'
+	assert m[2].name == 'xyz'
+}

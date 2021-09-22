@@ -1,0 +1,22 @@
+module main
+
+struct Animal {
+	mut:
+		height byte
+}
+
+fn new_animal(height byte) ?Animal {
+	if height < 10 {
+		return error('Too small to be an animal!')
+	}
+
+	return Animal{ height: height }
+}
+
+fn main() {
+	mut dog := new_animal(9) or {
+		none
+	}
+
+	println(dog)
+}

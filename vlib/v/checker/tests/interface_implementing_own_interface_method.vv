@@ -1,0 +1,7 @@
+interface Animal {
+    speak()
+}
+
+fn (a Animal) speak() {
+    println('speaking')
+}

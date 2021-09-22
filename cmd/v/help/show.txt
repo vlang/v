@@ -1,0 +1,3 @@
+Usage: v show
+
+Display information about a module on vpm.

@@ -1,0 +1,7 @@
+vlib/v/parser/tests/for_in_mut_index_of_array.vv:3:6: error: index of array or key of map cannot be mutated
+    1 | fn main() {
+    2 |     mut m := [1, 2, 3]
+    3 |     for mut i, _ in m {
+      |         ~~~
+    4 |         println(i)
+    5 |     }

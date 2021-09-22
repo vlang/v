@@ -1,0 +1,2 @@
+import time { Duration }
+type Duration = bool

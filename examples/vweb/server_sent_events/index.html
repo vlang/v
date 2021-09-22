@@ -1,0 +1,38 @@
+<html>
+    <header>
+        <title>@title</title>
+        <meta charset="utf-8"/>
+	    @css 'assets/site.css'
+    </header>
+    <body>
+        <h1>@title</h1>
+        <button>Close the connection</button>
+        <ul></ul>
+        <script>
+         "use strict";
+         var button = document.querySelector('button');
+         var eventList = document.querySelector('ul');
+         const evtSource = new EventSource('/sse');
+         evtSource.onerror = function() { console.log("EventSource failed."); };
+         console.log(evtSource.withCredentials);
+         console.log(evtSource.readyState);
+         console.log(evtSource.url);
+         evtSource.onopen = function() {
+             console.log("Connection to server opened.");
+         };
+         evtSource.onmessage = function(e) {
+             var newElement = document.createElement("li");
+             newElement.textContent = "message: " + e.data;
+             eventList.appendChild(newElement);
+         };
+         evtSource.addEventListener("ping", function(e) {
+             console.log(e)
+             var newElement = document.createElement("li");
+             var obj = JSON.parse(e.data);
+             newElement.innerHTML = "ping at " + obj.time + ' server data: ' + e.data;
+             eventList.appendChild(newElement);
+         }, false);
+         button.onclick = function() { console.log('Connection closed'); evtSource.close(); };
+        </script>
+    </body>
+</html>

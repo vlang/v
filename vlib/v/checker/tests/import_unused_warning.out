@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_unused_warning.v:1:8: warning: module 'time' is imported but never used 
+vlib/v/checker/tests/import_unused_warning.vv:1:8: warning: module 'time' is imported but never used 
     1 | import time
       |        ~~~~
     2 | fn main() {

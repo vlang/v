@@ -1,0 +1,7 @@
+The libgc source is distributed here as an amalgamation (https://sqlite.org/amalgamation.html).
+This means that, rather than mirroring the entire bdwgc repo here,
+[this script](https://gist.github.com/spaceface777/34d25420f2dc4953fb7864f44a211105) was used
+to bundle all local includes together into a single C file, which is much easier to handle.
+Furthermore, the script above was also used to minify (i.e. remove comments and whitespace in)
+the garbage collector source. Together, these details help keep the V source distribution small,
+can reduce compile times by 3%-15%, and can help C compilers generate more optimized code.

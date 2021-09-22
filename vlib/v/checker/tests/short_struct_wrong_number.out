@@ -1,0 +1,13 @@
+vlib/v/checker/tests/short_struct_wrong_number.vv:7:6: error: too few fields in `Test` literal (expecting 2, got 1)
+    5 |
+    6 | fn main() {
+    7 |     _ = Test{true}
+      |         ~~~~~~~~~~
+    8 |     _ = Test{true, false, true}
+    9 | }
+vlib/v/checker/tests/short_struct_wrong_number.vv:8:6: error: too many fields in `Test` literal (expecting 2, got 3)
+    6 | fn main() {
+    7 |     _ = Test{true}
+    8 |     _ = Test{true, false, true}
+      |         ~~~~~~~~~~~~~~~~~~~~~~~
+    9 | }

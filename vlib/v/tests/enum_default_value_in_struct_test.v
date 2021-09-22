@@ -1,16 +1,16 @@
-pub enum MyEnum {
+enum MyEnum {
 	first = 20
 	second
 	third
 }
 
-pub struct MyStruct {
+struct MyStruct {
 mut:
 	e MyEnum = .second
 }
 
 fn test_enum_first_value() {
-	assert MyEnum.first == 20
+	assert MyEnum.first == MyEnum(20)
 }
 
 fn test_enum_default_value() {
@@ -27,9 +27,9 @@ fn test_enum_non_default_value() {
 	assert 't.e: $t.e | int(t.e): ${int(t.e).str()}' == 't.e: third | int(t.e): 22'
 }
 
-fn test_generation_of_string_interpolation_method_for_pointer_to_struct_containing_enum_fields(){
+fn test_generation_of_string_interpolation_method_for_pointer_to_struct_containing_enum_fields() {
 	t := &MyStruct{
 		e: .third
 	}
-	assert 't: $t' == 't: &MyStruct {\n    e: third\n}'
+	assert 't: $t' == 't: &MyStruct{\n    e: third\n}'
 }

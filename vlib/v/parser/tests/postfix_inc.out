@@ -1,0 +1,5 @@
+vlib/v/parser/tests/postfix_inc.vv:3:1: error: token `++` must be on the same line as the previous token
+    1 | mut v := 4
+    2 | _ = v
+    3 | ++v
+      | ~~

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/map_func_void_return_err.vv:2:22: error: type mismatch, `voids` does not return anything
+    1 | fn main() {
+    2 |     list := [1,2,3].map(voids(it))
+      |                         ~~~~~~~~~
+    3 | }
+    4 |

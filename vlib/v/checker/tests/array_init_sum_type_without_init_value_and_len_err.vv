@@ -1,0 +1,9 @@
+type Foo = int | string
+
+fn main() {
+	a := []Foo{len: 10}
+	println(a)
+
+	fixed_a := [10]Foo{}
+	println(fixed_a)
+}

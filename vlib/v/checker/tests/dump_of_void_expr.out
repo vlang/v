@@ -1,0 +1,5 @@
+vlib/v/checker/tests/dump_of_void_expr.vv:3:6: error: dump expression can not be void
+    1 | fn abc() {}
+    2 | 
+    3 | dump(abc())
+      |      ~~~~~

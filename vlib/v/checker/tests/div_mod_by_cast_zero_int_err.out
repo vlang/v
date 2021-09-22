@@ -1,0 +1,40 @@
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:2:21: error: division by zero
+    1 | fn main() {
+    2 |     println(u64(1)/u64(0))
+      |                        ^
+    3 |     println(u64(1)%u64(0))
+    4 |
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:3:21: error: modulo by zero
+    1 | fn main() {
+    2 |     println(u64(1)/u64(0))
+    3 |     println(u64(1)%u64(0))
+      |                        ^
+    4 |
+    5 |     println(u32(1)/u32(0x0))
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:5:21: error: division by zero
+    3 |     println(u64(1)%u64(0))
+    4 |
+    5 |     println(u32(1)/u32(0x0))
+      |                        ~~~
+    6 |     println(u32(1)%u32(0x0))
+    7 |
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:6:21: error: modulo by zero
+    4 |
+    5 |     println(u32(1)/u32(0x0))
+    6 |     println(u32(1)%u32(0x0))
+      |                        ~~~
+    7 |
+    8 |     println(u16(1)/u16(0b0))
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:8:21: error: division by zero
+    6 |     println(u32(1)%u32(0x0))
+    7 |
+    8 |     println(u16(1)/u16(0b0))
+      |                        ~~~
+    9 |     println(u16(1)%u16(0b0))
+   10 | }
+vlib/v/checker/tests/div_mod_by_cast_zero_int_err.vv:9:21: error: modulo by zero
+    7 |
+    8 |     println(u16(1)/u16(0b0))
+    9 |     println(u16(1)%u16(0b0))
+      |                        ~~~
+   10 | }

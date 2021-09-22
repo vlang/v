@@ -1,0 +1,7 @@
+vlib/v/parser/tests/unnecessary_mut.vv:3:5: error: remove unnecessary `mut`
+    1 | fn main() {
+    2 |     mut x := 0
+    3 |     if mut x == 0 {
+      |        ~~~
+    4 |         println(true)
+    5 |     }

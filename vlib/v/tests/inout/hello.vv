@@ -1,5 +1,3 @@
-import os
-
 fn main() {
 	println('hello world')
 }

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/short_struct_too_many.v:6:7: error: too many fields
-    4 |
-    5 | fn main() {
-    6 |     t := Test{true, false}
-      |          ~~~~~~~~~~~~~~~~~
-    7 |     _ = t
-    8 | }

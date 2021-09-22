@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_fn_called_no_arg_err.vv:13:10: error: no argument generic function must add concrete types, e.g. foo<int>()
+   11 |
+   12 | fn main() {
+   13 |     q := new_queue()
+      |          ~~~~~~~~~~~
+   14 |     println(q)
+   15 | }

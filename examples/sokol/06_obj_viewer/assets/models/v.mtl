@@ -1,0 +1,20 @@
+# Blender MTL File: 'v-logo.blend'
+# Material Count: 2
+newmtl Material.001
+Ns 96.078431
+Ka 0.2 0.2 0.2
+Kd 0.365 0.529 0.749
+Ks 0.85 0.85 0.85
+Ke 0 0 0
+Ni 1
+d 1
+illum 1
+newmtl Material.002
+Ns 96.078431
+Ka 0.1 0.1 0.1
+Kd 0.325 0.42 0.541
+Ks 0.85 0.85 0.85
+Ke 0 0 0
+Ni 1
+d 1
+illum 1

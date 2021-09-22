@@ -1,4 +1,4 @@
-vlib/v/checker/tests/for_in_range_string_type.v:2:11: error: range type can not be string
+vlib/v/checker/tests/for_in_range_string_type.vv:2:11: error: range type can not be string
     1 | fn main() {
     2 |     for i in 'a'..'b' {
       |              ~~~

@@ -1,0 +1,6 @@
+s :=''
+_ = s.length
+_ = [1,2].foo
+
+mut fa := [3,4]!
+_ = fa.bar

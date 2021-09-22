@@ -1,0 +1,9 @@
+#!/usr/local/bin/v run
+
+x := 5
+println(x) // comment after
+println('b')
+// comment between
+println('c')
+mut numbers := [1, 3, 2]
+numbers.sort() // 1, 2, 3
