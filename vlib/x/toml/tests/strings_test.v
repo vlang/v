@@ -47,7 +47,7 @@ mismatch2 = \'\'\'aaa"""bbb\'\'\'
 )
 
 fn test_multiline_strings() {
-	mut toml_doc := toml.parse(toml_multiline_text_1)
+	mut toml_doc := toml.parse(toml_multiline_text_1) or { panic(err) }
 
 	mut value := toml_doc.value('multi1')
 	assert value.string() == 'one'
@@ -58,7 +58,7 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi4')
 	assert value.string() == '\none\ntwo\nthree\nfour\n'
 
-	toml_doc = toml.parse(toml_multiline_text_2)
+	toml_doc = toml.parse(toml_multiline_text_2) or { panic(err) }
 	value = toml_doc.value('multi1')
 	assert value.string() == 'one'
 	value = toml_doc.value('multi2')
@@ -68,7 +68,7 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi4')
 	assert value.string() == '\none\ntwo\nthree\nfour\n'
 
-	toml_doc = toml.parse(toml_multiline_text_3)
+	toml_doc = toml.parse(toml_multiline_text_3) or { panic(err) }
 	value = toml_doc.value('lit_one')
 	assert value.string() == "'one quote'"
 	value = toml_doc.value('lit_two')

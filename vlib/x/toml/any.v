@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module toml
@@ -152,7 +152,7 @@ pub fn (m map[string]Any) value(key string) ?Any {
 	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
 	if key_split[0] in m.keys() {
 		value := m[key_split[0]] or {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
 		if value is map[string]Any {

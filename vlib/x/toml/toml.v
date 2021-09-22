@@ -32,7 +32,7 @@ pub:
 }
 
 // parse_file parses the TOML file in `path`.
-pub fn parse_file(path string) Doc {
+pub fn parse_file(path string) ?Doc {
 	input_config := input.Config{
 		file_path: path
 	}
@@ -40,16 +40,17 @@ pub fn parse_file(path string) Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)
+		scanner: scanner.new_scanner(scanner_config) ?
 	}
 	mut p := parser.new_parser(parser_config)
+	ast := p.parse() ?
 	return Doc{
-		ast: p.parse()
+		ast: ast
 	}
 }
 
 // parse_text parses the TOML document provided in `text`.
-pub fn parse_text(text string) Doc {
+pub fn parse_text(text string) ?Doc {
 	input_config := input.Config{
 		text: text
 	}
@@ -57,18 +58,19 @@ pub fn parse_text(text string) Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)
+		scanner: scanner.new_scanner(scanner_config) ?
 	}
 	mut p := parser.new_parser(parser_config)
+	ast := p.parse() ?
 	return Doc{
-		ast: p.parse()
+		ast: ast
 	}
 }
 
 // parse parses the TOML document provided in `input`.
 // parse automatically try to determine if the type of `input` is a file or text.
 // For explicit parsing of input see `parse_file` or `parse_text`.
-pub fn parse(toml string) Doc {
+pub fn parse(toml string) ?Doc {
 	mut input_config := input.Config{}
 	if !toml.contains('\n') && os.is_file(toml) {
 		input_config = input.Config{
@@ -84,11 +86,12 @@ pub fn parse(toml string) Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)
+		scanner: scanner.new_scanner(scanner_config) ?
 	}
 	mut p := parser.new_parser(parser_config)
+	ast := p.parse() ?
 	return Doc{
-		ast: p.parse()
+		ast: ast
 	}
 }
 
@@ -140,14 +143,14 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 		mut tim := time.Time{}
 		if value is ast.Date {
 			date_str := (value as ast.Date).text
-			// TODO add rfc 3339 parser to time module?
+
 			tim = time.parse_rfc3339(date_str) or {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' failed converting "$date_str" to iso8601: $err')
 			}
 		} else if value is ast.Time {
 			time_str := (value as ast.Time).text
-			// TODO add rfc 3339 parser to time module?
+
 			tim = time.parse_rfc3339(time_str) or {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' failed converting "$time_str" to rfc3339: $err')
@@ -155,7 +158,7 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 		} else {
 			// value is ast.DateTime
 			datetime_str := (value as ast.DateTime).text
-			// TODO add rfc 3339 parser to time module?
+
 			tim = time.parse_rfc3339(datetime_str) or {
 				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' failed converting "$datetime_str" to rfc3339: $err')

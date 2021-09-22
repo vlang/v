@@ -38,7 +38,7 @@ hosts = [
 ]'
 
 fn test_toml() {
-	toml_doc := toml.parse(toml_text)
+	toml_doc := toml.parse(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 
 	// NOTE Kept for easier debugging:
@@ -105,7 +105,7 @@ fn test_toml_file() {
 	test_file := os.join_path(out_path, 'toml_example.toml')
 	os.mkdir_all(out_path) or { assert false }
 	os.write_file(test_file, toml_text) or { assert false }
-	toml_doc := toml.parse_file(test_file)
+	toml_doc := toml.parse_file(test_file) or { panic(err) }
 
 	toml_json := toml_doc.to_json()
 
@@ -120,7 +120,7 @@ fn test_toml_file() {
 }
 
 fn test_toml_parse_text() {
-	toml_doc := toml.parse_text(toml_text)
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
@@ -128,7 +128,7 @@ fn test_toml_parse_text() {
 }
 
 fn test_toml_parse() {
-	toml_doc := toml.parse(toml_text)
+	toml_doc := toml.parse(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +

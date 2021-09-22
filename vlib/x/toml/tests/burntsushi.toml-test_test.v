@@ -1,14 +1,9 @@
 import os
 import x.toml
 
-// TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test pass
+// TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
-	valid_exceptions   = [
-		'float/exponent.toml',
-		'float/inf-and-nan.toml',
-		'table/array-table-array.toml', // <- TODO This one is a real turd-fest, not sure if we should even support it
-	]
-	// valid_exceptions = ['']
+	valid_exceptions   = ['']
 	invalid_exceptions = ['']
 )
 
@@ -29,7 +24,7 @@ fn test_burnt_sushi_tomltest() {
 			relative := valid_test_file.all_after(os.join_path('toml-test', 'tests', 'valid')).trim_left(os.path_separator)
 			if relative !in valid_exceptions {
 				println('OK   [$i/$valid_test_files.len] "$valid_test_file"...')
-				toml_doc := toml.parse_file(valid_test_file)
+				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
 
 				// parsed_json := toml_doc.to_json().replace(' ','')
 				// mut test_suite_json := os.read_file(valid_test_file.all_before_last('.')+'.json') or { panic(err) }
@@ -43,8 +38,9 @@ fn test_burnt_sushi_tomltest() {
 			}
 		}
 		println('$valid/$valid_test_files.len TOML files was parsed correctly')
-		// TODO
-		println('TODO Skipped parsing of $valid_exceptions.len valid TOML files...')
+		if valid_exceptions.len > 0 {
+			println('TODO Skipped parsing of $valid_exceptions.len valid TOML files...')
+		}
 
 		// NOTE uncomment to see list of skipped files
 		// assert false
@@ -57,7 +53,7 @@ fn test_burnt_sushi_tomltest() {
 			relative := invalid_test_file.all_after(os.join_path('toml-test','tests','valid')).trim_left(os.path_separator)
 			if relative !in invalid_exceptions {
 				println('Parsing $i/$invalid_test_files.len "$invalid_test_file"...')
-				toml_doc := toml.parse_file(invalid_test_file)
+				toml_doc := toml.parse_file(invalid_test_file) or { assert true }
 			}
 		}
 		println('TODO Skipped $invalid_exceptions.len valid files...')

@@ -28,7 +28,7 @@ apple.taste.sweet = true
 smooth = true'
 
 fn test_parse() {
-	toml_doc := toml.parse(toml_text)
+	toml_doc := toml.parse(toml_text) or { panic(err) }
 
 	toml_json := toml_doc.to_json()
 	out_file :=

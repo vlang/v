@@ -17,7 +17,7 @@ fn test_dates() {
 	lt1 = 07:32:00
 	lt2 = 00:32:00.999999
 '
-	toml_doc := toml.parse(toml_txt)
+	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
 	// Re-use vars
 	mut odt_time := time.parse_rfc3339('1979-05-27T07:32:00Z') or { panic(err) }

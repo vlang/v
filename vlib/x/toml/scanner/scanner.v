@@ -37,13 +37,13 @@ pub:
 }
 
 // new_scanner returns a new heap allocated `Scanner` instance.
-pub fn new_scanner(config Config) &Scanner {
-	config.input.validate()
+pub fn new_scanner(config Config) ? &Scanner {
+	config.input.validate() ?
 	mut text := config.input.text
 	file_path := config.input.file_path
 	if os.is_file(file_path) {
 		text = os.read_file(file_path) or {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' Could not read "$file_path": "$err.msg"')
+			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' Could not read "$file_path": "$err.msg"')
 		}
 	}
 	mut s := &Scanner{
@@ -55,7 +55,7 @@ pub fn new_scanner(config Config) &Scanner {
 
 // scan returns the next token from the input.
 [direct_array_access]
-pub fn (mut s Scanner) scan() token.Token {
+pub fn (mut s Scanner) scan() ?token.Token {
 	for {
 		c := s.next()
 		byte_c := byte(c)
@@ -83,7 +83,7 @@ pub fn (mut s Scanner) scan() token.Token {
 
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
-			num := s.extract_number()
+			num := s.extract_number() ?
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
 		}
@@ -142,7 +142,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				return s.new_token(.assign, ascii, ascii.len)
 			}
 			`"`, `'` { // ... some string "/'
-				ident_string, is_multiline := s.extract_string()
+				ident_string, is_multiline := s.extract_string() ?
 				token_length := if is_multiline { 2 * 3 } else { 2 }
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string (multiline: $is_multiline) `$ident_string`')
 				return s.new_token(.quoted, ident_string, ident_string.len + token_length) // + quote length
@@ -183,7 +183,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				return s.new_token(.period, ascii, ascii.len)
 			}
 			else {
-				panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' could not scan character `$ascii` / $c at $s.pos ($s.line_nr,$s.col) near ...${s.excerpt(s.pos, 5)}...')
 			}
 		}
@@ -330,7 +330,7 @@ fn (mut s Scanner) extract_key() string {
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
 [direct_array_access; inline]
-fn (mut s Scanner) extract_string() (string, bool) {
+fn (mut s Scanner) extract_string() ?(string, bool) {
 	// extract_string is called when the scanner has already reached
 	// a byte that is the start of a string so we rewind it to start at the correct
 	s.pos--
@@ -342,7 +342,8 @@ fn (mut s Scanner) extract_string() (string, bool) {
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
 	if is_multiline {
-		return s.extract_multiline_string(), is_multiline
+		mls := s.extract_multiline_string() ?
+		return mls, is_multiline
 	}
 
 	for {
@@ -350,7 +351,7 @@ fn (mut s Scanner) extract_string() (string, bool) {
 		s.col++
 
 		if s.pos >= s.text.len {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN +
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' unfinished string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
@@ -383,7 +384,7 @@ fn (mut s Scanner) extract_string() (string, bool) {
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
 [direct_array_access; inline]
-fn (mut s Scanner) extract_multiline_string() string {
+fn (mut s Scanner) extract_multiline_string() ?string {
 	// extract_multiline_string is called from extract_string so we know the 3 first
 	// characters is the quotes
 	quote := s.at()
@@ -401,7 +402,7 @@ fn (mut s Scanner) extract_multiline_string() string {
 		s.col++
 
 		if s.pos >= s.text.len {
-			panic(@MOD + '.' + @STRUCT + '.' + @FN +
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' unfinished multiline string literal ($quote.ascii_str()$quote.ascii_str()$quote.ascii_str()) started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
@@ -478,7 +479,7 @@ fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 // any bytes recognized as a TOML number.
 // TOML numbers can include digits 0-9 and `_`.
 [direct_array_access; inline]
-fn (mut s Scanner) extract_number() string {
+fn (mut s Scanner) extract_number() ?string {
 	// extract_number is called when the scanner has already reached
 	// a byte that is a number or +/- - so we rewind it to start at the correct
 	// position to get the complete number. Even if it's only one digit
@@ -486,7 +487,7 @@ fn (mut s Scanner) extract_number() string {
 	s.col--
 	start := s.pos
 	if !(byte(s.at()).is_digit() || s.at() in [`+`, `-`]) {
-		panic(@MOD + '.' + @STRUCT + '.' + @FN + ' ${byte(s.at()).ascii_str()} is not a number')
+		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' ${byte(s.at()).ascii_str()} is not a number')
 	}
 	s.pos++
 	s.col++
