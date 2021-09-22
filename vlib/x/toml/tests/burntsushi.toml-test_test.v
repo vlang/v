@@ -37,7 +37,6 @@ const (
 		'integer/invalid-bin.toml',
 		'integer/trailing-us-oct.toml',
 		'integer/us-after-oct.toml',
-		'integer/negative-hex.toml',
 		'integer/invalid-oct.toml',
 		'integer/trailing-us.toml',
 		'integer/trailing-us-bin.toml',
