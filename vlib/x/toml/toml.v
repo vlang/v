@@ -102,13 +102,13 @@ pub fn (d Doc) to_json() string {
 
 // value queries a value from the TOML document.
 pub fn (d Doc) value(key string) Any {
-	values := d.ast.table as map[string]ast.Value
+	values := d.ast.table as map[string]ast.Node
 	// any_values := d.ast_to_any(values) as map[string]Any
 	return d.get_map_value_as_any(values, key)
 }
 
-// ast_to_any_value converts `from` ast.Value to toml.Any value.
-fn (d Doc) ast_to_any(value ast.Value) Any {
+// ast_to_any_value converts `from` ast.Node to toml.Any value.
+fn (d Doc) ast_to_any(value ast.Node) Any {
 	// `match` isn't currently very suitable for these types of sum type constructs...
 	if value is ast.Quoted {
 		return Any((value as ast.Quoted).text)
@@ -124,16 +124,16 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 			return Any(true)
 		}
 		return Any(false)
-	} else if value is map[string]ast.Value {
-		m := (value as map[string]ast.Value)
+	} else if value is map[string]ast.Node {
+		m := (value as map[string]ast.Node)
 		mut am := map[string]Any{}
 		for k, v in m {
 			am[k] = d.ast_to_any(v)
 		}
 		return am
 		// return d.get_map_value(m, key_split[1..].join('.'))
-	} else if value is []ast.Value {
-		a := (value as []ast.Value)
+	} else if value is []ast.Node {
+		a := (value as []ast.Node)
 		mut aa := []Any{}
 		for val in a {
 			aa << d.ast_to_any(val)
@@ -173,7 +173,7 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 }
 
 // get_map_value_as_any returns the value found at `key` in the map `values` as `Any` type.
-fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
+fn (d Doc) get_map_value_as_any(values map[string]ast.Node, key string) Any {
 	key_split := key.split('.')
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
 	if key_split[0] in values.keys() {
@@ -181,8 +181,8 @@ fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
 			panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]ast.Value {
-			m := (value as map[string]ast.Value)
+		if value is map[string]ast.Node {
+			m := (value as map[string]ast.Node)
 			next_key := key_split[1..].join('.')
 			if next_key == '' {
 				return d.ast_to_any(value)

@@ -21,7 +21,7 @@ mut:
 	peek_tok  token.Token
 	skip_next bool
 	// The root map (map is called table in TOML world)
-	root_map     map[string]ast.Value
+	root_map     map[string]ast.Node
 	root_map_key string
 	// Array of Tables state
 	last_aot       string
@@ -47,8 +47,14 @@ pub fn new_parser(config Config) Parser {
 
 // init initializes the parser.
 pub fn (mut p Parser) init() ? {
-	p.root_map = map[string]ast.Value{}
+	p.root_map = map[string]ast.Node{}
 	p.next() ?
+}
+
+// validate_root validates the parsed `ast.Node` nodes in the
+// the generated AST.
+fn (mut p Parser) validate_root() ? {
+
 }
 
 // parse starts parsing the input and returns the root
@@ -56,6 +62,7 @@ pub fn (mut p Parser) init() ? {
 pub fn (mut p Parser) parse() ?&ast.Root {
 	p.init() ?
 	p.root_table() ?
+	p.validate_root() ?
 	p.ast_root.table = p.root_map
 	return p.ast_root
 }
@@ -106,9 +113,9 @@ fn (mut p Parser) expect(expected_token token.Kind) ? {
 // If some segments of the key does not exist in the root table find_table will
 // allocate a new map for each segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
+pub fn (mut p Parser) find_table() ?&map[string]ast.Node {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
-	mut t := &map[string]ast.Value{}
+	mut t := &map[string]ast.Node{}
 	unsafe {
 		t = &p.root_map
 	}
@@ -130,13 +137,13 @@ pub fn (mut p Parser) sub_table_key(key string) (string, string) {
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
+pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Node {
 	mut ky := p.root_map_key + '.' + key
 	if p.root_map_key == '' {
 		ky = key
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$ky" in map ${ptr_str(p.root_map)}')
-	mut t := &map[string]ast.Value{}
+	mut t := &map[string]ast.Node{}
 	unsafe {
 		t = &p.root_map
 	}
@@ -151,12 +158,12 @@ pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) ?&map[string]ast.Value {
+pub fn (mut p Parser) find_in_table(mut table map[string]ast.Node, key string) ?&map[string]ast.Node {
 	// NOTE This code is the result of much trial and error.
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(table)}')
-	mut t := &map[string]ast.Value{}
+	mut t := &map[string]ast.Node{}
 	unsafe {
 		t = &table
 	}
@@ -170,9 +177,9 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 						' this should never happen. Key "$k" was checked before access')
 				}
 				{
-					if val is map[string]ast.Value {
+					if val is map[string]ast.Node {
 						// unsafe {
-						t = &(t[k] as map[string]ast.Value)
+						t = &(t[k] as map[string]ast.Node)
 						//}
 					} else {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a map')
@@ -181,8 +188,8 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 			} else {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" found, allocating new map "$k" in map ${ptr_str(t)}"')
 				// unsafe {
-				t[k] = map[string]ast.Value{}
-				t = &(t[k] as map[string]ast.Value)
+				t[k] = map[string]ast.Node{}
+				t = &(t[k] as map[string]ast.Node)
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocated new map ${ptr_str(t)}"')
 				//}
 			}
@@ -207,7 +214,7 @@ pub fn (mut p Parser) sub_key() ?string {
 	return text
 }
 
-// root_table parses next tokens into the root map of `ast.Value`s.
+// root_table parses next tokens into the root map of `ast.Node`s.
 // The V `map` type is corresponding to a "table" in TOML.
 pub fn (mut p Parser) root_table() ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing root table...')
@@ -292,9 +299,9 @@ fn (mut p Parser) excerpt() string {
 	return p.scanner.excerpt(p.tok.pos, 10)
 }
 
-// inline_table parses next tokens into a map of `ast.Value`s.
+// inline_table parses next tokens into a map of `ast.Node`s.
 // The V map type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
+pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Node) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
 
 	for p.tok.kind != .eof {
@@ -357,8 +364,8 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 	}
 }
 
-// array_of_tables parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
+// array_of_tables parses next tokens into an array of `ast.Node`s.
+pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Node) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "$p.tok.kind" "$p.tok.lit"')
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
 	p.check(.lsbr) ? // '[' bracket
@@ -381,8 +388,8 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 					' this should never happen. Key "$key.str()" was checked before access')
 			}
 			{
-				if val is []ast.Value {
-					arr := &(table[key.str()] as []ast.Value)
+				if val is []ast.Node {
+					arr := &(table[key.str()] as []ast.Node)
 					arr << p.double_bracket_array() ?
 					table[key.str()] = arr
 				} else {
@@ -398,8 +405,8 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	p.last_aot_index = 0
 }
 
-// double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
-pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
+// double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Node`s...
+pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Node) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables of arrays "$p.tok.kind" "$p.tok.lit"')
 
 	key := p.key() ?
@@ -428,16 +435,16 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	unsafe {
 		// NOTE this is starting to get EVEN uglier. TOML is not at all simple at this point...
 		if p.last_aot != first {
-			table[first] = []ast.Value{}
+			table[first] = []ast.Node{}
 			p.last_aot = first
-			mut t_arr := &(table[p.last_aot] as []ast.Value)
-			t_arr << map[string]ast.Value{}
+			mut t_arr := &(table[p.last_aot] as []ast.Node)
+			t_arr << map[string]ast.Node{}
 			p.last_aot_index = 0
 		}
 
-		mut t_arr := &(table[p.last_aot] as []ast.Value)
+		mut t_arr := &(table[p.last_aot] as []ast.Node)
 		mut t_map := t_arr[p.last_aot_index]
-		mut t := &(t_map as map[string]ast.Value)
+		mut t := &(t_map as map[string]ast.Node)
 
 		if last in t.keys() {
 			if val := t[last] or {
@@ -445,8 +452,8 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 					' this should never happen. Key "$last" was checked before access')
 			}
 			{
-				if val is []ast.Value {
-					arr := &(val as []ast.Value)
+				if val is []ast.Node {
+					arr := &(val as []ast.Node)
 					arr << p.double_bracket_array() ?
 					t[last] = arr
 				} else {
@@ -460,11 +467,11 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	}
 }
 
-// array parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) double_bracket_array() ?[]ast.Value {
-	mut arr := []ast.Value{}
+// array parses next tokens into an array of `ast.Node`s.
+pub fn (mut p Parser) double_bracket_array() ?[]ast.Node {
+	mut arr := []ast.Node{}
 	for p.tok.kind in [.bare, .quoted, .boolean, .number] && p.peek_tok.kind == .assign {
-		mut tbl := map[string]ast.Value{}
+		mut tbl := map[string]ast.Node{}
 		key, val := p.key_value() ?
 		tbl[key.str()] = val
 		arr << tbl
@@ -473,17 +480,17 @@ pub fn (mut p Parser) double_bracket_array() ?[]ast.Value {
 	return arr
 }
 
-// array parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array() ?[]ast.Value {
+// array parses next tokens into an array of `ast.Node`s.
+pub fn (mut p Parser) array() ?[]ast.Node {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
-	mut arr := []ast.Value{}
+	mut arr := []ast.Node{}
 	p.expect(.lsbr) ? // '[' bracket
 	for p.tok.kind != .eof {
 		p.next() ?
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
 		match p.tok.kind {
 			.boolean {
-				arr << ast.Value(p.boolean() ?)
+				arr << ast.Node(p.boolean() ?)
 			}
 			.comma {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma array value seperator "$p.tok.lit"')
@@ -499,20 +506,20 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
 			}
 			.lcbr {
-				mut t := map[string]ast.Value{}
+				mut t := map[string]ast.Node{}
 				p.inline_table(mut t) ?
-				ast.Value(t)
+				ast.Node(t)
 			}
 			.number {
 				val := p.number_or_date() ?
 				arr << val
 			}
 			.quoted {
-				arr << ast.Value(p.quoted())
+				arr << ast.Node(p.quoted())
 			}
 			.lsbr {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "$p.tok.kind" "$p.tok.lit"')
-				arr << ast.Value(p.array() ?)
+				arr << ast.Node(p.array() ?)
 			}
 			.rsbr {
 				break
@@ -588,9 +595,9 @@ pub fn (mut p Parser) key() ?ast.Key {
 	return key
 }
 
-// key_value parse and returns a pair `ast.Key` and `ast.Value` type.
+// key_value parse and returns a pair `ast.Key` and `ast.Node` type.
 // see also `key()` and `value()`
-pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
+pub fn (mut p Parser) key_value() ?(ast.Key, ast.Node) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
 	key := p.key() ?
 	p.next() ?
@@ -600,40 +607,40 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	return key, value
 }
 
-// value parse and returns an `ast.Value` type.
+// value parse and returns an `ast.Node` type.
 // values are the token(s) appearing after an assignment operator (=).
-pub fn (mut p Parser) value() ?ast.Value {
+pub fn (mut p Parser) value() ?ast.Node {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value...')
 	// println('parsed comment "${p.tok.lit}"')
 
-	mut value := ast.Value(ast.Null{})
+	mut value := ast.Node(ast.Null{})
 
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
-	// mut value := ast.Value{}
+	// mut value := ast.Node{}
 	if p.tok.kind == .number {
 		number_or_date := p.number_or_date() ?
 		value = number_or_date
 	} else {
 		value = match p.tok.kind {
 			.quoted {
-				ast.Value(p.quoted())
+				ast.Node(p.quoted())
 			}
 			.boolean {
-				ast.Value(p.boolean() ?)
+				ast.Node(p.boolean() ?)
 			}
 			.lsbr {
-				ast.Value(p.array() ?)
+				ast.Node(p.array() ?)
 			}
 			.lcbr {
-				mut t := map[string]ast.Value{}
+				mut t := map[string]ast.Node{}
 				p.inline_table(mut t) ?
-				// table[key_str] = ast.Value(t)
-				ast.Value(t)
+				// table[key_str] = ast.Node(t)
+				ast.Node(t)
 			}
 			else {
 				error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit"')
-				ast.Value(ast.Null{}) // TODO workaround bug
+				ast.Node(ast.Null{}) // TODO workaround bug
 			}
 		}
 	}
@@ -641,25 +648,25 @@ pub fn (mut p Parser) value() ?ast.Value {
 	return value
 }
 
-// number_or_date parse and returns an `ast.Value` type as
+// number_or_date parse and returns an `ast.Node` type as
 // one of [`ast.Date`, `ast.Time`, `ast.DateTime`, `ast.Number`]
-pub fn (mut p Parser) number_or_date() ?ast.Value {
+pub fn (mut p Parser) number_or_date() ?ast.Node {
 	// Handle Date/Time
 	if p.peek_tok.kind == .minus || p.peek_tok.kind == .colon {
 		date_time_type := p.date_time() ?
 		match date_time_type {
 			ast.Date {
-				return ast.Value(date_time_type as ast.Date)
+				return ast.Node(date_time_type as ast.Date)
 			}
 			ast.Time {
-				return ast.Value(date_time_type as ast.Time)
+				return ast.Node(date_time_type as ast.Time)
 			}
 			ast.DateTime {
-				return ast.Value(date_time_type as ast.DateTime)
+				return ast.Node(date_time_type as ast.DateTime)
 			}
 		}
 	}
-	return ast.Value(p.number())
+	return ast.Node(p.number())
 }
 
 // bare parse and returns an `ast.Bare` type.
@@ -838,17 +845,17 @@ fn (mut p Parser) table_exists(key string) bool {
 	if key == '' {
 		return true // root table
 	}
-	mut t := p.root.table as map[string]ast.Value
+	mut t := p.root.table as map[string]ast.Node
 	return p.table_exists_r(key, t)
 }
 
-fn (mut p Parser) table_exists_r(key string, table map[string]ast.Value) bool {
+fn (mut p Parser) table_exists_r(key string, table map[string]ast.Node) bool {
 	ks := key.split('.')
 	for i in 0 .. ks.len {
 		k := ks[i]
 		if k in table.keys() {
 			val := table[k] or { ast.Null{} }
-			if val is map[string]ast.Value {
+			if val is map[string]ast.Node {
 				return p.table_exists_r(ks[1..].join('.'), val)
 			} else {
 				return false

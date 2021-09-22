@@ -12,7 +12,7 @@ pub struct Root {
 pub:
 	input input.Config // User input configuration
 pub mut:
-	table Value
+	table Node
 	// errors           []errors.Error    // all the checker errors in the file
 }
 
