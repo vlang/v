@@ -2,6 +2,7 @@ module transformer
 
 import v.pref
 import v.ast
+import runtime
 
 pub struct Transformer {
 	pref &pref.Preferences
@@ -46,21 +47,14 @@ fn (t Transformer) stmt(mut node ast.Stmt) {
 		ast.CompFor {}
 		ast.ConstDecl {
 			for mut field in node.fields {
-				expr := t.expr(field.expr)
-				field = ast.ConstField{
-					...(*field)
-					expr: expr
-				}
+				field.expr = t.expr(field.expr)
 			}
 		}
 		ast.DeferStmt {}
 		ast.EnumDecl {}
 		ast.ExprStmt {
 			expr := t.expr(node.expr)
-			node = &ast.ExprStmt{
-				...node
-				expr: expr
-			}
+			node.expr = expr
 		}
 		ast.FnDecl {
 			for mut stmt in node.stmts {
@@ -90,8 +84,137 @@ fn (t Transformer) stmt(mut node ast.Stmt) {
 
 fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match node {
-		ast.InfixExpr { return t.infix_expr(node) }
-		else { return node }
+		ast.InfixExpr {
+			return t.infix_expr(node)
+		}
+		ast.IfExpr {
+			if node.is_comptime {
+				return t.comp_if_expr(node)
+			}
+			return node
+		}
+		else {
+			return node
+		}
+	}
+}
+
+fn (t Transformer) comp_if_expr(node ast.IfExpr) ast.Expr {
+	for i, branch in node.branches {
+		is_else_branch := i == node.branches.len - 1 && node.has_else
+		if t.evaluate_comp_if_cond(branch.cond) || is_else_branch {
+			// TODO: return ast.Block instead
+			return ast.IfExpr{
+				is_comptime: true
+				is_expr: node.is_expr
+				branches: [
+					ast.IfBranch{
+						cond: ast.BoolLiteral{
+							val: true
+						}
+						stmts: branch.stmts
+						scope: branch.scope
+					},
+				]
+			}
+		}
+	}
+	return ast.EmptyExpr{}
+}
+
+fn (t Transformer) evaluate_comp_if_cond(cond ast.Expr) bool {
+	match cond {
+		ast.BoolLiteral {
+			return cond.val
+		}
+		ast.Ident {
+			if os := pref.os_from_string(cond.name) {
+				if os == t.pref.os {
+					return true
+				}
+			}
+			if pref.cc_from_string(cond.name) == t.pref.ccompiler_type {
+				return true
+			}
+			if arch := pref.arch_from_string(cond.name) {
+				if arch == t.pref.arch {
+					return true
+				}
+			}
+			if backend := pref.backend_from_string(cond.name) {
+				if backend == t.pref.backend {
+					return true
+				}
+			}
+			if cond.name == 'big_endian' && runtime.is_big_endian() {
+				return true
+			}
+			if cond.name == 'little_endian' && runtime.is_little_endian() {
+				return true
+			}
+			// TODO: does not work for crosscompiling
+			if cond.name == 'x64' && t.pref.m64 {
+				return true
+			}
+			if cond.name == 'x32' && !t.pref.m64 {
+				return true
+			}
+			if cond.name == 'debug' && t.pref.is_debug {
+				return true
+			}
+			if cond.name == 'prod' && t.pref.is_prod {
+				return true
+			}
+			if cond.name == 'test' && t.pref.is_test {
+				return true
+			}
+			return false
+		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				return false
+			}
+			if cond.expr is ast.Ident {
+				name := cond.expr.name
+				if name == 'gcboehm' && t.pref.gc_mode != .no_gc {
+					return true
+				}
+				if name == 'glibc' {
+					return false // currently not working
+				}
+				if name == 'prealloc' && t.pref.prealloc {
+					return true
+				}
+				if name == 'freestanding' && (t.pref.is_bare || !t.pref.output_cross_c) {
+					return true
+				}
+				if name in t.pref.compile_defines_all {
+					return true
+				}
+			}
+			return false
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				return false
+			}
+			return !t.evaluate_comp_if_cond(cond.right)
+		}
+		ast.ParExpr {
+			return t.evaluate_comp_if_cond(cond.expr)
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return t.evaluate_comp_if_cond(cond.left) && t.evaluate_comp_if_cond(cond.right)
+			}
+			if cond.op == .logical_or {
+				return t.evaluate_comp_if_cond(cond.left) || t.evaluate_comp_if_cond(cond.right)
+			}
+			return false
+		}
+		else {
+			return false
+		}
 	}
 }
 
