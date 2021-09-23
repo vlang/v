@@ -139,7 +139,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.inside_lambda = true
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0).trim_space()
+	mut s := g.go_before_stmt(0)
+	s_ends_with_ln := s.ends_with('\n')
+	s = s.trim_space()
 	// println('filter s="$s"')
 	ret_typ := g.typ(node.return_type)
 	// inp_typ := g.typ(node.receiver_type)
@@ -215,7 +217,11 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
-	g.write(s)
+	if s_ends_with_ln {
+		g.writeln(s)
+	} else {
+		g.write(s)
+	}
 	g.write(tmp)
 	g.inside_lambda = false
 }
@@ -326,7 +332,9 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0).trim_space()
+	mut s := g.go_before_stmt(0)
+	s_ends_with_ln := s.ends_with('\n')
+	s = s.trim_space()
 	// println('filter s="$s"')
 	sym := g.table.get_type_symbol(node.return_type)
 	if sym.kind != .array {
@@ -399,7 +407,11 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
-	g.write(s)
+	if s_ends_with_ln {
+		g.writeln(s)
+	} else {
+		g.write(s)
+	}
 	g.write(tmp)
 }
 
@@ -615,7 +627,9 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 
 fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0).trim_space()
+	mut s := g.go_before_stmt(0)
+	s_ends_with_ln := s.ends_with('\n')
+	s = s.trim_space()
 	sym := g.table.get_type_symbol(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
@@ -683,13 +697,19 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
-	g.write(s)
+	if s_ends_with_ln {
+		g.writeln(s)
+	} else {
+		g.write(s)
+	}
 	g.write(tmp)
 }
 
 fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
-	s := g.go_before_stmt(0).trim_space()
+	mut s := g.go_before_stmt(0)
+	s_ends_with_ln := s.ends_with('\n')
+	s = s.trim_space()
 	sym := g.table.get_type_symbol(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
@@ -757,6 +777,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
-	g.write(s)
+	if s_ends_with_ln {
+		g.writeln(s)
+	} else {
+		g.write(s)
+	}
 	g.write(tmp)
 }
