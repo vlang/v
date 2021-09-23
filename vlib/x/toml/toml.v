@@ -147,7 +147,7 @@ fn (d Doc) ast_to_any(value ast.Node) Any {
 			tim = time.parse_rfc3339(date_str) or {
 				return Any(Null{})
 				// TODO decide this
-				//panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
 				//	' failed converting "$date_str" to iso8601: $err')
 			}
 		} else if value is ast.Time {
@@ -156,7 +156,7 @@ fn (d Doc) ast_to_any(value ast.Node) Any {
 			tim = time.parse_rfc3339(time_str) or {
 				return Any(Null{})
 				// TODO decide this
-				//panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
 				//	' failed converting "$time_str" to rfc3339: $err')
 			}
 		} else {
@@ -166,7 +166,7 @@ fn (d Doc) ast_to_any(value ast.Node) Any {
 			tim = time.parse_rfc3339(datetime_str) or {
 				return Any(Null{})
 				// TODO decide this
-				//panic(@MOD + '.' + @STRUCT + '.' + @FN +
+				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
 				//	' failed converting "$datetime_str" to rfc3339: $err')
 			}
 		}
@@ -176,8 +176,8 @@ fn (d Doc) ast_to_any(value ast.Node) Any {
 	// TODO add more types
 	return Any(Null{})
 	// TODO decide this
-	//panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
-	//return Any('')
+	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
+	// return Any('')
 }
 
 // get_map_value_as_any returns the value found at `key` in the map `values` as `Any` type.
@@ -188,7 +188,7 @@ fn (d Doc) get_map_value_as_any(values map[string]ast.Node, key string) Any {
 		value := values[key_split[0]] or {
 			return Any(Null{})
 			// TODO decide this
-			//panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+			// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
 		if value is map[string]ast.Node {
@@ -203,5 +203,5 @@ fn (d Doc) get_map_value_as_any(values map[string]ast.Node, key string) Any {
 	}
 	return Any(Null{})
 	// TODO decide this
-	//panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }

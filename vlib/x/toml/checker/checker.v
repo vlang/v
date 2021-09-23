@@ -5,7 +5,7 @@ module checker
 
 import x.toml.ast
 import x.toml.ast.walker
-//import x.toml.util
+// import x.toml.util
 import x.toml.token
 import x.toml.scanner
 
@@ -45,8 +45,8 @@ fn is_hex_bin_oct(hbo string) bool {
 
 fn has_repeating(str string, repeats []rune) bool {
 	for i, r in str {
-		if r in repeats && i+1 < str.len {
-			if r == str[i+1] {
+		if r in repeats && i + 1 < str.len {
+			if r == str[i + 1] {
 				return true
 			}
 		}
@@ -63,11 +63,11 @@ fn (c Checker) check_number(num ast.Number) ? {
 	if lit.contains('_') {
 		if lit.starts_with('_') || lit.ends_with('_') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' numbers like "$lit" can not start or end with `_` in ...${c.excerpt(num.pos)}...')
+				' numbers like "$lit" can not start or end with `_` in ...${c.excerpt(num.pos)}...')
 		}
 		if lit.contains('__') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' numbers like "$lit" can not have more than one underscore (`_`) in ...${c.excerpt(num.pos)}...')
+				' numbers like "$lit" can not have more than one underscore (`_`) in ...${c.excerpt(num.pos)}...')
 		}
 	}
 
@@ -97,19 +97,19 @@ fn (c Checker) check_number(num ast.Number) ? {
 		if !hex_bin_oct {
 			if !is_float && lit[0] == `0` {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" can not start with a zero in ...${c.excerpt(num.pos)}...')
+					' numbers like "$lit" can not start with a zero in ...${c.excerpt(num.pos)}...')
 			}
 
 			if is_float && lit[0] == `0` && float_decimal_index > 1 {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" can not start with a zero in ...${c.excerpt(num.pos)}...')
+					' numbers like "$lit" can not start with a zero in ...${c.excerpt(num.pos)}...')
 			}
 		}
 	}
 
 	if has_repeating(lit, [`_`, `.`, `x`, `o`, `b`]) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" can not have $scanner.digit_extras as repeating characters in ...${c.excerpt(num.pos)}...')
+			' numbers like "$lit" can not have $scanner.digit_extras as repeating characters in ...${c.excerpt(num.pos)}...')
 	}
 
 	if hex_bin_oct {
@@ -137,7 +137,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (float) can only have one decimal point in ...${c.excerpt(num.pos)}...')
 		}
-		last := lit[lit.len-1]
+		last := lit[lit.len - 1]
 		if last in scanner.digit_extras {
 			ascii = byte(last).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
