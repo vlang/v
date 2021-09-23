@@ -236,15 +236,15 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr,...')
+			g.write('.arr.arr,...')
 			g.expr(node.right)
 			g.gen_deref_ptr(right.typ)
-			g.write('.arr')
+			g.write('.arr.arr')
 			g.write(')')
 		} else {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr,')
+			g.write('.arr.arr,')
 			g.expr(node.right)
 			g.write(')')
 		}
@@ -254,13 +254,45 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 }
 
 fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
-	l_sym := g.table.get_final_type_symbol(node.left_type)
-	r_sym := g.table.get_final_type_symbol(node.right_type)
+	l_sym := g.unwrap(node.left_type)
+	r_sym := g.unwrap(node.right_type)
 	if node.op == .not_in {
 		g.write('!')
 	}
-	g.expr(node.right)
-	g.gen_deref_ptr(node.right_type)
+	if r_sym.unaliased_sym.kind == .array {
+		fn_name := g.gen_array_contains_method(node.right_type)
+		g.write('(${fn_name}(')
+		g.expr(node.right)
+		g.gen_deref_ptr(node.right_type)
+		g.write(',')
+		g.expr(node.left)
+		g.write('))')
+		return
+	} else if r_sym.unaliased_sym.kind == .map {
+		g.expr(node.right)
+		g.gen_deref_ptr(node.right_type)
+		g.write('.map.has(')
+		g.expr(node.left)
+		if l_sym.sym.kind == .string {
+			g.write('.str')
+		} else {
+			g.write('.valueOf()')
+		}
+		g.write(')')
+	} else {
+		g.write('.str.includes(')
+		g.expr(node.right)
+		g.gen_deref_ptr(node.right_type)
+		g.expr(node.left)
+		if l_sym.sym.kind == .string {
+			g.write('.str')
+		} else {
+			g.write('.valueOf()')
+		}
+		g.write(')')
+	}
+
+	/*
 	if r_sym.kind == .map {
 		g.write('.map.has(')
 	} else if r_sym.kind == .string {
@@ -272,7 +304,7 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 	if l_sym.kind == .string {
 		g.write('.str')
 	}
-	g.write(')')
+	g.write(')')*/
 }
 
 fn (mut g JsGen) infix_is_not_is_op(node ast.InfixExpr) {

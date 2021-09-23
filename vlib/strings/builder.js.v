@@ -52,7 +52,7 @@ pub fn (mut b Builder) writeln(s string) {
 pub fn (mut b Builder) str() string {
 	s := ''
 
-	#for (const c of b.val.buf.arr)
+	#for (const c of b.val.buf.arr.arr)
 	#s.str += String.fromCharCode(+c)
 
 	return s
