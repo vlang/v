@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module parser
 
-import x.toml.ast
-import x.toml.checker
-import x.toml.util
-import x.toml.token
-import x.toml.scanner
+import toml.ast
+import toml.checker
+import toml.util
+import toml.token
+import toml.scanner
 
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also refered to as "lexing" or "tokenizing".

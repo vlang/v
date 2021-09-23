@@ -1,5 +1,5 @@
 import os
-import x.toml
+import toml
 
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (

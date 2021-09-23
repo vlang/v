@@ -1,4 +1,4 @@
-import x.toml
+import toml
 
 const (
 	toml_table_text = 'inline = {a.b = 42}

@@ -1,4 +1,4 @@
-import x.toml
+import toml
 
 const (
 	toml_multiline_text_1 = 'multi1 = """one"""

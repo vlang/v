@@ -1,4 +1,4 @@
-import x.toml
+import toml
 
 // Complete text from the example in the README.md:
 // https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example

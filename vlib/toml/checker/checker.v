@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module checker
 
-import x.toml.ast
-import x.toml.ast.walker
-// import x.toml.util
-import x.toml.token
-import x.toml.scanner
+import toml.ast
+import toml.ast.walker
+// import toml.util
+import toml.token
+import toml.scanner
 
 // Checker checks a tree of TOML `ast.Node`'s for common errors.
 pub struct Checker {

@@ -1,4 +1,4 @@
-import x.toml
+import toml
 
 const toml_text = '
 [db]

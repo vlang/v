@@ -4,11 +4,11 @@
 module toml
 
 import os
-import x.toml.ast
-import x.toml.util
-import x.toml.input
-import x.toml.scanner
-import x.toml.parser
+import toml.ast
+import toml.util
+import toml.input
+import toml.scanner
+import toml.parser
 import time
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.

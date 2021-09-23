@@ -1,6 +1,6 @@
 module walker
 
-import x.toml.ast
+import toml.ast
 
 // Visitor defines a visit method which is invoked by the walker in each node it encounters.
 pub interface Visitor {

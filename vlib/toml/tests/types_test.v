@@ -1,4 +1,4 @@
-import x.toml
+import toml
 
 fn test_string() {
 	str_value := 'test string'

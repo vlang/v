@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
-import x.toml.token
+import toml.token
 
 // Key is a sumtype representing all types of keys that
 // can be found in a TOML document.

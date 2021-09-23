@@ -1,5 +1,5 @@
-import x.toml.input
-import x.toml.scanner
+import toml.input
+import toml.scanner
 
 const scan_input = input.Config{
 	text: 'abc'

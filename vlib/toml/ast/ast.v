@@ -3,8 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
-import x.toml.input
-// import x.toml.token
+import toml.input
 
 // Root represents the root structure of any parsed TOML text snippet or file.
 [heap]

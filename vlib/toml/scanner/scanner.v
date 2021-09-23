@@ -5,9 +5,9 @@ module scanner
 
 import os
 import math.mathutil
-import x.toml.input
-import x.toml.token
-import x.toml.util
+import toml.input
+import toml.token
+import toml.util
 
 pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
 
