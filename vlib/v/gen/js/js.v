@@ -1142,7 +1142,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				}
 			}
 			mut is_ptr := false
-			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+			if stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set {
 				is_ptr = true
 				g.write('.val')
 			}
@@ -1155,7 +1155,50 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				}
 				g.write(')')
 			} else {
-				if is_assign {
+				if is_assign && array_set {
+					g.expr(left)
+					if l_sym.kind == .string {
+						g.write('.str')
+					} else {
+						g.write('.val')
+					}
+
+					match op {
+						.plus_assign {
+							g.write(' + ')
+						}
+						.minus_assign {
+							g.write(' - ')
+						}
+						.mult_assign {
+							g.write(' * ')
+						}
+						.div_assign {
+							g.write(' / ')
+						}
+						.mod_assign {
+							g.write(' % ')
+						}
+						.xor_assign {
+							g.write(' ^ ')
+						}
+						.and_assign {
+							g.write(' & ')
+						}
+						.right_shift_assign {
+							g.write(' >> ')
+						}
+						.left_shift_assign {
+							g.write(' << ')
+						}
+						.or_assign {
+							g.write(' | ')
+						}
+						else {
+							panic('unexpected op $op')
+						}
+					}
+				} else if is_assign && !array_set {
 					if l_sym.kind == .string {
 						g.write('.str')
 					} else {

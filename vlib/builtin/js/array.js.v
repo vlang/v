@@ -83,7 +83,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	}
 	mut arr := empty_array()
 	#let tmp = new Array(a.arr.arr.length * +count);
-	#tmp.fill(a.arr);
+	#tmp.fill(a.arr.arr);
 	#
 	#arr.arr.arr = flatArray(tmp,depth+1);
 
