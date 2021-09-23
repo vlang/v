@@ -167,6 +167,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -349,6 +350,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -631,6 +633,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -704,6 +707,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
