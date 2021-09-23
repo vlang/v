@@ -24,4 +24,4 @@ jobs:
         git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test
 
     - name: Run tests
-      run: ./v test vlib/x/toml
+      run: ./v -stats test vlib/x/toml
