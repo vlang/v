@@ -9,6 +9,8 @@ import x.toml.input
 import x.toml.token
 import x.toml.util
 
+pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also refered to as "lexing" or "tokenizing".
 // The Scanner methods are based on much of the work in `vlib/strings/textscanner`.
@@ -497,7 +499,13 @@ fn (mut s Scanner) extract_number() ?string {
 	s.col++
 	for s.pos < s.text.len {
 		c = s.at()
-		if !(byte(c).is_hex_digit() || c in [`_`, `.`, `x`, `o`, `b`]) {
+		// Handle signed exponent notation. I.e.: 3e2, 3E2, 3e-2, 3E+2, 3e0, 3.1e2, 3.1E2, -1E-1
+		if c in [`e`, `E`] && s.peek(1) in [`+`, `-`] && byte(s.peek(2)).is_digit() {
+			s.pos += 2
+			s.col += 2
+		}
+		c = s.at()
+		if !(byte(c).is_hex_digit() || c in scanner.digit_extras) {
 			break
 		}
 		s.pos++

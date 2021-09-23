@@ -4,7 +4,6 @@ import x.toml
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	valid_exceptions   = [
-		'float/exponent.toml',
 		'float/inf-and-nan.toml',
 		'table/array-table-array.toml',
 	]
@@ -30,42 +29,23 @@ const (
 		'string/bad-byte-escape.toml',
 		'string/basic-unknown-escape.toml',
 		// Integer
-		'integer/trailing-us-hex.toml',
-		'integer/double-us.toml',
 		'integer/capital-bin.toml',
-		'integer/us-after-bin.toml',
 		'integer/invalid-bin.toml',
-		'integer/trailing-us-oct.toml',
-		'integer/us-after-oct.toml',
 		'integer/invalid-oct.toml',
-		'integer/trailing-us.toml',
-		'integer/trailing-us-bin.toml',
-		'integer/us-after-hex.toml',
 		// Encoding
 		'encoding/bad-utf8-in-comment.toml',
 		'encoding/bad-utf8-in-string.toml',
 		// Float
 		'float/exp-double-us.toml',
-		'float/trailing-point-plus.toml',
 		'float/exp-leading-us.toml',
-		'float/trailing-point-min.toml',
 		'float/nan_underscore.toml',
 		'float/nan-incomplete-1.toml',
 		'invalid/float/exp-point-1.toml',
-		'float/exp-point-1.toml',
-		'float/double-point-2.toml',
-		'float/exp-double-e-2.toml',
 		'float/trailing-us.toml',
 		'float/us-after-point.toml',
 		'float/exp-double-e-1.toml',
 		'float/inf-incomplete-1.toml',
-		'float/exp-point-2.toml',
-		'float/double-point-1.toml',
-		'float/leading-zero.toml',
-		'float/exp-trailing-us.toml',
-		'float/trailing-point.toml',
 		'float/inf_underscore.toml',
-		'float/us-before-point.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
