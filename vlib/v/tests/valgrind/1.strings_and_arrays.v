@@ -25,6 +25,15 @@ fn return_array(array_arg []string) []int { // array argument must not be freed
 	return s
 }
 
+fn return_option(array_arg []string) ?Foo { // array argument must not be freed
+	s := get_foo() ? // escaping option must not be freed
+	return s
+}
+
+fn get_foo() ?Foo {
+	return Foo{}
+}
+
 fn handle_strings(s string, p string) int {
 	return 0
 }

@@ -3619,7 +3619,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.error('unknown type `$sym.name`', node.pos)
 			}
 			styp := g.typ(node_typ)
-			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
+			g.write('sizeof(${util.no_dots(styp)})')
 		}
 		ast.IsRefType {
 			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
