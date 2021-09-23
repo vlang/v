@@ -27,3 +27,28 @@ fn test_struct_fn_field_can_be_used_directly() {
 	eprintln(res)
 	assert res == [byte(0x88), 0x01, 0x02, 0x02, 0x99]
 }
+
+// null check test
+
+struct NullCall {
+mut:
+	nullcall fn ()
+}
+
+fn hello() {
+	println('hello world')
+}
+
+fn null_function() fn () {
+	return NullCall{}.nullcall
+}
+
+fn test_struct_fn_field_can_be_null() {
+	mut a := NullCall{hello}
+	a.nullcall()
+	a.nullcall = null_function()
+	a.nullcall() // not segfault
+	unsafe {
+		a.nullcall() // do segfault
+	}
+}
