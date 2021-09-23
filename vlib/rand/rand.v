@@ -31,6 +31,7 @@ pub interface PRNG {
 	f64n(max f64) f64
 	f32_in_range(min f32, max f32) f32
 	f64_in_range(min f64, max f64) f64
+	free()
 }
 
 __global (
@@ -40,13 +41,23 @@ __global (
 // init initializes the default RNG.
 fn init() {
 	default_rng = new_default()
+	C.atexit(deinit)
+}
+
+fn deinit() {
+	unsafe {
+		default_rng.free() // free the implementation
+		free(default_rng) // free the interface wrapper itself
+	}
 }
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
+[manualfree]
 pub fn new_default(config config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed_)
-	return rng
+	unsafe { config.seed_.free() }
+	return &PRNG(rng)
 }
 
 // get_current_rng returns the PRNG instance currently in use. If it is not changed, it will be an instance of wyrand.WyRandRNG.
