@@ -131,7 +131,49 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 			return
 		}
 		'sort' {
-			g.gen_array_sort(node)
+			g.write('array')
+			rec_sym := g.table.get_type_symbol(node.receiver_type)
+			if rec_sym.kind != .array {
+				println(node.name)
+				println(g.typ(node.receiver_type))
+				// println(rec_sym.kind)
+				verror('.sort() is an array method')
+			}
+
+			// `users.sort(a.age > b.age)`
+
+			if node.args.len == 0 {
+				g.write('_sort(')
+				g.expr(it.left)
+				mut ltyp := it.left_type
+				for ltyp.is_ptr() {
+					g.write('.val')
+					ltyp = ltyp.deref()
+				}
+
+				g.write(')')
+				return
+			} else {
+				g.expr(it.left)
+				mut ltyp := it.left_type
+				for ltyp.is_ptr() {
+					g.write('.val')
+					ltyp = ltyp.deref()
+				}
+				g.write('.')
+				infix_expr := node.args[0].expr as ast.InfixExpr
+				left_name := infix_expr.left.str()
+				is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
+					|| (left_name.starts_with('b') && infix_expr.op == .lt)
+				if is_reverse {
+					g.write('arr.sort(function (b,a) {')
+				} else {
+					g.write('arr.sort(function (a,b) {')
+				}
+				g.write('return ')
+				g.write('\$sortComparator(a,b)')
+				g.write('})')
+			}
 		}
 		else {}
 	}
@@ -208,81 +250,4 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		})
 	}
 	return fn_name
-}
-
-fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
-	rec_sym := g.table.get_type_symbol(node.receiver_type)
-	if rec_sym.kind != .array {
-		println(node.name)
-		verror('.sort() is an array method')
-	}
-
-	info := rec_sym.info as ast.Array
-
-	elem_stype := g.typ(info.elem_type)
-	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
-	mut comparison_type := g.unwrap(ast.void_type)
-	mut left_expr, mut right_expr := '', ''
-
-	if node.args.len == 0 {
-		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
-		if compare_fn in g.array_sort_fn {
-			g.gen_array_sort_call(node, compare_fn)
-			return
-		}
-
-		left_expr = 'a'
-		right_expr = 'b'
-	} else {
-		infix_expr := node.args[0].expr as ast.InfixExpr
-		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
-		left_name := infix_expr.left.str()
-		if left_name.len > 1 {
-			compare_fn += '_by' + left_name[1..].replace_each(['.', '_', '[', '_', ']', '_'])
-		}
-		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
-		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
-			|| (left_name.starts_with('b') && infix_expr.op == .lt)
-		if is_reverse {
-			compare_fn += '_reverse'
-		}
-		if compare_fn in g.array_sort_fn {
-			g.gen_array_sort_call(node, compare_fn)
-			return
-		}
-		if left_name.starts_with('a') != is_reverse {
-			left_expr = g.expr_string(infix_expr.left)
-			right_expr = g.expr_string(infix_expr.right)
-		} else {
-			left_expr = g.expr_string(infix_expr.right)
-			right_expr = g.expr_string(infix_expr.left)
-		}
-	}
-
-	// Register a new custom `compare_xxx` function for qsort()
-	// TODO: move to checker
-	g.table.register_fn(name: compare_fn, return_type: ast.int_type)
-	g.array_sort_fn[compare_fn] = true
-
-	g.definitions.writeln('function ${compare_fn}(a,b) {')
-	c_condition := if comparison_type.sym.has_method('<') {
-		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
-	} else if comparison_type.unaliased_sym.has_method('<') {
-		'${g.typ(comparison_type.unaliased)}__lt($left_expr, $right_expr)'
-	} else {
-		'${left_expr}.valueOf() < ${right_expr}.valueOf()'
-	}
-	g.definitions.writeln('\tif ($c_condition) return -1;')
-	g.definitions.writeln('\telse return 1;')
-	g.definitions.writeln('}\n')
-
-	// write call to the generated function
-	g.gen_array_sort_call(node, compare_fn)
-}
-
-fn (mut g JsGen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	g.write('v_sort(')
-	g.expr(node.left)
-	g.gen_deref_ptr(node.left_type)
-	g.write(',$compare_fn)')
 }
