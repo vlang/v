@@ -358,6 +358,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 					if ifield.has_default_expr {
 						w.expr(ifield.default_expr)
 					}
+					fsym := w.table.get_type_symbol(ifield.typ)
+					if fsym.kind == .map {
+						w.table.used_maps++
+					}
 				}
 			}
 			if node.has_update_expr {
@@ -429,6 +433,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.expr(arg.expr)
 	}
 	if node.language == .c {
+		if node.name in ['C.wyhash', 'C.wyhash64'] {
+			w.table.used_maps++
+		}
 		return
 	}
 	w.expr(node.left)
