@@ -1,4 +1,4 @@
-fn test_if_expr_with_array_call() {
+fn test_if_expr_with_array_call_all() {
 	arr := ['']
 
 	for i in arr {
@@ -14,6 +14,10 @@ fn test_if_expr_with_array_call() {
 			assert true
 		}
 	}
+}
+
+fn test_if_expr_with_array_call_any() {
+	arr := ['']
 
 	for i in arr {
 		if i.len == 0 || i[1..].bytes().any(it.is_letter()) {
@@ -28,25 +32,31 @@ fn test_if_expr_with_array_call() {
 			assert true
 		}
 	}
+}
 
-	arr2 := ['abc']
+fn test_if_expr_with_array_call_map() {
+	arr := ['abc']
 
-	if arr2.len == 1 || arr2[1].bytes().map(it.is_letter())[0] {
+	if arr.len == 1 || arr[1].bytes().map(it.is_letter())[0] {
 		println('yes')
 		assert true
 	}
 
-	if arr2.len == 1 || (arr2[1].bytes().map(it.is_letter())[0]) {
+	if arr.len == 1 || (arr[1].bytes().map(it.is_letter())[0]) {
+		println('yes')
+		assert true
+	}
+}
+
+fn test_if_expr_with_array_call_filter() {
+	arr := ['abc']
+
+	if arr.len == 1 || arr[1].bytes().filter(it.is_letter()).len == 0 {
 		println('yes')
 		assert true
 	}
 
-	if arr2.len == 1 || arr2[1].bytes().filter(it.is_letter()).len == 0 {
-		println('yes')
-		assert true
-	}
-
-	if arr2.len == 1 || (arr2[1].bytes().filter(it.is_letter()).len == 0) {
+	if arr.len == 1 || (arr[1].bytes().filter(it.is_letter()).len == 0) {
 		println('yes')
 		assert true
 	}

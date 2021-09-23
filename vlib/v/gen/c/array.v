@@ -153,7 +153,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		verror('map() requires an array')
 	}
 	g.empty_line = true
-	g.writeln('$ret_typ $tmp;')
+	noscan := g.check_noscan(ret_info.elem_type)
+	g.writeln('$ret_typ $tmp = __new_array${noscan}(0, 0, sizeof($ret_elem_type));')
 	if g.infix_left_var_name.len > 0 {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
@@ -162,7 +163,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	noscan := g.check_noscan(ret_info.elem_type)
 	g.writeln('$tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($ret_elem_type));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
@@ -336,7 +336,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
-	g.writeln('$styp $tmp;')
+	noscan := g.check_noscan(info.elem_type)
+	g.writeln('$styp $tmp = __new_array${noscan}(0, 0, sizeof($elem_type_str));')
 	if g.infix_left_var_name.len > 0 {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
@@ -345,7 +346,6 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	noscan := g.check_noscan(info.elem_type)
 	g.writeln('$tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
