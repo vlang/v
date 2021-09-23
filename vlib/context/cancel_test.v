@@ -1,3 +1,4 @@
+// vtest retry: 3
 import context
 
 // This example demonstrates the use of a cancelable context to prevent a
