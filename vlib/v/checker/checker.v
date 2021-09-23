@@ -1588,8 +1588,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				unwrapped_right_type := c.unwrap_generic(right_type)
 				if c.check_types(unwrapped_right_type, left_value_type) {
 					// []&T << T is wrong: we check for that, !(T.is_ptr()) && ?(&T).is_ptr()
-					if unwrapped_right_type.is_ptr() || left_value_type.is_ptr()
-						|| left_value_type.share() == .mut_t {
+					if !(!unwrapped_right_type.is_ptr() && left_value_type.is_ptr()
+						&& left_value_type.share() == .mut_t) {
 						return ast.void_type
 					}
 				} else if c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
