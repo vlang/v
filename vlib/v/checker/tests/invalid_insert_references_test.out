@@ -1,4 +1,4 @@
-vlib/v/checker/tests/invalid_insert_references_test.vv:8:7: error: cannot append `int literal` to `[]&int`. you can prefix the right argument with &.
+vlib/v/checker/tests/invalid_insert_references_test.vv:8:7: error: cannot append `int literal` to `[]&int`
     6 |     a << &c
     7 |     c = 2
     8 |     a << 1
