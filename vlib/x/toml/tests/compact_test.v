@@ -46,7 +46,7 @@ fn test_parse_compact_text() {
 	assert db_serv as string == '192.168.1.1'
 
 	// TODO BUG depending on WHAT directory the tests is run from, this one assert sometimes fail?!?!
-	//assert toml_doc.value('owner.name') as string == 'Tom Preston-Werner'
+	// assert toml_doc.value('owner.name') as string == 'Tom Preston-Werner'
 
 	assert toml_doc.value('database.server') as string == '192.168.1.1'
 
