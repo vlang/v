@@ -22,12 +22,6 @@ mut:
 	extra     u32
 }
 
-// free should be called when the generator is no longer needed
-[unsafe]
-pub fn (mut rng WyRandRNG) free() {
-	unsafe { free(rng) }
-}
-
 // seed sets the seed, needs only two `u32`s in little-endian format as [lower, higher].
 pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
@@ -255,4 +249,10 @@ pub fn (mut rng WyRandRNG) f64_in_range(min f64, max f64) f64 {
 		exit(1)
 	}
 	return min + rng.f64n(max - min)
+}
+
+// free should be called when the generator is no longer needed
+[unsafe]
+pub fn (mut rng WyRandRNG) free() {
+	unsafe { free(rng) }
 }
