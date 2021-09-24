@@ -246,7 +246,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
+						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -259,7 +259,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 				if var_t in ['string', 'rune'] {
 					if string_is_met {
 						var_num := var_t.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
+						verror('json: can not decode `$sym.name` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					string_is_met = true
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
@@ -273,7 +273,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
+						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t
