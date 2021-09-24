@@ -105,6 +105,9 @@ fn test_toml_file() {
 	out_path := os.join_path(os.temp_dir(), 'v_toml_tests')
 	test_file := os.join_path(out_path, 'toml_example.toml')
 	os.mkdir_all(out_path) or { assert false }
+	defer {
+		os.rmdir_all(out_path) or {}
+	}
 	os.write_file(test_file, toml_text) or { assert false }
 	toml_doc := toml.parse_file(test_file) or { panic(err) }
 
