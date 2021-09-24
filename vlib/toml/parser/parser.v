@@ -388,27 +388,28 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Node) ? {
 	p.check(.rsbr) ?
 	p.check(.rsbr) ?
 
+	key_str := key.str()
 	unsafe {
-		if key.str() in table.keys() {
-			if val := table[key.str()] or {
+		if key_str in table.keys() {
+			if val := table[key_str] or {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' this should never happen. Key "$key.str()" was checked before access')
+					' this should never happen. Key "$key_str" was checked before access')
 			}
 			{
 				if val is []ast.Node {
-					arr := &(table[key.str()] as []ast.Node)
+					arr := &(table[key_str] as []ast.Node)
 					arr << p.double_bracket_array() ?
-					table[key.str()] = arr
+					table[key_str] = arr
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' table[$key.str()] is not an array. (excerpt): "...${p.excerpt()}..."')
+						' table[$key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
 				}
 			}
 		} else {
-			table[key.str()] = p.double_bracket_array() ?
+			table[key_str] = p.double_bracket_array() ?
 		}
 	}
-	p.last_aot = key.str()
+	p.last_aot = key_str
 	p.last_aot_index = 0
 }
 

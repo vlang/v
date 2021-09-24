@@ -95,7 +95,7 @@ pub fn parse(toml string) ?Doc {
 	}
 }
 
-// value queries a value from the TOML document.
+// to_json returns a compact json string of the complete document
 pub fn (d Doc) to_json() string {
 	return d.ast.to_json()
 }
