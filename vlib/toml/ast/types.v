@@ -59,7 +59,7 @@ pub fn (dtt DateTimeType) str() string {
 pub fn (v map[string]Node) value(key string) &Node {
 	null := &Node(Null{})
 	key_split := key.split('.')
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' retreiving value at "$key"')
+	//util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' retreiving value at "$key"')
 	if key_split[0] in v.keys() {
 		value := v[key_split[0]] or {
 			return null
