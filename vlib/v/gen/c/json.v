@@ -183,17 +183,17 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		$if json_no_inline_sumtypes ? {
 			dec.writeln('\tif (strcmp("$unmangled_variant_name", root->child->string) == 0) {')
 			if is_js_prim(variant_typ) {
-				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, false)
+				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t$variant_typ value = ${js_dec_name(variant_typ)}(jsonroot_$tmp);')
 			} else if variant_sym.kind == .enum_ {
-				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, false)
+				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t$variant_typ value = ${js_dec_name('u64')}(jsonroot_$tmp);')
 			} else if variant_sym.name == 'time.Time' {
-				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, false)
+				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t$variant_typ value = time__unix(${js_dec_name('i64')}(jsonroot_$tmp));')
 			} else {
 				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp,
-					unmangled_variant_name, mut dec, false)
+					unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t$variant_typ value = *($variant_typ*)(${tmp}.data);')
 			}
 			dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&value);')
@@ -201,12 +201,9 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		} $else {
 			if variant_sym.name == 'time.Time' {
 				dec.writeln('\t\t\tif (strcmp("Time", $type_var) == 0) {')
-				gen_js_get(sym.cname, tmp, "value", mut dec, true)
+				gen_js_get(sym.cname, tmp, 'value', mut dec, true)
 				dec.writeln('\t\t\t\t$variant_typ $tmp = time__unix(${js_dec_name('i64')}(jsonroot_$tmp));')
-				dec.writeln('\t\t\t\tif (${tmp}.state != 0) {')
-				dec.writeln('\t\t\t\t\treturn (Option_$sym.cname){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
-				dec.writeln('\t\t\t\t}')
-				dec.writeln('\t\t\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(($variant_typ*)${tmp}.data);')
+				dec.writeln('\t\t\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&$tmp);')
 				dec.writeln('\t\t\t}')
 			} else if !is_js_prim(variant_typ) && variant_sym.kind != .enum_ {
 				dec.writeln('\t\t\tif (strcmp("$unmangled_variant_name", $type_var) == 0) {')
