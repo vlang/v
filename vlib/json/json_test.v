@@ -81,7 +81,7 @@ fn test_encode_decode_sumtype() ? {
 
 	assert game.title == dec.title
 	assert game.player == dec.player
-	assert (game.other[3] as Animal) == (dec.other[3] as Animal)
+	assert (game.other[2] as Animal) == (dec.other[2] as Animal)
 	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
 }
 
