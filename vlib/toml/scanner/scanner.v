@@ -253,7 +253,7 @@ pub fn (s &Scanner) at() byte {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
-	return -1
+	return byte(-1)
 }
 
 // peek returns the character code from the input text at position + `n`.
