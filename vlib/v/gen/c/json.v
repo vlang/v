@@ -133,7 +133,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		dec.writeln('\t\t\tchar* $type_var = cJSON_GetStringValue($type_tmp);')
 		// dec.writeln('\t\t\tcJSON_DeleteItemFromObjectCaseSensitive(root, "_type");')
 	}
-	
+
 	mut variant_types := []string{}
 	mut variant_symbols := []ast.TypeSymbol{}
 	mut at_least_one_prim := false
@@ -142,7 +142,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		variant_types << variant_typ
 		variant_sym := g.table.get_type_symbol(variant)
 		variant_symbols << variant_sym
-		at_least_one_prim = at_least_one_prim || is_js_prim(variant_typ) || variant_sym.kind == .enum_ || variant_sym.name == 'time.Time'
+		at_least_one_prim = at_least_one_prim || is_js_prim(variant_typ)
+			|| variant_sym.kind == .enum_ || variant_sym.name == 'time.Time'
 		unmangled_variant_name := variant_sym.name.split('.').last()
 
 		// TODO: Do not generate dec/enc for 'time.Time', because we handle it by saving it as u64
@@ -180,7 +181,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		// DECODING
 		tmp := g.new_tmp_var()
 		$if json_inline_sumtypes ? {
-			if !is_js_prim(variant_typ) && variant_sym.kind != .enum_ && variant_sym.name != 'time.Time' {
+			if !is_js_prim(variant_typ) && variant_sym.kind != .enum_
+				&& variant_sym.name != 'time.Time' {
 				dec.writeln('\t\t\tif (strcmp("$unmangled_variant_name", $type_var) == 0) {')
 				dec.writeln('\t\t\t\tOption_$variant_typ $tmp = ${js_dec_name(variant_typ)}(root);')
 				dec.writeln('\t\t\t\tif (${tmp}.state != 0) {')
@@ -201,8 +203,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, false)
 				dec.writeln('\t\t$variant_typ value = time__unix(${js_dec_name('i64')}(jsonroot_$tmp));')
 			} else {
-				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp, unmangled_variant_name, mut
-					dec, false)
+				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp,
+					unmangled_variant_name, mut dec, false)
 				dec.writeln('\t\t$variant_typ value = *($variant_typ*)(${tmp}.data);')
 			}
 			dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&value);')
@@ -216,7 +218,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 
 		mut number_is_met := false
 		mut string_is_met := false
-		mut last_number_type := ""
+		mut last_number_type := ''
 
 		if at_least_one_prim {
 			dec.writeln('\t} else {')
@@ -242,9 +244,9 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 			for i, var_t in variant_types {
 				if variant_symbols[i].kind == .enum_ {
 					if number_is_met {
-						var_num := var_t.replace('__','.')
-						last_num := last_number_type.replace('__','.')
-						verror("json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag")
+						var_num := var_t.replace('__', '.')
+						last_num := last_number_type.replace('__', '.')
+						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -256,8 +258,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 
 				if var_t in ['string', 'rune'] {
 					if string_is_met {
-						var_num := var_t.replace('__','.')
-						verror("json: can not decode `$sym.name` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag")
+						var_num := var_t.replace('__', '.')
+						verror('json: can not decode `$sym.name` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
 					}
 					string_is_met = true
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
@@ -266,11 +268,12 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					dec.writeln('\t\t}')
 				}
 
-				if var_t in ['i64', 'int', 'i8', 'u64', 'u32', 'u16', 'byte', 'u8', 'rune', 'f64', 'f32'] {
+				if var_t in ['i64', 'int', 'i8', 'u64', 'u32', 'u16', 'byte', 'u8', 'rune', 'f64',
+					'f32'] {
 					if number_is_met {
-						var_num := var_t.replace('__','.')
-						last_num := last_number_type.replace('__','.')
-						verror("json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag")
+						var_num := var_t.replace('__', '.')
+						last_num := last_number_type.replace('__', '.')
+						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v without `json_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -417,9 +420,8 @@ fn js_dec_name(typ string) string {
 }
 
 fn is_js_prim(typ string) bool {
-	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64',
-		'byte',
-	]
+	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u8', 'u16',
+		'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(value_type ast.Type) string {
