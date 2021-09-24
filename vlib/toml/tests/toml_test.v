@@ -1,14 +1,14 @@
 import os
 import toml
 
+const toml_text = os.read_file(
+	os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+	'.toml') or { panic(err) }
+
 fn test_toml() {
 	// File containing the complete text from the example in the official TOML project README.md:
 	// https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example
-
-	toml_file :=
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
-		'.toml'
-	toml_doc := toml.parse(toml_file) or { panic(err) }
+	toml_doc := toml.parse(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 
 	// NOTE Kept for easier debugging:

@@ -1,3 +1,4 @@
+import os
 import toml
 
 const (
@@ -27,23 +28,6 @@ two
 three
 four
 '''"
-
-	toml_multiline_text_3 = '# Make sure that quotes inside multiline strings are allowed, including right
-# after the opening \'\'\'/""" and before the closing \'\'\'/"""
-
-lit_one = \'\'\'\'one quote\'\'\'\'
-lit_two = \'\'\'\'\'two quotes\'\'\'\'\'
-lit_one_space = \'\'\' \'one quote\' \'\'\'
-lit_two_space = \'\'\' \'\'two quotes\'\' \'\'\'
-
-one = """"one quote""""
-two = """""two quotes"""""
-one_space = """ "one quote" """
-two_space = """ ""two quotes"" """
-
-mismatch1 = """aaa\'\'\'bbb"""
-mismatch2 = \'\'\'aaa"""bbb\'\'\'
-'
 )
 
 fn test_multiline_strings() {
@@ -68,7 +52,10 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi4')
 	assert value.string() == '\none\ntwo\nthree\nfour\n'
 
-	toml_doc = toml.parse(toml_multiline_text_3) or { panic(err) }
+	toml_file :=
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		'.toml'
+	toml_doc = toml.parse(toml_file) or { panic(err) }
 	value = toml_doc.value('lit_one')
 	assert value.string() == "'one quote'"
 	value = toml_doc.value('lit_two')
