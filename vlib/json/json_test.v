@@ -75,8 +75,9 @@ fn test_encode_decode_sumtype() ? {
 	enc := json.encode(game)
 	eprintln('Encoded Game: $enc')
 
-	dec := json.decode(SomeGame, enc) ?
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":1632501577}]}'
 
+	dec := json.decode(SomeGame, enc) ?
 	eprintln('Decoded Game: $dec')
 
 	assert game.title == dec.title
