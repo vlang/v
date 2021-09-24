@@ -1,0 +1,67 @@
+import os
+import toml
+
+const (
+	toml_multiline_text_1 = 'multi1 = """one"""
+multi2 = """one
+two"""
+multi3 = """
+one
+two
+three"""
+multi4 = """
+one
+two
+three
+four
+"""'
+	toml_multiline_text_2 = "multi1 = '''one'''
+multi2 = '''one
+two'''
+multi3 = '''
+one
+two
+three'''
+multi4 = '''
+one
+two
+three
+four
+'''"
+)
+
+fn test_multiline_strings() {
+	mut toml_doc := toml.parse(toml_multiline_text_1) or { panic(err) }
+
+	mut value := toml_doc.value('multi1')
+	assert value.string() == 'one'
+	value = toml_doc.value('multi2')
+	assert value.string() == 'one\ntwo'
+	value = toml_doc.value('multi3')
+	assert value.string() == '\none\ntwo\nthree'
+	value = toml_doc.value('multi4')
+	assert value.string() == '\none\ntwo\nthree\nfour\n'
+
+	toml_doc = toml.parse(toml_multiline_text_2) or { panic(err) }
+	value = toml_doc.value('multi1')
+	assert value.string() == 'one'
+	value = toml_doc.value('multi2')
+	assert value.string() == 'one\ntwo'
+	value = toml_doc.value('multi3')
+	assert value.string() == '\none\ntwo\nthree'
+	value = toml_doc.value('multi4')
+	assert value.string() == '\none\ntwo\nthree\nfour\n'
+
+	toml_file :=
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		'.toml'
+	toml_doc = toml.parse(toml_file) or { panic(err) }
+	value = toml_doc.value('lit_one')
+	assert value.string() == "'one quote'"
+	value = toml_doc.value('lit_two')
+	assert value.string() == "''two quotes''"
+	value = toml_doc.value('mismatch1')
+	assert value.string() == 'aaa' + "'''" + 'bbb'
+	value = toml_doc.value('mismatch2')
+	assert value.string() == 'aaa' + '"""' + 'bbb'
+}

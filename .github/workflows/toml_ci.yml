@@ -1,0 +1,27 @@
+name: toml CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  toml-module-pass-external-test-suites:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    steps:
+
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+
+    - name: Clone BurntSushi/toml-test
+      run: |
+        cd vlib/toml/tests/testdata
+        git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test
+
+    - name: Run tests
+      run: ./v -stats test vlib/toml
