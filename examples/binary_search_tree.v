@@ -1,42 +1,41 @@
 // Binary Search Tree example by @SleepyRoy
 
-// TODO: make Node.value generic once it's robust enough
 struct Empty {}
 
-struct Node {
-	value f64
-	left  Tree
-	right Tree
+struct Node<T> {
+	value T
+	left  Tree<T>
+	right Tree<T>
 }
 
-type Tree = Empty | Node
+type Tree<T> = Empty | Node<T>
 
 // return size(number of nodes) of BST
-fn size(tree Tree) int {
+fn (tree Tree<T>) size<T>() int {
 	return match tree {
 		Empty { 0 }
-		Node { 1 + size(tree.left) + size(tree.right) }
+		Node<T> { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
 // insert a value to BST
-fn insert(tree Tree, x f64) Tree {
+fn (tree Tree<T>) insert<T>(x T) Tree<T> {
 	return match tree {
 		Empty {
-			Node{x, tree, tree}
+			Node<T>{x, tree, tree}
 		}
-		Node {
+		Node<T> {
 			if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node{
+				Node<T>{
 					...tree
-					left: insert(tree.left, x)
+					left: tree.left.insert(x)
 				}
 			} else {
-				Node{
+				Node<T>{
 					...tree
-					right: insert(tree.right, x)
+					right: tree.right.insert(x)
 				}
 			}
 		}
@@ -44,80 +43,80 @@ fn insert(tree Tree, x f64) Tree {
 }
 
 // whether able to find a value in BST
-fn search(tree Tree, x f64) bool {
+fn (tree Tree<T>) search<T>(x T) bool {
 	return match tree {
 		Empty {
 			false
 		}
-		Node {
+		Node<T> {
 			if x == tree.value {
 				true
 			} else if x < tree.value {
-				search(tree.left, x)
+				tree.left.search(x)
 			} else {
-				search(tree.right, x)
+				tree.right.search(x)
 			}
 		}
 	}
 }
 
 // find the minimal value of a BST
-fn min(tree Tree) f64 {
+fn (tree Tree<T>) min<T>() T {
 	return match tree {
 		Empty {
-			1e100
+			T(1e9)
 		}
-		Node {
-			if tree.value < min(tree.left) {
+		Node<T> {
+			if tree.value < tree.left.min() {
 				tree.value
 			} else {
-				min(tree.left)
+				tree.left.min()
 			}
 		}
 	}
 }
 
 // delete a value in BST (if nonexistant do nothing)
-fn delete(tree Tree, x f64) Tree {
+fn (tree Tree<T>) delete<T>(x T) Tree<T> {
 	return match tree {
 		Empty {
 			tree
 		}
-		Node {
-			if tree.left is Node && tree.right is Node {
+		Node<T> {
+			if tree.left !is Empty && tree.right !is Empty {
 				if x < tree.value {
-					Node{
+					Node<T>{
 						...tree
-						left: delete(tree.left, x)
+						left: tree.left.delete(x)
 					}
 				} else if x > tree.value {
-					Node{
+					Node<T>{
 						...tree
-						right: delete(tree.right, x)
+						right: tree.right.delete(x)
 					}
 				} else {
-					Node{
+					Node<T>{
 						...tree
-						value: min(tree.right)
-						right: delete(tree.right, min(tree.right))
+						value: tree.right.min()
+						right: tree.right.delete(tree.right.min())
 					}
 				}
-			} else if tree.left is Node {
+			} else if tree.left !is Empty {
 				if x == tree.value {
 					tree.left
 				} else {
-					Node{
+					Node<T>{
 						...tree
-						left: delete(tree.left, x)
+						left: tree.left.delete(x)
 					}
 				}
 			} else {
 				if x == tree.value {
 					tree.right
 				} else {
-					Node{
+					Node<T>{
 						...tree
-						right: delete(tree.right, x)
+						right: tree.right.delete(x)
 					}
 				}
 			}
@@ -126,46 +125,22 @@ fn delete(tree Tree, x f64) Tree {
 }
 
 fn main() {
-	$if !freestanding {
-		mut tree := Tree(Empty{})
-		input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
-		for i in input {
-			tree = insert(tree, i)
-		}
-		println('[1] after insertion tree size is ${size(tree)}') // 11
-		del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
-		for i in del {
-			tree = delete(tree, i)
-		}
-		print('[2] after deletion tree size is ${size(tree)}, ') // 7
-		print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
-		for i in input {
-			if !search(tree, i) {
-				print('$i ')
-			}
-		}
-		println('')
-	} $else {
-		mut tree := Tree(Empty{})
-		input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
-		for i in input {
-			tree = insert(tree, i)
-		}
-		print('[1] after insertion tree size is ') // 11
-		println(size(tree))
-		del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
-		for i in del {
-			tree = delete(tree, i)
-		}
-		print('[2] after deletion tree size is ') // 7
-		print(size(tree))
-		print(', and these elements were deleted: ') // 0.0 0.3 0.6 1.0
-		for i in input {
-			if !search(tree, i) {
-				print(i)
-				print(' ')
-			}
-		}
-		println('')
+	mut tree := Tree<f64>(Empty{})
+	vals := [0.2, 0.0, 0.5, 0.3, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
+	for i in vals {
+		tree = tree.insert(i)
 	}
+	println('[1] after insertion tree size is $tree.size()') // 11
+	del_vals := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
+	for i in del_vals {
+		tree = tree.delete(i)
+	}
+	print('[2] after deletion tree size is $tree.size(), ') // 7
+	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
+	for i in vals {
+		if !tree.search(i) {
+			print('$i ')
+		}
+	}
+	println('')
 }
