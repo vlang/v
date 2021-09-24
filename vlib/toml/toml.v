@@ -109,38 +109,8 @@ pub fn (d Doc) value(key string) Any {
 
 // ast_to_any_value converts `from` ast.Node to toml.Any value.
 fn (d Doc) ast_to_any(value ast.Node) Any {
-	// `match` isn't currently very suitable for these types of sum type constructs...
-
-	if value is ast.Quoted {
-		return Any((value as ast.Quoted).text)
-	} else if value is ast.Number {
-		str := (value as ast.Number).text
-		if str.contains('.') {
-			return Any(str.f64())
-		}
-		return Any(str.i64())
-	} else if value is ast.Bool {
-		str := (value as ast.Bool).text
-		if str == 'true' {
-			return Any(true)
-		}
-		return Any(false)
-	} else if value is map[string]ast.Node {
-		m := (value as map[string]ast.Node)
-		mut am := map[string]Any{}
-		for k, v in m {
-			am[k] = d.ast_to_any(v)
-		}
-		return am
-		// return d.get_map_value(m, key_split[1..].join('.'))
-	} else if value is []ast.Node {
-		a := (value as []ast.Node)
-		mut aa := []Any{}
-		for val in a {
-			aa << d.ast_to_any(val)
-		}
-		return aa
-	} else if value is ast.Date || value is ast.Time || value is ast.DateTime {
+	// `match` isn't currently very suitable for further unwrapping sumtypes in the if's...
+	if value is ast.Date || value is ast.Time || value is ast.DateTime {
 		mut tim := time.Time{}
 		if value is ast.Date {
 			date_str := (value as ast.Date).text
@@ -174,7 +144,46 @@ fn (d Doc) ast_to_any(value ast.Node) Any {
 		return Any(tim)
 	}
 
-	// TODO add more types
+	match value {
+		ast.Quoted {
+			return Any((value as ast.Quoted).text)
+		}
+		ast.Number {
+			str := (value as ast.Number).text
+			if str.contains('.') {
+				return Any(str.f64())
+			}
+			return Any(str.i64())
+		}
+		ast.Bool {
+			str := (value as ast.Bool).text
+			if str == 'true' {
+				return Any(true)
+			}
+			return Any(false)
+		}
+		map[string]ast.Node {
+			m := (value as map[string]ast.Node)
+			mut am := map[string]Any{}
+			for k, v in m {
+				am[k] = d.ast_to_any(v)
+			}
+			return am
+			// return d.get_map_value(m, key_split[1..].join('.'))
+		}
+		[]ast.Node {
+			a := (value as []ast.Node)
+			mut aa := []Any{}
+			for val in a {
+				aa << d.ast_to_any(val)
+			}
+			return aa
+		}
+		else {
+			return Any(Null{})
+		}
+	}
+
 	return Any(Null{})
 	// TODO decide this
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
