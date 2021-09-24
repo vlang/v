@@ -43,7 +43,7 @@ pub mut:
 	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
-	inside_lambda      bool
+	in_lambda_depth    int
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = voidptr(0)
@@ -1539,9 +1539,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	}
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
-			f.inside_lambda = true
+			f.in_lambda_depth++
 			defer {
-				f.inside_lambda = false
+				f.in_lambda_depth--
 			}
 		}
 		if node.left is ast.Ident {
@@ -1724,7 +1724,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 	}
 	f.write_language_prefix(node.language)
-	if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
+	if node.name == 'it' && f.it_name != '' && f.inside_lambda == 0 { // allow `it` in lambdas
 		f.write(f.it_name)
 	} else if node.kind == .blank_ident {
 		f.write('_')
