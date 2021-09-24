@@ -1,5 +1,5 @@
 struct Test {
-	fn_test fn(x int, y [10]int, z []int) bool = fixed_array_fn
+	fn_test fn (x int, y [10]int, z []int) bool = fixed_array_fn
 }
 
 fn fixed_array_fn(x int, y [10]int, z []int) bool {
