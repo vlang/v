@@ -59,11 +59,11 @@ pub fn (dtt DateTimeType) str() string {
 pub fn (v map[string]Node) value(key string) &Node {
 	null := &Node(Null{})
 	key_split := key.split('.')
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' retreiving value at "$key"')
 	if key_split[0] in v.keys() {
 		value := v[key_split[0]] or {
 			return null
-			// return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+			// TODO return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
 		if value is map[string]Node {
@@ -77,13 +77,12 @@ pub fn (v map[string]Node) value(key string) &Node {
 		return &value
 	}
 	return null
-	// return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// TODO return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
 
 // value queries a value from the map.
 pub fn (v map[string]Node) exists(key string) bool {
 	key_split := key.split('.')
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
 	if key_split[0] in v.keys() {
 		value := v[key_split[0]] or { return false }
 		// `match` isn't currently very suitable for these types of sum type constructs...

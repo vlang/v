@@ -846,31 +846,3 @@ pub fn (mut p Parser) eof() ast.EOF {
 		pos: p.tok.position()
 	}
 }
-
-/*
-fn (mut p Parser) table_exists(key string) bool {
-	if key == '' {
-		return true // root table
-	}
-	mut t := p.root.table as map[string]ast.Node
-	return p.table_exists_r(key, t)
-}
-
-fn (mut p Parser) table_exists_r(key string, table map[string]ast.Node) bool {
-	ks := key.split('.')
-	for i in 0 .. ks.len {
-		k := ks[i]
-		if k in table.keys() {
-			val := table[k] or { ast.Null{} }
-			if val is map[string]ast.Node {
-				return p.table_exists_r(ks[1..].join('.'), val)
-			} else {
-				return false
-			}
-		} else {
-			return false
-		}
-	}
-	return true
-}
-*/
