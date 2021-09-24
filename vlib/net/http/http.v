@@ -80,6 +80,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 	)
 }
 
+[params]
 pub struct PostMultipartFormConfig {
 pub mut:
 	form   map[string]string
