@@ -1724,7 +1724,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 	}
 	f.write_language_prefix(node.language)
-	if node.name == 'it' && f.it_name != '' && f.inside_lambda == 0 { // allow `it` in lambdas
+	if node.name == 'it' && f.it_name != '' && f.in_lambda_depth == 0 { // allow `it` in lambdas
 		f.write(f.it_name)
 	} else if node.kind == .blank_ident {
 		f.write('_')
