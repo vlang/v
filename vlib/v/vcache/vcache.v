@@ -42,12 +42,17 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	dlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	if !os.is_dir(vcache_basepath) {
 		os.mkdir_all(vcache_basepath) or { panic(err) }
+		dlog(@FN, 'created folder:\n    $vcache_basepath')
+	}
+	readme_file := os.join_path(vcache_basepath, 'README.md')
+	if !os.is_file(readme_file) {
 		readme_content := 'This folder contains cached build artifacts from the V build system.
 		|You can safely delete it, if it is getting too large.
 		|It will be recreated the next time you compile something with V.
 		|You can change its location with the VCACHE environment variable.
 		'.strip_margin()
-		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content) or { panic(err) }
+		os.write_file(readme_file, readme_content) or { panic(err) }
+		dlog(@FN, 'created readme_file:\n    $readme_file')
 	}
 	original_vopts := opts.join('|')
 	return CacheManager{
@@ -118,14 +123,21 @@ pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
 	return content
 }
 
-const process_pid = os.getpid()
-
+[if trace_use_cache ?]
 pub fn dlog(fname string, s string) {
-	$if trace_use_cache ? {
-		if fname[0] != `|` {
-			eprintln('> VCache | pid: $vcache.process_pid | CacheManager.$fname $s')
-		} else {
-			eprintln('> VCache | pid: $vcache.process_pid $fname $s')
-		}
+	pid := unsafe { mypid() }
+	if fname[0] != `|` {
+		eprintln('> VCache | pid: $pid | CacheManager.$fname $s')
+	} else {
+		eprintln('> VCache | pid: $pid $fname $s')
 	}
+}
+
+[unsafe]
+fn mypid() int {
+	mut static pid := 0
+	if pid == 0 {
+		pid = os.getpid()
+	}
+	return pid
 }

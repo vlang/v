@@ -174,6 +174,7 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 				continue
 			}
+			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
