@@ -50,7 +50,7 @@ enum Animal {
 	cat
 }
 
-type Entity = Human | Item | string | time.Time
+type Entity = Animal | Human | Item | string | time.Time
 
 struct SomeGame {
 	title  string
@@ -65,7 +65,7 @@ fn test_encode_decode_sumtype() ? {
 		other: [
 			Entity(Item{'Pen'}),
 			Item{'Cookie'},
-			'Some',
+			Animal.cat,
 			'Stool',
 			time.now(),
 		]
@@ -81,6 +81,7 @@ fn test_encode_decode_sumtype() ? {
 
 	assert game.title == dec.title
 	assert game.player == dec.player
+	assert (game.other[3] as Animal) == (dec.other[3] as Animal)
 	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
 }
 

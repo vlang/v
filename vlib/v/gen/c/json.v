@@ -201,7 +201,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		} $else {
 			if variant_sym.name == 'time.Time' {
 				dec.writeln('\t\t\tif (strcmp("Time", $type_var) == 0) {')
-				gen_js_get(variant_typ, tmp, "value", mut dec, true)
+				gen_js_get(sym.cname, tmp, "value", mut dec, true)
 				dec.writeln('\t\t\t\t$variant_typ $tmp = time__unix(${js_dec_name('i64')}(jsonroot_$tmp));')
 				dec.writeln('\t\t\t\tif (${tmp}.state != 0) {')
 				dec.writeln('\t\t\t\t\treturn (Option_$sym.cname){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
