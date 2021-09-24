@@ -110,6 +110,7 @@ pub fn (d Doc) value(key string) Any {
 // ast_to_any_value converts `from` ast.Node to toml.Any value.
 fn (d Doc) ast_to_any(value ast.Node) Any {
 	// `match` isn't currently very suitable for these types of sum type constructs...
+
 	if value is ast.Quoted {
 		return Any((value as ast.Quoted).text)
 	} else if value is ast.Number {
