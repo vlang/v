@@ -7,8 +7,26 @@ struct array_buffer {
 	index_start int
 	len         int
 	cap         int
+	has_slice   bool
 }
 
+fn (mut a array_buffer) make_copy() {
+	if a.index_start != 0 || a.has_slice {
+		mut new_arr := JS.makeEmtpyJSArray()
+		for mut i in 0 .. a.len {
+			#new_arr.push(a.val.get(i))
+
+			mut x := i
+			x = x
+		}
+		new_arr = new_arr
+		#a.val.arr = new_arr
+		#a.val.index_start = new int(0)
+		#a.val.has_slice = new bool(false)
+	}
+}
+
+#array_buffer.prototype.make_copy = function() { return array_buffer_make_copy(this) }
 // TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
 fn (a array_buffer) get(ix int) voidptr {
 	mut res := voidptr(0)
@@ -82,11 +100,18 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		panic('array.repeat: count is negative: $count')
 	}
 	mut arr := empty_array()
-	#let tmp = new Array(a.arr.arr.length * +count);
-	#tmp.fill(a.arr.arr);
-	#
-	#arr.arr.arr = flatArray(tmp,depth+1);
 
+	if a.len > 0 {
+		for _ in 0 .. count {
+			for i in 0 .. a.len {
+				if depth > 0 {
+					// TODO
+				} else {
+					arr.push(a.arr.get(i))
+				}
+			}
+		}
+	}
 	return arr
 }
 
@@ -112,8 +137,10 @@ pub fn (a array) repeat(count int) array {
 }
 
 #function makeEmptyArray() { return new array(new array_buffer({})); }
+#function makeEmtpyJSArray() { return new Array(); }
 
 fn JS.makeEmptyArray() array
+fn JS.makeEmtpyJSArray() JS.Array
 fn empty_array() array {
 	return JS.makeEmptyArray()
 }
@@ -123,15 +150,7 @@ fn (a &array) set_len(i int) {
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	for i := 0; i < a.len; i++ {
-		#if (compare(a[i],a[i-1]).valueOf())
-
-		{
-			tmp := a[i]
-			a[i] = a[i - 1]
-			a[i - 1] = tmp
-		}
-	}
+	v_sort(mut a, compare)
 }
 
 pub fn (mut a array) sort_with_compare_old(compare voidptr) {
@@ -157,11 +176,13 @@ pub fn (a array) slice(start int, end int) array {
 	mut result := a
 	#let slice = a.arr.arr.slice(start,end)
 	#result = new array(new array_buffer({arr: a.arr.arr, len: new int(slice.length),cap: new int(slice.length),index_start: new int(start)}))
+	#a.arr.has_slice = true
 
 	return result
 }
 
 pub fn (mut a array) insert(i int, val voidptr) {
+	#a.val.arr.make_copy()
 	#a.val.arr.arr.splice(i,0,val)
 }
 
@@ -176,14 +197,15 @@ pub fn (mut a array) join(separator string) string {
 	return res
 }
 
-fn (a array) push(val voidptr) {
-	#a.arr.push(val)
+fn (mut a array) push(val voidptr) {
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.push(val)
 }
 
 fn v_filter(arr array, callback fn (voidptr) bool) array {
 	mut filtered := empty_array()
 
-	for i := 0; i < arr.len; i++ {
+	for i := 0; i < arr.arr.len; i++ {
 		if callback(arr.arr.get(i)) {
 			filtered.push(arr.arr.get(i))
 		}
@@ -194,7 +216,7 @@ fn v_filter(arr array, callback fn (voidptr) bool) array {
 fn v_map(arr array, callback fn (voidptr) voidptr) array {
 	mut maped := empty_array()
 
-	for i := 0; i < arr.len; i++ {
+	for i := 0; i < arr.arr.len; i++ {
 		maped.push(callback(arr.arr.get(i)))
 	}
 
@@ -251,6 +273,7 @@ pub fn (mut a array) delete(i int) {
 
 // delete_many deletes `size` elements beginning with index `i`
 pub fn (mut a array) delete_many(i int, size int) {
+	#a.val.arr.make_copy()
 	#a.val.arr.arr.splice(i.valueOf(),size.valueOf())
 }
 
@@ -282,9 +305,12 @@ pub fn (mut a array) reverse_in_place() {
 // resulting in a single output value.
 pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
-	#for (let i = 0;i < a.arr.length;i++)  {
+	/*#for (let i = 0;i < a.arr.length;i++)  {
 	#accum_ = iter(accum_, a.arr[i])
-	#}
+	#}*/
+	for i in 0 .. a.len {
+		accum_ = iter(accum_, a.get(i))
+	}
 
 	return accum_
 }
