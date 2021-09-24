@@ -27,11 +27,9 @@ fn (c Checker) visit(node &ast.Node) ? {
 			c.check_boolean(node) ?
 		}
 		else {
-			// println('ok')
+			// TODO add more checks to make BurntSushi/toml-test invalid TOML pass
 		}
 	}
-	// if node is
-	// return error('Hep')
 }
 
 // excerpt returns a string of the characters surrounding`
