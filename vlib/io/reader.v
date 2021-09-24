@@ -9,6 +9,11 @@ pub interface Reader {
 	read(mut buf []byte) ?int
 }
 
+pub interface MutReader {
+mut:
+	read(mut buf []byte) ?int
+}
+
 const (
 	read_all_len      = 10 * 1024
 	read_all_grow_len = 1024

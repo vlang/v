@@ -1,4 +1,5 @@
 interface Iter<T> {
+mut:
 	next() ?T
 }
 
@@ -24,7 +25,7 @@ fn iter<T>(arr []T) Iter<T> {
 }
 
 fn test_generics_fn_return_generic_interface() {
-	x := iter([1, 2, 3])
+	mut x := iter([1, 2, 3])
 	println(x)
 	y := x.next() or { 0 }
 	println(y)

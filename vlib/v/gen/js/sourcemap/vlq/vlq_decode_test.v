@@ -44,7 +44,7 @@ fn (mut b TestReader) read(mut buf []byte) ?int {
 	return n
 }
 
-fn make_test_reader(data string) io.Reader {
+fn make_test_reader(data string) io.MutReader {
 	buf := &TestReader{
 		bytes: data.bytes()
 	}
