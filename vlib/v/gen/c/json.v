@@ -125,7 +125,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 	typ := sym.idx
 
 	// DECODING (inline)
-	$if json_inline_sumtypes ? {
+	$if !json_inline_sumtypes ? {
 		type_tmp := g.new_tmp_var()
 		dec.writeln('\tif (cJSON_IsObject(root)) {')
 		dec.writeln('\t\tcJSON* $type_tmp = js_get(root, "_type");')
@@ -155,7 +155,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 
 		// ENCODING
 		enc.writeln('\tif (val._typ == $variant) {')
-		$if json_inline_sumtypes ? {
+		$if !json_inline_sumtypes ? {
 			if is_js_prim(variant_typ) {
 				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*val._$variant_typ);')
 			} else if variant_sym.kind == .enum_ {
@@ -180,7 +180,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 
 		// DECODING
 		tmp := g.new_tmp_var()
-		$if json_inline_sumtypes ? {
+		$if !json_inline_sumtypes ? {
 			if !is_js_prim(variant_typ) && variant_sym.kind != .enum_
 				&& variant_sym.name != 'time.Time' {
 				dec.writeln('\t\t\tif (strcmp("$unmangled_variant_name", $type_var) == 0) {')
@@ -213,7 +213,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 	}
 
 	// DECODING (inline)
-	$if json_inline_sumtypes ? {
+	$if !json_inline_sumtypes ? {
 		dec.writeln('\t\t}')
 
 		mut number_is_met := false
