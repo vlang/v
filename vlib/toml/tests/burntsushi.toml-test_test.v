@@ -1,6 +1,11 @@
 import os
 import toml
 
+// Instructions for developers:
+// The actual tests and data can be obtained by doing:
+// `cd vlib/toml/tests && mkdir testdata && cd testdata`
+// `git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test`
+// See also the CI toml tests
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	valid_exceptions   = [
@@ -109,10 +114,7 @@ const (
 	]
 )
 
-// Run though 'testdata/toml-test/tests' if found.
-// The actual tests and data can be obtained by doing:
-// `cd testdata`
-// `git clone git@github.com:BurntSushi/toml-test.git burntsushi/toml-test`
+// test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
 fn test_burnt_sushi_tomltest() {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'burntsushi', 'toml-test',

@@ -47,7 +47,7 @@ fn test_toml() {
 	// assert false
 
 	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		os.real_path(os.join_path(os.dir(@FILE), os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 
 	title := toml_doc.value('title')
@@ -119,7 +119,7 @@ fn test_toml_file() {
 	// assert false
 
 	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		os.real_path(os.join_path(os.dir(@FILE), os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }
 
@@ -127,7 +127,7 @@ fn test_toml_parse_text() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		os.real_path(os.join_path(os.dir(@FILE), os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }
 
@@ -135,6 +135,6 @@ fn test_toml_parse() {
 	toml_doc := toml.parse(toml_text) or { panic(err) }
 	toml_json := toml_doc.to_json()
 	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		os.real_path(os.join_path(os.dir(@FILE), os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }

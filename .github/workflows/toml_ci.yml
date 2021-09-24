@@ -20,7 +20,7 @@ jobs:
 
     - name: Clone BurntSushi/toml-test
       run: |
-        cd vlib/toml/tests/testdata
+        cd vlib/toml/tests && mkdir testdata && cd testdata
         git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test
 
     - name: Run tests
