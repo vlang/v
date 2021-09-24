@@ -196,7 +196,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter'] {
+			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
@@ -387,7 +387,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter'] {
+			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
@@ -678,7 +678,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter'] {
+			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
@@ -761,7 +761,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter'] {
+			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
