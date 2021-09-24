@@ -1,1 +1,0 @@
-{ "v": true, "animal": { "type": { "name": "pug" } }, "inline": { "a": 4, "b.c": 6, "b": { "c": 7 } }, "db": { "t": true }, "ij": { "a": { "i": 1, "j": 2 }, "b": { "i": "3", "j": "4" } }, "fruit": { "apple": { "color": "red", "taste": { "sweet": true }, "texture": { "smooth": true } } } }
