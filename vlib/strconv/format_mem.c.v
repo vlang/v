@@ -297,10 +297,10 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 }
 
 // strings.Builder version of format_fl
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
 	unsafe {		
-		fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
+		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
 
 		// error!!
 		if fs[0] == `[` {
@@ -343,6 +343,7 @@ pub fn format_fl(f f64, p BF_param) string {
 				
 			}
 		}
+
 		// copy the float
 		vmemcpy(&buf[buf_i], fs.str, fs.len)
 		buf_i += fs.len
@@ -373,65 +374,74 @@ pub fn format_fl(f f64, p BF_param) string {
 	}
 }
 
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe {
-		mut s := ''
 		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
 		if p.rm_tail_zero {
+			tmp := fs
 			fs = remove_tail_zeros(fs)
+			tmp.free()
 		}
-		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut buf := [64]u8{} // write temp float buffer in stack
+		mut out := [64]u8{} // out buffer
+		mut buf_i := 0 // index temporary string
+		mut out_i := 0 // index output string
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_b(`+`)
+					out[out_i] = `+`
+					out_i++
 					sign_len_diff = -1
 				}
 			} else {
-				res.write_b(`-`)
+				out[out_i] = `-`
+				out_i++
 				sign_len_diff = -1
 			}
-			tmp := s
-			s = fs.clone()
-			tmp.free()
 		} else {
 			if p.positive {
 				if p.sign_flag {
-					tmp := s
-					s = '+' + fs
-					tmp.free()
-				} else {
-					tmp := s
-					s = fs.clone()
-					tmp.free()
-				}
+					buf[buf_i] = `+`
+					buf_i++
+				} 
 			} else {
-				tmp := s
-				s = '-' + fs
-				tmp.free()
+				buf[buf_i] = `-`
+				buf_i++
+				
 			}
 		}
 
-		dif := p.len0 - s.len + sign_len_diff
+		// copy the float
+		vmemcpy(&buf[buf_i], fs.str, fs.len)
+		buf_i += fs.len
+
+		// make the padding if needed
+		dif := p.len0 - buf_i + sign_len_diff
 		if p.allign == .right {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
-		res.write_string(s)
+		vmemcpy(&out[out_i], &buf[0], buf_i)
+		out_i += buf_i
 		if p.allign == .left {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
-		s.free()
-		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
+		out[out_i] = 0
+
+		// return and free
+		tmp := fs
+		fs = tos_clone(&out[0])
+		tmp.free()
+		return fs
 	}
 }
 
