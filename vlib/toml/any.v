@@ -5,7 +5,7 @@ module toml
 
 import time
 
-// Pretty much all json2 types plus time.Time
+// Pretty much all the same builtin types as the `json2.Any` type plus `time.Time`
 pub type Any = Null
 	| []Any
 	| bool

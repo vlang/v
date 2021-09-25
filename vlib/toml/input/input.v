@@ -11,6 +11,8 @@ pub:
 	file_path string // '/path/to/file.toml'
 }
 
+// validate returns an optional error if more than one of the fields
+// in `Config` has a non-default value (empty string).
 pub fn (c Config) validate() ? {
 	if c.file_path != '' && c.text != '' {
 		error(@MOD + '.' + @FN +

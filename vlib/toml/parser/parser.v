@@ -9,9 +9,7 @@ import toml.util
 import toml.token
 import toml.scanner
 
-// Scanner contains the necessary fields for the state of the scan process.
-// the task the scanner does is also refered to as "lexing" or "tokenizing".
-// The Scanner methods are based on much of the work in `vlib/strings/textscanner`.
+// Parser contains the necessary fields for keeping the state of the parsing process.
 pub struct Parser {
 pub:
 	config Config
@@ -31,8 +29,8 @@ mut:
 	ast_root &ast.Root = &ast.Root{}
 }
 
-// Config is used to configure a Scanner instance.
-// Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
+// Config is used to configure a Parser instance.
+// `run_checks` is used to en- or disable running of the strict `checker.Checker` type checks.
 pub struct Config {
 pub:
 	scanner    &scanner.Scanner
@@ -116,10 +114,11 @@ fn (mut p Parser) expect(expected_token token.Kind) ? {
 	}
 }
 
-// find_table returns a reference to a map if found in the root table given a "dotted" key ('a.b.c').
+// find_table returns a reference to a map if found in the *root* table given a "dotted" key (`a.b.c`).
 // If some segments of the key does not exist in the root table find_table will
 // allocate a new map for each segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+// See also `find_in_table`.
 pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
 	mut t := &map[string]ast.Value{}
@@ -133,6 +132,8 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 	return p.find_in_table(mut t, p.root_map_key)
 }
 
+// sub_table_key returns the logic parts of a dotted key (`a.b.c`) for
+// use with the `find_sub_table` method.
 pub fn (mut p Parser) sub_table_key(key string) (string, string) {
 	mut ks := key.split('.')
 	last := ks.last()
@@ -140,10 +141,11 @@ pub fn (mut p Parser) sub_table_key(key string) (string, string) {
 	return ks.join('.'), last
 }
 
-// find_sub_table returns a reference to a map if found in `table` given a "dotted" key ('aa.bb.cc').
-// If some segments of the key does not exist in the input map find_in_table will
+// find_sub_table returns a reference to a map if found in the *root* table given a "dotted" key (`a.b.c`).
+// If some segments of the key does not exist in the input map find_sub_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+// See also `find_in_table`.
 pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
 	mut ky := p.root_map_key + '.' + key
 	if p.root_map_key == '' {
@@ -161,7 +163,7 @@ pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
 	return p.find_in_table(mut t, ky)
 }
 
-// find_in_table returns a reference to a map if found in `table` given a "dotted" key ('aa.bb.cc').
+// find_in_table returns a reference to a map if found in `table` given a "dotted" key (`a.b.c`).
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
@@ -206,6 +208,8 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 	return t
 }
 
+// sub_key parses next tokens as sub/nested keys. This is the also referred to as
+// a "dotted" key (`a.b.c`). sub_key returns a string in dotted form.
 pub fn (mut p Parser) sub_key() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key...')
 	key := p.key() ?

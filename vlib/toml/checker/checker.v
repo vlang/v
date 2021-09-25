@@ -14,6 +14,8 @@ pub struct Checker {
 	scanner &scanner.Scanner
 }
 
+// check checks the `ast.Value` and all it's children
+// for common errors.
 pub fn (c Checker) check(n &ast.Value) ? {
 	walker.walk(c, n) ?
 }
