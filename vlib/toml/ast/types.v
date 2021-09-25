@@ -13,11 +13,19 @@ pub fn (k Key) str() string {
 	return k.text
 }
 
-// Node is a sumtype representing all possible value types
+// Value is a sumtype representing all possible value types
 // found in a TOML document.
-pub type Node = Bool | Date | DateTime | Null | Number | Quoted | Time | []Node | map[string]Node
+pub type Value = Bool
+	| Date
+	| DateTime
+	| Null
+	| Number
+	| Quoted
+	| Time
+	| []Value
+	| map[string]Value
 
-pub fn (v Node) to_json() string {
+pub fn (v Value) to_json() string {
 	match v {
 		Quoted, Date, DateTime, Time {
 			return '"$v.text"'
@@ -25,7 +33,7 @@ pub fn (v Node) to_json() string {
 		Bool, Null, Number {
 			return v.text
 		}
-		map[string]Node {
+		map[string]Value {
 			mut str := '{'
 			for key, val in v {
 				str += ' "$key": $val.to_json(),'
@@ -34,7 +42,7 @@ pub fn (v Node) to_json() string {
 			str += ' }'
 			return str
 		}
-		[]Node {
+		[]Value {
 			mut str := '['
 			for val in v {
 				str += ' $val.to_json(),'
@@ -56,8 +64,8 @@ pub fn (dtt DateTimeType) str() string {
 
 // value queries a value from the map.
 // `key` should be in "dotted" form e.g.: `"a.b.c.d"`
-pub fn (v map[string]Node) value(key string) &Node {
-	null := &Node(Null{})
+pub fn (v map[string]Value) value(key string) &Value {
+	null := &Value(Null{})
 	key_split := key.split('.')
 	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' retreiving value at "$key"')
 	if key_split[0] in v.keys() {
@@ -66,8 +74,8 @@ pub fn (v map[string]Node) value(key string) &Node {
 			// TODO return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 		}
 		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Node {
-			m := (value as map[string]Node)
+		if value is map[string]Value {
+			m := (value as map[string]Value)
 			next_key := key_split[1..].join('.')
 			if next_key == '' {
 				return &value
@@ -81,13 +89,13 @@ pub fn (v map[string]Node) value(key string) &Node {
 }
 
 // value queries a value from the map.
-pub fn (v map[string]Node) exists(key string) bool {
+pub fn (v map[string]Value) exists(key string) bool {
 	key_split := key.split('.')
 	if key_split[0] in v.keys() {
 		value := v[key_split[0]] or { return false }
 		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Node {
-			m := (value as map[string]Node)
+		if value is map[string]Value {
+			m := (value as map[string]Value)
 			next_key := key_split[1..].join('.')
 			if next_key == '' {
 				return true

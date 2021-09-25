@@ -2,12 +2,12 @@ module walker
 
 import toml.ast
 
-// Visitor defines a visit method which is invoked by the walker in each node it encounters.
+// Visitor defines a visit method which is invoked by the walker in each Value node it encounters.
 pub interface Visitor {
-	visit(node &ast.Node) ?
+	visit(value &ast.Value) ?
 }
 
-pub type InspectorFn = fn (node &ast.Node, data voidptr) ?
+pub type InspectorFn = fn (value &ast.Value, data voidptr) ?
 
 struct Inspector {
 	inspector_callback InspectorFn
@@ -15,23 +15,23 @@ mut:
 	data voidptr
 }
 
-pub fn (i &Inspector) visit(node &ast.Node) ? {
-	i.inspector_callback(node, i.data) or { return err }
+pub fn (i &Inspector) visit(value &ast.Value) ? {
+	i.inspector_callback(value, i.data) or { return err }
 }
 
-// inspect traverses and checks the AST node on a depth-first order and based on the data given
-pub fn inspect(node &ast.Node, data voidptr, inspector_callback InspectorFn) ? {
-	walk(Inspector{inspector_callback, data}, node) ?
+// inspect traverses and checks the AST Value node on a depth-first order and based on the data given
+pub fn inspect(value &ast.Value, data voidptr, inspector_callback InspectorFn) ? {
+	walk(Inspector{inspector_callback, data}, value) ?
 }
 
 // walk traverses the AST using the given visitor
-pub fn walk(visitor Visitor, node &ast.Node) ? {
-	if node is map[string]ast.Node {
-		n := node as map[string]ast.Node
-		for _, nn in n {
-			walk(visitor, &nn) ?
+pub fn walk(visitor Visitor, value &ast.Value) ? {
+	if value is map[string]ast.Value {
+		value_map := value as map[string]ast.Value
+		for _, val in value_map {
+			walk(visitor, &val) ?
 		}
 	} else {
-		visitor.visit(node) ?
+		visitor.visit(value) ?
 	}
 }

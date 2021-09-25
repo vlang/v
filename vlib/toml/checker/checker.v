@@ -9,22 +9,22 @@ import toml.ast.walker
 import toml.token
 import toml.scanner
 
-// Checker checks a tree of TOML `ast.Node`'s for common errors.
+// Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
 	scanner &scanner.Scanner
 }
 
-pub fn (c Checker) check(n &ast.Node) ? {
+pub fn (c Checker) check(n &ast.Value) ? {
 	walker.walk(c, n) ?
 }
 
-fn (c Checker) visit(node &ast.Node) ? {
-	match node {
+fn (c Checker) visit(value &ast.Value) ? {
+	match value {
 		ast.Number {
-			c.check_number(node) ?
+			c.check_number(value) ?
 		}
 		ast.Bool {
-			c.check_boolean(node) ?
+			c.check_boolean(value) ?
 		}
 		else {
 			// TODO add more checks to make BurntSushi/toml-test invalid TOML pass
