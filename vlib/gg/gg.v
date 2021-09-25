@@ -63,9 +63,10 @@ pub:
 	resized_fn FNEvent   = voidptr(0)
 	scroll_fn  FNEvent   = voidptr(0)
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen   bool
-	scale        f32 = 1.0
-	sample_count int
+	fullscreen    bool
+	scale         f32 = 1.0
+	sample_count  int
+	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
 	// ved needs this
 	// init_text bool
 	font_path             string

@@ -198,6 +198,7 @@ pub fn new_context(cfg Config) &Context {
 		enable_dragndrop: cfg.enable_dragndrop
 		max_dropped_files: cfg.max_dropped_files
 		max_dropped_file_path_length: cfg.max_dropped_file_path_length
+		swap_interval: cfg.swap_interval
 	}
 	g.window = window
 	return g
