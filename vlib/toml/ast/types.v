@@ -15,7 +15,15 @@ pub fn (k Key) str() string {
 
 // Value is a sumtype representing all possible value types
 // found in a TOML document.
-pub type Value = Bool | Date | DateTime | Null | Number | Quoted | Time | []Value | map[string]Value
+pub type Value = Bool
+	| Date
+	| DateTime
+	| Null
+	| Number
+	| Quoted
+	| Time
+	| []Value
+	| map[string]Value
 
 pub fn (v Value) to_json() string {
 	match v {
