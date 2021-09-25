@@ -67,9 +67,9 @@ pub fn parse_text(text string) ?Doc {
 	}
 }
 
-// parse parses the TOML document provided in `input`.
-// parse automatically try to determine if the type of `input` is a file or text.
-// For explicit parsing of input see `parse_file` or `parse_text`.
+// parse parses the TOML document provided in `toml`.
+// parse automatically try to determine if the type of `toml` is a file or text.
+// For explicit parsing of input types see `parse_file` or `parse_text`.
 pub fn parse(toml string) ?Doc {
 	mut input_config := input.Config{}
 	if !toml.contains('\n') && os.is_file(toml) {
@@ -95,7 +95,7 @@ pub fn parse(toml string) ?Doc {
 	}
 }
 
-// to_json returns a compact json string of the complete document
+// to_json returns a compact json string of the complete document.
 pub fn (d Doc) to_json() string {
 	return d.ast.to_json()
 }
@@ -119,7 +119,7 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 				return Any(Null{})
 				// TODO decide this
 				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				//	' failed converting "$date_str" to iso8601: $err')
+				//	' failed converting "$date_str" to rfc3339: $err')
 			}
 		} else if value is ast.Time {
 			time_str := (value as ast.Time).text
