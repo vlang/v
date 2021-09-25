@@ -37,7 +37,7 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 const (
 	max_size_f64_char = 32 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, 32 is faster for the memory manger
 	// digit pairs in reverse order
-	digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
+	digit_pairs       = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
 // format_dec_sb format a u64
@@ -300,7 +300,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 // strings.Builder version of format_fl
 [direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
-	unsafe {		
+	unsafe {
 		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
 
 		// error!!
@@ -314,8 +314,8 @@ pub fn format_fl(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [max_size_f64_char]u8{} // out buffer
+		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [strconv.max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -337,11 +337,10 @@ pub fn format_fl(f f64, p BF_param) string {
 				if p.sign_flag {
 					buf[buf_i] = `+`
 					buf_i++
-				} 
+				}
 			} else {
 				buf[buf_i] = `-`
 				buf_i++
-				
 			}
 		}
 
@@ -385,8 +384,8 @@ pub fn format_es(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [max_size_f64_char]u8{} // out buffer
+		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [strconv.max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -408,11 +407,10 @@ pub fn format_es(f f64, p BF_param) string {
 				if p.sign_flag {
 					buf[buf_i] = `+`
 					buf_i++
-				} 
+				}
 			} else {
 				buf[buf_i] = `-`
 				buf_i++
-				
 			}
 		}
 
