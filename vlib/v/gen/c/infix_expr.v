@@ -646,7 +646,7 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 // infix_expr_and_or_op generates code for `&&` and `||`
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 	if node.right is ast.IfExpr {
-		// b := a && if true { a = false ...} else {...}
+		// `b := a && if true { a = false ...} else {...}`
 		prev_inside_ternary := g.inside_ternary
 		g.inside_ternary = 0
 		if g.need_tmp_var_in_if(node.right) {
@@ -666,11 +666,15 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		}
 		g.inside_ternary = prev_inside_ternary
 	} else if g.need_tmp_var_in_array_call(node.right) {
-		// if a == 0 || arr.any(it.is_letter())
+		// `if a == 0 || arr.any(it.is_letter()) {...}`
 		tmp := g.new_tmp_var()
 		cur_line := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
-		g.write('bool $tmp = (')
+		if g.infix_left_var_name.len > 0 {
+			g.write('bool $tmp = (($g.infix_left_var_name) $node.op.str() ')
+		} else {
+			g.write('bool $tmp = (')
+		}
 		g.expr(node.left)
 		g.writeln(');')
 		g.stmt_path_pos << g.out.len
