@@ -383,7 +383,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			}
 			.si_f64 {
 				$if !nofloat ? {
-					//println("HERE: f64")
+					// println("HERE: f64")
 					if use_default_str {
 						mut f := data.d.d_f64.str()
 						if upper_case {
@@ -394,7 +394,6 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 						sb.write_string(f)
 						f.free()
 					} else {
-						//println("NO Default str!")
 						if data.d.d_f64 < 0 {
 							bf.positive = false
 						}
