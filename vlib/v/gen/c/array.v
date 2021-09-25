@@ -157,7 +157,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.empty_line = true
 	noscan := g.check_noscan(ret_info.elem_type)
 	g.writeln('$ret_typ $tmp = __new_array${noscan}(0, 0, sizeof($ret_elem_type));')
-	if g.infix_left_var_name.len > 0 {
+	has_infix_left_var_name := g.infix_left_var_name.len > 0
+	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
 	}
@@ -215,7 +216,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	if g.infix_left_var_name.len > 0 {
+	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
 	}
@@ -348,7 +349,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.empty_line = true
 	noscan := g.check_noscan(info.elem_type)
 	g.writeln('$styp $tmp = __new_array${noscan}(0, 0, sizeof($elem_type_str));')
-	if g.infix_left_var_name.len > 0 {
+	has_infix_left_var_name := g.infix_left_var_name.len > 0
+	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
 	}
@@ -407,7 +409,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	if g.infix_left_var_name.len > 0 {
+	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
 	}
@@ -640,7 +642,8 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
 	g.writeln('bool $tmp = false;')
-	if g.infix_left_var_name.len > 0 {
+	has_infix_left_var_name := g.infix_left_var_name.len > 0
+	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
 	}
@@ -699,7 +702,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	if g.infix_left_var_name.len > 0 {
+	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
 	}
@@ -722,7 +725,8 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
 	g.writeln('bool $tmp = true;')
-	if g.infix_left_var_name.len > 0 {
+	has_infix_left_var_name := g.infix_left_var_name.len > 0
+	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.indent++
 	}
@@ -782,7 +786,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
 	}
-	if g.infix_left_var_name.len > 0 {
+	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
 	}
