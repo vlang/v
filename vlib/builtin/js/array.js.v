@@ -118,7 +118,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // last returns the last element of the array.
 pub fn (a array) last() voidptr {
 	mut res := voidptr(0)
-	#res = a.arr.get(a.len-1);
+	#res = a.arr.get(new int(a.len-1));
 
 	return res
 }
@@ -317,14 +317,15 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 
 pub fn (mut a array) pop() voidptr {
 	mut res := voidptr(0)
-	#res = a.val.arr.pop()
+	#a.val.arr.make_copy()
+	#res = a.val.arr.arr.pop()
 
 	return res
 }
 
 pub fn (a array) first() voidptr {
 	mut res := voidptr(0)
-	#res = a.arr[0]
+	#res = a.arr.get(new int(0))
 
 	return res
 }

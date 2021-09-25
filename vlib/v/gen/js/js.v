@@ -1129,7 +1129,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						g.write('.valueOf()')
 					}
 					array_set = true
-					g.write('.arr.set(')
+					if g.table.get_type_symbol(left.left_type).kind == .map {
+						g.write('.map.set(')
+					} else {
+						g.write('.arr.set(')
+					}
 					g.write('new int(')
 					g.cast_stack << ast.int_type_idx
 					g.expr(left.index)
@@ -2684,20 +2688,17 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			continue
 		}
 		expr := it.exprs[i]
-		fmt := it.fmts[i]
-		fwidth := it.fwidths[i]
-		precision := it.precisions[i]
+		// fmt := it.fmts[i]
+		// fwidth := it.fwidths[i]
+		// precision := it.precisions[i]
 		g.write('\${')
-		if fmt != `_` || fwidth != 0 || precision != 987698 {
-			// TODO: Handle formatting
-			g.expr(expr)
-		} else {
-			sym := g.table.get_type_symbol(it.expr_types[i])
-			g.expr(expr)
+		typ := g.unwrap_generic(it.expr_types[i])
+		/*
+		g.expr(expr)
 			if sym.kind == .struct_ && sym.has_method('str') {
 				g.write('.str()')
-			}
-		}
+			}*/
+		g.gen_expr_to_string(expr, typ)
 		g.write('}')
 	}
 	g.write('`')

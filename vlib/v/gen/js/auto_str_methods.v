@@ -517,7 +517,7 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 		} else if sym.kind in [.f32, .f64] {
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(a.arr.get(new int(i)).val.toString()) );')
 		} else if sym.kind == .string {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr.get(new int(i)).str);')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr.get(new int(i)));')
 		} else if sym.kind == .rune {
 			// tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
 			// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')

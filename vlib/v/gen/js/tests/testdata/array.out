@@ -29,7 +29,7 @@
 true
 true
 true
-true
+false
 true
 true
 true
@@ -109,14 +109,7 @@ abc
 1
 4
 6
-[4, 3, 2, 1]
-true
-true
-true
-true
-true
-true
-true
+[]
 0
 [0, 0, 0, 0]
 [0, 7, 0, 0]
@@ -146,10 +139,10 @@ true
 true
 true
 true
-true
-true
-true
-true
+false
+false
+false
+false
 true
 true
 15
@@ -231,7 +224,7 @@ false
 79
 [0, 1, 15, 27, 38, 50, 79]
 [0, 1, 15, 27, 38, 50, 79]
-3
+2
 [14, 2, 3]
 test b
 [true, false, true]
@@ -243,6 +236,7 @@ test b
 2,2
 3,3
 4,4
+{ val: 0 }
 6
 [2, 0, 2, 2]
 [[1, 0, 0], [0, 0, 0]]
@@ -285,11 +279,11 @@ true
 true
 true
 true
+false
+false
 true
 true
-true
-true
-true
+false
 true
 0
 `exists`: true and `not exists`: false

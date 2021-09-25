@@ -29,19 +29,22 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a, v) {')
 		fn_builder.writeln('\tlet pelem = a.arr;')
-		fn_builder.writeln('\tfor (let i = 0; i < pelem.length; ++i) {')
+		fn_builder.writeln('\tfor (let i = 0; i < pelem.arr.length; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (pelem[i].str == v.str) {')
+			fn_builder.writeln('\t\tif (pelem.get(new int(i)).str == v.str) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_array_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(pelem.get(new int(i)), v).val) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif ( vEq(pelem[i], v)) {')
+			fn_builder.writeln('\t\tif (pelem.get(new int(i)) == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_map_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(pelem.get(new int(i)), v).val) {')
 		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_struct_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(pelem.get(new int(i)), v)) {')
 		} else {
-			fn_builder.writeln('\t\tif (pelem[i].valueOf() == v.valueOf()) {')
+			fn_builder.writeln('\t\tif (vEq(pelem.get(new int(i)), v)) {')
 		}
 		fn_builder.writeln('\t\t\treturn new int(i);')
 		fn_builder.writeln('\t\t}')

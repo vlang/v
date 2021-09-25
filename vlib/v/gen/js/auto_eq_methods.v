@@ -281,7 +281,7 @@ fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 		g.definitions.writeln(fn_builder.str())
 	}
 	fn_builder.writeln('function ${ptr_styp}_map_eq(a,b) {')
-	fn_builder.writeln('\tif (a.map.size() != b.map.size()) {')
+	fn_builder.writeln('\tif (a.map.size != b.map.size) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\tfor (let [key,value] of a.map) {')
