@@ -484,3 +484,27 @@ pub fn (b byte) str_escaped() string {
 	}
 	return str
 }
+
+// Define this on byte as well, so that we can do `s[0].is_capital()`
+pub fn (c byte) is_capital() bool {
+	return c >= `A` && c <= `Z`
+}
+
+pub fn (b []byte) clone() []byte {
+	mut res := []byte{len: b.len}
+	// mut res := make([]byte, {repeat:b.len})
+	for i in 0 .. b.len {
+		res[i] = b[i]
+	}
+	return res
+}
+
+// TODO: remove this once runes are implemented
+pub fn (b []byte) bytestr() string {
+	unsafe {
+		buf := malloc_noscan(b.len + 1)
+		vmemcpy(buf, b.data, b.len)
+		buf[b.len] = 0
+		return tos(buf, b.len)
+	}
+}
