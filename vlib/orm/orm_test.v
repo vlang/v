@@ -8,6 +8,7 @@ struct Module {
 	id           int    [primary; sql: serial]
 	name         string
 	nr_downloads int
+	test_id      u64
 	user         User
 }
 
@@ -33,7 +34,7 @@ fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
 	sql db {
-		create table User
+		create table Module
 	}
 
 	name := 'Peter'
@@ -313,4 +314,20 @@ fn test_orm_sqlite() {
 	}
 
 	assert data.len == 1
+
+	mod := Module{}
+
+	sql db {
+		insert mod into Module
+	}
+
+	sql db {
+		update Module set test_id = 11 where id == 1
+	}
+
+	test_id_mod := sql db {
+		select from Module where id == 1
+	}
+
+	assert test_id_mod.test_id == 11
 }
