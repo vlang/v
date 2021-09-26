@@ -42,7 +42,7 @@ pub fn (s string) bool() bool {
 
 pub fn (s string) split(dot string) []string {
 	mut arr := s.str.split(dot.str).map(string(it))
-	#arr = new array(arr)
+	#arr = new array(new array_buffer({arr,index_start: new int(0),len: new int(arr.length)}))
 
 	return arr
 }

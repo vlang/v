@@ -482,7 +482,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
 		if is_varg {
-			g.writeln('$arg_name = new array($arg_name);')
+			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			if arg.typ.is_ptr() || arg.is_mut {
 				g.writeln('$arg_name = new \$ref($arg_name)')

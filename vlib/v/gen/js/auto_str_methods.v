@@ -444,7 +444,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 	if sym.kind == .function {
 		g.definitions.writeln('\t\tlet it = ${elem_str_fn_name}();')
 	} else {
-		g.definitions.writeln('\t\tlet it = a.arr[i];')
+		g.definitions.writeln('\t\tlet it = a.arr.get(new int(i));')
 
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
@@ -506,23 +506,23 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
 				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-				g.definitions.writeln('\t\tif ( 0 == a.arr[i] ) {')
+				g.definitions.writeln('\t\tif ( 0 == a.arr.get(new int(i)) ) {')
 				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, new string("0"));')
 				g.definitions.writeln('\t\t}else{')
-				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i] $deref) );')
+				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) $deref) );')
 				g.definitions.writeln('\t\t}')
 			} else {
-				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i]) );')
+				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i))) );')
 			}
 		} else if sym.kind in [.f32, .f64] {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(a.arr[i].val.toString()) );')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(a.arr.get(new int(i)).val.toString()) );')
 		} else if sym.kind == .string {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr[i].str);')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr.get(new int(i)));')
 		} else if sym.kind == .rune {
 			// tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
 			// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 		} else {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr[i] $deref));')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) $deref));')
 		}
 	}
 	g.definitions.writeln('\t\tif (i < ${info.size - 1}) {')

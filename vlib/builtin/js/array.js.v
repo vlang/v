@@ -1,10 +1,67 @@
 module builtin
 
+/// Internal representation of `array` type. It is used to implement slices and to make slices behave correctly
+/// it simply stores reference to original array and to index them properly it does index array relative to `index_start`.
+struct array_buffer {
+	arr         JS.Array
+	index_start int
+	len         int
+	cap         int
+	has_slice   bool
+}
+
+fn (mut a array_buffer) make_copy() {
+	if a.index_start != 0 || a.has_slice {
+		mut new_arr := JS.makeEmtpyJSArray()
+		for mut i in 0 .. a.len {
+			#new_arr.push(a.val.get(i))
+
+			mut x := i
+			x = x
+		}
+		new_arr = new_arr
+		#a.val.arr = new_arr
+		#a.val.index_start = new int(0)
+		#a.val.has_slice = new bool(false)
+	}
+}
+
+#array_buffer.prototype.make_copy = function() { return array_buffer_make_copy(this) }
+// TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
+fn (a array_buffer) get(ix int) voidptr {
+	mut res := voidptr(0)
+	#res = a.arr[a.index_start.val + ix.val];
+
+	return res
+}
+
+fn (mut a array_buffer) set(ix int, val voidptr) {
+	#a.val.arr[a.val.index_start.valueOf() + ix.valueOf()] = val;
+}
+
+#array_buffer.prototype.get = function(ix) { return array_buffer_get(this,ix);}
+#array_buffer.prototype.set = function(ix,val) { array_buffer_set(this,ix,val); }
+
 struct array {
-	arr JS.Array
+	arr array_buffer
 pub:
 	len int
 	cap int
+}
+
+fn v_sort(mut arr array, comparator fn (voidptr, voidptr) int) {
+	mut need_iter := true
+	for need_iter {
+		need_iter = false
+		for i := 1; i < arr.len; i++ {
+			if comparator(arr[i], arr[i - 1]) != 1 {
+				tmp := arr[i]
+				arr[i] = arr[i - 1]
+				arr[i - 1] = tmp
+				need_iter = true
+			}
+		}
+	}
 }
 
 #function flatIntoArray(target, source, sourceLength, targetIndex, depth) {
@@ -43,25 +100,32 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		panic('array.repeat: count is negative: $count')
 	}
 	mut arr := empty_array()
-	#let tmp = new Array(a.arr.length * +count);
-	#tmp.fill(a.arr);
-	#
-	#arr.arr = flatArray(tmp,depth+1);
 
+	if a.len > 0 {
+		for _ in 0 .. count {
+			for i in 0 .. a.len {
+				if depth > 0 {
+					// TODO
+				} else {
+					arr.push(a.arr.get(i))
+				}
+			}
+		}
+	}
 	return arr
 }
 
 // last returns the last element of the array.
 pub fn (a array) last() voidptr {
 	mut res := voidptr(0)
-	#res = a.arr[a.len-1];
+	#res = a.arr.get(new int(a.len-1));
 
 	return res
 }
 
 fn (a array) get(ix int) voidptr {
 	mut result := voidptr(0)
-	#result = a.arr[ix]
+	#result = a.arr.get(ix)
 
 	return result
 }
@@ -72,28 +136,34 @@ pub fn (a array) repeat(count int) array {
 	}
 }
 
-fn empty_array() array {
-	mut arr := array{}
-	#arr = new array([])
+#function makeEmptyArray() { return new array(new array_buffer({})); }
+#function makeEmtpyJSArray() { return new Array(); }
 
-	return arr
+fn JS.makeEmptyArray() array
+fn JS.makeEmtpyJSArray() JS.Array
+fn empty_array() array {
+	return JS.makeEmptyArray()
 }
 
 fn (a &array) set_len(i int) {
-	#a.arr.length=i
+	#a.arr.arr.length=i
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	#a.val.arr.sort(compare)
+	v_sort(mut a, compare)
+}
+
+pub fn (mut a array) sort_with_compare_old(compare voidptr) {
+	#a.val.arr.arr.sort(compare)
 }
 
 pub fn (mut a array) sort() {
-	#a.val.arr.sort($sortComparator)
+	#a.val.arr.arr.sort($sortComparator)
 }
 
 pub fn (a array) index(v string) int {
 	for i in 0 .. a.len {
-		#if (a.arr[i].toString() == v.toString())
+		#if (a.arr.get(i).toString() == v.toString())
 
 		{
 			return i
@@ -104,39 +174,80 @@ pub fn (a array) index(v string) int {
 
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
-	#result = new array(a.arr.slice(start,end))
+	#let slice = a.arr.arr.slice(start,end)
+	#result = new array(new array_buffer({arr: a.arr.arr, len: new int(slice.length),cap: new int(slice.length),index_start: new int(start)}))
+	#a.arr.has_slice = true
 
 	return result
 }
 
 pub fn (mut a array) insert(i int, val voidptr) {
-	#a.val.arr.splice(i,0,val)
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.splice(i,0,val)
 }
 
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
-	#a.val.arr.splice(i,0,...val.slice(0,+size))
+	#a.val.arr.arr.splice(i,0,...val.arr.slice(0,+size))
 }
 
 pub fn (mut a array) join(separator string) string {
 	mut res := ''
-	#res = new string(a.val.arr.join(separator +''));
+	#res = new string(a.val.arr.arr.join(separator +''));
 
 	return res
 }
 
-fn (a array) push(val voidptr) {
-	#a.arr.push(val)
+fn (mut a array) push(val voidptr) {
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.push(val)
 }
 
-#array.prototype[Symbol.iterator] = function () { return this.arr[Symbol.iterator](); }
-#array.prototype.entries = function () { let result = []; for (const [key,val] of this.arr.entries()) { result.push([new int(key), val]); } return result[Symbol.iterator](); }
-#array.prototype.map = function(callback) { return new array(this.arr.map(callback)); }
-#array.prototype.filter = function(callback) { return new array(this.arr.filter( function (it) { return (+callback(it)) != 0; } )); }
+fn v_filter(arr array, callback fn (voidptr) bool) array {
+	mut filtered := empty_array()
+
+	for i := 0; i < arr.arr.len; i++ {
+		if callback(arr.arr.get(i)) {
+			filtered.push(arr.arr.get(i))
+		}
+	}
+	return filtered
+}
+
+fn v_map(arr array, callback fn (voidptr) voidptr) array {
+	mut maped := empty_array()
+
+	for i := 0; i < arr.arr.len; i++ {
+		maped.push(callback(arr.arr.get(i)))
+	}
+
+	return maped
+}
+
+struct array_iterator {
+	ix  int
+	end int
+	arr JS.Array
+}
+
+#array_iterator.prototype.next = function () {
+#if (this.ix.val < this.end.val) {
+#this.ix.val++;
+#return {done: false, value: this.arr.arr.get(new int(this.ix.val-1))}
+#} else {
+#return {done: true, value: undefined}
+#}
+#}
+#array_iterator.prototype[Symbol.iterator] = function () { return this; }
+
+#array.prototype[Symbol.iterator] = function () { console.log(this.arr.index_start); return new array_iterator({ix: new int(0),end: new int(this.arr.len),arr: this}); }
+#array.prototype.entries = function () { let result = []; for (let key = this.arr.index_start.val;key < this.arr.len.val;key++) { result.push([new int(key), this.arr.get(new int(key))]); } return result[Symbol.iterator](); }
+#array.prototype.map = function(callback) { return v_map(this,callback); }
+#array.prototype.filter = function(callback) { return v_filter(this,callback); }
 #Object.defineProperty(array.prototype,'cap',{ get: function () { return this.len; } })
 #array.prototype.any = function (value) {
 #let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
-#for (let i = 0;i < this.arr.length;i++)
-#if (val(this.arr[i]))
+#for (let i = 0;i < this.arr.arr.length;i++)
+#if (val(this.arr.get(i)))
 #return true;
 #
 #return false;
@@ -144,12 +255,17 @@ fn (a array) push(val voidptr) {
 
 #array.prototype.all = function (value) {
 #let val ;if (typeof value == 'function') { val = function (x) { return value(x); } } else { val = function (x) { return vEq(x,value); } }
-#for (let i = 0;i < this.arr.length;i++)
-#if (!val(this.arr[i]))
+#for (let i = 0;i < this.arr.arr.length;i++)
+#if (!val(this.arr.get(i)))
 #return false;
 #
 #return true;
 #}
+//#Object.defineProperty(array_buffer.prototype,"len", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } })
+//#Object.defineProperty(array_buffer.prototype,"cap", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } })
+#
+#
+#function v_makeSlice(array) { Object.defineProperty(array,'len', {get: function() { return this.arr.len; }, set: function(l) { this.arr.len = l; }}) }
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
@@ -157,7 +273,8 @@ pub fn (mut a array) delete(i int) {
 
 // delete_many deletes `size` elements beginning with index `i`
 pub fn (mut a array) delete_many(i int, size int) {
-	#a.val.arr.splice(i.valueOf(),size.valueOf())
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.splice(i.valueOf(),size.valueOf())
 }
 
 // prepend prepends one value to the array.
@@ -172,48 +289,52 @@ pub fn (mut a array) prepend_many(val voidptr, size int) {
 }
 
 pub fn (a array) reverse() array {
-	mut res := array{}
-	#res.arr = Array.from(a.arr).reverse()
+	mut res := empty_array()
+	#res.arr.arr = Array.from(a.arr).reverse()
 
 	return res
 }
 
 pub fn (mut a array) reverse_in_place() {
-	#a.val.arr.reverse()
+	#a.val.arr.arr.reverse()
 }
 
-#array.prototype.$includes = function (elem) { return this.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
+#array.prototype.$includes = function (elem) { return this.arr.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
 
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
-	#for (let i = 0;i < a.arr.length;i++)  {
+	/*#for (let i = 0;i < a.arr.length;i++)  {
 	#accum_ = iter(accum_, a.arr[i])
-	#}
+	#}*/
+	for i in 0 .. a.len {
+		accum_ = iter(accum_, a.get(i))
+	}
 
 	return accum_
 }
 
 pub fn (mut a array) pop() voidptr {
 	mut res := voidptr(0)
-	#res = a.val.arr.pop()
+	#a.val.arr.make_copy()
+	#res = a.val.arr.arr.pop()
 
 	return res
 }
 
 pub fn (a array) first() voidptr {
 	mut res := voidptr(0)
-	#res = a.arr[0]
+	#res = a.arr.get(new int(0))
 
 	return res
 }
 
 #array.prototype.toString = function () {
 #let res = "["
-#for (let i = 0; i < this.arr.length;i++) {
-#res += this.arr[i].toString();
-#if (i != this.arr.length-1)
+#for (let i = 0; i < this.arr.arr.length;i++) {
+#res += this.arr.get(i).toString();
+#if (i != this.arr.arr.length-1)
 #res += ', '
 #}
 #res += ']'
@@ -221,16 +342,11 @@ pub fn (a array) first() voidptr {
 #
 #}
 
-pub fn (a array) contains(key voidptr) bool {
-	#for (let i = 0; i < a.arr.length;i++)
-	#if (vEq(a.arr[i],key)) return new bool(true);
-
-	return false
-}
+pub fn (a array) contains(key voidptr) bool
 
 // delete_last effectively removes last element of an array.
 pub fn (mut a array) delete_last() {
-	#a.val.arr.pop();
+	#a.val.arr.arr.pop();
 }
 
 [unsafe]
@@ -240,7 +356,7 @@ pub fn (a &array) free() {
 // todo: once (a []byte) will work rewrite this
 pub fn (a array) bytestr() string {
 	res := ''
-	#a.arr.forEach((item) => res.str += String.fromCharCode(+item))
+	#a.arr.arr.forEach((item) => res.str += String.fromCharCode(+item))
 
 	return res
 }

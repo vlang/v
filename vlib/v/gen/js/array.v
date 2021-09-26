@@ -29,19 +29,22 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a, v) {')
 		fn_builder.writeln('\tlet pelem = a.arr;')
-		fn_builder.writeln('\tfor (let i = 0; i < pelem.length; ++i) {')
+		fn_builder.writeln('\tfor (let i = 0; i < pelem.arr.length; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (pelem[i].str == v.str) {')
+			fn_builder.writeln('\t\tif (pelem.get(new int(i)).str == v.str) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_array_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(pelem.get(new int(i)), v).val) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif ( vEq(pelem[i], v)) {')
+			fn_builder.writeln('\t\tif (pelem.get(new int(i)) == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_map_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(pelem.get(new int(i)), v).val) {')
 		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif (vEq(pelem[i], v)) {')
+			ptr_typ := g.gen_struct_equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(pelem.get(new int(i)), v)) {')
 		} else {
-			fn_builder.writeln('\t\tif (pelem[i].valueOf() == v.valueOf()) {')
+			fn_builder.writeln('\t\tif (vEq(pelem.get(new int(i)), v)) {')
 		}
 		fn_builder.writeln('\t\t\treturn new int(i);')
 		fn_builder.writeln('\t\t}')
@@ -131,49 +134,7 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 			return
 		}
 		'sort' {
-			g.write('array')
-			rec_sym := g.table.get_type_symbol(node.receiver_type)
-			if rec_sym.kind != .array {
-				println(node.name)
-				println(g.typ(node.receiver_type))
-				// println(rec_sym.kind)
-				verror('.sort() is an array method')
-			}
-
-			// `users.sort(a.age > b.age)`
-
-			if node.args.len == 0 {
-				g.write('_sort(')
-				g.expr(it.left)
-				mut ltyp := it.left_type
-				for ltyp.is_ptr() {
-					g.write('.val')
-					ltyp = ltyp.deref()
-				}
-
-				g.write(')')
-				return
-			} else {
-				g.expr(it.left)
-				mut ltyp := it.left_type
-				for ltyp.is_ptr() {
-					g.write('.val')
-					ltyp = ltyp.deref()
-				}
-				g.write('.')
-				infix_expr := node.args[0].expr as ast.InfixExpr
-				left_name := infix_expr.left.str()
-				is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
-					|| (left_name.starts_with('b') && infix_expr.op == .lt)
-				if is_reverse {
-					g.write('arr.sort(function (b,a) {')
-				} else {
-					g.write('arr.sort(function (a,b) {')
-				}
-				g.write('return ')
-				g.write('\$sortComparator(a,b)')
-				g.write('})')
-			}
+			g.gen_array_sort(node)
 		}
 		else {}
 	}
@@ -219,17 +180,20 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		fn_builder.writeln('function ${fn_name}(a,v) {')
 		fn_builder.writeln('\tfor (let i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (a.arr[i].str ==  v.str) {')
+			fn_builder.writeln('\t\tif (a.arr.arr[i].str ==  v.str) {')
 		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
-			fn_builder.writeln('\t\tif (vEq(a.arr[i], v)) {')
+			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a.arr.arr[i],v)) {')
 		} else if elem_sym.kind == .function {
-			fn_builder.writeln('\t\tif (a.arr[i] == v) {')
+			fn_builder.writeln('\t\tif (a.arr.arr[i] == v) {')
 		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
-			fn_builder.writeln('\t\tif (vEq(a.arr[i], v)) {')
+			ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a.arr.arr[i],v)) {')
 		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
-			fn_builder.writeln('\t\tif (vEq(a.arr[i],v)) {')
+			ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a.arr.arr[i],v)) {')
 		} else {
-			fn_builder.writeln('\t\tif (a.arr[i].valueOf() == v.valueOf()) {')
+			fn_builder.writeln('\t\tif (vEq(a.arr.arr[i],v)) {')
 		}
 		fn_builder.writeln('\t\t\treturn new bool(true);')
 		fn_builder.writeln('\t\t}')
@@ -247,4 +211,81 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		})
 	}
 	return fn_name
+}
+
+fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
+	rec_sym := g.table.get_type_symbol(node.receiver_type)
+	if rec_sym.kind != .array {
+		println(node.name)
+		verror('.sort() is an array method')
+	}
+
+	info := rec_sym.info as ast.Array
+
+	elem_stype := g.typ(info.elem_type)
+	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
+	mut comparison_type := g.unwrap(ast.void_type)
+	mut left_expr, mut right_expr := '', ''
+
+	if node.args.len == 0 {
+		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
+		if compare_fn in g.array_sort_fn {
+			g.gen_array_sort_call(node, compare_fn)
+			return
+		}
+
+		left_expr = 'a'
+		right_expr = 'b'
+	} else {
+		infix_expr := node.args[0].expr as ast.InfixExpr
+		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
+		left_name := infix_expr.left.str()
+		if left_name.len > 1 {
+			compare_fn += '_by' + left_name[1..].replace_each(['.', '_', '[', '_', ']', '_'])
+		}
+		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
+		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
+			|| (left_name.starts_with('b') && infix_expr.op == .lt)
+		if is_reverse {
+			compare_fn += '_reverse'
+		}
+		if compare_fn in g.array_sort_fn {
+			g.gen_array_sort_call(node, compare_fn)
+			return
+		}
+		if left_name.starts_with('a') != is_reverse {
+			left_expr = g.expr_string(infix_expr.left)
+			right_expr = g.expr_string(infix_expr.right)
+		} else {
+			left_expr = g.expr_string(infix_expr.right)
+			right_expr = g.expr_string(infix_expr.left)
+		}
+	}
+
+	// Register a new custom `compare_xxx` function for qsort()
+	// TODO: move to checker
+	g.table.register_fn(name: compare_fn, return_type: ast.int_type)
+	g.array_sort_fn[compare_fn] = true
+
+	g.definitions.writeln('function ${compare_fn}(a,b) {')
+	c_condition := if comparison_type.sym.has_method('<') {
+		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
+	} else if comparison_type.unaliased_sym.has_method('<') {
+		'${g.typ(comparison_type.unaliased)}__lt($left_expr, $right_expr)'
+	} else {
+		'${left_expr}.valueOf() < ${right_expr}.valueOf()'
+	}
+	g.definitions.writeln('\tif ($c_condition) return -1;')
+	g.definitions.writeln('\telse return 1;')
+	g.definitions.writeln('}\n')
+
+	// write call to the generated function
+	g.gen_array_sort_call(node, compare_fn)
+}
+
+fn (mut g JsGen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
+	g.write('v_sort(')
+	g.expr(node.left)
+	g.gen_deref_ptr(node.left_type)
+	g.write(',$compare_fn)')
 }

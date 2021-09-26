@@ -82,6 +82,7 @@ mut:
 	comptime_var_type_map  map[string]ast.Type
 	defer_ifdef            string
 	out                    strings.Builder = strings.new_builder(128)
+	array_sort_fn          map[string]bool
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -141,10 +142,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
 			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.length);}, set: function(l) { this.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 		if g.is_test && !tests_inited {
@@ -1120,9 +1121,32 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write('const ')
 				}
 			}
-			g.expr(left)
+			mut array_set := false
+			match left {
+				ast.IndexExpr {
+					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
+					array_set = true
+					if g.table.get_type_symbol(left.left_type).kind == .map {
+						g.write('.map.set(')
+					} else {
+						g.write('.arr.set(')
+					}
+					g.write('new int(')
+					g.cast_stack << ast.int_type_idx
+					g.expr(left.index)
+					g.write('.valueOf()')
+					g.cast_stack.delete_last()
+					g.write('),')
+				}
+				else {
+					g.expr(left)
+				}
+			}
 			mut is_ptr := false
-			if stmt.op == .assign && stmt.left_types[i].is_ptr() {
+			if stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set {
 				is_ptr = true
 				g.write('.val')
 			}
@@ -1135,13 +1159,58 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				}
 				g.write(')')
 			} else {
-				if is_assign {
+				if is_assign && array_set {
+					g.expr(left)
 					if l_sym.kind == .string {
 						g.write('.str')
 					} else {
 						g.write('.val')
 					}
-					g.write(' = ')
+
+					match op {
+						.plus_assign {
+							g.write(' + ')
+						}
+						.minus_assign {
+							g.write(' - ')
+						}
+						.mult_assign {
+							g.write(' * ')
+						}
+						.div_assign {
+							g.write(' / ')
+						}
+						.mod_assign {
+							g.write(' % ')
+						}
+						.xor_assign {
+							g.write(' ^ ')
+						}
+						.and_assign {
+							g.write(' & ')
+						}
+						.right_shift_assign {
+							g.write(' >> ')
+						}
+						.left_shift_assign {
+							g.write(' << ')
+						}
+						.or_assign {
+							g.write(' | ')
+						}
+						else {
+							panic('unexpected op $op')
+						}
+					}
+				} else if is_assign && !array_set {
+					if l_sym.kind == .string {
+						g.write('.str')
+					} else {
+						g.write('.val')
+					}
+					if !array_set {
+						g.write(' = ')
+					}
 					g.expr(left)
 
 					match op {
@@ -1180,7 +1249,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						}
 					}
 				} else {
-					g.write(' $op ')
+					if op == .assign && array_set {
+					} else {
+						g.write(' $op ')
+					}
 				}
 				// TODO: Multiple types??
 				should_cast :=
@@ -1200,6 +1272,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write(')')
 					g.cast_stack.delete_last()
 				}
+			}
+			if array_set {
+				g.write(')')
 			}
 			if semicolon {
 				if g.inside_loop {
@@ -1602,17 +1677,17 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
 	// offering similar performance
-	g.write('new array(')
+	g.write('new array(new array_buffer({arr: ')
 	g.inc_indent()
 
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
-		g.writeln('(function() {')
+		g.writeln('(function(length) {')
 		g.inc_indent()
 		g.writeln('const $t1 = [];')
-		g.write('for (let $t2 = 0; $t2 < ')
-		g.expr(it.len_expr)
+		g.write('for (let $t2 = 0; $t2 < length')
+
 		g.writeln('; $t2++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
@@ -1628,7 +1703,14 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('};')
 		g.writeln('return $t1;')
 		g.dec_indent()
-		g.write('})()')
+		g.write('})(')
+		g.expr(it.len_expr)
+		g.write('),len: new int(')
+		g.expr(it.len_expr)
+		g.write(')')
+		g.write(', cap: new int(')
+		g.expr(it.len_expr)
+		g.write(')')
 	} else if it.is_fixed && it.exprs.len == 1 {
 		// [100]byte codegen
 		t1 := g.new_tmp_var()
@@ -1653,23 +1735,31 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('};')
 		g.writeln('return $t1;')
 		g.dec_indent()
-		g.write('})()')
+		g.write('})(), len: new int(')
+		g.expr(it.exprs[0])
+		g.write('), cap: new int(')
+		g.expr(it.exprs[0])
+		g.write(')')
 	} else {
-		g.gen_array_init_values(it.exprs)
+		c := g.gen_array_init_values(it.exprs)
+		g.write(', len: new int($c), cap: new int($c)')
 	}
 	g.dec_indent()
-	g.write(')')
+	g.write('}))')
 }
 
-fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
+fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) int {
 	g.write('[')
+	mut c := 0
 	for i, expr in exprs {
 		g.expr(expr)
 		if i < exprs.len - 1 {
 			g.write(', ')
 		}
+		c++
 	}
 	g.write(']')
+	return c
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
@@ -2218,13 +2308,13 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')
 		}
-		g.write('.arr')
-		g.write('[Number(')
+		g.write('.arr.get(')
+		g.write('new int(')
 		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
 		g.write('.valueOf()')
 		g.cast_stack.delete_last()
-		g.write(')]')
+		g.write('))')
 	}
 }
 
@@ -2234,6 +2324,12 @@ fn (mut g JsGen) gen_deref_ptr(ty ast.Type) {
 		g.write('.val')
 		t = t.deref()
 	}
+}
+
+fn (mut g JsGen) expr_string(expr ast.Expr) string {
+	pos := g.out.len
+	g.expr(expr)
+	return g.out.cut_to(pos).trim_space()
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
@@ -2318,7 +2414,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('.val')
 			ltyp = ltyp.deref()
 		}
-		g.write('.arr,')
+		g.write('.arr.arr,')
 		array_info := l_sym.info as ast.Array
 		// arr << [1, 2]
 		if r_sym.kind == .array && array_info.elem_type != it.right_type {
@@ -2592,20 +2688,17 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			continue
 		}
 		expr := it.exprs[i]
-		fmt := it.fmts[i]
-		fwidth := it.fwidths[i]
-		precision := it.precisions[i]
+		// fmt := it.fmts[i]
+		// fwidth := it.fwidths[i]
+		// precision := it.precisions[i]
 		g.write('\${')
-		if fmt != `_` || fwidth != 0 || precision != 987698 {
-			// TODO: Handle formatting
-			g.expr(expr)
-		} else {
-			sym := g.table.get_type_symbol(it.expr_types[i])
-			g.expr(expr)
+		typ := g.unwrap_generic(it.expr_types[i])
+		/*
+		g.expr(expr)
 			if sym.kind == .struct_ && sym.has_method('str') {
 				g.write('.str()')
-			}
-		}
+			}*/
+		g.gen_expr_to_string(expr, typ)
 		g.write('}')
 	}
 	g.write('`')
