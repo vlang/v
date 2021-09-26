@@ -2748,6 +2748,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
+			g.is_assign_lhs = false
 		} else if assign_stmt.op == .assign
 			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
 			mut v_var := ''
