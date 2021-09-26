@@ -1106,7 +1106,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			if g.inside_if_optional {
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
 					if stmt.typ == ast.error_type_idx || stmt.expr is ast.None {
@@ -1129,7 +1129,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					}
 				}
 			} else {
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
 				if stmt is ast.ExprStmt {
@@ -1204,7 +1204,7 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos {
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	defer {
 	}
@@ -1665,7 +1665,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.writeln('for (;;) {')
 	if !node.is_inf {
 		g.indent++
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 		g.write('if (!(')
 		g.expr(node.cond)
 		g.writeln(')) break;')
@@ -4038,7 +4038,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('${g.typ(node.cond_type)} $cond_var = ')
 		g.expr(node.cond)
 		g.writeln(';')
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 		g.write(line)
 	}
 	if need_tmp_var {
@@ -4130,7 +4130,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.writeln('}')
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			sumtype_index++
 			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
@@ -4806,7 +4806,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	g.writeln('}')
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 	if needs_tmp_var {
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
@@ -5995,6 +5995,11 @@ fn (g &Gen) nth_stmt_pos(n int) int {
 	return g.stmt_path_pos[g.stmt_path_pos.len - (1 + n)]
 }
 
+[inline]
+fn (mut g Gen) set_current_pos_as_last_stmt_pos() {
+	g.stmt_path_pos << g.out.len
+}
+
 fn (mut g Gen) go_before_stmt(n int) string {
 	stmt_pos := g.nth_stmt_pos(n)
 	return g.out.cut_to(stmt_pos)
@@ -6051,7 +6056,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
 					expr_stmt := stmt as ast.ExprStmt
-					g.stmt_path_pos << g.out.len
+					g.set_current_pos_as_last_stmt_pos()
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
@@ -6102,7 +6107,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 	}
 	g.writeln('}')
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 }
 
 [inline]
