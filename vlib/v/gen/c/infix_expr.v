@@ -656,7 +656,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			g.write('bool $tmp = (')
 			g.expr(node.left)
 			g.writeln(');')
-			g.stmt_path_pos << g.out.len
+			g.set_current_pos_as_last_stmt_pos()
 			g.write('$cur_line $tmp $node.op.str() ')
 			g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
 			g.expr(node.right)
@@ -677,7 +677,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		}
 		g.expr(node.left)
 		g.writeln(');')
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 		g.write('$cur_line $tmp $node.op.str() ')
 		g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
 		g.expr(node.right)

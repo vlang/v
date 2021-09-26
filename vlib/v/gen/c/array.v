@@ -172,7 +172,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
 	g.writeln('$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -200,7 +200,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			g.write('$ret_elem_type ti = ')
 			g.expr(node.args[0].expr)
@@ -215,7 +215,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if has_infix_left_var_name {
 		g.indent--
@@ -365,7 +365,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
 	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -393,7 +393,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			g.write('if (')
 			g.expr(node.args[0].expr)
@@ -409,7 +409,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if has_infix_left_var_name {
 		g.indent--
@@ -658,7 +658,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
 	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -686,7 +686,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			g.write('if (')
 			g.expr(node.args[0].expr)
@@ -703,7 +703,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if has_infix_left_var_name {
 		g.indent--
@@ -743,7 +743,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.indent++
 	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
 	g.empty_line = true
-	g.stmt_path_pos << g.out.len
+	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
 	match mut expr {
@@ -771,7 +771,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		ast.CallExpr {
 			if expr.name in ['map', 'filter', 'all', 'any'] {
 				is_embed_map_filter = true
-				g.stmt_path_pos << g.out.len
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			g.write('if (!(')
 			g.expr(node.args[0].expr)
@@ -788,7 +788,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
-		g.stmt_path_pos << g.out.len
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if has_infix_left_var_name {
 		g.indent--
