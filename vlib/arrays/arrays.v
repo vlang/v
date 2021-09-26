@@ -285,8 +285,8 @@ pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 pub fn concat<T>(a []T, b ...T) []T {
 	mut m := []T{cap: a.len + b.len}
 
-    m << a
-    m << b
+	m << a
+	m << b
 
 	return m
 }
