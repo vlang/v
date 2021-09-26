@@ -180,3 +180,17 @@ fn test_group_by() {
 		return 0
 	}) == map[int][]int{}
 }
+
+fn test_concat_int() {
+	mut a := [1, 2, 3]
+	mut b := [3, 2, 1]
+
+	assert concat(a, ...b) == [1, 2, 3, 3, 2, 1]
+}
+
+fn test_concat_string() {
+	mut a := ['1', '2', '3']
+	mut b := ['3', '2', '1']
+
+	assert concat(a, ...b) == ['1', '2', '3', '3', '2', '1']
+}

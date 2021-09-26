@@ -280,3 +280,18 @@ pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 
 	return result
 }
+
+// concatenate two arrays
+pub fn concat<T>(a []T, b ...T) []T {
+	mut m := []T{cap: a.len + b.len}
+
+	for elem in a {
+		m << elem
+	}
+
+	for elem in b {
+		m << elem
+	}
+
+	return m
+}
