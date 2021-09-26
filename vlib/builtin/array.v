@@ -643,7 +643,7 @@ pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
 }
 
-pub fn append<T>(a []T, b ...T) []T {
+pub fn concat<T>(a []T, b ...T) []T {
 	mut c := []T{cap: a.len + b.len}
 
 	for elem in a {
