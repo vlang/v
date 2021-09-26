@@ -35,8 +35,9 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 }
 
 const (
+	max_size_f64_char = 32 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, 32 is faster for the memory manger
 	// digit pairs in reverse order
-	digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
+	digit_pairs       = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
 // format_dec_sb format a u64
@@ -297,18 +298,13 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 }
 
 // strings.Builder version of format_fl
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
 	unsafe {
-		mut s := ''
-		// mut fs := "1.2343"
 		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
-		// println("Dario")
-		// println(fs)
 
 		// error!!
 		if fs[0] == `[` {
-			s.free()
 			return fs
 		}
 
@@ -317,121 +313,134 @@ pub fn format_fl(f f64, p BF_param) string {
 			fs = remove_tail_zeros(fs)
 			tmp.free()
 		}
-		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf_i := 0 // index temporary string
+		mut out_i := 0 // index output string
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_b(`+`)
+					out[out_i] = `+`
+					out_i++
 					sign_len_diff = -1
 				}
 			} else {
-				res.write_b(`-`)
+				out[out_i] = `-`
+				out_i++
 				sign_len_diff = -1
 			}
-			tmp := s
-			s = fs.clone()
-			tmp.free()
 		} else {
 			if p.positive {
 				if p.sign_flag {
-					tmp := s
-					s = '+' + fs
-					tmp.free()
-				} else {
-					tmp := s
-					s = fs.clone()
-					tmp.free()
+					buf[buf_i] = `+`
+					buf_i++
 				}
 			} else {
-				tmp := s
-				s = '-' + fs
-				tmp.free()
+				buf[buf_i] = `-`
+				buf_i++
 			}
 		}
 
-		dif := p.len0 - s.len + sign_len_diff
+		// copy the float
+		vmemcpy(&buf[buf_i], fs.str, fs.len)
+		buf_i += fs.len
 
+		// make the padding if needed
+		dif := p.len0 - buf_i + sign_len_diff
 		if p.allign == .right {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
-		res.write_string(s)
+		vmemcpy(&out[out_i], &buf[0], buf_i)
+		out_i += buf_i
 		if p.allign == .left {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
+		out[out_i] = 0
 
-		s.free()
-		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
+		// return and free
+		tmp := fs
+		fs = tos_clone(&out[0])
+		tmp.free()
+		return fs
 	}
 }
 
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe {
-		mut s := ''
 		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
 		if p.rm_tail_zero {
+			tmp := fs
 			fs = remove_tail_zeros(fs)
+			tmp.free()
 		}
-		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf_i := 0 // index temporary string
+		mut out_i := 0 // index output string
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_b(`+`)
+					out[out_i] = `+`
+					out_i++
 					sign_len_diff = -1
 				}
 			} else {
-				res.write_b(`-`)
+				out[out_i] = `-`
+				out_i++
 				sign_len_diff = -1
 			}
-			tmp := s
-			s = fs.clone()
-			tmp.free()
 		} else {
 			if p.positive {
 				if p.sign_flag {
-					tmp := s
-					s = '+' + fs
-					tmp.free()
-				} else {
-					tmp := s
-					s = fs.clone()
-					tmp.free()
+					buf[buf_i] = `+`
+					buf_i++
 				}
 			} else {
-				tmp := s
-				s = '-' + fs
-				tmp.free()
+				buf[buf_i] = `-`
+				buf_i++
 			}
 		}
 
-		dif := p.len0 - s.len + sign_len_diff
+		// copy the float
+		vmemcpy(&buf[buf_i], fs.str, fs.len)
+		buf_i += fs.len
+
+		// make the padding if needed
+		dif := p.len0 - buf_i + sign_len_diff
 		if p.allign == .right {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
-		res.write_string(s)
+		vmemcpy(&out[out_i], &buf[0], buf_i)
+		out_i += buf_i
 		if p.allign == .left {
 			for i1 := 0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+				out[out_i] = p.pad_ch
+				out_i++
 			}
 		}
-		s.free()
-		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
+		out[out_i] = 0
+
+		// return and free
+		tmp := fs
+		fs = tos_clone(&out[0])
+		tmp.free()
+		return fs
 	}
 }
 
