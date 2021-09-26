@@ -1,4 +1,4 @@
-type Abc = string | int
+type Abc = int | string
 
 fn test_map_get_assign_blank() {
 	x := map[string]Abc{}
