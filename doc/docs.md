@@ -5344,14 +5344,23 @@ enum BitField {
 	other
 }
 
-fn example_enum_as_bitfield_use() {
+fn main() {
 	assert 1 == int(BitField.read)
 	assert 2 == int(BitField.write)
 	mut bf := BitField.read
+	assert bf.has(.read | .other) // test if *at least one* of the flags is set
+	assert !bf.all(.read | .other) // test if *all* of the flags is set
 	bf.set(.write | .other)
 	assert bf.has(.read | .write | .other)
+	assert bf.all(.read | .write | .other)
+	bf.toggle(.other)
+	assert bf == BitField.read | .write
+	assert bf.all(.read | .write)
+	assert !bf.has(.other)
 }
+```
 
+```v
 // Calling this function will result in a deprecation warning
 [deprecated]
 fn old_function() {
@@ -5372,7 +5381,9 @@ fn legacy_function() {}
 [deprecated: 'use new_function2() instead']
 [deprecated_after: '2021-05-27']
 fn legacy_function2() {}
+```
 
+```v nofmt
 // This function's calls will be inlined.
 [inline]
 fn inlined_function() {
