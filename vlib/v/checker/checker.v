@@ -8088,7 +8088,8 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Position, table_name string) []ast.StructField {
-	fields := info.fields.filter((it.typ in [ast.string_type, ast.int_type, ast.bool_type]
+	fields := info.fields.filter(
+		(it.typ in [ast.string_type, ast.bool_type] || int(it.typ) in ast.number_type_idxs
 		|| c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.get_type_symbol(it.typ).kind == .array
 		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_))
