@@ -160,6 +160,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
+		g.infix_left_var_name = ''
 		g.indent++
 	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
@@ -352,6 +353,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
+		g.infix_left_var_name = ''
 		g.indent++
 	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
@@ -645,6 +647,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
+		g.infix_left_var_name = ''
 		g.indent++
 	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
@@ -728,6 +731,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
+		g.infix_left_var_name = ''
 		g.indent++
 	}
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')

@@ -13,3 +13,11 @@ fn test_if_expr_with_nested_array_call2() {
 		assert true
 	}
 }
+
+fn test_if_expr_with_nested_array_call3() {
+	arr := ['abc']
+	if arr.len == 0 || arr.all(it.bytes().map(it).filter(it != ` `).any(it == `c`)) {
+		println('yes')
+		assert true
+	}
+}
