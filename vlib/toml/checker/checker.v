@@ -22,11 +22,14 @@ pub fn (c Checker) check(n &ast.Value) ? {
 
 fn (c Checker) visit(value &ast.Value) ? {
 	match value {
+		ast.Bool {
+			c.check_boolean(value) ?
+		}
 		ast.Number {
 			c.check_number(value) ?
 		}
-		ast.Bool {
-			c.check_boolean(value) ?
+		ast.Quoted {
+			c.check_quoted(value) ?
 		}
 		else {
 			// TODO add more checks to make BurntSushi/toml-test invalid TOML pass
@@ -167,4 +170,12 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 	}
 	return error(@MOD + '.' + @STRUCT + '.' + @FN +
 		' boolean values like "$lit" can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
+}
+
+fn (c Checker) check_quoted(b ast.Quoted) ? {
+	lit := b.text
+	if b.is_multiline && lit.ends_with(b.quote) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' string values like "$lit" is has unbalanced quote literals `b.quote` in ...${c.excerpt(b.pos)}...')
+	}
 }
