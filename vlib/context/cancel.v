@@ -49,7 +49,7 @@ mut:
 // call cancel as soon as the operations running in this Context complete.
 pub fn with_cancel(parent Context) (Context, CancelFn) {
 	mut c := new_cancel_context(parent)
-	propagate_cancel(parent, mut c)
+	propagate_cancel(parent, c)
 	return Context(c), fn [mut c] () {
 		c.cancel(true, canceled)
 	}
@@ -127,7 +127,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 	}
 }
 
-fn propagate_cancel(parent Context, mut child Canceler) {
+fn propagate_cancel(parent Context, child Canceler) {
 	done := parent.done()
 	select {
 		_ := <-done {
@@ -137,19 +137,19 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 		}
 	}
 	mut p := parent_cancel_context(parent) or {
-		go fn (parent Context, mut child Canceler) {
+		go fn (parent Context, child Canceler) {
 			pdone := parent.done()
 			select {
 				_ := <-pdone {
 					child.cancel(false, parent.err())
 				}
 			}
-		}(parent, mut child)
+		}(parent, child)
 		return
 	}
 
 	if p.err is none {
-		p.children[child.id] = *child
+		p.children[child.id] = child
 	} else {
 		// parent has already been canceled
 		child.cancel(false, p.err)

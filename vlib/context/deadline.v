@@ -40,7 +40,7 @@ pub fn with_deadline(parent Context, d time.Time) (Context, CancelFn) {
 		deadline: d
 		id: id
 	}
-	propagate_cancel(parent, mut ctx)
+	propagate_cancel(parent, ctx)
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
