@@ -2683,7 +2683,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			ast.FnType { arg_sym.info.func.return_type }
 			else { arg_type }
 		}
-		node.return_type = c.table.find_or_register_array(ret_type)
+		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, node)
