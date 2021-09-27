@@ -59,9 +59,9 @@ fn example_with_cancel() {
 		return dst
 	}
 
-	ctx := context.with_cancel(context.background())
+	ctx, cancel := context.with_cancel(context.background())
 	defer {
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ch := gen(ctx)
@@ -87,13 +87,13 @@ const (
 // function that it should abandon its work as soon as it gets to it.
 fn example_with_deadline() {
 	dur := time.now().add(short_duration)
-	ctx := context.with_deadline(context.background(), dur)
+	ctx, cancel := context.with_deadline(context.background(), dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
 		// cancellation function in any case. Failure to do so may keep the
 		// context and its parent alive longer than necessary.
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ctx_ch := ctx.done()
@@ -122,9 +122,9 @@ const (
 fn example_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	ctx := context.with_timeout(context.background(), short_duration)
+	ctx, cancel := context.with_timeout(context.background(), short_duration)
 	defer {
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ctx_ch := ctx.done()
@@ -142,25 +142,36 @@ fn example_with_timeout() {
 ```v
 import context
 
-type ValueContextKey = string
+const not_found_value = &Value{
+	val: 'key not found'
+}
+
+struct Value {
+	val string
+}
 
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
 fn example_with_value() {
-	f := fn (ctx context.Context, key ValueContextKey) string {
+	f := fn (ctx context.Context, key context.Key) &Value {
 		if value := ctx.value(key) {
-			if !isnil(value) {
-				return *(&string(value))
+			match value {
+				Value {
+					return value
+				}
+				else {}
 			}
 		}
-		return 'key not found'
+		return not_found_value
 	}
 
-	key := ValueContextKey('language')
-	value := 'VAL'
-	ctx := context.with_value(context.background(), key, &value)
+	key := 'language'
+	value := &Value{
+		val: 'VAL'
+	}
+	ctx := context.with_value(context.background(), key, value)
 
 	assert value == f(ctx, key)
-	assert 'key not found' == f(ctx, ValueContextKey('color'))
+	assert not_found_value == f(ctx, 'color')
 }
 ```
