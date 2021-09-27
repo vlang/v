@@ -99,6 +99,10 @@ const (
 		'do_not_remove',
 	]
 	skip_on_windows               = [
+		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
+		'vlib/context/empty_test.v',
+		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/closure_test.v',
