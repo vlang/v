@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module toml
 
-import os
 import toml.ast
 import toml.util
 import toml.input
@@ -71,17 +70,7 @@ pub fn parse_text(text string) ?Doc {
 // parse automatically try to determine if the type of `toml` is a file or text.
 // For explicit parsing of input types see `parse_file` or `parse_text`.
 pub fn parse(toml string) ?Doc {
-	mut input_config := input.Config{}
-	if !toml.contains('\n') && os.is_file(toml) {
-		input_config = input.Config{
-			file_path: toml
-		}
-	} else {
-		input_config = input.Config{
-			text: toml
-		}
-	}
-
+	mut input_config := input.auto_config(toml) ?
 	scanner_config := scanner.Config{
 		input: input_config
 	}

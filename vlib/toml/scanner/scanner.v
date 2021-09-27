@@ -9,7 +9,9 @@ import toml.input
 import toml.token
 import toml.util
 
-pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+pub const (
+	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+)
 
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also refered to as "lexing" or "tokenizing".
@@ -38,7 +40,7 @@ pub:
 	tokenize_formating bool // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
 }
 
-// new_scanner returns a new heap allocated `Scanner` instance.
+// new_scanner returns a new *heap* allocated `Scanner` instance.
 pub fn new_scanner(config Config) ?&Scanner {
 	config.input.validate() ?
 	mut text := config.input.text
@@ -54,6 +56,17 @@ pub fn new_scanner(config Config) ?&Scanner {
 		text: text
 	}
 	return s
+}
+
+// returns a new *stack* allocated `Scanner` instance.
+pub fn new_simple(toml_input string) ?Scanner {
+	config := Config{
+		input: input.auto_config(toml_input) ?
+	}
+	return Scanner{
+		config: config
+		text: config.input.read_input() ?
+	}
 }
 
 // scan returns the next token from the input.
@@ -415,6 +428,8 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 		}
 
 		c := s.at()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
+
 		if c == `\n` {
 			s.inc_line_number()
 			lit += c.ascii_str()
@@ -431,8 +446,6 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				continue
 			}
 		}
-
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c')
 
 		if c == quote {
 			if s.peek(1) == quote && s.peek(2) == quote {
@@ -458,7 +471,8 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 	return lit
 }
 
-// handle_escapes
+// handle_escapes returns any escape character sequence.
+// For escape sequence validation see `Checker.check_quoted_escapes`.
 fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 	c := s.at()
 	mut lit := c.ascii_str()
