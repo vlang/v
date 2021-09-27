@@ -2052,7 +2052,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.write('${g.typ(node.cond_type)} $t_expr = ')
 		g.expr(node.cond)
 		g.writeln(';')
-		g.writeln('while (1) {')
+		idx_var := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		g.writeln('for (int $idx_var = 0;; ++$idx_var) {')
 		t_var := g.new_tmp_var()
 		receiver_typ := next_fn.params[0].typ
 		receiver_styp := g.typ(receiver_typ)
