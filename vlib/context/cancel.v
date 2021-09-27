@@ -1,6 +1,6 @@
 // This module defines the Context type, which carries deadlines, cancellation signals,
 // and other request-scoped values across API boundaries and between processes.
-// Based off:   https://github.com/golang/go/tree/master/src/context
+// Based on:   https://github.com/golang/go/tree/master/src/context
 // Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
@@ -8,12 +8,15 @@ import rand
 import sync
 import time
 
+pub type CancelFn = fn ()
+
 pub interface Canceler {
 	id string
 	cancel(remove_from_parent bool, err IError)
 	done() chan int
 }
 
+[deprecated]
 pub fn cancel(ctx Context) {
 	match mut ctx {
 		CancelContext {
@@ -44,10 +47,12 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) Context {
+pub fn with_cancel(parent Context) (Context, CancelFn) {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return Context(c)
+	return Context(c), fn [mut c] () {
+		c.cancel(true, canceled)
+	}
 }
 
 // new_cancel_context returns an initialized CancelContext.
@@ -61,7 +66,7 @@ fn new_cancel_context(parent Context) &CancelContext {
 	}
 }
 
-pub fn (ctx CancelContext) deadline() ?time.Time {
+pub fn (ctx &CancelContext) deadline() ?time.Time {
 	return none
 }
 
@@ -79,14 +84,14 @@ pub fn (mut ctx CancelContext) err() IError {
 	return err
 }
 
-pub fn (ctx CancelContext) value(key string) ?voidptr {
+pub fn (ctx &CancelContext) value(key Key) ?Any {
 	if key == cancel_context_key {
-		return voidptr(unsafe { &ctx })
+		return ctx
 	}
 	return ctx.context.value(key)
 }
 
-pub fn (ctx CancelContext) str() string {
+pub fn (ctx &CancelContext) str() string {
 	return context_name(ctx.context) + '.with_cancel'
 }
 
@@ -157,19 +162,20 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 // parent.done() matches that CancelContext. (If not, the CancelContext
 // has been wrapped in a custom implementation providing a
 // different done channel, in which case we should not bypass it.)
-fn parent_cancel_context(parent Context) ?CancelContext {
+fn parent_cancel_context(parent Context) ?&CancelContext {
 	done := parent.done()
 	if done.closed {
 		return none
 	}
-	if p_ptr := parent.value(cancel_context_key) {
-		if !isnil(p_ptr) {
-			mut p := &CancelContext(p_ptr)
+	mut p := parent.value(cancel_context_key) ?
+	match mut p {
+		CancelContext {
 			pdone := p.done()
 			if done == pdone {
-				return *p
+				return p
 			}
 		}
+		else {}
 	}
 	return none
 }

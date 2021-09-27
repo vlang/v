@@ -1,6 +1,6 @@
 // This module defines the Context type, which carries deadlines, cancellation signals,
 // and other request-scoped values across API boundaries and between processes.
-// Based off:   https://github.com/golang/go/tree/master/src/context
+// Based on:   https://github.com/golang/go/tree/master/src/context
 // Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
@@ -10,7 +10,7 @@ const (
 	background         = EmptyContext(0)
 	todo               = EmptyContext(1)
 
-	cancel_context_key = 'context.CancelContext'
+	cancel_context_key = Key('context.CancelContext')
 
 	// canceled is the error returned by Context.err when the context is canceled.
 	canceled           = error('context canceled')
@@ -19,6 +19,24 @@ const (
 	// deadline passes.
 	deadline_exceeded  = error('context deadline exceeded')
 )
+
+// Key represents the type for the ValueContext key
+pub type Key = bool
+	| byte
+	| f32
+	| f64
+	| i16
+	| i64
+	| i8
+	| int
+	| string
+	| u16
+	| u32
+	| u64
+	| voidptr
+
+// Any represents a generic type for the ValueContext
+pub interface Any {}
 
 pub interface Context {
 	// deadline returns the time when work done on behalf of this context
@@ -56,7 +74,7 @@ pub interface Context {
 	// Context.Value. A key can be any type that supports equality;
 	// packages should define keys as an unexported type to avoid
 	// collisions.
-	value(key string) ?voidptr
+	value(key Key) ?Any
 	str() string
 }
 

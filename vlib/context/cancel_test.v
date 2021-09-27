@@ -30,9 +30,9 @@ fn test_with_cancel() {
 		return dst
 	}
 
-	ctx := context.with_cancel(context.background())
+	ctx, cancel := context.with_cancel(context.background())
 	defer {
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ch := gen(ctx)
