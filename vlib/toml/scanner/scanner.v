@@ -355,7 +355,7 @@ fn (mut s Scanner) extract_string() ?(string, bool) {
 
 		if s.pos >= s.text.len {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' unfinished string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
+				' unfinished single-line string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
 		c := s.at()
@@ -379,7 +379,14 @@ fn (mut s Scanner) extract_string() ?(string, bool) {
 		}
 
 		lit += c.ascii_str()
+
+		// Don't eat multiple lines in single-line mode
+		if lit.contains('\n') {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' unfinished single-line string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
+		}
 	}
+
 	return lit, is_multiline
 }
 
@@ -394,8 +401,8 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 	start := s.pos
 	mut lit := ''
 
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multiline `$quote.ascii_str()${s.text[s.pos + 1].ascii_str()}${s.text[
-		s.pos + 2].ascii_str()}` string started at pos $start ($s.line_nr,$s.col) (quote type: $quote.ascii_str() / $quote)')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multi-line `$quote.ascii_str()${s.text[s.pos +
+		1].ascii_str()}${s.text[s.pos + 2].ascii_str()}` string started at pos $start ($s.line_nr,$s.col) (quote type: $quote.ascii_str() / $quote)')
 
 	s.pos += 2
 	s.col += 2
@@ -406,7 +413,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 
 		if s.pos >= s.text.len {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' unfinished multiline string literal ($quote.ascii_str()$quote.ascii_str()$quote.ascii_str()) started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
+				' unfinished multi-line string literal ($quote.ascii_str()$quote.ascii_str()$quote.ascii_str()) started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
 		c := s.at()

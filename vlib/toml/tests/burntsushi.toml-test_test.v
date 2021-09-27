@@ -16,7 +16,6 @@ const (
 		// String
 		'string/basic-multiline-out-of-range-unicode-escape-1.toml',
 		'string/basic-byte-escapes.toml',
-		'string/bad-multiline.toml',
 		'string/multiline-escape-space.toml',
 		'string/bad-codepoint.toml',
 		'string/literal-multiline-quotes-1.toml',
