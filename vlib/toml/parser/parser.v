@@ -691,9 +691,20 @@ pub fn (mut p Parser) bare() ast.Bare {
 
 // quoted parse and returns an `ast.Quoted` type.
 pub fn (mut p Parser) quoted() ast.Quoted {
+	// To get more info about the quote type and enable better checking,
+	// the scanner is returning the literal *with* single- or double-quotes.
+	mut quote := p.tok.lit[0]
+	is_multiline := p.tok.lit.len >= 6 && p.tok.lit[1] == quote && p.tok.lit[2] == quote
+	mut quote_lit := quote.ascii_str()
+	if is_multiline {
+		quote_lit += quote_lit + quote_lit
+	}
+	mut lit := p.tok.lit[quote_lit.len..p.tok.lit.len - quote_lit.len]
 	return ast.Quoted{
-		text: p.tok.lit
+		text: lit
 		pos: p.tok.position()
+		quote: quote_lit
+		is_multiline: is_multiline
 	}
 }
 

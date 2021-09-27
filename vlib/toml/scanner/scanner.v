@@ -145,10 +145,9 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.assign, ascii, ascii.len)
 			}
 			`"`, `'` { // ... some string "/'
-				ident_string, is_multiline := s.extract_string() ?
-				token_length := if is_multiline { 2 * 3 } else { 2 }
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string (multiline: $is_multiline) `$ident_string`')
-				return s.new_token(.quoted, ident_string, ident_string.len + token_length) // + quote length
+				ident_string := s.extract_string() ?
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string `$ident_string`')
+				return s.new_token(.quoted, ident_string, ident_string.len)
 			}
 			`#` {
 				start := s.pos //+ 1
@@ -333,20 +332,20 @@ fn (mut s Scanner) extract_key() string {
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
 [direct_array_access; inline]
-fn (mut s Scanner) extract_string() ?(string, bool) {
+fn (mut s Scanner) extract_string() ?string {
 	// extract_string is called when the scanner has already reached
 	// a byte that is the start of a string so we rewind it to start at the correct
 	s.pos--
 	s.col--
 	quote := s.at()
 	start := s.pos
-	mut lit := ''
+	mut lit := quote.ascii_str()
 
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
 	if is_multiline {
 		mls := s.extract_multiline_string() ?
-		return mls, is_multiline
+		return mls
 	}
 
 	for {
@@ -375,7 +374,7 @@ fn (mut s Scanner) extract_string() ?(string, bool) {
 		if c == quote {
 			s.pos++
 			s.col++
-			return lit, is_multiline
+			return lit + quote.ascii_str()
 		}
 
 		lit += c.ascii_str()
@@ -386,8 +385,7 @@ fn (mut s Scanner) extract_string() ?(string, bool) {
 				' unfinished single-line string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 	}
-
-	return lit, is_multiline
+	return lit
 }
 
 // extract_multiline_string collects and returns a string containing
@@ -399,7 +397,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 	// characters is the quotes
 	quote := s.at()
 	start := s.pos
-	mut lit := ''
+	mut lit := quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
 
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multi-line `$quote.ascii_str()${s.text[s.pos +
 		1].ascii_str()}${s.text[s.pos + 2].ascii_str()}` string started at pos $start ($s.line_nr,$s.col) (quote type: $quote.ascii_str() / $quote)')
@@ -441,6 +439,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				if s.peek(3) == -1 {
 					s.pos += 3
 					s.col += 3
+					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'returning at $c.ascii_str() `$lit`')
 					return lit
 				} else if s.peek(3) != quote {
@@ -448,6 +447,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 					// lit += quote.ascii_str()
 					s.pos += 3
 					s.col += 3
+					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'returning at $c.ascii_str() `$lit`')
 					return lit
 				}
