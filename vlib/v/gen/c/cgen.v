@@ -2055,7 +2055,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		if node.key_var in ['', '_'] {
 			g.writeln('while (1) {')
 		} else  {
-			g.writeln('for (int $node.key_var = 0;; ++$node.key_var) {')
+			g.writeln('for (size_t $node.key_var = 0;; ++$node.key_var) {')
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := next_fn.params[0].typ

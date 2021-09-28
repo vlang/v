@@ -1,2 +1,2 @@
-for (int ix = 0;; ++ix) {
+for (size_t ix = 0;; ++ix) {
 while (1) {
