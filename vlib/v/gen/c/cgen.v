@@ -342,6 +342,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			for k, v in g.as_cast_type_names {
 				global_g.as_cast_type_names[k] = v
 			}
+			for k, v in g.sumtype_definitions {
+				global_g.sumtype_definitions[k] = v
+			}
 			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
 			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
 			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }

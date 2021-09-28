@@ -29,8 +29,8 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 
 fn (mut g Gen) gen_jsons() {
 	mut done := []ast.Type{}
-
-	for utyp in g.json_types {
+	for i := 0; i < g.json_types.len; i++ {
+		utyp := g.json_types[i]
 		if utyp in done {
 			continue
 		}
@@ -88,7 +88,7 @@ $enc_fn_dec {
 			psym := g.table.get_type_symbol(parent_typ)
 			if is_js_prim(g.typ(parent_typ)) {
 				g.gen_json_for_type(parent_typ)
-				return
+				continue
 			}
 			enc.writeln('\to = cJSON_CreateObject();')
 			if psym.info is ast.Struct {
