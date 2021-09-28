@@ -39,3 +39,17 @@ pub fn (ra []rune) string() string {
 	unsafe { sb.free() }
 	return res
 }
+
+// repeat returns a new string with `count` number of copies of the rune it was called on.
+pub fn (c rune) repeat(count int) string {
+	if count < 0 {
+		panic('rune.repeat: count is negative: $count')
+	} else if count == 0 {
+		return ''
+	} else if count == 1 {
+		return c.str()
+	}
+	mut buffer := [5]byte{}
+	res := unsafe { utf32_to_str_no_malloc(u32(c), &buffer[0]) }
+	return res.repeat(count)
+}
