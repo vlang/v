@@ -174,7 +174,9 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 
 fn (c Checker) check_quoted(b ast.Quoted) ? {
 	lit := b.text
-	if b.is_multiline && lit.ends_with(b.quote) {
+	quote := b.quote.ascii_str()
+	triple_quote := quote + quote + quote
+	if b.is_multiline && lit.ends_with(triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' string values like "$lit" is has unbalanced quote literals `b.quote` in ...${c.excerpt(b.pos)}...')
 	}
