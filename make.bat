@@ -4,10 +4,8 @@ setlocal EnableDelayedExpansion EnableExtensions
 REM Option flags
 set /a shift_counter=0
 set /a flag_local=0
-set /a flag_verbose=0
 
 REM Option variables
-set "log_file=%TEMP%\v_make.log"
 set compiler=
 set subcmd=
 set target=build
@@ -51,16 +49,6 @@ for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
 )
 
 REM Standard options
-if "%~1" == "--verbose" (
-    if !flag_verbose! NEQ 0 (
-        echo The flag %~1 has already been specified. 1>&2
-        exit /b 2
-    )
-    set /a flag_verbose=1
-    set /a shift_counter+=1
-    shift
-    goto :verifyopt
-)
 if "%~1" == "--local" (
     if !flag_local! NEQ 0 (
         echo The flag %~1 has already been specified. 1>&2
@@ -68,22 +56,6 @@ if "%~1" == "--local" (
     )
     set /a flag_local=1
     set /a shift_counter+=1
-    shift
-    goto :verifyopt
-)
-if "%~1" == "--logfile" (
-    if ["%~2"] == [""] (
-        echo Log file is not specified for -logfile parameter. 1>&2
-        exit /b 2
-    )
-    pushd "%~dp2" || (
-        echo The log file specified for -logfile parameter does not exist. 1>&2
-        exit /b 2
-    )
-    popd
-    set "log_file=%~sf2"
-    set /a shift_counter+=2
-    shift
     shift
     goto :verifyopt
 )
@@ -100,33 +72,18 @@ if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 echo.
 echo Cleanup vc
 echo  ^> Purge TCC binaries
-if !flag_verbose! EQU 1 (
-    echo [Debug] rmdir /s /q "%tcc_dir%">>"!log_file!"
-    echo    rmdir /s /q "%tcc_dir%"
-)
-rmdir /s /q "%tcc_dir%">>"!log_file!"
+rmdir /s /q "%tcc_dir%"
 echo  ^> Purge vc repository
-if !flag_verbose! EQU 1 (
-    echo [Debug] rmdir /s /q "%vc_dir%">>"!log_file!"
-    echo    rmdir /s /q "%vc_dir%"
-)
-rmdir /s /q "%vc_dir%">>"!log_file!"
+rmdir /s /q "%vc_dir%"
 exit /b 0
 
 :clean
 echo Cleanup build artifacts
 echo  ^> Purge debug symbols
-if !flag_verbose! EQU 1 (
-    echo [Debug] del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!"
-    echo    del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so
-)
-del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!"
+del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so
+
 echo  ^> Delete old V executable
-if !flag_verbose! EQU 1 (
-    echo [Debug] del v_old.exe v*.exe>>"!log_file!"
-    echo    del v_old.exe v*.exe
-)
-del v_old.exe v*.exe>>"!log_file!"
+del v_old.exe v*.exe
 exit /b 0
 
 :help
@@ -142,25 +99,12 @@ exit /b %ERRORLEVEL%
 if !flag_local! NEQ 1 (
     call :download_tcc
     if %ERRORLEVEL% NEQ 0 goto :error
-    del "!log_file!"
     pushd "%vc_dir%" && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!
-        if !flag_verbose! EQU 1 (
-            echo [Debug] cd "%vc_dir%">>"!log_file!"
-            echo    cd "%vc_dir%"
-            cd "%vc_dir%">>"!log_file!"
-            echo [Debug] git pull --quiet>>"!log_file!"
-            echo    git pull --quiet
-            git pull --quiet>>"!log_file!"
-            echo [Debug] cd ..>>"!log_file!"
-            echo    cd ..
-            cd ..>>"!log_file!"
-        ) else (
-            cd "%vc_dir%">>"!log_file!"
-            git pull --quiet>>"!log_file!"
-            cd ..>>"!log_file!"
-        )
+        cd "%vc_dir%"
+        git pull --quiet
+        cd ..
         popd
     ) || call :cloning_vc
     echo.
@@ -174,19 +118,11 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with TCC
-if !flag_verbose! EQU 1 (
-    echo [Debug] "!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
-    echo    "!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c
-)
-"!tcc_exe!" -ladvapi32 -I .\thirdparty\stdatomic\win -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
-    echo    v.exe -cc "!tcc_exe!" self
-)
-v.exe -cc "!tcc_exe!" self>>"!log_file!"
+v.exe -cc "!tcc_exe!" self
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 goto :success
 
@@ -201,23 +137,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with Clang
-if !flag_verbose! EQU 1 (
-    echo [Debug] clang -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
-    echo    clang -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c
-)
-clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!"
+clang -std=c99 -Ithirdparty/stdatomic/win -municode -w -o v.exe .\vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
-	clang --version>>"!log_file!"
+	clang --version
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc clang self>>"!log_file!"
-    echo    v.exe -cc clang self
-)
-v.exe -cc clang self>>"!log_file!"
+v.exe -cc clang self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -230,23 +158,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with GCC
-if !flag_verbose! EQU 1 (
-    echo [Debug] gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
-    echo    gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c
-)
-gcc -std=c99 -municode -I .\thirdparty\stdatomic\win -w -o v.exe .\vc\v_win.c>>"!log_File!"
+gcc -std=c99 -municode -Ithirdparty/stdatomic/win -w -o v.exe .\vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
-	gcc --version>>"!log_File!"
+	gcc --version
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc gcc self>>"!log_file!"
-    echo    v.exe -cc gcc self
-)
-v.exe -cc gcc self>>"!log_file!"
+v.exe -cc gcc self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -278,24 +198,16 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v_win.c with MSVC
-if !flag_verbose! EQU 1 (
-    echo [Debug] cl.exe /volatile:ms /Fo%ObjFile% /I .\thirdparty\stdatomic\win /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
-    echo         cl.exe /volatile:ms /Fo%ObjFile% /I .\thirdparty\stdatomic\win /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
-)
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
+cl.exe /volatile:ms /I thirdparty\stdatomic\win /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
-    cl.exe 2>"!log_file!"
+    cl.exe
     goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc msvc self>>"!log_file!"
-    echo    v.exe -cc msvc self
-)
-v.exe -cc msvc self>>"!log_file!"
-del %ObjFile%>>"!log_file!" 2>>&1
+v.exe -cc msvc self
+del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -303,11 +215,7 @@ goto :success
 pushd %tcc_dir% && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
-    if !flag_verbose! EQU 1 (
-        echo [Debug] git pull --quiet>>"!log_file!"
-        echo    git pull --quiet
-    )
-    git pull --quiet>>"!log_file!"
+    git pull --quiet
     popd
 ) || call :bootstrap_tcc
 
@@ -322,13 +230,12 @@ exit /b 0
 
 :compile_error
 echo.
-type "!log_file!"
+echo Backend compiler error
 goto :error
 
 :error
 echo.
 echo Exiting from error
-type "!log_file!"
 echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 
@@ -357,7 +264,7 @@ echo     help                              Display usage help for the given targ
 echo.
 echo Examples:
 echo     make.bat -msvc
-echo     make.bat -gcc --local --logpath output.log
+echo     make.bat -gcc --local
 echo     make.bat build -tcc --local
 echo     make.bat -tcc32
 echo     make.bat help clean
@@ -379,18 +286,12 @@ exit /b 0
 echo Usage:
 echo     make.bat clean
 echo.
-echo Options:
-echo    --logfile PATH                    Use the specified PATH as the log
-echo    --verbose                         Output compilation commands to stdout
 exit /b 0
 
 :help_cleanall
 echo Usage:
 echo     make.bat cleanall
 echo.
-echo Options:
-echo    --logfile PATH                    Use the specified PATH as the log
-echo    --verbose                         Output compilation commands to stdout
 exit /b 0
 
 :help_build
@@ -403,30 +304,19 @@ echo.
 echo Options:
 echo    --local                           Use the local vc repository without
 echo                                      syncing with remote
-echo    --logfile PATH                    Use the specified PATH as the log
-echo                                      file
-echo    --verbose                         Output compilation commands to stdout
 exit /b 0
 
 :bootstrap_tcc
 echo Bootstraping TCC...
 echo  ^> TCC not found
 if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
-if !flag_verbose! EQU 1 (
-   echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
-   echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
-)
-git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
+git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
 exit /b 0
 
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-if !flag_verbose! EQU 1 (
-   echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
-   echo    git clone --depth 1 --quiet %vc_url%
-)
-git clone --depth 1 --quiet %vc_url%>>"!log_file!"
+git clone --depth 1 --quiet %vc_url%
 exit /b 0
 
 :eof
