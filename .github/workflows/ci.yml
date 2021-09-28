@@ -188,12 +188,18 @@ jobs:
       - name: Build v
         run: make
 
-      - name: v.c can be compiled and run with -os cross
+      - name: v.c can be compiled and run with -os cross (bootstrapping works)
         run: |
-          ./v -os cross -o /tmp/v.c cmd/v
-          gcc  -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          gcc  -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc vc/v.c  -lm -lpthread
           ls -lart v_from_vc
           ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
 
       - name: Ensure v up works
         run: |
@@ -322,12 +328,19 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
-      - name: v.c can be compiled and run with -os cross
+      - name: v.c can be compiled and run with -os cross (bootstrapping works)
         run: |
-          ./v -os cross -o /tmp/v.c cmd/v
-          cc -g -std=gnu11 -w -o v_from_vc /tmp/v.c -I ./thirdparty/stdatomic/nix -lm -lpthread
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          cc -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc vc/v.c -lm -lpthread
           ls -lart v_from_vc
           ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          ### the next make invocation will simulate building V from scratch
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
 
       - name: Self tests
         run: VJOBS=1 ./v -silent test-self
