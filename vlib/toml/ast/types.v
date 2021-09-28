@@ -143,7 +143,7 @@ pub:
 	text         string
 	pos          token.Position
 	is_multiline bool
-	quote        string
+	quote        byte
 }
 
 // str returns the `string` representation of the `Quoted` type.

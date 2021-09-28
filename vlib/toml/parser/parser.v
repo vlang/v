@@ -695,15 +695,14 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 	// the scanner is returning the literal *with* single- or double-quotes.
 	mut quote := p.tok.lit[0]
 	is_multiline := p.tok.lit.len >= 6 && p.tok.lit[1] == quote && p.tok.lit[2] == quote
-	mut quote_lit := quote.ascii_str()
+	mut lit := p.tok.lit[1..p.tok.lit.len - 1]
 	if is_multiline {
-		quote_lit += quote_lit + quote_lit
+		lit = p.tok.lit[3..p.tok.lit.len - 3]
 	}
-	mut lit := p.tok.lit[quote_lit.len..p.tok.lit.len - quote_lit.len]
 	return ast.Quoted{
 		text: lit
 		pos: p.tok.position()
-		quote: quote_lit
+		quote: quote
 		is_multiline: is_multiline
 	}
 }
