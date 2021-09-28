@@ -175,10 +175,16 @@ pub fn (mut sem Semaphore) try_wait() bool {
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+	$if macos {
+		time.sleep(timeout)
+		return true
+	}
 	t_spec := timeout.timespec()
 	for {
-		if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
-			return true
+		$if !macos {
+			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+				return true
+			}
 		}
 		e := C.errno
 		match e {
