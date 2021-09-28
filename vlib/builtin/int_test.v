@@ -239,3 +239,10 @@ fn test_int_to_hex() {
 	assert i64(-1).hex() == 'ffffffffffffffff'
 	assert u64(18446744073709551615).hex() == 'ffffffffffffffff'
 }
+
+fn test_repeat() {
+	b := byte(`V`)
+	assert b.repeat(5) == 'VVVVV'
+	assert b.repeat(1) == b.ascii_str()
+	assert b.repeat(0) == ''
+}

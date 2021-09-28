@@ -507,3 +507,25 @@ pub fn (b []byte) bytestr() string {
 		return tos(buf, b.len)
 	}
 }
+
+// repeat returns a new string with `count` number of copies of the byte it was called on.
+pub fn (b byte) repeat(count int) string {
+	if count < 0 {
+		panic('byte.repeat: count is negative: $count')
+	} else if count == 0 {
+		return ''
+	} else if count == 1 {
+		return b.ascii_str()
+	}
+	mut ret := unsafe { malloc_noscan(count + 1) }
+	for i in 0 .. count {
+		unsafe{
+			ret[i] = b
+		}
+	}
+	new_len := count
+	unsafe {
+		ret[new_len] = 0
+	}
+	return unsafe { ret.vstring_with_len(new_len) }
+}
