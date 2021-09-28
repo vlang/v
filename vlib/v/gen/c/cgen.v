@@ -2925,8 +2925,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.right_is_opt = true
 		}
 		if blank_assign {
-			pre_assign_op := g.assign_op
-			g.assign_op = .decl_assign
+			if val is ast.IndexExpr {
+				g.assign_op = .decl_assign
+			}
 			if is_call {
 				old_is_void_expr_stmt := g.is_void_expr_stmt
 				g.is_void_expr_stmt = true
@@ -2937,7 +2938,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-			g.assign_op = pre_assign_op
 			g.is_assign_lhs = false
 		} else if assign_stmt.op == .assign
 			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
