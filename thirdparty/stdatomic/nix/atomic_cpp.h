@@ -42,8 +42,9 @@
 #endif
 #endif
 #ifdef _STDATOMIC_HAVE_ATOMIC
-/* We have a usable C++ <atomic>; use it instead.  */
-#include <atomic>
+
+#include "cpp/atomic.h"
+
 #undef _Atomic
 /* Also defined by <atomic> for gcc.  But not used in macros. */
 /* Also a clang intrinsic.                                    */

@@ -99,3 +99,5 @@ shell.nix
 default.nix
 flake.nix
 .envrc
+
+thirdparty/stdatomic/nix/cpp/*.h

@@ -550,6 +550,17 @@ fn (mut v Builder) cc() {
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()
 		v.setup_output_name()
+
+		if v.pref.os != .windows && ccompiler.contains('++') {
+			for file in v.parsed_files {
+				if file.imports.any(it.mod.contains('sync')) {
+					os.execute(@VEXE + ' run ' +
+						os.join_path(@VEXEROOT, 'thirdparty', 'stdatomic', 'nix', 'cpp', 'gen.v') +
+						' ' + ccompiler)
+					break
+				}
+			}
+		}
 		//
 		mut libs := []string{} // builtin.o os.o http.o etc
 		if v.pref.build_mode == .build_module {
