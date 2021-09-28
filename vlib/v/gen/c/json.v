@@ -28,7 +28,7 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 }
 
 fn (mut g Gen) gen_jsons() {
-	done := []ast.Type{}
+	mut done := []ast.Type{}
 
 	for utyp in g.json_types {
 		done << utyp
@@ -156,7 +156,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		g.gen_json_for_type(variant)
 
 		// Helpers for decoding
-		g.write_sumtype_casting_fn(variant, typ)
+		g.get_sumtype_casting_fn(variant, typ)
 		g.definitions.writeln('static inline $sym.cname ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
 
 		// ENCODING
