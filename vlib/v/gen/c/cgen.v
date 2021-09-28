@@ -2925,6 +2925,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.right_is_opt = true
 		}
 		if blank_assign {
+			if val is ast.IndexExpr {
+				g.assign_op = .decl_assign
+			}
 			if is_call {
 				old_is_void_expr_stmt := g.is_void_expr_stmt
 				g.is_void_expr_stmt = true
