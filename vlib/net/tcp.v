@@ -48,6 +48,49 @@ pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
 }
 
+pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+	$if trace_tcp ? {
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+	}
+	if res > 0 {
+		$if trace_tcp_data_read ? {
+			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
+				unsafe { buf_ptr.vstring_with_len(res) })
+		}
+		return res
+	}
+	code := error_code()
+	if code == int(error_ewouldblock) {
+		c.wait_for_read() ?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+		$if trace_tcp ? {
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		}
+		$if trace_tcp_data_read ? {
+			if res > 0 {
+				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
+					unsafe { buf_ptr.vstring_with_len(res) })
+			}
+		}
+		return socket_error(res)
+	} else {
+		wrap_error(code) ?
+	}
+	return none
+}
+
+pub fn (mut c TcpConn) read(mut buf []byte) ?int {
+	return c.read_ptr(buf.data, buf.len)
+}
+
+pub fn (mut c TcpConn) read_deadline() ?time.Time {
+	if c.read_deadline.unix == 0 {
+		return c.read_deadline
+	}
+	return none
+}
+
 // write_ptr blocks and attempts to write all data
 pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 	$if trace_tcp ? {
@@ -92,49 +135,6 @@ pub fn (mut c TcpConn) write(bytes []byte) ?int {
 // write_string blocks and attempts to write all data
 pub fn (mut c TcpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
-}
-
-pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
-	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-	}
-	if res > 0 {
-		$if trace_tcp_data_read ? {
-			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
-				unsafe { buf_ptr.vstring_with_len(res) })
-		}
-		return res
-	}
-	code := error_code()
-	if code == int(error_ewouldblock) {
-		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
-		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-		}
-		$if trace_tcp_data_read ? {
-			if res > 0 {
-				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
-					unsafe { buf_ptr.vstring_with_len(res) })
-			}
-		}
-		return socket_error(res)
-	} else {
-		wrap_error(code) ?
-	}
-	return none
-}
-
-pub fn (mut c TcpConn) read(mut buf []byte) ?int {
-	return c.read_ptr(buf.data, buf.len)
-}
-
-pub fn (mut c TcpConn) read_deadline() ?time.Time {
-	if c.read_deadline.unix == 0 {
-		return c.read_deadline
-	}
-	return none
 }
 
 pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {

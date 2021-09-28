@@ -23,6 +23,7 @@ module openssl
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+[typedef]
 pub struct C.SSL {
 }
 
