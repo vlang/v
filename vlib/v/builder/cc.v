@@ -554,9 +554,10 @@ fn (mut v Builder) cc() {
 		if v.pref.os != .windows && ccompiler.contains('++') {
 			for file in v.parsed_files {
 				if file.imports.any(it.mod.contains('sync')) {
-					os.execute(@VEXE + ' run ' +
+					x := @VEXE + ' run ' +
 						os.join_path(@VEXEROOT, 'thirdparty', 'stdatomic', 'nix', 'cpp', 'gen.v') +
-						' ' + ccompiler)
+						' ' + ccompiler
+					os.execute(x)
 					break
 				}
 			}

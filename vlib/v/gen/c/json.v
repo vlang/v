@@ -31,10 +31,10 @@ fn (mut g Gen) gen_jsons() {
 	mut done := []ast.Type{}
 
 	for utyp in g.json_types {
-		done << utyp
 		if utyp in done {
 			continue
 		}
+		done << utyp
 		mut dec := strings.new_builder(100)
 		mut enc := strings.new_builder(100)
 		sym := g.table.get_type_symbol(utyp)
@@ -270,8 +270,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 				}
 
 				if var_t in ['i64', 'int', 'i8', 'u64', 'u32', 'u16', 'byte', 'u8', 'rune', 'f64',
-					'f32',
-				] {
+					'f32'] {
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
