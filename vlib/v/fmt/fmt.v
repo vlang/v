@@ -226,7 +226,15 @@ pub fn (mut f Fmt) short_module(name string) string {
 	idx := vals.len - 1
 	mname, tprefix := f.get_modname_prefix(vals[..idx].join('.'))
 	symname := vals[vals.len - 1]
-	aname := f.mod2alias[mname]
+	mut aname := f.mod2alias[mname]
+	if aname == '' {
+		for _, v in f.mod2alias {
+			if v == mname {
+				aname = mname
+				break
+			}
+		}
+	}
 	if aname == '' {
 		return symname
 	}

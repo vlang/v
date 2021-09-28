@@ -19,29 +19,34 @@ import strings
 // }
 // Codegen json_decode/encode funcs
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
-	utyp := g.unwrap_generic(typ)
-	mut dec := strings.new_builder(100)
-	mut enc := strings.new_builder(100)
+	utyp := g.unwrap_generic(typ).set_nr_muls(0)
 	sym := g.table.get_type_symbol(utyp)
-	styp := g.typ(utyp)
-	g.register_optional(utyp)
 	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
-	if sym.kind == .array {
-		// return
-	}
-	if sym.name in g.json_types {
-		return
-	}
-	g.json_types << sym.name
-	// println('gen_json_for_type($sym.name)')
-	// decode_TYPE funcs receive an actual cJSON* object to decode
-	// cJSON_Parse(str) call is added by the compiler
-	// Code gen decoder
-	dec_fn_name := js_dec_name(styp)
-	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
-	dec.writeln('
+	g.json_types << utyp
+}
+
+fn (mut g Gen) gen_jsons() {
+	mut done := []ast.Type{}
+	for i := 0; i < g.json_types.len; i++ {
+		utyp := g.json_types[i]
+		if utyp in done {
+			continue
+		}
+		done << utyp
+		mut dec := strings.new_builder(100)
+		mut enc := strings.new_builder(100)
+		sym := g.table.get_type_symbol(utyp)
+		styp := g.typ(utyp)
+		g.register_optional(utyp)
+		// println('gen_json_for_type($sym.name)')
+		// decode_TYPE funcs receive an actual cJSON* object to decode
+		// cJSON_Parse(str) call is added by the compiler
+		// Code gen decoder
+		dec_fn_name := js_dec_name(styp)
+		dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
+		dec.writeln('
 $dec_fn_dec {
 	$styp res;
 	if (!root) {
@@ -53,69 +58,70 @@ $dec_fn_dec {
 		}
 	}
 ')
-	g.json_forward_decls.writeln('$dec_fn_dec;')
-	// Code gen encoder
-	// encode_TYPE funcs receive an object to encode
-	enc_fn_name := js_enc_name(styp)
-	enc_fn_dec := 'cJSON* ${enc_fn_name}($styp val)'
-	g.json_forward_decls.writeln('$enc_fn_dec;\n')
-	enc.writeln('
+		g.json_forward_decls.writeln('$dec_fn_dec;')
+		// Code gen encoder
+		// encode_TYPE funcs receive an object to encode
+		enc_fn_name := js_enc_name(styp)
+		enc_fn_dec := 'cJSON* ${enc_fn_name}($styp val)'
+		g.json_forward_decls.writeln('$enc_fn_dec;\n')
+		enc.writeln('
 $enc_fn_dec {
 \tcJSON *o;')
-	if sym.kind == .array {
-		// Handle arrays
-		value_type := g.table.value_type(utyp)
-		// If we have `[]Profile`, have to register a Profile en(de)coder first
-		g.gen_json_for_type(value_type)
-		dec.writeln(g.decode_array(value_type))
-		enc.writeln(g.encode_array(value_type))
-		// enc += g.encode_array(t)
-	} else if sym.kind == .map {
-		// Handle maps
-		m := sym.info as ast.Map
-		g.gen_json_for_type(m.key_type)
-		g.gen_json_for_type(m.value_type)
-		dec.writeln(g.decode_map(m.key_type, m.value_type))
-		enc.writeln(g.encode_map(m.key_type, m.value_type))
-	} else if sym.kind == .alias {
-		a := sym.info as ast.Alias
-		parent_typ := a.parent_type
-		psym := g.table.get_type_symbol(parent_typ)
-		if is_js_prim(g.typ(parent_typ)) {
-			g.gen_json_for_type(parent_typ)
-			return
-		}
-		enc.writeln('\to = cJSON_CreateObject();')
-		if psym.info is ast.Struct {
-			g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
-		} else if psym.kind == .sum_type {
-			verror('json: $sym.name aliased sumtypes does not work at the moment')
+		if sym.kind == .array {
+			// Handle arrays
+			value_type := g.table.value_type(utyp)
+			// If we have `[]Profile`, have to register a Profile en(de)coder first
+			g.gen_json_for_type(value_type)
+			dec.writeln(g.decode_array(value_type))
+			enc.writeln(g.encode_array(value_type))
+			// enc += g.encode_array(t)
+		} else if sym.kind == .map {
+			// Handle maps
+			m := sym.info as ast.Map
+			g.gen_json_for_type(m.key_type)
+			g.gen_json_for_type(m.value_type)
+			dec.writeln(g.decode_map(m.key_type, m.value_type))
+			enc.writeln(g.encode_map(m.key_type, m.value_type))
+		} else if sym.kind == .alias {
+			a := sym.info as ast.Alias
+			parent_typ := a.parent_type
+			psym := g.table.get_type_symbol(parent_typ)
+			if is_js_prim(g.typ(parent_typ)) {
+				g.gen_json_for_type(parent_typ)
+				continue
+			}
+			enc.writeln('\to = cJSON_CreateObject();')
+			if psym.info is ast.Struct {
+				g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
+			} else if psym.kind == .sum_type {
+				verror('json: $sym.name aliased sumtypes does not work at the moment')
+			} else {
+				verror('json: $sym.name is not struct')
+			}
+		} else if sym.kind == .sum_type {
+			enc.writeln('\to = cJSON_CreateObject();')
+			// Sumtypes. Range through variants of sumtype
+			if sym.info !is ast.SumType {
+				verror('json: $sym.name is not a sumtype')
+			}
+			g.gen_sumtype_enc_dec(sym, mut enc, mut dec)
 		} else {
-			verror('json: $sym.name is not struct')
+			enc.writeln('\to = cJSON_CreateObject();')
+			// Structs. Range through fields
+			if sym.info !is ast.Struct {
+				verror('json: $sym.name is not struct')
+			}
+			g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
 		}
-	} else if sym.kind == .sum_type {
-		enc.writeln('\to = cJSON_CreateObject();')
-		// Sumtypes. Range through variants of sumtype
-		if sym.info !is ast.SumType {
-			verror('json: $sym.name is not a sumtype')
-		}
-		g.gen_sumtype_enc_dec(sym, mut enc, mut dec)
-	} else {
-		enc.writeln('\to = cJSON_CreateObject();')
-		// Structs. Range through fields
-		if sym.info !is ast.Struct {
-			verror('json: $sym.name is not struct')
-		}
-		g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
+		// cJSON_delete
+		// p.cgen.fns << '$dec return opt_ok(res); \n}'
+		dec.writeln('\tOption_$styp ret;')
+		dec.writeln('\topt_ok(&res, (Option*)&ret, sizeof(res));')
+		dec.writeln('\treturn ret;\n}')
+		enc.writeln('\treturn o;\n}')
+		g.definitions.writeln(dec.str())
+		g.gowrappers.writeln(enc.str())
 	}
-	// cJSON_delete
-	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('\tOption_$styp ret;')
-	dec.writeln('\topt_ok(&res, (Option*)&ret, sizeof(res));')
-	dec.writeln('\treturn ret;\n}')
-	enc.writeln('\treturn o;\n}')
-	g.definitions.writeln(dec.str())
-	g.gowrappers.writeln(enc.str())
 }
 
 [inline]
@@ -150,7 +156,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		g.gen_json_for_type(variant)
 
 		// Helpers for decoding
-		g.write_sumtype_casting_fn(variant, typ)
+		g.get_sumtype_casting_fn(variant, typ)
 		g.definitions.writeln('static inline $sym.cname ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
 
 		// ENCODING

@@ -364,7 +364,6 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 						name = '${left.expr}.$left.field_name'
 						exp_type = g.comptime_var_type_map[name]
 					} else if left is ast.TypeNode {
-						name = left.str()
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
 					}

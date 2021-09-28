@@ -20,7 +20,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		}
 	}
 	g.inside_ternary++
-	if g.is_test {
+	if g.pref.is_test {
 		g.write('if (')
 		g.expr(node.expr)
 		g.write(')')

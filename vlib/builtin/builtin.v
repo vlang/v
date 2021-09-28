@@ -126,3 +126,10 @@ pub:
 	arg     string
 	kind    AttributeKind
 }
+
+[used]
+fn v_segmentation_fault_handler(signal int) {
+	eprintln('signal 11: segmentation fault')
+	print_backtrace()
+	exit(128 + 11)
+}

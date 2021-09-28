@@ -143,7 +143,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if node.generic_names.len > 0 && g.table.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
+	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
@@ -151,19 +151,19 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				the_type := syms.map(it.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
-			g.table.cur_concrete_types = concrete_types
+			g.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
-		g.table.cur_concrete_types = []
+		g.cur_concrete_types = []
 		return
 	}
-	cur_fn_save := g.table.cur_fn
+	cur_fn_save := g.cur_fn
 	defer {
-		g.table.cur_fn = cur_fn_save
+		g.cur_fn = cur_fn_save
 	}
 	unsafe {
 		// TODO remove unsafe
-		g.table.cur_fn = node
+		g.cur_fn = node
 	}
 	fn_start_pos := g.out.len
 	is_closure := node.scope.has_inherited_vars()
@@ -206,7 +206,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	mut type_name := g.typ(node.return_type)
 
-	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	name = g.generic_fn_name(g.cur_concrete_types, name, true)
 
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
@@ -288,7 +288,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
-		&& !g.is_test) || skip {
+		&& !g.pref.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -644,14 +644,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	mut unwrapped_rec_type := node.receiver_type
-	if g.table.cur_fn.generic_names.len > 0 { // in generic fn
+	if g.cur_fn != 0 && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
 		sym := g.table.get_type_symbol(node.receiver_type)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
 				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
-				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				// see comment at top of vlib/v/gen/c/utils.v
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp
@@ -671,7 +673,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
-			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name')
+			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
@@ -712,7 +714,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				return
 			}
 			'contains' {
-				g.gen_array_contains(node)
+				g.gen_array_contains(node.left_type, node.left, node.args[0].expr)
 				return
 			}
 			'index' {
@@ -795,7 +797,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if rec_type.has_flag(.shared_f) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
-		g.gen_str_method_for_type(rec_type)
+		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
 		mut rec_type := node.receiver_type
 		if rec_type.has_flag(.shared_f) {
@@ -1333,7 +1335,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
 			if fn_def := g.table.find_fn(node.name) {
-				if utyp := g.table.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
 					node.concrete_types)
 				{
 					arr_info.elem_type = utyp

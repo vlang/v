@@ -175,7 +175,7 @@ pub mut:
 	no_rsp              bool        // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
 	no_std              bool        // when true, do not pass -std=c99 to the C backend
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	is_parallel         bool
+	no_parallel         bool
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	check_only          bool // same as only_check_syntax, but also runs the checker
@@ -474,8 +474,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.prealloc = true
 				res.build_options << arg
 			}
-			'-parallel' {
-				res.is_parallel = true
+			'-no-parallel' {
+				res.no_parallel = true
 			}
 			'-native' {
 				res.backend = .native

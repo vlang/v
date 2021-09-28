@@ -148,7 +148,7 @@ fn get_all_commands() []Command {
 	}
 	$if macos || linux {
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -I "$vroot/thirdparty/stdatomic/nix" -lpthread v.c && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
