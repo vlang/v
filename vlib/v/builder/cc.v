@@ -556,7 +556,7 @@ fn (mut v Builder) cc() {
 			if !os.exists(cpp_atomic_h_path) {
 				for file in v.parsed_files {
 					if file.imports.any(it.mod.contains('sync')) {
-						$if trace_stdatomic_gen {
+						$if trace_stdatomic_gen ? {
 							eprintln('> creating $cpp_atomic_h_path ...')
 						}
 						os.execute('$vexe run ${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v $ccompiler')
