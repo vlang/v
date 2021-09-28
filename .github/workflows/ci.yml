@@ -257,18 +257,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Build V
-        run: |
-          make CC=clang
-      - name: Show PWD and Environment
+      - name: Show Environment
         run: |
           echo "PWD:"
           pwd
-          echo "ENVIRONMENT"
+          echo "ENVIRONMENT:"
           env
+          echo "C Compiler:"
+          gcc --version
+
+      - name: Build V
+        run: CC=gcc make
+
       - name: Test V fixed tests
-        run: |
-          ./v -silent test-self
+        run: ./v -silent test-self
 
   macos:
     needs: no-scheduling

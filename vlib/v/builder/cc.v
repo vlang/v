@@ -552,13 +552,16 @@ fn (mut v Builder) cc() {
 		v.setup_output_name()
 
 		if v.pref.os != .windows && ccompiler.contains('++') {
-			for file in v.parsed_files {
-				if file.imports.any(it.mod.contains('sync')) {
-					x := @VEXE + ' run ' +
-						os.join_path(@VEXEROOT, 'thirdparty', 'stdatomic', 'nix', 'cpp', 'gen.v') +
-						' ' + ccompiler
-					os.execute(x)
-					break
+			cpp_atomic_h_path := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/atomic.h'
+			if !os.exists(cpp_atomic_h_path) {
+				for file in v.parsed_files {
+					if file.imports.any(it.mod.contains('sync')) {
+						$if trace_stdatomic_gen {
+							eprintln('> creating $cpp_atomic_h_path ...')
+						}
+						os.execute('$vexe run ${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v $ccompiler')
+						break
+					}
 				}
 			}
 		}
