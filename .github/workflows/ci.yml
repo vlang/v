@@ -188,30 +188,6 @@ jobs:
       - name: Build v
         run: make
 
-      - name: v.c can be compiled and run with -os cross (bootstrapping works)
-        run: |
-          ls -la v vc/v.c
-          ./v -os cross -o vc/v.c cmd/v
-          gcc  -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc vc/v.c  -lm -lpthread
-          ls -lart v_from_vc
-          ./v_from_vc version
-          ./v_from_vc run examples/hello_world.v
-          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
-          ./v_from_vc_produced_native_v run examples/hello_world.v
-          make local=1
-          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
-
-      - name: Ensure v up works
-        run: |
-          ./v cmd/tools/oldv.v
-          ./cmd/tools/oldv -v HEAD^^^^^
-          cd ~/.cache/oldv/v_at_HEAD_____/
-          ./v version
-          ./v -v up
-          ./v version
-          ./v  -o v2 cmd/v
-          ./v2 -o v3 cmd/v
-
       - name: Ensure V can be compiled with -autofree
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
@@ -327,20 +303,6 @@ jobs:
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-
-      - name: v.c can be compiled and run with -os cross (bootstrapping works)
-        run: |
-          ls -la v vc/v.c
-          ./v -os cross -o vc/v.c cmd/v
-          cc -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc vc/v.c -lm -lpthread
-          ls -lart v_from_vc
-          ./v_from_vc version
-          ./v_from_vc run examples/hello_world.v
-          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
-          ./v_from_vc_produced_native_v run examples/hello_world.v
-          ### the next make invocation will simulate building V from scratch
-          make local=1
-          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
 
       - name: Self tests
         run: VJOBS=1 ./v -silent test-self
