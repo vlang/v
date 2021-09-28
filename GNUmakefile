@@ -84,13 +84,16 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -I ./thirdparty/stdatomic/nix -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-	$(V) -o v2.exe $(VFLAGS) cmd/v
-	move /y v2.exe v.exe
+	$(CC) $(CFLAGS) -std=c99 -municode -w -I ./thirdparty/stdatomic/nix -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS)
+	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
+	v2.exe -o $(V) $(VFLAGS) cmd/v
+	del v1.exe
+	del v2.exe
 else
-	$(CC) $(CFLAGS) -std=gnu99 -w -I ./thirdparty/stdatomic/nix -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-	$(V) -o v2.exe $(VFLAGS) cmd/v
-	mv -f v2.exe v
+	$(CC) $(CFLAGS) -std=gnu99 -w -I ./thirdparty/stdatomic/nix -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
+	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
+	./v2.exe -o $(V) $(VFLAGS) cmd/v
+	rm -rf v1.exe v2.exe
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
