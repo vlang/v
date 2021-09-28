@@ -459,6 +459,11 @@ pub fn (s string) f64() f64 {
 	return strconv.atof64(s)
 }
 
+// u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+pub fn (s string) byte() u8 {
+	return byte(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
+}
+
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
 pub fn (s string) u16() u16 {
 	return u16(strconv.common_parse_uint(s, 0, 16, false, false) or { 0 })
