@@ -140,8 +140,10 @@ pub fn (n Null) str() string {
 // Quoted types can appear both as keys and values in TOML documents.
 pub struct Quoted {
 pub:
-	text string
-	pos  token.Position
+	text         string
+	pos          token.Position
+	is_multiline bool
+	quote        byte
 }
 
 // str returns the `string` representation of the `Quoted` type.
@@ -149,6 +151,8 @@ pub fn (q Quoted) str() string {
 	mut str := typeof(q).name + '{\n'
 	str += '  text:  \'$q.text\'\n'
 	str += '  pos:  $q.pos\n'
+	str += '  is_multiline:  $q.is_multiline\n'
+	str += '  quote: \'$q.quote\'\n'
 	str += '}'
 	return str
 }
