@@ -27,8 +27,9 @@ fn test_level_trigger() ? {
 		notifier.add(reader, .read) ?
 
 		os.fd_write(writer, 'foobar')
-		check_read_event(notifier, reader, 'foo')
-		check_read_event(notifier, reader, 'bar')
+		mut n := &notifier
+		check_read_event(mut n, reader, 'foo')
+		check_read_event(mut n, reader, 'bar')
 
 		assert notifier.wait(0).len == 0
 	}
@@ -46,8 +47,10 @@ fn test_edge_trigger() ? {
 		}
 		notifier.add(reader, .read, .edge_trigger) ?
 
+		mut n := &notifier
+
 		os.fd_write(writer, 'foobar')
-		check_read_event(notifier, reader, 'foo')
+		check_read_event(mut n, reader, 'foo')
 
 		assert notifier.wait(0).len == 0
 
@@ -71,15 +74,17 @@ fn test_one_shot() ? {
 		}
 		notifier.add(reader, .read, .one_shot) ?
 
+		mut n := &notifier
+
 		os.fd_write(writer, 'foobar')
-		check_read_event(notifier, reader, 'foo')
+		check_read_event(mut n, reader, 'foo')
 		os.fd_write(writer, 'baz')
 
 		assert notifier.wait(0).len == 0
 
 		// rearm
 		notifier.modify(reader, .read) ?
-		check_read_event(notifier, reader, 'barbaz')
+		check_read_event(mut n, reader, 'barbaz')
 	}
 }
 
@@ -148,7 +153,7 @@ fn test_remove() ? {
 	}
 }
 
-fn check_read_event(notifier notify.FdNotifier, reader_fd int, expected string) {
+fn check_read_event(mut notifier notify.FdNotifier, reader_fd int, expected string) {
 	events := notifier.wait(0)
 	assert events.len == 1
 	assert events[0].fd == reader_fd

@@ -37,11 +37,11 @@ pub fn (ctx &ValueContext) deadline() ?time.Time {
 	return ctx.context.deadline()
 }
 
-pub fn (ctx &ValueContext) done() chan int {
+pub fn (mut ctx ValueContext) done() chan int {
 	return ctx.context.done()
 }
 
-pub fn (ctx &ValueContext) err() IError {
+pub fn (mut ctx ValueContext) err() IError {
 	return ctx.context.err()
 }
 

@@ -43,23 +43,6 @@ pub interface Context {
 	// should be canceled. deadline returns none when no deadline is
 	// set. Successive calls to deadline return the same results.
 	deadline() ?time.Time
-	// done returns a channel that's closed when work done on behalf of this
-	// context should be canceled. done may return nil if this context can
-	// never be canceled. Successive calls to done return the same value.
-	// The close of the done channel may happen asynchronously,
-	// after the cancel function returns.
-	//
-	// with_cancel arranges for done to be closed when cancel is called;
-	// with_deadline arranges for done to be closed when the deadline
-	// expires; with_timeout arranges for done to be closed when the timeout
-	// elapses.
-	done() chan int
-	// If done is not yet closed, err returns nil.
-	// If done is closed, err returns a non-nil error explaining why:
-	// canceled if the context was canceled
-	// or deadline_exceeded if the context's deadline passed.
-	// After err returns a non-nil error, successive calls to err return the same error.
-	err() IError
 	// Value returns the value associated with this context for key, or nil
 	// if no value is associated with key. Successive calls to Value with
 	// the same key returns the same result.
@@ -76,6 +59,24 @@ pub interface Context {
 	// collisions.
 	value(key Key) ?Any
 	str() string
+	// done returns a channel that's closed when work done on behalf of this
+	// context should be canceled. done may return nil if this context can
+	// never be canceled. Successive calls to done return the same value.
+	// The close of the done channel may happen asynchronously,
+	// after the cancel function returns.
+	//
+	// with_cancel arranges for done to be closed when cancel is called;
+	// with_deadline arranges for done to be closed when the deadline
+	// expires; with_timeout arranges for done to be closed when the timeout
+	// elapses.
+mut:
+	done() chan int
+	// If done is not yet closed, err returns nil.
+	// If done is closed, err returns a non-nil error explaining why:
+	// canceled if the context was canceled
+	// or deadline_exceeded if the context's deadline passed.
+	// After err returns a non-nil error, successive calls to err return the same error.
+	err() IError
 }
 
 // background returns an empty Context. It is never canceled, has no

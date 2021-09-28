@@ -3,7 +3,7 @@ module io
 // BufferedReader provides a buffered interface for a reader
 struct BufferedReader {
 mut:
-	reader MutReader
+	reader Reader
 	buf    []byte
 	offset int // current offset in the buffer
 	len    int
@@ -15,7 +15,7 @@ pub mut:
 
 // BufferedReaderConfig are options that can be given to a reader
 pub struct BufferedReaderConfig {
-	reader  MutReader
+	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
 	retries int = 2 // how many times to retry before assuming the stream ended
 }
@@ -35,7 +35,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	return r
 }
 
-// read fufills the MutReader interface
+// read fufills the Reader interface
 pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
 	if r.end_of_stream {
 		return none

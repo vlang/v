@@ -10,7 +10,9 @@ const (
 // function that it should abandon its work as soon as it gets to it.
 fn test_with_deadline() {
 	dur := time.now().add(short_duration)
-	ctx, cancel := context.with_deadline(context.background(), dur)
+	mut background := context.background()
+	mut b := &background
+	mut ctx, cancel := context.with_deadline(mut b, dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
@@ -33,7 +35,9 @@ fn test_with_deadline() {
 fn test_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	ctx, cancel := context.with_timeout(context.background(), short_duration)
+	mut background := context.background()
+	mut b := &background
+	mut ctx, cancel := context.with_timeout(mut b, short_duration)
 	defer {
 		cancel()
 	}

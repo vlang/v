@@ -80,7 +80,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return none
 }
 
-pub fn (mut c TcpConn) read(mut buf []byte) ?int {
+pub fn (c TcpConn) read(mut buf []byte) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 

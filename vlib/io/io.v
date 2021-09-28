@@ -4,7 +4,7 @@ const (
 	buf_max_len = 1024
 )
 
-pub fn cp(src Reader, mut dst Writer) ? {
+pub fn cp(mut src Reader, mut dst Writer) ? {
 	mut buf := []byte{len: io.buf_max_len}
 	for {
 		len := src.read(mut buf) or { break }
