@@ -137,7 +137,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.bare_builtin_dir = os.join_path(p.vroot, 'vlib', 'builtin', 'linux_bare')
 	}
 	$if prealloc {
-		eprintln('disabling parallel cgen, since V was built with -prealloc')
+		if !p.no_parallel {
+			eprintln('disabling parallel cgen, since V was built with -prealloc')
+		}
 		p.no_parallel = true
 	}
 }
