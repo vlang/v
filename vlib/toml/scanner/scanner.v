@@ -25,6 +25,16 @@ mut:
 	mode    Mode // sub-mode of the scanner
 }
 
+// State is a read-only copy of the scanner's internal state.
+// See also `Scanner.state()`.
+pub struct State {
+pub:
+	col     int  // current column number (x coordinate)
+	line_nr int = 1 // current line number (y coordinate)
+	pos     int  // current flat/index position in the `text` field
+	mode    Mode // sub-mode of the scanner
+}
+
 enum Mode {
 	normal
 	inside_string
@@ -426,6 +436,8 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 		}
 
 		c := s.at()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
+
 		if c == `\n` {
 			s.inc_line_number()
 			lit += c.ascii_str()
@@ -442,8 +454,6 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				continue
 			}
 		}
-
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c')
 
 		if c == quote {
 			if s.peek(1) == quote && s.peek(2) == quote {
@@ -469,14 +479,16 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 	return lit
 }
 
-// handle_escapes
+// handle_escapes returns any escape character sequence.
+// For escape sequence validation see `Checker.check_quoted_escapes`.
 fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 	c := s.at()
 	mut lit := c.ascii_str()
-	if s.peek(1) == byte(92) {
-		lit += lit
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
-		return lit, 1
+	if s.peek(1) == `u` && byte(s.peek(2)).is_hex_digit() && byte(s.peek(3)).is_hex_digit()
+		&& byte(s.peek(4)).is_hex_digit() && byte(s.peek(5)).is_hex_digit() {
+		lit += s.text[s.pos + 1..s.pos + 6] //.ascii_str()
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped unicode `$lit`')
+		return lit, 4
 	} else if s.peek(1) == quote {
 		if (!is_multiline && s.peek(2) == `\n`)
 			|| (is_multiline && s.peek(2) == quote && s.peek(3) == quote && s.peek(4) == `\n`) {
@@ -486,13 +498,9 @@ fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 		lit += quote.ascii_str()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
 		return lit, 1
-	} else if s.peek(1) == `u` && byte(s.peek(2)).is_hex_digit() && byte(s.peek(3)).is_hex_digit()
-		&& byte(s.peek(4)).is_hex_digit() && byte(s.peek(5)).is_hex_digit() {
-		lit += s.text[s.pos + 1..s.pos + 6] //.ascii_str()
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped `$lit`')
-		return lit, 4
 	}
-	return '', 0
+	lit += byte(s.peek(1)).ascii_str()
+	return lit, 1
 }
 
 // extract_number collects and returns a string containing
@@ -541,4 +549,14 @@ pub fn (s Scanner) excerpt(pos int, margin int) string {
 	start := if pos > 0 && pos >= margin { pos - margin } else { 0 }
 	end := if pos + margin < s.text.len { pos + margin } else { s.text.len }
 	return s.text[start..end].replace('\n', r'\n')
+}
+
+// state returns a read-only view of the scanner's internal state.
+pub fn (s Scanner) state() State {
+	return State{
+		col: s.col
+		line_nr: s.line_nr
+		pos: s.pos
+		mode: s.mode
+	}
 }
