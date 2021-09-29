@@ -7931,6 +7931,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	c.cur_orm_ts = *sym
 	if sym.info !is ast.Struct {
+		c.error('The table symbol `$sym.name` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
