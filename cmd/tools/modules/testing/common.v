@@ -270,12 +270,16 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut cmd_options := [ts.vargs]
 	mut run_js := false
 
+	is_fmt := ts.vargs.contains('fmt')
+
 	if relative_file.ends_with('js.v') {
-		cmd_options << ' -b js'
+		if !is_fmt {
+			cmd_options << ' -b js'
+		}
 		run_js = true
 	}
 
-	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
+	if relative_file.contains('global') && !is_fmt {
 		cmd_options << ' -enable-globals'
 	}
 	if ts.root_relative {
