@@ -1306,10 +1306,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
-				if node.concrete_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
-					&& !expected_types[i].is_ptr() {
-					g.write('*')
-				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
 			}
 		} else {
