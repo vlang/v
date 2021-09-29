@@ -172,65 +172,12 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 		' boolean values like "$lit" can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
 }
 
-fn (c Checker) check_quoted(q ast.Quoted) ? {
-	lit := q.text
-	quote := q.quote.ascii_str()
+fn (c Checker) check_quoted(b ast.Quoted) ? {
+	lit := b.text
+	quote := b.quote.ascii_str()
 	triple_quote := quote + quote + quote
-	if q.is_multiline && lit.ends_with(triple_quote) {
+	if b.is_multiline && lit.ends_with(triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' string values like "$lit" is has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
+			' string values like "$lit" is has unbalanced quote literals `b.quote` in ...${c.excerpt(b.pos)}...')
 	}
-	c.check_quoted_escapes(q) ?
-}
-
-// check_escapes will return an error for any disallowed escape sequences.
-// Delimiters in TOML has significant meaning:
-// "/""" delimits *basic* strings
-// '/''' delimits *literal* strings (What-you-see-is-what-you-get)
-// Allowed escapes in *basic* strings are:
-// \b         - backspace       (U+0008)
-// \t         - tab             (U+0009)
-// \n         - linefeed        (U+000A)
-// \f         - form feed       (U+000C)
-// \r         - carriage return (U+000D)
-// \"         - quote           (U+0022)
-// \\         - backslash       (U+005C)
-// \uXXXX     - unicode         (U+XXXX)
-// \UXXXXXXXX - unicode         (U+XXXXXXXX)
-fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
-	// Setup a scanner in stack memory for easier navigation.
-	/*
-	mut s := scanner.new_simple(q.text) ?
-
-
-	mut tok := s.scan() ?
-	for tok.kind != .eof {
-
-		//println(tok.lit)
-
-		tok = s.scan() ?
-	}
-	*/
-
-	/*
-	// [`\b`,`\t`,`\n`,`\f`,`\r`,`\"`,`\`]
-	//allowed_escapes = [byte('b'),byte('t'),byte('n'),byte('f'),byte('r'),byte('"'),byte('\\')]
-	//allowed_escapes = [`\b`,`\t`,`\n`,`\f`,`\r`,`\"`,`\\`]
-	allowed_escapes = [`b`,`t`,`n`,`f`,`r`,`\"`,`\\`]
-	//escapes = [`\b`,`\t`,`\n`,`\f`,`\r`]
-	multiline_exceptions = [`u`,`U`,`\n`,`'`]
-
-	next_c := byte(s.peek(1))
-	if is_multiline {
-		if next_c !in allowed_escapes && next_c !in multiline_exceptions {
-			lit += next_c.ascii_str()
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' can not escape `${next_c.ascii_str()}` in `$lit` ($s.line_nr,$s.col) near ...${s.excerpt(s.pos, 30)}...')
-		}
-		if next_c == byte(32) && s.peek(2) == byte(92) {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' can not escape whitespaces before escapes in multi-line strings (`\\ \\`) at `$lit` ($s.line_nr,$s.col) near ...${s.excerpt(s.pos, 5)}...')
-		}
-	}
-	*/
 }
