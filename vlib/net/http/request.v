@@ -6,6 +6,7 @@ module http
 import io
 import net
 import net.urllib
+import rand
 import strings
 import time
 
@@ -26,6 +27,12 @@ pub mut:
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
+	//
+	validate               bool // when true, certificate failures will stop further processing
+	verify                 string
+	cert                   string
+	cert_key               string
+	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
 fn (mut req Request) free() {
@@ -57,8 +64,7 @@ pub fn (req &Request) do() ?Response {
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
 		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
-			.permanent_redirect,
-		] {
+			.permanent_redirect] {
 			break
 		}
 		// follow any redirects
@@ -238,7 +244,7 @@ fn parse_form(body string) map[string]string {
 	// ...
 }
 
-struct FileData {
+pub struct FileData {
 pub:
 	filename     string
 	content_type string
@@ -255,7 +261,44 @@ struct MultiplePathAttributesError {
 	code int
 }
 
-fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
+// multipart_form_body converts form and file data into a multipart/form
+// HTTP request body. It is the inverse of parse_multipart_form. Returns
+// (body, boundary).
+// NB: Form keys should not contain quotes
+fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
+	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+	boundary := rand.string_from_set(alpha_numeric, 64)
+
+	mut sb := strings.new_builder(1024)
+	for name, value in form {
+		sb.write_string('\r\n--')
+		sb.write_string(boundary)
+		sb.write_string('\r\nContent-Disposition: form-data; name="')
+		sb.write_string(name)
+		sb.write_string('"\r\n\r\n')
+		sb.write_string(value)
+	}
+	for name, fs in files {
+		for f in fs {
+			sb.write_string('\r\n--')
+			sb.write_string(boundary)
+			sb.write_string('\r\nContent-Disposition: form-data; name="')
+			sb.write_string(name)
+			sb.write_string('"; filename="')
+			sb.write_string(f.filename)
+			sb.write_string('"\r\nContent-Type: ')
+			sb.write_string(f.content_type)
+			sb.write_string('\r\n\r\n')
+			sb.write_string(f.data)
+		}
+	}
+	sb.write_string('\r\n--')
+	sb.write_string(boundary)
+	sb.write_string('--')
+	return sb.str(), boundary
+}
+
+pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	sections := body.split(boundary)
 	fields := sections[1..sections.len - 1]
 	mut form := map[string]string{}
@@ -269,8 +312,7 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 		name := disposition['name'] or { continue }
 		// Parse files
 		// TODO: filename*
-		if 'filename' in disposition {
-			filename := disposition['filename']
+		if filename := disposition['filename'] {
 			// Parse Content-Type header
 			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
 				continue

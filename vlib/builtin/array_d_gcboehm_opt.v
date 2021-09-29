@@ -57,7 +57,7 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	unsafe { C.memcpy(arr.data, c_array, len * elm_size) }
+	unsafe { vmemcpy(arr.data, c_array, len * elm_size) }
 	return arr
 }
 
@@ -73,7 +73,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 	new_size := cap * a.element_size
 	new_data := vcalloc_noscan(new_size)
 	if a.data != voidptr(0) {
-		unsafe { C.memcpy(new_data, a.data, a.len * a.element_size) }
+		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
 	a.data = new_data
@@ -105,9 +105,9 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 		for i in 0 .. count {
 			if depth > 0 {
 				ary_clone := unsafe { a.clone_to_depth_noscan(depth) }
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 			} else {
-				unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 			}
 		}
 	}
@@ -123,7 +123,7 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 	}
 	a.ensure_cap_noscan(a.len + 1)
 	unsafe {
-		C.memmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
+		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
 		a.set_unsafe(i, val)
 	}
 	a.len++
@@ -141,8 +141,8 @@ fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
-		C.memmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
-		C.memcpy(iptr, val, size * elem_size)
+		vmemmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
+		vmemcpy(iptr, val, size * elem_size)
 	}
 	a.len += size
 }
@@ -198,14 +198,14 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { C.memcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth_noscan(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
 	} else {
 		if !isnil(a.data) {
-			unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
+			unsafe { vmemcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
 	}
@@ -213,7 +213,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 
 fn (mut a array) push_noscan(val voidptr) {
 	a.ensure_cap_noscan(a.len + 1)
-	unsafe { C.memmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
@@ -226,13 +226,12 @@ fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 		copy := a3.clone()
 		a3.ensure_cap_noscan(a3.len + size)
 		unsafe {
-			// C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-			C.memcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
+			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
 		}
 	} else {
 		a3.ensure_cap_noscan(a3.len + size)
 		if !isnil(a3.data) && !isnil(val) {
-			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
+			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
 	a3.len += size

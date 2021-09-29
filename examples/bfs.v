@@ -26,7 +26,7 @@ fn breadth_first_search_path(graph map[string][]string, vertex string, target st
 }
 
 fn main() {
-	graph := map{
+	graph := {
 		'A': ['B', 'C']
 		'B': ['A', 'D', 'E']
 		'C': ['A', 'F']

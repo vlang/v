@@ -41,6 +41,7 @@
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
 - [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
+- Great for writing low level software ([Vinix OS](https://github.com/vlang/vinix))
 
 ## Stability guarantee and future changes
 
@@ -262,6 +263,15 @@ tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 https://github.com/vlang/gitly
 
 <img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
+
+## Vinix, an OS/kernel written in V
+
+V is great for writing low level software like drivers and kernels.
+Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
+
+https://github.com/vlang/vinix
+
+<img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
 
 ## Troubleshooting
 

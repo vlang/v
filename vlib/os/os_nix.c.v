@@ -8,7 +8,7 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <utime.h>
-$if !solaris {
+$if !solaris && !haiku {
 	#include <sys/ptrace.h>
 }
 
@@ -346,7 +346,7 @@ pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
-	pcmd := '$cmd 2>&1'
+	pcmd := if cmd.contains('2>') { cmd } else { '$cmd 2>&1' }
 	f := vpopen(pcmd)
 	if isnil(f) {
 		return Result{

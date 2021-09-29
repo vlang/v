@@ -1,0 +1,7 @@
+enum Color { red green = 10 blue }
+
+fn main() {
+    println(Color(0))
+    println(Color(10))
+    println(Color(12))
+}

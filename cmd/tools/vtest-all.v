@@ -69,6 +69,10 @@ fn get_all_commands() []Command {
 		}
 	}
 	res << Command{
+		line: '$vexe run examples/v_script.vsh'
+		okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+	}
+	res << Command{
 		line: '$vexe -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
 		rmfile: 'vtmp'
@@ -129,6 +133,11 @@ fn get_all_commands() []Command {
 		line: '$vexe install nedpals.args'
 		okmsg: '`v install` works.'
 	}
+	res << Command{
+		line: '$vexe -usecache -cg examples/hello_world.v'
+		okmsg: '`v -usecache -cg` works.'
+		rmfile: 'examples/hello_world'
+	}
 	// NB: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:
@@ -139,7 +148,7 @@ fn get_all_commands() []Command {
 	}
 	$if macos || linux {
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -Werror -I "$vroot/thirdparty/stdatomic/nix" v.c -lpthread && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
@@ -151,7 +160,7 @@ fn get_all_commands() []Command {
 fn (mut cmd Command) run() {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}

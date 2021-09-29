@@ -418,6 +418,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
+	assert s.byte() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
@@ -651,7 +652,7 @@ fn test_for_loop_two() {
 }
 
 fn test_quote() {
-	a := `\'`
+	a := `'`
 	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'
@@ -909,4 +910,10 @@ fn test_emoji_to_runes() {
 fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
+}
+
+fn test_index_any() {
+	x := 'abcdefghij'
+	assert x.index_any('ef') == 4
+	assert x.index_any('fe') == 4
 }

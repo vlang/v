@@ -1,0 +1,6 @@
+fn my_fn() {
+	f := fn [dont_exist] () {
+		print(dont_exist)
+	}
+	f()
+}

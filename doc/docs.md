@@ -131,7 +131,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
+    * [Calling V from C](#calling-v-from-c)
 	* [Atomics](#atomics)
+	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -417,7 +419,9 @@ rune // represents a Unicode code point
 
 f32 f64
 
-voidptr, size_t // these are mostly used for C interoperability
+isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
+
+voidptr // this one is mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -480,8 +484,15 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
-to bytes in the string, not Unicode code points.
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. 
+Indexes correspond to bytes in the string, not Unicode code points. If you want to 
+convert the `byte` to a `string`, use the `ascii_str()` method:
+
+```v
+country := 'Netherlands'
+println(country[0]) // Output: 78
+println(country[0].ascii_str()) // Output: N
+```
 
 Character literals have type `rune`. To denote them, use `
 
@@ -623,6 +634,13 @@ f2 := f32(3.14)
 ```
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
+
+Float literals can also be declared as a power of ten:
+```v
+f0 := 42e1 // 420
+f1 := 123e-2 // 1.23
+f2 := 456e+2 // 45600
+```
 
 ### Arrays
 #### Basic Array Concepts
@@ -945,7 +963,7 @@ println(nums[..4]) // [0, 10, 20, 30]
 println(nums[1..]) // [10, 20, 30, 40]
 ```
 
-In V slices are arrays themselves (they are no distinct types). As a result
+In V slices are arrays themselves (they are not distinct types). As a result
 all array operations may be performed on them. E.g. they can be pushed onto an
 array of the same type:
 
@@ -1027,13 +1045,14 @@ m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
+println(m.keys()) // ['one', 'two']
 m.delete('two')
 ```
 Maps can have keys of type string, rune, integer, float or voidptr.
 
 The whole map can be initialized using this short syntax:
 ```v
-numbers := map{
+numbers := {
 	'one': 1
 	'two': 2
 }
@@ -1043,14 +1062,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := map{
+sm := {
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
 ```
 ```v
-intm := map{
+intm := {
 	1: 1234
 	2: 5678
 }
@@ -1136,7 +1155,7 @@ import crypto.sha256
 import mymod.sha256 as mysha256
 
 fn main() {
-	v_hash := mysha256.sum('hi'.bytes()).hex()
+	v_hash := sha256.sum('hi'.bytes()).hex()
 	my_hash := mysha256.sum('hi'.bytes()).hex()
 	assert my_hash == v_hash
 }
@@ -1297,7 +1316,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1412,7 +1431,7 @@ The code above prints:
 ##### Map `for`
 
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1425,7 +1444,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := map{
+m := {
 	'one': 1
 	'two': 2
 }
@@ -1553,6 +1572,30 @@ s := match number {
 	2 { 'two' }
 	else { 'many' }
 }
+```
+
+A match statement can also to be used as an `if - else if - else` alternative:
+
+```v
+match true {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+}
+// 'else if2' should be printed
+```
+
+or as an `unless` alternative: [unless Ruby](https://www.tutorialspoint.com/ruby/ruby_if_else.htm)
+
+```v
+match false {
+	2 > 4 { println('if') }
+	3 == 4 { println('else if') }
+	2 == 2 { println('else if2') }
+	else { println('else') }
+}
+// 'if' should be printed
 ```
 
 A match expression returns the value of the final expression from the matching branch.
@@ -1774,7 +1817,7 @@ mut p := Point{
 	y: 20
 }
 // you can omit the struct name when it's already known
-p = {
+p = Point{
 	x: 30
 	y: 4
 }
@@ -1926,7 +1969,7 @@ clr1 := Rgba32{
 }
 
 clr2 := Rgba32{
-	Rgba32_Component: {
+	Rgba32_Component: Rgba32_Component{
 		a: 128
 	}
 }
@@ -2020,7 +2063,7 @@ struct User {
 }
 
 fn register(u User) User {
-	return {
+	return User{
 		...u
 		is_registered: true
 	}
@@ -2086,12 +2129,75 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println(fns[0](10)) // "100"
-	fns_map := map{
+	fns_map := {
 		'sqr':  sqr
 		'cube': cube
 	}
 	println(fns_map['cube'](2)) // "8"
 }
+```
+
+V supports closures too.
+This means that anonymous functions can inherit variables from the scope they were created in.
+They must do so explicitly by listing all variables that are inherited.
+
+> Warning: currently works on Unix-based, x64 architectures only.
+Some work is in progress to make closures work on Windows, then other architectures.
+
+```v oksyntax
+my_int := 1
+my_closure := fn [my_int] () {
+	println(my_int)
+}
+my_closure() // prints 1
+```
+
+Inherited variables are copied when the anonymous function is created.
+This means that if the original variable is modified after the creation of the function,
+the modification won't be reflected in the function.
+
+```v oksyntax
+mut i := 1
+func := fn [i] () int {
+	return i
+}
+println(func() == 1) // true
+i = 123
+println(func() == 1) // still true
+```
+
+However, the variable can be modified inside the anonymous function.
+The change won't be reflected outside, but will be in the later function calls.
+
+```v oksyntax
+fn new_counter() fn () int {
+	mut i := 0
+	return fn [mut i] () int {
+		i++
+		return i
+	}
+}
+
+c := new_counter()
+println(c()) // 1
+println(c()) // 2
+println(c()) // 3
+```
+
+If you need the value to be modified outside the function, use a reference.
+**Warning**: _you need to make sure the reference is always valid,
+otherwise this can result in undefined behavior._
+
+```v oksyntax
+mut i := 0
+mut ref := &i
+print_counter := fn [ref] () {
+	println(*ref)
+}
+
+print_counter() // 0
+i = 10
+print_counter() // 10
 ```
 
 ## References
@@ -2141,6 +2247,8 @@ struct Node<T> {
 	right &Node<T>
 }
 ```
+
+To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
@@ -2381,6 +2489,15 @@ v install [module]
 **Example:**
 ```powershell
 v install ui
+```
+
+Modules could install directly from git or mercurial repositories.
+```powershell
+v install [--git|--hg] [url]
+```
+**Example:**
+```powershell
+v install --git https://github.com/vlang/markdown
 ```
 
 Removing a module with v:
@@ -3450,7 +3567,12 @@ struct Foo {
 }
 
 struct User {
-	name string
+	// Adding a [required] attribute will make decoding fail, if that
+	// field is not present in the input.
+	// If a field is not [required], but is missing, it will be assumed
+	// to have its default value, like 0 for numbers, or '' for strings,
+	// and decoding will not fail.
+	name string [required]
 	age  int
 	// Use the `skip` attribute to skip certain fields
 	foo Foo [skip]
@@ -3460,7 +3582,7 @@ struct User {
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
 user := json.decode(User, data) or {
-	eprintln('Failed to decode json')
+	eprintln('Failed to decode json, error: $err')
 	return
 }
 println(user.name)
@@ -3725,7 +3847,7 @@ fn f() (RefStruct, &MyStruct) {
 
 Here `a` is stored on the stack since it's address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
-`c` is returned. For this reason `b` and `c` will be heap allocated. 
+`c` is returned. For this reason `b` and `c` will be heap allocated.
 
 Things become less obvious when a reference to an object is passed as function argument:
 
@@ -3758,7 +3880,7 @@ these references are leaving `main()`. However the *lifetime* of these
 references lies inside the scope of `main()` so `q` and `w` are allocated
 on the stack.
 
-#### Manual Control for Stack and Heap 
+#### Manual Control for Stack and Heap
 
 In the last example the V compiler could put `q` and `w` on the stack
 because it assumed that in the call `q.f(&w)` these references were only
@@ -3806,7 +3928,7 @@ reference to `s` into `r`. The problem with this is that `s` lives only as long
 as `g()` is running but `r` is used in `main()` after that. For this reason
 the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
-`r.f(&s)` would only borrow the reference to `s` is wrong. 
+`r.f(&s)` would only borrow the reference to `s` is wrong.
 
 A solution to this dilemma is the `[heap]` attribute at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
@@ -3944,8 +4066,13 @@ struct Customer {
 
 db := sqlite.connect('customers.db') ?
 
-// you can create tables
-// CREATE TABLE IF NOT EXISTS `Customer` (`id` INTEGER PRIMARY KEY, `name` TEXT NOT NULL, `nr_orders` INTEGER, `country` TEXT NOT NULL)
+// you can create tables:
+// CREATE TABLE IF NOT EXISTS `Customer` (
+//      `id` INTEGER PRIMARY KEY,
+//      `name` TEXT NOT NULL,
+//      `nr_orders` INTEGER,
+//      `country` TEXT NOT NULL
+// )
 sql db {
 	create table Customer
 }
@@ -4012,6 +4139,17 @@ By convention it is preferred that comments are written in *present tense*.
 An overview of the module must be placed in the first comment right after the module's name.
 
 To generate documentation use vdoc, for example `v doc net.http`.
+
+### Newlines in Documentation Comments
+
+Comments spanning multiple lines are merged together using spaces, unless
+
+- the line is empty
+- the line ends with a `.` (end of sentence)
+- the line is contains purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
+- the line starts with at least one `#` followed by a space (header)
+- the line starts and ends with a `|` (table)
+- the line starts with `- ` (list)
 
 ## Tools
 
@@ -4255,6 +4393,23 @@ fn main() {
 }
 ```
 
+## Calling V from C
+
+Since V can compile to C, calling V code from C is very easy.
+
+By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
+
+For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
+
+To use a custom export name, use the `[export]` attribute:
+
+```
+[export: 'my_custom_c_name']
+fn foo() {
+}
+```
+
+
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
@@ -4285,6 +4440,7 @@ fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
 
 const num_iterations = 10000000
 
+// see section "Global Variables" below
 __global (
 	atom u32 // ordinary variable but used as atomic
 )
@@ -4342,6 +4498,50 @@ It is not predictable how many replacements occur in which thread, but the sum w
 be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
 will hang &ndash; dependent on the compiler optimization used.)
 
+## Global Variables
+
+By default V does not allow global variables. However, in low level applications they have their
+place so their usage can be enabled with the compiler flag `-enable-globals`.
+Declarations of global variables must be surrounded with a `__global ( ... )`
+specification &ndash; as in the example [above](#atomics).
+
+An initializer for global variables must be explicitly converted to the
+desired target type. If no initializer is given a default initialization is done.
+Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
+not with a value returned from a function call but with a method call by reference.
+A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
+
+```v globals
+import sync
+
+__global (
+	sem   sync.Semaphore // needs initialization in `init()`
+	mtx   sync.RwMutex // needs initialization in `init()`
+	f1    = f64(34.0625) // explicily initialized
+	shmap shared map[string]f64 // initialized as empty `shared` map
+	f2    f64 // initialized to `0.0`
+)
+
+fn init() {
+	sem.init(0)
+	mtx.init()
+}
+```
+Be aware that in multi threaded applications the access to global variables is subject
+to race conditions. There are several approaches to deal with these:
+
+- use `shared` types for the variable declarations and use `lock` blocks for access.
+  This is most appropriate for larger objects like structs, arrays or maps.
+- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- use explicit synchronization primitives like mutexes to control access. The compiler
+  cannot really help in this case, so you have to know what you are doing.
+- don't care &ndash; this approach is possible but makes only sense if the exact values
+  of global variables do not really matter. An example can be found in the `rand` module
+  where global variables are used to generate (non cryptographic) pseudo random numbers.
+  In this case data races lead to random numbers in different threads becoming somewhat
+  correlated, which is acceptable considering the performance penalty that using
+  synchonization primitives would represent.
+
 ### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
@@ -4391,7 +4591,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to 
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 
@@ -4508,7 +4708,7 @@ struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size size_t
+	size usize
 	// }
 	view C.DataView
 	// }
@@ -5135,6 +5335,32 @@ An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 
 ```v
+// [flag] enables Enum types to be used as bitfields
+
+[flag]
+enum BitField {
+	read
+	write
+	other
+}
+
+fn main() {
+	assert 1 == int(BitField.read)
+	assert 2 == int(BitField.write)
+	mut bf := BitField.read
+	assert bf.has(.read | .other) // test if *at least one* of the flags is set
+	assert !bf.all(.read | .other) // test if *all* of the flags is set
+	bf.set(.write | .other)
+	assert bf.has(.read | .write | .other)
+	assert bf.all(.read | .write | .other)
+	bf.toggle(.other)
+	assert bf == BitField.read | .write
+	assert bf.all(.read | .write)
+	assert !bf.has(.other)
+}
+```
+
+```v
 // Calling this function will result in a deprecation warning
 [deprecated]
 fn old_function() {
@@ -5144,6 +5370,20 @@ fn old_function() {
 [deprecated: 'use new_function() instead']
 fn legacy_function() {}
 
+// You can also specify a date, after which the function will be
+// considered deprecated. Before that date, calls to the function
+// will be compiler notices - you will see them, but the compilation
+// is not affected. After that date, calls will become warnings,
+// so ordinary compiling will still work, but compiling with -prod
+// will not (all warnings are treated like errors with -prod).
+// 6 months after the deprecation date, calls will be hard
+// compiler errors.
+[deprecated: 'use new_function2() instead']
+[deprecated_after: '2021-05-27']
+fn legacy_function2() {}
+```
+
+```v nofmt
 // This function's calls will be inlined.
 [inline]
 fn inlined_function() {
@@ -5301,6 +5541,7 @@ type
 typeof
 union
 unsafe
+volatile
 __offsetof
 ```
 See also [V Types](#v-types).
@@ -5328,10 +5569,11 @@ This lists operators for [primitive types](#primitive-types) only.
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer
+>>>  unsigned right shift	integer >> unsigned integer
 
 
 Precedence    Operator
-    5             *  /  %  <<  >>  &
+    5             *  /  %  <<  >> >>> &
     4             +  -  |  ^
     3             ==  !=  <  <=  >  >=
     2             &&
@@ -5341,5 +5583,5 @@ Precedence    Operator
 Assignment Operators
 +=   -=   *=   /=   %=
 &=   |=   ^=
->>=  <<=
+>>=  <<=  >>>=
 ```

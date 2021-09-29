@@ -5,14 +5,9 @@ module util
 
 import os
 import time
-import term
 import v.pref
 import v.vmod
 import v.util.recompilation
-
-pub const (
-	v_version = '0.2.2'
-)
 
 // math.bits is needed by strconv.ftoa
 pub const (
@@ -21,7 +16,7 @@ pub const (
 )
 
 pub const (
-	external_module_dependencies_for_tool = map{
+	external_module_dependencies_for_tool = {
 		'vdoc': ['markdown']
 	}
 )
@@ -43,86 +38,6 @@ const (
 
 pub fn tabs(n int) string {
 	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
-}
-
-// vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
-pub fn vhash() string {
-	mut buf := [50]byte{}
-	buf[0] = 0
-	unsafe {
-		bp := &buf[0]
-		C.snprintf(&char(bp), 50, c'%s', C.V_COMMIT_HASH)
-		return tos_clone(bp)
-	}
-}
-
-pub fn full_hash() string {
-	build_hash := vhash()
-	current_hash := githash(false)
-	if build_hash == current_hash {
-		return build_hash
-	}
-	return '${build_hash}.$current_hash'
-}
-
-// full_v_version() returns the full version of the V compiler
-pub fn full_v_version(is_verbose bool) string {
-	if is_verbose {
-		return 'V $util.v_version $full_hash()'
-	}
-	hash := githash(false)
-	return 'V $util.v_version $hash'
-}
-
-// githash(x) returns the current git commit hash.
-// When x is false, it is very fast - it just returns a predefined C constant.
-// When x is true, it tries to get the current commit hash, by parsing the
-// relevant files in the .git/ folder, or if that is not possible
-// for example when using a V from a V binary release, that does not have .git/
-// defaults to getting the predefined C constant again.
-// NB: githash(true) must be called only when v detects that it builds itself.
-// For all other programs, githash(false) should be used.
-pub fn githash(should_get_from_filesystem bool) string {
-	for {
-		// The `for` construct here is used as a goto substitute.
-		// The code in this function will break out of the `for`
-		// if it detects an error and can not continue.
-		if should_get_from_filesystem {
-			vexe := os.getenv('VEXE')
-			vroot := os.dir(vexe)
-			// .git/HEAD
-			git_head_file := os.join_path(vroot, '.git', 'HEAD')
-			if !os.exists(git_head_file) {
-				break
-			}
-			// 'ref: refs/heads/master' ... the current branch name
-			head_content := os.read_file(git_head_file) or { break }
-			mut current_branch_hash := head_content
-			if head_content.starts_with('ref: ') {
-				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-				gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
-				// .git/refs/heads/master
-				if !os.exists(gcbranch_file) {
-					break
-				}
-				// get the full commit hash contained in the ref heads file
-				branch_hash := os.read_file(gcbranch_file) or { break }
-				current_branch_hash = branch_hash
-			}
-			desired_hash_length := 7
-			if current_branch_hash.len > desired_hash_length {
-				return current_branch_hash[0..desired_hash_length]
-			}
-		}
-		break
-	}
-	mut buf := [50]byte{}
-	buf[0] = 0
-	unsafe {
-		bp := &buf[0]
-		C.snprintf(&char(bp), 50, c'%s', C.V_CURRENT_COMMIT_HASH)
-		return tos_clone(bp)
-	}
 }
 
 //
@@ -160,7 +75,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
-			if !(ch == `\'` || ch == `)`) {
+			if !(ch == `'` || ch == `)`) {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}
@@ -235,7 +150,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '"$vexe" '
+		mut compilation_command := '"$vexe" -skip-unused '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
@@ -352,9 +267,38 @@ pub fn path_of_executable(path string) string {
 	return path
 }
 
+[heap]
+struct SourceCache {
+mut:
+	sources map[string]string
+}
+
+[unsafe]
+pub fn cached_read_source_file(path string) ?string {
+	mut static cache := &SourceCache(0)
+	if isnil(cache) {
+		cache = &SourceCache{}
+	}
+	if path.len == 0 {
+		unsafe { cache.sources.free() }
+		unsafe { free(cache) }
+		cache = &SourceCache(0)
+		return error('memory source file cache cleared')
+	}
+	// eprintln('>> cached_read_source_file path: $path')
+	if res := cache.sources[path] {
+		// eprintln('>> cached')
+		return res
+	}
+	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
+	raw_text := os.read_file(path) or { return error('failed to open $path') }
+	res := skip_bom(raw_text)
+	cache.sources[path] = res
+	return res
+}
+
 pub fn read_file(file_path string) ?string {
-	raw_text := os.read_file(file_path) or { return error('failed to open $file_path') }
-	return skip_bom(raw_text)
+	return unsafe { cached_read_source_file(file_path) }
 }
 
 pub fn skip_bom(file_content string) string {
@@ -571,8 +515,12 @@ pub fn find_all_v_files(roots []string) ?[]string {
 	return files
 }
 
-// Highlight a command with an on-brand background to make CLI
-// commands immediately recognizable.
-pub fn pretty_print(command string) string {
-	return term.bright_white(term.bg_cyan(' $command '))
+// free_caches knows about all `util` caches and makes sure that they are freed
+// if you add another cached unsafe function using static, do not forget to add
+// a mechanism to clear its cache, and call it here.
+pub fn free_caches() {
+	unsafe {
+		cached_file2sourcelines('')
+		cached_read_source_file('') or { '' }
+	}
 }

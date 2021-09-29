@@ -17,7 +17,7 @@ fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
-	os.chdir(tfolder)
+	os.chdir(tfolder) or {}
 	assert os.is_dir(tfolder)
 	// println('args_at_start: $args_at_start')
 	assert args_at_start.len > 0
@@ -25,7 +25,7 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
-	os.chdir(os.wd_at_startup)
+	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
@@ -326,9 +326,9 @@ fn test_realpath_removes_dots() {
 fn test_realpath_absolutizes_existing_relative_paths() {
 	old_wd := os.getwd()
 	defer {
-		os.chdir(old_wd)
+		os.chdir(old_wd) or { panic(err) }
 	}
-	os.chdir(@VEXEROOT)
+	os.chdir(@VEXEROOT) or { panic(err) }
 	examples_folder := os.join_path('vlib', 'v', '..', '..', 'cmd', '.', '..', 'examples')
 	real_path_of_examples_folder := os.real_path(examples_folder)
 	assert os.is_abs_path(real_path_of_examples_folder)
@@ -478,11 +478,11 @@ fn test_is_executable_writable_readable() {
 	}
 	f.close()
 	$if !windows {
-		os.chmod(file_name, 0o600) // mark as readable && writable, but NOT executable
+		os.chmod(file_name, 0o600) or {} // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
 		assert os.is_readable(file_name)
 		assert !os.is_executable(file_name)
-		os.chmod(file_name, 0o700) // mark as executable too
+		os.chmod(file_name, 0o700) or {} // mark as executable too
 		assert os.is_executable(file_name)
 	} $else {
 		assert os.is_writable(file_name)
@@ -533,9 +533,15 @@ fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
 		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/c') == 'C:\\a\\b'
+		assert os.dir('C:/a/b/') == 'C:\\a\\b'
 	} $else {
+		assert os.dir('/') == '/'
+		assert os.dir('/abc') == '/'
 		assert os.dir('/var/tmp/foo') == '/var/tmp'
 		assert os.dir('/var/tmp/') == '/var/tmp'
+		assert os.dir('C:\\a\\b\\c') == 'C:/a/b'
+		assert os.dir('C:\\a\\b\\') == 'C:/a/b'
 	}
 	assert os.dir('os') == '.'
 }
@@ -544,9 +550,13 @@ fn test_base() {
 	$if windows {
 		assert os.base('v\\vlib\\os') == 'os'
 		assert os.base('v\\vlib\\os\\') == 'os'
+		assert os.base('v/vlib/os') == 'os'
+		assert os.base('v/vlib/os/') == 'os'
 	} $else {
 		assert os.base('v/vlib/os') == 'os'
 		assert os.base('v/vlib/os/') == 'os'
+		assert os.base('v\\vlib\\os') == 'os'
+		assert os.base('v\\vlib\\os\\') == 'os'
 	}
 	assert os.base('filename') == 'filename'
 }
@@ -630,7 +640,7 @@ fn test_posix_set_bit() {
 	} $else {
 		fpath := '/tmp/permtest'
 		os.create(fpath) or { panic("Couldn't create file") }
-		os.chmod(fpath, 0o0777)
+		os.chmod(fpath, 0o0777) or { panic(err) }
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
@@ -737,6 +747,14 @@ fn test_utime() {
 	f.write_string(hello) or { panic(err) }
 	atime := time.now().add_days(2).unix_time()
 	mtime := time.now().add_days(4).unix_time()
-	os.utime(filename, atime, mtime) or { panic(err) }
+	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
+}
+
+fn test_expand_tilde_to_home() {
+	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
+	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',
+		'expansion'))
+	assert home_test == home_expansion_test
+	assert os.expand_tilde_to_home('~') == os.home_dir()
 }

@@ -33,12 +33,6 @@ pub fn len(s string) int {
 	return count
 }
 
-// char_len calculate the length in bytes of a utf8 char
-[deprecated: 'use builtin utf8_char_len']
-pub fn char_len(b byte) int {
-	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
-}
-
 // get_uchar convert a unicode glyph in string[index] into a int unicode char
 pub fn get_uchar(s string, index int) int {
 	mut res := 0
@@ -77,9 +71,6 @@ pub fn get_uchar(s string, index int) int {
 	}
 	return res
 }
-
-// raw_index - get the raw chracter from the string by the given index value.
-// example: '我是V Lang'.raw_index(1) => '是'
 
 // raw_index - get the raw chracter from the string by the given index value.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
@@ -148,6 +139,25 @@ the global unicode table search. **Use only for western chars**.
 // is_punct return true if the string[index] byte is the start of a unicode western punctuation
 pub fn is_punct(s string, index int) bool {
 	return is_uchar_punct(get_uchar(s, index))
+}
+
+// is_control return true if the rune is control code
+pub fn is_control(r rune) bool {
+	// control codes are all below 0xff
+	if r > max_latin_1 {
+		return false
+	}
+	return props[byte(r)] == 1
+}
+
+// is_letter returns true if the rune is unicode letter or in unicode category L
+pub fn is_letter(r rune) bool {
+	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
+		return true
+	} else if r <= max_latin_1 {
+		return props[byte(r)] & p_l_mask != 0
+	}
+	return is_excluding_latin(letter_table, r)
 }
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation

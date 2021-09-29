@@ -250,14 +250,13 @@ const (
 				&http.Cookie{
 					name: 'cookie-3'
 					value: 'v3'
-				},
-			]
+				}]
 			raw: 'cookie-1=v1; cookie-2=v2; cookie-3=v3'
 		},
 	]
 	read_set_cookies_tests = [
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['Cookie-1=v1']
 			}
 			cookies: [&http.Cookie{
@@ -292,7 +291,7 @@ const (
 		// 	}]
 		// },
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['ASP.NET_SessionId=foo; path=/; HttpOnly']
 			}
 			cookies: [
@@ -302,11 +301,10 @@ const (
 				path: '/'
 				http_only: true
 				raw: 'ASP.NET_SessionId=foo; path=/; HttpOnly'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitedefault=foo; SameSite']
 			}
 			cookies: [
@@ -315,11 +313,10 @@ const (
 				value: 'foo'
 				same_site: .same_site_default_mode
 				raw: 'samesitedefault=foo; SameSite'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitelax=foo; SameSite=Lax']
 			}
 			cookies: [
@@ -328,11 +325,10 @@ const (
 				value: 'foo'
 				same_site: .same_site_lax_mode
 				raw: 'samesitelax=foo; SameSite=Lax'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitestrict=foo; SameSite=Strict']
 			}
 			cookies: [
@@ -341,11 +337,10 @@ const (
 				value: 'foo'
 				same_site: .same_site_strict_mode
 				raw: 'samesitestrict=foo; SameSite=Strict'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['samesitenone=foo; SameSite=None']
 			}
 			cookies: [
@@ -354,13 +349,12 @@ const (
 				value: 'foo'
 				same_site: .same_site_none_mode
 				raw: 'samesitenone=foo; SameSite=None'
-			},
-			]
+			}]
 		},
 		// Make sure we can properly read back the Set-Cookie headers we create
 		// for values containing spaces or commas:
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-1=a z']
 			}
 			cookies: [
@@ -368,11 +362,10 @@ const (
 				name: 'special-1'
 				value: 'a z'
 				raw: 'special-1=a z'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-2=" z"']
 			}
 			cookies: [
@@ -380,11 +373,10 @@ const (
 				name: 'special-2'
 				value: ' z'
 				raw: 'special-2=" z"'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-3="a "']
 			}
 			cookies: [
@@ -392,11 +384,10 @@ const (
 				name: 'special-3'
 				value: 'a '
 				raw: 'special-3="a "'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-4=" "']
 			}
 			cookies: [
@@ -404,11 +395,10 @@ const (
 				name: 'special-4'
 				value: ' '
 				raw: 'special-4=" "'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-5=a,z']
 			}
 			cookies: [
@@ -416,11 +406,10 @@ const (
 				name: 'special-5'
 				value: 'a,z'
 				raw: 'special-5=a,z'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-6=",z"']
 			}
 			cookies: [
@@ -428,11 +417,10 @@ const (
 				name: 'special-6'
 				value: ',z'
 				raw: 'special-6=",z"'
-			},
-			]
+			}]
 		},
 		ReadSetCookiesTestCase{
-			header: map{
+			header: {
 				'Set-Cookie': ['special-7=","']
 			}
 			cookies: [
@@ -440,8 +428,7 @@ const (
 				name: 'special-7'
 				value: ','
 				raw: 'special-8=","'
-			},
-			]
+			}]
 		}
 		// TODO(bradfitz): users have reported seeing this in the
 		// wild, but do browsers handle it? RFC 6265 just says "don't

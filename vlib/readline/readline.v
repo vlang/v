@@ -7,18 +7,6 @@
 //
 module readline
 
-// Termios stores the terminal options on Linux.
-struct C.termios {}
-
-struct Termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_cc    [12]int // NCCS == 12. Can't use the defined value here
-}
-
 // Winsize stores the screen information on Linux.
 struct Winsize {
 	ws_row    u16

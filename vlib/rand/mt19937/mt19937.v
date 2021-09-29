@@ -323,3 +323,9 @@ pub fn (mut rng MT19937RNG) f64_in_range(min f64, max f64) f64 {
 	}
 	return min + rng.f64n(max - min)
 }
+
+// free should be called when the generator is no longer needed
+[unsafe]
+pub fn (mut rng MT19937RNG) free() {
+	unsafe { free(rng) }
+}

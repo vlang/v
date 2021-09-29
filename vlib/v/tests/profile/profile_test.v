@@ -10,7 +10,7 @@ fn test_vexe_exists() {
 }
 
 fn test_v_profile_works() {
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, 'vlib/v/tests/profile/profile_test_1.v')
 	res := os.execute('"$vexe" -profile - run $program_source')
 	// eprintln('res: $res')

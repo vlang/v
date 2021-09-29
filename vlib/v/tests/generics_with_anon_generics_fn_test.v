@@ -50,7 +50,7 @@ fn test_generics_with_anon_generics_fn() {
 	assert call(consume, 1) == 1
 	assert call(consume_str, '1') == '1'
 
-	pair := Pair<int,string>{1, 's'}
+	pair := Pair<int, string>{1, 's'}
 	assert call(fn (v Pair<int, string>) Pair<int, string> {
 		return v
 	}, pair) == pair

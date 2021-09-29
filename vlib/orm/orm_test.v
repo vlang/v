@@ -1,12 +1,14 @@
 // import os
 // import pg
 // import term
+import time
 import sqlite
 
 struct Module {
 	id           int    [primary; sql: serial]
 	name         string
 	nr_downloads int
+	test_id      u64
 	user         User
 }
 
@@ -23,11 +25,16 @@ struct Foo {
 	age int
 }
 
+struct TestTime {
+	id     int       [primary; sql: serial]
+	create time.Time
+}
+
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
 	sql db {
-		create table User
+		create table Module
 	}
 
 	name := 'Peter'
@@ -287,4 +294,40 @@ fn test_orm_sqlite() {
 	}
 
 	assert first.age == 60
+
+	sql db {
+		create table TestTime
+	}
+
+	tnow := time.now()
+
+	time_test := TestTime{
+		create: tnow
+	}
+
+	sql db {
+		insert time_test into TestTime
+	}
+
+	data := sql db {
+		select from TestTime where create == tnow
+	}
+
+	assert data.len == 1
+
+	mod := Module{}
+
+	sql db {
+		insert mod into Module
+	}
+
+	sql db {
+		update Module set test_id = 11 where id == 1
+	}
+
+	test_id_mod := sql db {
+		select from Module where id == 1
+	}
+
+	assert test_id_mod.test_id == 11
 }

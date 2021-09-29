@@ -107,11 +107,13 @@ pub fn c_error_number_str(errnum int) string {
 	$if freestanding {
 		err_msg = 'error $errnum'
 	} $else {
-		c_msg := C.strerror(errnum)
-		err_msg = string{
-			str: &byte(c_msg)
-			len: unsafe { C.strlen(c_msg) }
-			is_lit: 1
+		$if !vinix {
+			c_msg := C.strerror(errnum)
+			err_msg = string{
+				str: &byte(c_msg)
+				len: unsafe { C.strlen(c_msg) }
+				is_lit: 1
+			}
 		}
 	}
 	return err_msg
@@ -522,4 +524,24 @@ fn v_fixed_index(i int, len int) int {
 		}
 	}
 	return i
+}
+
+// print_backtrace shows a backtrace of the current call stack on stdout
+pub fn print_backtrace() {
+	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// * print_backtrace_skipping_top_frames
+	// * print_backtrace itself
+	// * the rest of the backtrace frames
+	// => top 2 frames should be skipped, since they will not be informative to the developer
+	$if !no_backtrace ? {
+		$if freestanding {
+			println(bare_backtrace())
+		} $else {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+			} $else {
+				print_backtrace_skipping_top_frames(2)
+			}
+		}
+	}
 }

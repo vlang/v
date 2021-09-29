@@ -9,15 +9,17 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table       &ast.Table
-	used_fns    map[string]bool // used_fns['println'] == true
-	used_consts map[string]bool // used_consts['os.args'] == true
-	n_asserts   int
-	pref        &pref.Preferences
+	table        &ast.Table
+	used_fns     map[string]bool // used_fns['println'] == true
+	used_consts  map[string]bool // used_consts['os.args'] == true
+	used_globals map[string]bool
+	n_asserts    int
+	pref         &pref.Preferences
 mut:
-	files      []&ast.File
-	all_fns    map[string]ast.FnDecl
-	all_consts map[string]ast.ConstField
+	files       []&ast.File
+	all_fns     map[string]ast.FnDecl
+	all_consts  map[string]ast.ConstField
+	all_globals map[string]ast.GlobalField
 }
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
@@ -31,9 +33,24 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    const > |$ckey|')
 	}
+	if w.used_consts[ckey] {
+		return
+	}
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
+}
+
+pub fn (mut w Walker) mark_global_as_used(ckey string) {
+	$if trace_skip_unused_marked ? {
+		eprintln('  global > |$ckey|')
+	}
+	if w.used_globals[ckey] {
+		return
+	}
+	w.used_globals[ckey] = true
+	gfield := w.all_globals[ckey] or { return }
+	w.expr(gfield.expr)
 }
 
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
@@ -98,6 +115,13 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.stmts(node.stmts)
 			if node.kind == .map {
 				w.table.used_maps++
+			}
+			if node.kind == .struct_ {
+				// the .next() method of the struct will be used for iteration:
+				cond_type_sym := w.table.get_type_symbol(node.cond_type)
+				if next_fn := cond_type_sym.find_method('next') {
+					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+				}
 			}
 		}
 		ast.ForStmt {
@@ -268,8 +292,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 				.function {
 					w.fn_by_name(node.name)
 				}
+				.global {
+					w.mark_global_as_used(node.name)
+				}
 				else {
-					// `.unresolved`, `.blank_ident`, `.variable`, `.global`, `.function`
+					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
@@ -330,6 +357,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 				for ifield in info.fields {
 					if ifield.has_default_expr {
 						w.expr(ifield.default_expr)
+					}
+					fsym := w.table.get_type_symbol(ifield.typ)
+					if fsym.kind == .map {
+						w.table.used_maps++
 					}
 				}
 			}
@@ -402,6 +433,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.expr(arg.expr)
 	}
 	if node.language == .c {
+		if node.name in ['C.wyhash', 'C.wyhash64'] {
+			w.table.used_maps++
+		}
 		return
 	}
 	w.expr(node.left)

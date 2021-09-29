@@ -12,11 +12,16 @@ import time
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.new_custom_header_from_map(map{
+	headers_close     = http.new_custom_header_from_map({
 		'Server':          'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
+	http_302          = http.new_response(
+		status: .found
+		text: '302 Found'
+		header: headers_close
+	)
 	http_400          = http.new_response(
 		status: .bad_request
 		text: '400 Bad Request'
@@ -41,22 +46,83 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	mime_types        = map{
-		'.css':  'text/css; charset=utf-8'
-		'.gif':  'image/gif'
-		'.htm':  'text/html; charset=utf-8'
-		'.html': 'text/html; charset=utf-8'
-		'.jpg':  'image/jpeg'
-		'.js':   'application/javascript'
-		'.json': 'application/json'
-		'.md':   'text/markdown; charset=utf-8'
-		'.pdf':  'application/pdf'
-		'.png':  'image/png'
-		'.svg':  'image/svg+xml'
-		'.txt':  'text/plain; charset=utf-8'
-		'.wasm': 'application/wasm'
-		'.xml':  'text/xml; charset=utf-8'
-		'.ico':  'img/x-icon'
+	mime_types        = {
+		'.aac':    'audio/aac'
+		'.abw':    'application/x-abiword'
+		'.arc':    'application/x-freearc'
+		'.avi':    'video/x-msvideo'
+		'.azw':    'application/vnd.amazon.ebook'
+		'.bin':    'application/octet-stream'
+		'.bmp':    'image/bmp'
+		'.bz':     'application/x-bzip'
+		'.bz2':    'application/x-bzip2'
+		'.cda':    'application/x-cdf'
+		'.csh':    'application/x-csh'
+		'.css':    'text/css'
+		'.csv':    'text/csv'
+		'.doc':    'application/msword'
+		'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+		'.eot':    'application/vnd.ms-fontobject'
+		'.epub':   'application/epub+zip'
+		'.gz':     'application/gzip'
+		'.gif':    'image/gif'
+		'.htm':    'text/html'
+		'.html':   'text/html'
+		'.ico':    'image/vnd.microsoft.icon'
+		'.ics':    'text/calendar'
+		'.jar':    'application/java-archive'
+		'.jpeg':   'image/jpeg'
+		'.jpg':    'image/jpeg'
+		'.js':     'text/javascript'
+		'.json':   'application/json'
+		'.jsonld': 'application/ld+json'
+		'.mid':    'audio/midi audio/x-midi'
+		'.midi':   'audio/midi audio/x-midi'
+		'.mjs':    'text/javascript'
+		'.mp3':    'audio/mpeg'
+		'.mp4':    'video/mp4'
+		'.mpeg':   'video/mpeg'
+		'.mpkg':   'application/vnd.apple.installer+xml'
+		'.odp':    'application/vnd.oasis.opendocument.presentation'
+		'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
+		'.odt':    'application/vnd.oasis.opendocument.text'
+		'.oga':    'audio/ogg'
+		'.ogv':    'video/ogg'
+		'.ogx':    'application/ogg'
+		'.opus':   'audio/opus'
+		'.otf':    'font/otf'
+		'.png':    'image/png'
+		'.pdf':    'application/pdf'
+		'.php':    'application/x-httpd-php'
+		'.ppt':    'application/vnd.ms-powerpoint'
+		'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+		'.rar':    'application/vnd.rar'
+		'.rtf':    'application/rtf'
+		'.sh':     'application/x-sh'
+		'.svg':    'image/svg+xml'
+		'.swf':    'application/x-shockwave-flash'
+		'.tar':    'application/x-tar'
+		'.tif':    'image/tiff'
+		'.tiff':   'image/tiff'
+		'.ts':     'video/mp2t'
+		'.ttf':    'font/ttf'
+		'.txt':    'text/plain'
+		'.vsd':    'application/vnd.visio'
+		'.wav':    'audio/wav'
+		'.weba':   'audio/webm'
+		'.webm':   'video/webm'
+		'.webp':   'image/webp'
+		'.woff':   'font/woff'
+		'.woff2':  'font/woff2'
+		'.xhtml':  'application/xhtml+xml'
+		'.xls':    'application/vnd.ms-excel'
+		'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+		'.xml':    'application/xml'
+		'.xul':    'application/vnd.mozilla.xul+xml'
+		'.zip':    'application/zip'
+		'.3gp':    'video/3gpp'
+		'.3g2':    'video/3gpp2'
+		'.7z':     'application/x-7z-compressed'
 	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
@@ -75,7 +141,7 @@ pub mut:
 	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
-	files             map[string][]FileData
+	files             map[string][]http.FileData
 	header            http.Header // response headers
 	done              bool
 	page_gen_start    i64
@@ -100,7 +166,9 @@ struct MultiplePathAttributesError {
 }
 
 // declaring init_server in your App struct is optional
-pub fn (ctx Context) init_server() {}
+pub fn (ctx Context) init_server() {
+	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
+}
 
 // declaring before_request in your App struct is optional
 pub fn (ctx Context) before_request() {}
@@ -126,7 +194,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	ctx.done = true
 
 	// build header
-	header := http.new_header_from_map(map{
+	header := http.new_header_from_map({
 		http.CommonHeader.content_type:   mimetype
 		http.CommonHeader.content_length: res.len.str()
 	}).join(ctx.header)
@@ -183,9 +251,10 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
-		return Result{}
-	}
+	mut resp := vweb.http_302
+	resp.header = resp.header.join(ctx.header)
+	resp.header.add(.location, url)
+	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
 	return Result{}
 }
 
@@ -210,14 +279,6 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	}
 	data := cookie_data.join(' ')
 	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
-}
-
-// Old function
-[deprecated]
-pub fn (mut ctx Context) set_cookie_old(key string, val string) {
-	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
-	// ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
-	ctx.add_header('Set-Cookie', '$key=$val; HttpOnly')
 }
 
 // Sets the response content type
@@ -283,7 +344,6 @@ interface DbInterface {
 // run_app
 [manualfree]
 pub fn run<T>(global_app &T, port int) {
-	// x := global_app.clone()
 	// mut global_app := &T{}
 	// mut app := &T{}
 	// run_app<T>(mut app, port)
@@ -295,7 +355,9 @@ pub fn run<T>(global_app &T, port int) {
 	// conn: 0
 	//}
 	// app.init_server()
+	// unsafe {
 	// global_app.init_server()
+	//}
 	//$for method in T.methods {
 	//$if method.return_type is Result {
 	// check routes for validity
@@ -365,7 +427,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				send_string(mut conn, vweb.http_400.bytestr()) or {}
 				return
 			}
-			form, files := parse_multipart_form(req.data, boundary[0][9..])
+			form, files := http.parse_multipart_form(req.data, boundary[0][9..])
 			for k, v in form {
 				app.form[k] = v
 			}
@@ -441,11 +503,16 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 	}
 	// site not found
-	send_string(mut conn, vweb.http_404.bytestr()) or {}
+	// send_string(mut conn, vweb.http_404.bytestr()) or {}
+	app.not_found()
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
 	// URL path should be at least as long as the route path
+	// except for the catchall route (`/:path...`)
+	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
+		return ['/' + url_words.join('/')]
+	}
 	if url_words.len < route_words.len {
 		return none
 	}

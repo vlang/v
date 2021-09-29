@@ -52,10 +52,10 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
 	r := os.execute(rcmd)
 	if r.exit_code < 0 {
-		os.rm(input_temporary_filename) or { panic(err) }
+		os.rm(input_temporary_filename) ?
 		return error('Could not execute: $rcmd')
 	}
-	os.rm(input_temporary_filename) or { panic(err) }
+	os.rm(input_temporary_filename) ?
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
 		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
 		'/').trim_right('\n\r')
@@ -117,7 +117,7 @@ pub fn new_options() RunnerOptions {
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
-		os.chdir(os.dir(vexec))
+		os.chdir(os.dir(vexec)) or {}
 		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}

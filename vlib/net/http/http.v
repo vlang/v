@@ -14,6 +14,7 @@ const (
 // FetchConfig holds configurations of fetch
 pub struct FetchConfig {
 pub mut:
+	url        string
 	method     Method
 	header     Header
 	data       string
@@ -21,10 +22,16 @@ pub mut:
 	cookies    map[string]string
 	user_agent string = 'v.http'
 	verbose    bool
+	//
+	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
+	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
+	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
+	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
 pub fn new_request(method Method, url_ string, data string) ?Request {
-	url := if method == .get { url_ + '?' + data } else { url_ }
+	url := if method == .get && !url_.contains('?') { url_ + '?' + data } else { url_ }
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method
@@ -40,12 +47,14 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 
 // get sends a GET HTTP request to the URL
 pub fn get(url string) ?Response {
-	return fetch_with_method(.get, url, FetchConfig{})
+	return fetch(method: .get, url: url)
 }
 
 // post sends a POST HTTP request to the URL with a string data
 pub fn post(url string, data string) ?Response {
-	return fetch_with_method(.post, url,
+	return fetch(
+		method: .post
+		url: url
 		data: data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
@@ -53,7 +62,9 @@ pub fn post(url string, data string) ?Response {
 
 // post_json sends a POST HTTP request to the URL with a JSON data
 pub fn post_json(url string, data string) ?Response {
-	return fetch_with_method(.post, url,
+	return fetch(
+		method: .post
+		url: url
 		data: data
 		header: new_header(key: .content_type, value: 'application/json')
 	)
@@ -61,15 +72,40 @@ pub fn post_json(url string, data string) ?Response {
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url,
+	return fetch(
+		method: .post
+		url: url
 		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
 		data: url_encode_form_data(data)
 	)
 }
 
+[params]
+pub struct PostMultipartFormConfig {
+pub mut:
+	form   map[string]string
+	files  map[string][]FileData
+	header Header
+}
+
+// post_multipart_form sends a POST HTTP request to the URL with multipart form data
+pub fn post_multipart_form(url string, conf PostMultipartFormConfig) ?Response {
+	body, boundary := multipart_form_body(conf.form, conf.files)
+	mut header := conf.header
+	header.set(.content_type, 'multipart/form-data; boundary="$boundary"')
+	return fetch(
+		method: .post
+		url: url
+		header: header
+		data: body
+	)
+}
+
 // put sends a PUT HTTP request to the URL with a string data
 pub fn put(url string, data string) ?Response {
-	return fetch_with_method(.put, url,
+	return fetch(
+		method: .put
+		url: url
 		data: data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
@@ -77,7 +113,9 @@ pub fn put(url string, data string) ?Response {
 
 // patch sends a PATCH HTTP request to the URL with a string data
 pub fn patch(url string, data string) ?Response {
-	return fetch_with_method(.patch, url,
+	return fetch(
+		method: .patch
+		url: url
 		data: data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
@@ -85,30 +123,34 @@ pub fn patch(url string, data string) ?Response {
 
 // head sends a HEAD HTTP request to the URL
 pub fn head(url string) ?Response {
-	return fetch_with_method(.head, url, FetchConfig{})
+	return fetch(method: .head, url: url)
 }
 
 // delete sends a DELETE HTTP request to the URL
 pub fn delete(url string) ?Response {
-	return fetch_with_method(.delete, url, FetchConfig{})
+	return fetch(method: .delete, url: url)
 }
 
 // fetch sends an HTTP request to the URL with the given method and configurations
-pub fn fetch(_url string, config FetchConfig) ?Response {
-	if _url == '' {
+pub fn fetch(config FetchConfig) ?Response {
+	if config.url == '' {
 		return error('http.fetch: empty url')
 	}
-	url := build_url_from_fetch(_url, config) or { return error('http.fetch: invalid url $_url') }
-	data := config.data
+	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url $config.url') }
 	req := Request{
 		method: config.method
 		url: url
-		data: data
+		data: config.data
 		header: config.header
 		cookies: config.cookies
 		user_agent: config.user_agent
 		user_ptr: 0
 		verbose: config.verbose
+		validate: config.validate
+		verify: config.verify
+		cert: config.cert
+		cert_key: config.cert_key
+		in_memory_verification: config.in_memory_verification
 	}
 	res := req.do() ?
 	return res
@@ -116,7 +158,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 
 // get_text sends a GET HTTP request to the URL and returns the text content of the response
 pub fn get_text(url string) string {
-	resp := fetch(url, method: .get) or { return '' }
+	resp := fetch(url: url, method: .get) or { return '' }
 	return resp.text
 }
 
@@ -131,14 +173,15 @@ pub fn url_encode_form_data(data map[string]string) string {
 	return pieces.join('&')
 }
 
-fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
+[deprecated: 'use fetch()']
+fn fetch_with_method(method Method, _config FetchConfig) ?Response {
 	mut config := _config
 	config.method = method
-	return fetch(url, config)
+	return fetch(config)
 }
 
-fn build_url_from_fetch(_url string, config FetchConfig) ?string {
-	mut url := urllib.parse(_url) ?
+fn build_url_from_fetch(config FetchConfig) ?string {
+	mut url := urllib.parse(config.url) ?
 	if config.params.len == 0 {
 		return url.str()
 	}

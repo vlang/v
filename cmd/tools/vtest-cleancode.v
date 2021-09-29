@@ -31,8 +31,6 @@ const (
 		'vlib/sqlite/orm.v' /* mut c &int -> mut c int */,
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
-		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
-		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	]
@@ -46,7 +44,6 @@ const (
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
 		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
 		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
-		'vlib/fontstash/fontstash_structs.v' /* eats fn arg names for inline callback types in struct field declarations */,
 		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
 		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
 	])
@@ -65,7 +62,7 @@ fn main() {
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	title_message := 'running $tool_cmd over most .v files'
 	testing.eheader(title_message)
 	mut test_session := testing.new_test_session('$vargs $tool_args', false)

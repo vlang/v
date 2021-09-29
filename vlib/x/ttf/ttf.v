@@ -975,7 +975,7 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 
 fn (mut tf TTF_File) read_kern_table() {
 	dprintln('*** READ KERN TABLE ***')
-	if !('kern' in tf.tables) {
+	if 'kern' !in tf.tables {
 		return
 	}
 	table_offset := tf.tables['kern'].offset

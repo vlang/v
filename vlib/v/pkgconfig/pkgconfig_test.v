@@ -53,9 +53,8 @@ fn test_samples() {
 				'-pthread', '-lglib-2.0', '-lpcre']
 			assert x.libs_private == ['-ldl', '-pthread']
 			assert x.cflags == ['-I/usr/include', '-pthread', '-I/usr/include/glib-2.0',
-				'-I/usr/lib/x86_64-linux-gnu/glib-2.0/include',
-			]
-			assert x.vars == map{
+				'-I/usr/lib/x86_64-linux-gnu/glib-2.0/include']
+			assert x.vars == {
 				'prefix':            '/usr'
 				'libdir':            '/usr/lib/x86_64-linux-gnu'
 				'includedir':        '/usr/include'
@@ -74,7 +73,7 @@ fn test_samples() {
 			assert x.libs_private == ['-pthread']
 			assert x.cflags == ['-I/usr/include/glib-2.0',
 				'-I/usr/lib/x86_64-linux-gnu/glib-2.0/include', '-I/usr/include']
-			assert x.vars == map{
+			assert x.vars == {
 				'prefix':          '/usr'
 				'libdir':          '/usr/lib/x86_64-linux-gnu'
 				'includedir':      '/usr/include'

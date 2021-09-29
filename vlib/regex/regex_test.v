@@ -19,7 +19,7 @@ match_test_suite = [
 	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
 	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
 	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
-	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,13},
+	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,16},
 	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
 	TestItem{"ab-cd-efGHK",r"[a-f\-g]+\A+",0,11},
 
@@ -138,6 +138,8 @@ match_test_suite = [
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
 	TestItem{"[ an s. s! ](wiki:something)", r"\[.*\]\( *(\w*:*\w+) *\)",0,28},
+	TestItem{"p_p", r"\w+",0,3},
+	TestItem{"p_é", r"\w+",0,2},
 	
 	// Crazywulf tests (?:^|[()])(\d+)(*)(\d+)(?:$|[()])
     TestItem{"1*1", r"(\d+)([*])(\d+)",0,3},
@@ -153,6 +155,10 @@ match_test_suite = [
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
 
+    // backslash on finish string
+    TestItem{"a", r"\S+",0,1},
+    TestItem{"aaaa", r"\S+",0,4},
+    TestItem{"aaaa ", r"\S+",0,4},
 ]
 )
 
@@ -338,6 +344,12 @@ find_all_test_suite = [
 		r"@for.+@endfor",
 		[0, 22, 23, 50, 63, 80, 89, 117],
 		['@for something @endfor', '@for something else @endfor', '@for body @endfor', '@for senza dire più @endfor']
+	},
+	Test_find_all{
+		"+++pippo+++\n elvo +++ pippo2 +++ +++ oggi+++",
+		r"\+{3}.*\+{3}",
+		[0, 11, 18, 32, 33, 44],
+		['+++pippo+++', '+++ pippo2 +++', '+++ oggi+++']
 	}
 
 ]
@@ -544,6 +556,13 @@ fn test_regex(){
 			continue
 		}
 
+		// test the match predicate
+		if to.s >= 0 {
+			assert re.matches_string(to.src)
+		} else {
+			assert !re.matches_string(to.src)
+		}
+
 		// rerun to test consistency
 		tmp_str1 := to.src.clone()
 		start1, end1 := re.match_string(tmp_str1)
@@ -603,4 +622,26 @@ fn test_regex_func_replace(){
 		eprintln(txt2)
 	}
 	assert result == txt2
+}
+
+// test quantifier wrong sequences
+const(
+	test_quantifier_sequences_list = [
+		r'+{3}.*+{3}', 
+		r'+{3}.*?{3}', 
+		r'+{3}.**{3}',
+		r'+{3}.*\+{3}*',
+		r'+{3}.*\+{3}+',
+		r'+{3}.*\+{3}??',
+		r'+{3}.*\+{3}{4}'
+	]
+)
+fn test_quantifier_sequences(){
+	for pattern in test_quantifier_sequences_list {
+		re, re_err, err_pos := regex.regex_base(pattern)
+		if re_err != regex.err_syntax_error {
+			eprintln("pattern: $pattern => $re_err")
+		}
+		assert re_err == regex.err_syntax_error
+	}
 }

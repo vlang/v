@@ -1,0 +1,2 @@
+volatile int *zzz = HEAP(int, (123));
+volatile int* pzzz = &(*(zzz));

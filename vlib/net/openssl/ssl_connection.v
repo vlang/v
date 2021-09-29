@@ -28,7 +28,7 @@ enum Select {
 	except
 }
 
-// shutdown closes the ssl connection and do clean up
+// shutdown closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ? {
 	if s.ssl != 0 {
 		mut res := 0
@@ -81,7 +81,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 	}
 }
 
-// connect to server using open ssl
+// connect to server using OpenSSL
 pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()

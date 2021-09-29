@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-#include "@VROOT/vlib/os/os_darwin.m"
-
 pub const (
 	sys_write         = 4
 	sys_open          = 5
@@ -14,5 +12,3 @@ pub const (
 	sys_open_nocancel = 398
 	sys_stat64        = 338
 )
-
-fn C.darwin_log(s string)

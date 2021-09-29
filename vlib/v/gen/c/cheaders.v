@@ -1,5 +1,8 @@
 module c
 
+import strings
+import v.pref
+
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -20,14 +23,14 @@ const c_current_commit_hash_default = '
 
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
-struct __shared_map { map val; sync__RwMutex mtx; };
+struct __shared_map { sync__RwMutex mtx; map val; };
 static inline voidptr __dup_shared_map(voidptr src, int sz) {
 	__shared_map* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
 typedef struct __shared_array __shared_array;
-struct __shared_array { array val; sync__RwMutex mtx; };
+struct __shared_array { sync__RwMutex mtx; array val; };
 static inline voidptr __dup_shared_array(voidptr src, int sz) {
 	__shared_array* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
@@ -49,8 +52,83 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
+// Heavily based on Chris Wellons's work
+// https://nullprogram.com/blog/2017/01/08/
+
+fn c_closure_helpers(pref &pref.Preferences) string {
+	if pref.os == .windows {
+		verror('closures are not implemented on Windows yet')
+	}
+	if pref.arch != .amd64 {
+		verror('closures are not implemented on this architecture yet: $pref.arch')
+	}
+	mut builder := strings.new_builder(2048)
+	if pref.os != .windows {
+		builder.writeln('#include <sys/mman.h>')
+	}
+	if pref.arch == .amd64 {
+		builder.write_string('
+static unsigned char __closure_thunk[6][13] = {
+    {
+        0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    }, {
+        0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
+        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    },
+};
+')
+	}
+	builder.write_string('
+static void __closure_set_data(void *closure, void *data) {
+    void **p = closure;
+    p[-2] = data;
+}
+
+static void __closure_set_function(void *closure, void *f) {
+    void **p = closure;
+    p[-1] = f;
+}
+')
+	if pref.os != .windows {
+		builder.write_string('
+static void * __closure_create(void *f, int nargs, void *userdata) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    int prot = PROT_READ | PROT_WRITE;
+    int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+    char *p = mmap(0, page_size * 2, prot, flags, -1, 0);
+    if (p == MAP_FAILED)
+        return 0;
+    void *closure = p + page_size;
+    memcpy(closure, __closure_thunk[nargs - 1], sizeof(__closure_thunk[0]));
+    mprotect(closure, page_size, PROT_READ | PROT_EXEC);
+    __closure_set_function(closure, f);
+    __closure_set_data(closure, userdata);
+    return closure;
+}
+
+static void __closure_destroy(void *closure) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    munmap((char *)closure - page_size, page_size * 2);
+}
+')
+	}
+	return builder.str()
+}
+
 const c_common_macros = '
-//typedef unsigned char u8;
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION
@@ -373,6 +451,7 @@ voidptr memdup(voidptr src, int sz);
 
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
+	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
 
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)
@@ -430,9 +509,12 @@ typedef int16_t i16;
 typedef int8_t i8;
 typedef uint64_t u64;
 typedef uint32_t u32;
+typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint8_t byte;
 typedef uint32_t rune;
+typedef size_t usize;
+typedef ptrdiff_t isize;
 typedef float f32;
 typedef double f64;
 typedef int64_t int_literal;
@@ -620,11 +702,13 @@ static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0xa0761d6478bd642ful
 // the wyrand PRNG that pass BigCrush and PractRand
 static inline uint64_t wyrand(uint64_t *seed){ *seed+=0xa0761d6478bd642full; return _wymix(*seed,*seed^0xe7037ed1a0b428dbull);}
 
+#ifndef __vinix__
 // convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}
 
 // convert any 64 bit pseudo random numbers to APPROXIMATE Gaussian distribution. It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2gau(uint64_t r){ const double _wynorm=1.0/(1ull<<20); return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;}
+#endif
 
 #if(!WYHASH_32BIT_MUM)
 // fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.

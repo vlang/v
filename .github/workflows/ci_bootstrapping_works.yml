@@ -1,0 +1,77 @@
+name: Bootstraping works
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      B_CFLAGS: -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w
+      B_LFLAGS: -lm -lpthread
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Build v
+        run: make
+
+      - name: v.c can be compiled and run with -os cross (bootstrapping works)
+        run: |
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          gcc $B_CFLAGS -o v_from_vc vc/v.c $B_LFLAGS
+          ls -lart v_from_vc
+          ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
+
+      - name: Ensure v up works
+        run: |
+          ./v cmd/tools/oldv.v
+          ./cmd/tools/oldv -v HEAD^^^^^
+          cd ~/.cache/oldv/v_at_HEAD_____/
+          ./v version
+          ./v -v up
+          ./v version
+          ./v  -o v2 cmd/v
+          ./v2 -o v3 cmd/v
+
+  macos:
+    runs-on: macos-11
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc clang
+      B_CFLAGS: -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w
+      B_LFLAGS: -lm -lpthread
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Build V
+        run: make && ./v -cg -cstrict -o v cmd/v
+
+      - name: v.c can be compiled and run with -os cross (bootstrapping works)
+        run: |
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          cc $B_CFLAGS -o v_from_vc vc/v.c $B_LFLAGS
+          ls -lart v_from_vc
+          ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          ### the next make invocation will simulate building V from scratch,
+          ### using this commit
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v

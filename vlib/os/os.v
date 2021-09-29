@@ -4,7 +4,6 @@
 module os
 
 pub const (
-	args          = []string{}
 	max_path_len  = 4096
 	wd_at_startup = getwd()
 )
@@ -83,6 +82,7 @@ pub fn mv_by_cp(source string, target string) ? {
 }
 
 // read_lines reads the file in `path` into an array of lines.
+[manualfree]
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) ?
 	res := buf.split_into_lines()
@@ -165,11 +165,15 @@ pub fn file_ext(path string) string {
 // If the path is empty, dir returns ".". If the path consists entirely of separators,
 // dir returns a single separator.
 // The returned path does not end in a separator unless it is the root directory.
-pub fn dir(path string) string {
-	if path == '' {
+pub fn dir(opath string) string {
+	if opath == '' {
 		return '.'
 	}
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	pos := path.last_index(path_separator) or { return '.' }
+	if pos == 0 && path_separator == '/' {
+		return '/'
+	}
 	return path[..pos]
 }
 
@@ -177,10 +181,11 @@ pub fn dir(path string) string {
 // Trailing path separators are removed before extracting the last element.
 // If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
 // single separator.
-pub fn base(path string) string {
-	if path == '' {
+pub fn base(opath string) string {
+	if opath == '' {
 		return '.'
 	}
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	if path == path_separator {
 		return path_separator
 	}
@@ -195,7 +200,8 @@ pub fn base(path string) string {
 
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
-pub fn file_name(path string) string {
+pub fn file_name(opath string) string {
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
 	return path.all_after_last(path_separator)
 }
 
@@ -331,17 +337,23 @@ pub fn home_dir() string {
 	}
 }
 
+// expand_tilde_to_home expands the character `~` in `path` to the user's home directory.
+// See also `home_dir()`.
+pub fn expand_tilde_to_home(path string) string {
+	if path == '~' {
+		return home_dir().trim_right(path_separator)
+	}
+	if path.starts_with('~' + path_separator) {
+		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
+			path_separator)
+	}
+	return path
+}
+
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	unsafe { f.write_full_buffer(text.str, size_t(text.len)) ? }
-	f.close()
-}
-
-// write_file_array writes the data in `buffer` to a file in `path`.
-pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(buffer.data, size_t(buffer.len * buffer.element_size)) ? }
+	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
 	f.close()
 }
 
@@ -349,18 +361,19 @@ pub fn write_file_array(path string, buffer array) ? {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if os.args.len == 0 {
+	if args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := os.args[0]
+	mut exepath := args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
 		}
 	}
 	if !is_abs_path(exepath) {
-		if exepath.contains(path_separator) {
+		rexepath := exepath.replace_each(['/', path_separator, r'\', path_separator])
+		if rexepath.contains(path_separator) {
 			exepath = join_path(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
@@ -482,7 +495,6 @@ pub fn walk(path string, f fn (string)) {
 pub fn log(s string) {
 	//$if macos {
 	// Use NSLog() on macos
-	// C.darwin_log(s)
 	//} $else {
 	println('os.log: ' + s)
 	//}
@@ -631,25 +643,4 @@ pub fn execute_or_exit(cmd string) Result {
 		exit(1)
 	}
 	return res
-}
-
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
-	}
-}
-
-pub fn glob(patterns ...string) ?[]string {
-	mut matches := []string{}
-	for pattern in patterns {
-		native_glob_pattern(pattern, mut matches) ?
-	}
-	matches.sort()
-	return matches
 }

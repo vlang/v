@@ -479,12 +479,12 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 					else {
 						p.next()
 						if name.len == 1 && name[0].is_capital() {
-							return p.parse_generic_template_type(name)
+							return p.parse_generic_type(name)
 						}
 						if p.tok.kind == .lt {
-							return p.parse_generic_struct_inst_type(name)
+							return p.parse_generic_inst_type(name)
 						}
-						return p.parse_enum_or_struct_type(name, language)
+						return p.find_type_or_add_placeholder(name, language)
 					}
 				}
 			}
@@ -494,9 +494,8 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	}
 }
 
-pub fn (mut p Parser) parse_enum_or_struct_type(name string, language ast.Language) ast.Type {
+pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
-	// struct / enum
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
 		return ast.new_type(idx)
@@ -507,7 +506,7 @@ pub fn (mut p Parser) parse_enum_or_struct_type(name string, language ast.Langua
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_generic_template_type(name string) ast.Type {
+pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
 		return ast.new_type(idx).set_flag(.generic)
@@ -522,7 +521,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) ast.Type {
 	return ast.new_type(idx).set_flag(.generic)
 }
 
-pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
+pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_name := name
 	mut bs_cname := name
 	p.next()
@@ -544,7 +543,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 			break
 		}
 		p.next()
-		bs_name += ','
+		bs_name += ', '
 		bs_cname += '_'
 	}
 	p.check(.gt)
@@ -562,16 +561,16 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
 		idx := p.table.register_type_symbol(ast.TypeSymbol{
-			kind: .generic_struct_inst
+			kind: .generic_inst
 			name: bs_name
 			cname: util.no_dots(bs_cname)
 			mod: p.mod
-			info: ast.GenericStructInst{
+			info: ast.GenericInst{
 				parent_idx: parent_idx
 				concrete_types: concrete_types
 			}
 		})
 		return ast.new_type(idx)
 	}
-	return p.parse_enum_or_struct_type(name, .v).set_flag(.generic)
+	return p.find_type_or_add_placeholder(name, .v).set_flag(.generic)
 }

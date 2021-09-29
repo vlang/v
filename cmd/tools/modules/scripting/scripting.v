@@ -85,7 +85,10 @@ fn modfn(mname string, fname string) string {
 
 pub fn chdir(path string) {
 	verbose_trace_strong(modfn(@MOD, @FN), 'cd $path')
-	os.chdir(path)
+	os.chdir(path) or {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		return
+	}
 }
 
 pub fn mkdir(path string) ? {

@@ -90,8 +90,8 @@ For example `\w` is the meta-char `w`.
 
 A meta-char can match different types of characters.
 
-* `\w` matches an alphanumeric char `[a-zA-Z0-9_]`
-* `\W` matches a non alphanumeric char
+* `\w` matches a word char char `[a-zA-Z0-9_]`
+* `\W` matches a non word char
 * `\d` matches a digit `[0-9]`
 * `\D` matches a non digit
 * `\s` matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
@@ -133,16 +133,16 @@ Suppose you have `abccc ddeef` as a source string, that you want to parse
 with a regex. The following table show the query strings and the result of
 parsing source string.
 
-+--------------+-------------+
 | query string |   result    |
 |--------------|-------------|
 | `.*c`        | `abc`       |
 | `.*dd`	   | `abcc dd`   |
 | `ab.*e`      | `abccc dde` |
 | `ab.{3} .*e` | `abccc dde` |
-+--------------+-------------+
-
 The dot matches any character, until the next token match is satisfied.
+
+**Important Note:** *Consecutive dots, for example `...`, are not allowed.*
+*This will cause a syntax error. Use a quantifier instead.*
 
 ### OR token
 
@@ -481,13 +481,13 @@ re.flag = regex.F_BIN
 
 - `F_EFM`: exit on the first char matches in the query, used by the 
            find function.
-		   
+	
 - `F_MS`:  matches only if the index of the start match is 0,
            same as `^` at the start of the query string.
-		   
+	
 - `F_ME`:  matches only if the end index of the match is the last char
            of the input string, same as `$` end of query string.
-		   
+	
 - `F_NL`:  stop the matching if found a new line char `\n` or `\r`
 
 ## Functions

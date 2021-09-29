@@ -9,16 +9,6 @@ pub interface Reader {
 	read(mut buf []byte) ?int
 }
 
-// make_reader is a temp that converts a type to a reader
-// (e.g. for use in struct initialisation)
-// (this shouldnt need to be a thing but until coercion gets made better
-// it is required)
-[deprecated: 'use just `x` instead of `io.make_reader(x)`. Interfaces are now checked against all types.']
-[deprecated_after: '2021-05-27']
-pub fn make_reader(r Reader) Reader {
-	return r
-}
-
 const (
 	read_all_len      = 10 * 1024
 	read_all_grow_len = 1024

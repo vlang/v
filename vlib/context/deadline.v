@@ -1,6 +1,6 @@
 // This module defines the Context type, which carries deadlines, cancellation signals,
 // and other request-scoped values across API boundaries and between processes.
-// Based off:   https://github.com/golang/go/tree/master/src/context
+// Based on:   https://github.com/golang/go/tree/master/src/context
 // Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
@@ -26,7 +26,7 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_deadline(parent Context, d time.Time) Context {
+pub fn with_deadline(parent Context, d time.Time) (Context, CancelFn) {
 	id := rand.uuid_v4()
 	if cur := parent.deadline() {
 		if cur < d {
@@ -40,11 +40,13 @@ pub fn with_deadline(parent Context, d time.Time) Context {
 		deadline: d
 		id: id
 	}
-	propagate_cancel(parent, mut ctx)
+	propagate_cancel(parent, ctx)
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
-		return Context(ctx)
+		return Context(ctx), fn [mut ctx] () {
+			ctx.cancel(true, canceled)
+		}
 	}
 
 	if ctx.err() is none {
@@ -53,18 +55,20 @@ pub fn with_deadline(parent Context, d time.Time) Context {
 			ctx.cancel(true, deadline_exceeded)
 		}(mut ctx, dur)
 	}
-	return Context(ctx)
+	return Context(ctx), fn [mut ctx] () {
+		ctx.cancel(true, canceled)
+	}
 }
 
 // with_timeout returns with_deadline(parent, time.now().add(timeout)).
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete
-pub fn with_timeout(parent Context, timeout time.Duration) Context {
+pub fn with_timeout(parent Context, timeout time.Duration) (Context, CancelFn) {
 	return with_deadline(parent, time.now().add(timeout))
 }
 
-pub fn (ctx TimerContext) deadline() ?time.Time {
+pub fn (ctx &TimerContext) deadline() ?time.Time {
 	return ctx.deadline
 }
 
@@ -76,7 +80,7 @@ pub fn (mut ctx TimerContext) err() IError {
 	return ctx.cancel_ctx.err()
 }
 
-pub fn (ctx TimerContext) value(key string) ?voidptr {
+pub fn (ctx &TimerContext) value(key Key) ?Any {
 	return ctx.cancel_ctx.value(key)
 }
 
@@ -88,7 +92,7 @@ pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err IError) {
 	}
 }
 
-pub fn (ctx TimerContext) str() string {
+pub fn (ctx &TimerContext) str() string {
 	return context_name(ctx.cancel_ctx.context) + '.with_deadline(' + ctx.deadline.str() + ' [' +
 		(time.now() - ctx.deadline).str() + '])'
 }

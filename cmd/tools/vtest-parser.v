@@ -12,7 +12,7 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_details = map{
+	ecode_details = {
 		-1:  'worker executable not found'
 		101: 'too slow'
 		102: 'too memory hungry'

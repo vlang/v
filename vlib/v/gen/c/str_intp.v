@@ -76,6 +76,10 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		if fspec == `o` {
 			base = 8 - 2 // our base start from 2
 		}
+		// binary format
+		if fspec == `b` {
+			base = 1 // our base start from 2 we use 1 for binary
+		}
 		if fspec == `c` {
 			fmt_type = .si_c
 		} else {
@@ -87,6 +91,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 				ast.i64_type { fmt_type = .si_i64 }
 				ast.u64_type { fmt_type = .si_u64 }
 				ast.u32_type { fmt_type = .si_u32 }
+				ast.usize_type { fmt_type = .si_u64 }
+				ast.isize_type { fmt_type = .si_i64 }
 				else { fmt_type = .si_i32 }
 			}
 		}
@@ -110,7 +116,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		pad_ch = 1
 	}
 	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
-		node.pluss[i], pad_ch, base, upper_case)
+		node.pluss[i], byte(pad_ch), base, upper_case)
 	//
 	return res, fmt_type.str()
 }

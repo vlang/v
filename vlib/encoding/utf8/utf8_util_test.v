@@ -64,3 +64,30 @@ fn test_reversed() {
 	assert utf8.reverse(a) == '!gnaL V是我'
 	assert utf8.reverse(b) == 'dlrow olleh界世好你'
 }
+
+fn test_is_control() {
+	for ra in `a` .. `z` {
+		assert utf8.is_control(ra) == false
+	}
+
+	for ra in `A` .. `Z` {
+		assert utf8.is_control(ra) == false
+	}
+
+	assert utf8.is_control('\x01'.runes()[0]) == true
+	assert utf8.is_control('\u0100'.runes()[0]) == false
+}
+
+fn test_is_letter() {
+	for ra in `a` .. `z` {
+		assert utf8.is_letter(ra) == true
+	}
+
+	for ra in `A` .. `Z` {
+		assert utf8.is_letter(ra) == true
+	}
+
+	assert utf8.is_letter(`ɀ`) == true
+	assert utf8.is_letter(`ȶ`) == true
+	assert utf8.is_letter(`ȹ`) == true
+}

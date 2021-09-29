@@ -74,7 +74,7 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		C.memcpy(&byte(&option.err) + sizeof(IError), data, size)
+		vmemcpy(&byte(&option.err) + sizeof(IError), data, size)
 	}
 }
 
@@ -86,18 +86,4 @@ pub fn (e &Error) free() {
 [unsafe]
 pub fn (n &None__) free() {
 	unsafe { n.msg.free() }
-}
-
-[typedef]
-struct C.IError {
-	_object voidptr
-}
-
-[unsafe]
-pub fn (ie &IError) free() {
-	unsafe {
-		ie.msg.free()
-		cie := &C.IError(ie)
-		free(cie._object)
-	}
 }

@@ -7,7 +7,7 @@ fn inc_array_elem(shared b []int, i int) {
 }
 
 fn test_autolock_array() {
-	shared a := &[1, 2, 7, 5]
+	shared a := [1, 2, 7, 5]
 	t := go inc_array_elem(shared a, 2)
 	for _ in 0 .. iterations {
 		a[2]++
@@ -23,7 +23,7 @@ fn inc_map_elem(shared b map[string]int, k string) {
 }
 
 fn test_autolock_map() {
-	shared m := &map{
+	shared m := {
 		'xy':  1
 		'qwe': 2
 		'asd': 7

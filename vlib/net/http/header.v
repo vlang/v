@@ -216,7 +216,7 @@ pub fn (h CommonHeader) str() string {
 	}
 }
 
-const common_header_map = map{
+const common_header_map = {
 	'accept':                              CommonHeader.accept
 	'accept-ch':                           .accept_ch
 	'accept-charset':                      .accept_charset
@@ -533,6 +533,7 @@ pub fn (h Header) keys() []string {
 	return h.data.keys()
 }
 
+[params]
 pub struct HeaderRenderConfig {
 	version      Version
 	coerce       bool
@@ -554,21 +555,17 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			} else {
 				data_keys[0]
 			}
-			sb.write_string(key)
-			sb.write_string(': ')
-			for i in 0 .. data_keys.len - 1 {
-				k := data_keys[i]
+			for k in data_keys {
 				for v in h.data[k] {
+					sb.write_string(key)
+					sb.write_string(': ')
 					sb.write_string(v)
-					sb.write_string(',')
+					sb.write_string('\r\n')
 				}
 			}
-			k := data_keys[data_keys.len - 1]
-			sb.write_string(h.data[k].join(','))
-			sb.write_string('\r\n')
 		}
 	} else {
-		for k, v in h.data {
+		for k, vs in h.data {
 			key := if flags.version == .v2_0 {
 				k.to_lower()
 			} else if flags.canonicalize {
@@ -576,10 +573,12 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			} else {
 				k
 			}
-			sb.write_string(key)
-			sb.write_string(': ')
-			sb.write_string(v.join(','))
-			sb.write_string('\r\n')
+			for v in vs {
+				sb.write_string(key)
+				sb.write_string(': ')
+				sb.write_string(v)
+				sb.write_string('\r\n')
+			}
 		}
 	}
 	res := sb.str()

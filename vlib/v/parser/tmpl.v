@@ -10,7 +10,7 @@ import strings
 
 const tmpl_str_start = "sb.write_string('"
 
-const tmpl_str_end = "' ) "
+const tmpl_str_end = "')\n"
 
 enum State {
 	html
@@ -67,7 +67,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	source.writeln('
 import strings
 // === vweb html template ===
-fn vweb_tmpl_${fn_name}() {
+fn vweb_tmpl_${fn_name}() string {
 mut sb := strings.new_builder($lstartlength)\n
 
 ')
@@ -78,14 +78,13 @@ mut sb := strings.new_builder($lstartlength)\n
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
-		oline := lines[i]
+		line := lines[i]
 		tline_number++
 		start_of_line_pos = end_of_line_pos
-		end_of_line_pos += oline.len + 1
+		end_of_line_pos += line.len + 1
 		$if trace_tmpl ? {
-			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $oline')
+			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $line')
 		}
-		line := oline.trim_space()
 		if is_html_open_tag('style', line) {
 			state = .css
 		} else if line == '</style>' {
@@ -194,20 +193,24 @@ mut sb := strings.new_builder($lstartlength)\n
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			source.writeln(parser.tmpl_str_start)
-		} else if state == .html && line.contains('span.') && line.ends_with('{') {
+		} else if state == .html && line.starts_with('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
 			source.writeln('<span class="$class">')
 			in_span = true
-		} else if state == .html && line.contains('.') && line.ends_with('{') {
+		} else if state == .html && line.trim_space().starts_with('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
+			trimmed := line.trim_space()
+			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 			source.writeln('<div class="$class">')
-		} else if state == .html && line.contains('#') && line.ends_with('{') {
+		} else if state == .html && line.starts_with('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
 			source.writeln('<div id="$class">')
-		} else if state == .html && line == '}' {
+		} else if state == .html && line.trim_space() == '}' {
+			trimmed := line.trim_space()
+			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 			if in_span {
 				source.writeln('</span>')
 				in_span = false
@@ -225,12 +228,20 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			source.writeln(line.replace(r'@', r'$').replace(r'$$', r'@').replace(r'.$',
-				r'.@').replace(r"'", r"\'"))
+			trailing_bs := parser.tmpl_str_end + 'sb.write_b(92)\n' + parser.tmpl_str_start
+			round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
+			round2 := [r'$$', r'\@', r'.$', r'.@']
+			rline := line.replace_each(round1).replace_each(round2)
+			if rline.ends_with('\\') {
+				source.writeln(rline[0..rline.len - 2] + trailing_bs)
+			} else {
+				source.writeln(rline)
+			}
 		}
 	}
 	source.writeln(parser.tmpl_str_end)
 	source.writeln('_tmpl_res_$fn_name := sb.str() ')
+	source.writeln('return _tmpl_res_$fn_name')
 	source.writeln('}')
 	source.writeln('// === end of vweb html template ===')
 	result := source.str()

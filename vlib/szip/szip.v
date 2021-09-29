@@ -17,6 +17,8 @@ fn C.zip_close(&Zip)
 
 fn C.zip_entry_open(&Zip, &byte) int
 
+fn C.zip_entry_openbyindex(&Zip, int) int
+
 fn C.zip_entry_close(&Zip) int
 
 fn C.zip_entry_name(&Zip) &byte
@@ -29,11 +31,13 @@ fn C.zip_entry_size(&Zip) u64
 
 fn C.zip_entry_crc32(&Zip) u32
 
-fn C.zip_entry_write(&Zip, voidptr, size_t) int
+fn C.zip_entry_write(&Zip, voidptr, usize) int
 
 fn C.zip_entry_fwrite(&Zip, &char) int
 
-fn C.zip_entry_read(&Zip, &voidptr, &size_t) int
+fn C.zip_entry_read(&Zip, &voidptr, &usize) int
+
+fn C.zip_entry_noallocread(&Zip, voidptr, usize) int
 
 fn C.zip_entry_fread(&Zip, &char) int
 
@@ -105,6 +109,14 @@ pub fn (mut zentry Zip) open_entry(name string) ? {
 	res := C.zip_entry_open(zentry, &char(name.str))
 	if res == -1 {
 		return error('szip: cannot open archive entry')
+	}
+}
+
+// open_entry_by_index opens an entry by index in the archive.
+pub fn (mut z Zip) open_entry_by_index(index int) ? {
+	res := C.zip_entry_openbyindex(z, index)
+	if res == -1 {
+		return error('szip: cannot open archive entry at index $index')
 	}
 }
 
@@ -184,12 +196,22 @@ pub fn (mut zentry Zip) create_entry(name string) ? {
 // for large entries, please take a look at zip_entry_extract function.
 pub fn (mut zentry Zip) read_entry() ?voidptr {
 	mut buf := &byte(0)
-	mut bsize := size_t(0)
+	mut bsize := usize(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {
 		return error('szip: cannot read properly data from entry')
 	}
 	return buf
+}
+
+// read_entry_buf extracts the current zip entry into user specified buffer
+pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
+	bsize := usize(in_bsize)
+	res := C.zip_entry_noallocread(zentry, buf, bsize)
+	if res == -1 {
+		return error('szip: cannot read properly data from entry')
+	}
+	return res
 }
 
 // extract_entry extracts the current zip entry into output file.

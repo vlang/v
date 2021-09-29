@@ -131,12 +131,14 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 				C.memcpy(&resolved.path, addr.str, addr.len)
 			}
 
-			return [Addr{
-				f: u16(AddrFamily.unix)
-				addr: AddrData{
-					Unix: resolved
-				}
-			}]
+			return [
+				Addr{
+					f: u16(AddrFamily.unix)
+					addr: AddrData{
+						Unix: resolved
+					}
+				},
+			]
 		}
 	}
 }

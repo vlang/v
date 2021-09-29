@@ -12,8 +12,7 @@ const (
 	de_bruijn64tab = [byte(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
 		59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16,
 		46, 35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7,
-		6,
-	]
+		6]
 )
 
 const (
@@ -150,7 +149,7 @@ pub fn ones_count_64(x u64) int {
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
 	s := byte(k) & (n - byte(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -161,7 +160,7 @@ pub fn rotate_left_8(x byte, k int) byte {
 pub fn rotate_left_16(x u16, k int) u16 {
 	n := u16(16)
 	s := u16(k) & (n - u16(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -172,7 +171,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 pub fn rotate_left_32(x u32, k int) u32 {
 	n := u32(32)
 	s := u32(k) & (n - u32(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -183,7 +182,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 pub fn rotate_left_64(x u64, k int) u64 {
 	n := u64(64)
 	s := u64(k) & (n - u64(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // --- Reverse ---

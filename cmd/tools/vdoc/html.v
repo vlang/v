@@ -4,6 +4,7 @@ import os
 import net.urllib
 import strings
 import markdown
+import regex
 import v.scanner
 import v.ast
 import v.token
@@ -22,9 +23,10 @@ const (
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>{{ title }} | vdoc</title>
-		<link rel="preconnect" href="https://fonts.gstatic.com">
-		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-		<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap" rel="stylesheet">
 		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -133,7 +135,7 @@ fn (vd VDoc) render_search_index(out Output) {
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
-	vd.assets = map{
+	vd.assets = {
 		'doc_css':       vd.get_resource(css_js_assets[0], out)
 		'normalize_css': vd.get_resource(css_js_assets[1], out)
 		'doc_js':        vd.get_resource(css_js_assets[2], out)
@@ -493,7 +495,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn html_tag_escape(str string) string {
-	return str.replace_each(['<', '&lt;', '>', '&gt;'])
+	excaped_string := str.replace_each(['<', '&lt;', '>', '&gt;'])
+	mut re := regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { regex.RE{} }
+	if re.find_all_str(excaped_string).len > 0 {
+		return str
+	}
+	return excaped_string
 }
 
 /*

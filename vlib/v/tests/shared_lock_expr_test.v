@@ -67,7 +67,7 @@ fn test_mult_ret_method() {
 }
 
 fn test_shared_lock_map_index_expr() {
-	shared m := map{
+	shared m := {
 		'qwe': 'asd'
 	}
 	for key in ['fdf', 'qwe'] {

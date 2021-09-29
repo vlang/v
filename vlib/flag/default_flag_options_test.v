@@ -5,7 +5,7 @@ const source = 'vlib/flag/testdata/simplest_flag_program.v'
 const simple_flag_app_executable = os.real_path(os.join_path(os.cache_dir(), 'simple_flag_app.exe'))
 
 fn testsuite_begin() {
-	os.chdir(@VMODROOT)
+	os.chdir(@VMODROOT) or {}
 	os.rm(simple_flag_app_executable) or {}
 	res := os.execute('${@VEXE} -o $simple_flag_app_executable $source')
 	assert res.exit_code == 0

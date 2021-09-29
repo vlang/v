@@ -18,19 +18,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write('struct ')
 	}
 	f.write_language_prefix(node.language)
-	name := node.name.after('.')
+	name := node.name.after('.') // strip prepended module
 	f.write(name)
-	if node.generic_types.len > 0 {
-		f.write('<')
-		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
-		f.write(gtypes)
-		f.write('>')
-	}
+	f.write_generic_types(node.generic_types)
 	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln(' {}')
 		return
 	}
-	f.writeln(' {')
 	mut field_aligns := []AlignInfo{}
 	mut comment_aligns := []AlignInfo{}
 	mut default_expr_aligns := []AlignInfo{}
@@ -59,14 +53,20 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				use_threshold: true)
 		}
 	}
+	f.writeln(' {')
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
-		if embed.comments.len == 0 {
+
+		pre_comments := embed.comments.filter(it.pos.pos < embed.pos.pos)
+		comments := embed.comments[pre_comments.len..]
+
+		f.comments_before_field(pre_comments)
+		if comments.len == 0 {
 			f.writeln('\t$styp')
 		} else {
 			f.write('\t$styp')
-			f.comments(embed.comments, level: .indent)
+			f.comments(comments, level: .indent)
 		}
 	}
 	mut field_align_i := 0
@@ -140,7 +140,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				f.indent++
 				inc_indent = true
 			}
-			f.prefix_expr_cast_expr(field.default_expr)
+			f.expr(field.default_expr)
 			if inc_indent {
 				f.indent--
 				inc_indent = false
@@ -207,7 +207,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.write(', ')
 		}
 		for i, field in node.fields {
-			f.prefix_expr_cast_expr(field.expr)
+			f.expr(field.expr)
 			if i < node.fields.len - 1 {
 				f.write(', ')
 			}
@@ -257,7 +257,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			}
 			for i, field in node.fields {
 				f.write('$field.name: ')
-				f.prefix_expr_cast_expr(field.expr)
+				f.expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
 					if i < node.fields.len - 1 {

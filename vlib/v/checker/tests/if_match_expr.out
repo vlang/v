@@ -40,10 +40,3 @@ vlib/v/checker/tests/if_match_expr.vv:23:3: error: `match` expression branch has
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    24 |         _ = match true {true {1} else {-1}} // OK
    25 |         match true {true {1} else {-1}} // result
-vlib/v/checker/tests/if_match_expr.vv:25:3: error: return type mismatch, it should be `int`
-   23 |         match true {true {} else {}} // statement not expression
-   24 |         _ = match true {true {1} else {-1}} // OK
-   25 |         match true {true {1} else {-1}} // result
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   26 |     }
-   27 | }

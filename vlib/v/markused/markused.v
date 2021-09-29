@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts := all_fn_and_const(ast_files)
+	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -36,7 +36,6 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'isnil',
 		'opt_ok',
 		'error',
-		'__print_assert_failure',
 		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',
 		'compare_ints',
@@ -49,60 +48,73 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// byteptr and charptr
 		'3.vstring',
 		'3.vstring_with_len',
+		'3.vstring_literal',
 		'4.vstring',
 		'4.vstring_with_len',
+		'4.vstring_literal',
 		// byte. methods
-		'9.str_escaped',
+		'10.str_escaped',
 		// string. methods
-		'18.add',
-		'18.trim_space',
-		'18.repeat',
-		'18.replace',
-		'18.clone',
-		'18.clone_static',
-		'18.trim',
-		'18.substr',
-		'18.at',
-		'18.at_with_check',
-		'18.index_kmp',
+		'20.add',
+		'20.trim_space',
+		'20.repeat',
+		'20.replace',
+		'20.clone',
+		'20.clone_static',
+		'20.trim',
+		'20.substr',
+		'20.at',
+		'20.at_with_check',
+		'20.index_kmp',
 		// string. ==, !=, etc...
-		'18.eq',
-		'18.ne',
-		'18.lt',
-		'18.gt',
-		'18.le',
-		'18.ge',
+		'20.eq',
+		'20.ne',
+		'20.lt',
+		'20.gt',
+		'20.le',
+		'20.ge',
 		'fast_string_eq',
 		// other array methods
-		'20.get',
-		'20.set',
-		'20.get_unsafe',
-		'20.set_unsafe',
-		'20.get_with_check' /* used for `x := a[i] or {}` */,
-		'20.clone_static_to_depth',
-		'20.clone_to_depth',
-		'20.first',
-		'20.last',
-		'20.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
-		'20.reverse',
-		'20.repeat_to_depth',
-		'20.slice',
-		'20.slice2',
-		'59.get',
-		'59.set',
-		'65556.last',
-		'65556.pop',
-		'65556.push',
-		'65556.insert_many',
-		'65556.prepend_many',
-		'65556.reverse',
-		'65556.set',
-		'65556.set_unsafe',
+		'22.get',
+		'22.set',
+		'22.get_unsafe',
+		'22.set_unsafe',
+		'22.get_with_check' /* used for `x := a[i] or {}` */,
+		'22.clone_static_to_depth',
+		'22.clone_to_depth',
+		'22.first',
+		'22.last',
+		'22.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
+		'22.reverse',
+		'22.repeat_to_depth',
+		'22.slice',
+		'22.slice2',
+		'61.get',
+		'61.set',
+		'65558.last',
+		'65558.pop',
+		'65558.push',
+		'65558.insert_many',
+		'65558.prepend_many',
+		'65558.reverse',
+		'65558.set',
+		'65558.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
-		'json__decode_string',
+		'json.decode_string',
+		'json.decode_int',
+		'json.decode_bool',
+		'json.decode_u64',
+		'json.encode_int',
+		'json.encode_string',
+		'json.encode_bool',
+		'json.encode_u64',
+		'json.json_print',
+		'json.json_parse',
+		'main.cb_propagate_test_error',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
+		'v.embed_file.find_index_entry_by_path',
 	]
 
 	if pref.is_bare {
@@ -123,20 +135,20 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
-			'20.clone_static_to_depth_noscan',
-			'20.clone_to_depth_noscan',
-			'20.reverse_noscan',
-			'20.repeat_to_depth_noscan',
-			'65556.pop_noscan',
-			'65556.push_noscan',
-			'65556.push_many_noscan',
-			'65556.insert_noscan',
-			'65556.insert_many_noscan',
-			'65556.prepend_noscan',
-			'65556.prepend_many_noscan',
-			'65556.reverse_noscan',
-			'65556.grow_cap_noscan',
-			'65556.grow_len_noscan',
+			'22.clone_static_to_depth_noscan',
+			'22.clone_to_depth_noscan',
+			'22.reverse_noscan',
+			'22.repeat_to_depth_noscan',
+			'65558.pop_noscan',
+			'65558.push_noscan',
+			'65558.push_many_noscan',
+			'65558.insert_noscan',
+			'65558.insert_many_noscan',
+			'65558.prepend_noscan',
+			'65558.prepend_many_noscan',
+			'65558.reverse_noscan',
+			'65558.grow_cap_noscan',
+			'65558.grow_len_noscan',
 		]
 	}
 
@@ -248,12 +260,18 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		}
 		for itype in interface_info.types {
 			pitype := itype.set_nr_muls(1)
+			mut itypes := [itype]
+			if pitype != itype {
+				itypes << pitype
+			}
 			for method in interface_info.methods {
-				interface_implementation_method_name := '${pitype}.$method.name'
-				$if trace_skip_unused_interface_methods ? {
-					eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+				for typ in itypes {
+					interface_implementation_method_name := '${int(typ)}.$method.name'
+					$if trace_skip_unused_interface_methods ? {
+						eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+					}
+					all_fn_root_names << interface_implementation_method_name
 				}
-				all_fn_root_names << interface_implementation_method_name
 			}
 		}
 	}
@@ -261,25 +279,52 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	// handle vweb magic router methods:
 	typ_vweb_result := table.find_type_idx('vweb.Result')
 	if typ_vweb_result != 0 {
+		all_fn_root_names << 'vweb.filter'
+		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
+		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_vweb_types {
 			sym_app := table.get_type_symbol(vgt)
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
 					pvgt := vgt.set_nr_muls(1)
 					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-					all_fn_root_names << '${pvgt}.$m.name'
+					all_fn_root_names << '${int(pvgt)}.$m.name'
 				}
 			}
 		}
 	}
 
-	//
+	// handle ORM drivers:
+	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
+	if orm_connection_implementations.len > 0 {
+		for k, _ in all_fns {
+			if k.starts_with('orm.') {
+				all_fn_root_names << k
+			}
+		}
+		for orm_type in orm_connection_implementations {
+			all_fn_root_names << '${int(orm_type)}.select'
+			all_fn_root_names << '${int(orm_type)}.insert'
+			all_fn_root_names << '${int(orm_type)}.update'
+			all_fn_root_names << '${int(orm_type)}.delete'
+			all_fn_root_names << '${int(orm_type)}.create'
+			all_fn_root_names << '${int(orm_type)}.drop'
+			all_fn_root_names << '${int(orm_type)}.last_id'
+		}
+	}
+
+	// handle -live main programs:
+	if pref.is_livemain {
+		all_fn_root_names << 'v.live.executable.start_reloader'
+		all_fn_root_names << 'v.live.executable.new_live_reload_info'
+	}
 
 	mut walker := Walker{
 		table: table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
+		all_globals: all_globals
 		pref: pref
 	}
 	// println( all_fns.keys() )
@@ -303,8 +348,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
 					'new_map_init_noscan_key', 'new_map_init_noscan_value',
-					'new_map_init_noscan_key_value',
-				] {
+					'new_map_init_noscan_key_value'] {
 					walker.fn_decl(mut mfn)
 				}
 			}
@@ -332,21 +376,24 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	table.used_fns = walker.used_fns.move()
 	table.used_consts = walker.used_consts.move()
+	table.used_globals = walker.used_globals.move()
 
 	$if trace_skip_unused ? {
 		eprintln('>> t.used_fns: $table.used_fns.keys()')
 		eprintln('>> t.used_consts: $table.used_consts.keys()')
+		eprintln('>> t.used_globals: $table.used_globals.keys()')
 		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
 	}
 }
 
-fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
+	mut all_globals := map[string]ast.GlobalField{}
 	for i in 0 .. ast_files.len {
 		file := ast_files[i]
 		for node in file.stmts {
@@ -361,9 +408,15 @@ fn all_fn_and_const(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]as
 						all_consts[ckey] = cfield
 					}
 				}
+				ast.GlobalDecl {
+					for gfield in node.fields {
+						gkey := gfield.name
+						all_globals[gkey] = gfield
+					}
+				}
 				else {}
 			}
 		}
 	}
-	return all_fns, all_consts
+	return all_fns, all_consts, all_globals
 }

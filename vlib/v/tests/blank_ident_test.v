@@ -115,7 +115,7 @@ fn test_nested_for_in_array_both() {
 }
 
 const (
-	m = map{
+	m = {
 		'key': 'value'
 	}
 )

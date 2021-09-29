@@ -1,10 +1,10 @@
 fn main() {
-	a := map{
+	a := {
 		'foo': 'bar'
 		'abc': 'abc'
 		'foo': 'bar'
 	}
 	println(a)
 
-	_ = map{2:0 3:0 2:0}
+	_ = {2:0 3:0 2:0}
 }

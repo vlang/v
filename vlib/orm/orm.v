@@ -1,32 +1,56 @@
 module orm
 
 import time
+import v.ast
 
 pub const (
-	num64    = [8, 12]
-	nums     = [5, 6, 7, 9, 10, 11, 16]
-	float    = [13, 14]
-	string   = 18
+	num64    = [ast.i64_type_idx, ast.u64_type_idx]
+	nums     = [
+		ast.i8_type_idx,
+		ast.i16_type_idx,
+		ast.int_type_idx,
+		ast.byte_type_idx,
+		ast.u16_type_idx,
+		ast.u32_type_idx,
+		ast.bool_type_idx,
+	]
+	float    = [
+		ast.f32_type_idx,
+		ast.f64_type_idx,
+	]
+	string   = ast.string_type_idx
 	time     = -2
-	type_idx = map{
-		'i8':     5
-		'i16':    6
-		'int':    7
-		'i64':    8
-		'byte':   9
-		'u16':    10
-		'u32':    11
-		'u64':    12
-		'f32':    13
-		'f64':    14
-		'bool':   16
-		'string': 18
+	type_idx = {
+		'i8':     ast.i8_type_idx
+		'i16':    ast.i16_type_idx
+		'int':    ast.int_type_idx
+		'i64':    ast.i64_type_idx
+		'byte':   ast.byte_type_idx
+		'u16':    ast.u16_type_idx
+		'u32':    ast.u32_type_idx
+		'u64':    ast.u64_type_idx
+		'f32':    ast.f32_type_idx
+		'f64':    ast.f64_type_idx
+		'bool':   ast.bool_type_idx
+		'string': ast.string_type_idx
 	}
 	string_max_len = 2048
 )
 
-pub type Primitive = InfixType | bool | byte | f32 | f64 | i16 | i64 | i8 | int | string |
-	time.Time | u16 | u32 | u64
+pub type Primitive = InfixType
+	| bool
+	| byte
+	| f32
+	| f64
+	| i16
+	| i64
+	| i8
+	| int
+	| string
+	| time.Time
+	| u16
+	| u32
+	| u64
 
 pub enum OperationKind {
 	neq // !=
@@ -136,24 +160,22 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 
 	match kind {
 		.insert {
-			str += 'INSERT INTO $para$table$para ('
-			for i, field in data.fields {
-				str += '$para$field$para'
-				if i < data.fields.len - 1 {
-					str += ', '
-				}
-			}
-			str += ') VALUES ('
-			for i, _ in data.fields {
-				str += qm
+			mut values := []string{}
+
+			for _ in 0 .. data.fields.len {
+				// loop over the length of data.field and generate ?0, ?1 or just ? based on the $num parameter for value placeholders
 				if num {
-					str += '$c'
+					values << '$qm$c'
 					c++
-				}
-				if i < data.fields.len - 1 {
-					str += ', '
+				} else {
+					values << '$qm'
 				}
 			}
+
+			str += 'INSERT INTO $para$table$para ('
+			str += data.fields.map('$para$it$para').join(', ')
+			str += ') VALUES ('
+			str += values.join(', ')
 			str += ')'
 		}
 		.update {
@@ -300,6 +322,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut is_skip := false
 		mut unique_len := 0
 		// mut fkey := ''
+		mut field_name := sql_field_name(field)
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -308,7 +331,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 				'unique' {
 					if attr.arg != '' {
 						if attr.kind == .string {
-							unique[attr.arg] << field.name
+							unique[attr.arg] << field_name
 							continue
 						} else if attr.kind == .number {
 							unique_len = attr.arg.int()
@@ -339,10 +362,9 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			continue
 		}
 		mut stmt := ''
-		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(8) ?
+			sql_from_v(7) ?
 		}
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
@@ -355,7 +377,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE KEY($para$field.name$para'
+			mut f := 'UNIQUE($para$field_name$para'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '($unique_len)'

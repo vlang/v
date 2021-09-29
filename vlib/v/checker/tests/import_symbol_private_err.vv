@@ -7,6 +7,6 @@ fn main() {
 	println(scanner.single_quote)
 	println(parser.State.html)
 	since(now())
-	_ = map{'h': 2}.exists('h')
+	_ = {'h': 2}.exists('h')
 	_ = ReaderWriterImpl{}
 }

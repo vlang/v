@@ -9,7 +9,7 @@ import runtime
 import benchmark
 
 const skip_files = [
-	'non_existing.vv' /* minimize commit diff churn, do not remove */,
+	'non_existing.vv', // minimize commit diff churn, do not remove
 ]
 
 const skip_on_ubuntu_musl = [
@@ -51,7 +51,7 @@ mut:
 fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
 	scanner_dir := 'vlib/v/scanner/tests'
@@ -132,9 +132,15 @@ fn test_all() {
 		'custom_comptime_define_if_flag.vv',
 	])
 	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-g run', '.g.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-cg run', '.cg.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
 	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', [
 		'custom_comptime_define_if_debug.vv',
 	])
@@ -290,7 +296,7 @@ fn (mut task TaskDescription) execute() {
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
-		os.write_file(expected_out_path, '') or { panic(err) }
+		os.create(expected_out_path) or { panic(err) }
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)

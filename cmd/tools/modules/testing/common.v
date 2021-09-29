@@ -128,6 +128,9 @@ pub fn (mut ts TestSession) print_messages() {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
+		$if msvc {
+			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
+		}
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
 			skip_files << 'examples/pico/pico.v'
@@ -209,8 +212,7 @@ pub fn (mut ts TestSession) test() {
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
-		relative_file := dot_relative_file.replace('./', '')
-		file := os.real_path(relative_file)
+		file := os.real_path(dot_relative_file)
 		$if windows {
 			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
@@ -246,7 +248,7 @@ pub fn (mut ts TestSession) test() {
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
-			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
+			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
 	ts.show_list_of_failed_tests()
@@ -264,8 +266,22 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_item<string>(idx)
-	mut relative_file := dot_relative_file.replace('./', '')
+	mut relative_file := os.real_path(p.get_item<string>(idx))
+	mut cmd_options := [ts.vargs]
+	mut run_js := false
+
+	is_fmt := ts.vargs.contains('fmt')
+
+	if relative_file.ends_with('js.v') {
+		if !is_fmt {
+			cmd_options << ' -b js'
+		}
+		run_js = true
+	}
+
+	if relative_file.contains('global') && !is_fmt {
+		cmd_options << ' -enable-globals'
+	}
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
@@ -274,18 +290,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' {
+	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
 		fname.replace('.v', '.exe')
+	} else if !run_js {
+		fname.replace('.v', '')
 	} else {
 		fname.replace('.v', '')
 	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or { panic(err) }
+			os.rm(generated_binary_fpath) or {}
 		}
 	}
-	mut cmd_options := [ts.vargs]
+
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}
@@ -302,22 +320,35 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if show_stats {
 		ts.append_message(.ok, term.h_divider('-'))
-		status := os.system(cmd)
-		if status == 0 {
-			ts.benchmark.ok()
-			tls_bench.ok()
-		} else {
+		mut status := os.system(cmd)
+		if status != 0 {
+			details := get_test_details(file)
+			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
+			for retry := 1; retry <= details.retry; retry++ {
+				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				os.setenv('VTEST_RETRY', '$retry', true)
+				status = os.system(cmd)
+				if status == 0 {
+					unsafe {
+						goto test_passed_system
+					}
+				}
+			}
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
+		} else {
+			test_passed_system:
+			ts.benchmark.ok()
+			tls_bench.ok()
 		}
 	} else {
 		if testing.show_start {
 			ts.append_message(.info, '                 starting $relative_file ...')
 		}
-		r := os.execute(cmd)
+		mut r := os.execute(cmd)
 		if r.exit_code < 0 {
 			ts.failed = true
 			ts.benchmark.fail()
@@ -327,6 +358,18 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
+			details := get_test_details(file)
+			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
+			for retry := 1; retry <= details.retry; retry++ {
+				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				os.setenv('VTEST_RETRY', '$retry', true)
+				r = os.execute(cmd)
+				if r.exit_code == 0 {
+					unsafe {
+						goto test_passed_execute
+					}
+				}
+			}
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
@@ -334,6 +377,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.append_message(.fail, tls_bench.step_message_fail('$normalised_relative_file\n$r.output.trim_space()$ending_newline'))
 			ts.add_failed_cmd(cmd)
 		} else {
+			test_passed_execute:
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if !testing.hide_oks {
@@ -343,7 +387,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or { panic(err) }
+			os.rm(generated_binary_fpath) or {}
 		}
 	}
 	return pool.no_result
@@ -438,12 +482,11 @@ pub fn building_any_v_binaries_failed() bool {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
-	os.chdir(parent_dir)
+	os.chdir(parent_dir) or { panic(err) }
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
 		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',
-		'$vexe -o v_prod    -prod     cmd/v',
-	]
+		'$vexe -o v_prod    -prod     cmd/v']
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
@@ -479,4 +522,20 @@ pub fn setup_new_vtmp_folder() string {
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
+}
+
+pub struct TestDetails {
+pub mut:
+	retry int
+}
+
+pub fn get_test_details(file string) TestDetails {
+	mut res := TestDetails{}
+	lines := os.read_lines(file) or { [] }
+	for line in lines {
+		if line.starts_with('// vtest retry:') {
+			res.retry = line.all_after(':').trim_space().int()
+		}
+	}
+	return res
 }

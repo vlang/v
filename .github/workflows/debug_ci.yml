@@ -6,7 +6,7 @@ jobs:
 
   debug-msvc:
     runs-on: windows-2019
-    timeout-minutes: 60
+    timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
     steps:
@@ -18,7 +18,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat --verbose -msvc
+          .\make.bat -msvc
           .\v.exe -cflags /WX self
       - name: Install dependencies
         run: |

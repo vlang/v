@@ -56,15 +56,18 @@ fn (c Context) compare_versions() {
 		'v     @DEBUG@ -o source.c examples/hello_world.v',
 		'v             -o source.c examples/hello_world.v',
 	])
-	perf_files << c.compare_v_performance('source_v', ['vprod @DEBUG@ -o source.c @COMPILER@',
-		'vprod         -o source.c @COMPILER@', 'v     @DEBUG@ -o source.c @COMPILER@',
+	perf_files << c.compare_v_performance('source_v', [
+		'vprod @DEBUG@ -o source.c @COMPILER@',
+		'vprod         -o source.c @COMPILER@',
+		'v     @DEBUG@ -o source.c @COMPILER@',
 		'v             -o source.c @COMPILER@',
 	])
 	perf_files << c.compare_v_performance('binary_hello', [
 		'vprod         -o hello    examples/hello_world.v',
 		'v             -o hello    examples/hello_world.v',
 	])
-	perf_files << c.compare_v_performance('binary_v', ['vprod         -o binary   @COMPILER@',
+	perf_files << c.compare_v_performance('binary_v', [
+		'vprod         -o binary   @COMPILER@',
 		'v             -o binary   @COMPILER@',
 	])
 	println('All performance files:')
@@ -107,8 +110,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.show_sizes_of_files(['$cdir/cv', '$cdir/cv_stripped', '$cdir/cv_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped',
-		'$cdir/vprod_stripped_upxed',
-	])
+		'$cdir/vprod_stripped_upxed'])
 	vversion := scripting.run('$cdir/v -version')
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: $vversion , local source commit: $vcommit')
@@ -192,7 +194,7 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
-	fp.limit_free_args(1, 2)
+	fp.limit_free_args(1, 2) ?
 	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
 	context.hyperfineopts = fp.string('hyperfine_options', 0, '', 'Additional options passed to hyperfine.
 ${flag.space}For example on linux, you may want to pass:

@@ -2,7 +2,7 @@ module main
 
 import os
 import v.pref
-import v.util
+import v.util.version
 import v.util.recompilation
 
 struct App {
@@ -26,11 +26,11 @@ fn new_app() App {
 fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
-	os.chdir(app.vroot)
+	os.chdir(app.vroot) ?
 	println('Updating V...')
 	app.update_from_master()
-	v_hash := util.githash(false)
-	current_hash := util.githash(true)
+	v_hash := version.githash(false)
+	current_hash := version.githash(true)
 	// println(v_hash)
 	// println(current_hash)
 	if v_hash == current_hash {

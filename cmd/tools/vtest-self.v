@@ -36,6 +36,7 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
 		'vlib/net/udp_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
@@ -46,6 +47,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
+		'vlib/net/http/response_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
@@ -87,6 +89,9 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
+		'vlib/net/http/response_test.v',
+		'vlib/builtin/js/array_test.js.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -95,8 +100,13 @@ const (
 		'do_not_remove',
 	]
 	skip_on_windows               = [
+		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
+		'vlib/context/empty_test.v',
+		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/closure_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/websocket/websocket_test.v',
@@ -114,6 +124,13 @@ const (
 	skip_on_non_macos             = [
 		'do_not_remove',
 	]
+	skip_on_amd64                 = [
+		'do_not_remove',
+	]
+	skip_on_non_amd64             = [
+		'vlib/v/tests/closure_test.v' /* not implemented yet */,
+		'do_not_remove',
+	]
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
@@ -121,12 +138,13 @@ const (
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or { panic(err) }
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
-	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
@@ -192,6 +210,12 @@ fn main() {
 	}
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_ubuntu_musl
+	}
+	$if !amd64 {
+		tsession.skip_files << skip_on_non_amd64
+	}
+	$if amd64 {
+		tsession.skip_files << skip_on_amd64
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux

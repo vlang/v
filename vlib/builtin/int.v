@@ -3,12 +3,12 @@
 // that can be found in the LICENSE file.
 module builtin
 
-// Alias until native supported
-type u8 = byte
-
 //
 // ----- value to string functions -----
 //
+
+type u8 = byte
+type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
@@ -16,7 +16,11 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
-pub fn (x size_t) str() string {
+pub fn (x isize) str() string {
+	return i64(x).str()
+}
+
+pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
@@ -31,7 +35,7 @@ const (
 
 // This implementation is the quickest with gcc -O2
 // str_l returns the string representation of the integer nn with max chars.
-[inline] [direct_array_access]
+[direct_array_access; inline]
 fn (nn int) str_l(max int) string {
 	unsafe {
 		mut n := i64(nn)
@@ -39,7 +43,7 @@ fn (nn int) str_l(max int) string {
 		if n == 0 {
 			return '0'
 		}
-		
+
 		mut is_neg := false
 		if n < 0 {
 			n = -n
@@ -72,7 +76,7 @@ fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		/*
 		// === manual memory move for bare metal ===
 		mut c:= 0
@@ -84,7 +88,7 @@ fn (nn int) str_l(max int) string {
 		*/
 		return tos(buf, diff)
 
-		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -114,7 +118,7 @@ pub fn (n int) str() string {
 
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
-[inline] [direct_array_access]
+[direct_array_access; inline]
 pub fn (nn u32) str() string {
 	unsafe {
 		mut n := nn
@@ -143,10 +147,10 @@ pub fn (nn u32) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
 
-		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -158,7 +162,7 @@ pub fn (n int_literal) str() string {
 
 // str returns the value of the `i64` as a `string`.
 // Example: assert i64(-200000).str() == '-200000'
-[inline] [direct_array_access]
+[direct_array_access; inline]
 pub fn (nn i64) str() string {
 	unsafe {
 		mut n := nn
@@ -197,15 +201,15 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
-		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
 // str returns the value of the `u64` as a `string`.
 // Example: assert u64(2000000).str() == '2000000'
-[inline] [direct_array_access]
+[direct_array_access; inline]
 pub fn (nn u64) str() string {
 	unsafe {
 		mut n := nn
@@ -234,9 +238,9 @@ pub fn (nn u64) str() string {
 			index++
 		}
 		diff := max - index
-		C.memmove(buf, buf + index, diff + 1)
+		vmemmove(buf, buf + index, diff + 1)
 		return tos(buf, diff)
-		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -254,32 +258,30 @@ pub fn (b bool) str() string {
 //
 
 // u64_to_hex converts the number `nn` to a (zero padded if necessary) hexadecimal `string`.
-[inline] [direct_array_access]
+[direct_array_access; inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 	}
 	return unsafe { tos(memdup(&buf[0], len + 1), len) }
 }
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
-[inline] [direct_array_access]
+[direct_array_access; inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte{}
+	mut buf := [17]byte{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }
-		buf[i] = x
+		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 		if n == 0 {
 			break
@@ -307,7 +309,10 @@ pub fn (nn byte) hex() string {
 // Example: assert i8(10).hex() == '0a'
 // Example: assert i8(15).hex() == '0f'
 pub fn (nn i8) hex() string {
-	return byte(nn).hex()
+	if nn == 0 {
+		return '00'
+	}
+	return u64_to_hex(u64(nn), 2)
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.
@@ -391,19 +396,47 @@ pub fn (nn voidptr) str() string {
 
 // hex returns the value of the `byteptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
-//pub fn (nn byteptr) str() string {
+// pub fn (nn byteptr) str() string {
 pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
 
-/*
-pub fn (nn byte) hex_full() string { return u64_to_hex(nn, 2) }
-pub fn (nn i8)  hex_full() string { return u64_to_hex(byte(nn), 2) }
-pub fn (nn u16) hex_full() string { return u64_to_hex(nn, 4) }
-pub fn (nn i16) hex_full() string { return u64_to_hex(u16(nn), 4) }
-pub fn (nn u32) hex_full() string { return u64_to_hex(nn, 8) }
-pub fn (nn int) hex_full() string { return u64_to_hex(u32(nn), 8) }
-*/
+pub fn (nn byte) hex_full() string {
+	return u64_to_hex(u64(nn), 2)
+}
+
+pub fn (nn i8) hex_full() string {
+	return u64_to_hex(u64(nn), 2)
+}
+
+pub fn (nn u16) hex_full() string {
+	return u64_to_hex(u64(nn), 4)
+}
+
+pub fn (nn i16) hex_full() string {
+	return u64_to_hex(u64(nn), 4)
+}
+
+pub fn (nn u32) hex_full() string {
+	return u64_to_hex(u64(nn), 8)
+}
+
+pub fn (nn int) hex_full() string {
+	return u64_to_hex(u64(nn), 8)
+}
+
+pub fn (nn i64) hex_full() string {
+	return u64_to_hex(u64(nn), 16)
+}
+
+pub fn (nn voidptr) hex_full() string {
+	return u64_to_hex(u64(nn), 16)
+}
+
+pub fn (nn int_literal) hex_full() string {
+	return u64_to_hex(u64(nn), 16)
+}
+
 // hex_full returns the value of the `u64` as a *full* 16-digit hexadecimal `string`.
 // Example: assert u64(2).hex_full() == '0000000000000002'
 // Example: assert u64(255).hex_full() == '00000000000000ff'
@@ -411,12 +444,6 @@ pub fn (nn u64) hex_full() string {
 	return u64_to_hex(nn, 16)
 }
 
-/*
-pub fn (nn i64) hex_full() string { return u64_to_hex(u64(nn), 16) }
-pub fn (nn int_literal) hex_full() string { return u64_to_hex(nn, 16) }
-pub fn (nn voidptr) hex_full() string { return u64_to_hex(nn, 16) }
-pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
-*/
 // str returns the contents of `byte` as a zero terminated `string`.
 // Example: assert byte(111).str() == '111'
 pub fn (b byte) str() string {
@@ -455,4 +482,28 @@ pub fn (b byte) str_escaped() string {
 		else { '0x' + b.hex() }
 	}
 	return str
+}
+
+// Define this on byte as well, so that we can do `s[0].is_capital()`
+pub fn (c byte) is_capital() bool {
+	return c >= `A` && c <= `Z`
+}
+
+pub fn (b []byte) clone() []byte {
+	mut res := []byte{len: b.len}
+	// mut res := make([]byte, {repeat:b.len})
+	for i in 0 .. b.len {
+		res[i] = b[i]
+	}
+	return res
+}
+
+// TODO: remove this once runes are implemented
+pub fn (b []byte) bytestr() string {
+	unsafe {
+		buf := malloc_noscan(b.len + 1)
+		vmemcpy(buf, b.data, b.len)
+		buf[b.len] = 0
+		return tos(buf, b.len)
+	}
 }

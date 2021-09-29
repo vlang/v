@@ -83,9 +83,11 @@ fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
 	unsafe { b.parsed_files.free() }
+	util.free_caches()
 }
 
 fn (b &Builder) exit_on_invalid_syntax() {
+	util.free_caches()
 	// V should exit with an exit code of 1, when there are errors,
 	// even when -silent is passed in combination to -check-syntax:
 	if b.pref.only_check_syntax {
@@ -104,10 +106,10 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.skip_running {
 		return
 	}
-	if b.pref.only_check_syntax {
+	if b.pref.only_check_syntax || b.pref.check_only {
 		return
 	}
-	if b.pref.out_name.ends_with('/-') {
+	if b.pref.should_output_to_stdout() {
 		return
 	}
 	if b.pref.os == .ios {
@@ -119,7 +121,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
 	if b.pref.backend.is_js() {
-		exefile = os.real_path('${b.pref.out_name}.js')
+		exefile = os.real_path('${b.pref.out_name}.js').replace('.js.js', '.js')
 		cmd = 'node "$exefile"'
 	}
 	for arg in b.pref.run_args {
@@ -147,7 +149,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		return
 	}
 	v.pref.vrun_elog('remove run executable: $exefile')
-	os.rm(exefile) or { panic(err) }
+	os.rm(exefile) or {}
 }
 
 // 'strings' => 'VROOT/vlib/strings'
@@ -237,7 +239,10 @@ pub fn (v &Builder) get_user_files() []string {
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	mut preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	if v.pref.backend == .js_node {
+		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
+	}
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}
@@ -252,6 +257,9 @@ pub fn (v &Builder) get_user_files() []string {
 	}
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
+	}
+	if v.pref.backend.is_js() && v.pref.is_stats && v.pref.is_test {
+		user_files << os.join_path(preludes_path, 'stats_import.js.v')
 	}
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')

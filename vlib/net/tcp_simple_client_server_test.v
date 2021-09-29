@@ -118,7 +118,10 @@ fn test_socket_write_fail_without_panic() {
 	$if solaris {
 		return
 	}
-	// TODO: fix segfaulting on Solaris
+	$if freebsd {
+		return
+	}
+	// TODO: fix segfaulting on Solaris and FreeBSD
 	for i := 0; i < 3; i++ {
 		socket.write_string(message2) or {
 			println('write to a socket without a recipient should produce an option fail: $err | $message2')
