@@ -519,7 +519,7 @@ pub fn (b byte) repeat(count int) string {
 	}
 	mut ret := unsafe { malloc_noscan(count + 1) }
 	for i in 0 .. count {
-		unsafe{
+		unsafe {
 			ret[i] = b
 		}
 	}
