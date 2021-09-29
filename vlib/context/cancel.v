@@ -49,8 +49,7 @@ mut:
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
 pub fn with_cancel(mut parent Context) (Context, CancelFn) {
-	p := parent // TODO just use parent, workaround a bug with passing interface pointers as non-pointers
-	mut c := new_cancel_context(p)
+	mut c := new_cancel_context(parent)
 	propagate_cancel(mut parent, mut c)
 	return Context(c), fn [mut c] () {
 		c.cancel(true, canceled)
@@ -126,9 +125,8 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 	ctx.mutex.unlock()
 
 	if remove_from_parent {
-		c := ctx
 		mut cc := &ctx.context
-		remove_child(mut cc, c)
+		remove_child(mut cc, ctx)
 	}
 }
 

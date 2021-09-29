@@ -66,7 +66,8 @@ fn example_with_cancel() {
 		cancel()
 	}
 
-	mut ctx2 := &ctx
+	mut mut_ctx := ctx
+	mut ctx2 := &mut_ctx
 	ch := gen(mut ctx2)
 	for i in 0 .. 5 {
 		v := <-ch

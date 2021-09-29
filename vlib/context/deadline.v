@@ -34,8 +34,7 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 			return with_cancel(mut parent)
 		}
 	}
-	p := parent
-	cancel_ctx := new_cancel_context(p)
+	cancel_ctx := new_cancel_context(parent)
 	mut ctx := &TimerContext{
 		cancel_ctx: cancel_ctx
 		deadline: d
