@@ -7930,6 +7930,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	sym := c.table.get_type_symbol(node.table_expr.typ)
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	c.cur_orm_ts = *sym
+	if sym.info !is ast.Struct {
+		return ast.void_type
+	}
 	info := sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
