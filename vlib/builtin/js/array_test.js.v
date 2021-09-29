@@ -1,3 +1,11 @@
+fn test_js() {
+	$if js_node {
+		assert true
+	} $else {
+		assert false
+	}
+}
+
 fn test_pointer() {
 	mut arr := []&int{}
 	a := 1
@@ -260,6 +268,7 @@ fn test_repeat() {
 		assert a[0] == 'abc'
 	}
 }
+
 /*
 fn test_deep_repeat() {
 	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
@@ -743,7 +752,8 @@ fn test_eq() {
 		age: 22
 		name: 'bob'
 	}]
-	/*assert [{
+	/*
+	assert [{
 		'bob': 22
 	}, {
 		'tom': 33
@@ -1017,6 +1027,7 @@ fn test_clear() {
 	arr.clear()
 	assert arr.len == 0
 }
+
 /*
 fn test_trim() {
 	mut arr := [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -1066,9 +1077,9 @@ fn test_multi_array_index() {
 	mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 	a[0][0] = 1
 	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
-	mut b := [[0].repeat(3)].repeat(2)
-	b[0][0] = 1
-	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+	// mut b := [[0].repeat(3)].repeat(2)
+	// b[0][0] = 1
+	// assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
 fn test_plus_assign_string() {
@@ -1167,7 +1178,7 @@ fn test_array_string_pop() {
 	assert a.pop() == 'def'
 	assert a.pop() == 'abc'
 	assert a.len == 0
-//	assert a.cap == 3
+	//	assert a.cap == 3
 }
 
 fn test_array_first() {
@@ -1321,7 +1332,7 @@ fn test_struct_array_of_multi_type_in() {
 	]
 	println(ivan in people)
 	println('TODO: Map eq')
-	//assert ivan in people
+	// assert ivan in people
 }
 
 fn test_struct_array_of_multi_type_index() {
@@ -1412,7 +1423,7 @@ fn test_array_of_map_insert() {
 	x[2]['123'] = 123 // RTE
 	println(x)
 	println('TODO: Map eq')
-	//assert '$x' == "[{}, {}, {'123': 123}, {}]"
+	// assert '$x' == "[{}, {}, {'123': 123}, {}]"
 }
 
 fn test_multi_fixed_array_init() {
