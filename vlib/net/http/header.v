@@ -5,6 +5,16 @@ module http
 
 import strings
 
+// Header represents the key-value pairs in an HTTP header
+[noinit]
+pub struct Header {
+mut:
+	data map[string][]string
+	// map of lowercase header keys to their original keys
+	// in order of appearance
+	keys map[string][]string
+}
+
 // CommonHeader is an enum of the most common HTTP headers
 pub enum CommonHeader {
 	accept
@@ -318,16 +328,6 @@ const common_header_map = {
 	'x-forwarded-proto':                   .x_forwarded_proto
 	'x-frame-options':                     .x_frame_options
 	'x-xss-protection':                    .x_xss_protection
-}
-
-// Header represents the key-value pairs in an HTTP header
-[noinit]
-pub struct Header {
-mut:
-	data map[string][]string
-	// map of lowercase header keys to their original keys
-	// in order of appearance
-	keys map[string][]string
 }
 
 pub fn (mut h Header) free() {

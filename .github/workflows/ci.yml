@@ -849,6 +849,8 @@ jobs:
           ../v .
           # ./gitly -ci_run
           ../v -autofree .
+          ../v -o x tests/first_run.v
+          ../x
           cd ..
 
       ## vex
