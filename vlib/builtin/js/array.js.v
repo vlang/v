@@ -203,7 +203,10 @@ pub fn (mut a array) join(separator string) string {
 
 fn (mut a array) push(val voidptr) {
 	#a.val.arr.make_copy()
+	# if (arguments[2] && arguments[2].valueOf()) {a.val.arr.arr.push(...val)} else {
 	#a.val.arr.arr.push(val)
+	#}
+	#a.val.arr.len.val += 1
 }
 
 fn v_filter(arr array, callback fn (voidptr) bool) array {
@@ -334,7 +337,7 @@ pub fn (mut a array) pop() voidptr {
 	mut res := voidptr(0)
 	#a.val.arr.make_copy()
 	#res = a.val.arr.arr.pop()
-
+	#a.val.arr.len.val -= 1
 	return res
 }
 
