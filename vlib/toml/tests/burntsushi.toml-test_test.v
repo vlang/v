@@ -16,6 +16,7 @@ const (
 		// String
 		'string/basic-multiline-out-of-range-unicode-escape-1.toml',
 		'string/basic-byte-escapes.toml',
+		'string/multiline-escape-space.toml'
 		'string/bad-codepoint.toml',
 		'string/basic-multiline-out-of-range-unicode-escape-2.toml',
 		'string/bad-slash-escape.toml',
@@ -27,7 +28,6 @@ const (
 		'string/missing-quotes.toml',
 		'string/bad-byte-escape.toml',
 		'string/basic-unknown-escape.toml',
-		'string/multiline-escape-space.toml'
 		// Integer
 		'integer/capital-bin.toml',
 		'integer/invalid-bin.toml',

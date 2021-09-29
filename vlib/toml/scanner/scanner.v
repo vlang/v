@@ -426,8 +426,6 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 		}
 
 		c := s.at()
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
-
 		if c == `\n` {
 			s.inc_line_number()
 			lit += c.ascii_str()
@@ -444,6 +442,8 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				continue
 			}
 		}
+
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c')
 
 		if c == quote {
 			if s.peek(1) == quote && s.peek(2) == quote {
@@ -469,8 +469,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 	return lit
 }
 
-// handle_escapes returns any escape character sequence.
-// For escape sequence validation see `Checker.check_quoted_escapes`.
+// handle_escapes
 fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 	c := s.at()
 	mut lit := c.ascii_str()
