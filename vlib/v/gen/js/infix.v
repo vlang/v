@@ -89,6 +89,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.gen_deref_ptr(node.right_type)
 		g.write(')')
+		if node.op == .ne {
+			g.write('.valueOf()')
+		}
 	} else if left.typ.idx() == right.typ.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
 		match left.sym.kind {
@@ -104,6 +107,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			.array {
 				ptr_typ := g.gen_array_equality_fn(left.unaliased.clear_flag(.shared_f))
@@ -117,6 +123,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			.array_fixed {
 				ptr_typ := g.gen_fixed_array_equality_fn(left.unaliased)
@@ -130,6 +139,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			.map {
 				ptr_typ := g.gen_map_equality_fn(left.unaliased)
@@ -143,6 +155,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			.struct_ {
 				ptr_typ := g.gen_struct_equality_fn(left.unaliased)
@@ -156,6 +171,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			.sum_type {
 				ptr_typ := g.gen_sumtype_equality_fn(left.unaliased)
@@ -170,6 +188,9 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.gen_deref_ptr(node.right_type)
 				g.write(')')
+				if node.op == .ne {
+					g.write('.valueOf()')
+				}
 			}
 			else {}
 		}
@@ -231,22 +252,22 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	if left.unaliased_sym.kind == .array {
 		// arr << val
 		array_info := left.unaliased_sym.info as ast.Array
-		g.write('Array.prototype.push.call(')
+		g.write('array_push(')
 		//&& array_info.elem_type != g.unwrap_generic(node.right_type)
 		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr.arr,...')
+			g.write(',')
 			g.expr(node.right)
 			g.gen_deref_ptr(right.typ)
 			g.write('.arr.arr')
-			g.write(')')
+			g.write(',true)')
 		} else {
 			g.expr(node.left)
 			g.gen_deref_ptr(left.typ)
-			g.write('.arr.arr,')
+			g.write(',')
 			g.expr(node.right)
-			g.write(')')
+			g.write(',false)')
 		}
 	} else {
 		g.gen_plain_infix_expr(node)

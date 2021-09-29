@@ -269,12 +269,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut relative_file := os.real_path(p.get_item<string>(idx))
 	mut cmd_options := [ts.vargs]
 	mut run_js := false
-	
+
 	if relative_file.ends_with('js.v') {
 		cmd_options << ' -b js'
 		run_js = true
 	}
-	
+
 	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
 		cmd_options << ' -enable-globals'
 	}
@@ -291,7 +291,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else if !run_js {
 		fname.replace('.v', '')
 	} else {
-		fname.replace('.v','')
+		fname.replace('.v', '')
 	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
@@ -299,7 +299,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or {}
 		}
 	}
-	
+
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}

@@ -108,6 +108,13 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.inc_indent()
 		g.write('return builtin.unwrap(')
 	}
+	if node.name == 'str' {
+		mut rec_type := node.receiver_type
+		if rec_type.has_flag(.shared_f) {
+			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
+		}
+		g.get_str_fn(rec_type)
+	}
 	mut unwrapped_rec_type := node.receiver_type
 	if g.table.cur_fn.generic_names.len > 0 {
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
