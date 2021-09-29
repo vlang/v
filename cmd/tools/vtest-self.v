@@ -91,6 +91,7 @@ const (
 		'vlib/net/http/header_test.v',
 		'vlib/net/http/server_test.v',
 		'vlib/net/http/response_test.v',
+		'vlib/builtin/js/array_test.js.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
