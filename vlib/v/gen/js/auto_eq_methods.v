@@ -237,22 +237,22 @@ fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\t\tif (a.arr.get(new int(i)).str != b.arr.get(new int(i)).str) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .array_fixed && !elem.typ.is_ptr() {
 		eq_fn := g.gen_fixed_array_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .map && !elem.typ.is_ptr() {
 		eq_fn := g.gen_map_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .alias && !elem.typ.is_ptr() {
 		eq_fn := g.gen_alias_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(a.arr.get(new int(i)), b.arr.get(new int(i)))) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .function {
 		fn_builder.writeln('\t\tif (a.arr.get(new int(i)) != b.arr.get(new int(i))) {')
 	} else {

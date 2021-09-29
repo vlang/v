@@ -64,14 +64,15 @@ mut:
 	stmt_start_pos         int
 	defer_stmts            []ast.DeferStmt
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types              []string    // types that need automatic str() generation
-	array_fn_definitions   []string    // array equality functions that have been defined
-	map_fn_definitions     []string    // map equality functions that have been defined
-	struct_fn_definitions  []string    // struct equality functions that have been defined
-	sumtype_fn_definitions []string    // sumtype equality functions that have been defined
-	alias_fn_definitions   []string    // alias equality functions that have been defined
-	auto_fn_definitions    []string    // auto generated functions defination list
-	anon_fn_definitions    []string    // anon generated functions defination list
+	generated_str_fns      []StrType
+	str_types              []StrType // types that need automatic str() generation
+	array_fn_definitions   []string  // array equality functions that have been defined
+	map_fn_definitions     []string  // map equality functions that have been defined
+	struct_fn_definitions  []string  // struct equality functions that have been defined
+	sumtype_fn_definitions []string  // sumtype equality functions that have been defined
+	alias_fn_definitions   []string  // alias equality functions that have been defined
+	auto_fn_definitions    []string  // auto generated functions defination list
+	anon_fn_definitions    []string  // anon generated functions defination list
 	method_fn_decls        map[string][]ast.FnDecl
 	builtin_fns            []string // Functions defined in `builtin`
 	empty_line             bool
@@ -155,6 +156,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.stmts(file.stmts)
 		// store the current namespace
 		g.escape_namespace()
+	}
+	for i := 0; i < g.str_types.len; i++ {
+		g.final_gen_str(g.str_types[i])
 	}
 	if g.pref.is_test {
 		g.gen_js_main_for_tests()
@@ -1031,10 +1035,10 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			g.write('$sym.name')
 		}
 		else {
-			g.writeln(unknown_value)
+			g.write(unknown_value)
 		}
 	}
-	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
+	// g.writeln(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
 // TODO
@@ -1150,6 +1154,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				is_ptr = true
 				g.write('.val')
 			}
+
 			if g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write(', ')
@@ -1160,6 +1165,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.write(')')
 			} else {
 				if is_assign && array_set {
+					g.write('new ${styp}(')
 					g.expr(left)
 					if l_sym.kind == .string {
 						g.write('.str')
@@ -1271,6 +1277,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				if should_cast {
 					g.write(')')
 					g.cast_stack.delete_last()
+				}
+				if is_assign && array_set {
+					g.write(')')
 				}
 			}
 			if array_set {
@@ -1741,7 +1750,13 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.expr(it.exprs[0])
 		g.write(')')
 	} else {
-		c := g.gen_array_init_values(it.exprs)
+		styp := g.typ(it.elem_type)
+
+		c := if styp in js.v_types {
+			g.gen_array_init_values_prim(it.exprs, styp)
+		} else {
+			g.gen_array_init_values(it.exprs)
+		}
 		g.write(', len: new int($c), cap: new int($c)')
 	}
 	g.dec_indent()
@@ -1753,6 +1768,22 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) int {
 	mut c := 0
 	for i, expr in exprs {
 		g.expr(expr)
+		if i < exprs.len - 1 {
+			g.write(', ')
+		}
+		c++
+	}
+	g.write(']')
+	return c
+}
+
+fn (mut g JsGen) gen_array_init_values_prim(exprs []ast.Expr, typ string) int {
+	g.write('[')
+	mut c := 0
+	for i, expr in exprs {
+		g.write('new ${typ}(')
+		g.expr(expr)
+		g.write(')')
 		if i < exprs.len - 1 {
 			g.write(', ')
 		}
@@ -2258,10 +2289,11 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.valueOf()')
 		}
 		g.write(',')
+
 		if expr.index.has_low {
 			g.expr(expr.index.low)
 		} else {
-			g.write('0')
+			g.write('new int(0)')
 		}
 		g.write(', ')
 		if expr.index.has_high {
@@ -2407,7 +2439,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
-		g.write('Array.prototype.push.call(')
+		g.write('array_push(')
 		g.expr(it.left)
 		mut ltyp := it.left_type
 		for ltyp.is_ptr() {

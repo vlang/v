@@ -180,20 +180,20 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		fn_builder.writeln('function ${fn_name}(a,v) {')
 		fn_builder.writeln('\tfor (let i = 0; i < a.len; ++i) {')
 		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (a.arr.arr[i].str ==  v.str) {')
+			fn_builder.writeln('\t\tif (a.arr.get(new int(i)).str ==  v.str) {')
 		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a.arr.arr[i],v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a.arr.get(new int(i)),v).val) {')
 		} else if elem_sym.kind == .function {
-			fn_builder.writeln('\t\tif (a.arr.arr[i] == v) {')
+			fn_builder.writeln('\t\tif (a.arr.get(new int(i)) == v) {')
 		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a.arr.arr[i],v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a.arr.get(new int(i)),v).val) {')
 		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a.arr.arr[i],v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a.arr.get(new int(i)),v).val) {')
 		} else {
-			fn_builder.writeln('\t\tif (vEq(a.arr.arr[i],v)) {')
+			fn_builder.writeln('\t\tif (vEq(a.arr.get(new int(i)),v)) {')
 		}
 		fn_builder.writeln('\t\t\treturn new bool(true);')
 		fn_builder.writeln('\t\t}')

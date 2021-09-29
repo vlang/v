@@ -121,7 +121,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut exefile := os.real_path(b.pref.out_name)
 	mut cmd := '"$exefile"'
 	if b.pref.backend.is_js() {
-		exefile = os.real_path('${b.pref.out_name}.js')
+		exefile = os.real_path('${b.pref.out_name}.js').replace('.js.js', '.js')
 		cmd = 'node "$exefile"'
 	}
 	for arg in b.pref.run_args {

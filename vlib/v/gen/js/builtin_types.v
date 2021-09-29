@@ -406,7 +406,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					val_name: 'arr'
 					default_value: 'new array_buffer({})'
-					constructor: 'this.arr = arr\nif (arr.index_start.val != 0) { v_makeSlice(this); } '
+					constructor: 'this.arr = arr\nif (arr.index_start.val != 0 || arr.has_slice.val) { v_makeSlice(this); } '
 					value_of: 'this'
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
 					eq: 'new bool(vEq(self, other))'

@@ -96,6 +96,10 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 fn (mut g JsGen) method_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
+	if it.name == 'str' {
+		g.gen_expr_to_string(node.left, node.left_type)
+		return
+	}
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		g.writeln('(function(){')
@@ -103,6 +107,13 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.writeln('try {')
 		g.inc_indent()
 		g.write('return builtin.unwrap(')
+	}
+	if node.name == 'str' {
+		mut rec_type := node.receiver_type
+		if rec_type.has_flag(.shared_f) {
+			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
+		}
+		g.get_str_fn(rec_type)
 	}
 	mut unwrapped_rec_type := node.receiver_type
 	if g.table.cur_fn.generic_names.len > 0 {
