@@ -67,3 +67,23 @@ fn test_fn_mut_args_of_interface() {
 	println(x.children[0].data)
 	assert x.children[0].data == 123
 }
+
+struct LinuxFile {
+}
+
+interface File {
+}
+
+fn b(parent File) {
+	println(parent)
+	assert '$parent' == 'File(LinuxFile{})'
+}
+
+fn a(mut parent File) {
+	b(parent)
+}
+
+fn test_fn_mut_args_of_interface2() {
+	mut file := LinuxFile{}
+	a(mut file)
+}

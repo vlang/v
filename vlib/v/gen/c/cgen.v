@@ -2292,13 +2292,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.writeln('}, sizeof($shared_styp))')
 		return
 	}
-	if got_is_ptr && !expected_is_ptr && neither_void
-		&& exp_sym.kind !in [.interface_, .placeholder] && expr !is ast.InfixExpr {
+	if got_is_ptr && !expected_is_ptr && neither_void && exp_sym.kind != .placeholder
+		&& expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt {
+		if deref_will_match || got_is_opt || expr.is_auto_deref_var() {
 			g.write('*')
 		}
 	}
