@@ -185,7 +185,7 @@ fn (c Checker) check_quoted(q ast.Quoted) ? {
 	c.check_quoted_escapes(q) ?
 }
 
-// check_quoted_escapes will return an error for any disallowed escape sequences.
+// check_quoted_escapes returns an error for any disallowed escape sequences.
 // Delimiters in TOML has significant meaning:
 // '/''' delimits *literal* strings (WYSIWYG / What-you-see-is-what-you-get)
 // "/""" delimits *basic* strings
