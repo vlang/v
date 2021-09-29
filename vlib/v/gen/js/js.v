@@ -1031,10 +1031,10 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			g.write('$sym.name')
 		}
 		else {
-			g.writeln(unknown_value)
+			g.write(unknown_value)
 		}
 	}
-	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
+	// g.writeln(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
 // TODO
@@ -2258,10 +2258,11 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.valueOf()')
 		}
 		g.write(',')
+
 		if expr.index.has_low {
 			g.expr(expr.index.low)
 		} else {
-			g.write('0')
+			g.write('new int(0)')
 		}
 		g.write(', ')
 		if expr.index.has_high {

@@ -96,6 +96,10 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 fn (mut g JsGen) method_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
+	if it.name == 'str' {
+		g.gen_expr_to_string(node.left, node.left_type)
+		return
+	}
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		g.writeln('(function(){')

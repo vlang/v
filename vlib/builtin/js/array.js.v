@@ -1,7 +1,9 @@
 module builtin
 
+import strings
 /// Internal representation of `array` type. It is used to implement slices and to make slices behave correctly
 /// it simply stores reference to original array and to index them properly it does index array relative to `index_start`.
+
 struct array_buffer {
 	arr         JS.Array
 	index_start int
@@ -43,6 +45,7 @@ fn (mut a array_buffer) set(ix int, val voidptr) {
 #array_buffer.prototype.set = function(ix,val) { array_buffer_set(this,ix,val); }
 
 struct array {
+mut:
 	arr array_buffer
 pub:
 	len int
@@ -175,8 +178,9 @@ pub fn (a array) index(v string) int {
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
 	#let slice = a.arr.arr.slice(start,end)
-	#result = new array(new array_buffer({arr: a.arr.arr, len: new int(slice.length),cap: new int(slice.length),index_start: new int(start)}))
+	#result = new array(new array_buffer({arr: a.arr.arr, len: new int(slice.length),cap: new int(slice.length),index_start: new int(start),has_slice: new bool(true)}))
 	#a.arr.has_slice = true
+	//#v_makeSlice(result)
 
 	return result
 }
@@ -271,6 +275,12 @@ pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
 }
 
+fn arr_copy(mut dst array, src array, count int) {
+	for i := 0; i < count; i++ {
+		dst.arr.set(i, src.arr.get(i))
+	}
+}
+
 // delete_many deletes `size` elements beginning with index `i`
 pub fn (mut a array) delete_many(i int, size int) {
 	#a.val.arr.make_copy()
@@ -300,6 +310,11 @@ pub fn (mut a array) reverse_in_place() {
 }
 
 #array.prototype.$includes = function (elem) { return this.arr.arr.find(function(e) { return vEq(elem,e); }) !== undefined;}
+
+pub fn (mut a array) clear() {
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.clear()
+}
 
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
@@ -361,7 +376,6 @@ pub fn (a array) bytestr() string {
 	return res
 }
 
-/*
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write_string('[')
@@ -377,4 +391,4 @@ pub fn (a []string) str() string {
 	sb.write_string(']')
 	res := sb.str()
 	return res
-}*/
+}
