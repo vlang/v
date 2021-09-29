@@ -268,6 +268,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.no_cstep = true
 	mut relative_file := os.real_path(p.get_item<string>(idx))
 	mut cmd_options := [ts.vargs]
+	mut run_js := false
+	
+	if relative_file.ends_with('js.v') {
+		cmd_options << ' -b js'
+		run_js = true
+	}
+	
 	if relative_file.contains('global') && !ts.vargs.contains('fmt') {
 		cmd_options << ' -enable-globals'
 	}
@@ -279,10 +286,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' {
+	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
 		fname.replace('.v', '.exe')
-	} else {
+	} else if !run_js {
 		fname.replace('.v', '')
+	} else {
+		fname.replace('.v','')
 	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
@@ -290,6 +299,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or {}
 		}
 	}
+	
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}

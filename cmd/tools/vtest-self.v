@@ -142,7 +142,8 @@ fn main() {
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
-	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot,'vlib'),'_test.js.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
