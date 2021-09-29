@@ -948,17 +948,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	// *clearly*, and that when a new kind is added, it should also be handled
 	// explicitly.
 	match sym.kind {
-		.int_literal, .float_literal {
-			res = sym.name
-		}
-		.byteptr {
-			res = '&byte'
-		}
-		.charptr {
-			res = '&char'
-		}
+		.int_literal, .float_literal {}
 		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
-		.rune, .string, .bool, .none_, .voidptr {
+		.rune, .string, .bool, .none_, .voidptr, .byteptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}

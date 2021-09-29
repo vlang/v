@@ -313,7 +313,6 @@ pub fn (nn i8) hex() string {
 		return '00'
 	}
 	return u64_to_hex(u64(nn), 2)
-	//return byte(nn).hex()
 }
 
 // hex returns the value of the `u16` as a hexadecimal `string`.
