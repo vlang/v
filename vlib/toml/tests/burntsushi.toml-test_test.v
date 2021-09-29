@@ -15,19 +15,12 @@ const (
 	invalid_exceptions = [
 		// String
 		'string/basic-multiline-out-of-range-unicode-escape-1.toml',
-		'string/basic-byte-escapes.toml',
-		'string/multiline-escape-space.toml',
 		'string/bad-codepoint.toml',
 		'string/basic-multiline-out-of-range-unicode-escape-2.toml',
-		'string/bad-slash-escape.toml',
 		'string/basic-out-of-range-unicode-escape-1.toml',
 		'string/basic-out-of-range-unicode-escape-2.toml',
 		'string/bad-uni-esc.toml',
-		'string/bad-escape.toml',
-		'string/basic-multiline-unknown-escape.toml',
 		'string/missing-quotes.toml',
-		'string/bad-byte-escape.toml',
-		'string/basic-unknown-escape.toml',
 		// Integer
 		'integer/capital-bin.toml',
 		'integer/invalid-bin.toml',
@@ -155,6 +148,10 @@ fn test_burnt_sushi_tomltest() {
 			if relative !in invalid_exceptions {
 				println('OK   [$i/$invalid_test_files.len] "$invalid_test_file"...')
 				if toml_doc := toml.parse_file(invalid_test_file) {
+					content_that_should_have_failed := os.read_file(invalid_test_file) or {
+						panic(err)
+					}
+					println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
 					assert false
 				} else {
 					println('     $err.msg')

@@ -9,6 +9,8 @@ import toml.ast.walker
 import toml.token
 import toml.scanner
 
+pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
+
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
 	scanner &scanner.Scanner
@@ -172,12 +174,68 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 		' boolean values like "$lit" can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
 }
 
-fn (c Checker) check_quoted(b ast.Quoted) ? {
-	lit := b.text
-	quote := b.quote.ascii_str()
+fn (c Checker) check_quoted(q ast.Quoted) ? {
+	lit := q.text
+	quote := q.quote.ascii_str()
 	triple_quote := quote + quote + quote
-	if b.is_multiline && lit.ends_with(triple_quote) {
+	if q.is_multiline && lit.ends_with(triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' string values like "$lit" is has unbalanced quote literals `b.quote` in ...${c.excerpt(b.pos)}...')
+			' string values like "$lit" is has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
+	}
+	c.check_quoted_escapes(q) ?
+}
+
+// check_quoted_escapes returns an error for any disallowed escape sequences.
+// Delimiters in TOML has significant meaning:
+// '/''' delimits *literal* strings (WYSIWYG / What-you-see-is-what-you-get)
+// "/""" delimits *basic* strings
+// Allowed escapes in *basic* strings are:
+// \b         - backspace       (U+0008)
+// \t         - tab             (U+0009)
+// \n         - linefeed        (U+000A)
+// \f         - form feed       (U+000C)
+// \r         - carriage return (U+000D)
+// \"         - quote           (U+0022)
+// \\         - backslash       (U+005C)
+// \uXXXX     - unicode         (U+XXXX)
+// \UXXXXXXXX - unicode         (U+XXXXXXXX)
+fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
+	// Setup a scanner in stack memory for easier navigation.
+	mut s := scanner.new_simple(q.text) ?
+
+	is_basic := q.quote == `\"`
+	for {
+		ch := s.next()
+		if ch == -1 {
+			break
+		}
+		ch_byte := byte(ch)
+		if ch == `\\` {
+			next_ch := byte(s.at())
+
+			if next_ch == `\\` {
+				s.next()
+				continue
+			}
+			escape := ch_byte.ascii_str() + next_ch.ascii_str()
+			if is_basic {
+				if q.is_multiline {
+					if next_ch == byte(32) && s.peek(1) == byte(92) {
+						st := s.state()
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' can not escape whitespaces before escapes in multi-line strings (`\\ \\`) at `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+					}
+					if next_ch in [`\t`, `\n`, ` `] {
+						s.next()
+						continue
+					}
+				}
+				if next_ch !in checker.allowed_basic_escape_chars {
+					st := s.state()
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' unknown basic string escape character `$next_ch.ascii_str()` in `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+				}
+			}
+		}
 	}
 }
