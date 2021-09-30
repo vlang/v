@@ -342,6 +342,9 @@ fn (d Dog2) get_name() string {
 	return d.name
 }
 
+// mut get_name might be a bad example
+// we try to show that an interface can be more liberal in mut than the implementor,
+// while our error check is for the opposite case
 interface Animal2 {
 mut:
 	get_name() string
