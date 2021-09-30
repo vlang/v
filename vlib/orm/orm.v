@@ -282,7 +282,7 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 	}
 
 	if orm.has_limit {
-		str += ' LIMIT ?'
+		str += ' LIMIT $qm'
 		if num {
 			str += '$c'
 			c++
@@ -290,7 +290,7 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 	}
 
 	if orm.has_offset {
-		str += ' OFFSET ?'
+		str += ' OFFSET $qm'
 		if num {
 			str += '$c'
 			c++
