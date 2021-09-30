@@ -1,11 +1,11 @@
 // fixes https://github.com/vlang/v/issues/1081 and https://github.com/vlang/v/issues/7338, code by https://github.com/nedpals
 //   copied from https://github.com/vlang/v/issues/7338 
-struct Dog {
+struct Doggo {
 pub mut:
 	name string
 }
 
-fn (mut d Dog) set_name(name string) {
+fn (mut d Doggo) set_name(name string) {
 	d.name = name
 }
 
@@ -18,7 +18,7 @@ fn set_animal_name(a Animal, name string) {
 }
 
 fn main() {
-	dog := Dog{'Doggo'}
+	dog := Doggo{'Doggo'}
 	println(dog.name)
 	set_animal_name(dog, 'Pupper')
 	println(dog.name)
