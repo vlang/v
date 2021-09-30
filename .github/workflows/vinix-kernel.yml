@@ -20,7 +20,12 @@ jobs:
       - name: Build V
         run: make
       - name: Clone current Vinix
-        run: git clone https://github.com/vlang/vinix.git --depth=1
+        run: |
+#         TODO change that back after merging the vinix related pr https://github.com/vlang/vinix/pull/61
+#         git clone https://github.com/vlang/vinix.git --depth=1
+        git clone --single-branch --branch fix-mut-interface-method-usages https://github.com/alehander92/vinix.git --depth=1
+#         end TODO
+
       - name: Clone current mlibc
         run: git clone https://github.com/managarm/mlibc.git --depth=1
       - name: Patch mlibc for Vinix

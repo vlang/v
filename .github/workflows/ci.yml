@@ -336,7 +336,11 @@ jobs:
 
       - name: Build V UI examples
         run: |
-          git clone --depth 1 https://github.com/vlang/ui
+#         TODO change that back after merging the ui related pr https://github.com/vlang/ui/pull/390
+#         git clone --depth 1 https://github.com/vlang/ui
+          git clone --single-branch --branch fix-mut-interface-method-usages --depth 1 https://github.com/vlang/ui
+#         end TODO
+
           cd ui
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui
