@@ -425,10 +425,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		return
 	}
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
-	// ctx_var := g.new_tmp_var()
-	// cur_line := g.go_before_stmt(0)
 	ctx_struct := closure_ctx_struct(node.decl)
-
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
 	g.write('__closure_create($node.decl.name, ${node.decl.params.len + 1}, ')
 	g.writeln('($ctx_struct*) memdup(&($ctx_struct){')
@@ -439,8 +436,6 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.indent--
 	g.write('}, sizeof($ctx_struct)))')
 	g.empty_line = false
-	// g.write(cur_line)
-	//g.write('__closure_create($node.decl.name, ${node.decl.params.len + 1}, $ctx_var)')
 }
 
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
