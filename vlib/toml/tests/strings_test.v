@@ -65,3 +65,22 @@ fn test_multiline_strings() {
 	value = toml_doc.value('mismatch2')
 	assert value.string() == 'aaa' + '"""' + 'bbb'
 }
+
+fn test_literal_strings() {
+	toml_file :=
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		'.toml'
+	toml_doc := toml.parse(toml_file) or { panic(err) }
+
+	assert toml_doc.value('lit1').string() == r'\' // '\'
+	assert toml_doc.value('lit2').string() == r'\\' // '\\'
+	assert toml_doc.value('lit3').string() == r'\tricky\' // '\tricky\'
+
+	// NOTE to Windows users: git is set to use Unix EOLs for all TOML files (*.toml) in the repo.
+	// See `.gitattributes` in the project root for the rule in action.
+	// These lines would look like this on Windows:
+	// assert toml_doc.value('ml_lit1').string() == '\r\n\\'
+	assert toml_doc.value('ml_lit1').string() == '\n\\'
+	assert toml_doc.value('ml_lit2').string() == '\\\n\\'
+	assert toml_doc.value('ml_lit3').string() == '\\\ntricky\\\n'
+}
