@@ -257,3 +257,36 @@ fn test_multi_array_update_data() {
 	println(a)
 	assert '$a' == '[[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]'
 }
+
+// test code copied from https://github.com/elimisteve
+// and adapted a bit
+struct Dog {
+	breed string
+}
+
+struct Cat {
+	breed string
+}
+
+fn (d Dog) speak() string {
+	return 'woof'
+}
+
+fn (c Cat) speak() string {
+	return 'meow'
+}
+
+interface Speaker {
+	breed string
+	speak() string
+}
+
+// checks fix for https://github.com/vlang/v/issues/11542
+fn test_array_interface_inference() {
+	dog := Dog{'Leonberger'}
+	cat := Cat{'Siamese'}
+
+	for item in [Speaker(dog), cat] {
+		println(item.speak())
+	}
+}

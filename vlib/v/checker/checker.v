@@ -4661,7 +4661,9 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			if expr !is ast.TypeNode {
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg', expr.position())
+					if !c.type_implements(typ, elem_type, expr.position()) {
+						c.error('invalid array element: $err.msg', expr.position())
+					}
 				}
 			}
 		}
