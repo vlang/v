@@ -28,7 +28,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	return is_used_by_main
 }
 
-fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
+fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if !g.is_used_by_main(node) {
 		return
 	}
@@ -43,6 +43,11 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	mut skip := false
 	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
+	/*
+	if node.name.contains('i_error') {
+		println(g.table.type_str(node.params[0].typ))
+	}
+	*/
 	if g.pref.build_mode == .build_module {
 		// if node.name.contains('parse_text') {
 		// println('!!! $node.name mod=$node.mod, built=$g.module_built')
@@ -77,13 +82,13 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	if node.is_main {
 		g.has_main = true
 	}
-	if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-		|| node.name == 'backtrace_symbols_fd' {
+	is_backtrace := node.name.starts_with('backtrace') // TODO PERF remove this from here
+		&& node.name in ['backtrace_symbols', 'backtrace', 'backtrace_symbols_fd']
+	if is_backtrace {
 		g.write('\n#ifndef __cplusplus\n')
 	}
 	g.gen_fn_decl(node, skip)
-	if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-		|| node.name == 'backtrace_symbols_fd' {
+	if is_backtrace {
 		g.write('\n#endif\n')
 	}
 	g.fn_decl = keep_fn_decl
@@ -454,7 +459,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
 	g.anon_fn = true
-	g.process_fn_decl(node.decl)
+	g.fn_decl(node.decl)
 	g.anon_fn = was_anon_fn
 	builder.write_string(g.out.cut_to(pos))
 	g.anon_fn_definitions << builder.str()

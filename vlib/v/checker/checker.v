@@ -8340,17 +8340,21 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .v {
 		// Make sure all types are valid
-		for arg in node.params {
-			c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
-			if !arg.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
-				arg_typ_sym := c.table.get_type_symbol(arg.typ)
+		for mut param in node.params {
+			c.ensure_type_exists(param.typ, param.type_pos) or { return }
+			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
+				arg_typ_sym := c.table.get_type_symbol(param.typ)
 				if arg_typ_sym.kind == .struct_ {
 					info := arg_typ_sym.info as ast.Struct
 					if info.is_heap { // set auto_heap to promote value parameter
-						mut v := node.scope.find_var(arg.name) or { continue }
+						mut v := node.scope.find_var(param.name) or { continue }
 						v.is_auto_heap = true
 					}
 				}
+			}
+			if c.pref.translated && node.is_variadic && node.params.len == 1 && param.typ.is_ptr() {
+				// TODO c2v hack to fix `(const char *s, ...)`
+				param.typ = ast.int_type.to_ptr()
 			}
 		}
 	}
