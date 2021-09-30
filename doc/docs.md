@@ -65,6 +65,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
+    * [Hoistings](#hoistings)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [V types](#v-types)
@@ -95,6 +96,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
+    * [Closures](#closures)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
@@ -263,6 +265,8 @@ Again, the type comes after the argument's name.
 
 Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
+
+### Hoistings
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
@@ -2136,6 +2140,8 @@ fn main() {
 	println(fns_map['cube'](2)) // "8"
 }
 ```
+
+### Closures
 
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
