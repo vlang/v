@@ -294,11 +294,13 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 		g.gen_deref_ptr(node.right_type)
 		g.write('.map.has(')
 		g.expr(node.left)
+		/*
 		if l_sym.sym.kind == .string {
 			g.write('.str')
 		} else {
 			g.write('.valueOf()')
-		}
+		}*/
+		g.write('.\$toJS()')
 		g.write(')')
 	} else {
 		g.write('.str.includes(')
