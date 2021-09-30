@@ -13,3 +13,15 @@ two_space = """ ""two quotes"" """
 
 mismatch1 = """aaa'''bbb"""
 mismatch2 = '''aaa"""bbb'''
+
+lit1 = '\'
+lit2 = '\\'
+lit3 = '\tricky\'
+
+ml_lit1 = '''
+\'''
+ml_lit2 = '''\
+\'''
+ml_lit3 = '''\
+tricky\
+'''
