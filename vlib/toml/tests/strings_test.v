@@ -66,7 +66,6 @@ fn test_multiline_strings() {
 	assert value.string() == 'aaa' + '"""' + 'bbb'
 }
 
-
 fn test_literal_strings() {
 	toml_file :=
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
