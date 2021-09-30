@@ -125,3 +125,16 @@ pub fn hex(len int) string {
 pub fn ascii(len int) string {
 	return string_from_set(ascii_chars, len)
 }
+
+fn deinit() {
+	unsafe {
+		default_rng.free() // free the implementation
+		free(default_rng) // free the interface wrapper itself
+	}
+}
+
+// init initializes the default RNG.
+fn init() {
+	default_rng = new_default()
+	C.atexit(deinit)
+}
