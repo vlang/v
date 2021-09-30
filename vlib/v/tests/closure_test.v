@@ -159,7 +159,8 @@ fn test_closures_with_ifstmt() {
 		else { return -1 }
 	}
 	g := fn [a] () int {
-		return 1
+		if true { return 1 }
+		return 0
 	}
 	assert f(0) == 1
 	assert g() == 1
