@@ -10,6 +10,7 @@ import os {
 import mod {
 	Unused,
 	StructEmbed, StructField, StructRefField
+	StructMapFieldKey, StructMapFieldValue,
 	StructMethodArg,
 	StructMethodArgGeneric,
 	StructMethodRet,
@@ -34,6 +35,7 @@ struct Struct {
 	StructEmbed
 	v StructField
 	ref &StructRefField
+	map map[StructMapFieldKey]StructMapFieldValue
 }
 
 fn (s Struct) method(v StructMethodArg) StructMethodRet {
