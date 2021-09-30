@@ -1,6 +1,6 @@
 import rand
 
-fn string_test() {
+fn test_string() {
 	res := rand.string(4)
 	assert res.len == 4
 	println(res)
