@@ -76,13 +76,11 @@ fn test_literal_strings() {
 	assert toml_doc.value('lit2').string() == r'\\' // '\\'
 	assert toml_doc.value('lit3').string() == r'\tricky\' // '\tricky\'
 
-	$if windows {
-		assert toml_doc.value('ml_lit1').string() == '\r\n\\'
-		assert toml_doc.value('ml_lit2').string() == '\\\r\n\\'
-		assert toml_doc.value('ml_lit3').string() == '\\\r\ntricky\\\r\n'
-	} $else {
-		assert toml_doc.value('ml_lit1').string() == '\n\\'
-		assert toml_doc.value('ml_lit2').string() == '\\\n\\'
-		assert toml_doc.value('ml_lit3').string() == '\\\ntricky\\\n'
-	}
+	// NOTE to Windows users: git is set to use Unix EOLs for all TOML files (*.toml) in the repo.
+	// See `.gitattributes` in the project root for the rule in action.
+	// These lines would look like this on Windows:
+	// assert toml_doc.value('ml_lit1').string() == '\r\n\\'
+	assert toml_doc.value('ml_lit1').string() == '\n\\'
+	assert toml_doc.value('ml_lit2').string() == '\\\n\\'
+	assert toml_doc.value('ml_lit3').string() == '\\\ntricky\\\n'
 }
