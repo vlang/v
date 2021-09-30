@@ -72,10 +72,15 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 }
 
 pub fn (mut b Builder) front_stages(v_files []string) ? {
-	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
-	b.parse_imports()
 	mut timers := util.get_timers()
+	util.timing_start('PARSE')
+
+	util.timing_start('Builder.front_stages.parse_files')
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	timers.show('Builder.front_stages.parse_files')
+
+	b.parse_imports()
+
 	timers.show('SCAN')
 	timers.show('PARSE')
 	timers.show_if_exists('PARSE stmt')
@@ -86,7 +91,11 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 
 pub fn (mut b Builder) middle_stages() ? {
 	util.timing_start('CHECK')
+
+	util.timing_start('Checker.generic_insts_to_concrete')
 	b.checker.generic_insts_to_concrete()
+	util.timing_measure('Checker.generic_insts_to_concrete')
+
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
@@ -113,6 +122,10 @@ pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
 
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	mut done_imports := []string{}
 	if b.pref.is_vsh {
 		done_imports << 'os'
@@ -189,6 +202,10 @@ pub fn (mut b Builder) parse_imports() {
 }
 
 pub fn (mut b Builder) resolve_deps() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
 	if b.pref.is_verbose {

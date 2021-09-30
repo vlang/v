@@ -5878,6 +5878,10 @@ fn (g &Gen) checker_bug(s string, pos token.Position) {
 }
 
 fn (mut g Gen) write_init_function() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	if g.pref.is_liveshared {
 		return
 	}
@@ -6154,6 +6158,10 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 
 // sort structs by dependant fields
 fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
 	mut type_names := []string{}
