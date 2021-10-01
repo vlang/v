@@ -151,3 +151,20 @@ fn test_go_call_closure() {
 	assert <-ch == 15
 }
 */
+
+fn test_closures_with_ifstmt() {
+	a := 1
+	f := fn [a] (x int) int {
+		if a > x { return 1
+		 } else { return -1
+		 }
+	}
+	g := fn [a] () int {
+		if true {
+			return 1
+		}
+		return 0
+	}
+	assert f(0) == 1
+	assert g() == 1
+}
