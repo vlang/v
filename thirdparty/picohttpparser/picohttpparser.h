@@ -6,7 +6,7 @@ typedef struct phr_header phr_header_t;
 
 #define ADVANCE_TOKEN2(buf, tok, toklen, max_len) \
 	do {\
-		for (int i = 0; i < max_len; i++) {\
+		for (u32 i = 0; i < max_len; i++) {\
 			if (buf[i] == ' ') {\
 				tok = buf;\
 				toklen = i++;\

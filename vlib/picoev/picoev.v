@@ -16,7 +16,7 @@ import picohttpparser
 
 struct C.in_addr {
 mut:
-	s_addr int
+	s_addr u32
 }
 
 struct C.sockaddr_in {
@@ -32,6 +32,7 @@ fn C.atoi() int
 
 fn C.strncasecmp(s1 &char, s2 &char, n usize) int
 
+[typedef]
 struct C.picoev_loop {}
 
 fn C.picoev_del(&C.picoev_loop, int) int
@@ -107,7 +108,7 @@ fn setup_sock(fd int) ? {
 
 [inline]
 fn close_conn(loop &C.picoev_loop, fd int) {
-	C.picoev_del(loop, fd)
+	C.picoev_del(voidptr(loop), fd)
 	C.close(fd)
 }
 
@@ -127,7 +128,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 		close_conn(loop, fd)
 		return
 	} else if (events & int(Event.read)) != 0 {
-		C.picoev_set_timeout(loop, fd, p.timeout_secs)
+		C.picoev_set_timeout(voidptr(loop), fd, p.timeout_secs)
 
 		// Request init
 		mut buf := p.buf
@@ -157,14 +158,17 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 				return
 			} else if r == -1 {
 				// error
-				if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+				if C.errno == C.EAGAIN {
 					// try again later
 					return
-				} else {
-					// fatal error
-					close_conn(loop, fd)
+				}
+				if C.errno == C.EWOULDBLOCK {
+					// try again later
 					return
 				}
+				// fatal error
+				close_conn(loop, fd)
+				return
 			}
 			p.idx[fd] += r
 
@@ -198,7 +202,8 @@ fn accept_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 			p.err_cb(mut p.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 				err)
 		}
-		C.picoev_add(loop, newfd, int(Event.read), p.timeout_secs, rw_callback, cb_arg)
+		C.picoev_add(voidptr(loop), newfd, int(Event.read), p.timeout_secs, rw_callback,
+			cb_arg)
 	}
 }
 
@@ -225,7 +230,7 @@ pub fn new(config Config) &Picoev {
 	addr.sin_port = C.htons(config.port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	bind_res := C.bind(fd, unsafe { &net.Addr(&addr) }, size)
+	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
 	assert bind_res == 0
 	listen_res := C.listen(fd, C.SOMAXCONN)
 	assert listen_res == 0
@@ -242,11 +247,11 @@ pub fn new(config Config) &Picoev {
 		user_data: config.user_data
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
-		date: C.get_date()
+		date: &byte(C.get_date())
 		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
 		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
-	C.picoev_add(loop, fd, int(Event.read), 0, accept_callback, pv)
+	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)
 	go update_date(mut pv)
 	return pv
 }
@@ -259,7 +264,7 @@ pub fn (p Picoev) serve() {
 
 fn update_date(mut p Picoev) {
 	for {
-		p.date = C.get_date()
+		p.date = &byte(C.get_date())
 		C.usleep(1000000)
 	}
 }

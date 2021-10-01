@@ -29,7 +29,7 @@ fn C.phr_parse_headers(buf &char, len usize, headers &C.phr_header, num_headers 
 
 fn C.phr_parse_request_path(buf_start &char, len usize, method PPchar, method_len &usize, path PPchar, path_len &usize) int
 fn C.phr_parse_request_path_pipeline(buf_start &char, len usize, method PPchar, method_len &usize, path PPchar, path_len &usize) int
-fn C.get_date() &byte
+fn C.get_date() &char
 
 // static inline int u64toa(char* buf, uint64_t value) {
 fn C.u64toa(buffer &char, value u64) int
