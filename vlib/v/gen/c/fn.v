@@ -581,7 +581,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			ret_typ = ret_typ.set_flag(.optional)
 		}
 		styp := g.typ(ret_typ)
-		if gen_or && !is_gen_or_and_assign_rhs { curr_line = g.go_before_stmt(0) }
+		if gen_or && !is_gen_or_and_assign_rhs {
+			curr_line = g.go_before_stmt(0)
+		}
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
