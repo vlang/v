@@ -213,3 +213,18 @@ fn test_if_expr_with_complex_array_methods() {
 	println(ret)
 	assert ret == ['a', 'b', 'c']
 }
+
+fn return_optional() ?int {
+	return 1
+}
+
+fn test_if_expr_with_optional() ? {
+	m := map[string]int{}
+	v := if a := m['a'] {
+		println('$a')
+		return_optional() ?
+	} else {
+		2
+	}
+	assert v == 2
+}
