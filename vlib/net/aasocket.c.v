@@ -33,9 +33,11 @@ fn C.socket(domain AddrFamily, typ SocketType, protocol int) int
 // fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
 fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
 
-fn C.htonl(hostlong u32) int
+fn C.htonl(host u32) u32
+fn C.htons(host u16) u16
 
-fn C.htons(netshort u16) int
+fn C.ntohl(net u32) u32
+fn C.ntohs(net u16) u16
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 // use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
@@ -67,8 +69,6 @@ fn C.recv(sockfd int, buf voidptr, len usize, flags int) int
 fn C.recvfrom(sockfd int, buf voidptr, len usize, flags int, src_addr &Addr, addrlen &u32) int
 
 fn C.shutdown(socket int, how int) int
-
-fn C.ntohs(netshort u16) int
 
 // fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &C.socklen_t) int
 fn C.getpeername(sockfd int, addr &Addr, addlen &u32) int

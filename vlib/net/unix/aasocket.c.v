@@ -74,8 +74,6 @@ struct C.sockaddr_storage {
 
 // fn C.shutdown() int
 
-// fn C.ntohs() int
-
 // fn C.getpeername() int
 
 // fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
