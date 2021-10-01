@@ -601,9 +601,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		// if !g.is_autofree {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		//}
+		unwrapped_typ := node.return_type.clear_flag(.optional)
+		unwrapped_styp := g.typ(unwrapped_typ)
 		if is_gen_or_and_assign_rhs {
-			unwrapped_typ := node.return_type.clear_flag(.optional)
-			unwrapped_styp := g.typ(unwrapped_typ)
 			if unwrapped_typ == ast.void_type {
 				g.write('\n $cur_line')
 			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
@@ -616,7 +616,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				}
 			}
 		} else {
-			g.write('$curr_line ${tmp_opt}.data')
+			g.write('$curr_line (*($unwrapped_styp*)${tmp_opt}.data)')
 		}
 	} else if gen_keep_alive {
 		if node.return_type == ast.void_type {
