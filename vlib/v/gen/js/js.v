@@ -200,6 +200,18 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			}
 		}
 	}
+
+	for mod_name in g.table.modules {
+		g.writeln('// Initializations for module $mod_name')
+		init_fn_name := '${mod_name}.init'
+		if initfn := g.table.find_fn(init_fn_name) {
+			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
+				mod_c_name := util.no_dots(mod_name)
+				init_fn_c_name := '${mod_c_name}__init'
+				g.writeln('${init_fn_c_name}();')
+			}
+		}
+	}
 	g.write('js_main();')
 	g.escape_namespace()
 	// resolve imports
@@ -207,6 +219,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
+
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -221,8 +234,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
 	}
 	out += '\n'
-	out += g.out.str()
 
+	out += g.out.str()
 	/*
 	TODO(playX): Again add support for these doc comments
 	for node in nodes {
@@ -876,12 +889,18 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.PostfixExpr {
+			// match node.expr {
+			//	ast.IndexExpr {
+			//		g.gen_postfix_index_expr(node.expr,node.op)
+			//		} else {
 			g.expr(node.expr)
 			if node.op in [.inc, .dec] {
 				g.write('.val $node.op')
 			} else {
 				g.write(node.op.str())
 			}
+			//		}
+			//	}
 		}
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
@@ -1126,6 +1145,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				}
 			}
 			mut array_set := false
+			mut map_set := false
 			match left {
 				ast.IndexExpr {
 					g.expr(left.left)
@@ -1133,17 +1153,24 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						g.write('.valueOf()')
 					}
 					array_set = true
+
 					if g.table.get_type_symbol(left.left_type).kind == .map {
 						g.write('.map.set(')
+						map_set = true
 					} else {
 						g.write('.arr.set(')
 					}
-					g.write('new int(')
-					g.cast_stack << ast.int_type_idx
-					g.expr(left.index)
-					g.write('.valueOf()')
-					g.cast_stack.delete_last()
-					g.write('),')
+					if map_set {
+						g.expr(left.index)
+						g.write('.\$toJS(),')
+					} else {
+						g.write('new int(')
+						g.cast_stack << ast.int_type_idx
+						g.expr(left.index)
+						g.write('.valueOf()')
+						g.cast_stack.delete_last()
+						g.write('),')
+					}
 				}
 				else {
 					g.expr(left)
@@ -2308,6 +2335,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.write(')')
 	} else if left_typ.kind == .map {
 		g.expr(expr.left)
+
 		if expr.is_setter {
 			g.inside_map_set = true
 			g.write('.map.set(')
@@ -2315,7 +2343,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.map.get(')
 		}
 		g.expr(expr.index)
-		g.write('.toString()')
+		g.write('.\$toJS()')
 		if !expr.is_setter {
 			g.write(')')
 		}
@@ -2632,6 +2660,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 			val := it.vals[i]
 			g.write('[')
 			g.expr(key)
+			g.write('.\$toJS()')
 			g.write(', ')
 			g.expr(val)
 			g.write(']')
@@ -2948,5 +2977,97 @@ fn replace_op(s string) string {
 		'>' { '_gt' }
 		'==' { '_eq' }
 		else { '' }
+	}
+}
+
+fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
+	left_typ := g.table.get_type_symbol(expr.left_type)
+	// TODO: Handle splice setting if it's implemented
+	if expr.index is ast.RangeExpr {
+		if left_typ.kind == .array {
+			g.write('array_slice(')
+		} else {
+			g.write('string_slice(')
+		}
+		g.expr(expr.left)
+		if expr.left_type.is_ptr() {
+			g.write('.valueOf()')
+		}
+		g.write(',')
+
+		if expr.index.has_low {
+			g.expr(expr.index.low)
+		} else {
+			g.write('new int(0)')
+		}
+		g.write(', ')
+		if expr.index.has_high {
+			g.expr(expr.index.high)
+		} else {
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.len')
+		}
+		g.write(')')
+	} else if left_typ.kind == .map {
+		g.expr(expr.left)
+
+		if expr.is_setter {
+			g.inside_map_set = true
+			g.write('.map.set(')
+		} else {
+			g.write('.map.get(')
+		}
+		g.expr(expr.index)
+		g.write('.\$toJS()')
+		if !expr.is_setter {
+			g.write(')')
+		} else {
+			g.write(',')
+			lsym := g.table.get_type_symbol(expr.left_type)
+			key_typ := match lsym.info {
+				ast.Map {
+					lsym.info.value_type
+				}
+				else {
+					verror('unreachable')
+				}
+			}
+			g.write('new ${g.typ(key_typ)}(')
+
+			g.expr(expr.left)
+			g.write('.map.get(')
+			g.expr(expr.index)
+			g.write('.\$toJS())')
+			match op {
+				.inc {
+					g.write('.val + 1)')
+				}
+				.dec {
+					g.write('.val - 1)')
+				}
+				else {
+					verror('not yet implemented')
+				}
+			}
+			g.write(')')
+		}
+	} else if left_typ.kind == .string {
+		if expr.is_setter {
+			// TODO: What's the best way to do this?
+			// 'string'[3] = `o`
+		} else {
+			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
+			g.write('new byte(')
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.str.charCodeAt(')
+			g.expr(expr.index)
+			g.write('))')
+		}
 	}
 }

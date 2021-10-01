@@ -300,11 +300,6 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	g.dec_indent()
 	g.writeln('};\n')
 	g.writeln('function ${c.typ_name}__eq(self,other) { return $c.eq; } ')
-	for method in g.method_fn_decls[c.typ_name] {
-		g.inside_def_typ_decl = true
-		g.gen_method_decl(method, .struct_method)
-		g.inside_def_typ_decl = false
-	}
 }
 
 // generate builtin type definitions, used for casting and methods.

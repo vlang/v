@@ -589,9 +589,9 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("{"));')
 	g.definitions.writeln('\tlet i = 0;')
 	g.definitions.writeln('\tfor (let [key,value] of m.map) {')
-
+	g.definitions.writeln('\t\tkey = new ${key_styp}(key);')
 	if key_sym.kind == .string {
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(key));')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("\'" + key.str + "\'"));')
 	} else if key_sym.kind == .rune {
 		// tmp_str := str_intp_rune('${key_str_fn_name}(key)')
 		// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')

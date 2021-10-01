@@ -1331,8 +1331,8 @@ fn test_struct_array_of_multi_type_in() {
 		},
 	]
 	println(ivan in people)
-	println('TODO: Map eq')
-	// assert ivan in people
+	// println('TODO: Map eq')
+	assert ivan in people
 }
 
 fn test_struct_array_of_multi_type_index() {

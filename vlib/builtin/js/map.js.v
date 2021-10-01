@@ -1,7 +1,8 @@
 module builtin
 
 struct map {
-	m   JS.Map
+	m JS.Map
+pub:
 	len int
 }
 
@@ -14,7 +15,7 @@ pub fn (mut m map) delete(key voidptr) {
 pub fn (m &map) free() {}
 
 #map.prototype[Symbol.iterator] = function () { return this.map[Symbol.iterator](); }
-
+//#Object.defineProperty(map.prototype,"len",{get: function() { return this.map.size; }})
 #map.prototype.toString = function () {
 #function fmtKey(key) { return typeof key == 'string' ? '\'' + key + '\'' : key}
 #let res = '{'
