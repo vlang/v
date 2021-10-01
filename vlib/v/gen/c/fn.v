@@ -563,7 +563,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
-	cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
+	mut cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
@@ -574,7 +574,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		''
 	}
 	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
-	mut curr_line := ''
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
 		if gen_or {
@@ -582,7 +581,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 		styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
-			curr_line = g.go_before_stmt(0)
+			cur_line = g.go_before_stmt(0)
 		}
 		g.write('$styp $tmp_opt = ')
 	}
@@ -603,20 +602,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		//}
 		unwrapped_typ := node.return_type.clear_flag(.optional)
 		unwrapped_styp := g.typ(unwrapped_typ)
-		if is_gen_or_and_assign_rhs {
-			if unwrapped_typ == ast.void_type {
-				g.write('\n $cur_line')
-			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
-				g.write('\n $cur_line $tmp_opt /*U*/')
-			} else {
-				if !g.inside_const {
-					g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
-				} else {
-					g.write('\n $cur_line $tmp_opt')
-				}
-			}
+		if unwrapped_typ == ast.void_type {
+			g.write('\n $cur_line')
+		} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
+			g.write('\n $cur_line $tmp_opt /*U*/')
 		} else {
-			g.write('$curr_line (*($unwrapped_styp*)${tmp_opt}.data)')
+			if !g.inside_const {
+				g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
+			} else {
+				g.write('\n $cur_line $tmp_opt')
+			}
 		}
 	} else if gen_keep_alive {
 		if node.return_type == ast.void_type {
