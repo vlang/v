@@ -269,7 +269,7 @@ jobs:
         run: |
           ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-          brew install postgresql
+          brew install postgresql openssl
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
       - name: Build V
         run: make -j4 && ./v -cg -cstrict -o v cmd/v
