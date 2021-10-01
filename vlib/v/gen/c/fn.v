@@ -574,12 +574,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		''
 	}
 	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
+	mut curr_line := ''
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
 		if gen_or {
 			ret_typ = ret_typ.set_flag(.optional)
 		}
 		styp := g.typ(ret_typ)
+		if gen_or && !is_gen_or_and_assign_rhs { curr_line = g.go_before_stmt(0) }
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
@@ -611,6 +613,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					g.write('\n $cur_line $tmp_opt')
 				}
 			}
+		} else {
+			g.write('$curr_line ${tmp_opt}.data')
 		}
 	} else if gen_keep_alive {
 		if node.return_type == ast.void_type {
