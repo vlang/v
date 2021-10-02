@@ -2,9 +2,9 @@ module vweb
 
 import net.http
 
-struct Route{
+struct Route {
 	methods []http.Method
-	path string
+	path    string
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {

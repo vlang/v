@@ -17,14 +17,14 @@ pub type RawHtml = string
 pub struct Result {}
 
 // VWeb Router Config
-pub struct Config{
+pub struct Config {
 pub:
-	server_header string = "VWeb"
+	server_header string = 'VWeb'
 
-	read_buffer_size u32 = 4096
+	read_buffer_size  u32 = 4096
 	write_buffer_size u32 = 4096
-	read_timeout time.Duration = 30 * time.second
-	write_timeout time.Duration = 30 * time.second
+	read_timeout      time.Duration = 30 * time.second
+	write_timeout     time.Duration = 30 * time.second
 }
 
 // VWeb Router
@@ -54,7 +54,6 @@ pub fn new<T>(app T, config ...Config) ?Router<T> {
 			path: route_path
 		}
 	}
-
 	return Router<T>{
 		config: config[0]
 		routes: routes
@@ -69,7 +68,9 @@ pub fn (mut router Router<T>) serve_static(mount_at string, dir string) ? {
 
 [manualfree]
 pub fn (mut router Router<T>) listen(addr string) ? {
-	mut listener := net.listen_tcp(.ip6, addr) or { return error('failed to listen $err.code $err') }
+	mut listener := net.listen_tcp(.ip6, addr) or {
+		return error('failed to listen $err.code $err')
+	}
 
 	println('[VWeb] Running app on `$addr`')
 	for {
@@ -80,7 +81,6 @@ pub fn (mut router Router<T>) listen(addr string) ? {
 				app.$(field.name) = router.app.$(field.name)
 			}
 		}
-
 		mut conn := listener.accept() or {
 			// failures should not panic
 			eprintln('accept() failed with error: $err.msg')
@@ -92,7 +92,6 @@ pub fn (mut router Router<T>) listen(addr string) ? {
 }
 
 pub fn (mut router Router<T>) test(req http.Request, timeout ...time.Duration) ?http.Response {
-
 }
 
 [manualfree]
@@ -107,7 +106,9 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn, cap: router.config.read_buffer_size)
-	defer { reader.free() }
+	defer {
+		reader.free()
+	}
 
 	request_start := time.ticks()
 
@@ -143,22 +144,21 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 	app.Context = Context{
 		request_start: request_start
 		request: request
-
 		conn: conn
-
 		form: form
 		query: query
 		files: files
-
-		response: http.new_response(header: http.new_header_from_map({
-			http.CommonHeader.server: router.config.server_header,
-			http.CommonHeader.connection: 'close'
-		}))
+		response: http.new_response(
+			header: http.new_header_from_map({
+				http.CommonHeader.server:     router.config.server_header
+				http.CommonHeader.connection: 'close'
+			})
+		)
 	}
 
 	// Calling middleware...
 	app.before_request()
-	
+
 	// Matching route
 	$for method in T.methods {
 		$if method.return_type !is Result {
@@ -166,7 +166,7 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 		}
 
 		route := router.routes[method.name] or {
-			eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
+			eprintln('parsed attributes for the `$method.name` are not found, skipping...')
 			continue
 		}
 
@@ -201,8 +201,6 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 			return
 		}
 	}
-
 	// Route not found
-	conn.write(vweb.http_404.bytes()) or {}
+	conn.write(http_404.bytes()) or {}
 }
-

@@ -23,7 +23,7 @@ fn test_a_vweb_application_compiles() ? {
 		exit(0)
 	}()
 	mut router := vweb.new(&App{}) ?
-	router.listen(":18081") ?
+	router.listen(':18081') ?
 }
 
 /*

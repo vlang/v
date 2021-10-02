@@ -3,7 +3,7 @@ module vweb
 import net
 import net.http
 
-// The Context struct represents the Context which hold the HTTP request and response. 
+// The Context struct represents the Context which hold the HTTP request and response.
 // It has fields for the query, form, files.
 pub struct Context {
 mut:
@@ -11,31 +11,26 @@ mut:
 pub:
 	// time.ticks() from start of vweb connection handle.
 	// You can use it to determine how much time is spent on your request.
-	request_start    u64
-
+	request_start u64
 	// HTTP Request
 	request http.Request
 pub mut:
 	// TCP connection to client, feel free to use it.
 	// But beware, do not store it for further use, after request processing vweb will close connection.
-	conn              net.TcpConn
-
+	conn net.TcpConn
 	// Map containing query params for the route.
 	// Example: `http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }`
-	query             map[string]string
-
+	query map[string]string
 	// Multipart-from fields.
-	form              map[string]string
-
+	form map[string]string
 	// Files from multipart-form.
-	files             map[string][]http.FileData
-	
+	files map[string][]http.FileData
 	// HTTP Response, it will be sended on ctx.send().
 	// Feel free to change it yourself.
 	response http.Response
 }
 
-// Defining this method is optional. 
+// Defining this method is optional.
 // This method called before every request (aka middleware).
 // Probably you can use it for check user session cookie or add header.
 pub fn (mut ctx Context) before_request() {}
@@ -98,7 +93,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 // Returns the ip address from the current user.
 pub fn (ctx Context) ip() string {
 	mut ip := ctx.request.header.get(.x_forwarded_for) or { '' }
-	
+
 	if ip == '' {
 		ip = ctx.request.header.get_custom('X-Real-Ip') or { '' }
 	}
@@ -106,7 +101,7 @@ pub fn (ctx Context) ip() string {
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}
-	
+
 	if ip == '' {
 		ip = ctx.conn.peer_ip() or { '' }
 	}
@@ -115,9 +110,7 @@ pub fn (ctx Context) ip() string {
 
 // Gets a cookie from request by a key.
 pub fn (ctx &Context) get_cookie(key string) ?string {
-	return ctx.request.cookies[key] or {
-		return error('Cookie not found')
-	}
+	return ctx.request.cookies[key] or { return error('Cookie not found') }
 }
 
 // Sets response cookie.
@@ -134,21 +127,18 @@ pub fn (mut ctx Context) send() Result {
 
 fn (ctx Context) mark_as_done() ? {
 	if ctx.is_done {
-		return error("already done")
+		return error('already done')
 	}
 	ctx.is_done = true
 }
 
-// The actual method that sends the response to the client, 
-// none of the methods above check the result of this method, 
+// The actual method that sends the response to the client,
+// none of the methods above check the result of this method,
 // more you know it returns the success of the sending.
 fn (mut ctx Context) send_response() bool {
-	ctx.mark_as_done() or {
-		return false
-	}
+	ctx.mark_as_done() or { return false }
 
 	ctx.response.header.set(.content_length, ctx.response.text.len.str())
 	ctx.conn.write(ctx.response.bytes()) or { return false }
 	return true
 }
-

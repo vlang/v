@@ -1,11 +1,11 @@
 module vweb
 
 pub const (
-	default_addr       = ":8080"
+	default_addr      = ':8080'
 	methods_with_form = [http.Method.post, .put, .patch]
 
 	headers_close     = http.new_custom_header_from_map({
-		'Server':          'VWeb'
+		'Server':                           'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
@@ -38,7 +38,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	
+
 	mime_types        = {
 		'.aac':    'audio/aac'
 		'.abw':    'application/x-abiword'

@@ -58,12 +58,12 @@ fn parse_query_from_url(url urllib.URL) map[string]string {
 fn parse_form_from_request(request http.Request) (map[string]string, map[string][]http.FileData) {
 	form := map[string]string{}
 	files := map[string]string{}
-	if request.method in vweb.methods_with_form {
+	if request.method in methods_with_form {
 		ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
 		if 'multipart/form-data' in ct {
 			boundary := ct.filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
-				conn.write(vweb.http_400.bytes()) or {}
+				conn.write(http_400.bytes()) or {}
 				return
 			}
 			form, files = http.parse_multipart_form(request.data, boundary[0][9..])
