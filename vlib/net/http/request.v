@@ -226,7 +226,7 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 }
 
 // Parse URL encoded key=value&key=value forms
-fn parse_form(body string) map[string]string {
+pub fn parse_form(body string) map[string]string {
 	words := body.split('&')
 	mut form := map[string]string{}
 	for word in words {
@@ -251,12 +251,14 @@ pub:
 	data         string
 }
 
-struct UnexpectedExtraAttributeError {
+pub struct UnexpectedExtraAttributeError {
+pub:
 	msg  string
 	code int
 }
 
-struct MultiplePathAttributesError {
+pub struct MultiplePathAttributesError {
+pub:
 	msg  string = 'Expected at most one path attribute'
 	code int
 }
