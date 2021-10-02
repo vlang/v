@@ -4019,10 +4019,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// `map = {}`
 			if left_type != 0 {
 				sym := c.table.get_type_symbol(left_type)
-				if sym.kind == .map && node.right[i] is ast.StructInit {
-					c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
-						node.right[i].position())
-					node.right[i] = ast.MapInit{}
+				if sym.kind == .map {
+					if node.right.len <= i {
+						// `map_1, map_2, map_3 = f()`, where f returns (map[int]int, map[int]int, map[int]int)
+						// i.e. 3 left parts of the assignment, but just 1 right part
+					} else {
+						if node.right[i] is ast.StructInit {
+							c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
+								node.right[i].position())
+							node.right[i] = ast.MapInit{}
+						}
+					}
 				}
 			}
 		}
