@@ -3758,10 +3758,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
-			pos := node.exprs[i].position()
-			if node.exprs[i].is_auto_deref_var() {
-				continue
-			}
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
 					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
@@ -3771,6 +3767,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				}
 				continue
 			}
+			pos := node.exprs[i].position()
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
