@@ -16,7 +16,7 @@ import io
 // for orm
 #include <arpa/inet.h>
 
-pub struct DB {
+pub struct PostgreSQLConnectDB {
 mut:
 	conn &C.PGconn
 }
@@ -76,7 +76,7 @@ fn C.PQfinish(voidptr)
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
-pub fn connect(config Config) ?DB {
+pub fn connect(config Config) ?PostgreSQLConnectDB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
 	if conn == 0 {
@@ -92,7 +92,7 @@ pub fn connect(config Config) ?DB {
 		C.PQfinish(conn)
 		return error('Connection to a PG database failed: $error_msg')
 	}
-	return DB{
+	return PostgreSQLConnectDB{
 		conn: conn
 	}
 }
@@ -117,16 +117,16 @@ fn res_to_rows(res voidptr) []Row {
 }
 
 // close frees the underlying resource allocated by the database connection
-pub fn (db DB) close() {
-	C.PQfinish(db.conn)
+pub fn (pg_conn_db PostgreSQLConnectDB) close() {
+	C.PQfinish(pg_conn_db.conn)
 }
 
 // q_int submit a command to the database server and
 // returns an the first field in the first tuple
 // converted to an int. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_int(query string) ?int {
-	rows := db.exec(query) ?
+pub fn (pg_conn_db PostgreSQLConnectDB) q_int(query string) ?int {
+	rows := pg_conn_db.exec(query) ?
 	if rows.len == 0 {
 		return error('q_int "$query" not found')
 	}
@@ -142,8 +142,8 @@ pub fn (db DB) q_int(query string) ?int {
 // returns an the first field in the first tuple
 // as a string. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_string(query string) ?string {
-	rows := db.exec(query) ?
+pub fn (pg_conn_db PostgreSQLConnectDB) q_string(query string) ?string {
+	rows := pg_conn_db.exec(query) ?
 	if rows.len == 0 {
 		return error('q_string "$query" not found')
 	}
@@ -157,16 +157,16 @@ pub fn (db DB) q_string(query string) ?string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (db DB) q_strings(query string) ?[]Row {
-	return db.exec(query)
+pub fn (pg_conn_db PostgreSQLConnectDB) q_strings(query string) ?[]Row {
+	return pg_conn_db.exec(query)
 }
 
 // exec submit a command to the database server and wait
 // for the result, returning an error on failure and a
 // row set on success
-pub fn (db DB) exec(query string) ?[]Row {
-	res := C.PQexec(db.conn, query.str)
-	return db.handle_error_or_result(res, 'exec')
+pub fn (pg_conn_db PostgreSQLConnectDB) exec(query string) ?[]Row {
+	res := C.PQexec(pg_conn_db.conn, query.str)
+	return pg_conn_db.handle_error_or_result(res, 'exec')
 }
 
 fn rows_first_or_empty(rows []Row) ?Row {
@@ -176,9 +176,9 @@ fn rows_first_or_empty(rows []Row) ?Row {
 	return rows[0]
 }
 
-pub fn (db DB) exec_one(query string) ?Row {
-	res := C.PQexec(db.conn, query.str)
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+pub fn (pg_conn_db PostgreSQLConnectDB) exec_one(query string) ?Row {
+	res := C.PQexec(pg_conn_db.conn, query.str)
+	e := unsafe { C.PQerrorMessage(pg_conn_db.conn).vstring() }
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
@@ -187,26 +187,26 @@ pub fn (db DB) exec_one(query string) ?Row {
 }
 
 // exec_param_many executes a query with the provided parameters
-pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
+pub fn (pg_conn_db PostgreSQLConnectDB) exec_param_many(query string, params []string) ?[]Row {
 	mut param_vals := []&char{len: params.len}
 	for i in 0 .. params.len {
 		param_vals[i] = params[i].str
 	}
 
-	res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals.data, 0, 0, 0)
-	return db.handle_error_or_result(res, 'exec_param_many')
+	res := C.PQexecParams(pg_conn_db.conn, query.str, params.len, 0, param_vals.data, 0, 0, 0)
+	return pg_conn_db.handle_error_or_result(res, 'exec_param_many')
 }
 
-pub fn (db DB) exec_param2(query string, param string, param2 string) ?[]Row {
-	return db.exec_param_many(query, [param, param2])
+pub fn (pg_conn_db PostgreSQLConnectDB) exec_param2(query string, param string, param2 string) ?[]Row {
+	return pg_conn_db.exec_param_many(query, [param, param2])
 }
 
-pub fn (db DB) exec_param(query string, param string) ?[]Row {
-	return db.exec_param_many(query, [param])
+pub fn (pg_conn_db PostgreSQLConnectDB) exec_param(query string, param string) ?[]Row {
+	return pg_conn_db.exec_param_many(query, [param])
 }
 
-fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+fn (pg_conn_db PostgreSQLConnectDB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
+	e := unsafe { C.PQerrorMessage(pg_conn_db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
 		return error('pg $elabel error:\n$e')
@@ -216,15 +216,15 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
 
 // copy_expert execute COPY commands
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
-pub fn (db DB) copy_expert(query string, file io.ReaderWriter) ?int {
-	res := C.PQexec(db.conn, query.str)
+pub fn (pg_conn_db PostgreSQLConnectDB) copy_expert(query string, file io.ReaderWriter) ?int {
+	res := C.PQexec(pg_conn_db.conn, query.str)
 	status := C.PQresultStatus(res)
 
 	defer {
 		C.PQclear(res)
 	}
 
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	e := unsafe { C.PQerrorMessage(pg_conn_db.conn).vstring() }
 	if e != '' {
 		return error('pg copy error:\n$e')
 	}
@@ -234,20 +234,20 @@ pub fn (db DB) copy_expert(query string, file io.ReaderWriter) ?int {
 		for {
 			n := file.read(mut buf) or {
 				msg := 'pg copy error: Failed to read from input'
-				C.PQputCopyEnd(db.conn, msg.str)
+				C.PQputCopyEnd(pg_conn_db.conn, msg.str)
 				return err
 			}
 			if n <= 0 {
 				break
 			}
 
-			code := C.PQputCopyData(db.conn, buf.data, n)
+			code := C.PQputCopyData(pg_conn_db.conn, buf.data, n)
 			if code == -1 {
 				return error('pg copy error: Failed to send data, code=$code')
 			}
 		}
 
-		code := C.PQputCopyEnd(db.conn, 0)
+		code := C.PQputCopyEnd(pg_conn_db.conn, 0)
 
 		if code != 1 {
 			return error('pg copy error: Failed to finish copy command, code: $code')
@@ -255,7 +255,7 @@ pub fn (db DB) copy_expert(query string, file io.ReaderWriter) ?int {
 	} else if status == C.PGRES_COPY_OUT {
 		for {
 			address := &byte(0)
-			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
+			n_bytes := C.PQgetCopyData(pg_conn_db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []byte{len: n_bytes}
 				unsafe { C.memcpy(&byte(local_buf.data), address, n_bytes) }
