@@ -228,3 +228,9 @@ fn test_if_expr_with_optional() ? {
 	}
 	assert v == 2
 }
+
+fn test_if_expr_with_or_block() {
+	arr := ['a']
+	a := if arr.len == 0 || arr[0] == '-' { 123 } else { return_optional() or { -1 } }
+	assert a == 1
+}
