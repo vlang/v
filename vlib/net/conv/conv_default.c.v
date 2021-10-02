@@ -20,7 +20,7 @@ union LongLong {
 }
 
 // host to net 64 (htonll)
-pub fn htn64(host &u64) u64 {
+pub fn htn64(host u64) u64 {
 	mut ll := LongLong{
 		ll: host
 	}
@@ -33,7 +33,7 @@ pub fn htn64(host &u64) u64 {
 }
 
 // net to host 64 (ntohll)
-pub fn nth64(net &u64) u64 {
+pub fn nth64(net u64) u64 {
 	mut ll := LongLong{
 		ll: net
 	}
