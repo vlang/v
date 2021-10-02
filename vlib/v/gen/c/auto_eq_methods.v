@@ -7,7 +7,11 @@ import v.ast
 
 fn (mut g Gen) equality_fn(typ ast.Type) string {
 	g.needed_equality_fns << typ.set_nr_muls(0)
-	return g.typ(g.unwrap_generic(typ).set_nr_muls(0))
+	t1 := g.unwrap_generic(typ)
+	t2 := t1.set_nr_muls(0)
+	st2 := g.typ(t2)
+	res := st2.replace('struct ', '')
+	return res
 }
 
 fn (mut g Gen) gen_equality_fns() {
