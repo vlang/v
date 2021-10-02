@@ -645,3 +645,17 @@ pub fn not_found() Result {
 fn send_string(mut conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
 }
+
+// Do not delete.
+// It used by `vlib/v/gen/c/str_intp.v:130` for string interpolation inside vweb templates
+// TODO: move it to template render
+fn filter(s string) string {
+	return s.replace_each([
+		'<',
+		'&lt;',
+		'"',
+		'&quot;',
+		'&',
+		'&amp;',
+	])
+}
