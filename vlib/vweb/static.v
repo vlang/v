@@ -1,6 +1,8 @@
 module vweb
 
 import os
+import net
+import net.http
 import net.urllib
 
 // TODO: Config for router.static
@@ -19,21 +21,29 @@ struct StaticFile {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 [manualfree]
-fn serve_if_static(mut ctx Context, static_files map[string]StaticFile, url urllib.URL) bool {
-	static_file := static_files[url.path] or { return false }
+fn (router Router<T>) serve_if_static(mut conn net.TcpConn, url urllib.URL) bool {
+	static_file := router.static_files[url.path] or { return false }
 
 	// TODO: Open file stream, send chunked
 	data := os.read_file(static_file.path) or {
-		ctx.conn.write(http_404.bytes()) or {}
+		conn.write(http_404.bytes()) or {}
 		return true
 	}
 	defer {
 		unsafe { data.free() }
 	}
 
-	ctx.set_content_type(static_file.mime_type)
-	ctx.set_body(data)
-	return ctx.send_response()
+	conn.write(http.new_response(
+		header: http.new_header_from_map({
+			http.CommonHeader.server: router.config.server_header,
+			http.CommonHeader.content_type: static_file.mime_type,
+			http.CommonHeader.connection: 'close',
+		}),
+		text: data
+	).bytes()) or {
+		return false
+	}
+	return true
 }
 
 fn scan_static_directory(mount_at string, dir string) ?map[string]StaticFile {

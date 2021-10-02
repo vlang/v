@@ -11,7 +11,7 @@ mut:
 pub:
 	// time.ticks() from start of vweb connection handle.
 	// You can use it to determine how much time is spent on your request.
-	request_start u64
+	request_start i64
 	// HTTP Request
 	request http.Request
 pub mut:

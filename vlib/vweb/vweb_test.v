@@ -7,7 +7,7 @@ import sqlite
 struct App {
 	vweb.Context
 pub mut:
-	db      sqlite.DB
+	db      sqlite.DB [vweb_global]
 	user_id string
 }
 
@@ -26,18 +26,6 @@ fn test_a_vweb_application_compiles() ? {
 	router.listen(':18081') ?
 }
 
-/*
-/TODO
-pub fn (mut app App) init_server_old() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('article', [
-		'id integer primary key',
-		"title text default ''",
-		"text text default ''",
-	])
-}
-*/
-
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }
@@ -47,7 +35,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
 	if title == '' || text == '' {
-		return app.text('Empty text/title')
+		return app.text(.ok, 'Empty text/title')
 	}
 	article := Article{
 		title: title

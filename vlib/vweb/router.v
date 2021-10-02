@@ -21,8 +21,8 @@ pub struct Config {
 pub:
 	server_header string = 'VWeb'
 
-	read_buffer_size  u32 = 4096
-	write_buffer_size u32 = 4096
+	read_buffer_size  int = 4096
+	write_buffer_size int = 4096
 	read_timeout      time.Duration = 30 * time.second
 	write_timeout     time.Duration = 30 * time.second
 }
@@ -35,15 +35,13 @@ pub struct Router<T> {
 mut:
 	static_files map[string]StaticFile
 pub mut:
-	app &T
+	app T
 }
 
 pub fn new<T>(app T, config ...Config) ?Router<T> {
-	// Adding default config to end
-	config << Config{}
 
 	// Parsing methods attributes for faster matching (this is conjecture, just implemented TODO)
-	routes := map[string]Route{}
+	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: $err')
@@ -54,8 +52,10 @@ pub fn new<T>(app T, config ...Config) ?Router<T> {
 			path: route_path
 		}
 	}
+
 	return Router<T>{
-		config: config[0]
+		// Adding default config to end
+		config: if config.len > 0 { config[0] } else { Config{} }
 		routes: routes
 		static_files: map[string]StaticFile{}
 		app: app
@@ -87,11 +87,12 @@ pub fn (mut router Router<T>) listen(addr string) ? {
 			continue
 		}
 
-		go router.handle_connection<T>(mut conn, mut app)
+		go router.handle_connection<T>(mut conn, mut &app)
 	}
 }
 
 pub fn (mut router Router<T>) test(req http.Request, timeout ...time.Duration) ?http.Response {
+	return error('not implemented')
 }
 
 [manualfree]
@@ -128,7 +129,7 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 	}
 
 	// STATIC
-	if serve_if_static<T>(mut app, url) {
+	if router.serve_if_static<T>(mut app, url) {
 		// successfully served a static file
 		return
 	}
@@ -137,6 +138,7 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 	form, files := parse_form_from_request(request) or {
 		// Bad request
 		conn.write(http_400.bytes()) or {}
+		return
 	}
 
 	// QUERY
@@ -164,46 +166,43 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 
 	// Matching route
 	$for method in T.methods {
-		$if method.return_type !is Result {
-			continue
-		}
-
-		route := router.routes[method.name] or {
-			eprintln('parsed attributes for the `$method.name` are not found, skipping...')
-			continue
-		}
-
-		// Skip if the HTTP request method does not match the attributes
-		if request.method !in route.methods {
-			continue
-		}
-
-		// Used for route matching
-		route_words := route.path.split('/').filter(it != '')
-
-		// Route immediate matches first
-		// For example URL `/register` matches route `/:user`, but `fn register()`
-		// should be called first.
-		if !route.path.contains('/:') && url_words == route_words {
-			// We found a match
-			app.$method()
-			return
-		}
-
-		if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-			app.$method()
-			return
-		}
-
-		if params := route_matches(url_words, route_words) {
-			method_args := params.clone()
-			if method_args.len != method.args.len {
-				eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
+		$if method.return_type is Result {
+			route := router.routes[method.name] or {
+				eprintln('parsed attributes for the `$method.name` are not found, skipping...')
+				Route{}
 			}
-			app.$method(method_args)
-			return
-		}
+
+			// Skip if the HTTP request method does not match the attributes
+			if request.method in route.methods {
+				// Used for route matching
+				route_words := route.path.split('/').filter(it != '')
+
+				// Route immediate matches first
+				// For example URL `/register` matches route `/:user`, but `fn register()`
+				// should be called first.
+				if !route.path.contains('/:') && url_words == route_words {
+					// We found a match
+					app.$method()
+					return
+				}
+
+				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+					app.$method()
+					return
+				}
+
+				if params := route_matches(url_words, route_words) {
+					method_args := params.clone()
+					if method_args.len != method.args.len {
+						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
+					}
+					app.$method(method_args)
+					return
+				}
+			}
+		}	
 	}
+
 	// Route not found
 	conn.write(http_404.bytes()) or {}
 }
