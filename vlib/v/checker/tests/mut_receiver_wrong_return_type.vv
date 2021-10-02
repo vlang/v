@@ -1,0 +1,9 @@
+struct Test {}
+
+fn (mut test Test) test() ?int {
+	return test
+}
+
+fn (mut test Test) test2() int {
+	return test
+}
