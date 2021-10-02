@@ -146,29 +146,26 @@ pub:
 	req http.Request
 	// TODO Response
 pub mut:
-	done              bool
+	done bool
 	// time.ticks() from start of vweb connection handle.
 	// You can use it to determine how much time is spent on your request.
-	page_gen_start    i64
-
+	page_gen_start i64
 	// TCP connection to client.
 	// But beware, do not store it for further use, after request processing vweb will close connection.
 	conn              &net.TcpConn
 	static_files      map[string]string
 	static_mime_types map[string]string
-
 	// Map containing query params for the route.
 	// Example: `http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
-	query             map[string]string
+	query map[string]string
 	// Multipart-form fields.
-	form              map[string]string
+	form map[string]string
 	// Files from multipart-form.
-	files             map[string][]http.FileData
-	
-	header            http.Header // response headers
-	
+	files map[string][]http.FileData
+
+	header http.Header // response headers
 	// ? It doesn't seem to be used anywhere
-	form_error        string
+	form_error string
 }
 
 struct FileData {
@@ -362,7 +359,7 @@ pub fn run<T>(global_app &T, port int) {
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
 			eprintln('error parsing method attributes: $err')
-			return 
+			return
 		}
 
 		routes[method.name] = Route{
@@ -370,7 +367,6 @@ pub fn run<T>(global_app &T, port int) {
 			path: route_path
 		}
 	}
-
 	println('[Vweb] Running app on http://localhost:$port')
 	for {
 		// Create a new app object for each connection, copy global data like db connections
@@ -435,24 +431,21 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	// Form parse
 	form, files := parse_form_from_request(req) or {
 		// Bad request
-		conn.write(http_400.bytes()) or {}
+		conn.write(vweb.http_400.bytes()) or {}
 		return
 	}
 
 	app.Context = Context{
 		req: req
-
 		page_gen_start: page_gen_start
 		conn: conn
-
 		query: query
 		form: form
 		files: files
-
 		static_files: app.static_files
 		static_mime_types: app.static_mime_types
 	}
-	
+
 	// Calling middleware...
 	app.before_request()
 
@@ -500,9 +493,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 			}
 		}
 	}
-	
 	// Route not found
-	conn.write(http_404.bytes()) or {}
+	conn.write(vweb.http_404.bytes()) or {}
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
