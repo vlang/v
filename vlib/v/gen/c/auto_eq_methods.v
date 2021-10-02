@@ -410,32 +410,32 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${ptr_styp}(a._typ);')
 	if info is ast.Interface {
 		for typ in info.types {
-			fn_builder.writeln('\t\tif (idx == ${typ}) {')
+			fn_builder.writeln('\t\tif (idx == $typ) {')
 			fn_builder.write_string('\t\t\treturn ')
 			match g.table.type_kind(typ) {
 				.struct_ {
 					eq_fn := g.gen_struct_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_struct_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_struct_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				.sum_type {
 					eq_fn := g.gen_sumtype_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_sumtype_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_sumtype_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				.array {
 					eq_fn := g.gen_array_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_arr_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_arr_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				.array_fixed {
 					eq_fn := g.gen_fixed_array_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_arr_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_arr_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				.map {
 					eq_fn := g.gen_map_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_map_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_map_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				.alias {
 					eq_fn := g.gen_alias_equality_fn(typ)
-					fn_builder.write_string('${eq_fn}_alias_eq(*(a._${eq_fn}), *(b._${eq_fn}))')
+					fn_builder.write_string('${eq_fn}_alias_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				else {
 					fn_builder.write_string('a == b')

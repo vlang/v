@@ -242,8 +242,6 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				g.write(')')
-				//typeof_fn := 'v_typeof_interface_idx_${left.sym.cname}'
-				//g.write('(${typeof_fn}(${node.left}._typ) == ${typeof_fn}(${node.right}._typ))')
 			}
 			else {}
 		}
