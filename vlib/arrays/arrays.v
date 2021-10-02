@@ -291,7 +291,7 @@ pub fn concat<T>(a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val
+// returns the smallest element >= val, requires `arr` to be sorted
 pub fn lower_bound<T>(arr []T, val T) ?T {
 	if arr.len == 0 {
 		error('.lower_bound called on an empty array')
@@ -313,7 +313,7 @@ pub fn lower_bound<T>(arr []T, val T) ?T {
 	}
 }
 
-// returns the largest element <= val
+// returns the largest element <= val, requires `arr` to be sorted
 pub fn upper_bound<T>(arr []T, val T) ?T {
 	if arr.len == 0 {
 		error('.upper_bound called on an empty array')
