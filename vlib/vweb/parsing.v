@@ -3,16 +3,6 @@ module vweb
 import net.urllib
 import net.http
 
-struct UnexpectedExtraAttributeError {
-	msg  string
-	code int
-}
-
-struct MultiplePathAttributesError {
-	msg  string = 'Expected at most one path attribute'
-	code int
-}
-
 // Parsing function attributes for methods and path.
 fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	if attrs.len == 0 {
