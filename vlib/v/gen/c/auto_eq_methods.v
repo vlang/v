@@ -405,6 +405,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
+	fn_builder.writeln('static int v_typeof_interface_idx_${ptr_styp}(int sidx);')
 	fn_builder.writeln('static bool ${fn_name}_interface_eq($ptr_styp a, $ptr_styp b) {')
 	fn_builder.writeln('\tif (a._typ == b._typ) {')
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${ptr_styp}(a._typ);')
@@ -416,6 +417,9 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 				.struct_ {
 					eq_fn := g.gen_struct_equality_fn(typ)
 					fn_builder.write_string('${eq_fn}_struct_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.string {
+					fn_builder.write_string('string__eq(*(a._string), *(b._string))')
 				}
 				.sum_type {
 					eq_fn := g.gen_sumtype_equality_fn(typ)
