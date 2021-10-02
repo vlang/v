@@ -405,7 +405,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static int v_typeof_interface_idx_${ptr_styp}(int sidx);')
+	fn_builder.writeln('static int v_typeof_interface_idx_${ptr_styp}(int sidx); // for auto eq method')
 	fn_builder.writeln('static bool ${fn_name}_interface_eq($ptr_styp a, $ptr_styp b) {')
 	fn_builder.writeln('\tif (a._typ == b._typ) {')
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${ptr_styp}(a._typ);')
@@ -442,7 +442,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 					fn_builder.write_string('${eq_fn}_alias_eq(*(a._$eq_fn), *(b._$eq_fn))')
 				}
 				else {
-					fn_builder.write_string('a == b')
+					fn_builder.write_string('false')
 				}
 			}
 			fn_builder.writeln(';')
