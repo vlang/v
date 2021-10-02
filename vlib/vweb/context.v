@@ -115,7 +115,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string {
 
 // Sets response cookie.
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
-	ctx.response.header.add('Set-Cookie', cookie.str())
+	ctx.response.header.add(.set_cookie, cookie.str())
 }
 
 // Send response to client.
@@ -125,7 +125,7 @@ pub fn (mut ctx Context) send() Result {
 	return Result{}
 }
 
-fn (ctx Context) mark_as_done() ? {
+fn (mut ctx Context) mark_as_done() ? {
 	if ctx.is_done {
 		return error('already done')
 	}

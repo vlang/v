@@ -134,7 +134,10 @@ fn (mut router Router<T>) handle_connection<T>(mut conn net.TcpConn, mut app T) 
 	}
 
 	// FORM
-	form, files := parse_form_from_request(request)
+	form, files := parse_form_from_request(request) or {
+		// Bad request
+		conn.write(http_400.bytes()) or {}
+	}
 
 	// QUERY
 	query := parse_query_from_url(url)

@@ -3,6 +3,16 @@ module vweb
 import net.urllib
 import net.http
 
+struct UnexpectedExtraAttributeError {
+	msg  string
+	code int
+}
+
+struct MultiplePathAttributesError {
+	msg  string = 'Expected at most one path attribute'
+	code int
+}
+
 // Parsing function attributes for methods and path.
 fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	if attrs.len == 0 {
@@ -24,7 +34,7 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		}
 		if attr.starts_with('/') {
 			if path != '' {
-				return IError(&MultiplePathAttributesError{})
+				return IError(http.MultiplePathAttributesError{})
 			}
 			path = attr
 			x.delete(i)
@@ -33,7 +43,7 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		i++
 	}
 	if x.len > 0 {
-		return IError(&UnexpectedExtraAttributeError{
+		return IError(http.UnexpectedExtraAttributeError{
 			msg: 'Encountered unexpected extra attributes: $x'
 		})
 	}
@@ -48,23 +58,22 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 }
 
 fn parse_query_from_url(url urllib.URL) map[string]string {
-	query := map[string]string{}
+	mut query := map[string]string{}
 	for k, v in url.query().data {
 		query[k] = v.data[0]
 	}
 	return query
 }
 
-fn parse_form_from_request(request http.Request) (map[string]string, map[string][]http.FileData) {
-	form := map[string]string{}
-	files := map[string]string{}
+fn parse_form_from_request(request http.Request) ?(map[string]string, map[string][]http.FileData) {
+	mut form := map[string]string{}
+	mut files := map[string][]http.FileData{}
 	if request.method in methods_with_form {
 		ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
 		if 'multipart/form-data' in ct {
 			boundary := ct.filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
-				conn.write(http_400.bytes()) or {}
-				return
+				return error('detected more that one form-data boundary')
 			}
 			form, files = http.parse_multipart_form(request.data, boundary[0][9..])
 		} else {

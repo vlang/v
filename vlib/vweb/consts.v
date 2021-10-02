@@ -1,5 +1,7 @@
 module vweb
 
+import net.http
+
 pub const (
 	default_addr      = ':8080'
 	methods_with_form = [http.Method.post, .put, .patch]
@@ -7,7 +9,7 @@ pub const (
 	headers_close     = http.new_custom_header_from_map({
 		'Server':                           'VWeb'
 		http.CommonHeader.connection.str(): 'close'
-	}) or { panic('should never fail') }
+	}) ?
 
 	http_302          = http.new_response(
 		status: .found

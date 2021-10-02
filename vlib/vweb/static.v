@@ -20,20 +20,20 @@ struct StaticFile {
 // returns true if we served a static file, false otherwise
 [manualfree]
 fn serve_if_static(mut ctx Context, static_files map[string]StaticFile, url urllib.URL) bool {
-	static_file := ctx.static_files[url.path] or { return false }
+	static_file := static_files[url.path] or { return false }
 
 	// TODO: Open file stream, send chunked
 	data := os.read_file(static_file.path) or {
-		app.conn.write(http_404.bytes()) or {}
+		ctx.conn.write(http_404.bytes()) or {}
 		return true
 	}
 	defer {
 		unsafe { data.free() }
 	}
 
-	app.set_content_type(static_file.mime_type)
-	app.set_body(data)
-	return app.send_response()
+	ctx.set_content_type(static_file.mime_type)
+	ctx.set_body(data)
+	return ctx.send_response()
 }
 
 fn scan_static_directory(mount_at string, dir string) ?map[string]StaticFile {
