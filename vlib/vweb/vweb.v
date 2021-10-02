@@ -160,10 +160,14 @@ pub mut:
 	// Map containing query params for the route.
 	// Example: `http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	query             map[string]string
+	// Multipart-form fields.
 	form              map[string]string
+	// Files from multipart-form.
 	files             map[string][]http.FileData
 	
 	header            http.Header // response headers
+	
+	// ? It doesn't seem to be used anywhere
 	form_error        string
 }
 
