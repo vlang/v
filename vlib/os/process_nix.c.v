@@ -5,9 +5,10 @@ fn C.setpgid(pid int, pgid int) int
 fn (mut p Process) unix_spawn_process() int {
 	mut pipeset := [6]int{}
 	if p.use_stdio_ctl {
-		_ = C.pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
-		_ = C.pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
-		_ = C.pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
+		mut dont_care := C.pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
+		dont_care = C.pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
+		dont_care = C.pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
+		_ = dont_care // using `_` directly on each above `pipe` fails to avoid C compiler generate an `-Wunused-result` warning
 	}
 	pid := fork()
 	if pid != 0 {
