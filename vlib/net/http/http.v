@@ -197,22 +197,22 @@ fn build_url_from_fetch(config FetchConfig) ?string {
 	return url.str()
 }
 
-// unescape_url is deprecated, use urllib.query_unescape() instead
+[deprecated: 'unescape_url is deprecated, use urllib.query_unescape() instead']
 pub fn unescape_url(s string) string {
 	panic('http.unescape_url() was replaced with urllib.query_unescape()')
 }
 
-// escape_url is deprecated, use urllib.query_escape() instead
+[deprecated: 'escape_url is deprecated, use urllib.query_escape() instead']
 pub fn escape_url(s string) string {
 	panic('http.escape_url() was replaced with urllib.query_escape()')
 }
 
-// unescape is deprecated, use urllib.query_escape() instead
+[deprecated: 'unescape is deprecated, use urllib.query_escape() instead']
 pub fn unescape(s string) string {
 	panic('http.unescape() was replaced with http.unescape_url()')
 }
 
-// escape is deprecated, use urllib.query_unescape() instead
+[deprecated: 'escape is deprecated, use urllib.query_unescape() instead']
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
