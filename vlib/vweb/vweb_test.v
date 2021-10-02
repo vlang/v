@@ -51,5 +51,5 @@ pub fn (mut app App) new_article() vweb.Result {
 }
 
 fn (mut app App) time() {
-	app.text(time.now().format())
+	app.text(.ok, time.now().format())
 }
