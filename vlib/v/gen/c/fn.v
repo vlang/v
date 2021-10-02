@@ -560,7 +560,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
-	cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
+	mut cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
@@ -577,6 +577,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			ret_typ = ret_typ.set_flag(.optional)
 		}
 		styp := g.typ(ret_typ)
+		if gen_or && !is_gen_or_and_assign_rhs {
+			cur_line = g.go_before_stmt(0)
+		}
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
@@ -594,19 +597,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		// if !g.is_autofree {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		//}
-		if is_gen_or_and_assign_rhs {
-			unwrapped_typ := node.return_type.clear_flag(.optional)
-			unwrapped_styp := g.typ(unwrapped_typ)
-			if unwrapped_typ == ast.void_type {
-				g.write('\n $cur_line')
-			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
-				g.write('\n $cur_line $tmp_opt /*U*/')
+		unwrapped_typ := node.return_type.clear_flag(.optional)
+		unwrapped_styp := g.typ(unwrapped_typ)
+		if unwrapped_typ == ast.void_type {
+			g.write('\n $cur_line')
+		} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
+			g.write('\n $cur_line $tmp_opt /*U*/')
+		} else {
+			if !g.inside_const {
+				g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
 			} else {
-				if !g.inside_const {
-					g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
-				} else {
-					g.write('\n $cur_line $tmp_opt')
-				}
+				g.write('\n $cur_line $tmp_opt')
 			}
 		}
 	} else if gen_keep_alive {
