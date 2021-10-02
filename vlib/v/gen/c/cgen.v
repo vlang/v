@@ -4880,6 +4880,8 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 							if left_sym.kind in [.array, .array_fixed, .map] {
 								return true
 							}
+						} else if stmt.expr.or_block.kind != .absent {
+							return true
 						}
 					}
 				}
