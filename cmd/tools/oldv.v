@@ -171,6 +171,9 @@ fn main() {
 		}
 		scripting.cprint_strong('#            result: ')
 		print(cmdres.output)
+		if !cmdres.output.ends_with('\n') {
+			println('')
+		}
 		exit(cmdres.exit_code)
 	}
 }
