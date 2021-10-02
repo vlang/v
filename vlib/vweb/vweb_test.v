@@ -17,12 +17,13 @@ struct Article {
 	text  string
 }
 
-fn test_a_vweb_application_compiles() {
+fn test_a_vweb_application_compiles() ? {
 	go fn () {
 		time.sleep(2 * time.second)
 		exit(0)
 	}()
-	vweb.run(&App{}, 18081)
+	mut router := vweb.new(&App{}) ?
+	router.listen(":18081") ?
 }
 
 /*
