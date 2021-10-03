@@ -251,7 +251,7 @@ __global total_m = i64(0)
 [unsafe]
 pub fn malloc(n int) &byte {
 	if n <= 0 {
-		panic('> V malloc(<=0)')
+		panic('malloc($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -277,9 +277,9 @@ pub fn malloc(n int) &byte {
 		mut e := Errno{}
 		res, e = mm_alloc(u64(n))
 		if e != .enoerror {
-			eprint('malloc() failed: ')
+			eprint('malloc($n) failed: ')
 			eprintln(e.str())
-			panic('malloc() failed')
+			panic('malloc($n) failed')
 		}
 	} $else {
 		res = unsafe { C.malloc(n) }
@@ -298,7 +298,7 @@ pub fn malloc(n int) &byte {
 [unsafe]
 pub fn malloc_noscan(n int) &byte {
 	if n <= 0 {
-		panic('> V malloc(<=0)')
+		panic('malloc_noscan($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -330,15 +330,15 @@ pub fn malloc_noscan(n int) &byte {
 		mut e := Errno{}
 		res, e = mm_alloc(u64(n))
 		if e != .enoerror {
-			eprint('malloc() failed: ')
+			eprint('malloc_noscan($n) failed: ')
 			eprintln(e.str())
-			panic('malloc() failed')
+			panic('malloc_noscan($n) failed')
 		}
 	} $else {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc_noscan($n) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0, so it is easier to spot
@@ -426,7 +426,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc(<0)')
+		panic('calloc($n < 0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -459,7 +459,7 @@ pub fn vcalloc_noscan(n int) &byte {
 			}
 		}
 		if n < 0 {
-			panic('calloc(<0)')
+			panic('calloc_noscan($n < 0)')
 		}
 		return $if gcboehm_opt ? {
 			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
