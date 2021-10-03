@@ -10,6 +10,10 @@ pub fn (s string) slice(a int, b int) string {
 	return string(s.str.slice(a, b))
 }
 
+pub fn (s string) substr(start int, end int) string {
+	return s.slice(start, end)
+}
+
 pub fn (s string) after(dot string) string {
 	return string(s.str.slice(s.str.lastIndexOf(dot.str) + 1, int(s.str.length)))
 }
@@ -20,20 +24,37 @@ pub fn (s string) after_char(dot byte) string {
 }
 
 pub fn (s string) all_after(dot string) string {
-	return string(s.str.slice(s.str.indexOf(dot.str) + 1, int(s.str.length)))
+	pos := if dot.len == 0 { -1 } else { s.str.indexOf(dot.str) }
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[pos + dot.len..]
 }
 
 // why does this exist?
 pub fn (s string) all_after_last(dot string) string {
-	return s.after(dot)
+	pos := if dot.len == 0 { -1 } else { s.str.lastIndexOf(dot.str) }
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[pos + dot.len..]
 }
 
 pub fn (s string) all_before(dot string) string {
-	return string(s.str.slice(0, s.str.indexOf(dot.str)))
+	pos := if dot.len == 0 { -1 } else { s.str.indexOf(dot.str) }
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[..pos]
+	// return string(s.str.slice(0, s.str.indexOf(dot.str)))
 }
 
 pub fn (s string) all_before_last(dot string) string {
-	return string(s.str.slice(0, s.str.lastIndexOf(dot.str)))
+	pos := if dot.len == 0 { -1 } else { s.str.lastIndexOf(dot.str) }
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[..pos]
 }
 
 pub fn (s string) bool() bool {
@@ -79,6 +100,9 @@ pub fn (s string) contains_any(chars string) bool {
 }
 
 pub fn (s string) contains_any_substr(chars []string) bool {
+	if chars.len == 0 {
+		return true
+	}
 	for x in chars {
 		if s.str.includes(x.str) {
 			return true
@@ -725,4 +749,132 @@ pub fn (s string) replace_once(rep string, with_ string) string {
 	#s2.val = s.str.replace(rep.str,with_.str)
 
 	return s2
+}
+
+pub fn (s string) title() string {
+	words := s.split(' ')
+	mut tit := []string{}
+	for word in words {
+		tit << word.capitalize()
+	}
+
+	title := tit.join(' ')
+	return title
+}
+
+// index_any returns the position of any of the characters in the input string - if found.
+pub fn (s string) index_any(chars string) int {
+	for i, ss in s {
+		for c in chars {
+			if c == ss {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+/*
+// limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// 'hello'.limit(2) => 'he'
+// 'hi'.limit(10) => 'hi'
+pub fn (s string) limit(max int) string {
+	u := s.runes()
+	if u.len <= max {
+		return s.clone()
+	}
+	return u[0..max].string()
+}
+*/
+// is_title returns true if all words of the string is capitalized.
+// Example: assert 'Hello V Developer'.is_title() == true
+pub fn (s string) is_title() bool {
+	words := s.split(' ')
+	for word in words {
+		if !word.is_capital() {
+			return false
+		}
+	}
+	return true
+}
+
+// is_capital returns `true` if the first character in the string is a capital letter.
+// Example: assert 'Hello'.is_capital() == true
+[direct_array_access]
+pub fn (s string) is_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
+	}
+	for i in 1 .. s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
+// is_upper returns `true` if all characters in the string is uppercase.
+// Example: assert 'HELLO V'.is_upper() == true
+pub fn (s string) is_upper() bool {
+	res := false
+	#res.val = s.str == s.str.toUpperCase() && s.str != s.str.toLowerCase()
+
+	return res
+}
+
+// is_upper returns `true` if all characters in the string is uppercase.
+// Example: assert 'HELLO V'.is_upper() == true
+pub fn (s string) is_lower() bool {
+	res := false
+	#res.val = s.str == s.str.toLowerCase() && s.str != s.str.toUpperCase()
+
+	return res
+}
+
+pub fn (s string) reverse() string {
+	res := ''
+	#res.str = [...s.str].reverse().join('')
+
+	return res
+}
+
+pub fn (s string) trim(cutset string) string {
+	if s.len < 1 || cutset.len < 1 {
+		return s.clone()
+	}
+	mut pos_left := 0
+	mut pos_right := s.len - 1
+	mut cs_match := true
+	for pos_left <= s.len && pos_right >= -1 && cs_match {
+		cs_match = false
+		for cs in cutset {
+			if s[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
+		}
+		for cs in cutset {
+			if s[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
+		}
+		if pos_left > pos_right {
+			return ''
+		}
+	}
+	return s.substr(pos_left, pos_right + 1)
+}
+
+pub fn (s []string) join(sep string) string {
+	mut res := ''
+	for i, str in s {
+		res += str
+		if i != s.len - 1 {
+			res += sep
+		}
+	}
+	return res
 }
