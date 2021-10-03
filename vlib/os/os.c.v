@@ -117,7 +117,7 @@ pub fn read_file(path string) ?string {
 	// In some conditions C.ftell can return very large values
 	// that, when cast to `int`, can result in values below 0.
 	if allocate < 0 {
-		return error ('can not allocate $allocate bytes. $fsize cast to int results in ${int(fsize)})')
+		return error('can not allocate $allocate bytes. $fsize cast to int results in ${int(fsize)})')
 	}
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
