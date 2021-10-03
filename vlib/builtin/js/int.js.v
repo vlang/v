@@ -138,12 +138,12 @@ pub fn (x byte) hex() string {
 pub fn (b []byte) hex() string {
 	mut hex := ''
 	for i in b {
-		mut z := i 
+		mut z := i
 		z = z
-		# let n0 = i.val >> 4
+		#let n0 = i.val >> 4
 		#hex.str += n0 < 10 ? String.fromCharCode(n0) : String.fromCharCode(n0 + 87)
 
-		# let n1 = i.val & 0xF
+		#let n1 = i.val & 0xF
 		#hex.str += n1 < 10 ? String.fromCharCode(n1) : String.fromCharCode(n1 + 87)
 	}
 	return hex
