@@ -530,6 +530,12 @@ fn (mut g Gen) gen_array_contains_methods() {
 		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.equality_fn(left_info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
+		} else if elem_sym.kind == .interface_ && left_info.elem_type.nr_muls() == 0 {
+			ptr_typ := g.equality_fn(left_info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
+		} else if elem_sym.kind == .sum_type && left_info.elem_type.nr_muls() == 0 {
+			ptr_typ := g.equality_fn(left_info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
 		} else {
 			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
 		}
@@ -591,15 +597,21 @@ fn (mut g Gen) gen_array_index_methods() {
 			fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq( *pelem, v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
 			fn_builder.writeln('\t\tif ( pelem == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(( *pelem, v))) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((*pelem, v))) {')
 		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq( *pelem, v)) {')
+			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*pelem, v)) {')
+		} else if elem_sym.kind == .interface_ {
+			ptr_typ := g.equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*pelem, v)) {')
+		} else if elem_sym.kind == .sum_type {
+			ptr_typ := g.equality_fn(info.elem_type)
+			fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*pelem, v)) {')
 		} else {
 			fn_builder.writeln('\t\tif (*pelem == v) {')
 		}
