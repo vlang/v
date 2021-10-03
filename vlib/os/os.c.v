@@ -113,8 +113,14 @@ pub fn read_file(path string) ?string {
 	}
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
+	allocate := int(fsize)
+	// In some conditions C.ftell can return very large values
+	// that, when cast to `int`, can result in values below 0.
+	if allocate < 0 {
+		return error ('can not allocate $allocate bytes. $fsize cast to int results in ${int(fsize)})')
+	}
 	unsafe {
-		mut str := malloc_noscan(int(fsize) + 1)
+		mut str := malloc_noscan(allocate + 1)
 		nelements := int(C.fread(str, 1, fsize, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
