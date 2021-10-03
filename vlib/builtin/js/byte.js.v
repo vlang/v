@@ -31,7 +31,7 @@ pub fn (c byte) ascii_str() string {
 
 pub fn (c byte) repeat(count int) string {
 	mut res := ''
-	for i in 0 .. count {
+	for _ in 0 .. count {
 		res += c.ascii_str()
 	}
 
