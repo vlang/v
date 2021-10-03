@@ -31,6 +31,6 @@ fn test_interface_array_contains() {
 	abi := IA(AB{13})
 	aci := IA(AB{14})
 
-	assert (abi in ia_ary)
-	assert (aci !in ia_ary)
+	assert abi in ia_ary
+	assert aci !in ia_ary
 }
