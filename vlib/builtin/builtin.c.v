@@ -251,7 +251,7 @@ __global total_m = i64(0)
 [unsafe]
 pub fn malloc(n int) &byte {
 	if n <= 0 {
-		panic('malloc($n) <= 0')
+		panic('malloc($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -298,7 +298,7 @@ pub fn malloc(n int) &byte {
 [unsafe]
 pub fn malloc_noscan(n int) &byte {
 	if n <= 0 {
-		panic('malloc_noscan($n) <= 0')
+		panic('malloc_noscan($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -426,7 +426,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc($n) $n < 0')
+		panic('calloc($n < 0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -459,7 +459,7 @@ pub fn vcalloc_noscan(n int) &byte {
 			}
 		}
 		if n < 0 {
-			panic('calloc_noscan($n) $n < 0')
+			panic('calloc_noscan($n < 0)')
 		}
 		return $if gcboehm_opt ? {
 			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
