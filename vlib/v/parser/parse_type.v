@@ -70,6 +70,9 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 		// error is set in parse_type
 		return 0
 	}
+	if elem_type.idx() == ast.thread_type_idx {
+		p.register_auto_import('sync.threads')
+	}
 	mut nr_dims := 1
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
