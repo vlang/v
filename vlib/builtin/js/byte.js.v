@@ -21,3 +21,19 @@ pub fn (c byte) str() string {
 
 	return res
 }
+
+pub fn (c byte) ascii_str() string {
+	res := ''
+	#res.str = String.fromCharCode(c.val)
+
+	return res
+}
+
+pub fn (c byte) repeat(count int) string {
+	mut res := ''
+	for _ in 0 .. count {
+		res += c.ascii_str()
+	}
+
+	return res
+}

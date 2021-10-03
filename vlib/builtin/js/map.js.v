@@ -25,3 +25,5 @@ pub fn (m &map) free() {}
 #res += '}'
 #return res;
 #}
+
+#map.prototype.getOrSet = function (key, init) { if (this.map.has(key)) { return this.map.get(key); } else { this.map.set(key,init); return init; } }
