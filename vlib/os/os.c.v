@@ -114,7 +114,8 @@ pub fn read_file(path string) ?string {
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	allocate := int(fsize)
-	// In some conditions C.ftell can return very large values
+	// C.ftell returns `long int` that is guaranteed to be *at least* 32 bit.
+	// Thus on some systems C.ftell can return larger values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
 	if allocate < 0 {
 		return error('can not allocate $allocate bytes. $fsize cast to int results in ${int(fsize)})')
