@@ -194,13 +194,6 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	#a.val.arr.arr.splice(i,0,...val.arr.slice(0,+size))
 }
 
-pub fn (mut a array) join(separator string) string {
-	mut res := ''
-	#res = new string(a.val.arr.arr.join(separator +''));
-
-	return res
-}
-
 fn (mut a array) push(val voidptr) {
 	#a.val.arr.make_copy()
 	#if (arguments[2] && arguments[2].valueOf()) {a.val.arr.arr.push(...val)} else {
@@ -246,7 +239,7 @@ struct array_iterator {
 #}
 #array_iterator.prototype[Symbol.iterator] = function () { return this; }
 
-#array.prototype[Symbol.iterator] = function () { console.log(this.arr.index_start); return new array_iterator({ix: new int(0),end: new int(this.arr.len),arr: this}); }
+#array.prototype[Symbol.iterator] = function () { return new array_iterator({ix: new int(0),end: new int(this.arr.len),arr: this}); }
 #array.prototype.entries = function () { let result = []; for (let key = this.arr.index_start.val;key < this.arr.len.val;key++) { result.push([new int(key), this.arr.get(new int(key))]); } return result[Symbol.iterator](); }
 #array.prototype.map = function(callback) { return v_map(this,callback); }
 #array.prototype.filter = function(callback) { return v_filter(this,callback); }
