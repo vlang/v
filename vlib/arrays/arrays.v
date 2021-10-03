@@ -290,3 +290,66 @@ pub fn concat<T>(a []T, b ...T) []T {
 
 	return m
 }
+
+// returns the smallest element >= val, requires `arr` to be sorted
+pub fn lower_bound<T>(arr []T, val T) ?T {
+	if arr.len == 0 {
+		return error('.lower_bound called on an empty array')
+	}
+	mut left, mut right := 0, arr.len - 1
+	for ; left <= right; {
+		idx := (left + right) / 2
+		elem := arr[idx]
+		if elem < val {
+			left = idx + 1
+		} else {
+			right = idx - 1
+		}
+	}
+	if left >= arr.len {
+		return error('')
+	} else {
+		return arr[left]
+	}
+}
+
+// returns the largest element <= val, requires `arr` to be sorted
+pub fn upper_bound<T>(arr []T, val T) ?T {
+	if arr.len == 0 {
+		return error('.upper_bound called on an empty array')
+	}
+	mut left, mut right := 0, arr.len - 1
+	for ; left <= right; {
+		idx := (left + right) / 2
+		elem := arr[idx]
+		if elem > val {
+			right = idx - 1
+		} else {
+			left = idx + 1
+		}
+	}
+	if right < 0 {
+		return error('')
+	} else {
+		return arr[right]
+	}
+}
+
+// binary search, requires `arr` to be sorted, returns index
+pub fn binary_search<T>(arr []T, target T) ?int {
+	mut left := 0
+	mut right := arr.len - 1
+	for ; left <= right; {
+		idx := (left + right) / 2
+		elem := arr[idx]
+		if elem == target {
+			return idx
+		}
+		if elem < target {
+			left = idx + 1
+		} else {
+			right = idx - 1
+		}
+	}
+	return error('')
+}
