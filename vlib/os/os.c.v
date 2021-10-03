@@ -94,7 +94,7 @@ pub fn read_bytes(path string) ?[]byte {
 	}
 	C.rewind(fp)
 	mut res := []byte{len: len}
-	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
+	nr_read_elements := int(C.fread(res.data, len, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
