@@ -39,6 +39,9 @@ fn (mut g Gen) gen_equality_fns() {
 			.alias {
 				g.gen_alias_equality_fn(needed_typ)
 			}
+			.interface_ {
+				g.gen_interface_equality_fn(needed_typ)
+			}
 			else {
 				verror('could not generate equality function for type $sym.kind')
 			}
@@ -385,4 +388,70 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('}')
 	g.auto_fn_definitions << fn_builder.str()
 	return ptr_styp
+}
+
+fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
+	left := g.unwrap(left_type)
+	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	fn_name := ptr_styp.replace('interface ', '')
+	if left_type in g.generated_eq_fns {
+		return fn_name
+	}
+	g.generated_eq_fns << left_type
+	info := left.sym.info
+	g.type_definitions.writeln('static bool ${ptr_styp}_interface_eq($ptr_styp a, $ptr_styp b); // auto')
+
+	mut fn_builder := strings.new_builder(512)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('static int v_typeof_interface_idx_${ptr_styp}(int sidx); // for auto eq method')
+	fn_builder.writeln('static bool ${fn_name}_interface_eq($ptr_styp a, $ptr_styp b) {')
+	fn_builder.writeln('\tif (a._typ == b._typ) {')
+	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${ptr_styp}(a._typ);')
+	if info is ast.Interface {
+		for typ in info.types {
+			fn_builder.writeln('\t\tif (idx == $typ) {')
+			fn_builder.write_string('\t\t\treturn ')
+			match g.table.type_kind(typ) {
+				.struct_ {
+					eq_fn := g.gen_struct_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_struct_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.string {
+					fn_builder.write_string('string__eq(*(a._string), *(b._string))')
+				}
+				.sum_type {
+					eq_fn := g.gen_sumtype_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_sumtype_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.array {
+					eq_fn := g.gen_array_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_arr_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.array_fixed {
+					eq_fn := g.gen_fixed_array_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_arr_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.map {
+					eq_fn := g.gen_map_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_map_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				.alias {
+					eq_fn := g.gen_alias_equality_fn(typ)
+					fn_builder.write_string('${eq_fn}_alias_eq(*(a._$eq_fn), *(b._$eq_fn))')
+				}
+				else {
+					fn_builder.write_string('false')
+				}
+			}
+			fn_builder.writeln(';')
+			fn_builder.writeln('\t\t}')
+		}
+	}
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn false;')
+	fn_builder.writeln('}')
+
+	return fn_name
 }

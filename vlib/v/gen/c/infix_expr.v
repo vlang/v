@@ -111,7 +111,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
-		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
+		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type, .interface_] {
 		match left.sym.kind {
 			.alias {
 				ptr_typ := g.equality_fn(left.typ)
@@ -215,6 +215,23 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_sumtype_eq(')
+				if left.typ.is_ptr() {
+					g.write('*')
+				}
+				g.expr(node.left)
+				g.write(', ')
+				if right.typ.is_ptr() {
+					g.write('*')
+				}
+				g.expr(node.right)
+				g.write(')')
+			}
+			.interface_ {
+				ptr_typ := g.equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
+				}
+				g.write('${ptr_typ}_interface_eq(')
 				if left.typ.is_ptr() {
 					g.write('*')
 				}
