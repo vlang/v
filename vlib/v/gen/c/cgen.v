@@ -887,6 +887,23 @@ fn (mut g Gen) write_shareds() {
 	}
 }
 
+fn (mut g Gen) register_thread_void_wait_call() {
+	if '__v_thread_wait' !in g.waiter_fns {
+		g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
+		if g.pref.os == .windows {
+			g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+		} else {
+			g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
+		}
+		g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
+		if g.pref.os == .windows {
+			g.gowrappers.writeln('\tCloseHandle(thread);')
+		}
+		g.gowrappers.writeln('}')
+		g.waiter_fns << '__v_thread_wait'
+	}
+}
+
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 	is_void := eltyp == 'void'
 	thread_typ := if is_void { '__v_thread' } else { '__v_thread_$eltyp' }
@@ -896,6 +913,7 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 	if fn_name !in g.waiter_fns {
 		g.waiter_fns << fn_name
 		if is_void {
+			g.register_thread_void_wait_call()
 			g.gowrappers.writeln('
 void ${fn_name}($thread_arr_typ a) {
 	for (int i = 0; i < a.len; ++i) {
