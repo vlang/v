@@ -86,13 +86,19 @@ pub fn read_bytes(path string) ?[]byte {
 	if fsize < 0 {
 		return error('ftell failed')
 	}
+	len := int(fsize)
+	// On some systems C.ftell can return values in the 64-bit range
+	// that, when cast to `int`, can result in values below 0.
+	if i64(len) < fsize {
+		return error('$fsize cast to int results in ${int(fsize)})')
+	}
 	C.rewind(fp)
-	mut res := []byte{len: int(fsize)}
-	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
+	mut res := []byte{len: len}
+	nr_read_elements := int(C.fread(res.data, len, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	res.trim(nr_read_elements * int(fsize))
+	res.trim(nr_read_elements * len)
 	return res
 }
 
@@ -113,9 +119,15 @@ pub fn read_file(path string) ?string {
 	}
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
+	allocate := int(fsize)
+	// On some systems C.ftell can return values in the 64-bit range
+	// that, when cast to `int`, can result in values below 0.
+	if i64(allocate) < fsize {
+		return error('$fsize cast to int results in ${int(fsize)})')
+	}
 	unsafe {
-		mut str := malloc_noscan(int(fsize) + 1)
-		nelements := int(C.fread(str, 1, fsize, fp))
+		mut str := malloc_noscan(allocate + 1)
+		nelements := int(C.fread(str, 1, allocate, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
@@ -590,7 +602,15 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := unsafe { malloc_noscan(int(fsize)) }
+	allocate := int(fsize)
+	// On some systems C.ftell can return values in the 64-bit range
+	// that, when cast to `int`, can result in values below 0.
+	if i64(allocate) < fsize {
+		panic('$fsize cast to int results in ${int(fsize)})')
+	}
+	buf := unsafe {
+		malloc_noscan(allocate)
+	}
 	nread := C.fread(buf, tsize, len, fp)
 	C.fclose(fp)
 	return unsafe {
