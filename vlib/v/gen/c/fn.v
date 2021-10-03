@@ -401,7 +401,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	for attr in node.attrs {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
-			export_alias := '$type_name ${attr.arg}($arg_str)'
+			calling_conv := if msvc_attrs.len > 0 { '$msvc_attrs ' } else { '' }
+			export_alias := '$type_name $calling_conv${attr.arg}($arg_str)'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $node.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
