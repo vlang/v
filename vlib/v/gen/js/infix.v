@@ -287,7 +287,11 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 		g.gen_deref_ptr(node.right_type)
 		g.write(',')
 		g.expr(node.left)
-		g.write('))')
+		g.write(')')
+		if node.op == .not_in {
+			g.write('.valueOf()')
+		}
+		g.write(')')
 		return
 	} else if r_sym.unaliased_sym.kind == .map {
 		g.expr(node.right)

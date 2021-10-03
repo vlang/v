@@ -145,7 +145,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.length);}, set: function(l) { this.map.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.size);}, set: function(l) { this.map.size = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
@@ -1182,7 +1182,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.write('.val')
 			}
 
-			if g.inside_map_set && op == .assign {
+			if false && g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write(', ')
 				g.expr(val)
@@ -2338,15 +2338,24 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 
 		if expr.is_setter {
 			g.inside_map_set = true
-			g.write('.map.set(')
+			g.write('.getOrSet(')
 		} else {
 			g.write('.map.get(')
 		}
 		g.expr(expr.index)
 		g.write('.\$toJS()')
-		if !expr.is_setter {
-			g.write(')')
+		if expr.is_setter {
+			// g.write(', ${g.to_js_typ_val(left_typ.)')
+			match left_typ.info {
+				ast.Map {
+					g.write(', ${g.to_js_typ_val(left_typ.info.value_type)}')
+				}
+				else {
+					verror('unreachable')
+				}
+			}
 		}
+		g.write(')')
 	} else if left_typ.kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
