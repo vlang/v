@@ -89,7 +89,7 @@ pub fn read_bytes(path string) ?[]byte {
 	len := int(fsize)
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
-	if len < 0 {
+	if i64(len) < fsize {
 		return error('$fsize cast to int results in ${int(fsize)})')
 	}
 	C.rewind(fp)
@@ -122,12 +122,12 @@ pub fn read_file(path string) ?string {
 	allocate := int(fsize)
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
-	if allocate < 0 {
+	if i64(allocate) < fsize {
 		return error('$fsize cast to int results in ${int(fsize)})')
 	}
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
-		nelements := int(C.fread(str, 1, fsize, fp))
+		nelements := int(C.fread(str, 1, allocate, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
@@ -605,7 +605,7 @@ pub fn read_file_array<T>(path string) []T {
 	allocate := int(fsize)
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
-	if allocate < 0 {
+	if i64(allocate) < fsize {
 		panic('$fsize cast to int results in ${int(fsize)})')
 	}
 	buf := unsafe {
