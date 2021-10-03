@@ -6627,8 +6627,6 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
 				g.gowrappers.writeln('\tfree(ret_ptr);')
 				g.gowrappers.writeln('\treturn ret;')
-			} else {
-				g.gowrappers.writeln('\treturn;')
 			}
 			g.gowrappers.writeln('}')
 			g.waiter_fns << waiter_fn_name
