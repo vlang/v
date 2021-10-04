@@ -877,7 +877,10 @@ fn (mut g Gen) write_shareds() {
 		done_types << typ
 		sh_typ := '__shared__$base'
 		mtx_typ := 'sync__RwMutex'
-		g.shared_types.writeln('struct $sh_typ { $mtx_typ mtx; $base val; };')
+		g.shared_types.writeln('struct $sh_typ {')
+		g.shared_types.writeln('\t$mtx_typ mtx;')
+		g.shared_types.writeln('\t$base val;')
+		g.shared_types.writeln('};')
 		g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
 		g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
 		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
