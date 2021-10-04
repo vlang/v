@@ -377,7 +377,7 @@ pub fn run<T>(global_app &T, port int) {
 			// println('vweb no db')
 		}
 		$for field in T.fields {
-			if field.is_shared {
+			if 'vweb_global' in field.attrs || field.is_shared {
 				request_app.$(field.name) = global_app.$(field.name)
 			}
 		}
