@@ -106,7 +106,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.inc_indent()
 		g.writeln('try {')
 		g.inc_indent()
-		g.write('return builtin.unwrap(')
+		g.write('return unwrap(')
 	}
 	if node.name == 'str' {
 		mut rec_type := node.receiver_type

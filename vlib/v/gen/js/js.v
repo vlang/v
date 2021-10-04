@@ -2306,10 +2306,10 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .array {
-			g.write('array_slice(')
-		} else {
+		if left_typ.kind == .string {
 			g.write('string_slice(')
+		} else {
+			g.write('array_slice(')
 		}
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
