@@ -735,11 +735,21 @@ pub fn (s string) index_after(p string, start int) int {
 
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
-	#let i = 0
-	#s.str.split('\n').forEach((str) => {
-	#res.arr[i] = new string(str);
-	#})
-
+	if s.len == 0 {
+		return res
+	}
+	mut start := 0
+	mut end := 0
+	for i := 0; i < s.len; i++ {
+		if s[i] == 10 {
+			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
+			res << if start == end { '' } else { s[start..end] }
+			start = i + 1
+		}
+	}
+	if start < s.len {
+		res << s[start..]
+	}
 	return res
 }
 
