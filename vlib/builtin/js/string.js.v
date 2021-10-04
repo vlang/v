@@ -71,7 +71,7 @@ pub fn (s string) split(dot string) []string {
 pub fn (s string) bytes() []byte {
 	sep := ''
 	mut arr := s.str.split(sep.str).map(it.charCodeAt(0))
-	#arr = new array(arr)
+	#arr = new array(new array_buffer({arr,index_start: new int(0),len: new int(arr.length)}))
 
 	return arr
 }
