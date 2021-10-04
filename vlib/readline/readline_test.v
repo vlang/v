@@ -1,4 +1,4 @@
-import readline { Readline }
+import readline
 
 fn no_lines(s string) string {
 	return s.replace('\n', ' ')
