@@ -1398,7 +1398,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
-	sym := g.table.get_final_type_symbol(g.unwrap_generic(typ))
+	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	match mut sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -2306,10 +2306,10 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .array {
-			g.write('array_slice(')
-		} else {
+		if left_typ.kind == .string {
 			g.write('string_slice(')
+		} else {
+			g.write('array_slice(')
 		}
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {

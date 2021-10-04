@@ -45,9 +45,9 @@ fn (mut a array_buffer) set(ix int, val voidptr) {
 #array_buffer.prototype.set = function(ix,val) { array_buffer_set(this,ix,val); }
 
 struct array {
-mut:
+pub mut:
 	arr array_buffer
-pub:
+
 	len int
 	cap int
 }
@@ -64,6 +64,14 @@ fn v_sort(mut arr array, comparator fn (voidptr, voidptr) int) {
 				need_iter = true
 			}
 		}
+	}
+}
+
+// trim trims the array length to "index" without modifying the allocated data. If "index" is greater
+// than len nothing will be changed.
+pub fn (mut a array) trim(index int) {
+	if index < a.len {
+		a.len = index
 	}
 }
 
@@ -368,7 +376,7 @@ pub fn (a &array) free() {
 // todo: once (a []byte) will work rewrite this
 pub fn (a array) bytestr() string {
 	res := ''
-	#a.arr.arr.forEach((item) => res.str += String.fromCharCode(+item))
+	#for (let i = 0;i < a.arr.len.valueOf();i++) res.str += String.fromCharCode(a.arr.get(new int(i)))
 
 	return res
 }
