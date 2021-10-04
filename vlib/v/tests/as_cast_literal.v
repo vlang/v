@@ -1,17 +1,12 @@
 interface IExample {}
 
-struct Example {
-	n int
-}
-
-fn test(a IExample) bool {
+fn thing(a IExample) bool {
 	return true
 }
 
-fn main() {
-	assert test(Example{123})
-	assert test(true)
-	assert test(123)
-	assert test(12.3)
-	assert test('abc')
+fn test_as_cast_with_literals() {
+	assert thing(true)
+	assert thing(123)
+	assert thing(12.3)
+	assert thing('abc')
 }
