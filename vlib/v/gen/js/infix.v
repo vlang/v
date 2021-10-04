@@ -8,7 +8,8 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 	l_sym := g.table.get_final_type_symbol(it.left_type)
 	r_sym := g.table.get_final_type_symbol(it.right_type)
 	greater_typ := g.greater_typ(it.left_type, it.right_type)
-	g.write('new ${g.typ(greater_typ)}( ')
+	cast_ty := if greater_typ == it.left_type { l_sym.cname } else { r_sym.cname }
+	g.write('new ${g.js_name(cast_ty)}( ')
 	g.cast_stack << greater_typ
 	if (l_sym.kind == .i64 || l_sym.kind == .u64) || (r_sym.kind == .i64 || r_sym.kind == .u64) {
 		g.write('BigInt(')

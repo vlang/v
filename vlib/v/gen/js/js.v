@@ -1398,7 +1398,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
-	sym := g.table.get_final_type_symbol(g.unwrap_generic(typ))
+	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	match mut sym.info {
 		ast.Struct, ast.Interface, ast.SumType {

@@ -111,8 +111,16 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 	return styp
 }
 
+/*
 pub fn (mut g JsGen) base_type(t ast.Type) string {
 	mut styp := g.cc_type(t, true)
+	return styp
+}
+*/
+fn (mut g JsGen) base_type(_t ast.Type) string {
+	t := g.unwrap_generic(_t)
+	share := t.share()
+	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	return styp
 }
 
