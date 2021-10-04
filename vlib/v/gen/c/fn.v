@@ -883,6 +883,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// }
 	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
+	} else if node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str'
+		&& !left_sym.has_method('str') {
+		g.gen_expr_to_string(node.left, node.left_type)
+		return
 	} else {
 		if left_sym.kind == .array {
 			if array_depth >= 0 {
