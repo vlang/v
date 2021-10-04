@@ -2242,9 +2242,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		} else {
 			mut got_styp := g.cc_type(got_type, true)
 			got_styp = match got_styp {
-				 'int' { 'int_literal' }
-				 'f64' { 'float_literal' }
-				 else { got_styp }
+				'int' { 'int_literal' }
+				'f64' { 'float_literal' }
+				else { got_styp }
 			}
 			println('$got_type $got_styp')
 			exp_styp := exp_sym.cname
