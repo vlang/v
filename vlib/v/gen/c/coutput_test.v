@@ -100,7 +100,8 @@ fn test_c_must_have_files() ? {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		print(term.colorize(term.magenta, 'v -o - $relpath') + ' matches all line paterns in ' +
 			term.colorize(term.magenta, must_have_relpath) + ' ')
-		compilation := os.execute('$vexe -o - $path')
+		file_options := get_file_options(path)
+		compilation := os.execute('$vexe -o - $file_options.vflags $path')
 		ensure_compilation_succeeded(compilation)
 		expected_lines := os.read_lines(must_have_path) or { [] }
 		generated_c_lines := compilation.output.split_into_lines()
@@ -171,4 +172,20 @@ fn target2paths(target_path string, postfix string) (string, string, string, str
 	relpath := vroot_relative(path)
 	target_relpath := vroot_relative(target_path)
 	return basename, path, relpath, target_relpath
+}
+
+struct FileOptions {
+mut:
+	vflags string
+}
+
+pub fn get_file_options(file string) FileOptions {
+	mut res := FileOptions{}
+	lines := os.read_lines(file) or { [] }
+	for line in lines {
+		if line.starts_with('// vtest vflags:') {
+			res.vflags = line.all_after(':').trim_space()
+		}
+	}
+	return res
 }
