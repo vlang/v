@@ -34,3 +34,31 @@ pub fn pow10(n int) f64 {
 	// n < -323
 	return 0.0
 }
+
+// base raised to power (i64)
+pub fn powi(a i64, b_ i64) i64 {
+	mut b := b_
+	mut p := a
+	mut v := i64(1)
+
+	if b < 0 { // exponent < 0
+		if a == 0 {
+			return -1 // division by 0 
+		}
+		return if a * a != 1 {
+			0
+		} else {
+			if (b & 1) > 0 { a } else { 1 }
+		}
+	}
+
+	for ; b > 0 ; {
+		if b & 1 > 0 {
+			v *= p
+		}
+		p *= p
+		b >>= 1
+	}
+
+	return v
+}

@@ -37,9 +37,9 @@ pub fn sqrtf(a f32) f32 {
 }
 
 // integer square-root
-pub fn isqrt(a int) int {
+pub fn isqrt(a i64) i64 {
 	mut x := a
-	mut q, mut r := 1, 0
+	mut q, mut r := i64(1), i64(0)
 	for ; q <= x; {
 		q <<= 2
 	}
