@@ -35,3 +35,22 @@ pub fn sqrt(a f64) f64 {
 pub fn sqrtf(a f32) f32 {
 	return f32(sqrt(a))
 }
+
+// integer square-root
+pub fn isqrt(a int) int {
+	mut x := a
+	mut q, mut r := 1, 0
+	for ; q <= x; {
+		q <<= 2
+	}
+	for ; q > 1; {
+		q >>= 2
+		t := x - r - q
+		r >>= 1
+		if t >= 0 {
+			x = t
+			r += q
+		}
+	}
+	return r
+}
