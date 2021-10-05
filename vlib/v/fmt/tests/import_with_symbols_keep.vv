@@ -1,0 +1,14 @@
+import readline { Readline }
+
+fn no_lines(s string) string {
+	return s.replace('\n', ' ')
+}
+
+fn main() {
+	mut methods := []string{}
+	$for method in Readline.methods {
+		methods << method.name
+	}
+	assert 'read_line_utf8' in methods
+	assert 'read_line' in methods
+}

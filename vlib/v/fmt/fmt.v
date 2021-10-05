@@ -760,6 +760,7 @@ pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
 pub fn (mut f Fmt) comp_for(node ast.CompFor) {
 	typ := f.no_cur_mod(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 	f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
+	f.mark_types_import_as_used(node.typ)
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)

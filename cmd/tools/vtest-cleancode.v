@@ -42,7 +42,6 @@ const (
 	]
 	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
-		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
 		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
 		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
 		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
