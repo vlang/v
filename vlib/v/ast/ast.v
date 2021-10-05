@@ -1260,6 +1260,7 @@ pub:
 	mode  AddressingMode
 	pos   token.Position
 pub mut:
+	segment      string // fs:
 	displacement AsmArg // 8, 16 or 32 bit literal value
 	base         AsmArg // gpr
 	index        AsmArg // gpr

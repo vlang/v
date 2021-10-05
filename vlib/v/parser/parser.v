@@ -942,6 +942,12 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				if p.prev_tok.position().line_nr < p.tok.position().line_nr {
 					break
 				}
+				mut segment := ''
+				if p.tok.kind == .name && p.peek_tok.kind == .colon {
+					segment = p.tok.lit
+					p.next()
+					p.next()
+				}
 				match p.tok.kind {
 					.name {
 						args << p.reg_or_alias()
@@ -985,7 +991,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						break
 					}
 					.lsbr {
-						args << p.asm_addressing()
+						mut addressing := p.asm_addressing()
+						addressing.segment = segment
+						args << addressing
 					}
 					.rcbr {
 						break

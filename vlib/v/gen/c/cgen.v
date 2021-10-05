@@ -2488,6 +2488,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('%$arg.name')
 		}
 		ast.AsmAddressing {
+			if arg.segment != '' {
+				g.write('%%$arg.segment:')
+			}
 			base := arg.base
 			index := arg.index
 			displacement := arg.displacement
@@ -2500,7 +2503,6 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				}
 				.displacement {
 					g.asm_arg(displacement, stmt)
-					g.write('()')
 				}
 				.base_plus_displacement {
 					g.asm_arg(displacement, stmt)
