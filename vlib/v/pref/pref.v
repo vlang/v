@@ -338,7 +338,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-g' {
 				res.is_debug = true
 				res.is_vlines = true
-				res.no_parallel = true // TODO: fix `-g` with the parallel backend (line numbers are wrong)
 				res.build_options << arg
 			}
 			'-cg' {

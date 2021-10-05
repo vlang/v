@@ -527,7 +527,10 @@ pub fn (mut g Gen) gen_file() {
 
 	if g.pref.is_vlines {
 		g.vlines_path = util.vlines_escape_path(g.file.path, g.pref.ccompiler)
+		g.is_vlines_enabled = true
+		g.inside_ternary = 0
 	}
+
 	g.stmts(g.file.stmts)
 	// Transfer embedded files
 	for path in g.file.embedded_files {

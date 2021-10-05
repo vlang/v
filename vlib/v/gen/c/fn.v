@@ -111,6 +111,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		return
 	}
 
+	old_is_vlines_enabled := g.is_vlines_enabled
+	g.is_vlines_enabled = true
+	defer {
+		g.is_vlines_enabled = old_is_vlines_enabled
+	}
+
 	tmp_defer_vars := g.defer_vars // must be here because of workflow
 	if !g.anon_fn {
 		g.defer_vars = []string{}
