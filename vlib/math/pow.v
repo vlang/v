@@ -43,16 +43,20 @@ pub fn powi(a i64, b_ i64) i64 {
 
 	if b < 0 { // exponent < 0
 		if a == 0 {
-			return -1 // division by 0 
+			return -1 // division by 0
 		}
 		return if a * a != 1 {
 			0
 		} else {
-			if (b & 1) > 0 { a } else { 1 }
+			if (b & 1) > 0 {
+				a
+			} else {
+				1
+			}
 		}
 	}
 
-	for ; b > 0 ; {
+	for ; b > 0; {
 		if b & 1 > 0 {
 			v *= p
 		}
