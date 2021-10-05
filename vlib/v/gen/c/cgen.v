@@ -2240,7 +2240,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				got_styp)
 			g.inside_cast_in_heap--
 		} else {
-			got_styp := g.cc_type(got_type, true)
+			mut got_styp := g.cc_type(got_type, true)
+			got_styp = match got_styp {
+				'int' { 'int_literal' }
+				'f64' { 'float_literal' }
+				else { got_styp }
+			}
 			exp_styp := exp_sym.cname
 			mut fname := '/*$exp_sym*/I_${got_styp}_to_Interface_$exp_styp'
 			if exp_sym.info.is_generic {
