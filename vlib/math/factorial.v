@@ -53,3 +53,12 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 	}
 	return log_factorial + sum
 }
+
+// integer factorial
+pub fn int_factorial(n int) i64 {
+	mut r := i64(1)
+	for i := 2; i <= n; i++ {
+		r *= i
+	}
+	return r
+}
