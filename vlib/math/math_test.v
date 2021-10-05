@@ -946,3 +946,21 @@ fn test_large_tan() {
 		assert soclose(f1, f2, 4e-8)
 	}
 }
+
+fn test_isqrt() {
+	assert isqrt(i64(123456789) * i64(123456789)) == 123456789
+	assert isqrt(144) == 12
+	assert isqrt(0) == 0
+}
+
+fn test_powi() {
+	assert powi(2, 62) == i64(4611686018427387904)
+	assert powi(0, -2) == -1 // div by 0
+	assert powi(2, -1) == 0
+}
+
+fn test_int_factorial() {
+	assert int_factorial(20) == 2432902008176640000
+	assert int_factorial(1) == 1
+	assert int_factorial(2) == 2
+}
