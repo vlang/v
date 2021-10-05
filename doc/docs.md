@@ -3645,9 +3645,9 @@ fn main() {
 ```
 
 ```v failcompile
+// hello_test.v
 module main
 
-// hello_test.v
 fn test_hello() {
 	assert hello() == 'Hello world'
 }
@@ -3673,7 +3673,7 @@ just like `hello.v`, i.e. both are part of the same module. Note also that
 since `module main` is a regular module like the others, internal tests can
 be used to test private functions in your main program .v files too.
 
-You can also define special test functions in a test file:
+You can also define these special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
 * `testsuite_end` which will be run *after* all other test functions.
 
