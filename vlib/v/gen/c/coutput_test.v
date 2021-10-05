@@ -98,7 +98,7 @@ fn test_c_must_have_files() ? {
 	mut total_errors := 0
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
-		print(term.colorize(term.magenta, 'v -o - $relpath') + ' matches all line paterns in ' +
+		print(term.colorize(term.magenta, 'v -o - $relpath') + ' matches all line patterns in ' +
 			term.colorize(term.magenta, must_have_relpath) + ' ')
 		file_options := get_file_options(path)
 		compilation := os.execute('$vexe -o - $file_options.vflags $path')
