@@ -327,6 +327,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+
+			global_g.force_main_console = global_g.force_main_console || g.force_main_console
+
 			// merge maps
 			for k, v in g.shareds {
 				global_g.shareds[k] = v
