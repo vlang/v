@@ -1483,7 +1483,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 }
 
 fn (mut g Gen) is_gui_app() bool {
-	$if windows {
+	if g.pref.os == .windows {
 		if g.force_main_console {
 			return false
 		}

@@ -1,0 +1,6 @@
+// vtest vflags: -cc msvc -os windows
+
+[console]
+fn main() {
+	println('hello world')
+}
