@@ -3706,6 +3706,9 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut got_types := []ast.Type{}
 	for expr in node.exprs {
 		typ := c.expr(expr)
+		if typ == ast.void_type {
+			c.error('`$expr` used as value', node.pos)
+		}
 		// Unpack multi return types
 		sym := c.table.get_type_symbol(typ)
 		if sym.kind == .multi_return {
