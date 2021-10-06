@@ -6,8 +6,6 @@ import os
 import stbi
 import sokol.gfx
 
-fn C.sg_isvalid() bool
-
 // TODO return ?Image
 pub fn (mut ctx Context) create_image(file string) Image {
 	// println('\ncreate_image("$file")')
@@ -25,7 +23,7 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			return img
 		}
 	}
-	if !C.sg_isvalid() {
+	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
 		stb_img := stbi.load(file) or { return Image{} }
@@ -145,7 +143,7 @@ pub fn (mut img Image) update_pixel_data(buf &byte) {
 
 // TODO copypasta
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
-	if !C.sg_isvalid() {
+	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
 		stb_img := stbi.load(file) or { return Image{} }
