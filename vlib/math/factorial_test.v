@@ -17,4 +17,6 @@ fn test_int_factorial() {
 	assert int_factorial(1) == 1
 	assert int_factorial(2) == 2
 	assert int_factorial(0) == 1
+	assert int_factorial(-2) == 1
+	assert int_factorial(1000) == -1
 }
