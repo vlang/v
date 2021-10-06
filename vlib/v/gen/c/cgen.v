@@ -3622,6 +3622,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.Assoc {
 			g.assoc(node)
 		}
+		ast.AtExpr {
+			g.comp_at(node)
+		}
 		ast.BoolLiteral {
 			g.write(node.val.str())
 		}
@@ -3711,25 +3714,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			}
 		}
-		ast.DumpExpr {
-			g.dump_expr(node)
-		}
-		ast.AtExpr {
-			g.comp_at(node)
-		}
+		ast.Comment {}
 		ast.ComptimeCall {
 			g.comptime_call(node)
 		}
 		ast.ComptimeSelector {
 			g.comptime_selector(node)
 		}
-		ast.Comment {}
 		ast.ConcatExpr {
 			g.concat_expr(node)
 		}
 		ast.CTempVar {
 			// g.write('/*ctmp .orig: $node.orig.str() , ._typ: $node.typ, .is_ptr: $node.is_ptr */ ')
 			g.write(node.name)
+		}
+		ast.DumpExpr {
+			g.dump_expr(node)
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -3779,18 +3779,42 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(node.val) // .int().str())
 			}
 		}
+		ast.IsRefType {
+			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			node_typ := g.unwrap_generic(typ)
+			sym := g.table.get_type_symbol(node_typ)
+			if sym.language == .v && sym.kind in [.placeholder, .any] {
+				g.error('unknown type `$sym.name`', node.pos)
+			}
+			is_ref_type := g.contains_ptr(node_typ)
+			g.write('/*IsRefType*/ $is_ref_type')
+		}
+		ast.Likely {
+			if node.is_likely {
+				g.write('_likely_')
+			} else {
+				g.write('_unlikely_')
+			}
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+		}
 		ast.LockExpr {
 			g.lock_expr(node)
-		}
-		ast.MatchExpr {
-			g.match_expr(node)
 		}
 		ast.MapInit {
 			g.map_init(node)
 		}
+		ast.MatchExpr {
+			g.match_expr(node)
+		}
 		ast.NodeError {}
 		ast.None {
 			g.write('_const_none__')
+		}
+		ast.OffsetOf {
+			styp := g.typ(node.struct_type)
+			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.OrExpr {
 			// this should never appear here
@@ -3872,6 +3896,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SelectExpr {
 			g.select_expr(node)
 		}
+		ast.SelectorExpr {
+			g.selector_expr(node)
+		}
 		ast.SizeOf {
 			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
 			node_typ := g.unwrap_generic(typ)
@@ -3881,20 +3908,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			styp := g.typ(node_typ)
 			g.write('sizeof(${util.no_dots(styp)})')
-		}
-		ast.IsRefType {
-			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
-			node_typ := g.unwrap_generic(typ)
-			sym := g.table.get_type_symbol(node_typ)
-			if sym.language == .v && sym.kind in [.placeholder, .any] {
-				g.error('unknown type `$sym.name`', node.pos)
-			}
-			is_ref_type := g.contains_ptr(node_typ)
-			g.write('/*IsRefType*/ $is_ref_type')
-		}
-		ast.OffsetOf {
-			styp := g.typ(node.struct_type)
-			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
@@ -3913,9 +3926,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.struct_init(node)
 			}
 		}
-		ast.SelectorExpr {
-			g.selector_expr(node)
-		}
 		ast.TypeNode {
 			// match sum Type
 			// g.write('/* Type */')
@@ -3928,16 +3938,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.TypeOf {
 			g.typeof_expr(node)
-		}
-		ast.Likely {
-			if node.is_likely {
-				g.write('_likely_')
-			} else {
-				g.write('_unlikely_')
-			}
-			g.write('(')
-			g.expr(node.expr)
-			g.write(')')
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
