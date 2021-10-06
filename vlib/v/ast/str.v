@@ -133,7 +133,8 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
 			arg_sym := t.get_type_symbol(arg.typ)
-			if s.starts_with('&') && !arg_sym.is_number() && arg_sym.kind != .bool {
+			if s.starts_with('&') && ((!arg_sym.is_number() && arg_sym.kind != .bool)
+				|| node.language != .v) {
 				s = s[1..]
 			}
 		}
