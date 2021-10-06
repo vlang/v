@@ -362,7 +362,8 @@ fn test_reassign() {
 /*
 fn test_runes() {
 	s := 'привет'
-	assert s.len == 12
+	println(s.len)
+	//assert s.len == 12
 	s2 := 'privet'
 	assert s2.len == 6
 	u := s.runes()
@@ -644,14 +645,13 @@ fn test_quote() {
 	// assert a.str() == "'"
 }
 
-/*
 fn test_limit() {
 	s := 'hello'
 	assert s.limit(2) == 'he'
 	assert s.limit(9) == s
 	assert s.limit(0) == ''
 	// assert s.limit(-1) == ''
-}*/
+}
 
 fn test_repeat() {
 	s1 := 'V! '

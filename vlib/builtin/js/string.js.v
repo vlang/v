@@ -6,6 +6,16 @@ pub:
 	len int
 }
 
+pub fn (s string) runes() []rune {
+	mut runes := []rune{}
+	for i := 0; i < s.len; i++ {
+		mut r := rune(`0`)
+		#r = new rune(s.str[i.val].charCodeAt())
+		runes << r
+	}
+	return runes
+}
+
 pub fn (s string) slice(a int, b int) string {
 	return string(s.str.slice(a, b))
 }
@@ -784,7 +794,6 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-/*
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
@@ -795,7 +804,7 @@ pub fn (s string) limit(max int) string {
 	}
 	return u[0..max].string()
 }
-*/
+
 // is_title returns true if all words of the string is capitalized.
 // Example: assert 'Hello V Developer'.is_title() == true
 pub fn (s string) is_title() bool {
