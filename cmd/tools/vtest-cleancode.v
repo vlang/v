@@ -30,7 +30,6 @@ const (
 		'vlib/gg/m4/matrix.v',
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
-		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	]
 	vfmt_verify_list                = [
