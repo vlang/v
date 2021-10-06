@@ -958,9 +958,3 @@ fn test_powi() {
 	assert powi(0, -2) == -1 // div by 0
 	assert powi(2, -1) == 0
 }
-
-fn test_int_factorial() {
-	assert int_factorial(20) == 2432902008176640000
-	assert int_factorial(1) == 1
-	assert int_factorial(2) == 2
-}

@@ -54,9 +54,9 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 	return log_factorial + sum
 }
 
-// integer factorial
+// integer factorial, returns 1 for n <= 0 and -1 if the input is too large (not within the lookup table)
 pub fn int_factorial(n int) i64 {
-	if n < 0 {
+	if n <= 0 {
 		return i64(1)
 	}
 
@@ -64,5 +64,5 @@ pub fn int_factorial(n int) i64 {
 		return i64(factorials_table[n])
 	}
 
-	return i64(1)
+	return i64(-1)
 }
