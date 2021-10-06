@@ -792,18 +792,13 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 }
 
 fn (mut g JsGen) expr(node ast.Expr) {
+	// NB: please keep the type names in the match here in alphabetical order:
 	match node {
-		ast.NodeError {}
 		ast.EmptyExpr {}
-		ast.CTempVar {
-			g.write('/* ast.CTempVar: node.name */')
-		}
-		ast.DumpExpr {
-			g.write('/* ast.DumpExpr: $node.expr */')
-		}
 		ast.AnonFn {
 			g.gen_fn_decl(node.decl)
 		}
+		ast.ArrayDecompose {}
 		ast.ArrayInit {
 			g.gen_array_init_expr(node)
 		}
@@ -813,6 +808,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.Assoc {
 			// TODO
+		}
+		ast.AtExpr {
+			g.write('"$node.val"')
 		}
 		ast.BoolLiteral {
 			g.write('new bool(')
@@ -826,11 +824,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.CallExpr {
 			g.gen_call_expr(node)
 		}
-		ast.ChanInit {
-			// TODO
-		}
 		ast.CastExpr {
 			g.gen_type_cast_expr(node)
+		}
+		ast.ChanInit {
+			// TODO
 		}
 		ast.CharLiteral {
 			if utf8_str_len(node.val) < node.val.len {
@@ -840,8 +838,20 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			}
 		}
 		ast.Comment {}
+		ast.ComptimeCall {
+			// TODO
+		}
+		ast.ComptimeSelector {
+			// TODO
+		}
 		ast.ConcatExpr {
 			// TODO
+		}
+		ast.CTempVar {
+			g.write('/* ast.CTempVar: node.name */')
+		}
+		ast.DumpExpr {
+			g.write('/* ast.DumpExpr: $node.expr */')
 		}
 		ast.EnumVal {
 			sym := g.table.get_type_symbol(node.typ)
@@ -872,14 +882,20 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.gen_integer_literal_expr(node)
 		}
+		ast.Likely {
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+		}
 		ast.LockExpr {
 			g.gen_lock_expr(node)
 		}
-		ast.MapInit {
-			g.gen_map_init_expr(node)
-		}
+		ast.NodeError {}
 		ast.None {
 			g.write('none__')
+		}
+		ast.MapInit {
+			g.gen_map_init_expr(node)
 		}
 		ast.MatchExpr {
 			g.match_expr(node)
@@ -982,28 +998,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 
 			g.write('${g.js_name(sym.name)}')
 		}
-		ast.Likely {
-			g.write('(')
-			g.expr(node.expr)
-			g.write(')')
-		}
 		ast.TypeOf {
 			g.gen_typeof_expr(node)
 			// TODO: Should this print the V type or the JS type?
 		}
-		ast.AtExpr {
-			g.write('"$node.val"')
-		}
-		ast.ComptimeCall {
-			// TODO
-		}
-		ast.ComptimeSelector {
-			// TODO
-		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
-		ast.ArrayDecompose {}
 	}
 }
 
