@@ -291,7 +291,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if expected == ast.charptr_type && got == ast.char_type.to_ptr() {
+	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
 	if expected.has_flag(.optional) {

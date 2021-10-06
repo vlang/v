@@ -2236,7 +2236,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
-			got_styp := g.cc_type(got_type.to_ptr(), true)
+			got_styp := g.cc_type(got_type.ref(), true)
 			// TODO: why does cc_type even add this in the first place?
 			exp_styp := exp_sym.cname
 			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
@@ -3099,7 +3099,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 									is_used_var_styp = true
 								} else if val is ast.PrefixExpr {
 									if val.op == .amp && val.right is ast.StructInit {
-										var_styp := g.typ(val.right.typ.to_ptr())
+										var_styp := g.typ(val.right.typ.ref())
 										g.write('$var_styp ')
 										is_used_var_styp = true
 									}
@@ -6147,14 +6147,14 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				g.type_definitions.writeln('\tunion {')
 				for variant in typ.info.variants {
 					variant_sym := g.table.get_type_symbol(variant)
-					g.type_definitions.writeln('\t\t${g.typ(variant.to_ptr())} _$variant_sym.cname;')
+					g.type_definitions.writeln('\t\t${g.typ(variant.ref())} _$variant_sym.cname;')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
 				if typ.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
 					for field in typ.info.fields {
-						g.type_definitions.writeln('\t${g.typ(field.typ.to_ptr())} $field.name;')
+						g.type_definitions.writeln('\t${g.typ(field.typ.ref())} $field.name;')
 					}
 				}
 				g.type_definitions.writeln('};')

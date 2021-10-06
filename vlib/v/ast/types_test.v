@@ -18,10 +18,10 @@ fn test_muls() {
 	t = t.set_nr_muls(0)
 	assert t.nr_muls() == 0
 	assert t.is_ptr() == false
-	t = t.to_ptr()
+	t = t.ref()
 	assert t.nr_muls() == 1
 	assert t.is_ptr() == true
-	t = t.to_ptr()
+	t = t.ref()
 	assert t.nr_muls() == 2
 	assert t.is_ptr() == true
 	t = t.deref()
