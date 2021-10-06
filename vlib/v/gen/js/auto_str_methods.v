@@ -477,6 +477,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		} else if sym.kind in [.f32, .f64] {
 			g.definitions.writeln('\t\tlet x = new string( it.val + "");')
 		} else if sym.kind == .rune {
+			g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(it.val) + "\`");')
 			// Rune are managed at this level as strings
 			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
 		} else if sym.kind == .string {
@@ -541,8 +542,8 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 		} else if sym.kind == .string {
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, a.arr.get(new int(i)));')
 		} else if sym.kind == .rune {
-			// tmp_str := str_intp_rune('${elem_str_fn_name}(  a[i] $deref)')
-			// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+			g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(a.arr.get(new int(i)).val) + "\`");')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')
 		} else {
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) $deref));')
 		}
@@ -593,7 +594,8 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	if key_sym.kind == .string {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("\'" + key.str + "\'"));')
 	} else if key_sym.kind == .rune {
-		// tmp_str := str_intp_rune('${key_str_fn_name}(key)')
+		g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(key.val) + "\`");')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')
 		// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${key_str_fn_name}(key));')
@@ -603,14 +605,14 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
 		// tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value);')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,new string("\'" + value.str + "\'"));')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value.val + "");')
 	} else if val_sym.kind == .rune {
-		//	tmp_str := str_intp_rune('${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))')
-		//	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(value.val) + "\`");')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(value));')
 	}

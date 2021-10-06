@@ -89,3 +89,11 @@ pub fn (mut b Builder) cut_to(pos int) string {
 	}
 	return b.cut_last(b.len - pos)
 }
+
+pub fn (mut b Builder) write_runes(runes []rune) {
+	for r in runes {
+		res := string(r)
+		#res.str = String.fromCharCode(r.val)
+		b << res.bytes()
+	}
+}
