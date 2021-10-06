@@ -56,9 +56,13 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 
 // integer factorial
 pub fn int_factorial(n int) i64 {
-	mut r := i64(1)
-	for i := 2; i <= n; i++ {
-		r *= i
+	if n < 0 {
+		return i64(1)
 	}
-	return r
+
+	if n < factorials_table.len {
+		return i64(factorials_table[n])
+	}
+
+	return i64(1)
 }
