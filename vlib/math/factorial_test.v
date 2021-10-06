@@ -12,11 +12,11 @@ fn test_log_factorial() {
 	assert log_factorial(0) == log(1)
 }
 
-fn test_int_factorial() {
-	assert int_factorial(20) == 2432902008176640000
-	assert int_factorial(1) == 1
-	assert int_factorial(2) == 2
-	assert int_factorial(0) == 1
-	assert int_factorial(-2) == 1
-	assert int_factorial(1000) == -1
+fn test_factoriali() {
+	assert factoriali(20) == 2432902008176640000
+	assert factoriali(1) == 1
+	assert factoriali(2) == 2
+	assert factoriali(0) == 1
+	assert factoriali(-2) == 1
+	assert factoriali(1000) == -1
 }

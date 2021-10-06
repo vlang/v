@@ -36,8 +36,8 @@ pub fn sqrtf(a f32) f32 {
 	return f32(sqrt(a))
 }
 
-// integer square-root
-pub fn isqrt(a i64) i64 {
+// sqrti calculates the integer square-root of the provided value. (i64)
+pub fn sqrti(a i64) i64 {
 	mut x := a
 	mut q, mut r := i64(1), i64(0)
 	for ; q <= x; {

@@ -35,20 +35,23 @@ pub fn pow10(n int) f64 {
 	return 0.0
 }
 
-// base raised to power (i64)
-pub fn powi(a i64, b_ i64) i64 {
-	mut b := b_
+// powi returns base raised to power (a**b) as an integer (i64)
+// 
+// special case:
+// powi(a, b) = -1 for a = 0 and b < 0
+pub fn powi(a i64, b i64) i64 {
+	mut b_ := b
 	mut p := a
 	mut v := i64(1)
 
-	if b < 0 { // exponent < 0
+	if b_ < 0 { // exponent < 0
 		if a == 0 {
 			return -1 // division by 0
 		}
 		return if a * a != 1 {
 			0
 		} else {
-			if (b & 1) > 0 {
+			if (b_ & 1) > 0 {
 				a
 			} else {
 				1
@@ -56,12 +59,12 @@ pub fn powi(a i64, b_ i64) i64 {
 		}
 	}
 
-	for ; b > 0; {
-		if b & 1 > 0 {
+	for ; b_ > 0; {
+		if b_ & 1 > 0 {
 			v *= p
 		}
 		p *= p
-		b >>= 1
+		b_ >>= 1
 	}
 
 	return v

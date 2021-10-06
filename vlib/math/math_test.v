@@ -947,10 +947,10 @@ fn test_large_tan() {
 	}
 }
 
-fn test_isqrt() {
-	assert isqrt(i64(123456789) * i64(123456789)) == 123456789
-	assert isqrt(144) == 12
-	assert isqrt(0) == 0
+fn test_sqrti() {
+	assert sqrti(i64(123456789) * i64(123456789)) == 123456789
+	assert sqrti(144) == 12
+	assert sqrti(0) == 0
 }
 
 fn test_powi() {
