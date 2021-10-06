@@ -1,4 +1,4 @@
-vlib/v/checker/tests/return_void_type_err.vv:2:2: error: cannot return a void type `println(msg)`
+vlib/v/checker/tests/return_void_type_err.vv:2:2: error: `println(msg)` used as value
     1 | fn hello(msg string) ? {
     2 |     return println(msg)
       |     ~~~~~~~~~~~~~~~~~~~

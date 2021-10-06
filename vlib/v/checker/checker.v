@@ -3707,7 +3707,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	for expr in node.exprs {
 		typ := c.expr(expr)
 		if typ == ast.void_type {
-			c.error('cannot return a void type `$expr`', node.pos)
+			c.error('`$expr` used as value', node.pos)
 		}
 		// Unpack multi return types
 		sym := c.table.get_type_symbol(typ)
