@@ -39,13 +39,14 @@ fn (mut g Gen) gen_jsons() {
 		mut enc := strings.new_builder(100)
 		sym := g.table.get_type_symbol(utyp)
 		styp := g.typ(utyp)
+		tmp := g.typ(utyp.clear_flag(.shared_f))
 		g.register_optional(utyp)
 		// println('gen_json_for_type($sym.name)')
 		// decode_TYPE funcs receive an actual cJSON* object to decode
 		// cJSON_Parse(str) call is added by the compiler
 		// Code gen decoder
 		dec_fn_name := js_dec_name(styp)
-		dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
+		dec_fn_dec := 'Option_$tmp ${dec_fn_name}(cJSON* root)'
 		dec.writeln('
 $dec_fn_dec {
 	$styp res;
@@ -62,7 +63,7 @@ $dec_fn_dec {
 		// Code gen encoder
 		// encode_TYPE funcs receive an object to encode
 		enc_fn_name := js_enc_name(styp)
-		enc_fn_dec := 'cJSON* ${enc_fn_name}($styp val)'
+		enc_fn_dec := 'cJSON* ${enc_fn_name}($tmp val)'
 		g.json_forward_decls.writeln('$enc_fn_dec;\n')
 		enc.writeln('
 $enc_fn_dec {
