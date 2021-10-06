@@ -116,11 +116,11 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
-	str_types              []StrType // types that need automatic str() generation
-	generated_str_fns      []StrType // types that already have a str() function
-	threaded_fns           []string  // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns             []string  // functions that wait for `go xxx()` to finish
-	auto_fn_definitions    []string  // auto generated functions defination list
+	str_types              []StrType       // types that need automatic str() generation
+	generated_str_fns      []StrType       // types that already have a str() function
+	threaded_fns           shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns             []string        // functions that wait for `go xxx()` to finish
+	auto_fn_definitions    []string        // auto generated functions defination list
 	sumtype_casting_fns    []SumtypeCastingFn
 	anon_fn_definitions    []string     // anon generated functions defination list
 	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
@@ -298,6 +298,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 					inner_loop: &ast.EmptyStmt{}
 					field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 					array_sort_fn: global_g.array_sort_fn
+					threaded_fns: global_g.threaded_fns
 					done_optionals: global_g.done_optionals
 					is_autofree: global_g.pref.autofree
 				}
@@ -370,7 +371,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.nr_closures += g.nr_closures
 			global_g.has_main = global_g.has_main || g.has_main
 
-			global_g.threaded_fns << g.threaded_fns
 			global_g.waiter_fns << g.waiter_fns
 			global_g.auto_fn_definitions << g.auto_fn_definitions
 			global_g.anon_fn_definitions << g.anon_fn_definitions
@@ -6668,7 +6668,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	}
 	// Register the wrapper type and function
-	if name !in g.threaded_fns {
+	mut should_register := false
+	lock g.threaded_fns {
+		if name !in g.threaded_fns {
+			g.threaded_fns << name
+			should_register = true
+		}
+	}
+	if should_register {
 		g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 		if expr.is_method {
 			styp := g.typ(expr.receiver_type)
@@ -6762,7 +6769,6 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.gowrappers.writeln('\treturn 0;')
 		}
 		g.gowrappers.writeln('}')
-		g.threaded_fns << name
 	}
 	if node.is_expr {
 		g.empty_line = false
