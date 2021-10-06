@@ -183,12 +183,12 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	return int(t) & 0xff00ffff | (nr_muls << 16)
 }
 
-// increments nr_nuls on `t` and return it
+// increments nr_muls on `t` and return it
 [inline]
-pub fn (t Type) to_ptr() Type {
+pub fn (t Type) ref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
-		panic('to_ptr: nr_muls is already at max of 255')
+		panic('ref: nr_muls is already at max of 255')
 	}
 	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
 }
