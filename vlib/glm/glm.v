@@ -63,7 +63,7 @@ pub fn (m Mat4) str() string {
 			s += '  '
 		}
 		for j in 0 .. 4 {
-			val := unsafe {m.data[i * 4 + j]}
+			val := unsafe { m.data[i * 4 + j] }
 			s += '${val:5.2f} '
 		}
 		if i != 3 {
@@ -249,7 +249,7 @@ pub fn mult(a Mat4, b Mat4) Mat4 {
 		for r in 0 .. 4 {
 			mut prod := f32(0)
 			for c in 0 .. 4 {
-				prod += unsafe {a.data[c * 4 + r] * b.data[i * 4 + c]}
+				prod += unsafe { a.data[c * 4 + r] * b.data[i * 4 + c] }
 			}
 			unsafe {
 				out[i * 4 + r] = prod
