@@ -650,13 +650,15 @@ pub fn (mut p Parser) value() ?ast.Value {
 				ast.Value(t)
 			}
 			else {
-				error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit"')
-				ast.Value(ast.Null{}) // TODO workaround bug
+				ast.Value(ast.Null{})
 			}
 		}
+		if value is ast.Null {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit"')
+		}
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed value $value.to_json()')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "$p.tok.kind" as value $value.to_json()')
 	return value
 }
 
