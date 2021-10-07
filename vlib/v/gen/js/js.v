@@ -842,7 +842,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.CTempVar {
-			g.write('/* ast.CTempVar: node.name */')
+			g.write('${node.name}')
 		}
 		ast.DumpExpr {
 			g.write('/* ast.DumpExpr: $node.expr */')
@@ -1001,6 +1001,62 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 	}
 }
+struct UnsupportedAssertCtempTransform {
+	msg  string
+	code int
+}
+
+const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
+
+
+fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+	match expr {
+		ast.CallExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
+		}
+		ast.ParExpr {
+			if expr.expr is ast.CallExpr {
+				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.CallExpr {
+				sym := g.table.get_final_type_symbol(g.unwrap_generic(expr.expr.return_type))
+				if sym.kind == .struct_ {
+					if (sym.info as ast.Struct).is_union {
+						return js.unsupported_ctemp_assert_transform
+					}
+				}
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {}
+	}
+	return js.unsupported_ctemp_assert_transform
+}
+
+fn (mut g JsGen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
+	return ast.CTempVar{
+		name: g.new_tmp_var()
+		typ: expr_type
+		is_ptr: expr_type.is_ptr()
+		orig: expr
+	}
+}
+
+fn (mut g JsGen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
+	x := g.new_ctemp_var(expr, expr_type)
+	g.gen_ctemp_var(x)
+	return x
+}
+
+fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
+	styp := g.typ(tvar.typ)
+	g.write('let $tvar.name = ')
+	g.expr(tvar.orig)
+	g.writeln(';')
+}
+
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := g.file.path
@@ -1089,11 +1145,23 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 }
 
 // TODO
-fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
-	if !a.is_used {
+fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
+	mut node := orig_node
+	if !node.is_used {
 		return
 	}
+
 	g.writeln('// assert')
+	
+	if mut node.expr is ast.InfixExpr {
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			node.expr.left = subst_expr
+		}
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			node.expr.right = subst_expr
+		}
+	}
+	mut a := node
 	g.write('if( ')
 	g.expr(a.expr)
 	g.write('.valueOf() ) {')
