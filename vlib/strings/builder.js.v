@@ -97,3 +97,25 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 		b << res.bytes()
 	}
 }
+
+// after(6) returns 'world'
+// buf == 'hello world'
+pub fn (mut b Builder) after(n int) string {
+	if n >= b.len {
+		return ''
+	}
+
+	x := b.slice(n, b.len)
+	return x.bytestr()
+}
+
+// last_n(5) returns 'world'
+// buf == 'hello world'
+pub fn (b &Builder) last_n(n int) string {
+	if n >= b.len {
+		return ''
+	}
+
+	x := b.slice(b.len - n, b.len)
+	return x.bytestr()
+}

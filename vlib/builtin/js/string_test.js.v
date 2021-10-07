@@ -359,11 +359,10 @@ fn test_reassign() {
 	assert b == 'hi!'
 }
 
-/*
 fn test_runes() {
 	s := 'привет'
 	println(s.len)
-	//assert s.len == 12
+	// assert s.len == 12
 	s2 := 'privet'
 	assert s2.len == 6
 	u := s.runes()
@@ -386,7 +385,7 @@ fn test_runes() {
 	last := u[u.len - 1]
 	assert first.str().len == 2
 	assert last.str().len == 2
-}*/
+}
 
 fn test_contains() {
 	s := 'view.v'
@@ -420,7 +419,6 @@ fn test_arr_contains() {
 	assert ints.contains(2)
 }
 
-/*
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
@@ -434,7 +432,7 @@ fn test_to_num() {
 	big := '93993993939322'
 	assert big.u64() == 93993993939322
 	assert big.i64() == 93993993939322
-}*/
+}
 
 /*
 fn test_inter_format_string() {
@@ -473,7 +471,6 @@ fn test_hash() {
 	assert s5.hash() % ((1 << 20) - 1) == s.hash() % ((1 << 20) - 1)
 	assert s5.hash() % ((1 << 20) - 1) == 592861
 }*/
-
 fn test_trim() {
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'

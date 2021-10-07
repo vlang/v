@@ -78,3 +78,21 @@ fn js_stacktrace() string {
 
 	return stacktrace
 }
+
+// Check for nil value
+pub fn isnil(val voidptr) bool {
+	res := false
+	// This one is kinda weird. In C and native backend we can cast booleans and integers to pointers
+	// so we just check *for* all possible NULL-like values here.
+	#val = val.valueOf()
+	#res.val = val === null || val === undefined || val === false || val === 0 || val === BigInt(0)
+
+	return res
+}
+
+pub fn (f float_literal) str() string {
+	res := ''
+	#res.str += f.valueOf()
+
+	return res
+}

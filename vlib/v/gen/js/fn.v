@@ -221,6 +221,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	name = g.generic_fn_name(node.concrete_types, name, false)
 	g.write('${name}(')
 	g.expr(it.left)
+	g.gen_deref_ptr(it.left_type)
 	g.write(',')
 	for i, arg in it.args {
 		g.expr(arg.expr)
