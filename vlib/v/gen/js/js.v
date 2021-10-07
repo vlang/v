@@ -842,7 +842,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.CTempVar {
-			g.write('${node.name}')
+			g.write('$node.name')
 		}
 		ast.DumpExpr {
 			g.write('/* ast.DumpExpr: $node.expr */')
@@ -1001,13 +1001,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 	}
 }
+
 struct UnsupportedAssertCtempTransform {
 	msg  string
 	code int
 }
 
 const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
-
 
 fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
 	match expr {
@@ -1056,7 +1056,6 @@ fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
 	g.expr(tvar.orig)
 	g.writeln(';')
 }
-
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := g.file.path
@@ -1152,7 +1151,7 @@ fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
 	}
 
 	g.writeln('// assert')
-	
+
 	if mut node.expr is ast.InfixExpr {
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
 			node.expr.left = subst_expr
