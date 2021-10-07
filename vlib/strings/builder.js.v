@@ -105,7 +105,7 @@ pub fn (mut b Builder) after(n int) string {
 		return ''
 	}
 
-	x := b.slice(n,b.len)
+	x := b.slice(n, b.len)
 	return x.bytestr()
 }
 
@@ -116,6 +116,6 @@ pub fn (b &Builder) last_n(n int) string {
 		return ''
 	}
 
-	x := b.slice(b.len - n,b.len)
+	x := b.slice(b.len - n, b.len)
 	return x.bytestr()
 }

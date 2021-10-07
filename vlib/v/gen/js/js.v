@@ -1043,14 +1043,14 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write('new string("${unknown_value}")')
+			g.write('new string("$unknown_value")')
 		}
 		ast.PrefixExpr {
 			if expr.right is ast.CastExpr {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
-				g.write('new string("${unknown_value}")')
+				g.write('new string("$unknown_value")')
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}

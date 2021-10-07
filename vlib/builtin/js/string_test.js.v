@@ -359,11 +359,10 @@ fn test_reassign() {
 	assert b == 'hi!'
 }
 
-
 fn test_runes() {
 	s := 'привет'
 	println(s.len)
-	//assert s.len == 12
+	// assert s.len == 12
 	s2 := 'privet'
 	assert s2.len == 6
 	u := s.runes()
@@ -420,7 +419,6 @@ fn test_arr_contains() {
 	assert ints.contains(2)
 }
 
-
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
@@ -457,7 +455,6 @@ fn test_inter_format_string() {
 	str_string := '-${str:s}-'
 	assert str_string == '-abc-'
 }*/
-
 
 /*
 fn test_hash() {

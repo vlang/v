@@ -234,9 +234,10 @@ pub fn (s string) u64() u64 {
 
 pub fn (s string) byte() u64 {
 	res := byte(0)
-	# res.val = byte(JS.parseInt(s))
+	#res.val = byte(JS.parseInt(s))
+
 	return res
- }
+}
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
@@ -904,6 +905,5 @@ pub fn (s []string) join(sep string) string {
 	return res
 }
 
-
 // There's no better way to find length of JS String in bytes.
-# Object.defineProperty(string.prototype,"len", { get: function() {return new int(new TextEncoder().encode(this.str).length);}, set: function(l) {/* ignore */ } });
+#Object.defineProperty(string.prototype,"len", { get: function() {return new int(new TextEncoder().encode(this.str).length);}, set: function(l) {/* ignore */ } });

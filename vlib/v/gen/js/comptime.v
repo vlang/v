@@ -301,9 +301,9 @@ fn (mut g JsGen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?strin
 		else {
 			if is_comptime_optional
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				return 'checkDefine("CUSTOM_DEFINE_${name}")'
+				return 'checkDefine("CUSTOM_DEFINE_$name")'
 			}
-			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
+			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
 	return none

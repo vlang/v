@@ -7,8 +7,6 @@ pub fn (b byte) is_space() bool {
 	return result
 }
 
-
-
 pub fn (c byte) str() string {
 	res := ''
 	#res.str = c.val.toString()
@@ -35,7 +33,6 @@ pub fn (c byte) repeat(count int) string {
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
-
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
 // Example: assert byte(`F`) == true
