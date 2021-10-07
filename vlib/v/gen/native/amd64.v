@@ -620,7 +620,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.n_error('unhandled mov $reg, $reg')
 			}
 		}
-		g.println('mov $reg, $reg')
+		g.println('xor $reg, $reg')
 	} else {
 		match reg {
 			.eax, .rax {
