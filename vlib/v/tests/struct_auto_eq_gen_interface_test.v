@@ -1,18 +1,23 @@
-import io
+interface IExample {
+	thing() bool
+}
 
 type Foo = int
 
-fn (f Foo) write(p []byte) ?int {
-	return 0
+fn (n Foo) thing() bool {
+	return true
 }
 
-fn new() io.Writer {
-	return Foo(0)
+struct Test {
+	a IExample
 }
 
-fn test_iowriter() {
+fn new() Test {
+	return Test{Foo(123)}
+}
+
+fn test_struct_auto_eq_gen_interface_case() {
 	w1 := new()
 	w2 := new()
-
 	assert w1 == w2
 }
