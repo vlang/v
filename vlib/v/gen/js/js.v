@@ -1051,7 +1051,6 @@ fn (mut g JsGen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.C
 }
 
 fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
-	styp := g.typ(tvar.typ)
 	g.write('let $tvar.name = ')
 	g.expr(tvar.orig)
 	g.writeln(';')
