@@ -144,7 +144,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
 			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.size);}, set: function(l) { this.map.size = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
@@ -410,19 +409,14 @@ pub fn (mut g JsGen) init() {
 
 		g.definitions.writeln('const \$os = {')
 		g.definitions.writeln('  endianess: "LE",')
-
 		g.definitions.writeln('}')
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
 		g.definitions.writeln('const \$process = process;')
 	}
-	g.definitions.writeln('function alias(value) { return value; } ')
-
-	g.definitions.writeln('function \$v_fmt(value) { let res = "";
-		if (Object.getPrototypeOf(s).hasOwnProperty("str") && typeof s.str == "function") res = s.str().str
-		else res = s.toString()
-		return res
-  } ')
+	g.definitions.writeln('function checkDefine(key) {')
+	g.definitions.writeln('\tif (globalThis.hasOwnProperty(key)) { return !!globalThis[key]; } return false;')
+	g.definitions.writeln('}')
 }
 
 pub fn (g JsGen) hashes() string {
@@ -1029,12 +1023,12 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.writeln('\t${metaname}.op = new string("$expr_op_str");')
 			g.writeln('\t${metaname}.llabel = new string("$expr_left_str");')
 			g.writeln('\t${metaname}.rlabel = new string("$expr_right_str");')
-			g.write('\t${metaname}.lvalue = new string("')
+			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
-			g.writeln('");')
-			g.write('\t${metaname}.rvalue = new string("')
+			g.writeln(';')
+			g.write('\t${metaname}.rvalue = ')
 			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
-			g.writeln('");')
+			g.writeln(';')
 		}
 		ast.CallExpr {
 			g.writeln('\t${metaname}.op = new string("call");')
@@ -1049,17 +1043,46 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write(unknown_value)
+			g.write('new string("${unknown_value}")')
 		}
 		ast.PrefixExpr {
-			g.write(unknown_value)
+			if expr.right is ast.CastExpr {
+				// TODO: remove this check;
+				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
+				// without special casing ast.CastExpr here
+				g.write('new string("${unknown_value}")')
+			} else {
+				g.gen_expr_to_string(expr, typ)
+			}
 		}
 		ast.TypeNode {
 			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
-			g.write('$sym.name')
+			g.write('new string("$sym.name"')
 		}
 		else {
-			g.write(unknown_value)
+			mut should_clone := true
+			if typ == ast.string_type && expr is ast.StringLiteral {
+				should_clone = false
+			}
+			if expr is ast.CTempVar {
+				if expr.orig is ast.CallExpr {
+					should_clone = false
+					if expr.orig.or_block.kind == .propagate {
+						should_clone = true
+					}
+					if expr.orig.is_method && expr.orig.args.len == 0
+						&& expr.orig.name == 'type_name' {
+						should_clone = true
+					}
+				}
+			}
+			if should_clone {
+				g.write('string_clone(')
+			}
+			g.gen_expr_to_string(expr, typ)
+			if should_clone {
+				g.write(')')
+			}
 		}
 	}
 	// g.writeln(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
