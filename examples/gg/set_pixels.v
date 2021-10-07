@@ -5,12 +5,28 @@ import gx
 
 struct App {
 mut:
-	gg &gg.Context
+	gg     &gg.Context
+	pixels []f32
 }
 
 fn main() {
+	mut pixels := []f32{}
+	density := 4
+	for x in 30 .. 60 {
+		if x % density == 0 {
+			continue
+		}
+		for y in 30 .. 60 {
+			if y % density == 0 {
+				continue
+			}
+			pixels << f32(x + density)
+			pixels << f32(y + density)
+		}
+	}
 	mut app := &App{
 		gg: 0
+		pixels: pixels
 	}
 	app.gg = gg.new_context(
 		bg_color: gx.rgb(174, 198, 255)
@@ -24,16 +40,13 @@ fn main() {
 }
 
 fn frame(mut app App) {
-	mut pixels := []f32{}
-
-	for x in 30 .. 60 {
-		for y in 30 .. 60 {
-			pixels << f32(x)
-			pixels << f32(y)
-		}
-	}
-
 	app.gg.begin()
-	app.gg.set_pixels(pixels, gx.red)
+	// Set a blue pixel near each corner. (Find your magnifying glass)
+	app.gg.set_pixel(2, 2, gx.blue)
+	app.gg.set_pixel(app.gg.width - 2, 2, gx.blue)
+	app.gg.set_pixel(app.gg.width - 2, app.gg.height - 2, gx.blue)
+	app.gg.set_pixel(2, app.gg.height - 2, gx.blue)
+	// Set pixels in a grid-like pattern.
+	app.gg.set_pixels(app.pixels, gx.red)
 	app.gg.end()
 }
