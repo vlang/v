@@ -633,10 +633,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	if res.is_debug {
 		res.parse_define('debug')
 	}
-	if command == 'run' && res.is_prod {
-		println("error: `v run` with -prod is disabled
-building an optimized binary takes much longer, so it shouldn't be used with `v run`
-use `v run` without optimization, or build an optimized binary with -prod and then run it separately\n")
+	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
+		eprintln("NB: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln('Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 
 	// res.use_cache = true
