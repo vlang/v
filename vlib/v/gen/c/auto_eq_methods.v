@@ -155,6 +155,9 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('${eq_fn}_alias_eq(a.$field_name, b.$field_name)')
 			} else if field_type.sym.kind == .function {
 				fn_builder.write_string('*((voidptr*)(a.$field_name)) == *((voidptr*)(b.$field_name))')
+			} else if field_type.sym.kind == .interface_ {
+				eq_fn := g.gen_interface_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_interface_eq(a.$field_name, b.$field_name)')
 			} else {
 				fn_builder.write_string('a.$field_name == b.$field_name')
 			}
