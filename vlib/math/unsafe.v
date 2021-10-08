@@ -36,3 +36,22 @@ pub fn f64_from_bits(b u64) f64 {
 	p := *unsafe { &f64(&b) }
 	return p
 }
+
+// Set low word of `f` to `lo`
+pub fn with_set_low_word(f f64, lo u32) f64 {
+	mut tmp := f64_bits(f)
+	tmp &= 0xffffffff_00000000
+	tmp |= u64(lo)
+	return f64_from_bits(tmp)
+}
+
+pub fn with_set_high_word(f f64, hi u32) f64 {
+	mut tmp := f64_bits(f)
+	tmp &= 0x00000000_ffffffff
+	tmp |= u64(hi) << 32
+	return f64_from_bits(tmp)
+}
+
+pub fn get_high_word(f f64) u32 {
+	return u32(f64_bits(f) >> 32)
+}
