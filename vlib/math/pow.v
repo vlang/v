@@ -35,7 +35,6 @@ pub fn pow10(n int) f64 {
 	return 0.0
 }
 
-
 // powi returns base raised to power (a**b) as an integer (i64)
 //
 // special case:
