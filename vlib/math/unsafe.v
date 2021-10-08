@@ -52,6 +52,7 @@ pub fn with_set_high_word(f f64, hi u32) f64 {
 	tmp |= u64(hi) << 32
 	return f64_from_bits(tmp)
 }
+
 // get_high_word returns high part of the word of `f`.
 pub fn get_high_word(f f64) u32 {
 	return u32(f64_bits(f) >> 32)
