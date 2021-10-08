@@ -1,6 +1,6 @@
 module math
 
-// Scales x by FLT_RADIX raised to the power of n, returning the same as:
+// scalbn scales x by FLT_RADIX raised to the power of n, returning the same as:
 // scalbn(x,n) = x * FLT_RADIX ** n
 pub fn scalbn(x f64, n_ int) f64 {
 	mut n := n_

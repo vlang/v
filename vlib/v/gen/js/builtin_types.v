@@ -319,12 +319,12 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			// mask 32 bit numbers with 0xffffffff
 			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
+					// mask <=32 bit numbers with 0xffffffff
 					constructor: 'this.val = Number(val) & 0xffffffff'
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
