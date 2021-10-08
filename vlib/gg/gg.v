@@ -270,9 +270,17 @@ pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
 
 [inline]
 pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
-	ctx.draw_square(x, y, 1, c)
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_points()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.end()
 }
 
+[direct_array_access; inline]
 pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
@@ -282,14 +290,10 @@ pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
 	}
 
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_quads()
+	sgl.begin_points()
 	for i in 0 .. len {
 		x, y := points[i * 2], points[i * 2 + 1]
-
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + 1) * ctx.scale, y * ctx.scale)
-		sgl.v2f((x + 1) * ctx.scale, (y + 1) * ctx.scale)
-		sgl.v2f(x * ctx.scale, (y + 1) * ctx.scale)
 	}
 	sgl.end()
 }
@@ -299,7 +303,7 @@ pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_quads()
+	sgl.begin_triangles()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)

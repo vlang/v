@@ -103,6 +103,9 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 		.voidptr {
 			styp = 'any'
 		}
+		.rune {
+			styp = 'rune'
+		}
 		else {
 			// TODO
 			styp = 'undefined'
@@ -224,7 +227,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			styp = g.js_name(sym.name)
 		}
 		.rune {
-			styp = 'any'
+			styp = 'rune'
 		}
 		.aggregate {
 			panic('TODO: unhandled aggregate in JS')
@@ -321,7 +324,8 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
-					constructor: 'this.val = Number(val)'
+					// mask <=32 bit numbers with 0xffffffff
+					constructor: 'this.val = Number(val) & 0xffffffff'
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
 					eq: 'new bool(self.valueOf() === other.valueOf())'
@@ -356,6 +360,17 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					default_value: 'new Number(0)'
 					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
+					value_of: 'this.val | 0'
+					to_string: 'new string(this.val + "")'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
+					to_jsval: '+this'
+				)
+			}
+			'rune' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+					constructor: 'val = val.valueOf(); if (typeof val == "string") {this.val = val.charCodeAt();}  else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
 					value_of: 'this.val | 0'
 					to_string: 'new string(this.val + "")'
 					eq: 'new bool(self.valueOf() === other.valueOf())'

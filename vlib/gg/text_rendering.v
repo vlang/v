@@ -36,6 +36,7 @@ pub fn system_font_path() string {
 		return env_font
 	}
 	$if windows {
+		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
 		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
 	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
@@ -45,6 +46,7 @@ pub fn system_font_path() string {
 			'/Library/Fonts/Arial.ttf']
 		for font in fonts {
 			if os.is_file(font) {
+				debug_font_println('Using font "$font"')
 				return font
 			}
 		}
@@ -66,6 +68,7 @@ pub fn system_font_path() string {
 							for location in font_locations {
 								candidate_path := os.join_path(location, candidate_font)
 								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
+									debug_font_println('Using font "$candidate_path"')
 									return candidate_path
 								}
 							}
@@ -84,7 +87,7 @@ pub fn system_font_path() string {
 		for font in fonts {
 			if line.contains(font) && line.contains(':') {
 				res := line.all_before(':')
-				println('Using font $res')
+				debug_font_println('Using font "$res"')
 				return res
 			}
 		}
@@ -141,8 +144,7 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 	return fpath + file + '.ttf'
 }
 
+[if debug_font ?]
 fn debug_font_println(s string) {
-	$if debug_font ? {
-		println(s)
-	}
+	println(s)
 }

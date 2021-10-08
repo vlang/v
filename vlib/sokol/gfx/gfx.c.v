@@ -19,6 +19,11 @@ pub fn shutdown() {
 }
 
 [inline]
+pub fn is_valid() bool {
+	return C.sg_isvalid()
+}
+
+[inline]
 pub fn reset_state_cache() {
 	C.sg_reset_state_cache()
 }

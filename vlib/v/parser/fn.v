@@ -578,7 +578,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
 		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
-			rec.typ = rec.typ.to_ptr()
+			rec.typ = rec.typ.ref()
 			is_auto_rec = true
 		}
 	}
@@ -801,7 +801,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
-				// arg_type = arg_type.to_ptr()
+				// arg_type = arg_type.ref()
 				arg_type = arg_type.set_nr_muls(1)
 				if is_shared {
 					arg_type = arg_type.set_flag(.shared_f)

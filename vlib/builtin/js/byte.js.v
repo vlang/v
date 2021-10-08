@@ -7,14 +7,6 @@ pub fn (b byte) is_space() bool {
 	return result
 }
 
-pub fn (c byte) is_letter() bool {
-	result := false
-
-	#result.val = (c.val >= `a`.charCodeAt() && c.val <= `z`.charCodeAt()) || (c.val >= `A`.charCodeAt() && c.val <= `Z`.charCodeAt())
-
-	return result
-}
-
 pub fn (c byte) str() string {
 	res := ''
 	#res.str = c.val.toString()
@@ -36,4 +28,43 @@ pub fn (c byte) repeat(count int) string {
 	}
 
 	return res
+}
+
+pub fn (c byte) is_digit() bool {
+	return c >= `0` && c <= `9`
+}
+
+// is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
+// Example: assert byte(`F`) == true
+[inline]
+pub fn (c byte) is_hex_digit() bool {
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+}
+
+// is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
+// Example: assert byte(`7`) == true
+[inline]
+pub fn (c byte) is_oct_digit() bool {
+	return c >= `0` && c <= `7`
+}
+
+// is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
+// Example: assert byte(`0`) == true
+[inline]
+pub fn (c byte) is_bin_digit() bool {
+	return c == `0` || c == `1`
+}
+
+// is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
+// Example: assert byte(`V`) == true
+[inline]
+pub fn (c byte) is_letter() bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+}
+
+// is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
+// Example: assert byte(`V`) == true
+[inline]
+pub fn (c byte) is_alnum() bool {
+	return c.is_letter() || c.is_digit()
 }

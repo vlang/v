@@ -116,11 +116,11 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
-	str_types              []StrType // types that need automatic str() generation
-	generated_str_fns      []StrType // types that already have a str() function
-	threaded_fns           []string  // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns             []string  // functions that wait for `go xxx()` to finish
-	auto_fn_definitions    []string  // auto generated functions defination list
+	str_types              []StrType       // types that need automatic str() generation
+	generated_str_fns      []StrType       // types that already have a str() function
+	threaded_fns           shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns             []string        // functions that wait for `go xxx()` to finish
+	auto_fn_definitions    []string        // auto generated functions defination list
 	sumtype_casting_fns    []SumtypeCastingFn
 	anon_fn_definitions    []string     // anon generated functions defination list
 	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
@@ -298,6 +298,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 					inner_loop: &ast.EmptyStmt{}
 					field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 					array_sort_fn: global_g.array_sort_fn
+					threaded_fns: global_g.threaded_fns
 					done_optionals: global_g.done_optionals
 					is_autofree: global_g.pref.autofree
 				}
@@ -370,7 +371,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.nr_closures += g.nr_closures
 			global_g.has_main = global_g.has_main || g.has_main
 
-			global_g.threaded_fns << g.threaded_fns
 			global_g.waiter_fns << g.waiter_fns
 			global_g.auto_fn_definitions << g.auto_fn_definitions
 			global_g.anon_fn_definitions << g.anon_fn_definitions
@@ -2236,7 +2236,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
-			got_styp := g.cc_type(got_type.to_ptr(), true)
+			got_styp := g.cc_type(got_type.ref(), true)
 			// TODO: why does cc_type even add this in the first place?
 			exp_styp := exp_sym.cname
 			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
@@ -3099,7 +3099,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 									is_used_var_styp = true
 								} else if val is ast.PrefixExpr {
 									if val.op == .amp && val.right is ast.StructInit {
-										var_styp := g.typ(val.right.typ.to_ptr())
+										var_styp := g.typ(val.right.typ.ref())
 										g.write('$var_styp ')
 										is_used_var_styp = true
 									}
@@ -3622,6 +3622,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.Assoc {
 			g.assoc(node)
 		}
+		ast.AtExpr {
+			g.comp_at(node)
+		}
 		ast.BoolLiteral {
 			g.write(node.val.str())
 		}
@@ -3711,25 +3714,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			}
 		}
-		ast.DumpExpr {
-			g.dump_expr(node)
-		}
-		ast.AtExpr {
-			g.comp_at(node)
-		}
+		ast.Comment {}
 		ast.ComptimeCall {
 			g.comptime_call(node)
 		}
 		ast.ComptimeSelector {
 			g.comptime_selector(node)
 		}
-		ast.Comment {}
 		ast.ConcatExpr {
 			g.concat_expr(node)
 		}
 		ast.CTempVar {
 			// g.write('/*ctmp .orig: $node.orig.str() , ._typ: $node.typ, .is_ptr: $node.is_ptr */ ')
 			g.write(node.name)
+		}
+		ast.DumpExpr {
+			g.dump_expr(node)
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -3779,18 +3779,42 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(node.val) // .int().str())
 			}
 		}
+		ast.IsRefType {
+			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			node_typ := g.unwrap_generic(typ)
+			sym := g.table.get_type_symbol(node_typ)
+			if sym.language == .v && sym.kind in [.placeholder, .any] {
+				g.error('unknown type `$sym.name`', node.pos)
+			}
+			is_ref_type := g.contains_ptr(node_typ)
+			g.write('/*IsRefType*/ $is_ref_type')
+		}
+		ast.Likely {
+			if node.is_likely {
+				g.write('_likely_')
+			} else {
+				g.write('_unlikely_')
+			}
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+		}
 		ast.LockExpr {
 			g.lock_expr(node)
-		}
-		ast.MatchExpr {
-			g.match_expr(node)
 		}
 		ast.MapInit {
 			g.map_init(node)
 		}
+		ast.MatchExpr {
+			g.match_expr(node)
+		}
 		ast.NodeError {}
 		ast.None {
 			g.write('_const_none__')
+		}
+		ast.OffsetOf {
+			styp := g.typ(node.struct_type)
+			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.OrExpr {
 			// this should never appear here
@@ -3872,6 +3896,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SelectExpr {
 			g.select_expr(node)
 		}
+		ast.SelectorExpr {
+			g.selector_expr(node)
+		}
 		ast.SizeOf {
 			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
 			node_typ := g.unwrap_generic(typ)
@@ -3881,20 +3908,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			styp := g.typ(node_typ)
 			g.write('sizeof(${util.no_dots(styp)})')
-		}
-		ast.IsRefType {
-			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
-			node_typ := g.unwrap_generic(typ)
-			sym := g.table.get_type_symbol(node_typ)
-			if sym.language == .v && sym.kind in [.placeholder, .any] {
-				g.error('unknown type `$sym.name`', node.pos)
-			}
-			is_ref_type := g.contains_ptr(node_typ)
-			g.write('/*IsRefType*/ $is_ref_type')
-		}
-		ast.OffsetOf {
-			styp := g.typ(node.struct_type)
-			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
@@ -3913,9 +3926,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.struct_init(node)
 			}
 		}
-		ast.SelectorExpr {
-			g.selector_expr(node)
-		}
 		ast.TypeNode {
 			// match sum Type
 			// g.write('/* Type */')
@@ -3928,16 +3938,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.TypeOf {
 			g.typeof_expr(node)
-		}
-		ast.Likely {
-			if node.is_likely {
-				g.write('_likely_')
-			} else {
-				g.write('_unlikely_')
-			}
-			g.write('(')
-			g.expr(node.expr)
-			g.write(')')
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -6147,14 +6147,14 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				g.type_definitions.writeln('\tunion {')
 				for variant in typ.info.variants {
 					variant_sym := g.table.get_type_symbol(variant)
-					g.type_definitions.writeln('\t\t${g.typ(variant.to_ptr())} _$variant_sym.cname;')
+					g.type_definitions.writeln('\t\t${g.typ(variant.ref())} _$variant_sym.cname;')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
 				if typ.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
 					for field in typ.info.fields {
-						g.type_definitions.writeln('\t${g.typ(field.typ.to_ptr())} $field.name;')
+						g.type_definitions.writeln('\t${g.typ(field.typ.ref())} $field.name;')
 					}
 				}
 				g.type_definitions.writeln('};')
@@ -6668,7 +6668,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	}
 	// Register the wrapper type and function
-	if name !in g.threaded_fns {
+	mut should_register := false
+	lock g.threaded_fns {
+		if name !in g.threaded_fns {
+			g.threaded_fns << name
+			should_register = true
+		}
+	}
+	if should_register {
 		g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 		if expr.is_method {
 			styp := g.typ(expr.receiver_type)
@@ -6762,7 +6769,6 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.gowrappers.writeln('\treturn 0;')
 		}
 		g.gowrappers.writeln('}')
-		g.threaded_fns << name
 	}
 	if node.is_expr {
 		g.empty_line = false

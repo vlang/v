@@ -475,3 +475,17 @@ pub fn rem_64(hi u64, lo u64, y u64) u64 {
 	_, rem := div_64(hi % y, lo, y)
 	return rem
 }
+
+// normalize returns a normal number y and exponent exp
+// satisfying x == y × 2**exp. It assumes x is finite and non-zero.
+pub fn normalize(x f64) (f64, int) {
+	smallest_normal := 2.2250738585072014e-308 // 2**-1022
+	if (if x > 0.0 {
+		x
+	} else {
+		-x
+	}) < smallest_normal {
+		return x * (u64(1) << u64(52)), -52
+	}
+	return x, 0
+}

@@ -2361,7 +2361,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if left_type_sym.kind == .chan {
 			elem_typ := (left_type_sym.info as ast.Chan).elem_type
 			if method_name == 'try_push' {
-				exp_arg_typ = elem_typ.to_ptr()
+				exp_arg_typ = elem_typ.ref()
 			} else if method_name == 'try_pop' {
 				exp_arg_typ = elem_typ
 				param_is_mut = true
@@ -2594,7 +2594,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 		}
 		else {}
 	}
-	node.receiver_type = left_type.to_ptr()
+	node.receiver_type = left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
 }
@@ -2649,7 +2649,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					'\ne.g. `users.sort(a.id < b.id)`', node.pos)
 			}
 		} else if !(c.table.get_type_symbol(elem_typ).has_method('<')
-			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.to_ptr(), ast.string_type, ast.string_type.to_ptr(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
 			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
 				node.pos)
 		}
@@ -2693,7 +2693,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if method_name == 'clone' {
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
-		node.receiver_type = left_type.to_ptr()
+		node.receiver_type = left_type.ref()
 		if node.left.is_auto_deref_var() {
 			node.return_type = left_type.deref()
 		} else {
@@ -2709,7 +2709,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if method_name in ['first', 'last', 'pop'] {
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
-			node.receiver_type = left_type.to_ptr()
+			node.receiver_type = left_type.ref()
 		} else {
 			node.receiver_type = left_type
 		}
@@ -3706,6 +3706,9 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut got_types := []ast.Type{}
 	for expr in node.exprs {
 		typ := c.expr(expr)
+		if typ == ast.void_type {
+			c.error('`$expr` used as value', node.pos)
+		}
 		// Unpack multi return types
 		sym := c.table.get_type_symbol(typ)
 		if sym.kind == .multi_return {
@@ -4531,13 +4534,13 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ ast.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos
-		typ: typ.to_ptr()
+		typ: typ.ref()
 		is_used: true
 	})
 	s.register(ast.Var{
 		name: 'b'
 		pos: pos
-		typ: typ.to_ptr()
+		typ: typ.ref()
 		is_used: true
 	})
 }
@@ -5028,7 +5031,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				value_type = value_type.to_ptr()
+				value_type = value_type.ref()
 				match node.cond {
 					ast.Ident {
 						if node.cond.obj is ast.Var {
@@ -6619,7 +6622,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
 	sym := c.table.get_type_symbol(cur_type)
-	to_type := if sym.kind == .interface_ { to_type_.to_ptr() } else { to_type_ }
+	to_type := if sym.kind == .interface_ { to_type_.ref() } else { to_type_ }
 	match expr {
 		ast.SelectorExpr {
 			mut is_mut := false
@@ -7428,7 +7431,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if !c.inside_fn_arg && !c.inside_unsafe {
 			c.mark_as_referenced(mut &node.right, false)
 		}
-		return right_type.to_ptr()
+		return right_type.ref()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
 		if !c.inside_fn_arg && !c.inside_unsafe {
 			c.mark_as_referenced(mut &node.right, false)
@@ -7436,7 +7439,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if node.right.is_auto_deref_var() {
 			return right_type
 		} else {
-			return right_type.to_ptr()
+			return right_type.ref()
 		}
 	}
 	if node.op == .mul {
@@ -8368,7 +8371,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 			if c.pref.translated && node.is_variadic && node.params.len == 1 && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
-				param.typ = ast.int_type.to_ptr()
+				param.typ = ast.int_type.ref()
 			}
 		}
 	}

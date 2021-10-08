@@ -272,7 +272,7 @@ fn (mut g JsGen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?strin
 			return 'false'
 		}
 		'no_bounds_checking' {
-			return 'CUSTOM_DEFINE_no_bounds_checking'
+			return 'checkDefine("CUSTOM_DEFINE_no_bounds_checking")'
 		}
 		'freestanding' {
 			return '_VFREESTANDING'
@@ -301,7 +301,7 @@ fn (mut g JsGen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?strin
 		else {
 			if is_comptime_optional
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				return 'CUSTOM_DEFINE_$name'
+				return 'checkDefine("CUSTOM_DEFINE_$name")'
 			}
 			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}

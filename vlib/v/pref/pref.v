@@ -633,6 +633,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	if res.is_debug {
 		res.parse_define('debug')
 	}
+	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
+		eprintln("NB: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln('Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+	}
 
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {

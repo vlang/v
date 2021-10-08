@@ -52,7 +52,7 @@ pub fn f64_from_bits(b u64) f64 {
 	#let buffer = new ArrayBuffer(8)
 	#let floatArr = new Float64Array(buffer)
 	#let uintArr = new BigUint64Array(buffer)
-	#uintArr[0] = Number(b.val)
+	#uintArr[0] = b.val
 	#p.val = floatArr[0]
 
 	return p

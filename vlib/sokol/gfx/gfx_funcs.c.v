@@ -3,6 +3,7 @@ module gfx
 // setup and misc functions
 fn C.sg_setup(desc &C.sg_desc)
 fn C.sg_shutdown()
+fn C.sg_isvalid() bool
 fn C.sg_reset_state_cache()
 
 // resource creation, destruction and updating

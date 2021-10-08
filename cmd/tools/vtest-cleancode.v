@@ -28,10 +28,8 @@ const (
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
-		'vlib/sqlite/orm.v' /* mut c &int -> mut c int */,
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
-		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	]
 	vfmt_verify_list                = [
@@ -42,7 +40,6 @@ const (
 	]
 	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
-		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
 		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
 		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
 	])

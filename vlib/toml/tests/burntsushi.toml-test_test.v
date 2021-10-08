@@ -20,7 +20,6 @@ const (
 		'string/basic-out-of-range-unicode-escape-1.toml',
 		'string/basic-out-of-range-unicode-escape-2.toml',
 		'string/bad-uni-esc.toml',
-		'string/missing-quotes.toml',
 		// Integer
 		'integer/capital-bin.toml',
 		'integer/invalid-bin.toml',

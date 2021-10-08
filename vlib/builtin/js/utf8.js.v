@@ -7,3 +7,7 @@ pub fn utf8_str_visible_length(s string) int {
 
 	return res
 }
+
+pub fn utf8_str_len(s string) int {
+	return s.len
+}

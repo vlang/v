@@ -1,6 +1,5 @@
 module builtin
 
-import strings
 // used to generate JS throw statements.
 
 pub fn js_throw(s any) {
@@ -71,15 +70,6 @@ pub fn unwrap(opt string) string {
 	return res
 }
 
-pub fn (r rune) str() string {
-	res := ''
-	mut sb := strings.new_builder(5)
-	#res.str = r.valueOf().toString()
-	sb.write_string(res)
-
-	return sb.str()
-}
-
 fn js_stacktrace() string {
 	stacktrace := ''
 	#let err = new TypeError();
@@ -87,4 +77,22 @@ fn js_stacktrace() string {
 	#stacktrace.str = err.stack
 
 	return stacktrace
+}
+
+// Check for nil value
+pub fn isnil(val voidptr) bool {
+	res := false
+	// This one is kinda weird. In C and native backend we can cast booleans and integers to pointers
+	// so we just check *for* all possible NULL-like values here.
+	#val = val.valueOf()
+	#res.val = val === null || val === undefined || val === false || val === 0 || val === BigInt(0)
+
+	return res
+}
+
+pub fn (f float_literal) str() string {
+	res := ''
+	#res.str += f.valueOf()
+
+	return res
 }

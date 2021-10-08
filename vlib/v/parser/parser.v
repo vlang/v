@@ -875,6 +875,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		p.next()
 	}
 	if arch == ._auto && !p.pref.is_fmt {
+		if p.tok.lit == '' {
+			p.error('missing assembly architecture. Try i386, amd64 or arm64.')
+		}
 		p.error('unknown assembly architecture')
 	}
 	if p.tok.kind != .name {

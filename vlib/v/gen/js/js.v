@@ -20,7 +20,7 @@ const (
 		'Array', 'Map']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'any']
+		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .bool, .string]
 )
@@ -144,7 +144,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(string.prototype,"len", { get: function() {return new int(this.str.length);}, set: function(l) {/* ignore */ } }); ')
 			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.size);}, set: function(l) { this.map.size = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
@@ -410,19 +409,14 @@ pub fn (mut g JsGen) init() {
 
 		g.definitions.writeln('const \$os = {')
 		g.definitions.writeln('  endianess: "LE",')
-
 		g.definitions.writeln('}')
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
 		g.definitions.writeln('const \$process = process;')
 	}
-	g.definitions.writeln('function alias(value) { return value; } ')
-
-	g.definitions.writeln('function \$v_fmt(value) { let res = "";
-		if (Object.getPrototypeOf(s).hasOwnProperty("str") && typeof s.str == "function") res = s.str().str
-		else res = s.toString()
-		return res
-  } ')
+	g.definitions.writeln('function checkDefine(key) {')
+	g.definitions.writeln('\tif (globalThis.hasOwnProperty(key)) { return !!globalThis[key]; } return false;')
+	g.definitions.writeln('}')
 }
 
 pub fn (g JsGen) hashes() string {
@@ -792,18 +786,13 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 }
 
 fn (mut g JsGen) expr(node ast.Expr) {
+	// NB: please keep the type names in the match here in alphabetical order:
 	match node {
-		ast.NodeError {}
 		ast.EmptyExpr {}
-		ast.CTempVar {
-			g.write('/* ast.CTempVar: node.name */')
-		}
-		ast.DumpExpr {
-			g.write('/* ast.DumpExpr: $node.expr */')
-		}
 		ast.AnonFn {
 			g.gen_fn_decl(node.decl)
 		}
+		ast.ArrayDecompose {}
 		ast.ArrayInit {
 			g.gen_array_init_expr(node)
 		}
@@ -813,6 +802,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.Assoc {
 			// TODO
+		}
+		ast.AtExpr {
+			g.write('"$node.val"')
 		}
 		ast.BoolLiteral {
 			g.write('new bool(')
@@ -826,18 +818,34 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.CallExpr {
 			g.gen_call_expr(node)
 		}
-		ast.ChanInit {
-			// TODO
-		}
 		ast.CastExpr {
 			g.gen_type_cast_expr(node)
 		}
+		ast.ChanInit {
+			// TODO
+		}
 		ast.CharLiteral {
-			g.write("new byte('$node.val')")
+			if utf8_str_len(node.val) < node.val.len {
+				g.write("new rune('$node.val'.charCodeAt())")
+			} else {
+				g.write("new byte('$node.val')")
+			}
 		}
 		ast.Comment {}
+		ast.ComptimeCall {
+			// TODO
+		}
+		ast.ComptimeSelector {
+			// TODO
+		}
 		ast.ConcatExpr {
 			// TODO
+		}
+		ast.CTempVar {
+			g.write('$node.name')
+		}
+		ast.DumpExpr {
+			g.write('/* ast.DumpExpr: $node.expr */')
 		}
 		ast.EnumVal {
 			sym := g.table.get_type_symbol(node.typ)
@@ -868,14 +876,20 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.gen_integer_literal_expr(node)
 		}
+		ast.Likely {
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+		}
 		ast.LockExpr {
 			g.gen_lock_expr(node)
 		}
-		ast.MapInit {
-			g.gen_map_init_expr(node)
-		}
+		ast.NodeError {}
 		ast.None {
 			g.write('none__')
+		}
+		ast.MapInit {
+			g.gen_map_init_expr(node)
 		}
 		ast.MatchExpr {
 			g.match_expr(node)
@@ -978,29 +992,68 @@ fn (mut g JsGen) expr(node ast.Expr) {
 
 			g.write('${g.js_name(sym.name)}')
 		}
-		ast.Likely {
-			g.write('(')
-			g.expr(node.expr)
-			g.write(')')
-		}
 		ast.TypeOf {
 			g.gen_typeof_expr(node)
 			// TODO: Should this print the V type or the JS type?
 		}
-		ast.AtExpr {
-			g.write('"$node.val"')
-		}
-		ast.ComptimeCall {
-			// TODO
-		}
-		ast.ComptimeSelector {
-			// TODO
-		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
-		ast.ArrayDecompose {}
 	}
+}
+
+struct UnsupportedAssertCtempTransform {
+	msg  string
+	code int
+}
+
+const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
+
+fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+	match expr {
+		ast.CallExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
+		}
+		ast.ParExpr {
+			if expr.expr is ast.CallExpr {
+				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.CallExpr {
+				sym := g.table.get_final_type_symbol(g.unwrap_generic(expr.expr.return_type))
+				if sym.kind == .struct_ {
+					if (sym.info as ast.Struct).is_union {
+						return js.unsupported_ctemp_assert_transform
+					}
+				}
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {}
+	}
+	return js.unsupported_ctemp_assert_transform
+}
+
+fn (mut g JsGen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
+	return ast.CTempVar{
+		name: g.new_tmp_var()
+		typ: expr_type
+		is_ptr: expr_type.is_ptr()
+		orig: expr
+	}
+}
+
+fn (mut g JsGen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
+	x := g.new_ctemp_var(expr, expr_type)
+	g.gen_ctemp_var(x)
+	return x
+}
+
+fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
+	g.write('let $tvar.name = ')
+	g.expr(tvar.orig)
+	g.writeln(';')
 }
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
@@ -1024,12 +1077,12 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.writeln('\t${metaname}.op = new string("$expr_op_str");')
 			g.writeln('\t${metaname}.llabel = new string("$expr_left_str");')
 			g.writeln('\t${metaname}.rlabel = new string("$expr_right_str");')
-			g.write('\t${metaname}.lvalue = new string("')
+			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
-			g.writeln('");')
-			g.write('\t${metaname}.rvalue = new string("')
+			g.writeln(';')
+			g.write('\t${metaname}.rvalue = ')
 			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
-			g.writeln('");')
+			g.writeln(';')
 		}
 		ast.CallExpr {
 			g.writeln('\t${metaname}.op = new string("call");')
@@ -1044,28 +1097,69 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write(unknown_value)
+			g.write('new string("$unknown_value")')
 		}
 		ast.PrefixExpr {
-			g.write(unknown_value)
+			if expr.right is ast.CastExpr {
+				// TODO: remove this check;
+				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
+				// without special casing ast.CastExpr here
+				g.write('new string("$unknown_value")')
+			} else {
+				g.gen_expr_to_string(expr, typ)
+			}
 		}
 		ast.TypeNode {
 			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
-			g.write('$sym.name')
+			g.write('new string("$sym.name"')
 		}
 		else {
-			g.write(unknown_value)
+			mut should_clone := true
+			if typ == ast.string_type && expr is ast.StringLiteral {
+				should_clone = false
+			}
+			if expr is ast.CTempVar {
+				if expr.orig is ast.CallExpr {
+					should_clone = false
+					if expr.orig.or_block.kind == .propagate {
+						should_clone = true
+					}
+					if expr.orig.is_method && expr.orig.args.len == 0
+						&& expr.orig.name == 'type_name' {
+						should_clone = true
+					}
+				}
+			}
+			if should_clone {
+				g.write('string_clone(')
+			}
+			g.gen_expr_to_string(expr, typ)
+			if should_clone {
+				g.write(')')
+			}
 		}
 	}
 	// g.writeln(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
 // TODO
-fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
-	if !a.is_used {
+fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
+	mut node := orig_node
+	if !node.is_used {
 		return
 	}
+
 	g.writeln('// assert')
+
+	if mut node.expr is ast.InfixExpr {
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			node.expr.left = subst_expr
+		}
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			node.expr.right = subst_expr
+		}
+	}
+	mut a := node
 	g.write('if( ')
 	g.expr(a.expr)
 	g.write('.valueOf() ) {')
