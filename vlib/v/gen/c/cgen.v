@@ -6040,7 +6040,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 		}
 		if typ.kind == .none_ {
 			g.type_definitions.writeln('struct none {')
-			g.type_definitions.writeln('\tEMPTY_STRUCT_INITIALIZATION;')
+			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 			g.type_definitions.writeln('};')
 			g.typedefs2.writeln('typedef struct none none;')
 		}
