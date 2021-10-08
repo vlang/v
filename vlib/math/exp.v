@@ -130,10 +130,9 @@ pub fn ldexp(frac f64, exp int) f64 {
 pub fn frexp(x f64) (f64, int) {
 	mut y := f64_bits(x)
 	ee := int((y >> 52) & 0x7ff)
-
 	if ee == 0 {
 		if x != 0.0 {
-			x1p64 := f64_from_bits(0x43f0000000000000)
+			x1p64 := f64_from_bits(u64(0x43f0000000000000))
 			z, e_ := frexp(x * x1p64)
 			return z, e_ - 64
 		}
@@ -142,8 +141,8 @@ pub fn frexp(x f64) (f64, int) {
 		return x, 0
 	}
 	e_ := ee - 0x3fe
-	y &= 0x800fffffffffffff
-	y |= 0x3fe0000000000000
+	y &= u64(0x800fffffffffffff)
+	y |= u64(0x3fe0000000000000)
 	return f64_from_bits(y), e_
 }
 

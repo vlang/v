@@ -81,6 +81,7 @@ pub fn pow(x f64, y f64) f64 {
 		return 1 / sqrt(x)
 	}
 	mut yi, mut yf := modf(abs(y))
+
 	if yf != 0 && x < 0 {
 		return nan()
 	}
@@ -107,6 +108,7 @@ pub fn pow(x f64, y f64) f64 {
 			yf--
 			yi++
 		}
+
 		a1 = exp(yf * log(x))
 	}
 
@@ -115,6 +117,7 @@ pub fn pow(x f64, y f64) f64 {
 	// of x according to bits of yi.
 	// accumulate powers of two into exp.
 	mut x1, mut xe := frexp(x)
+
 	for i := i64(yi); i != 0; i >>= 1 {
 		// these series of casts is a little weird but we have to do them to prevent left shift of negative error
 		if xe < int(u32(u32(-1) << 12)) || 1 << 12 < xe {
