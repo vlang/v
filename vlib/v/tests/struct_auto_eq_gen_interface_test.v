@@ -2,7 +2,7 @@ interface IExample {
 	thing() bool
 }
 
-type Foo = int
+struct Foo {}
 
 fn (n Foo) thing() bool {
 	return true
@@ -13,7 +13,7 @@ struct Test {
 }
 
 fn new() Test {
-	return Test{Foo(123)}
+	return Test{Foo{}}
 }
 
 fn test_struct_auto_eq_gen_interface_case() {
