@@ -532,7 +532,8 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 			}
 			ast.StringLiteral {
 				if expr.language != .c {
-					g.warning('C.syscall expects c"string" or "string".str, C backend will crash', node.pos)
+					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
+						node.pos)
 				}
 				s := expr.val.replace('\\n', '\n')
 				g.allocate_string(s, 2)
