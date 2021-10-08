@@ -96,21 +96,8 @@ pub fn exp2(x f64) f64 {
 	return expmulti(hi, lo, k)
 }
 
-pub fn ldexp(x f64, e int) f64 {
-	if x == 0.0 {
-		return x
-	} else {
-		mut y, ex := frexp(x)
-		mut e2 := f64(e + ex)
-		if e2 >= math.f64_max_exp {
-			y *= pow(2.0, e2 - math.f64_max_exp + 1.0)
-			e2 = math.f64_max_exp - 1.0
-		} else if e2 <= math.f64_min_exp {
-			y *= pow(2.0, e2 - math.f64_min_exp - 1.0)
-			e2 = math.f64_min_exp + 1.0
-		}
-		return y * pow(2.0, e2)
-	}
+pub fn ldexp(frac f64, exp int) f64 {
+	return scalbn(frac, exp)
 }
 
 // frexp breaks f into a normalized fraction
@@ -123,49 +110,40 @@ pub fn ldexp(x f64, e int) f64 {
 // frexp(±inf) = ±inf, 0
 // frexp(nan) = nan, 0
 // pub fn frexp(f f64) (f64, int) {
+// mut y := f64_bits(x)
+// ee := int((y >> 52) & 0x7ff)
 // // special cases
-// if f == 0.0 {
-// return f, 0 // correctly return -0
+// if ee == 0 {
+//	if x != 0.0 {
+// 	x1p64 := f64_from_bits(0x43f0000000000000)
+// 	z,e_ := frexp(x * x1p64)
+// 	return z,e_ - 64
 // }
-// if is_inf(f, 0) || is_nan(f) {
-// return f, 0
+// return x,0
+// } else if ee == 0x7ff {
+// return x,0
 // }
-// f_norm, mut exp := normalize(f)
-// mut x := f64_bits(f_norm)
-// exp += int((x>>shift)&mask) - bias + 1
-// x &= ~(mask << shift)
-// x |= (-1 + bias) << shift
-// return f64_from_bits(x), exp
+// e_ := ee - 0x3fe
+// y &= 0x800fffffffffffff
+// y |= 0x3fe0000000000000
+// return f64_from_bits(y),e_
 pub fn frexp(x f64) (f64, int) {
-	if x == 0.0 {
-		return 0.0, 0
-	} else if !is_finite(x) {
+	mut y := f64_bits(x)
+	ee := int((y >> 52) & 0x7ff)
+	if ee == 0 {
+		if x != 0.0 {
+			x1p64 := f64_from_bits(u64(0x43f0000000000000))
+			z, e_ := frexp(x * x1p64)
+			return z, e_ - 64
+		}
 		return x, 0
-	} else if abs(x) >= 0.5 && abs(x) < 1 { // Handle the common case
+	} else if ee == 0x7ff {
 		return x, 0
-	} else {
-		ex := ceil(log(abs(x)) / ln2)
-		mut ei := int(ex) // Prevent underflow and overflow of 2**(-ei)
-		if ei < int(math.f64_min_exp) {
-			ei = int(math.f64_min_exp)
-		}
-		if ei > -int(math.f64_min_exp) {
-			ei = -int(math.f64_min_exp)
-		}
-		mut f := x * pow(2.0, -ei)
-		if !is_finite(f) { // This should not happen
-			return f, 0
-		}
-		for abs(f) >= 1.0 {
-			ei++
-			f /= 2.0
-		}
-		for abs(f) > 0 && abs(f) < 0.5 {
-			ei--
-			f *= 2.0
-		}
-		return f, ei
 	}
+	e_ := ee - 0x3fe
+	y &= u64(0x800fffffffffffff)
+	y |= u64(0x3fe0000000000000)
+	return f64_from_bits(y), e_
 }
 
 // special cases are:
