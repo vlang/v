@@ -53,3 +53,16 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 	}
 	return log_factorial + sum
 }
+
+// factoriali returns 1 for n <= 0 and -1 if the result is too large for a 64 bit integer
+pub fn factoriali(n int) i64 {
+	if n <= 0 {
+		return i64(1)
+	}
+
+	if n < 21 {
+		return i64(factorials_table[n])
+	}
+
+	return i64(-1)
+}
