@@ -1,1 +1,1 @@
-generic error: the number of generic types is inconsistent with the concrete types
+generic error: the number of generic types of struct `main.Example` is inconsistent with the concrete types

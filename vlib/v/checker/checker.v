@@ -862,7 +862,7 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 							c.table.register_fn_concrete_types(method.name, info.concrete_types)
 						}
 					} else {
-						util.verror('generic error', 'the number of generic types is inconsistent with the concrete types')
+						util.verror('generic error', 'the number of generic types of struct `$parent.name` is inconsistent with the concrete types')
 					}
 				}
 				ast.Interface {
