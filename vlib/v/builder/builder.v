@@ -36,6 +36,11 @@ pub mut:
 	cached_msvc         MsvcResult
 	table               &ast.Table
 	ccoptions           CcompilerOptions
+	//
+	// NB: changes in mod `builtin` force invalidation of every other .v file
+	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
+	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
+	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -146,20 +151,19 @@ pub fn (mut b Builder) parse_imports() {
 			done_imports << file.mod.name
 		}
 	}
-	mut mod_invalidates_paths := map[string][]string{}
-	mut mod_invalidates_mods := map[string][]string{}
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
+		b.path_invalidates_mods[ast_file.path] << ast_file.mod.name
 		if ast_file.mod.name != 'builtin' {
-			mod_invalidates_paths['builtin'] << ast_file.path
-			mod_invalidates_mods['builtin'] << ast_file.mod.name
+			b.mod_invalidates_paths['builtin'] << ast_file.path
+			b.mod_invalidates_mods['builtin'] << ast_file.mod.name
 		}
 		for imp in ast_file.imports {
 			mod := imp.mod
-			mod_invalidates_paths[mod] << ast_file.path
-			mod_invalidates_mods[mod] << ast_file.mod.name
+			b.mod_invalidates_paths[mod] << ast_file.path
+			b.mod_invalidates_mods[mod] << ast_file.mod.name
 			if mod == 'builtin' {
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
 					ast_file.path, imp.pos)
@@ -201,24 +205,13 @@ pub fn (mut b Builder) parse_imports() {
 		}
 	}
 	b.resolve_deps()
-	$if trace_invalidations ? {
-		for k, v in mod_invalidates_paths {
-			mut m := map[string]bool{}
-			for mm in mod_invalidates_mods[k] {
-				m[mm] = true
-			}
-			eprintln('> module `$k` invalidates: $m.keys()')
-			for fpath in v {
-				eprintln('         $fpath')
-			}
-		}
-	}
 	if b.pref.print_v_files {
 		for p in b.parsed_files {
 			println(p.path)
 		}
 		exit(0)
 	}
+	b.rebuild_modules()
 }
 
 pub fn (mut b Builder) resolve_deps() {
