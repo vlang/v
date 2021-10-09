@@ -26,7 +26,7 @@ pub fn (t Transformer) transform(ast_file &ast.File) {
 	}
 }
 
-fn (t Transformer) stmt(mut node ast.Stmt) {
+pub fn (t Transformer) stmt(mut node ast.Stmt) {
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
@@ -88,14 +88,14 @@ fn (t Transformer) stmt(mut node ast.Stmt) {
 	}
 }
 
-fn (t Transformer) expr(node ast.Expr) ast.Expr {
+pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match node {
 		ast.InfixExpr { return t.infix_expr(node) }
 		else { return node }
 	}
 }
 
-fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
+pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 	mut node := original
 	node.left = t.expr(node.left)
 	node.right = t.expr(node.right)

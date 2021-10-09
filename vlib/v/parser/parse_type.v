@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module parser
 
+import v.transformer
 import v.ast
 import v.util
 import v.token
@@ -26,7 +27,18 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 						if const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 						} else {
-							show_non_const_error = true
+							if const_field.expr is ast.InfixExpr {
+								t := transformer.new_transformer(p.pref)
+								folded_expr := t.infix_expr(const_field.expr)
+
+								if folded_expr is ast.IntegerLiteral {
+									fixed_size = folded_expr.val.int()
+								} else {
+									show_non_const_error = true
+								}
+							} else {
+								show_non_const_error = true
+							}
 						}
 					} else {
 						if p.pref.is_fmt {
