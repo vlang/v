@@ -56,9 +56,12 @@ fn greet_func(cmd Command) ? {
 			'dutch', 'nl' {
 				println('Welkom $name')
 			}
+                        'hebrew', 'he' {
+				println('שלום $name') 
+			} 
 			else {
 				println('Unsupported language')
-				println('Supported languages are `english`, `german` and `dutch`.')
+				println('Supported languages are `english`, `german`, `dutch` and `hebrew`.')
 				break
 			}
 		}
