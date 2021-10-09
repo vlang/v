@@ -6038,6 +6038,12 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 		if typ.name.starts_with('C.') {
 			continue
 		}
+		if typ.kind == .none_ {
+			g.type_definitions.writeln('struct none {')
+			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+			g.type_definitions.writeln('};')
+			g.typedefs2.writeln('typedef struct none none;')
+		}
 		// sym := g.table.get_type_symbol(typ)
 		mut name := typ.cname
 		match mut typ.info {
