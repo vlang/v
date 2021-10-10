@@ -151,6 +151,9 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 	for unreachable_branches.len != 0 {
 		original.branches.delete(unreachable_branches.pop())
 	}
+	if original.branches.len == 0 { // no remain branches to walk through
+		return ast.EmptyExpr{}
+	}
 	return *original
 }
 
