@@ -280,22 +280,10 @@ fn test_in_sumtype_array() {
 		println(foo)
 		assert true
 	}
-}
 
-struct Point {
-	x int
-	y int
-}
-
-struct Line {
-	p1 Point
-	p2 Point
-}
-
-type Obj = Line | Point
-
-fn test_in_sumtype_array_without_cast() {
-	mut points_and_lines := []Obj{}
-	points_and_lines << Point{1, 2}
-	assert Point{1, 2} in points_and_lines
+	// without sumtype cast
+	mut foos := []Foo{}
+	foos << Foo1{}
+	assert Foo1{} in foos
+	assert Foo2{} !in foos
 }
