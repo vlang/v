@@ -12,7 +12,7 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit']
+pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall']
 
 interface CodeGen {
 mut:
@@ -497,6 +497,58 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 fn C.strtol(str &char, endptr &&char, base int) int
 
+fn (mut g Gen) gen_syscall(node ast.CallExpr) {
+	mut i := 0
+	mut ra := [Register.rax, .rdi, .rsi, .rdx]
+	for i < node.args.len {
+		expr := node.args[i].expr
+		if i >= ra.len {
+			g.warning('Too many arguments for syscall', node.pos)
+			return
+		}
+		match expr {
+			ast.IntegerLiteral {
+				g.mov(ra[i], expr.val.int())
+			}
+			ast.BoolLiteral {
+				g.mov(ra[i], if expr.val { 1 } else { 0 })
+			}
+			ast.SelectorExpr {
+				mut done := false
+				if expr.field_name == 'str' {
+					match expr.expr {
+						ast.StringLiteral {
+							s := expr.expr.val.replace('\\n', '\n')
+							g.allocate_string(s, 2)
+							g.mov64(ra[i], 1)
+							done = true
+						}
+						else {}
+					}
+				}
+				if !done {
+					g.v_error('Unknown selector in syscall argument type $expr', node.pos)
+				}
+			}
+			ast.StringLiteral {
+				if expr.language != .c {
+					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
+						node.pos)
+				}
+				s := expr.val.replace('\\n', '\n')
+				g.allocate_string(s, 2)
+				g.mov64(ra[i], 1)
+			}
+			else {
+				g.v_error('Unknown syscall $expr.type_name() argument type $expr', node.pos)
+				return
+			}
+		}
+		i++
+	}
+	g.syscall()
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
 		ast.ParExpr {
@@ -507,7 +559,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.BoolLiteral {}
 		ast.CallExpr {
-			if node.name == 'exit' {
+			if node.name == 'C.syscall' {
+				g.gen_syscall(node)
+			} else if node.name == 'exit' {
 				g.gen_exit(node.args[0].expr)
 			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr

@@ -1,0 +1,11 @@
+struct Example<T, V> {
+	key   T
+	value V
+}
+
+fn main() {
+	example := Example<string>{
+		key: 'key'
+		value: 'value'
+	}
+}

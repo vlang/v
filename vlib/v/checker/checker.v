@@ -856,10 +856,13 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 						}
 						typ.is_public = true
 						typ.kind = parent.kind
-					}
-					parent_sym := c.table.get_type_symbol(parent_info.parent_type)
-					for method in parent_sym.methods {
-						c.table.register_fn_concrete_types(method.name, info.concrete_types)
+
+						parent_sym := c.table.get_type_symbol(parent_info.parent_type)
+						for method in parent_sym.methods {
+							c.table.register_fn_concrete_types(method.name, info.concrete_types)
+						}
+					} else {
+						util.verror('generic error', 'the number of generic types of struct `$parent.name` is inconsistent with the concrete types')
 					}
 				}
 				ast.Interface {

@@ -194,6 +194,10 @@ fn (mut g Gen) jmp(addr i64) {
 */
 fn (mut g Gen) mov64(reg Register, val i64) {
 	match reg {
+		.eax {
+			g.write8(0xb8)
+			g.write8(0x49)
+		}
 		.rax {
 			g.write8(0x48)
 			g.write8(0xb8)
@@ -208,9 +212,16 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0xc7)
 			g.write8(0xc3)
 		}
+		.edi {
+			g.write8(0xbe)
+		}
 		.rsi {
 			g.write8(0x48)
 			g.write8(0xbe)
+		}
+		.rdi {
+			g.write8(0x48)
+			g.write8(0xbf)
 		}
 		else {
 			eprintln('unhandled mov64 $reg')
@@ -621,7 +632,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 			.rcx {
 				g.write8(0xc7)
 			}
-			.edx {
+			.rdx, .edx {
 				g.write8(0xba)
 			}
 			.rsi {

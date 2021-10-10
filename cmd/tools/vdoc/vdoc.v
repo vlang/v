@@ -325,6 +325,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		docs << vd.docs.filter(it.head.name != 'builtin')
 		vd.docs = docs
 	}
+	if dirs.len == 0 && cfg.is_multi {
+		eprintln('vdoc: -m requires at least 1 module folder')
+		exit(1)
+	}
 	vd.vprintln('Rendering docs...')
 	if out.path.len == 0 || out.path == 'stdout' {
 		if out.typ == .html {
@@ -332,7 +336,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
-			eprintln('vdoc: No documentation found for ${dirs[0]}')
+			if dirs.len == 0 {
+				eprintln('vdoc: No documentation found')
+			} else {
+				eprintln('vdoc: No documentation found for ${dirs[0]}')
+			}
 			exit(1)
 		} else {
 			first := outputs.keys()[0]
