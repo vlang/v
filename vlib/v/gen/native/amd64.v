@@ -1268,6 +1268,10 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
+	if node.branches.len == 0 {
+		return
+	}
+
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	cjmp_addr := g.condition(infix_expr, false)
