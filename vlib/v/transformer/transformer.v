@@ -69,7 +69,15 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 		}
 		ast.ForCStmt {}
 		ast.ForInStmt {}
-		ast.ForStmt {}
+		ast.ForStmt {
+			node = &ast.ForStmt{
+				...node
+				cond: t.expr(node.cond)
+			}
+			if node.cond is ast.BoolLiteral && !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+				node = &ast.EmptyStmt{}
+			}
+		}
 		ast.GlobalDecl {}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
@@ -90,32 +98,23 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 
 pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match mut node {
+		ast.IfExpr {
+			return t.if_expr(mut node)
+		}
 		ast.InfixExpr {
 			return t.infix_expr(node)
 		}
-		ast.IfExpr {
-			mut stop_index, mut unreachable_branches := -1, []int{cap: node.branches.len}
-			for i, mut branch in node.branches {
-				cond := t.expr(branch.cond)
-				branch = ast.IfBranch{
-					...(*branch)
-					cond: cond
-				}
-				if cond is ast.BoolLiteral {
-					if cond.val { // eleminates remaining branches when reached first bool literal `true`
-						stop_index = i + 1
-						break
-					} else { // discard unreachable branch when reached bool literal `false`
-						unreachable_branches << i + 1
-					}
-				}
+		ast.IndexExpr {
+			return ast.IndexExpr{
+				...node
+				index: t.expr(node.index)
 			}
-			if stop_index != -1 {
-				unreachable_branches = unreachable_branches.filter(it < stop_index)
-				node.branches = node.branches[..stop_index]
-			}
-			for unreachable_branches.len != 0 {
-				node.branches.delete(unreachable_branches.pop())
+		}
+		ast.MatchExpr {
+			for mut branch in node.branches {
+				for mut stmt in branch.stmts {
+					t.stmt(mut stmt)
+				}
 			}
 			return node
 		}
@@ -123,6 +122,36 @@ pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 			return node
 		}
 	}
+}
+
+pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
+	mut stop_index, mut unreachable_branches := -1, []int{cap: original.branches.len}
+	for i, mut branch in original.branches {
+		for mut stmt in branch.stmts {
+			t.stmt(mut stmt)
+		}
+		cond := t.expr(branch.cond)
+		branch = ast.IfBranch{
+			...(*branch)
+			cond: cond
+		}
+		if cond is ast.BoolLiteral {
+			if cond.val { // eleminates remaining branches when reached first bool literal `true`
+				stop_index = i + 1
+				break
+			} else { // discard unreachable branch when reached bool literal `false`
+				unreachable_branches << i + 1
+			}
+		}
+	}
+	if stop_index != -1 {
+		unreachable_branches = unreachable_branches.filter(it < stop_index)
+		original.branches = original.branches[..stop_index]
+	}
+	for unreachable_branches.len != 0 {
+		original.branches.delete(unreachable_branches.pop())
+	}
+	return *original
 }
 
 pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
