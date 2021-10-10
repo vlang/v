@@ -149,7 +149,7 @@ pub interface Connection {
 	update(table string, data QueryData, where QueryData) ?
 	delete(table string, where QueryData) ?
 	create(table string, fields []TableField) ?
-	drop(talbe string) ?
+	drop(table string) ?
 	last_id() Primitive
 }
 
