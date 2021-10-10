@@ -281,3 +281,21 @@ fn test_in_sumtype_array() {
 		assert true
 	}
 }
+
+struct Point {
+	x int
+	y int
+}
+
+struct Line {
+	p1 Point
+	p2 Point
+}
+
+type Obj = Line | Point
+
+fn test_in_sumtype_array_without_cast() {
+	mut points_and_lines := []Obj{}
+	points_and_lines << Point{1, 2}
+	assert Point{1, 2} in points_and_lines
+}

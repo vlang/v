@@ -394,18 +394,20 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				return
 			}
 		}
-		elem_type := right.sym.array_info().elem_type
-		elem_type_ := g.unwrap(elem_type)
-		if elem_type_.sym.kind == .sum_type {
-			if node.left_type in elem_type_.sym.sumtype_info().variants {
-				new_node_left := ast.CastExpr{
-					arg: ast.EmptyExpr{}
-					typ: elem_type
-					expr: node.left
-					expr_type: node.left_type
+		if right.sym.info is ast.Array {
+			elem_type := right.sym.info.elem_type
+			elem_type_ := g.unwrap(elem_type)
+			if elem_type_.sym.kind == .sum_type {
+				if node.left_type in elem_type_.sym.sumtype_info().variants {
+					new_node_left := ast.CastExpr{
+						arg: ast.EmptyExpr{}
+						typ: elem_type
+						expr: node.left
+						expr_type: node.left_type
+					}
+					g.gen_array_contains(node.right_type, node.right, new_node_left)
+					return
 				}
-				g.gen_array_contains(node.right_type, node.right, new_node_left)
-				return
 			}
 		}
 		g.gen_array_contains(node.right_type, node.right, node.left)
