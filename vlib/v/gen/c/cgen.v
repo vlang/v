@@ -4879,7 +4879,10 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	styp := g.typ(node.return_type)
+	mut styp := g.typ(node.return_type)
+	if g.inside_return {
+		styp = g.typ(g.fn_decl.return_type)
+	}
 	sym := g.table.get_type_symbol(node.return_type)
 	is_multi := sym.kind == .multi_return
 	if !is_multi {
@@ -5163,9 +5166,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	// regular cases
 	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) {
-		if node.exprs.len == 1 && node.exprs[0] is ast.IfExpr {
-			// use a temporary for `return if cond { x,y } else { a,b }`
-			g.write('$ret_typ $tmpvar = ')
+		if node.exprs.len == 1 && (node.exprs[0] is ast.IfExpr || node.exprs[0] is ast.MatchExpr){
+			// use a temporary for `return if cond { x,y } else { a,b }` or `return match expr { abc { x, y } else { z, w } }`
+			g.write('$ret_typ $tmpvar = ($ret_typ)')
 			g.expr(node.exprs[0])
 			g.writeln(';')
 			g.write_defer_stmts_when_needed()
