@@ -1397,6 +1397,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 					}
 				}
 			}
+			func.name = ''
 			idx := t.find_or_register_fn_type('', func, true, false)
 			return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 		}
