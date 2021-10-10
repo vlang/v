@@ -136,7 +136,7 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 			cond: cond
 		}
 		if cond is ast.BoolLiteral {
-			if cond.val { // eleminates remaining branches when reached first bool literal `true`
+			if cond.val { // eliminates remaining branches when reached first bool literal `true`
 				stop_index = i + 1
 				break
 			} else { // discard unreachable branch when reached bool literal `false`
