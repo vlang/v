@@ -2387,7 +2387,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			g.stmts(branch.stmts)
 		}
 	}
-	g.writeln('}')
+	if node.branches.len > 0 {
+		g.writeln('}')
+	}
 	if needs_tmp_var {
 		g.write('$tmp')
 	}

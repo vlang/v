@@ -137,22 +137,33 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 		}
 		if cond is ast.BoolLiteral {
 			if cond.val { // eliminates remaining branches when reached first bool literal `true`
-				stop_index = i + 1
+				stop_index = i
 				break
 			} else { // discard unreachable branch when reached bool literal `false`
-				unreachable_branches << i + 1
+				unreachable_branches << i
 			}
 		}
 	}
+	if stop_index == -1 && unreachable_branches.len == 0 {
+		return *original
+	}
 	if stop_index != -1 {
 		unreachable_branches = unreachable_branches.filter(it < stop_index)
-		original.branches = original.branches[..stop_index]
+		original.branches = original.branches[..stop_index + 1]
 	}
 	for unreachable_branches.len != 0 {
 		original.branches.delete(unreachable_branches.pop())
 	}
 	if original.branches.len == 0 { // no remain branches to walk through
 		return ast.EmptyExpr{}
+	}
+	if original.branches.len == 1 && original.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
+		original.branches[0] = &ast.IfBranch{
+			...original.branches[0]
+			cond: ast.BoolLiteral{
+				val: true
+			}
+		}
 	}
 	return *original
 }
