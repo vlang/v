@@ -89,9 +89,39 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 }
 
 pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
-	match node {
-		ast.InfixExpr { return t.infix_expr(node) }
-		else { return node }
+	match mut node {
+		ast.InfixExpr {
+			return t.infix_expr(node)
+		}
+		ast.IfExpr {
+			mut stop_index, mut unreachable_branches := -1, []int{cap: node.branches.len}
+			for i, mut branch in node.branches {
+				cond := t.expr(branch.cond)
+				branch = ast.IfBranch{
+					...(*branch)
+					cond: cond
+				}
+				if cond is ast.BoolLiteral {
+					if cond.val { // eleminates remaining branches when reached first bool literal `true`
+						stop_index = i + 1
+						break
+					} else { // discard unreachable branch when reached bool literal `false`
+						unreachable_branches << i + 1
+					}
+				}
+			}
+			if stop_index != -1 {
+				unreachable_branches = unreachable_branches.filter(it < stop_index)
+				node.branches = node.branches[..stop_index]
+			}
+			for unreachable_branches.len != 0 {
+				node.branches.delete(unreachable_branches.pop())
+			}
+			return node
+		}
+		else {
+			return node
+		}
 	}
 }
 
@@ -109,6 +139,16 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 			match right_node {
 				ast.BoolLiteral {
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
 						.and {
 							return ast.BoolLiteral{
 								val: left_node.val && right_node.val
@@ -133,6 +173,16 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 			match right_node {
 				ast.StringLiteral {
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
 						.plus {
 							return ast.StringLiteral{
 								val: left_node.val + right_node.val
@@ -155,6 +205,36 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 					left_val := left_node.val.int()
 					right_val := right_node.val.int()
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
+						.gt {
+							return ast.BoolLiteral{
+								val: left_node.val > right_node.val
+							}
+						}
+						.ge {
+							return ast.BoolLiteral{
+								val: left_node.val >= right_node.val
+							}
+						}
+						.lt {
+							return ast.BoolLiteral{
+								val: left_node.val < right_node.val
+							}
+						}
+						.le {
+							return ast.BoolLiteral{
+								val: left_node.val <= right_node.val
+							}
+						}
 						.plus {
 							return ast.IntegerLiteral{
 								val: (left_val + right_val).str()
@@ -200,6 +280,24 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 						.amp {
 							return ast.IntegerLiteral{
 								val: (left_val & right_val).str()
+								pos: pos
+							}
+						}
+						.left_shift {
+							return ast.IntegerLiteral{
+								val: (left_val << right_val).str()
+								pos: pos
+							}
+						}
+						.right_shift {
+							return ast.IntegerLiteral{
+								val: (left_val >> right_val).str()
+								pos: pos
+							}
+						}
+						.unsigned_right_shift {
+							return ast.IntegerLiteral{
+								val: (left_val >>> right_val).str()
 								pos: pos
 							}
 						}
