@@ -56,10 +56,19 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 		ast.DeferStmt {}
 		ast.EnumDecl {}
 		ast.ExprStmt {
-			expr := t.expr(node.expr)
-			node = &ast.ExprStmt{
-				...node
-				expr: expr
+			if node.expr is ast.IfExpr {
+				mut untrans_expr := node.expr as ast.IfExpr
+				expr := t.if_expr(mut untrans_expr)
+				node = &ast.ExprStmt{
+					...node
+					expr: expr
+				}
+			} else {
+				expr := t.expr(node.expr)
+				node = &ast.ExprStmt{
+					...node
+					expr: expr
+				}
 			}
 		}
 		ast.FnDecl {
@@ -98,9 +107,6 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 
 pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 	match mut node {
-		ast.IfExpr {
-			return t.if_expr(mut node)
-		}
 		ast.InfixExpr {
 			return t.infix_expr(node)
 		}
@@ -143,9 +149,6 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 				unreachable_branches << i
 			}
 		}
-	}
-	if stop_index == -1 && unreachable_branches.len == 0 {
-		return *original
 	}
 	if stop_index != -1 {
 		unreachable_branches = unreachable_branches.filter(it < stop_index)
