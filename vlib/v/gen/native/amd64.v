@@ -234,7 +234,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
 	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
 	match reg {
-		.rax, .rsi {
+		.rax {
 			g.write8(0x48)
 		}
 		else {}
@@ -642,7 +642,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0xba)
 			}
 			.rsi {
-				g.write8(0x48)
+				//	g.write8(0x48) // its 32bit!
 				g.write8(0xbe)
 			}
 			.r12 {
