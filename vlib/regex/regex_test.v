@@ -692,7 +692,6 @@ fn test_groups_in_find(){
 		println("query   :[${query}]")
 		println("[${start}, ${end}]")
 		println(re.groups)
-		*/
 		mut gi := 0
 		for gi < re.groups.len {
 			if re.groups[gi] >= 0 {
@@ -700,6 +699,7 @@ fn test_groups_in_find(){
 			}
 			gi += 2
 		}
+		*/
 		// check
 		assert start == test_obj.s
 		assert end == test_obj.e
