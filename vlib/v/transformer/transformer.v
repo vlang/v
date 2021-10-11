@@ -56,10 +56,19 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 		ast.DeferStmt {}
 		ast.EnumDecl {}
 		ast.ExprStmt {
-			expr := t.expr(node.expr)
-			node = &ast.ExprStmt{
-				...node
-				expr: expr
+			if node.expr is ast.IfExpr {
+				mut untrans_expr := node.expr as ast.IfExpr
+				expr := t.if_expr(mut untrans_expr)
+				node = &ast.ExprStmt{
+					...node
+					expr: expr
+				}
+			} else {
+				expr := t.expr(node.expr)
+				node = &ast.ExprStmt{
+					...node
+					expr: expr
+				}
 			}
 		}
 		ast.FnDecl {
@@ -69,7 +78,15 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 		}
 		ast.ForCStmt {}
 		ast.ForInStmt {}
-		ast.ForStmt {}
+		ast.ForStmt {
+			node = &ast.ForStmt{
+				...node
+				cond: t.expr(node.cond)
+			}
+			if node.cond is ast.BoolLiteral && !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+				node = &ast.EmptyStmt{}
+			}
+		}
 		ast.GlobalDecl {}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
@@ -89,10 +106,69 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 }
 
 pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
-	match node {
-		ast.InfixExpr { return t.infix_expr(node) }
-		else { return node }
+	match mut node {
+		ast.InfixExpr {
+			return t.infix_expr(node)
+		}
+		ast.IndexExpr {
+			return ast.IndexExpr{
+				...node
+				index: t.expr(node.index)
+			}
+		}
+		ast.MatchExpr {
+			for mut branch in node.branches {
+				for mut stmt in branch.stmts {
+					t.stmt(mut stmt)
+				}
+			}
+			return node
+		}
+		else {
+			return node
+		}
 	}
+}
+
+pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
+	mut stop_index, mut unreachable_branches := -1, []int{cap: original.branches.len}
+	for i, mut branch in original.branches {
+		for mut stmt in branch.stmts {
+			t.stmt(mut stmt)
+		}
+		cond := t.expr(branch.cond)
+		branch = ast.IfBranch{
+			...(*branch)
+			cond: cond
+		}
+		if cond is ast.BoolLiteral {
+			if cond.val { // eliminates remaining branches when reached first bool literal `true`
+				stop_index = i
+				break
+			} else { // discard unreachable branch when reached bool literal `false`
+				unreachable_branches << i
+			}
+		}
+	}
+	if stop_index != -1 {
+		unreachable_branches = unreachable_branches.filter(it < stop_index)
+		original.branches = original.branches[..stop_index + 1]
+	}
+	for unreachable_branches.len != 0 {
+		original.branches.delete(unreachable_branches.pop())
+	}
+	if original.branches.len == 0 { // no remain branches to walk through
+		return ast.EmptyExpr{}
+	}
+	if original.branches.len == 1 && original.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
+		original.branches[0] = &ast.IfBranch{
+			...original.branches[0]
+			cond: ast.BoolLiteral{
+				val: true
+			}
+		}
+	}
+	return *original
 }
 
 pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
@@ -109,6 +185,16 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 			match right_node {
 				ast.BoolLiteral {
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
 						.and {
 							return ast.BoolLiteral{
 								val: left_node.val && right_node.val
@@ -133,6 +219,16 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 			match right_node {
 				ast.StringLiteral {
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
 						.plus {
 							return ast.StringLiteral{
 								val: left_node.val + right_node.val
@@ -155,6 +251,36 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 					left_val := left_node.val.int()
 					right_val := right_node.val.int()
 					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
+						.gt {
+							return ast.BoolLiteral{
+								val: left_node.val > right_node.val
+							}
+						}
+						.ge {
+							return ast.BoolLiteral{
+								val: left_node.val >= right_node.val
+							}
+						}
+						.lt {
+							return ast.BoolLiteral{
+								val: left_node.val < right_node.val
+							}
+						}
+						.le {
+							return ast.BoolLiteral{
+								val: left_node.val <= right_node.val
+							}
+						}
 						.plus {
 							return ast.IntegerLiteral{
 								val: (left_val + right_val).str()
@@ -200,6 +326,24 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 						.amp {
 							return ast.IntegerLiteral{
 								val: (left_val & right_val).str()
+								pos: pos
+							}
+						}
+						.left_shift {
+							return ast.IntegerLiteral{
+								val: (left_val << right_val).str()
+								pos: pos
+							}
+						}
+						.right_shift {
+							return ast.IntegerLiteral{
+								val: (left_val >> right_val).str()
+								pos: pos
+							}
+						}
+						.unsigned_right_shift {
+							return ast.IntegerLiteral{
+								val: (left_val >>> right_val).str()
 								pos: pos
 							}
 						}

@@ -1268,21 +1268,31 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
-	branch := node.branches[0]
-	infix_expr := branch.cond as ast.InfixExpr
-	cjmp_addr := g.condition(infix_expr, false)
 	if node.is_comptime {
 		g.n_error('ignored comptime')
 	}
-	g.stmts(branch.stmts)
-	// Now that we know where we need to jump if the condition is false, update the `jne` call.
-	// The value is the relative address, difference between current position and the location
-	// after `jne 00 00 00 00`
-	// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
-	g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
-
 	if node.has_else {
 		g.n_error('else statements not yet supported')
+	}
+	if node.branches.len == 0 {
+		return
+	}
+	for idx in 0 .. node.branches.len {
+		branch := node.branches[idx]
+		if branch.cond is ast.BoolLiteral {
+			if branch.cond.val {
+				g.stmts(branch.stmts)
+			}
+			continue
+		}
+		infix_expr := branch.cond as ast.InfixExpr
+		cjmp_addr := g.condition(infix_expr, false)
+		g.stmts(branch.stmts)
+		// Now that we know where we need to jump if the condition is false, update the `jne` call.
+		// The value is the relative address, difference between current position and the location
+		// after `jne 00 00 00 00`
+		// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
+		g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
 	}
 }
 
