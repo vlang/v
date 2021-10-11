@@ -1369,8 +1369,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.push(.rbp)
 	g.mov_rbp_rsp()
 	locals_count := node.scope.objects.len + node.params.len
-	stackframe_size := (locals_count * 8) + 0x10
-	g.sub8(.rsp, stackframe_size)
+	g.stackframe_size = (locals_count * 8) + 0x10
+	g.sub8(.rsp, g.stackframe_size)
 
 	if node.params.len > 0 {
 		// g.mov(.r12, 0x77777777)
@@ -1395,7 +1395,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		return
 	}
 	// g.leave()
-	g.add8(.rsp, stackframe_size)
+	g.add8(.rsp, g.stackframe_size)
 	g.pop(.rbp)
 	g.ret()
 }
