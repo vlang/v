@@ -280,4 +280,10 @@ fn test_in_sumtype_array() {
 		println(foo)
 		assert true
 	}
+
+	// without sumtype cast
+	mut foos := []Foo{}
+	foos << Foo1{}
+	assert Foo1{} in foos
+	assert Foo2{} !in foos
 }
