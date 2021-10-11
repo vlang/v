@@ -260,11 +260,23 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	if f.params.len != func.params.len {
 		return 'expected $f.params.len parameter(s), not $func.params.len'
 	}
-	for i in 1 .. f.params.len {
-		if f.params[i].typ != func.params[i].typ {
+
+	// interface name() other mut name() : error
+
+	for i in 0 .. f.params.len {
+		// don't check receiver for `.typ`
+		has_unexpected_type := i > 0 && f.params[i].typ != func.params[i].typ
+
+		has_unexpected_mutability := !f.params[i].is_mut && func.params[i].is_mut
+
+		if has_unexpected_type || has_unexpected_mutability {
 			exps := t.type_to_str(f.params[i].typ)
 			gots := t.type_to_str(func.params[i].typ)
-			return 'expected `$exps`, not `$gots` for parameter $i'
+			if has_unexpected_type {
+				return 'expected `$exps`, not `$gots` for parameter $i'
+			} else {
+				return 'expected `$exps` which is immutable, not `mut $gots`'
+			}
 		}
 	}
 	return ''

@@ -18,6 +18,7 @@ pub enum ServerStatus {
 }
 
 interface Handler {
+mut:
 	handle(Request) Response
 }
 
@@ -80,7 +81,7 @@ pub fn (s &Server) status() ServerStatus {
 	return s.state
 }
 
-fn (s &Server) parse_and_respond(mut conn net.TcpConn) {
+fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	defer {
 		conn.close() or { eprintln('close() failed: $err') }
 	}

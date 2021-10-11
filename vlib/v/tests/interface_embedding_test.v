@@ -9,11 +9,13 @@ interface WalkerTalker {
 
 interface Talker {
 	nspeeches int
+mut:
 	talk(msg string)
 }
 
 interface Walker {
 	nsteps int
+mut:
 	walk(newx int, newy int)
 }
 

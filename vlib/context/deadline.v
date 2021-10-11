@@ -26,12 +26,12 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_deadline(parent Context, d time.Time) (Context, CancelFn) {
+pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 	id := rand.uuid_v4()
 	if cur := parent.deadline() {
 		if cur < d {
 			// The current deadline is already sooner than the new one.
-			return with_cancel(parent)
+			return with_cancel(mut parent)
 		}
 	}
 	cancel_ctx := new_cancel_context(parent)
@@ -40,7 +40,7 @@ pub fn with_deadline(parent Context, d time.Time) (Context, CancelFn) {
 		deadline: d
 		id: id
 	}
-	propagate_cancel(parent, ctx)
+	propagate_cancel(mut parent, mut ctx)
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
@@ -64,8 +64,8 @@ pub fn with_deadline(parent Context, d time.Time) (Context, CancelFn) {
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete
-pub fn with_timeout(parent Context, timeout time.Duration) (Context, CancelFn) {
-	return with_deadline(parent, time.now().add(timeout))
+pub fn with_timeout(mut parent Context, timeout time.Duration) (Context, CancelFn) {
+	return with_deadline(mut parent, time.now().add(timeout))
 }
 
 pub fn (ctx &TimerContext) deadline() ?time.Time {
@@ -88,7 +88,8 @@ pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err IError) {
 	ctx.cancel_ctx.cancel(false, err)
 	if remove_from_parent {
 		// Remove this TimerContext from its parent CancelContext's children.
-		remove_child(ctx.cancel_ctx.context, ctx)
+		mut cc := &ctx.cancel_ctx.context
+		remove_child(mut cc, ctx)
 	}
 }
 

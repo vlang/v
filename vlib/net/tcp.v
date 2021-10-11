@@ -48,7 +48,7 @@ pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
 }
 
-pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
+pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -80,7 +80,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return none
 }
 
-pub fn (mut c TcpConn) read(mut buf []byte) ?int {
+pub fn (c TcpConn) read(mut buf []byte) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
@@ -169,7 +169,7 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 }
 
 [inline]
-pub fn (mut c TcpConn) wait_for_read() ? {
+pub fn (c TcpConn) wait_for_read() ? {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 

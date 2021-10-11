@@ -66,6 +66,7 @@ fn test_extract_basic() {
 
 //////
 interface Iterator<T> {
+mut:
 	next() ?T
 }
 

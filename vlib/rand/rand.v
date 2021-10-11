@@ -10,6 +10,7 @@ import rand.wyrand
 // modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
 // implement in order to ensure that _all_ functions can be used with the generator.
 pub interface PRNG {
+mut:
 	seed(seed_data []u32)
 	u32() u32
 	u64() u64

@@ -16,7 +16,7 @@ pub fn show(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) 
 	// Node14 [shape="box",label="PrivateBase",URL="$classPrivateBase.html"];
 	// Node15 -> Node9 [dir=back,color="midnightblue",fontsize=10,style="solid"];
 	for afile in ast_files {
-		walker.walk(mapper, afile)
+		walker.walk(mut mapper, afile)
 	}
 	mapper.dg.finish()
 }

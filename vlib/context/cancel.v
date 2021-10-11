@@ -12,12 +12,13 @@ pub type CancelFn = fn ()
 
 pub interface Canceler {
 	id string
+mut:
 	cancel(remove_from_parent bool, err IError)
 	done() chan int
 }
 
 [deprecated]
-pub fn cancel(ctx Context) {
+pub fn cancel(mut ctx Context) {
 	match mut ctx {
 		CancelContext {
 			ctx.cancel(true, canceled)
@@ -47,9 +48,9 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) (Context, CancelFn) {
+pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 	mut c := new_cancel_context(parent)
-	propagate_cancel(parent, c)
+	propagate_cancel(mut parent, mut c)
 	return Context(c), fn [mut c] () {
 		c.cancel(true, canceled)
 	}
@@ -116,18 +117,20 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 
 	for _, child in ctx.children {
 		// NOTE: acquiring the child's lock while holding parent's lock.
-		child.cancel(false, err)
+		mut c := child
+		c.cancel(false, err)
 	}
 
 	ctx.children = map[string]Canceler{}
 	ctx.mutex.unlock()
 
 	if remove_from_parent {
-		remove_child(ctx.context, ctx)
+		mut cc := &ctx.context
+		remove_child(mut cc, ctx)
 	}
 }
 
-fn propagate_cancel(parent Context, child Canceler) {
+fn propagate_cancel(mut parent Context, mut child Canceler) {
 	done := parent.done()
 	select {
 		_ := <-done {
@@ -136,15 +139,15 @@ fn propagate_cancel(parent Context, child Canceler) {
 			return
 		}
 	}
-	mut p := parent_cancel_context(parent) or {
-		go fn (parent Context, child Canceler) {
+	mut p := parent_cancel_context(mut parent) or {
+		go fn (mut parent Context, mut child Canceler) {
 			pdone := parent.done()
 			select {
 				_ := <-pdone {
 					child.cancel(false, parent.err())
 				}
 			}
-		}(parent, child)
+		}(mut parent, mut child)
 		return
 	}
 
@@ -162,7 +165,7 @@ fn propagate_cancel(parent Context, child Canceler) {
 // parent.done() matches that CancelContext. (If not, the CancelContext
 // has been wrapped in a custom implementation providing a
 // different done channel, in which case we should not bypass it.)
-fn parent_cancel_context(parent Context) ?&CancelContext {
+fn parent_cancel_context(mut parent Context) ?&CancelContext {
 	done := parent.done()
 	if done.closed {
 		return none
@@ -181,7 +184,7 @@ fn parent_cancel_context(parent Context) ?&CancelContext {
 }
 
 // remove_child removes a context from its parent.
-fn remove_child(parent Context, child Canceler) {
-	mut p := parent_cancel_context(parent) or { return }
+fn remove_child(mut parent Context, child Canceler) {
+	mut p := parent_cancel_context(mut parent) or { return }
 	p.children.delete(child.id)
 }

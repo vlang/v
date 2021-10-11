@@ -30,12 +30,12 @@ fn (mut w Writ) write(buf []byte) ?int {
 }
 
 fn test_copy() {
-	src := Buf{
+	mut src := Buf{
 		bytes: 'abcdefghij'.repeat(10).bytes()
 	}
 	mut dst := Writ{
 		bytes: []byte{}
 	}
-	io.cp(src, mut dst) or { assert false }
+	io.cp(mut src, mut dst) or { assert false }
 	assert dst.bytes == src.bytes
 }

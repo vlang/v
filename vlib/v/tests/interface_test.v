@@ -196,6 +196,7 @@ interface Speaker2 {
 	name() string
 	speak()
 	return_speaker() Speaker2
+mut:
 	return_speaker2() ?Speaker2
 }
 
@@ -250,6 +251,7 @@ interface Animal {
 	name() string
 	name_detailed(pet_name string) string
 	speak(s string)
+mut:
 	set_breed(s string)
 }
 
@@ -327,6 +329,31 @@ mut:
 	my_field int
 }
 
+// the opposite example of interface_mutability_receiver.vv
+// 	 related to https://github.com/vlang/v/issues/1081 and https://github.com/vlang/v/issues/7338
+//   test example code by https://github.com/nedpals copied and adapted from https://github.com/vlang/v/issues/7338
+// we accept immutable get_name even if the interface specified `mut` as it is consistent with function param behavior
+struct Dog2 {
+pub mut:
+	name string
+}
+
+fn (d Dog2) get_name() string {
+	return d.name
+}
+
+// mut get_name might be a bad example
+// we try to show that an interface can be more liberal in mut than the implementor,
+// while our error check is for the opposite case
+interface Animal2 {
+mut:
+	get_name() string
+}
+
+fn get_animal_name(mut a Animal2) string {
+	return a.get_name()
+}
+
 fn main() {
 	mut aa := AA{}
 	mut ii := II(aa)
@@ -335,4 +362,7 @@ fn main() {
 	assert ii.my_field == 123
 	ii.my_field = 1234
 	assert aa.my_field == 1234
+	mut dog := Dog2{'Doggo'}
+	println(dog.name)
+	println(get_animal_name(mut dog))
 }

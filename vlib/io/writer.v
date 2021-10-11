@@ -2,6 +2,7 @@ module io
 
 // Writer represents a stream of data that can be wrote to
 pub interface Writer {
+mut:
 	write(buf []byte) ?int
 }
 

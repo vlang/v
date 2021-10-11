@@ -1,4 +1,5 @@
 interface Iter<T> {
+mut:
 	next() ?T
 }
 
@@ -39,7 +40,7 @@ fn (mut it SkipIter<T>) next<T>() ?T {
 }
 
 fn test_generics_interface_with_multi_generic_structs() {
-	x := Iter<int>(ArrIter<int>{
+	mut x := Iter<int>(ArrIter<int>{
 		data: [1, 2, 3]
 	})
 	println(x)

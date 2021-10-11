@@ -20,7 +20,8 @@ jobs:
       - name: Build V
         run: make
       - name: Clone current Vinix
-        run: git clone https://github.com/vlang/vinix.git --depth=1
+        run: |
+          git clone https://github.com/vlang/vinix.git --depth 1
       - name: Clone current mlibc
         run: git clone https://github.com/managarm/mlibc.git --depth=1
       - name: Patch mlibc for Vinix
