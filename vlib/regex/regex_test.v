@@ -685,11 +685,14 @@ fn test_groups_in_find(){
 		query := test_obj.q
 		mut re := regex.regex_opt(query) or { panic(err) }
 		start, end := re.find(src_text)
+		// Debug print do not remove!!
+		/*
 		println("---------")
 		println("src_text:[${src_text}]")
 		println("query   :[${query}]")
 		println("[${start}, ${end}]")
 		println(re.groups)
+		*/
 		mut gi := 0
 		for gi < re.groups.len {
 			if re.groups[gi] >= 0 {

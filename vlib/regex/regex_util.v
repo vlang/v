@@ -364,12 +364,12 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			if last_end < s {
 				res.write_string(in_txt[last_end..s])
 			}
-/*
+			/*
 			for g_i in 0 .. re.group_count {
 				re.groups[g_i << 1] += i
 				re.groups[(g_i << 1) + 1] += i
 			}
-*/
+			*/
 			repl := repl_fn(re, in_txt, s, e)
 			// println("repl res: $repl")
 			res.write_string(repl)
@@ -426,12 +426,12 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 			if last_end < s {
 				res.write_string(in_txt[last_end..s])
 			}
-/*
+			/*
 			for g_i in 0 .. re.group_count {
 				re.groups[g_i << 1] += i
 				re.groups[(g_i << 1) + 1] += i
 			}
-*/
+			*/
 			// repl := repl_fn(re, in_txt, s, e)
 			repl := re.parsed_replace_string(in_txt, repl_str)
 			// println("repl res: $repl")
