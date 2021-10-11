@@ -8,7 +8,7 @@ fn test_benchmark_acos() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = acos(.5)
+		x = acos(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -26,7 +26,7 @@ fn test_benchmark_asin() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = asin(.5)
+		x = asin(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -35,7 +35,7 @@ fn test_benchmark_asinh() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = asinh(.5)
+		x = asinh(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -44,7 +44,7 @@ fn test_benchmark_atan() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = atan(.5)
+		x = atan(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -53,7 +53,7 @@ fn test_benchmark_atanh() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = atanh(.5)
+		x = atanh(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -62,7 +62,7 @@ fn test_benchmark_atan2() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = atan2(.5, 1)
+		x = atan2(0.5, 1)
 	}
 	bmark.measure(@FN)
 }
@@ -80,7 +80,7 @@ fn test_benchmark_ceil() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = ceil(.5)
+		x = ceil(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -91,7 +91,7 @@ fn test_benchmark_copysign() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = copysign(.5, math.copysign_neg)
+		x = copysign(0.5, math.copysign_neg)
 	}
 	bmark.measure(@FN)
 }
@@ -100,7 +100,7 @@ fn test_benchmark_cos() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = cos(.5)
+		x = cos(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -118,7 +118,7 @@ fn test_benchmark_erf() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = erf(.5)
+		x = erf(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -127,7 +127,7 @@ fn test_benchmark_erfc() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = erfc(.5)
+		x = erfc(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -136,7 +136,7 @@ fn test_benchmark_exp() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = exp(.5)
+		x = exp(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -145,7 +145,7 @@ fn test_benchmark_expm1() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = expm1(.5)
+		x = expm1(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -154,12 +154,12 @@ fn test_benchmark_exp2() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = exp2(.5)
+		x = exp2(0.5)
 	}
 	bmark.measure(@FN)
 }
 
-const abs_pos = .5
+const abs_pos = 0.5
 
 fn test_benchmark_abs() {
 	mut x := 0.0
@@ -174,7 +174,7 @@ fn test_benchmark_floor() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = floor(.5)
+		x = floor(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -238,7 +238,7 @@ fn test_benchmark_ldexp() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = ldexp(.5, 2)
+		x = ldexp(0.5, 2)
 	}
 	bmark.measure(@FN)
 }
@@ -256,7 +256,7 @@ fn test_benchmark_log() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = log(.5)
+		x = log(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -265,7 +265,7 @@ fn test_benchmark_log_b() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = log_b(.5)
+		x = log_b(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -274,7 +274,7 @@ fn test_benchmark_log1p() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = log1p(.5)
+		x = log1p(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -283,7 +283,7 @@ fn test_benchmark_log10() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = log10(.5)
+		x = log10(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -292,7 +292,7 @@ fn test_benchmark_log2() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = log2(.5)
+		x = log2(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -311,7 +311,7 @@ fn test_benchmark_nextafter32() {
 	mut x := f32(0.0)
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = nextafter32(.5, 1)
+		x = nextafter32(0.5, 1)
 	}
 	bmark.measure(@FN)
 }
@@ -320,7 +320,7 @@ fn test_benchmark_nextafter64() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = nextafter(.5, 1)
+		x = nextafter(0.5, 1)
 	}
 	bmark.measure(@FN)
 }
@@ -400,7 +400,7 @@ fn test_benchmark_sin() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = sin(.5)
+		x = sin(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -410,7 +410,7 @@ fn test_benchmark_sincos() {
 	mut y := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x, y = sincos(.5)
+		x, y = sincos(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -480,7 +480,7 @@ fn test_benchmark_tan() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = tan(.5)
+		x = tan(0.5)
 	}
 	bmark.measure(@FN)
 }
@@ -498,7 +498,7 @@ fn test_benchmark_trunc() {
 	mut x := 0.0
 	mut bmark := benchmark.start()
 	for i in 0 .. math.max_iter {
-		x = trunc(.5)
+		x = trunc(0.5)
 	}
 	bmark.measure(@FN)
 }
