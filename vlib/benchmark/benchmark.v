@@ -21,6 +21,7 @@ pub mut:
 	nfail           int
 	nskip           int
 	nexpected_steps int
+	njobs           int
 	cstep           int
 	bok             string
 	bfail           string
@@ -200,7 +201,15 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.nskip > 0 {
 		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '$b.nskip skipped')) + ', '
 	}
-	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms.\n'
+	mut njobs_label := ''
+	if b.njobs > 0 {
+		if b.njobs == 1 {
+			njobs_label = ', on ${term.colorize(term.bold, 1.str())} job'
+		} else {
+			njobs_label = ', on ${term.colorize(term.bold, b.njobs.str())} parallel jobs'
+		}
+	}
+	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
 	return tmsg
 }
 

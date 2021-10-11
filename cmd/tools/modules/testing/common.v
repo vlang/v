@@ -7,6 +7,7 @@ import benchmark
 import sync.pool
 import v.pref
 import v.util.vtest
+import runtime
 
 const github_job = os.getenv('GITHUB_JOB')
 
@@ -233,6 +234,7 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	ts.benchmark.njobs = runtime.nr_jobs()
 	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
@@ -266,6 +268,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
+	tls_bench.njobs = ts.benchmark.njobs
 	mut relative_file := os.real_path(p.get_item<string>(idx))
 	mut cmd_options := [ts.vargs]
 	mut run_js := false
