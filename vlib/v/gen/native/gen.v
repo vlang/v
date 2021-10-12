@@ -74,10 +74,15 @@ fn get_backend(arch pref.Arch) ?CodeGen {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
+	exe_name := if pref.os == .windows && !out_name.ends_with('.exe') {
+		out_name + '.exe'
+	} else {
+		out_name
+	}
 	mut g := &Gen{
 		table: table
 		sect_header_name_pos: 0
-		out_name: out_name
+		out_name: exe_name
 		pref: pref
 		// TODO: workaround, needs to support recursive init
 		code_gen: get_backend(pref.arch) or {
