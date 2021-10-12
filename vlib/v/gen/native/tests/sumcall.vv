@@ -10,10 +10,9 @@ fn sumcall2(a int, b int) int {
 fn main() {
 	r := sumcall (1,2)
 	assert r == 3
-/*
-	// XXX not yet working
+
 	s := sumcall2 (1,2)
-	assert r == 3
-*/
+	assert s == 3
+
 	exit(0)
 }

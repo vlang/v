@@ -777,7 +777,6 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	if !n.contains('.') {
 		n = 'main.$n'
 	}
-	eprintln('call fn ($n)')
 	addr := g.fn_addr[n]
 	if addr == 0 {
 		// g.warning('fn addr of `$name` = 0')
