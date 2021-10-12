@@ -67,10 +67,20 @@ fn get_all_commands() []Command {
 			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
 		}
-	}
-	res << Command{
-		line: '$vexe run examples/v_script.vsh'
-		okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+		res << Command{
+			line: '$vexe run examples/v_script.vsh > /dev/null'
+			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+		}
+		res << Command{
+			line: '$vexe -b js -o hw.js examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the JS backend'
+			rmfile: 'hw.js'
+		}
+		res << Command{
+			line: '$vexe -skip-unused -b js -o hw_skip_unused.js examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the JS backend, with -skip-unused'
+			rmfile: 'hw_skip_unused.js'
+		}
 	}
 	res << Command{
 		line: '$vexe -o vtmp cmd/v'

@@ -381,6 +381,27 @@ fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
 	}
 }
 
+fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
+	mut is_used_by_main := true
+	if g.pref.skip_unused {
+		fkey := node.fkey()
+		is_used_by_main = g.table.used_fns[fkey]
+		$if trace_skip_unused_fns ? {
+			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
+		}
+		if !is_used_by_main {
+			$if trace_skip_unused_fns_in_js_code ? {
+				g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $fkey')
+			}
+		}
+	} else {
+		$if trace_skip_unused_fns_in_js_code ? {
+			g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $node.fkey()')
+		}
+	}
+	return is_used_by_main
+}
+
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	res := g.fn_gen_type(it)
 	if it.language == .js {
@@ -388,6 +409,12 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	}
 	if g.inside_builtin {
 		g.builtin_fns << it.name
+	}
+	if !g.is_used_by_main(it) {
+		return
+	}
+	if it.should_be_skipped {
+		return
 	}
 	cur_fn_decl := g.fn_decl
 	g.gen_method_decl(it, res)
