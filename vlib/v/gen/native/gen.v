@@ -32,6 +32,7 @@ mut:
 	sect_header_name_pos int
 	offset               i64
 	str_pos              []i64
+	stackframe_size      int
 	strings              []string // TODO use a map and don't duplicate strings
 	file_size_pos        i64
 	main_fn_addr         i64
@@ -477,7 +478,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			// intel specific
-			g.add8(.rsp, 0x20) // XXX depends on scope frame size
+			g.add8(.rsp, g.stackframe_size)
 			g.pop(.rbp)
 			g.ret()
 		}
