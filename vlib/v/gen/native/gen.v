@@ -468,8 +468,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.mov64(.rax, e0.val.int())
 				}
 				ast.InfixExpr {
-					// TODO
-					// verror('expr')
+					g.infix_expr(e0)
 				}
 				ast.CastExpr {
 					g.mov64(.rax, e0.expr.str().int())
@@ -482,7 +481,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 				ast.Ident {
 					g.expr(e0)
-					eprintln('ident $e0.name')
 				}
 				else {
 					g.n_error('unknown return type $e0.type_name()')
