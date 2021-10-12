@@ -1,4 +1,4 @@
-## Building a 150 KB web blog in V with 0 dependencies
+## Building a 150 KB web blog in V & SQLite
 
 Hello,
 
@@ -348,10 +348,9 @@ Create `new.html`:
 ```v ignore
 // article.v
 import vweb
-['/new_article'; post]
-pub fn (mut app App) new_article() vweb.Result {
-	title := app.form['title']
-	text := app.form['text']
+
+[post]
+pub fn (mut app App) new_article(title string, text form) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
 	}
@@ -367,11 +366,11 @@ pub fn (mut app App) new_article() vweb.Result {
 }
 ```
 
-> Untyped `form['key']` is temporary. Very soon Vweb will accept query and form
-parameters via function arguments: `new_article(title, text string) {`.
+The decorator on our function tells vweb that it is an HTTP POST type operation.
 
-The decorator on our function tells vweb the path to our endpoint, `/new_article`,
-and that it is an HTTP POST type operation.
+This time Vweb parses the HTTP form and assigns correct values with correct types to
+function arguments, which saves a lot of typing (e.g. `title := app.form['title']` is
+not necessary).
 
 We need to update `index.html` to add a link to the "new article" page:
 
