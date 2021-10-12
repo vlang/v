@@ -645,3 +645,64 @@ fn test_quantifier_sequences(){
 		assert re_err == regex.err_syntax_error
 	}
 }
+
+// test group index in find
+struct Test_find_groups {
+	src string
+	q string
+	s int // start index
+	e int // end index
+	res []int // groups indexes 
+}
+const (
+find_groups_test_suite = [
+	Test_find_groups{
+		"aabbbccccdd",
+		r"(b+)(c+)",
+		2,
+		9,
+		[2, 5, 5, 9],
+	},
+	Test_find_groups{
+		"aabbbccccdd",
+		r"(a+).*(c+)",
+		0,
+		9,
+		[0, 2, 5, 9],
+	},
+	Test_find_groups{
+		"aabbbccccdd",
+		r"((b+).*)(d+)",
+		2,
+		11,
+		[2, 9, 2, 5, 9, 11],
+	},
+]
+)
+fn test_groups_in_find(){
+	for test_obj in find_groups_test_suite {
+		src_text := test_obj.src
+		query := test_obj.q
+		mut re := regex.regex_opt(query) or { panic(err) }
+		start, end := re.find(src_text)
+		// Debug print do not remove!!
+		/*
+		println("---------")
+		println("src_text:[${src_text}]")
+		println("query   :[${query}]")
+		println("[${start}, ${end}]")
+		println(re.groups)
+		mut gi := 0
+		for gi < re.groups.len {
+			if re.groups[gi] >= 0 {
+				println('${gi / 2} :[${src_text[re.groups[gi]..re.groups[gi + 1]]}]')
+			}
+			gi += 2
+		}
+		*/
+		// check
+		assert start == test_obj.s
+		assert end == test_obj.e
+		assert re.groups == test_obj.res
+	}
+}
