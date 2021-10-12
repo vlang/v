@@ -1,7 +1,7 @@
 module native
 
 enum PeCharacteristics {
-	executable_image = 0x102
+	executable_image = 0x22f // 0x102
 }
 
 enum PeMachine {
@@ -97,11 +97,11 @@ pub fn (mut g Gen) write_pe_header() {
 	g.write16(0x20b) // magic (0x10b=pe32, 0x20b=pe64)
 	g.write8(0xe) // major linker version
 	g.write8(0x1d) // minor linker version
-	g.write32(0x10) // sizeofcode
-	g.write32(0x10) // initial data size
+	g.write32(0x100) // sizeofcode
+	g.write32(0x100) // initial data size
 	g.write32(0) // sizeof sizeof uninit data
 
-	image_base := i64(0x140000000)
+	image_base := i64(0x400000)
 	g.write32(0x1188) // paddr of map // aligned to 4 bytes // entrypoint
 	g.write32(0x1000) // base of code // aligned to 4 bytes
 	g.write64(image_base) // image base vaddr // va // aligned to 4 bytes
@@ -116,7 +116,7 @@ pub fn (mut g Gen) write_pe_header() {
 
 	g.write32(0) // win32versionvalue
 	g.write32(0x1000) // hdrsize + codelen) // sizeofimage
-	g.write32(0x180) // hdrsize) // sizeofheaders
+	g.write32(0x200) // hdrsize) // sizeofheaders
 
 	g.write32(0) // checksum
 	g.write16(3) // subsystem // subsystem
@@ -128,10 +128,11 @@ pub fn (mut g Gen) write_pe_header() {
 	g.write64(0x100000) // SizeOfHeapReserve
 	g.write64(0x1000) // SizeOfHeapCommit
 	g.write32(0) // LoaderFlags
-	g.write32(1) // NumberOfRvaAndSizes
+	g.write32(0) // NumberOfRvaAndSizes
 
-	g.write32(0)
-	g.write32(0)
+	for _ in 0 .. 16 {
+		g.write64(0)
+	}
 }
 
 fn (mut g Gen) write_pe_section() {
@@ -139,9 +140,9 @@ fn (mut g Gen) write_pe_section() {
 	// section header
 	g.write_string_with_padding('.text', 8)
 	g.write32(0x0) // pa
-	g.size_pos << g.buf.len
+	// g.size_pos << g.buf.len
 	g.write32(0x1000) // va
-	g.write32(0x400) // sizeofrawdata
+	g.write32(0) // sizeofrawdata
 	// g.patch_code << g.buf.len
 	g.write32(0) // ptr-torawdata
 	g.write32(0) // relocs
@@ -156,6 +157,7 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.write_dos_stub()
 	g.write_pe_header()
 	g.code_start_pos = g.buf.len
+	g.write_pe_section()
 
 	g.call(0x18e)
 	g.ret()
@@ -176,7 +178,6 @@ pub fn (mut g Gen) generate_pe_footer() {
 		g.write8(0) // entries
 	}
 
-	g.write_pe_section()
 	g.file_size_pos = g.buf.len
 	g.main_fn_addr = g.buf.len
 	g.code_start_pos = g.buf.len
