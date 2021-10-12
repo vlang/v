@@ -2,7 +2,7 @@ import strings
 
 type MyInt = int
 
-const maxn = 1000
+const maxn = 100000
 
 fn test_sb() {
 	mut sb := strings.new_builder(100)

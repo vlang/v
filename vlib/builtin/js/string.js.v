@@ -755,18 +755,11 @@ pub fn (s string) split_into_lines() []string {
 	if s.len == 0 {
 		return res
 	}
-	mut start := 0
-	mut end := 0
-	for i := 0; i < s.len; i++ {
-		if s[i] == 10 {
-			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
-			res << if start == end { '' } else { s[start..end] }
-			start = i + 1
-		}
-	}
-	if start < s.len {
-		res << s[start..]
-	}
+	#res.arr.arr = s.str.split("\n")
+	#if (res.arr.arr[res.arr.arr.length-1] == "") res.arr.arr.pop();
+	#res.arr.len = new int(res.arr.arr.length);
+	#res.arr.cap = new int(res.arr.arr.length);
+
 	return res
 }
 

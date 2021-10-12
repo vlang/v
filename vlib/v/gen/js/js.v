@@ -1995,42 +1995,79 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 				}
 				match type_sym.kind {
 					.array {
-						g.write('vEq(')
+						ptr_typ := g.gen_array_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_arr_eq(')
 						g.match_cond(cond_var)
 						g.write(',')
 						g.expr(expr)
-						g.write(')')
+						g.write(').val')
 					}
 					.array_fixed {
-						g.write('vEq(')
+						ptr_typ := g.gen_fixed_array_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_arr_eq(')
 						g.match_cond(cond_var)
 						g.write(',')
 						g.expr(expr)
-						g.write(')')
+						g.write(').val')
 					}
 					.map {
-						g.write('vEq(')
+						ptr_typ := g.gen_map_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_map_eq(')
 						g.match_cond(cond_var)
 						g.write(',')
 						g.expr(expr)
-						g.write(')')
+						g.write(').val')
 					}
 					.string {
-						g.write('vEq(')
 						g.match_cond(cond_var)
-						g.write(',')
+						g.write('.str === ')
 						g.expr(expr)
-						g.write(')')
+						g.write('.str')
 					}
 					.struct_ {
-						g.write('vEq(')
+						ptr_typ := g.gen_struct_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_struct_eq(')
 						g.match_cond(cond_var)
 						g.write(',')
 						g.expr(expr)
-						g.write(')')
+						g.write(').val')
+					}
+					.sum_type {
+						ptr_typ := g.gen_sumtype_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_sumtype_eq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(').val')
+					}
+					.alias {
+						ptr_typ := g.gen_alias_equality_fn(node.cond_type)
+
+						g.write('${ptr_typ}_alias_eq(')
+						g.match_cond(cond_var)
+						g.write(',')
+						g.expr(expr)
+						g.write(').val')
 					}
 					else {
-						if expr is ast.RangeExpr {
+						has_operator_overloading := g.table.type_has_method(type_sym,
+							'==')
+						if has_operator_overloading {
+							left := g.unwrap(node.cond_type)
+							g.write(g.typ(left.unaliased.set_nr_muls(0)))
+							g.write('__eq(')
+							g.match_cond(cond_var)
+							g.gen_deref_ptr(node.cond_type)
+							g.write(',')
+							g.expr(expr)
+							g.write(')')
+							g.write('.valueOf()')
+						} else if expr is ast.RangeExpr {
 							// if type is unsigned and low is 0, check is unneeded
 							mut skip_low := false
 							if expr.low is ast.IntegerLiteral {
@@ -2144,6 +2181,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	if g.inside_ternary {
 		g.write('(')
 	}
+	prev := g.inside_ternary
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
 			if g.inside_if_optional {
@@ -2175,6 +2213,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		}
 	}
 	g.dec_indent()
+	g.inside_ternary = prev
 	if g.inside_ternary {
 		g.write(')')
 	}
