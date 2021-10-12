@@ -109,6 +109,9 @@ pub fn (mut g Gen) generate_header() {
 		.macos {
 			g.generate_macho_header()
 		}
+		.windows {
+			g.generate_pe_header()
+		}
 		.linux {
 			g.generate_elf_header()
 		}
@@ -136,6 +139,9 @@ pub fn (mut g Gen) generate_footer() {
 	match g.pref.os {
 		.macos {
 			g.generate_macho_footer()
+		}
+		.windows {
+			g.generate_pe_footer()
 		}
 		.linux {
 			g.generate_elf_footer()

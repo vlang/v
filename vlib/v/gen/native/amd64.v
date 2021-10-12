@@ -508,11 +508,14 @@ fn (mut g Gen) nsyscall_write() int {
 		.linux {
 			return 1
 		}
+		.windows {
+			return 0
+		}
 		.macos {
 			return 0x2000004
 		}
 		else {
-			g.n_error('unsupported exit syscall for this platform')
+			g.n_error('unsupported write syscall for this platform')
 		}
 	}
 	return 0
@@ -525,6 +528,9 @@ fn (mut g Gen) nsyscall_exit() int {
 		}
 		.macos {
 			return 0x2000001
+		}
+		.windows {
+			return 0
 		}
 		else {
 			g.n_error('unsupported exit syscall for this platform')
