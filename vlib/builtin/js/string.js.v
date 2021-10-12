@@ -755,6 +755,7 @@ pub fn (s string) split_into_lines() []string {
 	if s.len == 0 {
 		return res
 	}
+	/*
 	mut start := 0
 	mut end := 0
 	for i := 0; i < s.len; i++ {
@@ -766,7 +767,12 @@ pub fn (s string) split_into_lines() []string {
 	}
 	if start < s.len {
 		res << s[start..]
-	}
+	}*/
+	#res.arr.arr = s.str.split("\n")
+	#if (res.arr.arr[res.arr.arr.length-1] == "") res.arr.arr.pop();
+	#res.arr.len = new int(res.arr.arr.length);
+	#res.arr.cap = new int(res.arr.arr.length);
+
 	return res
 }
 
