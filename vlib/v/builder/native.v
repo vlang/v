@@ -5,7 +5,7 @@ import v.util
 import v.gen.native
 
 pub fn (mut b Builder) build_native(v_files []string, out_file string) {
-	if b.pref.os in [.windows] {
+	if b.pref.os == .windows {
 		eprintln('Warning: v -native is experimental for Windows')
 	} else if b.pref.os !in [.linux, .macos] {
 		eprintln('Warning: v -native can only generate macOS and Linux binaries for now')
