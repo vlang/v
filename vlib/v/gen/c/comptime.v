@@ -100,6 +100,9 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			// do not generate anything if the argument lengths don't match
 			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
+			// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
+			// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
+			//'method.params: $m.params, args: $node.args\n\n')
 			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
 			return
 		}

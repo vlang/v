@@ -8584,7 +8584,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 						continue
 					}
 					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ
-						&& f.name == m.name {
+						&& f.name == m.name && !f.attrs.contains('post') {
 						c.change_current_file(f.source_file) // setup of file path for the warning
 						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
 							f.pos)

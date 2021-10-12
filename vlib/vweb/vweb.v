@@ -473,7 +473,16 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				// should be called first.
 				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method()
+					if req.method == .post {
+						// Populate method args with form values
+						mut args := []string{cap: method.args.len}
+						for param in method.args {
+							args << form[param.name]
+						}
+						app.$method(args)
+					} else {
+						app.$method()
+					}
 					return
 				}
 
