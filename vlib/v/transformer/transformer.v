@@ -455,6 +455,76 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
+		ast.FloatLiteral {
+			match right_node {
+				ast.FloatLiteral {
+					left_val := left_node.val.f32()
+					right_val := right_node.val.f32()
+					match node.op {
+						.eq {
+							return ast.BoolLiteral{
+								val: left_node.val == right_node.val
+							}
+						}
+						.ne {
+							return ast.BoolLiteral{
+								val: left_node.val != right_node.val
+							}
+						}
+						.gt {
+							return ast.BoolLiteral{
+								val: left_node.val > right_node.val
+							}
+						}
+						.ge {
+							return ast.BoolLiteral{
+								val: left_node.val >= right_node.val
+							}
+						}
+						.lt {
+							return ast.BoolLiteral{
+								val: left_node.val < right_node.val
+							}
+						}
+						.le {
+							return ast.BoolLiteral{
+								val: left_node.val <= right_node.val
+							}
+						}
+						.plus {
+							return ast.FloatLiteral{
+								val: (left_val + right_val).str()
+								pos: pos
+							}
+						}
+						.mul {
+							return ast.FloatLiteral{
+								val: (left_val * right_val).str()
+								pos: pos
+							}
+						}
+						.minus {
+							return ast.FloatLiteral{
+								val: (left_val - right_val).str()
+								pos: pos
+							}
+						}
+						.div {
+							return ast.FloatLiteral{
+								val: (left_val / right_val).str()
+								pos: pos
+							}
+						}
+						else {
+							return node
+						}
+					}
+				}
+				else {
+					return node
+				}
+			}
+		}
 		else {
 			return node
 		}
