@@ -33,5 +33,9 @@
 		fwrite(pixels, num_pixels, 1, outputFile);
 		fclose(outputFile);
 	}
+	#else
+	void v_sapp_screenshot(const char * filename) {
+		// TODO
+	}
 	#endif
 #endif
