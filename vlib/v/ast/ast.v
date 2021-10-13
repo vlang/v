@@ -866,12 +866,12 @@ pub mut:
 pub struct MatchBranch {
 pub:
 	ecmnts        [][]Comment // inline comments for each left side expr
-	stmts         []Stmt      // right side
 	pos           token.Position
 	is_else       bool
 	post_comments []Comment      // comments below ´... }´
 	branch_pos    token.Position // for checker errors about invalid branches
 pub mut:
+	stmts []Stmt // right side
 	exprs []Expr // left side
 	scope &Scope
 }
