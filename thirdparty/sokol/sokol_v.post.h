@@ -15,6 +15,7 @@
 		// TODO
 	}
 #elif defined(SOKOL_GLCORE33) || defined(SOKOL_GLES3)
+	#if defined(__linux__)
 	void v_sapp_screenshot(const char * filename) {
 		int window_width = sapp_width();
 		int window_height = sapp_height();
@@ -32,4 +33,5 @@
 		fwrite(pixels, num_pixels, 1, outputFile);
 		fclose(outputFile);
 	}
+	#endif
 #endif
