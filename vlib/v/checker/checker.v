@@ -685,6 +685,20 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 	mut c_nrt := ''
 	ts := c.table.get_type_symbol(typ)
 	match mut ts.info {
+		ast.Array {
+			mut elem_type := ts.info.elem_type
+			mut elem_sym := c.table.get_type_symbol(elem_type)
+			mut dims := 1
+			for mut elem_sym.info is ast.Array {
+				info := elem_sym.info as ast.Array
+				elem_type = info.elem_type
+				elem_sym = c.table.get_type_symbol(elem_type)
+				dims++
+			}
+			unwrap_typ := c.unwrap_generic_type(elem_type, generic_names, concrete_types)
+			idx := c.table.find_or_register_array_with_dims(unwrap_typ, dims)
+			return ast.new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
 		ast.Struct, ast.Interface, ast.SumType {
 			if !ts.info.is_generic {
 				return typ
