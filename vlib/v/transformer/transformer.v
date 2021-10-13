@@ -192,6 +192,80 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 }
 
 pub fn (t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
+	cond, mut terminate := t.expr(original.cond), false
+	original = ast.MatchExpr{
+		...(*original)
+		cond: cond
+	}
+	for mut branch in original.branches {
+		if branch.is_else {
+			continue
+		}
+
+		for mut stmt in branch.stmts {
+			t.stmt(mut stmt)
+		}
+
+		for mut expr in branch.exprs {
+			expr = t.expr(expr)
+
+			match cond {
+				ast.BoolLiteral {
+					if expr is ast.BoolLiteral {
+						if cond.val == (expr as ast.BoolLiteral).val {
+							branch.exprs = [expr]
+							original = ast.MatchExpr{
+								...(*original)
+								branches: [branch]
+							}
+							terminate = true
+						}
+					}
+				}
+				ast.IntegerLiteral {
+					if expr is ast.IntegerLiteral {
+						if cond.val.int() == (expr as ast.IntegerLiteral).val.int() {
+							branch.exprs = [expr]
+							original = ast.MatchExpr{
+								...(*original)
+								branches: [branch]
+							}
+							terminate = true
+						}
+					}
+				}
+				ast.FloatLiteral {
+					if expr is ast.FloatLiteral {
+						if cond.val.f32() == (expr as ast.FloatLiteral).val.f32() {
+							branch.exprs = [expr]
+							original = ast.MatchExpr{
+								...(*original)
+								branches: [branch]
+							}
+							terminate = true
+						}
+					}
+				}
+				ast.StringLiteral {
+					if expr is ast.StringLiteral {
+						if cond.val == (expr as ast.StringLiteral).val {
+							branch.exprs = [expr]
+							original = ast.MatchExpr{
+								...(*original)
+								branches: [branch]
+							}
+							terminate = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+
+		if terminate {
+			break
+		}
+	}
 	return *original
 }
 
