@@ -1,5 +1,6 @@
 module sapp
 
+import os
 import sokol.gfx
 
 pub const used_import = gfx.used_import
@@ -244,15 +245,6 @@ pub fn toggle_fullscreen() {
 [inline]
 pub fn is_fullscreen() bool {
 	return C.sapp_is_fullscreen()
-}
-
-// screenshot takes a screenshot of the current window.
-[inline]
-pub fn screenshot(path string) ? {
-	if !path.ends_with('.tga') {
-		return error(@MOD + '.' + @FN + ' currently only supports .tga files.')
-	}
-	C.v_sapp_screenshot(path.str)
 }
 
 [inline]
