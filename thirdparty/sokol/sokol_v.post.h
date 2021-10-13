@@ -1,11 +1,7 @@
 #if defined(SOKOL_GLCORE33) || defined(SOKOL_GLES2) || defined(SOKOL_GLES3)
 	#if defined(_WIN32)
-		#if defined(SOKOL_GLCORE33) && !defined(SOKOL_EXTERNAL_GL_LOADER)
-			#include <windows.h>
-			#include <GL/gl.h>
-		#endif
+		#include <GL/gl.h>
 	#elif defined(__APPLE__)
-		#include <TargetConditionals.h>
 		#ifndef GL_SILENCE_DEPRECATION
 			#define GL_SILENCE_DEPRECATION
 		#endif
