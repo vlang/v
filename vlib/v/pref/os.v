@@ -112,5 +112,18 @@ pub fn get_host_os() OS {
 	$if haiku {
 		return .haiku
 	}
+	$if js_node {
+		return .js_node
+	}
+	$if js_freestanding {
+		return .js_freestanding
+	}
+
+	$if js_browser {
+		return .js_browser
+	}
+	$if js {
+		return .js_node
+	}
 	panic('unknown host OS')
 }

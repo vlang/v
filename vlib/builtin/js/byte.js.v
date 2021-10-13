@@ -68,3 +68,29 @@ pub fn (c byte) is_letter() bool {
 pub fn (c byte) is_alnum() bool {
 	return c.is_letter() || c.is_digit()
 }
+
+// Define this on byte as well, so that we can do `s[0].is_capital()`
+pub fn (c byte) is_capital() bool {
+	return c >= `A` && c <= `Z`
+}
+
+// str_escaped returns the contents of `byte` as an escaped `string`.
+// Example: assert byte(0).str_escaped() == r'`\0`'
+
+pub fn (b byte) str_escaped() string {
+	mut str := ''
+	match b {
+		0 { str = r'`\0`' }
+		7 { str = r'`\a`' }
+		8 { str = r'`\b`' }
+		9 { str = r'`\t`' }
+		10 { str = r'`\n`' }
+		11 { str = r'`\v`' }
+		12 { str = r'`\f`' }
+		13 { str = r'`\r`' }
+		27 { str = r'`\e`' }
+		32...126 { str = b.ascii_str() }
+		else { str = '0x' + b.hex() }
+	}
+	return str
+}

@@ -900,3 +900,13 @@ pub fn (s []string) join(sep string) string {
 
 // There's no better way to find length of JS String in bytes.
 #Object.defineProperty(string.prototype,"len", { get: function() {return new int(new TextEncoder().encode(this.str).length);}, set: function(l) {/* ignore */ } });
+// index returns the position of the first character of the input string.
+// It will return `none` if the input string can't be found.
+pub fn (s string) index(search string) ?int {
+	res := 0
+	#res.val = s.str.indexOf(search)
+	if res == -1 {
+		return none
+	}
+	return res
+}

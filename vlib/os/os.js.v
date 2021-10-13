@@ -37,19 +37,36 @@ pub fn flush() {
 	}
 }
 
+pub fn getpid() int {
+	res := 0
+	#res.val = $process.pid
+
+	return res
+}
+
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
-pub fn chmod(path string, mode int) {
+pub fn chmod(path string, mode int) ? {
 	$if js_node {
+		#try {
 		#$fs.chmodSync(''+path,mode.valueOf())
+		#} catch (error) {
+		#return error_with_code(new string("chmod failed: " + error.message),new int(error.code))
+		#}
+	} $else {
+		return error('os.chmod() is available only for NodeJS')
 	}
 }
 
 // chown changes the owner and group attributes of `path` to `owner` and `group`.
 // Octals like `0o600` can be used.
-pub fn chown(path string, owner int, group int) {
+pub fn chown(path string, owner int, group int) ? {
 	$if js_node {
+		#try {
 		#$fs.chownSync(''+path,owner.valueOf(),group.valueOf())
+		#} catch (error) { return error_with_code(new string("chown failed: " + error.message),new int(error.code)) }
+	} $else {
+		return error('os.chown() is available only for NodeJS')
 	}
 }
 
@@ -89,12 +106,20 @@ pub fn execute(cmd string) Result {
 	#let commands = cmd.str.split(' ');
 	#let output = $child_process.spawnSync(commands[0],commands.slice(1,commands.length));
 	#exit_code = new int(output.status)
-	#stdout = newstring(output.stdout + '')
+	#stdout = new string(output.stdout + '')
 
 	return Result{
 		exit_code: exit_code
 		output: stdout
 	}
+}
+
+pub fn system(cmd string) int {
+	exit_code := 0
+	#let commands = cmd.str.split(' ');
+	#exit_code.val = $child_process.execSync(commands[0],commands.slice(1,commands.length));
+
+	return exit_code
 }
 
 pub fn is_atty(fd int) int {

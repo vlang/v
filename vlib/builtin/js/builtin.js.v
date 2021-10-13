@@ -2,8 +2,11 @@ module builtin
 
 // used to generate JS throw statements.
 
+[noreturn]
 pub fn js_throw(s any) {
 	#throw s
+
+	for {}
 }
 
 #let globalPrint;
@@ -46,6 +49,7 @@ pub fn eprint(s string) {
 // Exits the process in node, and halts execution in the browser
 // because `process.exit` is undefined. Workaround for not having
 // a 'real' way to exit in the browser.
+[noreturn]
 pub fn exit(c int) {
 	JS.process.exit(c)
 	js_throw('exit($c)')
