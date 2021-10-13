@@ -1,6 +1,5 @@
 module sapp
 
-import os
 import sokol.gfx
 
 pub const used_import = gfx.used_import

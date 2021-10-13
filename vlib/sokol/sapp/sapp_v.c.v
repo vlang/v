@@ -1,7 +1,6 @@
 module sapp
 
 import os
-import math
 
 // v_sapp_gl_read_rgba_pixels reads pixles from the OpenGL buffer into `pixels`.
 fn C.v_sapp_gl_read_rgba_pixels(x int, y int, width int, height int, pixels charptr)
@@ -17,7 +16,7 @@ pub fn screenshot(path string) ? {
 	h := height()
 
 	size := w * h * 4 //
-	mut pixels := []byte{len: size}
+	mut pixels := []byte{len: size, init: 0}
 
 	C.v_sapp_gl_read_rgba_pixels(0, 0, w, h, pixels.data)
 
