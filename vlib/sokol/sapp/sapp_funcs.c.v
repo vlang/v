@@ -115,3 +115,6 @@ fn C.sapp_get_num_dropped_files() int
 
 // Get the file path of the droped file
 fn C.sapp_get_dropped_file_path(int) &byte
+
+// Take screenshot
+fn C.v_sapp_screenshot(filename charptr)

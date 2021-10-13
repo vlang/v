@@ -246,6 +246,15 @@ pub fn is_fullscreen() bool {
 	return C.sapp_is_fullscreen()
 }
 
+// screenshot takes a screenshot of the current window.
+[inline]
+pub fn screenshot(filename string) ? {
+	if !filename.ends_with('.tga') {
+		return error(@MOD + '.' + @FN + ' currently only supports .tga files.')
+	}
+	C.v_sapp_screenshot(filename.str)
+}
+
 [inline]
 pub fn get_num_dropped_files() int {
 	return C.sapp_get_num_dropped_files()

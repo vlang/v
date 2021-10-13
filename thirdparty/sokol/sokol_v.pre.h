@@ -17,4 +17,3 @@
 	#define printf(...) __android_log_print(ANDROID_LOG_INFO, V_ANDROID_LOG_TAG_NAME, __VA_ARGS__)
 	#define fprintf(a, ...) __android_log_print(ANDROID_LOG_ERROR, V_ANDROID_LOG_TAG_NAME, __VA_ARGS__)
 #endif
-
