@@ -248,11 +248,11 @@ pub fn is_fullscreen() bool {
 
 // screenshot takes a screenshot of the current window.
 [inline]
-pub fn screenshot(filename string) ? {
-	if !filename.ends_with('.tga') {
+pub fn screenshot(path string) ? {
+	if !path.ends_with('.tga') {
 		return error(@MOD + '.' + @FN + ' currently only supports .tga files.')
 	}
-	C.v_sapp_screenshot(filename.str)
+	C.v_sapp_screenshot(path.str)
 }
 
 [inline]

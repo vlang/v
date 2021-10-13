@@ -1,9 +1,15 @@
 #if defined(SOKOL_D3D11)
-	void v_sapp_screenshot(const char * filename) {}
+	void v_sapp_screenshot(const char * filename) {
+		// TODO
+	}
 #elif defined(SOKOL_METAL)
-	void v_sapp_screenshot(const char * filename) {}
+	void v_sapp_screenshot(const char * filename) {
+		// TODO
+	}
 #elif defined(SOKOL_WGPU)
-	void v_sapp_screenshot(const char * filename) {}
+	void v_sapp_screenshot(const char * filename) {
+		// TODO
+	}
 #elif defined(SOKOL_GLCORE33) || defined(SOKOL_GLES2) || defined(SOKOL_GLES3)
 	void v_sapp_screenshot(const char * filename) {
 		int windowWidth = sapp_width();
