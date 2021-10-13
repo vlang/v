@@ -11,6 +11,7 @@
 			#include <OpenGLES/ES3/gl.h>
 			#include <OpenGLES/ES3/glext.h>
 		#endif
+		#include <GL/gl.h>
 	#elif defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 		#if defined(SOKOL_GLES3)
 			#include <GLES3/gl3.h>
