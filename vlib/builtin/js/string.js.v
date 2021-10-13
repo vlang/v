@@ -904,7 +904,7 @@ pub fn (s []string) join(sep string) string {
 // It will return `none` if the input string can't be found.
 pub fn (s string) index(search string) ?int {
 	res := 0
-	# res.val = s.str.indexOf(search)
+	#res.val = s.str.indexOf(search)
 	if res == -1 {
 		return none
 	}

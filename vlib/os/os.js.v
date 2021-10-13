@@ -37,10 +37,10 @@ pub fn flush() {
 	}
 }
 
-
 pub fn getpid() int {
 	res := 0
-	# res.val = $process.pid 
+	#res.val = $process.pid
+
 	return res
 }
 
@@ -48,11 +48,11 @@ pub fn getpid() int {
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) ? {
 	$if js_node {
-		# try {
+		#try {
 		#$fs.chmodSync(''+path,mode.valueOf())
-		# } catch (error) {
-		#	return error_with_code(new string("chmod failed: " + error.message),new int(error.code))
-		# }
+		#} catch (error) {
+		#return error_with_code(new string("chmod failed: " + error.message),new int(error.code))
+		#}
 	} $else {
 		return error('os.chmod() is available only for NodeJS')
 	}
@@ -62,7 +62,7 @@ pub fn chmod(path string, mode int) ? {
 // Octals like `0o600` can be used.
 pub fn chown(path string, owner int, group int) ? {
 	$if js_node {
-		# try {
+		#try {
 		#$fs.chownSync(''+path,owner.valueOf(),group.valueOf())
 		#} catch (error) { return error_with_code(new string("chown failed: " + error.message),new int(error.code)) }
 	} $else {
@@ -113,12 +113,15 @@ pub fn execute(cmd string) Result {
 		output: stdout
 	}
 }
+
 pub fn system(cmd string) int {
 	exit_code := 0
 	#let commands = cmd.str.split(' ');
-	# exit_code.val = $child_process.execSync(commands[0],commands.slice(1,commands.length));
+	#exit_code.val = $child_process.execSync(commands[0],commands.slice(1,commands.length));
+
 	return exit_code
 }
+
 pub fn is_atty(fd int) int {
 	res := 0
 	#res.val = +tty.isatty(fd.val)

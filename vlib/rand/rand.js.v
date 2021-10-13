@@ -38,9 +38,9 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
-		buf[i] = rand.ulid_encoding[int(t&0x1f)]
+		buf[i] = rand.ulid_encoding[int(t & 0x1f)]
 		t = t >> 5
-		i -- 
+		i--
 	}
 
 	mut x := default_rng.u64()
@@ -56,11 +56,12 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	for i < 26 {
 		buf[i] = rand.ulid_encoding[int(x & 0x1f)]
 		x = x >> 5
-		i ++
+		i++
 	}
 
 	res := ''
 	println(buf)
-	# res.str = buf.arr.arr.map(String.fromCharCode).join('')
+	#res.str = buf.arr.arr.map(String.fromCharCode).join('')
+
 	return res
 }

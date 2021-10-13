@@ -5,6 +5,7 @@ module builtin
 [noreturn]
 pub fn js_throw(s any) {
 	#throw s
+
 	for {}
 }
 

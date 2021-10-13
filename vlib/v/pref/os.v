@@ -113,7 +113,7 @@ pub fn get_host_os() OS {
 		return .haiku
 	}
 	$if js_node {
-		return .js_node 
+		return .js_node
 	}
 	$if js_freestanding {
 		return .js_freestanding
