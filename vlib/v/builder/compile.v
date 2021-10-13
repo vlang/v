@@ -186,16 +186,6 @@ fn (mut v Builder) set_module_lookup_paths() {
 }
 
 pub fn (v Builder) get_builtin_files() []string {
-	/*
-	// if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' { // .contains('builtin/' +  location {
-	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/strconv' { // .contains('builtin/' +  location {
-		// We are already building builtin.o, no need to import them again
-		if v.pref.is_verbose {
-			println('skipping builtin modules for builtin.o')
-		}
-		return []
-	}
-	*/
 	v.log('v.pref.lookup_path: $v.pref.lookup_path')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
@@ -225,7 +215,8 @@ pub fn (v Builder) get_builtin_files() []string {
 }
 
 pub fn (v &Builder) get_user_files() []string {
-	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash'] {
+	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash']
+		|| v.pref.path.ends_with('vlib/builtin') {
 		// This means we are building a builtin module with `v build-module vlib/strings` etc
 		// get_builtin_files() has already added the files in this module,
 		// do nothing here to avoid duplicate definition errors.
@@ -267,8 +258,8 @@ pub fn (v &Builder) get_user_files() []string {
 	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := os.read_file(dir) or { verror('$dir does not exist') }
-		slines := tcontent.trim_space().split_into_lines()
+		tcontent := util.read_file(dir) or { verror('$dir does not exist') }
+		slines := tcontent.split_into_lines()
 		for sline in slines {
 			line := sline.trim_space()
 			if line.len > 2 {

@@ -530,13 +530,10 @@ fn (mut v Builder) cc() {
 				}
 			}
 		}
-		//
 		if v.pref.build_mode == .build_module {
 			v.ccoptions.pre_args << '-c'
-		} else if v.pref.use_cache {
-			v.ccoptions.post_args << v.handle_use_cache(vexe)
 		}
-		//
+		v.handle_usecache(vexe)
 		if ccompiler == 'msvc' {
 			v.cc_msvc()
 			return
