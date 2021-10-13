@@ -171,6 +171,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	$if windows {
 		exit(os.system('"$tool_exe" $tool_args'))
+	} $else $if js {
+		// no way to implement os.execvp in JS backend
+		exit(os.system('$tool_exe $tool_args'))
 	} $else {
 		os.execvp(tool_exe, args) or { panic(err) }
 	}
