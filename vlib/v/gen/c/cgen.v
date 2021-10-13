@@ -5054,7 +5054,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				else {
 					g.write('if (')
 					if branch.cond is ast.InfixExpr {
-						if branch.cond.left !is ast.InfixExpr && branch.cond.right !is ast.InfixExpr {
+						if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
+							&& branch.cond.right !is ast.InfixExpr {
 							g.is_single_infix_in_if = true
 						}
 					}
