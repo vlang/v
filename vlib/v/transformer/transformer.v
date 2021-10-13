@@ -138,8 +138,35 @@ pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 				for mut expr in branch.exprs {
 					expr = t.expr(expr)
 				}
-				for mut stmt in branch.stmts {
+				for i, mut stmt in branch.stmts {
 					t.stmt(mut stmt)
+
+					if i == branch.stmts.len - 1 {
+						if stmt is ast.ExprStmt {
+							expr := (stmt as ast.ExprStmt).expr
+
+							match expr {
+								ast.IfExpr {
+									if expr.branches.len == 1 {
+										branch.stmts.pop()
+										branch.stmts << expr.branches[0].stmts
+										for s in branch.stmts {
+											println((s as ast.ExprStmt).expr.type_name())
+										}
+										break
+									}
+								}
+								ast.MatchExpr {
+									if expr.branches.len == 1 {
+										branch.stmts.pop()
+										branch.stmts << expr.branches[0].stmts
+										break
+									}
+								}
+								else {}
+							}
+						}
+					}
 				}
 			}
 			return node
@@ -152,6 +179,9 @@ pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 
 pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 	mut stop_index, mut unreachable_branches := -1, []int{cap: original.branches.len}
+	if original.is_comptime {
+		return *original
+	}
 	for i, mut branch in original.branches {
 		for mut stmt in branch.stmts {
 			t.stmt(mut stmt)
