@@ -56,18 +56,19 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 		ast.DeferStmt {}
 		ast.EnumDecl {}
 		ast.ExprStmt {
-			if node.expr is ast.IfExpr {
-				mut untrans_expr := node.expr as ast.IfExpr
-				expr := t.if_expr(mut untrans_expr)
-				node = &ast.ExprStmt{
-					...node
-					expr: expr
-				}
-			} else {
-				expr := t.expr(node.expr)
-				node = &ast.ExprStmt{
-					...node
-					expr: expr
+			expr := node.expr
+			node = &ast.ExprStmt{
+				...node
+				expr: match mut expr {
+					ast.IfExpr {
+						t.if_expr(mut expr)
+					}
+					ast.MatchExpr {
+						t.match_expr(mut expr)
+					}
+					else {
+						t.expr(expr)
+					}
 				}
 			}
 		}
@@ -116,8 +117,27 @@ pub fn (t Transformer) expr(node ast.Expr) ast.Expr {
 				index: t.expr(node.index)
 			}
 		}
-		ast.MatchExpr {
+		ast.IfExpr {
 			for mut branch in node.branches {
+				branch = ast.IfBranch{
+					...(*branch)
+					cond: t.expr(branch.cond)
+				}
+				for mut stmt in branch.stmts {
+					t.stmt(mut stmt)
+				}
+			}
+			return node
+		}
+		ast.MatchExpr {
+			node = ast.MatchExpr{
+				...node
+				cond: t.expr(node.cond)
+			}
+			for mut branch in node.branches {
+				for mut expr in branch.exprs {
+					expr = t.expr(expr)
+				}
 				for mut stmt in branch.stmts {
 					t.stmt(mut stmt)
 				}
@@ -168,6 +188,10 @@ pub fn (t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 			}
 		}
 	}
+	return *original
+}
+
+pub fn (t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 	return *original
 }
 
