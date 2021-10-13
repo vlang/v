@@ -105,7 +105,7 @@ pub fn (db Connection) delete(table string, where orm.QueryData) ? {
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
-	query := 'SELECT last_insert_rowid();'
+	query := 'SELECT last_insert_id();'
 	id := db.query(query) or {
 		Result{
 			result: 0
