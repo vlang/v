@@ -388,14 +388,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
-				need_par := node.op == .not_in || !g.is_single_infix_in_if
-				if need_par {
-					g.write('(')
-				}
+				g.write('(')
 				g.infix_expr_in_optimization(node.left, node.right)
-				if need_par {
-					g.write(')')
-				}
+				g.write(')')
 				return
 			}
 		}

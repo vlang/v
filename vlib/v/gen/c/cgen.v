@@ -74,19 +74,18 @@ mut:
 	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
-	tmp_count              int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count2             int  // a separate tmp var counter for autofree fn calls
-	tmp_count_declarations int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count       int  // like tmp_count but global and not resetted in each function
-	is_assign_lhs          bool // inside left part of assign expr (for array_set(), etc)
-	discard_or_result      bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_void_expr_stmt      bool // ExprStmt whos result is discarded
-	is_arraymap_set        bool // map or array set value state
-	is_amp                 bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                 bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared              bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled      bool // is it safe to generate #line directives when -g is passed
-	is_single_infix_in_if  bool
+	tmp_count              int    // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count2             int    // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations int    // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count       int    // like tmp_count but global and not resetted in each function
+	is_assign_lhs          bool   // inside left part of assign expr (for array_set(), etc)
+	discard_or_result      bool   // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_void_expr_stmt      bool   // ExprStmt whos result is discarded
+	is_arraymap_set        bool   // map or array set value state
+	is_amp                 bool   // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                 bool   // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared              bool   // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled      bool   // is it safe to generate #line directives when -g is passed
 	inside_cast_in_heap    int    // inside cast to interface type in heap (resolve recursive calls)
 	arraymap_set_pos       int    // map or array set value position
 	vlines_path            string // set to the proper path for generating #line directives
@@ -5052,16 +5051,24 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 				else {
-					g.write('if (')
+					mut no_needs_par := false
 					if branch.cond is ast.InfixExpr {
 						if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
-							&& branch.cond.right !is ast.InfixExpr {
-							g.is_single_infix_in_if = true
+							&& branch.cond.right is ast.ArrayInit {
+							no_needs_par = true
 						}
 					}
+					if no_needs_par {
+						g.write('if ')
+					} else {
+						g.write('if (')
+					}
 					g.expr(branch.cond)
-					g.writeln(') {')
-					g.is_single_infix_in_if = false
+					if no_needs_par {
+						g.writeln(' {')
+					} else {
+						g.writeln(') {')
+					}
 				}
 			}
 		}
