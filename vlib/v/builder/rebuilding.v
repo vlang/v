@@ -1,5 +1,6 @@
 module builder
 
+import os
 import hash
 import strings
 import v.util
@@ -68,4 +69,96 @@ pub fn (mut b Builder) rebuild_modules() {
 		}
 		util.timing_measure('${@METHOD} rebuilding')
 	}
+}
+
+fn (mut v Builder) v_build_module(vexe string, imp_path string) {
+	pwd := os.getwd()
+	defer {
+		os.chdir(pwd) or {}
+	}
+	// do run `v build-module x` always in main vfolder; x can be a relative path
+	vroot := os.dir(vexe)
+	os.chdir(vroot) or {}
+	boptions := v.pref.build_options.join(' ')
+	rebuild_cmd := '$vexe $boptions build-module $imp_path'
+	vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
+	$if trace_v_build_module ? {
+		eprintln('> Builder.v_build_module: $rebuild_cmd')
+	}
+	os.system(rebuild_cmd)
+}
+
+fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	res := v.pref.cache_manager.exists('.o', imp_path) or {
+		if v.pref.is_verbose {
+			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		}
+		v.v_build_module(vexe, imp_path)
+		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
+			panic('could not rebuild cache module for $imp_path, error: $err.msg')
+		}
+		return rebuilded_o
+	}
+	return res
+}
+
+fn (mut v Builder) handle_use_cache(vexe string) []string {
+	mut libs := []string{} // builtin.o os.o http.o etc
+	mut built_modules := []string{}
+	builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
+	libs << builtin_obj_path
+	for ast_file in v.parsed_files {
+		if v.pref.is_test && ast_file.mod.name != 'main' {
+			imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
+				verror('cannot import module "$ast_file.mod.name" (not found)')
+				break
+			}
+			obj_path := v.rebuild_cached_module(vexe, imp_path)
+			libs << obj_path
+			built_modules << ast_file.mod.name
+		}
+		for imp_stmt in ast_file.imports {
+			imp := imp_stmt.mod
+			// strconv is already imported inside builtin, so skip generating its object file
+			// TODO: incase we have other modules with the same name, make sure they are vlib
+			// is this even doign anything?
+			if imp in ['strconv', 'strings'] {
+				continue
+			}
+			if imp in built_modules {
+				continue
+			}
+			if util.should_bundle_module(imp) {
+				continue
+			}
+			// not working
+			if imp == 'webview' {
+				continue
+			}
+			// The problem is cmd/v is in module main and imports
+			// the relative module named help, which is built as cmd.v.help not help
+			// currently this got this workign by building into main, see ast.FnDecl in cgen
+			if imp == 'help' {
+				continue
+			}
+			// we are skipping help manually above, this code will skip all relative imports
+			// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
+			// continue
+			// }
+			// mod_path := imp.replace('.', os.path_separator)
+			// imp_path := os.join_path('vlib', mod_path)
+			imp_path := v.find_module_path(imp, ast_file.path) or {
+				verror('cannot import module "$imp" (not found)')
+				break
+			}
+			obj_path := v.rebuild_cached_module(vexe, imp_path)
+			libs << obj_path
+			if obj_path.ends_with('vlib/ui.o') {
+				v.ccoptions.post_args << '-framework Cocoa'
+				v.ccoptions.post_args << '-framework Carbon'
+			}
+			built_modules << imp
+		}
+	}
+	return libs
 }
