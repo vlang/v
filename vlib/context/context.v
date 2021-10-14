@@ -45,8 +45,8 @@ pub interface Any {}
 // should be canceled. deadline returns none when no deadline is
 // set. Successive calls to deadline return the same results.
 //
-// `value(key)` returns the value associated with this context for key, or nil
-// if no value is associated with key. Successive calls to Value with
+// `value(key)` returns an Optional that wraps the value associated with this context for key.
+// It returns none if no value is associated with key. Successive calls to Value with
 // the same key returns the same result.
 //
 // Use context values only for request-scoped data that transits
@@ -56,8 +56,8 @@ pub interface Any {}
 // A key identifies a specific value in a Context. Functions that wish
 // to store values in Context typically allocate a key in a global
 // variable then use that key as the argument to context.with_value and
-// Context.Value. A key can be any type that supports equality;
-// packages should define keys as an unexported type to avoid
+// Context.value. A key can be any type that supports equality;
+// modules should define keys as an unexported type to avoid
 // collisions.
 //
 // `done()` returns a channel that's closed when work done on behalf of this
