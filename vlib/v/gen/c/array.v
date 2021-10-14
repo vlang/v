@@ -51,7 +51,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	noscan := g.check_noscan(elem_type.typ)
 	if node.exprs.len == 0 {
 		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
-		if node.has_it {
+		if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
 			g.inside_lambda = true
 			tmp := g.new_tmp_var()
 			mut s := g.go_before_stmt(0)
