@@ -140,7 +140,6 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				}
 				'init' {
 					p.open_scope()
-					p.scope.detached_from_parent = true
 					has_default = true
 					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
