@@ -932,6 +932,8 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 						typ.is_public = true
 						typ.kind = parent.kind
 						typ.methods = all_methods
+					} else {
+						util.verror('generic error', 'the number of generic types of interface `$parent.name` is inconsistent with the concrete types')
 					}
 				}
 				ast.SumType {
@@ -968,6 +970,8 @@ pub fn (mut c Checker) generic_insts_to_concrete() {
 						}
 						typ.is_public = true
 						typ.kind = parent.kind
+					} else {
+						util.verror('generic error', 'the number of generic types of sumtype `$parent.name` is inconsistent with the concrete types')
 					}
 				}
 				else {}
