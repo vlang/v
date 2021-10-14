@@ -350,7 +350,7 @@ Create `new.html`:
 import vweb
 
 [post]
-pub fn (mut app App) new_article(title string, text form) vweb.Result {
+pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
 	}
