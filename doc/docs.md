@@ -693,7 +693,7 @@ arrays there is a second initialization syntax:
 mut a := []int{len: 10000, cap: 30000, init: 3}
 ```
 
-To access index while initializing array like above, use `it` variable like below:
+You can initialize the array by accessing the it variable as shown here:
 
 ```v
 mut square := []int{len: 6, init: it * it}
