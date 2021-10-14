@@ -60,8 +60,7 @@ fn example_with_cancel() {
 	}
 
 	mut background := context.background()
-	mut b := &background
-	mut ctx, cancel := context.with_cancel(mut b)
+	mut ctx, cancel := context.with_cancel(mut &background)
 	defer {
 		cancel()
 	}
@@ -92,8 +91,7 @@ const (
 fn example_with_deadline() {
 	dur := time.now().add(short_duration)
 	mut background := context.background()
-	mut b := &background
-	mut ctx, cancel := context.with_deadline(mut b, dur)
+	mut ctx, cancel := context.with_deadline(mut &background, dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
@@ -129,8 +127,7 @@ fn example_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
 	mut background := context.background()
-	mut b := &background
-	mut ctx, cancel := context.with_timeout(mut b, short_duration)
+	mut ctx, cancel := context.with_timeout(mut &background, short_duration)
 	defer {
 		cancel()
 	}
