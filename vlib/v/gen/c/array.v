@@ -51,6 +51,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	noscan := g.check_noscan(elem_type.typ)
 	if node.exprs.len == 0 {
 		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
+			&& !node.has_it
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else {
