@@ -31,8 +31,7 @@ fn test_with_cancel() {
 	}
 
 	mut background := context.background()
-	mut b := &background
-	mut ctx, cancel := context.with_cancel(mut b)
+	mut ctx, cancel := context.with_cancel(mut &background)
 	defer {
 		cancel()
 	}

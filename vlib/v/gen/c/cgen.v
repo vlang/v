@@ -5051,9 +5051,24 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 				else {
-					g.write('if (')
+					mut no_needs_par := false
+					if branch.cond is ast.InfixExpr {
+						if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
+							&& branch.cond.right is ast.ArrayInit {
+							no_needs_par = true
+						}
+					}
+					if no_needs_par {
+						g.write('if ')
+					} else {
+						g.write('if (')
+					}
 					g.expr(branch.cond)
-					g.writeln(') {')
+					if no_needs_par {
+						g.writeln(' {')
+					} else {
+						g.writeln(') {')
+					}
 				}
 			}
 		}

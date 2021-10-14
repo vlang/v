@@ -421,7 +421,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
-						name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_$short_fn_name')
+						if !p.pref.is_fmt {
+							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_$short_fn_name')
+						}
 					} else {
 						p.table.redefined_fns << name
 					}
