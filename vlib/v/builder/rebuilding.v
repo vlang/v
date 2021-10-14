@@ -8,10 +8,7 @@ import v.pref
 import v.vcache
 
 pub fn (mut b Builder) rebuild_modules() {
-	$if !usecache_invalidate ? {
-		return
-	}
-	if !b.pref.use_cache {
+	if !b.pref.use_cache || b.pref.build_mode == .build_module {
 		return
 	}
 	util.timing_start('${@METHOD} source_hashing')
@@ -160,7 +157,7 @@ pub fn (mut b Builder) rebuild_modules() {
 	}
 }
 
-fn (mut v Builder) v_build_module(vexe string, imp_path string) {
+fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	pwd := os.getwd()
 	defer {
 		os.chdir(pwd) or {}
@@ -168,7 +165,7 @@ fn (mut v Builder) v_build_module(vexe string, imp_path string) {
 	// do run `v build-module x` always in main vfolder; x can be a relative path
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
-	boptions := v.pref.build_options.join(' ')
+	boptions := b.pref.build_options.join(' ')
 	rebuild_cmd := '$vexe $boptions build-module $imp_path'
 	vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
 	$if trace_v_build_module ? {
@@ -177,13 +174,13 @@ fn (mut v Builder) v_build_module(vexe string, imp_path string) {
 	os.system(rebuild_cmd)
 }
 
-fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := v.pref.cache_manager.exists('.o', imp_path) or {
-		if v.pref.is_verbose {
+fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	res := b.pref.cache_manager.exists('.o', imp_path) or {
+		if b.pref.is_verbose {
 			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
 		}
-		v.v_build_module(vexe, imp_path)
-		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
+		b.v_build_module(vexe, imp_path)
+		rebuilded_o := b.pref.cache_manager.exists('.o', imp_path) or {
 			panic('could not rebuild cache module for $imp_path, error: $err.msg')
 		}
 		return rebuilded_o
@@ -191,21 +188,21 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	return res
 }
 
-fn (mut v Builder) handle_usecache(vexe string) {
-	if !v.pref.use_cache || v.pref.build_mode == .build_module {
+fn (mut b Builder) handle_usecache(vexe string) {
+	if !b.pref.use_cache || b.pref.build_mode == .build_module {
 		return
 	}
 	mut libs := []string{} // builtin.o os.o http.o etc
 	mut built_modules := []string{}
-	builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
+	builtin_obj_path := b.rebuild_cached_module(vexe, 'vlib/builtin')
 	libs << builtin_obj_path
-	for ast_file in v.parsed_files {
-		if v.pref.is_test && ast_file.mod.name != 'main' {
-			imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
+	for ast_file in b.parsed_files {
+		if b.pref.is_test && ast_file.mod.name != 'main' {
+			imp_path := b.find_module_path(ast_file.mod.name, ast_file.path) or {
 				verror('cannot import module "$ast_file.mod.name" (not found)')
 				break
 			}
-			obj_path := v.rebuild_cached_module(vexe, imp_path)
+			obj_path := b.rebuild_cached_module(vexe, imp_path)
 			libs << obj_path
 			built_modules << ast_file.mod.name
 		}
@@ -229,14 +226,14 @@ fn (mut v Builder) handle_usecache(vexe string) {
 			if imp == 'help' {
 				continue
 			}
-			imp_path := v.find_module_path(imp, ast_file.path) or {
+			imp_path := b.find_module_path(imp, ast_file.path) or {
 				verror('cannot import module "$imp" (not found)')
 				break
 			}
-			obj_path := v.rebuild_cached_module(vexe, imp_path)
+			obj_path := b.rebuild_cached_module(vexe, imp_path)
 			libs << obj_path
 			built_modules << imp
 		}
 	}
-	v.ccoptions.post_args << libs
+	b.ccoptions.post_args << libs
 }
