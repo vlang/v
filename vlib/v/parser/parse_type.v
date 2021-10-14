@@ -539,6 +539,7 @@ pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
 pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_name := name
 	mut bs_cname := name
+	start_pos := p.tok.position()
 	p.next()
 	p.in_generic_params = true
 	bs_name += '<'
@@ -561,6 +562,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		bs_name += ', '
 		bs_cname += '_'
 	}
+	concrete_types_pos := start_pos.extend(p.tok.position())
 	p.check(.gt)
 	p.in_generic_params = false
 	bs_name += '>'
@@ -575,6 +577,38 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if parent_idx == 0 {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
+		parent_sym := p.table.get_type_symbol(ast.new_type(parent_idx))
+		match parent_sym.info {
+			ast.Struct {
+				if parent_sym.info.generic_types.len == 0 {
+					p.error_with_pos('struct `$parent_sym.name` is not a generic struct, cannot instantiate to the concrete types',
+						concrete_types_pos)
+				} else if parent_sym.info.generic_types.len != concrete_types.len {
+					p.error_with_pos('the number of generic types of struct `$parent_sym.name` is inconsistent with the concrete types',
+						concrete_types_pos)
+				}
+			}
+			ast.Interface {
+				if parent_sym.info.generic_types.len == 0 {
+					p.error_with_pos('interface `$parent_sym.name` is not a generic interface, cannot instantiate to the concrete types',
+						concrete_types_pos)
+				} else if parent_sym.info.generic_types.len != concrete_types.len {
+					p.error_with_pos('the number of generic types of interfce `$parent_sym.name` is inconsistent with the concrete types',
+						concrete_types_pos)
+				}
+			}
+			ast.SumType {
+				if parent_sym.info.generic_types.len == 0 {
+					p.error_with_pos('sumtype `$parent_sym.name` is not a generic sumtype, cannot instantiate to the concrete types',
+						concrete_types_pos)
+				} else if parent_sym.info.generic_types.len != concrete_types.len {
+					p.error_with_pos('the number of generic types of sumtype `$parent_sym.name` is inconsistent with the concrete types',
+						concrete_types_pos)
+				}
+			}
+			else {}
+		}
+
 		idx := p.table.register_type_symbol(ast.TypeSymbol{
 			kind: .generic_inst
 			name: bs_name
