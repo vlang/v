@@ -26,6 +26,7 @@ const (
 		'repl',
 		'self',
 		'setup-freetype',
+		'shader',
 		'symlink',
 		'test',
 		'test-all', /* runs most of the tests and other checking tools, that will be run by the CI */
