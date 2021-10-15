@@ -9,6 +9,9 @@
 //
 // Please see https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md#feature-overview
 // for a more in-depth overview of the specific tool in use.
+//
+// The shader language used is, as described on the overview page linked above, an 'annotated GLSL'
+// and 'modern GLSL' (v450) shader langugae format.
 import os
 import flag
 import net.http
