@@ -277,21 +277,23 @@ fn download_shdc(opt Options) ? {
 		os.rm(file) ?
 	}
 
-	mut dtmp_file, dtmp_path := util.temp_file(TempDirOptions{}) ?
+	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) }) ?
 	dtmp_file.close()
+	if opt.verbose {
+		eprintln('$tool_name downloading sokol-shdc from $download_url')
+	}
 	http.download_file(download_url, dtmp_path) or {
 		os.rm(dtmp_path) ?
 		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
 	}
+	// Make it executable
+	os.chmod(dtmp_path, 0o775) ?
 	// Move downloaded file in place
 	os.mv(dtmp_path, file) ?
-
 	if runtime_os in ['linux', 'macos'] {
 		// Use the .exe file ending to minimize platform friction.
 		os.mv(file, shdc) ?
 	}
-	// Make it executable
-	os.chmod(file, 0o775) ?
 	// Update internal version file
 	os.write_file(shdc_version_file, update_to_shdc_version) ?
 }
