@@ -51,6 +51,80 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	noscan := g.check_noscan(elem_type.typ)
 	if node.exprs.len == 0 {
 		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
+		if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
+			g.inside_lambda = true
+			tmp := g.new_tmp_var()
+			mut s := g.go_before_stmt(0)
+			s_ends_with_ln := s.ends_with('\n')
+			s = s.trim_space()
+			ret_typ := g.typ(node.typ)
+			elem_typ := g.typ(node.elem_type)
+			g.empty_line = true
+			g.write('$ret_typ $tmp =')
+			if is_default_array {
+				g.write('__new_array_with_array_default${noscan}(')
+			} else {
+				g.write('__new_array_with_default${noscan}(')
+			}
+			if node.has_len {
+				g.expr(node.len_expr)
+				g.write(', ')
+			} else {
+				g.write('0, ')
+			}
+			if node.has_cap {
+				g.expr(node.cap_expr)
+				g.write(', ')
+			} else {
+				g.write('0, ')
+			}
+			if elem_type.unaliased_sym.kind == .function {
+				g.write('sizeof(voidptr), ')
+			} else {
+				g.write('sizeof($elem_styp), ')
+			}
+			if is_default_array {
+				g.write('($elem_styp[]){')
+				g.expr(node.default_expr)
+				g.write('}[0])')
+			} else if node.has_len && node.elem_type == ast.string_type {
+				g.write('&($elem_styp[]){')
+				g.write('_SLIT("")')
+				g.write('})')
+			} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
+				g.write('(voidptr)&($elem_styp[]){')
+				g.write(g.type_default(node.elem_type))
+				g.write('}[0])')
+			} else {
+				g.write('0)')
+			}
+			if g.is_shared {
+				g.write('}, sizeof($shared_styp))')
+			} else if is_amp {
+				g.write(')')
+			}
+			g.writeln(';')
+			g.writeln('{')
+			g.indent++
+			g.writeln('$elem_typ* pelem = ($elem_typ*)${tmp}.data;')
+			g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+			g.indent++
+			g.write('*pelem = ')
+			g.expr(node.default_expr)
+			g.writeln(';')
+			g.indent--
+			g.writeln('}')
+			g.indent--
+			g.writeln('}')
+			if s_ends_with_ln {
+				g.writeln(s)
+			} else {
+				g.write(s)
+			}
+			g.write(tmp)
+			g.inside_lambda = false
+			return
+		}
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else {

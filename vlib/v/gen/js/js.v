@@ -1812,13 +1812,11 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 
 	if it.has_len {
 		t1 := g.new_tmp_var()
-		t2 := g.new_tmp_var()
 		g.writeln('(function(length) {')
 		g.inc_indent()
 		g.writeln('const $t1 = [];')
-		g.write('for (let $t2 = 0; $t2 < length')
-
-		g.writeln('; $t2++) {')
+		g.write('for (let it = 0; it < length')
+		g.writeln('; it++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
 		if it.has_default {

@@ -1136,6 +1136,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_default   bool
+	has_it        bool // true if temp variable it is used
 pub mut:
 	expr_types []Type // [Dog, Cat] // also used for interface_types
 	elem_type  Type   // element type

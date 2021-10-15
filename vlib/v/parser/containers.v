@@ -20,6 +20,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
+	mut has_it := false
 	mut default_expr := ast.empty_expr()
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.position()
@@ -79,8 +80,19 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
+					p.open_scope()
 					has_default = true
+					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
+					has_it = if var := p.scope.find_var('it') {
+						mut variable := var
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
+					} else {
+						false
+					}
+					p.close_scope()
 				}
 				last_pos = p.tok.position()
 				p.check(.rcbr)
@@ -127,8 +139,19 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
+					p.open_scope()
 					has_default = true
+					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
+					has_it = if var := p.scope.find_var('it') {
+						mut variable := var
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
+					} else {
+						false
+					}
+					p.close_scope()
 				}
 				else {
 					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
@@ -157,6 +180,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		len_expr: len_expr
 		has_cap: has_cap
 		has_default: has_default
+		has_it: has_it
 		cap_expr: cap_expr
 		default_expr: default_expr
 	}
@@ -186,5 +210,15 @@ fn (mut p Parser) map_init() ast.MapInit {
 		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
 		comments: comments
 		pre_cmnts: pre_cmnts
+	}
+}
+
+fn (mut p Parser) scope_register_it_as_index() {
+	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
+		name: 'it'
+		pos: p.tok.position()
+		typ: ast.int_type
+		is_mut: false
+		is_used: false
 	}
 }
