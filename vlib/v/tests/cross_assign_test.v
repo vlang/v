@@ -1,3 +1,5 @@
+import math.big
+
 // Test cross assign of array elements
 fn test_cross_assign_of_array() {
 	mut a := [0, 1]
@@ -156,4 +158,13 @@ fn test_cross_assign_of_complex_types() {
 	assert m['two'] == 3
 	assert x.a == 2
 	assert x.b == -1
+}
+
+fn test_cross_assign_of_big_int() {
+	mut a := big.zero_int
+	mut b := big.one_int
+
+	a, b = a + b, a
+	println(a)
+	assert a == big.one_int
 }

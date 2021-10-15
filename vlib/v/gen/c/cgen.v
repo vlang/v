@@ -3269,9 +3269,22 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			}
 		}
 		ast.InfixExpr {
-			g.gen_cross_tmp_variable(left, val.left)
-			g.write(val.op.str())
-			g.gen_cross_tmp_variable(left, val.right)
+			sym := g.table.get_type_symbol(val.left_type)
+			if _ := g.table.type_find_method(sym, val.op.str()) {
+				left_styp := g.typ(val.left_type.set_nr_muls(0))
+				g.write(left_styp)
+				g.write('_')
+				g.write(util.replace_op(val.op.str()))
+				g.write('(')
+				g.gen_cross_tmp_variable(left, val.left)
+				g.write(', ')
+				g.gen_cross_tmp_variable(left, val.right)
+				g.write(')')
+			} else {
+				g.gen_cross_tmp_variable(left, val.left)
+				g.write(val.op.str())
+				g.gen_cross_tmp_variable(left, val.right)
+			}
 		}
 		ast.PrefixExpr {
 			g.write(val.op.str())
