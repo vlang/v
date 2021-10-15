@@ -264,24 +264,24 @@ fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str
 		arg_str_fn_name := g.get_str_fn(typ)
 
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}(a.arg$i));')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}(a[$i]));')
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
-				tmp_val := str_intp_g32('a.arg$i')
+				tmp_val := str_intp_g32('a[$i]')
 				fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_val);')
 			} else {
-				tmp_val := str_intp_g64('a.arg$i')
+				tmp_val := str_intp_g64('a[$i]')
 				fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_val);')
 			}
 		} else if sym.kind == .string {
-			tmp_str := str_intp_sq('a.arg$i')
+			tmp_str := str_intp_sq('a[$i]')
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_str);')
 		} else if sym.kind == .function {
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}());')
 		} else {
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_arg_ptr, typ)
 			fn_builder.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( $deref a.arg$i));')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( $deref a[$i]));')
 		}
 		if i != info.types.len - 1 {
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, new string(", "));')
