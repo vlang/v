@@ -1,8 +1,14 @@
 // Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+//
+// vshader aids in generating special shader code C headers via sokol-shdc's 'annotated GLSL' format to any
+// supported target formats that sokol_gfx supports internally.
+//
+// vshader will bootstrap itself by downloading it's own dependencies to a system cache directory on first run.
+//
 // Please see https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md#feature-overview
-// For a more in-depth overview of the tool in use.
+// for a more in-depth overview of the specific tool in use.
 import os
 import flag
 import net.http
@@ -10,7 +16,7 @@ import net.http
 const (
 	tool_name        = os.file_name(os.executable())
 	tool_version     = '0.0.1'
-	tool_description = 'Compile shaders in sokol format to C headers for use with sokol based apps'
+	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
 	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
 	runtime_os       = os.user_os()
 )
@@ -29,14 +35,15 @@ const (
 		'wgpu', // WebGPU
 	]
 	default_slangs   = [
-		'glsl330', // desktop GL
-		'glsl100', // GLES2 / WebGL
-		'glsl300es', // GLES3 / WebGL2
-		'hlsl5', // D3D11
-		'metal_macos', // Metal on macOS
-		'metal_ios', // Metal on iOS device
-		'metal_sim', // Metal on iOS simulator
-		'wgpu', // WebGPU
+		'glsl330',
+		'glsl100',
+		'glsl300es',
+		// 'hlsl4', and hlsl5 can't be used at the same time
+		'hlsl5',
+		'metal_macos',
+		'metal_ios',
+		'metal_sim',
+		'wgpu',
 	]
 
 	shdc_version     = '33d2e4cc'
@@ -54,7 +61,12 @@ struct Options {
 	verbose      bool
 	force_update bool
 	slangs       []string
-	output       string
+}
+
+struct CompileOptions {
+	verbose     bool
+	slangs      []string
+	invoke_path string
 }
 
 fn main() {
@@ -74,7 +86,6 @@ fn main() {
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
 		verbose: fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
 		slangs: fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all. Available: $supported_slangs')
-		output: fp.string('output', `o`, '', 'Place output here. <name>.h, path or path/<name>.h')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -92,9 +103,22 @@ fn main() {
 	}
 }
 
-fn validate_shader_file(path string) ? {
-	shader_program := os.read_lines(path) or {
-		return error('shader program at "$path" could not be opened for reading')
+// shader_program_name returns the name of the program from `shader_file`.
+// shader_program_name returns a blank string if no @program entry could be found.
+fn shader_program_name(shader_file string) string {
+	shader_program := os.read_lines(shader_file) or { return '' }
+	for line in shader_program {
+		if line.contains('@program ') {
+			return line.all_after('@program ').all_before(' ')
+		}
+	}
+	return ''
+}
+
+// validate_shader_file returns an error if `shader_file` isn't valid.
+fn validate_shader_file(shader_file string) ? {
+	shader_program := os.read_lines(shader_file) or {
+		return error('shader program at "$shader_file" could not be opened for reading')
 	}
 	mut has_program_directive := false
 	for line in shader_program {
@@ -104,12 +128,14 @@ fn validate_shader_file(path string) ? {
 		}
 	}
 	if !has_program_directive {
-		return error('shader program at "$path" is missing a "@program" directive.')
+		return error('shader program at "$shader_file" is missing a "@program" directive.')
 	}
 }
 
+// compile_shaders compiles all `*.glsl` files found in `input_path`
+// to their C header file representatives.
 fn compile_shaders(opt Options, input_path string) ? {
-	mut path := input_path.trim_right('/')
+	mut path := os.real_path(input_path)
 	path = path.trim_right('/')
 	if os.is_file(path) {
 		path = os.dir(path)
@@ -129,7 +155,7 @@ fn compile_shaders(opt Options, input_path string) ? {
 		}
 		return
 	}
-	mut flat_shader_files := ''
+
 	is_multiple := shader_files.len > 1
 	for shader_file in shader_files {
 		// It could be the user has WIP shader files lying around not used,
@@ -138,48 +164,53 @@ fn compile_shaders(opt Options, input_path string) ? {
 			eprintln(err)
 			continue
 		}
-		flat_shader_files += '--input "$shader_file" '
-	}
-
-	mut out_file := os.file_name(shader_files[0]).all_before('.') + '.h'
-
-	// TODO better heuristics/convention for the output name
-	if is_multiple {
-		out_file = os.file_name(path).all_before('.') + '.h'
-	}
-
-	// User provided output form
-	if opt.output != '' {
-		if os.is_dir(opt.output) {
-			out_file = os.join_path(opt.output, out_file)
-		} else if opt.output.contains(os.path_separator) {
-			out_file = opt.output
-		} else {
-			out_file = os.join_path(path, opt.output)
+		co := CompileOptions{
+			verbose: opt.verbose
+			slangs: opt.slangs
+			invoke_path: path
 		}
-	} else {
-		out_file = os.join_path(path, out_file)
+		// Currently sokol-shdc allows for multiple --input flags
+		// - but it's only the last entry that's actaully compilied/used
+		// Given this fact - we can only compile one '.glsl' file to one C '.h' header
+		compile_shader(co, shader_file) ?
 	}
+}
 
-	mut slangs := []string{}
+// compile_shader compiles `shader_file` to a C header file.
+fn compile_shader(opt CompileOptions, shader_file string) ? {
+	path := opt.invoke_path
+	// The output convetion, for now, is to use the name of the .glsl file
+	mut out_file := os.file_name(shader_file).all_before('.') + '.h'
+	out_file = os.join_path(path, out_file)
+
+	mut slangs := opt.slangs.clone()
 	if opt.slangs.len == 0 {
 		unsafe {
 			slangs = default_slangs
 		}
 	}
 
-	flat_shader_files = flat_shader_files.trim_right(' ')
+	header_name := os.file_name(out_file)
 	if opt.verbose {
-		eprintln('$tool_name generating shader code for $slangs in header "${os.file_name(out_file)}" in "$path" from $shader_files')
+		eprintln('$tool_name generating shader code for $slangs in header "$header_name" in "$path" from $shader_file')
 	}
 
-	cmd := '$shdc $flat_shader_files --output $out_file --slang ' + slangs.join(':')
+	cmd := '$shdc --input "$shader_file" --output "$out_file" --slang "' + slangs.join(':') + '"'
+	if opt.verbose {
+		eprintln('$tool_name executing `$cmd` ...')
+	}
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('$tool_name failed generating shader includes:\n        $res.output\n        $cmd')
 	}
+	if opt.verbose {
+		program_name := shader_program_name(shader_file)
+		eprintln('$tool_name usage example in V:\n\nimport sokol.gfx\n\n#include "$header_name"\n\nfn C.${program_name}_shader_desc(gfx.Backend) &C.sg_shader_desc\n')
+	}
 }
 
+// collect recursively collects file entries from `path` in `list` filtered by
+// the callback in `collect_fn`.
 fn collect(path string, mut list []string, collect_fn fn (string, mut []string)) {
 	if !os.is_dir(path) {
 		return
@@ -196,6 +227,8 @@ fn collect(path string, mut list []string, collect_fn fn (string, mut []string))
 	return
 }
 
+// ensure_external_tools returns nothing if the external
+// tools can be setup or is already in place.
 fn ensure_external_tools(opt Options) ? {
 	if !os.exists(cache_dir) {
 		os.mkdir_all(cache_dir) ?
@@ -218,6 +251,9 @@ fn ensure_external_tools(opt Options) ? {
 	download_shdc(opt) ?
 }
 
+// shdc_exe returns an absolute path to the `sokol-shdc` tool.
+// Please note that the tool isn't guaranteed to actually be present, nor is
+// it guaranteed that it can be invoked.
 fn shdc_exe() string {
 	if runtime_os == 'windows' {
 		return os.join_path(cache_dir, 'sokol-shdc.exe')
@@ -225,6 +261,7 @@ fn shdc_exe() string {
 	return os.join_path(cache_dir, 'sokol-shdc')
 }
 
+// download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
 fn download_shdc(opt Options) ? {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
 	download_url := shdc_urls[runtime_os] or { '' }
@@ -239,6 +276,9 @@ fn download_shdc(opt Options) ? {
 		} else {
 			eprintln('$tool_name installing sokol-shdc version $update_to_shdc_version ...')
 		}
+	}
+	if os.exists(file) {
+		os.rm(file) ?
 	}
 	http.download_file(download_url, file) or {
 		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
