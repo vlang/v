@@ -699,6 +699,24 @@ fn (mut c Checker) unwrap_generic_type(typ ast.Type, generic_names []string, con
 			idx := c.table.find_or_register_array_with_dims(unwrap_typ, dims)
 			return ast.new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
+		ast.ArrayFixed {
+			unwrap_typ := c.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
+			idx := c.table.find_or_register_array_fixed(unwrap_typ, ts.info.size, ast.None{})
+			return ast.new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
+		ast.Chan {
+			unwrap_typ := c.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
+			idx := c.table.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
+			return ast.new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
+		ast.Map {
+			unwrap_key_type := c.unwrap_generic_type(ts.info.key_type, generic_names,
+				concrete_types)
+			unwrap_value_type := c.unwrap_generic_type(ts.info.value_type, generic_names,
+				concrete_types)
+			idx := c.table.find_or_register_map(unwrap_key_type, unwrap_value_type)
+			return ast.new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
 		ast.Struct, ast.Interface, ast.SumType {
 			if !ts.info.is_generic {
 				return typ
