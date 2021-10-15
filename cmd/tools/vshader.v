@@ -11,7 +11,7 @@
 // for a more in-depth overview of the specific tool in use.
 //
 // The shader language used is, as described on the overview page linked above, an 'annotated GLSL'
-// and 'modern GLSL' (v450) shader langugae format.
+// and 'modern GLSL' (v450) shader language format.
 import os
 import flag
 import net.http
