@@ -4,11 +4,11 @@ module time
 #var $seen = 0
 #function $sys_mono_new_Date() {
 #var t = Date.now()
-#if (t < seen)
-#timeOff += (seen - t)
+#if (t < $seen)
+#$timeOff += ($seen - t)
 #
-#seen = t
-#return t + timeOff
+#$seen = t
+#return t + $timeOff
 #}
 
 pub fn sys_mono_now() u64 {
@@ -19,7 +19,7 @@ pub fn sys_mono_now() u64 {
 		return res
 	} $else $if js_node {
 		mut res := u64(0)
-		#res.val = Number($process.hrtime.bigint())
+		#res.val = $process.hrtime.bigint()
 
 		return res
 	} $else {
