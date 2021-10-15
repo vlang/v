@@ -277,7 +277,7 @@ fn download_shdc(opt Options) ? {
 		os.rm(file) ?
 	}
 
-	dtmp_file, dtmp_path := util.temp_file(TempDirOptions{}) ?
+	mut dtmp_file, dtmp_path := util.temp_file(TempDirOptions{}) ?
 	dtmp_file.close()
 	http.download_file(download_url, dtmp_path) or {
 		os.rm(dtmp_path) ?
