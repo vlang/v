@@ -13,6 +13,7 @@
 // The shader language used is, as described on the overview page linked above, an 'annotated GLSL'
 // and 'modern GLSL' (v450) shader language format.
 import os
+import io.util
 import flag
 import net.http
 
@@ -57,6 +58,7 @@ const (
 	}
 	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
 	shdc              = shdc_exe()
+	shdc_exe_name     = 'sokol-shdc.exe'
 )
 
 struct Options {
@@ -145,12 +147,7 @@ fn compile_shaders(opt Options, input_path string) ? {
 	}
 
 	mut shader_files := []string{}
-	collect_fn := fn (path string, mut list []string) {
-		if os.file_ext(path) == '.glsl' {
-			list << os.real_path(path)
-		}
-	}
-	collect(path, mut shader_files, collect_fn)
+	collect(path, mut shader_files)
 
 	if shader_files.len == 0 {
 		if opt.verbose {
@@ -172,7 +169,7 @@ fn compile_shaders(opt Options, input_path string) ? {
 			invoke_path: path
 		}
 		// Currently sokol-shdc allows for multiple --input flags
-		// - but it's only the last entry that's actaully compilied/used
+		// - but it's only the last entry that's actually compiled/used
 		// Given this fact - we can only compile one '.glsl' file to one C '.h' header
 		compile_shader(co, shader_file) ?
 	}
@@ -182,14 +179,12 @@ fn compile_shaders(opt Options, input_path string) ? {
 fn compile_shader(opt CompileOptions, shader_file string) ? {
 	path := opt.invoke_path
 	// The output convetion, for now, is to use the name of the .glsl file
-	mut out_file := os.file_name(shader_file).all_before('.') + '.h'
+	mut out_file := os.file_name(shader_file).all_before_last('.') + '.h'
 	out_file = os.join_path(path, out_file)
 
 	mut slangs := opt.slangs.clone()
 	if opt.slangs.len == 0 {
-		unsafe {
-			slangs = default_slangs
-		}
+		slangs = default_slangs.clone()
 	}
 
 	header_name := os.file_name(out_file)
@@ -199,11 +194,12 @@ fn compile_shader(opt CompileOptions, shader_file string) ? {
 
 	cmd := '$shdc --input "$shader_file" --output "$out_file" --slang "' + slangs.join(':') + '"'
 	if opt.verbose {
-		eprintln('$tool_name executing `$cmd` ...')
+		eprintln('$tool_name executing:\n$cmd')
 	}
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('$tool_name failed generating shader includes:\n        $res.output\n        $cmd')
+		exit(1)
 	}
 	if opt.verbose {
 		program_name := shader_program_name(shader_file)
@@ -211,9 +207,8 @@ fn compile_shader(opt CompileOptions, shader_file string) ? {
 	}
 }
 
-// collect recursively collects file entries from `path` in `list` filtered by
-// the callback in `collect_fn`.
-fn collect(path string, mut list []string, collect_fn fn (string, mut []string)) {
+// collect recursively collects `.glsl` file entries from `path` in `list`.
+fn collect(path string, mut list []string) {
 	if !os.is_dir(path) {
 		return
 	}
@@ -221,9 +216,11 @@ fn collect(path string, mut list []string, collect_fn fn (string, mut []string))
 	for file in files {
 		p := os.join_path(path, file)
 		if os.is_dir(p) && !os.is_link(p) {
-			collect(p, mut list, collect_fn)
+			collect(p, mut list)
 		} else if os.exists(p) {
-			collect_fn(p, mut list)
+			if os.file_ext(p) == '.glsl' {
+				list << os.real_path(p)
+			}
 		}
 	}
 	return
@@ -257,10 +254,7 @@ fn ensure_external_tools(opt Options) ? {
 // Please note that the tool isn't guaranteed to actually be present, nor is
 // it guaranteed that it can be invoked.
 fn shdc_exe() string {
-	if runtime_os == 'windows' {
-		return os.join_path(cache_dir, 'sokol-shdc.exe')
-	}
-	return os.join_path(cache_dir, 'sokol-shdc')
+	return os.join_path(cache_dir, shdc_exe_name)
 }
 
 // download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
@@ -282,8 +276,19 @@ fn download_shdc(opt Options) ? {
 	if os.exists(file) {
 		os.rm(file) ?
 	}
-	http.download_file(download_url, file) or {
+
+	dtmp_file, dtmp_path := util.temp_file(TempDirOptions{}) ?
+	dtmp_file.close()
+	http.download_file(download_url, dtmp_path) or {
+		os.rm(dtmp_path) ?
 		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
+	}
+	// Move downloaded file in place
+	os.mv(dtmp_path, file) ?
+
+	if runtime_os in ['linux', 'macos'] {
+		// Use the .exe file ending to minimize platform friction.
+		os.mv(file, shdc) ?
 	}
 	// Make it executable
 	os.chmod(file, 0o775) ?
