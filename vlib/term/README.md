@@ -53,7 +53,7 @@ term.ok_message('cool')
 // returns the string as red text to be printed on stdout
 term.fail_message('oh, no')
 // returns the string as yellow text to be printed on stdout
-term.warning_message('be warned')
+term.warn_message('be warned')
 // clears the entire terminal and leaves a blank one
 term.clear()
 // colors the output of the output, the available colors are:
