@@ -120,28 +120,6 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	verror(builder.c_error_info)
 }
 
-fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := v.pref.cache_manager.exists('.o', imp_path) or {
-		if v.pref.is_verbose {
-			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
-		}
-		// do run `v build-module x` always in main vfolder; x can be a relative path
-		pwd := os.getwd()
-		vroot := os.dir(vexe)
-		os.chdir(vroot) or {}
-		boptions := v.pref.build_options.join(' ')
-		rebuild_cmd := '$vexe $boptions build-module $imp_path'
-		vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
-		os.system(rebuild_cmd)
-		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err.msg')
-		}
-		os.chdir(pwd) or {}
-		return rebuilded_o
-	}
-	return res
-}
-
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('> C compiler cmd: $cmd')
@@ -363,20 +341,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
-	// TODO: why is this duplicated from above?
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
-		// vexe := pref.vexe_path()
-		// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
-		// for cfile in cached_modules {
-		// ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
-		// '.o')
-		// if !os.exists(ofile) {
-		// println('${cfile}.o is missing. Building...')
-		// println('$vexe build-module vlib/$cfile')
-		// os.system('$vexe build-module vlib/$cfile')
-		// }
-		// args << ofile
-		// }
 		if !ccoptions.is_cc_tcc {
 			$if linux {
 				ccoptions.linker_flags << '-Xlinker -z'
@@ -565,70 +530,10 @@ fn (mut v Builder) cc() {
 				}
 			}
 		}
-		//
-		mut libs := []string{} // builtin.o os.o http.o etc
 		if v.pref.build_mode == .build_module {
 			v.ccoptions.pre_args << '-c'
-		} else if v.pref.use_cache {
-			mut built_modules := []string{}
-			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
-			libs << builtin_obj_path
-			for ast_file in v.parsed_files {
-				if v.pref.is_test && ast_file.mod.name != 'main' {
-					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
-						verror('cannot import module "$ast_file.mod.name" (not found)')
-						break
-					}
-					obj_path := v.rebuild_cached_module(vexe, imp_path)
-					libs << obj_path
-					built_modules << ast_file.mod.name
-				}
-				for imp_stmt in ast_file.imports {
-					imp := imp_stmt.mod
-					// strconv is already imported inside builtin, so skip generating its object file
-					// TODO: incase we have other modules with the same name, make sure they are vlib
-					// is this even doign anything?
-					if imp in ['strconv', 'strings'] {
-						continue
-					}
-					if imp in built_modules {
-						continue
-					}
-					if util.should_bundle_module(imp) {
-						continue
-					}
-					// not working
-					if imp == 'webview' {
-						continue
-					}
-					// The problem is cmd/v is in module main and imports
-					// the relative module named help, which is built as cmd.v.help not help
-					// currently this got this workign by building into main, see ast.FnDecl in cgen
-					if imp == 'help' {
-						continue
-					}
-					// we are skipping help manually above, this code will skip all relative imports
-					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
-					// continue
-					// }
-					// mod_path := imp.replace('.', os.path_separator)
-					// imp_path := os.join_path('vlib', mod_path)
-					imp_path := v.find_module_path(imp, ast_file.path) or {
-						verror('cannot import module "$imp" (not found)')
-						break
-					}
-					obj_path := v.rebuild_cached_module(vexe, imp_path)
-					libs << obj_path
-					if obj_path.ends_with('vlib/ui.o') {
-						v.ccoptions.post_args << '-framework Cocoa'
-						v.ccoptions.post_args << '-framework Carbon'
-					}
-					built_modules << imp
-				}
-			}
-			v.ccoptions.post_args << libs
 		}
-		//
+		v.handle_usecache(vexe)
 		if ccompiler == 'msvc' {
 			v.cc_msvc()
 			return

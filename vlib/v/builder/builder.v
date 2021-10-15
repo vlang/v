@@ -36,6 +36,11 @@ pub mut:
 	cached_msvc         MsvcResult
 	table               &ast.Table
 	ccoptions           CcompilerOptions
+	//
+	// NB: changes in mod `builtin` force invalidation of every other .v file
+	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
+	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
+	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -150,8 +155,15 @@ pub fn (mut b Builder) parse_imports() {
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
+		b.path_invalidates_mods[ast_file.path] << ast_file.mod.name
+		if ast_file.mod.name != 'builtin' {
+			b.mod_invalidates_paths['builtin'] << ast_file.path
+			b.mod_invalidates_mods['builtin'] << ast_file.mod.name
+		}
 		for imp in ast_file.imports {
 			mod := imp.mod
+			b.mod_invalidates_paths[mod] << ast_file.path
+			b.mod_invalidates_mods[mod] << ast_file.mod.name
 			if mod == 'builtin' {
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
 					ast_file.path, imp.pos)
@@ -174,6 +186,7 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 				continue
 			}
+			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
@@ -192,13 +205,13 @@ pub fn (mut b Builder) parse_imports() {
 		}
 	}
 	b.resolve_deps()
-	//
 	if b.pref.print_v_files {
 		for p in b.parsed_files {
 			println(p.path)
 		}
 		exit(0)
 	}
+	b.rebuild_modules()
 }
 
 pub fn (mut b Builder) resolve_deps() {
