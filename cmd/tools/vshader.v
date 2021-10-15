@@ -159,7 +159,6 @@ fn compile_shaders(opt Options, input_path string) ? {
 		return
 	}
 
-	is_multiple := shader_files.len > 1
 	for shader_file in shader_files {
 		// It could be the user has WIP shader files lying around not used,
 		// so we just report that there's something wrong
