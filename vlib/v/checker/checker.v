@@ -5076,9 +5076,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				if node.cond is ast.SelectorExpr {
-									}
-
 				value_type = value_type.ref()
 				match node.cond {
 					ast.Ident {
@@ -5098,8 +5095,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					ast.SelectorExpr {
 						root_ident := node.cond.root_ident() or { node.cond.expr as ast.Ident }
-						if !(root_ident as ast.Var).is_mut {
-							c.error('field `$node.cond.field_name` is immutable, it cannot be changed', node.cond.pos)
+						if !(root_ident.obj as ast.Var).is_mut {
+							c.error('field `$node.cond.field_name` is immutable, it cannot be changed',
+								node.cond.pos)
 						}
 					}
 					else {}
