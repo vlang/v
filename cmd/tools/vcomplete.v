@@ -48,13 +48,14 @@ const (
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
-	auto_complete_commands    = [
+	auto_complete_commands     = [
 		// simple_cmd
 		'fmt',
 		'up',
 		'vet',
 		'self',
 		'tracev',
+		'shader',
 		'symlink',
 		'bin2v',
 		'test',
@@ -90,7 +91,7 @@ const (
 		'build',
 		'build-module',
 	]
-	auto_complete_flags       = [
+	auto_complete_flags        = [
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
@@ -149,7 +150,7 @@ const (
 		'-version',
 		'--version',
 	]
-	auto_complete_flags_doc   = [
+	auto_complete_flags_doc    = [
 		'-all',
 		'-f',
 		'-h',
@@ -167,7 +168,7 @@ const (
 		'-s',
 		'-l',
 	]
-	auto_complete_flags_fmt   = [
+	auto_complete_flags_fmt    = [
 		'-c',
 		'-diff',
 		'-l',
@@ -175,7 +176,7 @@ const (
 		'-debug',
 		'-verify',
 	]
-	auto_complete_flags_bin2v = [
+	auto_complete_flags_bin2v  = [
 		'-h',
 		'--help',
 		'-m',
@@ -185,10 +186,22 @@ const (
 		'-w',
 		'--write',
 	]
-	auto_complete_flags_self  = [
+	auto_complete_flags_shader = [
+		'help',
+		'h',
+		'force-update',
+		'u',
+		'verbose',
+		'v',
+		'slang',
+		'l',
+		'output',
+		'o',
+	]
+	auto_complete_flags_self   = [
 		'-prod',
 	]
-	auto_complete_compilers   = [
+	auto_complete_compilers    = [
 		'cc',
 		'gcc',
 		'tcc',
@@ -367,6 +380,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'self' { // 'v self -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_self, part)
+				}
+				'shader' { // 'v shader -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_shader, part)
 				}
 				else {
 					for flag in auto_complete_flags {
