@@ -20,7 +20,7 @@ pub fn (t Transformer) transform_files(ast_files []&ast.File) {
 	}
 }
 
-pub fn (t Transformer) transform(mut ast_file &ast.File) {
+pub fn (t Transformer) transform(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
 		t.stmt(mut stmt)
 	}
