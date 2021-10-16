@@ -237,7 +237,7 @@ pub fn (mut ctx Context) text(s string) Result {
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `application/json`
+// Response HTTP_OK with json_s as payload with content-type `application/json`
 pub fn (mut ctx Context) json<T>(j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
