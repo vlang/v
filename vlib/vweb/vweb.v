@@ -9,6 +9,7 @@ import net
 import net.http
 import net.urllib
 import time
+import json
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -237,8 +238,9 @@ pub fn (mut ctx Context) text(s string) Result {
 }
 
 // Response HTTP_OK with s as payload with content-type `application/json`
-pub fn (mut ctx Context) json(s string) Result {
-	ctx.send_response_to_client('application/json', s)
+pub fn (mut ctx Context) json<T>(j T) Result {
+	json_s := json.encode(j)
+	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
 }
 
