@@ -435,6 +435,14 @@ fn test_min() {
 	}
 }
 
+fn test_clamp() {
+	assert clamp(2, 5, 10) == 5
+	assert clamp(7, 5, 10) == 7
+	assert clamp(15, 5, 10) == 10
+	assert clamp(5, 5, 10) == 5
+	assert clamp(10, 5, 10) == 10
+}
+
 fn test_signi() {
 	assert signi(inf(-1)) == -1
 	assert signi(-72234878292.4586129) == -1

@@ -87,6 +87,18 @@ pub fn minmax(a f64, b f64) (f64, f64) {
 	return b, a
 }
 
+// clamp returns x constrained between a and b
+[inline]
+pub fn clamp(x f64, a f64, b f64) f64 {
+	if x < a {
+		return a
+	}
+	if x > b {
+		return b
+	}
+	return x
+}
+
 // sign returns the corresponding sign -1.0, 1.0 of the provided number.
 // if n is not a number, its sign is nan too.
 [inline]
