@@ -244,6 +244,17 @@ pub fn (mut ctx Context) json<T>(j T) Result {
 	return Result{}
 }
 
+// Response HTTP_OK with file as payload
+pub fn (mut ctx Context) file(f_path string) Result {
+	ext := os.file_ext(f_path)
+	data := os.read_file(f_path) or {
+		ctx.server_error(500)
+		return Result{}
+	}
+	ctx.send_response_to_client(vweb.mime_types[ext], data)
+	return Result{}
+}
+
 // Response HTTP_OK with s as payload
 pub fn (mut ctx Context) ok(s string) Result {
 	ctx.send_response_to_client(ctx.content_type, s)
