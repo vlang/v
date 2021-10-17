@@ -121,7 +121,8 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	}
 }
 
-pub fn (mut c Checker) check(ast_file &ast.File) {
+pub fn (mut c Checker) check(ast_file_ &ast.File) {
+	mut ast_file := ast_file_
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		for sym in ast_import.syms {
@@ -212,7 +213,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		file := unsafe { ast_files[i] }
+		mut file := unsafe { ast_files[i] }
 		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
@@ -5092,6 +5093,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					ast.MapInit {
 						c.error('map literal is immutable, it cannot be changed', node.cond.pos)
 					}
+					ast.SelectorExpr {
+						root_ident := node.cond.root_ident() or { node.cond.expr as ast.Ident }
+						if !(root_ident.obj as ast.Var).is_mut {
+							c.error('field `$node.cond.field_name` is immutable, it cannot be changed',
+								node.cond.pos)
+						}
+					}
 					else {}
 				}
 			}
@@ -5199,7 +5207,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	mut aliases := c.asm_ios(stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(stmt.input, mut stmt.scope, false)
 	aliases << aliases2
-	for template in stmt.templates {
+	for mut template in stmt.templates {
 		if template.is_directive {
 			/*
 			align n[,value]

@@ -15,12 +15,12 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 
 pub fn (t Transformer) transform_files(ast_files []&ast.File) {
 	for i in 0 .. ast_files.len {
-		file := unsafe { ast_files[i] }
-		t.transform(file)
+		mut file := unsafe { ast_files[i] }
+		t.transform(mut file)
 	}
 }
 
-pub fn (t Transformer) transform(ast_file &ast.File) {
+pub fn (t Transformer) transform(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
 		t.stmt(mut stmt)
 	}

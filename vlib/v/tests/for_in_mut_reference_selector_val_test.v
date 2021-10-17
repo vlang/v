@@ -8,7 +8,7 @@ pub mut:
 }
 
 fn test_for_in_mut_reference_selector_val() {
-	bb := BB{
+	mut bb := BB{
 		arr: [&AA{
 			id: 'Test1'
 		}, &AA{
