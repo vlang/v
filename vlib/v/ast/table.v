@@ -732,29 +732,29 @@ fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_id
 }
 
 [inline]
-pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
-	mut typ_idx := -2
-	mut existing_idx := t.type_idxs[typ.name]
+pub fn (mut t Table) register_type_symbol(sym TypeSymbol) int {
+	mut idx := -2
+	mut existing_idx := t.type_idxs[sym.name]
 	if existing_idx > 0 {
-		typ_idx = t.check_for_already_registered_symbol(typ, existing_idx)
-		if typ_idx != -2 {
-			return typ_idx
+		idx = t.check_for_already_registered_symbol(sym, existing_idx)
+		if idx != -2 {
+			return idx
 		}
 	}
-	if typ.mod == 'main' {
-		existing_idx = t.type_idxs[typ.name.trim_prefix('main.')]
+	if sym.mod == 'main' {
+		existing_idx = t.type_idxs[sym.name.trim_prefix('main.')]
 		if existing_idx > 0 {
-			typ_idx = t.check_for_already_registered_symbol(typ, existing_idx)
-			if typ_idx != -2 {
-				return typ_idx
+			idx = t.check_for_already_registered_symbol(sym, existing_idx)
+			if idx != -2 {
+				return idx
 			}
 		}
 	}
-	typ_idx = t.type_symbols.len
-	t.type_symbols << typ
-	t.type_symbols[typ_idx].idx = typ_idx
-	t.type_idxs[typ.name] = typ_idx
-	return typ_idx
+	idx = t.type_symbols.len
+	t.type_symbols << sym
+	t.type_symbols[idx].idx = idx
+	t.type_idxs[sym.name] = idx
+	return idx
 }
 
 [inline]
