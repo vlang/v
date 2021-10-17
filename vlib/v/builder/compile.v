@@ -118,26 +118,29 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	mut exefile := os.real_path(b.pref.out_name)
-	mut cmd := '"$exefile"'
-	if b.pref.backend.is_js() {
-		exefile = os.real_path('${b.pref.out_name}.js').replace('.js.js', '.js')
-		cmd = 'node "$exefile"'
-	}
-	for arg in b.pref.run_args {
-		// Determine if there are spaces in the parameters
-		if arg.index_byte(` `) > 0 {
-			cmd += ' "' + arg + '"'
-		} else {
-			cmd += ' ' + arg
+	compiled_file := os.real_path(b.pref.out_name)
+	run_file := if b.pref.backend.is_js() {
+		os.find_abs_path_of_executable('node') or {
+			panic('Could not find `node` in system path. Do you have Node.js installed?')
 		}
+	} else {
+		compiled_file
 	}
+	mut run_args := []string{cap: b.pref.run_args.len + 1}
+	if b.pref.backend.is_js() {
+		run_args << compiled_file
+	}
+	run_args << b.pref.run_args
+	mut run_process := os.new_process(run_file)
+	run_process.set_args(run_args)
 	if b.pref.is_verbose {
-		println('command to run executable: $cmd')
+		println('running $run_process.filename with arguments $run_process.args')
 	}
 	if b.pref.is_test || b.pref.is_run {
-		ret := os.system(cmd)
-		b.cleanup_run_executable_after_exit(exefile)
+		run_process.wait()
+		ret := run_process.code
+		run_process.close()
+		b.cleanup_run_executable_after_exit(compiled_file)
 		exit(ret)
 	}
 	exit(0)
