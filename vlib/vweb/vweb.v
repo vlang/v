@@ -251,7 +251,13 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	ctx.send_response_to_client(vweb.mime_types[ext], data)
+	content_type := vweb.mime_types[ext]
+	if content_type == '' {
+		eprintln('MIME types for the `$ext` are not found')
+		ctx.server_error(500)
+	} else {
+		ctx.send_response_to_client(content_type, data)
+	}
 	return Result{}
 }
 
