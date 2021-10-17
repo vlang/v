@@ -4426,7 +4426,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
-	default_gen := false // is default branch genereated? for cstrict
+	mut default_gen := false // is default branch genereated? for cstrict
 	g.empty_line = true
 	g.writeln('switch ($cond_var) {')
 	g.indent++

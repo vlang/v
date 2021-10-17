@@ -2284,7 +2284,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 }
 
 fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
-	default_gen := false // is default branch genereated?
+	mut default_gen := false // is default branch genereated?
 	g.empty_line = true
 	g.write('switch (')
 	g.match_cond(cond_var)
