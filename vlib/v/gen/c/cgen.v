@@ -4443,7 +4443,9 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			g.writeln('default:')
 		} else {
 			for expr in branch.exprs {
-				covered_enum << (expr as ast.EnumVal).val
+				if expr is ast.EnumVal {
+					covered_enum << (expr as ast.EnumVal).val
+				}
 				g.write('case ')
 				g.expr(expr)
 				g.writeln(': ')
