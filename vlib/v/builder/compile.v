@@ -121,7 +121,8 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_test || b.pref.is_run {
 		compiled_file := os.real_path(b.pref.out_name)
 		run_file := if b.pref.backend.is_js() {
-			os.find_abs_path_of_executable('node') or {
+			node_basename := $if windows { 'node.exe' } $else { 'node' }
+			os.find_abs_path_of_executable(node_basename) or {
 				panic('Could not find `node` in system path. Do you have Node.js installed?')
 			}
 		} else {
