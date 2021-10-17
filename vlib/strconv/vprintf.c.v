@@ -28,6 +28,9 @@ pub fn v_printf(str string, pt ...voidptr) {
 
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
+	defer {
+		unsafe { res.free() }
+	}
 
 	mut i := 0 // main string index
 	mut p_index := 0 // parameter index
@@ -531,6 +534,9 @@ pub fn format_fl_old(f f64, p BF_param) string {
 			tmp.free()
 		}
 		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+		defer {
+			res.free()
+		}
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
@@ -580,9 +586,7 @@ pub fn format_fl_old(f f64, p BF_param) string {
 
 		s.free()
 		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
+		return res.str()
 	}
 }
 
@@ -595,6 +599,9 @@ pub fn format_es_old(f f64, p BF_param) string {
 			fs = remove_tail_zeros_old(fs)
 		}
 		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+		defer {
+			res.free()
+		}
 
 		mut sign_len_diff := 0
 		if p.pad_ch == `0` {
@@ -642,9 +649,7 @@ pub fn format_es_old(f f64, p BF_param) string {
 		}
 		s.free()
 		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
+		return res.str()
 	}
 }
 
@@ -692,6 +697,9 @@ pub fn remove_tail_zeros_old(s string) string {
 pub fn format_dec_old(d u64, p BF_param) string {
 	mut s := ''
 	mut res := strings.new_builder(20)
+	defer {
+		unsafe { res.free() }
+	}
 	mut sign_len_diff := 0
 	if p.pad_ch == `0` {
 		if p.positive {

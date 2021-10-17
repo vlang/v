@@ -98,6 +98,9 @@ pub fn format_str(s string, p BF_param) string {
 		return s.clone()
 	}
 	mut res := strings.new_builder(s.len + dif)
+	defer {
+		unsafe { res.free() }
+	}
 	if p.allign == .right {
 		for i1 := 0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
