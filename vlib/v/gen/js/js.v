@@ -2143,6 +2143,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
 	mut cond_var := MatchCond(CondString{''})
 	mut tmp_var := ''
+	mut cur_line := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary = true
 	}
@@ -2158,6 +2159,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.writeln(';')
 	}
 	if need_tmp_var {
+		g.empty_line = true
+		cur_line = g.out.cut_to(g.stmt_start_pos).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		g.writeln('let $tmp_var = undefined;')
 	}
@@ -2167,11 +2170,12 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 {
+	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
+	g.write(cur_line)
 	if need_tmp_var {
 		g.write('$tmp_var')
 	}
