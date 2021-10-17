@@ -4289,6 +4289,23 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	return false
 }
 
+fn (mut g Gen) branches_all_resolvable_in_runtime(node ast.MatchExpr) bool {
+	for branch in node.branches {
+		for expr in branch.exprs {
+			if expr is ast.EnumVal {
+				continue
+			} else if expr is ast.RangeExpr {
+				if expr.high !is ast.IntegerLiteral || expr.low !is ast.IntegerLiteral {
+					return false
+				}
+				continue
+			}
+			return true
+		}
+	}
+	return true
+}
+
 fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	// println('match expr typ=$it.expr_type')
 	// TODO
@@ -4296,7 +4313,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	need_tmp_var := g.need_tmp_var_in_match(node)
+	need_tmp_var, all_resolvable := g.need_tmp_var_in_match(node), g.branches_all_resolvable_in_runtime(node)
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
 	mut cond_var := ''
 	mut tmp_var := ''
@@ -4335,7 +4352,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
+	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0
+		&& all_resolvable { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
@@ -4445,10 +4463,16 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			for expr in branch.exprs {
 				if expr is ast.EnumVal {
 					covered_enum << (expr as ast.EnumVal).val
+					g.write('case ')
+					g.expr(expr)
+					g.writeln(': ')
+				} else if expr is ast.RangeExpr {
+					low, high := (expr.low as ast.IntegerLiteral).val.int(), (expr.high as ast.IntegerLiteral).val.int()
+					for val in (enum_typ.info as ast.Enum).vals[low..high + 1] {
+						covered_enum << val
+						g.writeln('case $cname$val:')
+					}
 				}
-				g.write('case ')
-				g.expr(expr)
-				g.writeln(': ')
 			}
 		}
 		g.indent++
