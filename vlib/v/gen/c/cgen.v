@@ -4313,7 +4313,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	need_tmp_var, all_resolvable := g.need_tmp_var_in_match(node), g.branches_all_resolvable_in_runtime(node)
+	need_tmp_var := g.need_tmp_var_in_match(node)
+	all_resolvable := g.branches_all_resolvable_in_runtime(node)
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
 	mut cond_var := ''
 	mut tmp_var := ''
