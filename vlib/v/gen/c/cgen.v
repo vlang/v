@@ -4255,9 +4255,13 @@ fn (mut g Gen) unlock_locks() {
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+		cond_sym := g.table.get_final_type_symbol(node.cond_type)
 		sym := g.table.get_type_symbol(node.return_type)
 		if sym.kind == .multi_return {
 			return false
+		}
+		if cond_sym.kind == .enum_ && node.branches.len > 5 {
+			return true
 		}
 		for branch in node.branches {
 			if branch.stmts.len > 1 {
@@ -4321,8 +4325,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// brackets needed otherwise '?' will apply to everything on the left
 		g.write('(')
 	}
+	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+	} else if typ.kind == .enum_ && node.branches.len > 5 {
+		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
@@ -4409,6 +4416,30 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		// reset global field for next use
 		g.aggregate_type_idx = 0
 	}
+}
+
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+	g.empty_line = true
+	g.writeln('switch ($cond_var) {')
+	g.indent++
+	for branch in node.branches {
+		if branch.is_else {
+			g.writeln('default:')
+		} else {
+			for expr in branch.exprs {
+				g.write('case ')
+				g.expr(expr)
+				g.writeln(':')
+			}
+		}
+		g.indent++
+		g.writeln('{')
+		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		g.writeln('} break;')
+		g.indent--
+	}
+	g.indent--
+	g.writeln('}')
 }
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
