@@ -4336,7 +4336,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
 	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
-		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
+		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
@@ -4425,17 +4425,25 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	}
 }
 
-fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, enum_typ ast.TypeSymbol) {
+	cname := '${enum_typ.cname}__'
+	mut covered_enum := []string{cap: (enum_typ.info as ast.Enum).vals.len}
 	mut default_gen := false // is default branch genereated? for cstrict
 	g.empty_line = true
 	g.writeln('switch ($cond_var) {')
 	g.indent++
 	for branch in node.branches {
 		if branch.is_else {
+			for val in (enum_typ.info as ast.Enum).vals {
+				if val !in covered_enum {
+					g.writeln('case $cname$val:')
+				}
+			}
 			default_gen = true
 			g.writeln('default:')
 		} else {
 			for expr in branch.exprs {
+				covered_enum << (expr as ast.EnumVal).val
 				g.write('case ')
 				g.expr(expr)
 				g.writeln(': ')
