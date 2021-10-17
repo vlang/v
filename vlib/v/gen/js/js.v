@@ -2295,7 +2295,6 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 	g.inc_indent()
 	for branch in node.branches {
 		if branch.is_else {
-			default_gen = true
 			g.writeln('default:')
 		} else {
 			for expr in branch.exprs {
