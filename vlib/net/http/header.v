@@ -38,6 +38,7 @@ pub enum CommonHeader {
 	allow
 	alt_svc
 	authorization
+	authority
 	cache_control
 	clear_site_data
 	connection
@@ -143,6 +144,7 @@ pub fn (h CommonHeader) str() string {
 		.allow { 'Allow' }
 		.alt_svc { 'Alt-Svc' }
 		.authorization { 'Authorization' }
+		.authority { 'Authority' }
 		.cache_control { 'Cache-Control' }
 		.clear_site_data { 'Clear-Site-Data' }
 		.connection { 'Connection' }
