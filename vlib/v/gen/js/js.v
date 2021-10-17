@@ -84,6 +84,8 @@ mut:
 	defer_ifdef            string
 	out                    strings.Builder = strings.new_builder(128)
 	array_sort_fn          map[string]bool
+	wasm_export            map[string][]string
+	wasm_import            map[string][]string
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -211,13 +213,37 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			}
 		}
 	}
-	g.write('js_main();')
+	if !g.pref.is_shared {
+		g.write('js_main();')
+	}
 	g.escape_namespace()
 	// resolve imports
 	deps_resolved := graph.resolve()
 	nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
+
+	out += '\nlet wasmExportObject;'
+	for mod, functions in g.wasm_import {
+		if g.pref.backend == .js_browser {
+			out += '\nfetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
+			out += 'WebAssembly.instantiate(bytes,'
+			exports := g.wasm_export[mod]
+			out += '{ imports: { \n'
+			for i, exp in exports {
+				out += g.js_name(exp)
+				if i != exports.len - 1 {
+					out += ',\n'
+				}
+			}
+			out += '}})).then(obj => wasmExportObject = obj.instance.exports);\n'
+			for fun in functions {
+				out += 'globalThis.${g.js_name(fun)} = wasmExportObject.${g.js_name(fun)};\n'
+			}
+		} else {
+			verror('WebAssembly export is supported only for browser backend at the moment')
+		}
+	}
 
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')

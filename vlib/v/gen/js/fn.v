@@ -405,6 +405,17 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	res := g.fn_gen_type(it)
 	if it.language == .js {
+		for attr in it.attrs {
+			match attr.name {
+				'wasmImport' {
+					mut x := g.wasm_export[attr.arg] or { []string{} }
+					x << it.name
+					g.wasm_import[attr.arg] = x
+				}
+				else {}
+			}
+		}
+
 		return
 	}
 	if g.inside_builtin {
@@ -535,11 +546,21 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		// g.write(')')
 	}
 	g.writeln('')
-
 	for attr in it.attrs {
 		match attr.name {
 			'export' {
 				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+			}
+			'wasmExport' {
+				mut x := g.wasm_export[attr.arg] or { []string{} }
+				x << it.name
+				g.wasm_export[attr.arg] = x
+			}
+			'wasmImport' {
+				mut x := g.wasm_export[attr.arg] or { []string{} }
+				x << name
+				println('wasm import $name')
+				g.wasm_import[attr.arg] = x
 			}
 			else {}
 		}
