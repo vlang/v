@@ -104,6 +104,7 @@ mut:
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
+	loop_depth             int
 	ternary_names          map[string]string
 	ternary_level_names    map[string][]string
 	stmt_path_pos          []int // positions of each statement start, for inserting C statements before the current statement
@@ -1780,6 +1781,7 @@ fn (mut g Gen) write_defer_stmts() {
 }
 
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
+	g.loop_depth++
 	if node.is_multi {
 		g.is_vlines_enabled = false
 		if node.label.len > 0 {
@@ -1853,9 +1855,11 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('${node.label}__break: {}')
 		}
 	}
+	g.loop_depth--
 }
 
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	g.loop_depth++
 	g.is_vlines_enabled = false
 	if node.label.len > 0 {
 		g.writeln('$node.label:')
@@ -1878,9 +1882,11 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		g.writeln('${node.label}__break: {}')
 	}
+	g.loop_depth--
 }
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+	g.loop_depth++
 	if node.label.len > 0 {
 		g.writeln('\t$node.label: {}')
 	}
@@ -2120,6 +2126,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
 	}
+	g.loop_depth--
 }
 
 struct SumtypeCastingFn {
@@ -4328,7 +4335,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && node.branches.len > 5 {
+	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 {
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
