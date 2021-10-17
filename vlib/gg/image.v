@@ -117,7 +117,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 		return
 	}
 
-	img := ctx.image_cache[id]
+	img := &ctx.image_cache[id]
 	if !img.simg_ok {
 		return
 	}
