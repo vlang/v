@@ -4429,7 +4429,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			for expr in branch.exprs {
 				g.write('case ')
 				g.expr(expr)
-				g.writeln(':')
+				g.writeln(': ')
 			}
 		}
 		g.indent++
