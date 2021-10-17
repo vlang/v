@@ -4426,11 +4426,13 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+	default_gen := false // is default branch genereated? for cstrict
 	g.empty_line = true
 	g.writeln('switch ($cond_var) {')
 	g.indent++
 	for branch in node.branches {
 		if branch.is_else {
+			default_gen = true
 			g.writeln('default:')
 		} else {
 			for expr in branch.exprs {
@@ -4444,6 +4446,9 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.writeln('} break;')
 		g.indent--
+	}
+	if !default_gen {
+		g.writeln('deafult: break;')
 	}
 	g.indent--
 	g.writeln('}')

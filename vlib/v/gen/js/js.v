@@ -2284,6 +2284,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 }
 
 fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
+	default_gen := false // is default branch genereated?
 	g.empty_line = true
 	g.write('switch (')
 	g.match_cond(cond_var)
@@ -2291,6 +2292,7 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 	g.inc_indent()
 	for branch in node.branches {
 		if branch.is_else {
+			default_gen = true
 			g.writeln('default:')
 		} else {
 			for expr in branch.exprs {
@@ -2304,6 +2306,9 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.writeln('} break;')
 		g.dec_indent()
+	}
+	if !default_gen {
+		g.writeln('deafult: break;')
 	}
 	g.dec_indent()
 	g.writeln('}')
