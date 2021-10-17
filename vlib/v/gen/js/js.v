@@ -2167,7 +2167,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && node.branches.len > 5 {
+	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 {
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
