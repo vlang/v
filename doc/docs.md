@@ -1312,7 +1312,7 @@ if mut x is MyStruct {
 // same with match
 match mut x {
 	MyStruct {
-		// x is casted to MyStruct even it's mutable
+		// x is casted to MyStruct even if it's mutable
 		// without the mut keyword that wouldn't work
 		println(x)
 	}
@@ -2552,8 +2552,7 @@ Installed modules:
   ui
 ```
 
-To see all the modules you have installed, you can use:
-outdated          Show installed modules that need updates.
+To see all the modules that need updates:
 ```powershell
 v outdated
 ```
@@ -2623,7 +2622,7 @@ Modules are up to date.
 	the module name you provided e.g. `mygithubname.mymodule`.
 
 **Optional:** tag your V module with `vlang` and `vlang-module` on github.com
-to allow a better search experiance.
+to allow for a better search experience.
 
 ## Type Declarations
 
@@ -3536,7 +3535,7 @@ fn main() {
 	go fn (the_channel chan f64) {
 		_ := <-the_channel
 	}(ch3)
-	//
+
 	select {
 		a := <-ch {
 			// do something with `a`
@@ -3619,7 +3618,7 @@ using `rlock` for read-only and `lock` for read/write access.
 ```v
 struct St {
 mut:
-	x int // data to shared
+	x int // data to be shared
 }
 
 fn (shared b St) g() {
@@ -3776,7 +3775,7 @@ option to see more details about the individual tests run.
 
 You can put additional test data, including .v source files in a folder, named
 `testdata`, right next to your _test.v files. V's test framework will *ignore*
-such folders, while scanning for tests to run. This is usefull, if you want to
+such folders, while scanning for tests to run. This is useful, if you want to
 put .v files with invalid V source code, or other tests, including known
 failing ones, that should be run in a specific way/options by a parent _test.v
 file.
@@ -4230,7 +4229,7 @@ Comments spanning multiple lines are merged together using spaces, unless
 
 - the line is empty
 - the line ends with a `.` (end of sentence)
-- the line is contains purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
+- the line is purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
 - the line starts with at least one `#` followed by a space (header)
 - the line starts and ends with a `|` (table)
 - the line starts with `- ` (list)
@@ -4675,7 +4674,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time if condition to
+To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 
@@ -4852,7 +4851,7 @@ use `v help`, `v help build` and `v help build-c`.
 1. compile your binary with debugging info `v -g hello.v`
 2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
 
-Troubleshooting (debugging) executables [created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
+[Troubleshooting (debugging) executables created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
 
 **Visual debugging Setup:**
 * [Visual Studio Code](vscode.md)
@@ -4864,7 +4863,7 @@ native backend (flag: `-b native`).
 
 ### Javascript Backend
 
-To debug the generated Javascript output you can active source maps:
+To debug the generated Javascript output you can activate source maps:
 `v -b js -sourcemap hello.v -o hello.js`
 
 For all supported options check the latest help:
@@ -5513,7 +5512,7 @@ fn C.my_external_function(voidptr, int, voidptr) int
 // Calls to following function must be in unsafe{} blocks.
 // Note that the code in the body of `risky_business()` will still be
 // checked, unless you also wrap it in `unsafe {}` blocks.
-// This is usefull, when you want to have an `[unsafe]` function that
+// This is useful, when you want to have an `[unsafe]` function that
 // has checks before/after a certain unsafe operation, that will still
 // benefit from V's safety features.
 [unsafe]
