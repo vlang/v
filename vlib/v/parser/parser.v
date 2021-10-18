@@ -1502,7 +1502,7 @@ fn (mut p Parser) attributes() {
 	for p.tok.kind != .rsbr {
 		start_pos := p.tok.position()
 		attr := p.parse_attr()
-		if p.attrs.contains(attr.name) {
+		if p.attrs.contains(attr.name) && attr.name != 'wasm_export' {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 			return
 		}

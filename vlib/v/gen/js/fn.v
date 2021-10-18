@@ -405,6 +405,17 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	res := g.fn_gen_type(it)
 	if it.language == .js {
+		for attr in it.attrs {
+			match attr.name {
+				'wasm_import' {
+					mut x := g.wasm_export[attr.arg] or { []string{} }
+					x << it.name
+					g.wasm_import[attr.arg] = x
+				}
+				else {}
+			}
+		}
+
 		return
 	}
 	if g.inside_builtin {
@@ -535,11 +546,38 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		// g.write(')')
 	}
 	g.writeln('')
-
 	for attr in it.attrs {
 		match attr.name {
 			'export' {
 				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+			}
+			'wasm_export' {
+				mut x := g.wasm_export[attr.arg] or { []string{} }
+				g.write('function \$wasm${g.js_name(it.name)}(')
+				g.fn_args(args, it.is_variadic)
+				g.writeln(') {')
+				g.write('\treturn $name (')
+				for i, arg in args {
+					is_varg := i == args.len - 1 && it.is_variadic
+					arg_name := g.js_name(arg.name)
+					if is_varg {
+						g.write('...$arg_name')
+					} else {
+						g.gen_cast_tmp(arg_name, arg.typ)
+					}
+					if i != args.len - 1 {
+						g.write(',')
+					}
+				}
+				g.writeln(').valueOf();')
+				g.writeln('}')
+				x << it.name
+				g.wasm_export[attr.arg] = x
+			}
+			'wasm_import' {
+				mut x := g.wasm_export[attr.arg] or { []string{} }
+				x << name
+				g.wasm_import[attr.arg] = x
 			}
 			else {}
 		}
