@@ -2597,7 +2597,7 @@ Modules are up to date.
 	Check that your module name is used in `mymodule.v`:
 	```v
 	module mymodule
-
+	
 	pub fn hello_world() {
 		println('Hello World!')
 	}
@@ -2663,8 +2663,48 @@ for item in arr {
 }
 ```
 
+#### Implement an interface
+
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
+
+When the method of interface with mut, It requires the receiver of method is also mutable.
+
+```v
+module main
+
+// method signature requires: pub fn (s MyStruct) write(a string) string
+pub interface Foo {
+	write(string) string
+}
+
+// with mut, requires: pub fn (mut s MyStruct) write(a string) string
+pub interface Bar {
+mut:
+	write(string) string
+}
+
+struct MyStruct {}
+
+// implements the interface Foo, but not match Bar
+pub fn (s MyStruct) write(a string) string {
+	return a
+}
+
+fn main() {
+	s1 := MyStruct{}
+	fn1(s1)
+}
+
+fn fn1(s Foo) {
+	println(s.write('Foo'))
+}
+
+// fn fn2(s Bar) { // not match
+// 	println(s.write('Foo'))
+// }
+
+```
 
 #### Casting an interface
 
@@ -2718,6 +2758,28 @@ fn main() {
 	if a is Cat {
 		println(a.speak()) // meow!
 	}
+}
+```
+
+#### Embedded interface
+
+Interface supports embed, just like struct.
+
+```v
+pub interface Reader {
+mut:
+	read(mut buf []byte) ?int
+}
+
+pub interface Writer {
+mut:
+	write(buf []byte) ?int
+}
+
+//embedded interface
+pub interface ReaderWriter {
+	Reader
+	Writer
 }
 ```
 
