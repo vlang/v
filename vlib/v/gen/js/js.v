@@ -218,8 +218,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	g.escape_namespace()
 	// resolve imports
-	deps_resolved := graph.resolve()
-	nodes := deps_resolved.nodes
+	// deps_resolved := graph.resolve()
+	// nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
 	out += '\nlet wasmExportObject;\n'
