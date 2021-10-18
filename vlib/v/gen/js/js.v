@@ -1956,9 +1956,13 @@ fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 
 fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+		cond_sym := g.table.get_final_type_symbol(node.cond_type)
 		sym := g.table.get_type_symbol(node.return_type)
 		if sym.kind == .multi_return {
 			return false
+		}
+		if cond_sym.kind == .enum_ && node.branches.len > 5 {
+			return true
 		}
 		for branch in node.branches {
 			if branch.stmts.len > 1 {
@@ -2165,6 +2169,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary
 	mut cond_var := MatchCond(CondString{''})
 	mut tmp_var := ''
+	mut cur_line := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary = true
 	}
@@ -2180,17 +2185,23 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.writeln(';')
 	}
 	if need_tmp_var {
+		g.empty_line = true
+		cur_line = g.out.cut_to(g.stmt_start_pos).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		g.writeln('let $tmp_var = undefined;')
 	}
 	if is_expr && !need_tmp_var {
 		g.write('(')
 	}
+	typ := g.table.get_final_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
+		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
+	g.write(cur_line)
 	if need_tmp_var {
 		g.write('$tmp_var')
 	}
@@ -2300,6 +2311,32 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 			}
 		}
 	}
+}
+
+fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
+	g.empty_line = true
+	g.write('switch (')
+	g.match_cond(cond_var)
+	g.writeln(') {')
+	g.inc_indent()
+	for branch in node.branches {
+		if branch.is_else {
+			g.writeln('default:')
+		} else {
+			for expr in branch.exprs {
+				g.write('case ')
+				g.expr(expr)
+				g.writeln(': ')
+			}
+		}
+		g.inc_indent()
+		g.writeln('{')
+		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		g.writeln('} break;')
+		g.dec_indent()
+	}
+	g.dec_indent()
+	g.writeln('}')
 }
 
 fn (mut g JsGen) need_tmp_var_in_if(node ast.IfExpr) bool {
