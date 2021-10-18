@@ -214,7 +214,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		}
 	}
 	if !g.pref.is_shared {
-		g.write('js_main();')
+		g.write('loadRoutine().then(_ => js_main());')
 	}
 	g.escape_namespace()
 	// resolve imports
@@ -222,16 +222,16 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
-
-	out += '\nlet wasmExportObject;'
+	out += '\nlet wasmExportObject;\n'
+	out += 'const loadRoutine = async () => {\n'
 	for mod, functions in g.wasm_import {
 		if g.pref.backend == .js_browser {
-			out += '\nfetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
+			out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
 			out += 'WebAssembly.instantiate(bytes,'
 			exports := g.wasm_export[mod]
 			out += '{ imports: { \n'
 			for i, exp in exports {
-				out += g.js_name(exp)
+				out += g.js_name(exp) + ':' + '\$wasm' + g.js_name(exp)
 				if i != exports.len - 1 {
 					out += ',\n'
 				}
@@ -244,7 +244,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			verror('WebAssembly export is supported only for browser backend at the moment')
 		}
 	}
-
+	out += '}\n'
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -252,12 +252,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	//	out += eq_fn.data().vstring()
 	//}
 	out += fast_deep_eq_fn
-
+	/*
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
 		export := nodes[nodes.len - 1].name
 		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
-	}
+	}*/
 	out += '\n'
 
 	out += g.out.str()
@@ -3006,6 +3006,40 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	} else {
 		g.write('"$sym.name"')
 	}
+}
+
+fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
+	// Skip cast if type is the same as the parrent caster
+	tsym := g.table.get_final_type_symbol(typ_)
+	if tsym.kind == .i64 || tsym.kind == .u64 {
+		g.write('new ')
+
+		g.write('$tsym.kind.str()')
+		g.write('(BigInt(')
+		g.write(tmp)
+		g.write('n))')
+		return
+	}
+	g.cast_stack << typ_
+	typ := g.typ(typ_)
+
+	if typ_.is_ptr() {
+		g.write('new \$ref(')
+	}
+
+	g.write('new ')
+	g.write('${typ}(')
+	g.write(tmp)
+	if typ == 'string' {
+		g.write('.toString()')
+	}
+
+	g.write(')')
+	if typ_.is_ptr() {
+		g.write(')')
+	}
+
+	g.cast_stack.delete_last()
 }
 
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {

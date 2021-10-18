@@ -195,7 +195,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'direct_array_access' { is_direct_arr = true }
 			'keep_args_alive' { is_keep_alive = true }
 			'export' { is_exported = true }
-			'wasmExport' { is_exported = true }
+			'wasm_export' { is_exported = true }
 			'unsafe' { is_unsafe = true }
 			'trusted' { is_trusted = true }
 			'c2v_variadic' { is_c2v_variadic = true }
