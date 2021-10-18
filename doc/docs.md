@@ -2703,7 +2703,6 @@ fn fn1(s Foo) {
 // fn fn2(s Bar) { // not match
 // 	println(s.write('Foo'))
 // }
-
 ```
 
 #### Casting an interface
@@ -2781,7 +2780,6 @@ pub interface ReaderWriter {
 	Reader
 	Writer
 }
-
 ```
 
 ### Function Types
