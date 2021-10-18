@@ -2776,11 +2776,12 @@ mut:
 	write(buf []byte) ?int
 }
 
-//embedded interface
+// embedded interface
 pub interface ReaderWriter {
 	Reader
 	Writer
 }
+
 ```
 
 ### Function Types
