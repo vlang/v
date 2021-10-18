@@ -248,12 +248,13 @@ pub fn (mut ctx Context) json<T>(j T) Result {
 pub fn (mut ctx Context) file(f_path string) Result {
 	ext := os.file_ext(f_path)
 	data := os.read_file(f_path) or {
+		eprint(err.msg)
 		ctx.server_error(500)
 		return Result{}
 	}
 	content_type := vweb.mime_types[ext]
 	if content_type == '' {
-		eprintln('MIME types for the `$ext` are not found')
+		eprintln('no MIME type found for extension $ext')
 		ctx.server_error(500)
 	} else {
 		ctx.send_response_to_client(content_type, data)
