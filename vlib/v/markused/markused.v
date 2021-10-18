@@ -259,13 +259,11 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			continue
 		}
 		for itype in interface_info.types {
-			pitype := itype.set_nr_muls(1)
-			mut itypes := [itype]
-			if pitype != itype {
-				itypes << pitype
-			}
+			ptype := itype.set_nr_muls(1)
+			ntype := itype.set_nr_muls(0)
+			interface_types := [ptype, ntype]
 			for method in interface_info.methods {
-				for typ in itypes {
+				for typ in interface_types {
 					interface_implementation_method_name := '${int(typ)}.$method.name'
 					$if trace_skip_unused_interface_methods ? {
 						eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
