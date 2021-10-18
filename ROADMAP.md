@@ -15,11 +15,11 @@
 - [x] iOS/Android support
 - [ ] parallel parser
 - [ ] parallel checker
-- [ ] parallel cgen
+- [x] parallel cgen
 - [ ] `recover()` from panics
 - [x] IO streams
 - [x] struct embedding
-- [ ] interface embedding
+- [x] interface embedding
 - [x] interfaces: allow struct fields (not just methods)
 - [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
 - [ ] method expressions with an explicit receiver as the first argument
