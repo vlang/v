@@ -10991,7 +10991,7 @@ SOKOL_API_IMPL void sapp_set_window_title(const char* title) {
     #endif
 }
 
-SOKOL_API_IMPL void sapp_resize_window(int width, height) {
+SOKOL_API_IMPL void sapp_resize_window(int width, int height) {
 	/*
     #if defined(_SAPP_MACOS)
         _sapp_macos_resize_window(width, height);
