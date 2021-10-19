@@ -184,7 +184,9 @@ v run tetris/tetris.v
 NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
 on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
-If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
+## V net.http, net.websocket, `v install`
+If you plan to use the net.http module, or the net.websocket module, you also need to install
+OpenSSL on non-Windows systems:
 
 ```bash
 macOS:
