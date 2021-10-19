@@ -4289,18 +4289,6 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	return false
 }
 
-fn (mut g Gen) branches_all_resolvable_in_runtime(node ast.MatchExpr, typ ast.TypeSymbol) bool {
-	for branch in node.branches {
-		for expr in branch.exprs {
-			if expr is ast.EnumVal || expr is ast.RangeExpr {
-				continue
-			}
-			return true
-		}
-	}
-	return true
-}
-
 fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	// println('match expr typ=$it.expr_type')
 	// TODO
@@ -4345,11 +4333,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('(')
 	}
 	typ := g.table.get_final_type_symbol(node.cond_type)
-	all_resolvable := g.branches_all_resolvable_in_runtime(node, typ)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0
-		&& all_resolvable { // do not optimize while in top-level
+	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)

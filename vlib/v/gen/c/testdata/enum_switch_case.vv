@@ -1,0 +1,20 @@
+enum Enum {
+	e1
+	e2
+	e3
+	e4
+	e5
+	e6
+}
+
+fn main() {
+	e := Enum.e1
+	match e {
+		.e1 {}
+		.e2 {}
+		.e3 {}
+		.e4 {}
+		4...5 {}
+		else {}
+	}
+}
