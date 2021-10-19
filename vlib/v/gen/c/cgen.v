@@ -4296,8 +4296,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	need_tmp_var := g.need_tmp_var_in_match(node)
-	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
+	is_sumtype_ret := g.table.type_kind(node.return_type) == .sum_type
+	need_tmp_var := g.need_tmp_var_in_match(node) || is_sumtype_ret
+	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0 // || is_sumtype_ret
+
 	mut cond_var := ''
 	mut tmp_var := ''
 	mut cur_line := ''
@@ -4333,7 +4335,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('(')
 	}
 	typ := g.table.get_final_type_symbol(node.cond_type)
-	if node.is_sum_type {
+	if node.is_sum_type || is_sumtype_ret {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
 	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
