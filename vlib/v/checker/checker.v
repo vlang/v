@@ -2054,7 +2054,15 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	// Now call `method_call` or `fn_call` for specific checks.
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
-	typ := if node.is_method { c.method_call(mut node) } else { c.fn_call(mut node) }
+	mut continue_check := true
+	typ := if node.is_method {
+		c.method_call(mut node)
+	} else {
+		c.fn_call(mut node, mut continue_check)
+	}
+	if !continue_check {
+		return ast.void_type
+	}
 	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
@@ -2757,7 +2765,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	return node.return_type
 }
 
-pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
+pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
@@ -2943,9 +2951,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if !found {
+		continue_check = false
 		c.error('unknown function: $fn_name', node.pos)
 		return ast.void_type
 	}
+
 	node.is_noreturn = func.is_noreturn
 	if !found_in_args {
 		if node.scope.known_var(fn_name) {

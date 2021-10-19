@@ -77,6 +77,13 @@ pub fn (x u64) hex() string {
 	return res
 }
 
+pub fn (x u64) hex_full() string {
+	res := ''
+	#res.str = x.val.toString(16)
+
+	return res
+}
+
 pub fn (x i64) hex() string {
 	res := ''
 	#res.str = x.val.toString(16)
