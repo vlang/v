@@ -4500,8 +4500,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		}
 		g.indent++
 		g.writeln('{')
-		if is_expr && tmp_var.len > 0
-			&& g.table.get_type_symbol(node.return_type).kind == .sum_type {
+		if is_expr && tmp_var.len > 0 && g.table.get_type_symbol(node.return_type).kind == .sum_type {
 			g.expected_cast_type = node.return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
@@ -4653,8 +4652,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.writeln(') {')
 			}
 		}
-		if is_expr && tmp_var.len > 0
-			&& g.table.get_type_symbol(node.return_type).kind == .sum_type {
+		if is_expr && tmp_var.len > 0 && g.table.get_type_symbol(node.return_type).kind == .sum_type {
 			g.expected_cast_type = node.return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
