@@ -243,7 +243,7 @@ see also `v help build`.
       compiler, on the command line, without writing an .rsp file first.
 
    -no-std
-      By default, V passes -std=c99 to the C backend, but some compilers do
+      By default, V passes -std=gnu99(linux)/-std=c99 to the C backend, but some compilers do
       not support that, even though they may be able to compile the produced
       code, or have other options that can be tuned to allow it.
       Passing -no-std will remove that flag, and you can then use -cflags ''
