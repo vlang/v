@@ -79,6 +79,9 @@ pub enum Arch {
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
+	js_node
+	js_browser
+	js_freestanding
 	_max
 }
 
@@ -747,6 +750,15 @@ pub fn arch_from_string(arch_str string) ?Arch {
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 
 			return Arch.i386
+		}
+		'js', 'js_node' {
+			return Arch.js_node
+		}
+		'js_browser' {
+			return Arch.js_browser
+		}
+		'js_freestanding' {
+			return Arch.js_freestanding
 		}
 		'' {
 			return ._auto
