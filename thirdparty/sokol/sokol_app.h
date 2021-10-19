@@ -3146,7 +3146,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         _sapp.framebuffer_height = _sapp.window_height;
     }
     _sapp.dpi_scale = (float)_sapp.framebuffer_width / (float) _sapp.window_width;
-    const NSUInteger style =  
+    const NSUInteger style =
         // __v_ start
         _sapp.desc.fullscreen ? NSWindowStyleMaskBorderless : // __v_
         // __v_ end
@@ -10982,6 +10982,27 @@ SOKOL_API_IMPL void sapp_set_window_title(const char* title) {
         _sapp_x11_update_window_title();
     #endif
 }
+
+_SOKOL_PRIVATE void _sapp_macos_resize_window(int width, height) {
+	[_sapp.macos.window setFrame:NSMakeRect(width, height, width, height) display:YES animate:YES];
+	//NSRect frame = [window frame];
+//frame.size = theSizeYouWant;
+//[window setFrame: frame display: YES animate: whetherYouWantAnimation];
+
+}
+
+SOKOL_API_IMPL void sapp_resize_window(int width, height) {
+	/*
+    #if defined(_SAPP_MACOS)
+        _sapp_macos_resize_window(width, height);
+    #elif defined(_SAPP_WIN32)
+        _sapp_win32_resize_window();
+    #elif defined(_SAPP_LINUX)
+        _sapp_x11_resize_window();
+    #endif
+   */
+}
+
 
 SOKOL_API_IMPL void sapp_set_icon(const sapp_icon_desc* desc) {
     SOKOL_ASSERT(desc);

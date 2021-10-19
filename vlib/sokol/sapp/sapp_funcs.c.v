@@ -115,3 +115,5 @@ fn C.sapp_get_num_dropped_files() int
 
 // Get the file path of the droped file
 fn C.sapp_get_dropped_file_path(int) &byte
+
+fn C.sapp_resize_window(int, int)
