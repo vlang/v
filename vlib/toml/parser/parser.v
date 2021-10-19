@@ -653,7 +653,6 @@ pub fn (mut p Parser) value() ?ast.Value {
 				ast.Value(ast.Null{})
 			}
 		}
-
 		if value is ast.Null {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit"')
