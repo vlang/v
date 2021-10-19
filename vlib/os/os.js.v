@@ -130,5 +130,5 @@ pub fn is_atty(fd int) int {
 }
 
 pub fn glob(patterns ...string) ?[]string {
-	return none
+	panic('not yet implemented')
 }
