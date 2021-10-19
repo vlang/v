@@ -2151,7 +2151,7 @@ struct CondExpr {
 fn (mut g JsGen) match_cond(cond MatchCond) {
 	match cond {
 		CondString {
-			g.writeln(cond.s)
+			g.write(cond.s)
 		}
 		CondExpr {
 			g.expr(cond.expr)
@@ -2175,7 +2175,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	}
 
 	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
-		ast.FloatLiteral, ast.CallExpr] {
+		ast.FloatLiteral, ast.CallExpr, ast.EnumVal] {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
@@ -2197,7 +2197,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
 	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
-		g.match_expr_switch(node, is_expr, cond_var, tmp_var)
+		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
@@ -2313,7 +2313,9 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 	}
 }
 
-fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string) {
+fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string, enum_typ ast.TypeSymbol) {
+	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
+	mut default_generated := false
 	g.empty_line = true
 	g.write('switch (')
 	g.match_cond(cond_var)
@@ -2322,17 +2324,107 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 	for branch in node.branches {
 		if branch.is_else {
 			g.writeln('default:')
+			default_generated = true
+			if range_branches.len > 0 {
+				g.inc_indent()
+				for range_branch in range_branches {
+					g.write('if (')
+					for i, expr in range_branch.exprs {
+						if i > 0 {
+							g.write(' || ')
+						}
+						if expr is ast.RangeExpr {
+							// if type is unsigned and low is 0, check is unneeded
+							mut skip_low := false
+							if expr.low is ast.IntegerLiteral {
+								if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
+									&& expr.low.val == '0' {
+									skip_low = true
+								}
+							}
+							g.write('(')
+							if !skip_low {
+								g.match_cond(cond_var)
+								g.write(' >= ')
+								g.expr(expr.low)
+								g.write(' && ')
+							}
+							g.match_cond(cond_var)
+							g.write(' <= ')
+							g.expr(expr.high)
+							g.write(')')
+						} else {
+							g.match_cond(cond_var)
+							g.write(' == (')
+							g.expr(expr)
+							g.write(')')
+						}
+					}
+					g.writeln(') {')
+					g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+					g.writeln('}')
+				}
+				g.dec_indent()
+			}
 		} else {
+			if branch.exprs.any(it is ast.RangeExpr) {
+				range_branches << branch
+				continue
+			}
 			for expr in branch.exprs {
-				g.write('case ')
-				g.expr(expr)
-				g.writeln(': ')
+				if expr is ast.EnumVal {
+					g.write('case ')
+					g.expr(expr)
+					g.writeln(': ')
+				}
 			}
 		}
 		g.inc_indent()
 		g.writeln('{')
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.writeln('} break;')
+		g.dec_indent()
+	}
+	if range_branches.len > 0 && !default_generated {
+		g.writeln('default:')
+		g.inc_indent()
+		for range_branch in range_branches {
+			g.write('if (')
+			for i, expr in range_branch.exprs {
+				if i > 0 {
+					g.write(' || ')
+				}
+				if expr is ast.RangeExpr {
+					// if type is unsigned and low is 0, check is unneeded
+					mut skip_low := false
+					if expr.low is ast.IntegerLiteral {
+						if node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
+							&& expr.low.val == '0' {
+							skip_low = true
+						}
+					}
+					g.write('(')
+					if !skip_low {
+						g.match_cond(cond_var)
+						g.write(' >= ')
+						g.expr(expr.low)
+						g.write(' && ')
+					}
+					g.match_cond(cond_var)
+					g.write(' <= ')
+					g.expr(expr.high)
+					g.write(')')
+				} else {
+					g.match_cond(cond_var)
+					g.write(' == (')
+					g.expr(expr)
+					g.write(')')
+				}
+			}
+			g.writeln(') {')
+			g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+			g.writeln('}')
+		}
 		g.dec_indent()
 	}
 	g.dec_indent()
