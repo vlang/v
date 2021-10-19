@@ -3032,6 +3032,14 @@ _SOKOL_PRIVATE void _sapp_macos_update_window_title(void) {
     [_sapp.macos.window setTitle: [NSString stringWithUTF8String:_sapp.window_title]];
 }
 
+_SOKOL_PRIVATE void _sapp_macos_resize_window(int width, height) {
+	[_sapp.macos.window setFrame:NSMakeRect(width, height, width, height) display:YES animate:YES];
+	//NSRect frame = [window frame];
+	//frame.size = ;
+	//[window setFrame: frame display: YES animate: NO];
+}
+
+
 _SOKOL_PRIVATE void _sapp_macos_update_mouse(NSEvent* event) {
     if (!_sapp.mouse.locked) {
         const NSPoint mouse_pos = event.locationInWindow;
@@ -10981,14 +10989,6 @@ SOKOL_API_IMPL void sapp_set_window_title(const char* title) {
     #elif defined(_SAPP_LINUX)
         _sapp_x11_update_window_title();
     #endif
-}
-
-_SOKOL_PRIVATE void _sapp_macos_resize_window(int width, height) {
-	[_sapp.macos.window setFrame:NSMakeRect(width, height, width, height) display:YES animate:YES];
-	//NSRect frame = [window frame];
-//frame.size = theSizeYouWant;
-//[window setFrame: frame display: YES animate: whetherYouWantAnimation];
-
 }
 
 SOKOL_API_IMPL void sapp_resize_window(int width, height) {
