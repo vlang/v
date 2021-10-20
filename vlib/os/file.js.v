@@ -35,7 +35,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		#try {
 		#res.fd = new int($fs.openSync(''+path,''+mode,permissions))
 		#} catch (e) {
-		#return builtin.error('' + e);
+		#return error(new string('' + e));
 		#}
 
 		res.is_opened = true
@@ -83,11 +83,11 @@ pub fn (f &File) read(mut buf []byte) ?int {
 	}
 	mut nbytes := 0
 	#try {
-	#let buffer = $fs.readFileSync(f.fd.valueOf());
+	#let buffer = $fs.readFileSync(f.val.fd.valueOf());
 	#
 	#for (const val of buffer.values()) { buf.arr[nbytes++] = val; }
 	#}
-	#catch (e) { return builtin.error('' + e); }
+	#catch (e) { return error('' + e); }
 
 	return nbytes
 }
@@ -97,8 +97,9 @@ pub fn (mut f File) write(buf []byte) ?int {
 		return error('file is not opened')
 	}
 	mut nbytes := 0
-	#const b = $buffer.Buffer.from(buf.arr.map((x) => x.valueOf()))
-	#try { $fs.writeSync(f.fd.valueOf(),b,0,buf.len.valueOf(),0); } catch (e) { return builtin.error('' + e); }
+	#buf.arr.make_copy()
+	#const b = $buffer.Buffer.from(buf.arr.arr.map((x) => x.valueOf()))
+	#try { $fs.writeSync(f.val.fd.valueOf(),b,0,buf.len.valueOf(),0); } catch (e) { return error(new string('' + e)); }
 
 	return nbytes
 }
@@ -116,8 +117,9 @@ pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 		return error('file is not opened')
 	}
 	mut nbytes := 0
-	#const b = $buffer.Buffer.from(buf.arr.map((x) => x.valueOf()))
-	#try { $fs.writeSync(f.fd.valueOf(),b,0,buf.len.valueOf(),pos.valueOf()); } catch (e) { return builtin.error('' + e); }
+	#buf.arr.make_copy()
+	#const b = $buffer.Buffer.from(buf.arr.arr.map((x) => x.valueOf()))
+	#try { $fs.writeSync(f.val.fd.valueOf(),b,0,buf.len.valueOf(),pos.valueOf()); } catch (e) { return error(new string('' + e)); }
 
 	return nbytes
 }
@@ -130,7 +132,19 @@ pub fn (mut f File) write_string(s string) ?int {
 }
 
 pub fn (mut f File) close() {
-	#f.valueOf().fd.close()
+	#$fs.closeSync(f.valueOf().fd.valueOf())
 }
 
 pub fn (mut f File) write_full_buffer(s voidptr, buffer_len usize) ? {}
+
+pub fn (mut f File) write_array(buffer array) ?int {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	mut nbytes := 0
+	#buffer.arr.make_copy()
+	#const b = $buffer.Buffer.from(buffer.arr.arr.map((x) => x.valueOf()))
+	#try { $fs.writeSync(f.val.fd.valueOf(),b,0,buffer.len.valueOf(),0); } catch (e) { return error(new string('' + e)); }
+
+	return nbytes
+}

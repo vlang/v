@@ -155,3 +155,35 @@ pub fn (b []byte) hex() string {
 	}
 	return hex
 }
+
+pub fn (i int) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i i8) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i i16) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i i64) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i byte) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i u16) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i u32) hex2() string {
+	return '0x' + i.hex()
+}
+
+pub fn (i u64) hex2() string {
+	return '0x' + i.hex()
+}
