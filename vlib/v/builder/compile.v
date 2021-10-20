@@ -138,6 +138,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		if b.pref.is_verbose {
 			println('running $run_process.filename with arguments $run_process.args')
 		}
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
 		empty_handler := fn (_ os.Signal) {}
 		prev_int_handler := os.signal_opt(.int, empty_handler) or { panic(err) }
 		prev_quit_handler := os.signal_opt(.quit, empty_handler) or { panic(err) }
