@@ -910,3 +910,10 @@ pub fn (s string) index(search string) ?int {
 	}
 	return res
 }
+
+pub fn (_rune string) utf32_code() int {
+	res := 0
+	#res.val = s.str.charCodeAt()
+
+	return res
+}
