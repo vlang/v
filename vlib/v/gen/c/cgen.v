@@ -4264,6 +4264,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		cond_sym := g.table.get_final_type_symbol(node.cond_type)
 		sym := g.table.get_type_symbol(node.return_type)
+		if g.table.type_kind(node.return_type) == .sum_type {
+			return true
+		}
 		if sym.kind == .multi_return {
 			return false
 		}
@@ -4298,6 +4301,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	need_tmp_var := g.need_tmp_var_in_match(node)
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
+
 	mut cond_var := ''
 	mut tmp_var := ''
 	mut cur_line := ''
@@ -4496,7 +4500,11 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		}
 		g.indent++
 		g.writeln('{')
+		if is_expr && tmp_var.len > 0 && g.table.get_type_symbol(node.return_type).kind == .sum_type {
+			g.expected_cast_type = node.return_type
+		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		g.expected_cast_type = 0
 		g.writeln('} break;')
 		g.indent--
 	}
@@ -4644,7 +4652,11 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.writeln(') {')
 			}
 		}
+		if is_expr && tmp_var.len > 0 && g.table.get_type_symbol(node.return_type).kind == .sum_type {
+			g.expected_cast_type = node.return_type
+		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		g.expected_cast_type = 0
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
 			g.write('}')
 		}
