@@ -83,6 +83,10 @@ fn js_stacktrace() string {
 	return stacktrace
 }
 
+pub fn print_backtrace() {
+	println(js_stacktrace())
+}
+
 // Check for nil value
 pub fn isnil(val voidptr) bool {
 	res := false
