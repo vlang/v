@@ -800,9 +800,9 @@ pub fn (x Integer) gcd_binary( y Integer ) Integer {
   // In such a case, one could delegate back to big.Integer.gcd()
   // Uncomment below and a all long-long goes to euclid-gcd.
   //
-  if x.digits.len + y.digits.len <= 4 {
-    return x.gcd( y )
-  }
+  // if x.digits.len + y.digits.len <= 4 {
+  //   return x.gcd( y )
+  // }
 
   if x.signum == 0 { return y.abs() }
   if y.signum == 0 { return x.abs() }
