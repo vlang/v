@@ -95,15 +95,18 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		is_sign := byte_c in [`+`, `-`]
 		is_signed_number := is_sign && byte(s.at()).is_digit() && !byte(s.peek(-1)).is_digit()
 
-		// TODO (+/-)nan & (+/-)inf
-		/*
-		mut is_nan := s.peek(1) == `n` && s.peek(2) == `a` && s.peek(3) == `n`
-		mut is_inf := s.peek(1) == `i` && s.peek(2) == `n` && s.peek(3) == `f`
-		if is_nan || is_inf {
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a special number "$key" ($key.len)')
-			return s.new_token(.number, key, key.len)
+		// (+/-)nan & (+/-)inf
+		is_nan := byte_c == `n` && s.at() == `a` && s.peek(1) == `n` && s.peek(2) == `\n`
+		is_inf := byte_c == `i` && s.at() == `n` && s.peek(1) == `f` && s.peek(2) == `\n`
+		is_signed_nan := is_sign && s.at() == `n` && s.peek(1) == `a` && s.peek(2) == `n`
+			&& s.peek(3) == `\n`
+		is_signed_inf := is_sign && s.at() == `i` && s.peek(1) == `n` && s.peek(2) == `f`
+			&& s.peek(3) == `\n`
+		if is_nan || is_inf || is_signed_nan || is_signed_inf {
+			num := s.extract_nan_or_inf_number() ?
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a special number "$num" ($num.len)')
+			return s.new_token(.number, num, num.len)
 		}
-		*/
 
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
@@ -515,7 +518,7 @@ fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 }
 
 // extract_number collects and returns a string containing
-// any bytes recognized as a TOML number.
+// any bytes recognized as a TOML number except for "(+/-)nan" and "(+/-)inf".
 // TOML numbers can include digits 0-9 and `_`.
 [direct_array_access; inline]
 fn (mut s Scanner) extract_number() ?string {
@@ -550,6 +553,36 @@ fn (mut s Scanner) extract_number() ?string {
 	}
 	key := s.text[start..s.pos]
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified number "$key" in range [$start .. $s.pos]')
+	return key
+}
+
+// extract_nan_or_inf_number collects and returns a string containing
+// any bytes recognized as infinity or not-a-number TOML numbers.
+[direct_array_access; inline]
+fn (mut s Scanner) extract_nan_or_inf_number() ?string {
+	// extract_number is called when the scanner has already reached
+	// a byte that is a number or +/- - so we rewind it to start at the correct position
+	s.pos--
+	s.col--
+	start := s.pos
+
+	mut c := s.at()
+	if c !in [`+`, `-`, `n`, `i`] {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' ${byte(c).ascii_str()} is not a number at ${s.excerpt(s.pos, 10)}')
+	}
+	s.pos++
+	s.col++
+	for s.pos < s.text.len {
+		c = s.at()
+		if c !in [`n`, `a`, `i`, `f`] {
+			break
+		}
+		s.pos++
+		s.col++
+	}
+	key := s.text[start..s.pos]
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified special number "$key" in range [$start .. $s.pos]')
 	return key
 }
 
