@@ -141,18 +141,26 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		// Ignore sigint and sigquit while running the compiled file,
 		// so ^C doesn't prevent v from deleting the compiled file.
 		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
-		empty_handler := fn (_ os.Signal) {}
-		prev_int_handler := os.signal_opt(.int, empty_handler) or { panic(err) }
-		prev_quit_handler := os.signal_opt(.quit, empty_handler) or { panic(err) }
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		prev_quit_handler := os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
 		run_process.wait()
-		os.signal_opt(.int, prev_int_handler) or { panic(err) }
-		os.signal_opt(.quit, prev_quit_handler) or { panic(err) }
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
 		ret := run_process.code
 		run_process.close()
 		b.cleanup_run_executable_after_exit(compiled_file)
 		exit(ret)
 	}
 	exit(0)
+}
+
+fn eshcb(_ os.Signal) {
+}
+
+[noreturn]
+fn serror(reason string, e IError) {
+	eprintln('could not $reason handler')
+	panic(err)
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
