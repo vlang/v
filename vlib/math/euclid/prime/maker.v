@@ -15,6 +15,11 @@ pub fn (di DataI) cast<T>() DataI {
 
 pub type PrimeCfg = PrimeSet
 
+pub fn (pc PrimeCfg) short() string {
+	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
+}
+
+
 [heap]
 pub struct PrimeSet {
 pub mut:
@@ -68,17 +73,22 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	tm_doc := toml.parse_file( @VROOT + '/vlib/math/euclid/primes.toml' ) or {
-    eprintln('expected @VROOT/vlib/math/euclid/primes.toml')
+
+  fp := @VROOT + '/vlib/math/euclid/primes.toml'
+
+	tm_doc := toml.parse_file( fp ) or {
+    err_msg := 'expected @VROOT/vlib/math/euclid/primes.toml'
+    eprintln(err_msg)
     panic(err)
   }
-
+  // TODO what happens if this goes wrong ?
 	tm_primes := tm_doc.value('primes') as map[string]toml.Any
 
+  msg := 'expected a map[string][]string in TOML-data ? corrupt ?'
 	mut p := map[string][]string{}
 	for k in tm_primes.keys() {
 		p[k] = []string{}
-		arr := tm_primes[k] or { panic('expected a map[string][]string in TOML-data ? corrupt ?') }
+		arr := tm_primes[k] or { panic( msg ) }
 		for _, elem in arr.array() {
 			p[k] << elem as string
 		}
@@ -130,11 +140,6 @@ pub fn random_list(cfg []string) []string {
 	return p_list
 }
 
-
-
-pub fn (pc PrimeCfg) short() string {
-	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
-}
 
 pub fn random_set(cfg PrimeCfg) ?[]PrimeSet {
 	p_lists := [
