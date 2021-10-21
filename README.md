@@ -46,14 +46,14 @@
 ## Stability guarantee and future changes
 
 Despite being at an early development stage, the V language is relatively stable and has
-backward compatibility guarantee, meaning that the code you write today is guaranteed
+backwards compatibility guarantee, meaning that the code you write today is guaranteed
 to work a month, a year, or five years from now.
 
 There still may be minor syntax changes before the 1.0 release, but they will be handled
 automatically via `vfmt`, as has been done in the past.
 
 The V core APIs (primarily the `os` module) will still have minor changes until
-they are stabilized in V 1.0. Of course, the APIs will grow after that, but without breaking
+they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
@@ -203,7 +203,7 @@ sudo dnf install openssl-devel
 ```
 
 ## V sync
-V's `sync` module and channel implementation use libatomic.
+V's `sync` module and channel implementation uses libatomic.
 It is most likely already installed on your system, but if not,
 you can install it, by doing the following:
 ```bash
