@@ -1,7 +1,7 @@
 import math.big
 import benchmark
 import os
-import math.euclid.prime {
+import prime {
 	DataI,
 	PrimeCfg,
 	PrimeSet,
@@ -26,6 +26,27 @@ pub fn bi_from_decimal_string(s string) big.Integer {
 		panic(msg)
 	}
 }
+// need the bi.digits.len - during test only - to calculate
+// the size of big.Integers-buffer
+//
+fn bi_buffer_len(input []byte) int {
+  if input.len == 0 { return 0 }
+  // pad input
+  mut padded_input := []byte{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+  padded_input << input
+  mut digits := []u32{len: padded_input.len / 4}
+  // combine every 4 bytes into a u32 and insert into n.digits
+  for i := 0; i < padded_input.len; i += 4 {
+    x3 := u32(padded_input[i])
+    x2 := u32(padded_input[i + 1])
+    x1 := u32(padded_input[i + 2])
+    x0 := u32(padded_input[i + 3])
+    val := (x3 << 24) | (x2 << 16) | (x1 << 8) | x0
+    digits[(padded_input.len - i) / 4 - 1] = val
+  }
+  return digits.len
+}
+
 
 //[heap]
 pub struct DataV {
@@ -74,16 +95,13 @@ fn run_benchmark(testdata []DataI, mut clocks Clocks) bool {
 	mut tmp := []int{cap: testdata.len * 3}
 	for set in testdata {
 		if set is DataV {
-			tmp << [
-				set.r.digits.len,
-				set.aa.digits.len,
-				set.bb.digits.len,
-			]
-		}
-	}
+			for prime in [ set.r, set.aa, set.bb ]{
+        bi, _ := prime.bytes()
+        tmp << bi_buffer_len( bi )
+  }}}
 	tmp.sort()
 	min_byte := tmp.first() * 4
-	max_byte := tmp.last() * 4
+	max_byte := tmp.last()  * 4
 	mut buffer_space := 0
 	for tmp.len != 0 {
 		buffer_space += tmp.pop()
