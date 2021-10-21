@@ -21,9 +21,9 @@ const (
 )
 
 fn main() {
-
-	if !prime_file_exists( @VROOT + '/vlib/math/euclid/primes.toml' ) {
-		panic( 'expected file "' + @VROOT + '/vlib/math/euclid/primes.toml" - not found.')
+	fp := @VROOT + '/vlib/math/euclid/primes.toml'
+	if !prime_file_exists( fp ) {
+		panic( 'expected file |$fp| - not found.')
 	}
 
 	mut clocks := Clocks(map[string]benchmark.Benchmark{})
@@ -110,7 +110,6 @@ fn main() {
 	println(msg)
 }
 
-//type TestData = StackData | HeapData
 fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 
 	mut testdata := []TestDataI{}
@@ -129,8 +128,8 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 		for prime in [ set.r, set.aa, set.bb ]{
       bi, _ := prime.bytes()
         tmp << bi_buffer_len( bi )
-	}}
-
+		}
+	}
 	tmp.sort()
 	min_byte := tmp.first() * 4
 	max_byte := tmp.last()  * 4
@@ -238,11 +237,6 @@ fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps P
 	// ready use the primes in the benchmark
 	//
 	return run_benchmark(casted_sets, heap, mut clocks)
-	// if casted_sets[0] is StackData {
-	// 	return casted_sets.map( TestDataI(it)  )
-	// } else if casted_sets[0] is Heap {
-	// 	return casted_sets.map( TestDataI(it) )
-	// }
 }
 
 fn prime_file_exists(path string) bool {
@@ -297,7 +291,7 @@ pub fn (hd HeapData) to_primeset() PrimeSet {
 		a: '$hd.aa'
 		b: '$hd.bb'
 	}
-}
+	}
 pub fn (hd HeapData) from_primeset(p PrimeSet) DataI {
 	return DataI( HeapData{
 		r: bi_from_decimal_string(p.r)
@@ -305,7 +299,6 @@ pub fn (hd HeapData) from_primeset(p PrimeSet) DataI {
 		bb: bi_from_decimal_string(p.b)
 	})
 }
-
 
 pub struct StackData {
 pub mut:
@@ -328,7 +321,6 @@ pub fn (sd StackData) from_primeset(p PrimeSet) DataI {
 }
 
 
-
 fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
 	if !primeset.predicate(test) {
 		eprintln('? Corrupt Testdata was ?')
@@ -338,9 +330,9 @@ fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
 
 	cast_bi := bi_from_decimal_string
 
-	r := cast_bi(primeset.r)
-	aa := cast_bi(primeset.a) * r
-	bb := cast_bi(primeset.b) * r
+	r 	:= cast_bi(primeset.r)
+	aa 	:= cast_bi(primeset.a) * r
+	bb 	:= cast_bi(primeset.b) * r
 	gcd := aa.gcd(bb)
 
 	return GCDSet{'$gcd', '$aa', '$bb'}
