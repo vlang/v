@@ -65,7 +65,10 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	tm_doc := toml.parse_file('./primes.toml') or { panic(err) }
+	tm_doc := toml.parse_file( @VROOT + '/vlib/math/euclid/primes.toml' ) or {
+    eprintln('expected @VROOT/vlib/math/euclid/primes.toml')
+    panic(err)
+  }
 
 	tm_primes := tm_doc.value('primes') as map[string]toml.Any
 
