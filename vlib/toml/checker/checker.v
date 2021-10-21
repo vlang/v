@@ -77,24 +77,25 @@ fn (c Checker) check_number(num ast.Number) ? {
 	}
 
 	mut hex_bin_oct := is_hex_bin_oct(lit)
-	is_hex := lit.contains('0x')
+	mut is_bin, mut is_oct, mut is_hex := false, false, false
 	is_float := lit.to_lower().all_before('e').contains('.')
 	has_exponent_notation := lit.to_lower().contains('e')
 	float_decimal_index := lit.index('.') or { -1 }
 	// mut is_first_digit := byte(lit[0]).is_digit()
 	mut ascii := byte(lit[0]).ascii_str()
 	is_sign_prefixed := lit[0] in [`+`, `-`]
+	mut lit_sans_sign := lit
 	if is_sign_prefixed { // +/- ...
-		n := lit[1..]
-		hex_bin_oct = is_hex_bin_oct(n)
+		lit_sans_sign = lit[1..]
+		hex_bin_oct = is_hex_bin_oct(lit_sans_sign)
 		if hex_bin_oct {
 			ascii = byte(lit[0]).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (hex, octal and binary) can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
 		}
-		// is_first_digit = byte(n[0]).is_digit()
-		if lit.len > 1 && n.starts_with('0') {
-			ascii = byte(n[0]).ascii_str()
+		// is_first_digit = byte(lit_sans_sign[0]).is_digit()
+		if lit.len > 1 && lit_sans_sign.starts_with('0') {
+			ascii = byte(lit_sans_sign[0]).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
 		}
@@ -116,17 +117,45 @@ fn (c Checker) check_number(num ast.Number) ? {
 		}
 	}
 
-	if has_repeating(lit, [`_`, `.`, `x`, `o`, `b`]) {
+	if has_repeating(lit, [`_`, `.`, `b`, `o`, `x`]) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' numbers like "$lit" can not have $scanner.digit_extras as repeating characters in ...${c.excerpt(num.pos)}...')
 	}
 
 	if hex_bin_oct {
+		is_bin = lit_sans_sign.starts_with('0b')
+		is_oct = lit_sans_sign.starts_with('0o')
+		is_hex = lit_sans_sign.starts_with('0x')
+
 		third := lit[2]
 		if third in scanner.digit_extras {
 			ascii = byte(third).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (hex, octal and binary) can not have `$ascii` in ...${c.excerpt(num.pos)}...')
+		}
+		lit_sans_sign_and_type_prefix := lit_sans_sign[2..]
+
+		if lit_sans_sign_and_type_prefix.starts_with('_')
+			|| lit_sans_sign_and_type_prefix.ends_with('_') {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' numbers like "$lit" can not start or end with `_` in ...${c.excerpt(num.pos)}...')
+		}
+
+		if is_bin {
+			if !c.is_valid_binary_literal(lit_sans_sign_and_type_prefix) {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' "$lit" is not a valid binary number in ...${c.excerpt(num.pos)}...')
+			}
+		} else if is_oct {
+			if !c.is_valid_octal_literal(lit_sans_sign_and_type_prefix) {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' "$lit" is not a valid octal number in ...${c.excerpt(num.pos)}...')
+			}
+		} else {
+			if !c.is_valid_hex_literal(lit_sans_sign_and_type_prefix) {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' "$lit" is not a valid hexadecimal number in ...${c.excerpt(num.pos)}...')
+			}
 		}
 	}
 
@@ -161,12 +190,48 @@ fn (c Checker) check_number(num ast.Number) ? {
 				' numbers like "$lit" (float) can not have underscores before or after the decimal point in ...${c.excerpt(num.pos)}...')
 		}
 	} else {
-		if lit.len > 1 && lit.starts_with('0') && lit[1] !in [`x`, `o`, `b`] {
+		if lit.len > 1 && lit.starts_with('0') && lit[1] !in [`b`, `o`, `x`] {
 			ascii = byte(lit[0]).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
 		}
 	}
+}
+
+fn (c Checker) is_valid_binary_literal(num string) bool {
+	for ch in num {
+		if ch == `_` {
+			continue
+		}
+		if !(ch >= `0` && ch <= `1`) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (c Checker) is_valid_octal_literal(num string) bool {
+	for ch in num {
+		if ch == `_` {
+			continue
+		}
+		if !(ch >= `0` && ch <= `7`) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (c Checker) is_valid_hex_literal(num string) bool {
+	for ch in num {
+		if ch == `_` {
+			continue
+		}
+		if !ch.is_hex_digit() {
+			return false
+		}
+	}
+	return true
 }
 
 fn (c Checker) check_boolean(b ast.Bool) ? {
