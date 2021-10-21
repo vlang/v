@@ -1,18 +1,108 @@
 import math.big
 import benchmark
 import os
-import prime {
+import math.euclid.prime {
 	DataI,
 	PrimeCfg,
 	PrimeSet,
 }
 
 type GCDSet = PrimeSet
+type Clocks = map[string]benchmark.Benchmark
 
 const (
 	empty_set = GCDSet{'1', '1', '1'}
 	with_dots = false
 )
+
+fn main() {
+
+	if !prime_file_exists( @VROOT + '/vlib/math/euclid/primes.toml' ) {
+		panic( 'expected file "' + @VROOT + '/vlib/math/euclid/primes.toml" - not found.')
+	}
+
+	mut clocks := Clocks(map[string]benchmark.Benchmark{})
+
+	for algo in [
+		'euclid',
+		'gcd_binary',
+		//'u32binary',
+		//'u64binary'
+	] {
+		clocks[algo] = benchmark.new_benchmark()
+	}
+
+	// any test-prime-set needs to pass this predicate
+	// before used in the benchmark.
+	//
+	predicate_fn := fn (ps PrimeSet) bool {
+		cast_bi := bi_from_decimal_string
+
+		r := cast_bi(ps.r)
+		aa := r * cast_bi(ps.a)
+		bb := r * cast_bi(ps.b)
+		gcd := aa.gcd(bb)
+
+		return if [
+			gcd != big.one_int,
+			gcd == bb.gcd(aa),
+			gcd == r,
+			aa != bb,
+			(aa % gcd) == big.zero_int,
+			(bb % gcd) == big.zero_int,
+		].all(it == true)
+		{ true } else { false }
+	}
+
+	cfgs := [
+		// root-prime    a-prime      b-prime
+		['s.3', 'xs.3', 's'],
+		['s.10', 's.10', 'm.all'],
+		['m.9', 's.10', 'xs'],
+		['l.40', 'xs.10', 's.5'],
+		['ml.20', 'm', 's.15'],
+		['xl', 's.10', 'l.15'],
+		['xxl', 'l.10', 'xl'],
+		['l.30', 'm.10', 'xxl'],
+		['xxl', 'xl', 'm.15'],
+		['mega', 'xl.6', 's'],
+		['xxl', 'xxxl.10', 'm.30'],
+		['mega', 'xxxl', 'mega'],
+		['giga.5', 'mega', 'giga'],
+		['crazy', 'mega', 'giga'],
+		['s', 'biggest', 'crazy'],
+		['biggest', 'crazy', 'giga']
+	].map(PrimeCfg{it[0], it[1], it[2]})
+
+	for i, prime_cfg in cfgs {
+		println('\n#-${i + 1} "$prime_cfg" ')
+		bench_euclid_vs_binary(prime_cfg, predicate_fn, mut clocks)
+	}
+
+	println('')
+	for _, mut clock in clocks {
+		clock.stop()
+	}
+
+	println(clocks['euclid'].total_message('both algorithm '))
+
+	msg := [
+		'Seems to me as if euclid in big.Integer.gcd() performs better on ',
+		'very-small-integers up to 8-byte/u64. The tests #-1..5 show this.',
+		'The gcd_binary-algo seems to be perform better, the larger the numbers/buffers get.',
+		'On my machine, i see consistent gains between ~10-30-percent with :',
+		'\n',
+		'v -prod -cg -v -gc boehm euclid_bench.v',
+		'\n',
+		'This test covers multiplied primes up-to a length of 300-char-digits in ',
+		'a decimal-string. This equals (188-byte) == 47 x u32-values.',
+		'edit/change primes in ./primes.toml',
+		'Improvements & critique are welcome : \n',
+		'https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/',
+	].join('\n')
+
+	println(msg)
+}
 
 // bi_from_decimal_string converts a string-of-decimals into
 // a math.big.Integer using the big.Integers 'from_radix-fn'
@@ -108,14 +198,17 @@ fn run_benchmark(testdata []DataI, mut clocks Clocks) bool {
 	}
 
 	// trying to balance prime-size and item-count
+	// minimum rounds is 100-times
 	//
-	rounds := 2500 / ((4 * buffer_space) / testdata.len)
+	mut rounds := 2500 / ((3 * buffer_space) / testdata.len )
+  rounds = if rounds < 100 { 100 } else { rounds }
+
 	ratio := (buffer_space * 4) / (testdata.len * 3)
 
 	msg := [
 		'avg-$ratio-byte/Prime, $min_byte-byte < Prime < $max_byte-byte \n',
 		'~${buffer_space * 4 / 1024}-Kb in $testdata.len-items x',
-		'$rounds-rounds',
+		'${rounds}-rounds',
 	].join(' ')
 	println(msg)
 
@@ -205,92 +298,5 @@ fn prime_file_exists(path string) bool {
 	return os.is_readable(path)
 }
 
-type Clocks = map[string]benchmark.Benchmark
 
-fn main() {
-	if !prime_file_exists('./primes.toml') {
-		panic('expected file "./primes.toml" - not found.')
-	}
 
-	mut clocks := Clocks(map[string]benchmark.Benchmark{})
-
-	for algo in [
-		'euclid',
-		'gcd_binary',
-		// 'u32binary',
-		// 'u64binary'
-	] {
-		clocks[algo] = benchmark.new_benchmark()
-	}
-
-	// any test-prime-set needs to pass this predicate
-	// before used in the benchmark.
-	//
-	predicate_fn := fn (ps PrimeSet) bool {
-		cast_bi := bi_from_decimal_string
-
-		r := cast_bi(ps.r)
-		aa := r * cast_bi(ps.a)
-		bb := r * cast_bi(ps.b)
-		gcd := aa.gcd(bb)
-
-		return if [
-			gcd != big.one_int,
-			gcd == bb.gcd(aa),
-			gcd == r,
-			aa != bb,
-			(aa % gcd) == big.zero_int,
-			(bb % gcd) == big.zero_int,
-		].all(it == true)
-		{ true } else { false }
-	}
-
-	cfgs := [
-		// root-prime    a-prime      b-prime
-		['s.3', 'xs.3', 's'],
-		['s.10', 's.10', 'm.all'],
-		['m.9', 's.10', 'xs'],
-		['l.40', 'xs.10', 's.5'],
-		['ml.20', 'm', 's.15'],
-		['xl', 's.10', 'l.15'],
-		['xxl', 'l.10', 'xl'],
-		['l.30', 'm.10', 'xxl'],
-		['xxl', 'xl', 'm.15'],
-		['mega', 'xl.6', 's'],
-		['xxl', 'xxxl.10', 'm.30'],
-		['mega', 'xxxl', 'mega'],
-		['giga.5', 'mega', 'giga'],
-		['crazy', 'mega', 'giga'],
-		['biggest', 'crazy', 'giga'],
-		['s', 'biggest', 'crazy'],
-	].map(PrimeCfg{it[0], it[1], it[2]})
-
-	for i, prime_cfg in cfgs {
-		println('\n#-${i + 1} "$prime_cfg" ')
-		bench_euclid_vs_binary(prime_cfg, predicate_fn, mut clocks)
-	}
-
-	println('')
-	for _, mut clock in clocks {
-		clock.stop()
-	}
-
-	println(clocks['euclid'].total_message('both algorithm '))
-
-	msg := [
-		'Seems to me as if euclid in big.Integer.gcd() performs better on ',
-		'very-small-integers up to 8-byte/u64. The tests #-1..5 show this.',
-		'The gcd_binary-algo seems to be perform better, the larger the numbers/buffers get.',
-		'On my machine, i see consistent gains between ~10-30-percent with :',
-		'\n',
-		'v -prod -cg -v -gc boehm euclid_bench.v',
-		'\n',
-		'This test covers multiplied primes up-to a length of 300-char-digits in ',
-		'a decimal-string. This equals (188-byte) == 47 x u32-values.',
-		'edit/change primes in ./primes.toml',
-		'Improvements & critique are welcome : \n',
-		'https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/',
-	].join('\n')
-
-	println(msg)
-}
