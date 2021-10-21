@@ -1,5 +1,6 @@
 module prime
 
+import math.big
 import rand
 import toml
 
@@ -12,7 +13,9 @@ pub fn (di DataI) cast<T>() DataI {
 	return T{}.from_primeset(di.to_primeset())
 }
 
-//[heap]
+pub type PrimeCfg = PrimeSet
+
+[heap]
 pub struct PrimeSet {
 pub mut:
 	r string [required]
@@ -127,7 +130,7 @@ pub fn random_list(cfg []string) []string {
 	return p_list
 }
 
-pub type PrimeCfg = PrimeSet
+
 
 pub fn (pc PrimeCfg) short() string {
 	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
