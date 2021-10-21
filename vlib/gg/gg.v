@@ -432,6 +432,7 @@ pub fn (gg &Context) end() {
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
+	// C.sapp_resize_window(width, height)
 }
 
 // draw_line draws a line between the points provided

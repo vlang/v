@@ -63,6 +63,9 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.i386 {
 			Language.i386
 		}
+		.js_node, .js_browser, .js_freestanding {
+			Language.js
+		}
 		._auto, ._max {
 			Language.v
 		}

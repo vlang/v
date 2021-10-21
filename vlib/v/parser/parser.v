@@ -734,7 +734,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					pos: spos.extend(p.tok.position())
 				}
 			} else if p.peek_tok.kind == .name {
-				return p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				return p.error_with_pos('unexpected name `$p.tok.lit`', p.tok.position())
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
 				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
 				return p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
@@ -2338,6 +2338,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		// a[i] or { ... }
 		if p.tok.kind == .key_orelse {
 			was_inside_or_expr := p.inside_or_expr
+			p.inside_or_expr = true
 			or_pos = p.tok.position()
 			p.next()
 			p.open_scope()
@@ -2442,6 +2443,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.position()
 		if p.tok.kind == .key_orelse {
+			was_inside_or_expr := p.inside_or_expr
+			p.inside_or_expr = true
 			p.next()
 			p.open_scope()
 			p.scope.register(ast.Var{
@@ -2455,6 +2458,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_stmts = p.parse_block_no_scope(false)
 			or_pos = or_pos.extend(p.prev_tok.position())
 			p.close_scope()
+			p.inside_or_expr = was_inside_or_expr
 		}
 		// `foo()?`
 		if p.tok.kind == .question {

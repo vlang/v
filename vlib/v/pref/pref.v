@@ -79,6 +79,9 @@ pub enum Arch {
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
+	js_node
+	js_browser
+	js_freestanding
 	_max
 }
 
@@ -173,7 +176,7 @@ pub mut:
 	fatal_errors        bool        // unconditionally exit after the first error with exit(1)
 	reuse_tmpc          bool        // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp              bool        // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std              bool        // when true, do not pass -std=c99 to the C backend
+	no_std              bool        // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	no_parallel         bool
 	is_vweb             bool // skip _ var warning in templates
@@ -747,6 +750,15 @@ pub fn arch_from_string(arch_str string) ?Arch {
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 
 			return Arch.i386
+		}
+		'js', 'js_node' {
+			return Arch.js_node
+		}
+		'js_browser' {
+			return Arch.js_browser
+		}
+		'js_freestanding' {
+			return Arch.js_freestanding
 		}
 		'' {
 			return ._auto

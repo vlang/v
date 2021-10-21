@@ -128,3 +128,25 @@ pub fn is_atty(fd int) int {
 
 	return res
 }
+
+pub fn glob(patterns ...string) ?[]string {
+	panic('not yet implemented')
+	return none
+}
+
+pub fn write_file_array(path string, buffer array) ? {
+	mut f := create(path) ?
+	f.write_array(buffer) ?
+	f.close()
+}
+
+pub fn chdir(s string) ? {
+	#try { $process.chdir(s.str); } catch (e) { return error(new string('' + s)) }
+}
+
+pub fn file_last_mod_unix(path string) int {
+	mtime := 0
+	#mtime.val = Math.floor($fs.lstatSync(path.str).mtime.getTime() / 1000)
+
+	return mtime
+}

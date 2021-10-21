@@ -98,7 +98,7 @@ pub fn (mut b Builder) middle_stages() ? {
 	util.timing_start('CHECK')
 
 	util.timing_start('Checker.generic_insts_to_concrete')
-	b.checker.generic_insts_to_concrete()
+	b.table.generic_insts_to_concrete()
 	util.timing_measure('Checker.generic_insts_to_concrete')
 
 	b.checker.check_files(b.parsed_files)

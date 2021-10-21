@@ -96,6 +96,12 @@ NB: the build flags are shared with the run command too:
    -profile-no-inline
       Skip [inline] functions when profiling.
 
+   -skip-unused
+      Skip generating C/JS code for functions, that are provably not used by your project.
+      This speeds up compilation, and reduces the generated output size.
+      It is still experimental, due to historical reasons, but please do try it,
+      and report issues, if compilation breaks with that option for your program.
+
    -stats
       Enable more detailed statistics reporting, while compiling test files.
       You can use that with `v test` too, for example:

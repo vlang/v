@@ -9,6 +9,7 @@ import net
 import net.http
 import net.urllib
 import time
+import json
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -236,9 +237,28 @@ pub fn (mut ctx Context) text(s string) Result {
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `application/json`
-pub fn (mut ctx Context) json(s string) Result {
-	ctx.send_response_to_client('application/json', s)
+// Response HTTP_OK with json_s as payload with content-type `application/json`
+pub fn (mut ctx Context) json<T>(j T) Result {
+	json_s := json.encode(j)
+	ctx.send_response_to_client('application/json', json_s)
+	return Result{}
+}
+
+// Response HTTP_OK with file as payload
+pub fn (mut ctx Context) file(f_path string) Result {
+	ext := os.file_ext(f_path)
+	data := os.read_file(f_path) or {
+		eprint(err.msg)
+		ctx.server_error(500)
+		return Result{}
+	}
+	content_type := vweb.mime_types[ext]
+	if content_type == '' {
+		eprintln('no MIME type found for extension $ext')
+		ctx.server_error(500)
+	} else {
+		ctx.send_response_to_client(content_type, data)
+	}
 	return Result{}
 }
 

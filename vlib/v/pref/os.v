@@ -118,7 +118,6 @@ pub fn get_host_os() OS {
 	$if js_freestanding {
 		return .js_freestanding
 	}
-
 	$if js_browser {
 		return .js_browser
 	}
@@ -126,4 +125,5 @@ pub fn get_host_os() OS {
 		return .js_node
 	}
 	panic('unknown host OS')
+	return ._auto
 }

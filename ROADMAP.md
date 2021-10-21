@@ -16,6 +16,7 @@
 - [ ] parallel parser
 - [ ] parallel checker
 - [x] parallel cgen
+- [ ] parallel C compilation
 - [ ] `recover()` from panics
 - [x] IO streams
 - [x] struct embedding
