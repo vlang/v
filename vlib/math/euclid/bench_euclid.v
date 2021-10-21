@@ -79,7 +79,10 @@ fn main() {
 		['biggest', 'crazy', 'giga']
 	].map(PrimeCfg{it[0], it[1], it[2]})
 
+	println( '\n${cfgs.len } x Tests' )
+
 	for i, prime_cfg in cfgs {
+
 		println('\n#-${i + 1}(Stack) "$prime_cfg"')
 		bench_euclid_vs_binary(prime_cfg, false, predicate_fn, mut clocks)
 
@@ -119,7 +122,7 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 		// }
 		// TODO: this reads strange
 		if elem is StackData { testdata << elem }
-		else if elem is HeapData { testdata << elem }
+		if elem is HeapData  { testdata << elem }
 	}
 	// some statistics
 	//
@@ -239,10 +242,29 @@ fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps P
 	return run_benchmark(casted_sets, heap, mut clocks)
 }
 
+
+
+fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
+	if !primeset.predicate(test) {
+		eprintln('? Corrupt Testdata was ?')
+		dump(primeset)
+		return empty_set // {'1', '1', '1'}
+	}
+
+	cast_bi := bi_from_decimal_string
+
+	r 	:= cast_bi(primeset.r)
+	aa 	:= cast_bi(primeset.a) * r
+	bb 	:= cast_bi(primeset.b) * r
+	gcd := aa.gcd(bb)
+
+	return GCDSet{'$gcd', '$aa', '$bb'}
+}
+
+
 fn prime_file_exists(path string) bool {
 	return os.is_readable(path)
 }
-
 
 // bi_from_decimal_string converts a string-of-decimals into
 // a math.big.Integer using the big.Integers 'from_radix-fn'
@@ -276,7 +298,6 @@ fn bi_buffer_len(input []byte) int {
   }
   return digits.len
 }
-
 
 [heap]
 pub struct HeapData {
@@ -319,24 +340,3 @@ pub fn (sd StackData) from_primeset(p PrimeSet) DataI {
 		bb: bi_from_decimal_string(p.b)
 	})
 }
-
-
-fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
-	if !primeset.predicate(test) {
-		eprintln('? Corrupt Testdata was ?')
-		dump(primeset)
-		return empty_set // {'1', '1', '1'}
-	}
-
-	cast_bi := bi_from_decimal_string
-
-	r 	:= cast_bi(primeset.r)
-	aa 	:= cast_bi(primeset.a) * r
-	bb 	:= cast_bi(primeset.b) * r
-	gcd := aa.gcd(bb)
-
-	return GCDSet{'$gcd', '$aa', '$bb'}
-}
-
-
-

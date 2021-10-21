@@ -1,6 +1,5 @@
 module prime
 
-import math.big
 import rand
 import toml
 
@@ -14,7 +13,6 @@ pub fn (di DataI) cast<T>() DataI {
 }
 
 pub type PrimeCfg = PrimeSet
-
 pub fn (pc PrimeCfg) short() string {
 	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
 }
