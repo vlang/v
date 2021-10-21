@@ -560,8 +560,8 @@ fn (mut s Scanner) extract_number() ?string {
 // any bytes recognized as infinity or not-a-number TOML numbers.
 [direct_array_access; inline]
 fn (mut s Scanner) extract_nan_or_inf_number() ?string {
-	// extract_number is called when the scanner has already reached
-	// a byte that is a number or +/- - so we rewind it to start at the correct position
+	// extract_nan_or_inf_number is called when the scanner has already identified that
+	// +/- or 'nan'/'inf' bytes is up but we rewind it to start at the correct position
 	s.pos--
 	s.col--
 	start := s.pos
