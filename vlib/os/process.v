@@ -1,11 +1,11 @@
 module os
 
-// ProcessState.not_started - the process has not yet started
-// ProcessState.running - the process is currently running
-// ProcessState.stopped - the process was running, but was stopped temporarily
-// ProcessState.exited - the process has finished/exited
-// ProcessState.aborted - the process was terminated by a signal
-// ProcessState.closed - the process resources like opened file descriptors were freed/discarded, final state.
+// - ProcessState.not_started - the process has not yet started
+// - ProcessState.running - the process is currently running
+// - ProcessState.stopped - the process was running, but was stopped temporarily
+// - ProcessState.exited - the process has finished/exited
+// - ProcessState.aborted - the process was terminated by a signal
+// - ProcessState.closed - the process resources like opened file descriptors were freed/discarded, final state.
 pub enum ProcessState {
 	not_started
 	running
