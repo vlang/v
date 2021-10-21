@@ -135,7 +135,8 @@ fn (c Checker) check_number(num ast.Number) ? {
 		}
 		lit_sans_sign_and_type_prefix := lit_sans_sign[2..]
 
-		if lit_sans_sign_and_type_prefix.starts_with('_') || lit_sans_sign_and_type_prefix.ends_with('_') {
+		if lit_sans_sign_and_type_prefix.starts_with('_')
+			|| lit_sans_sign_and_type_prefix.ends_with('_') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" can not start or end with `_` in ...${c.excerpt(num.pos)}...')
 		}
