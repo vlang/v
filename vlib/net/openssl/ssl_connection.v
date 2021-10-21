@@ -179,9 +179,10 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	return res
 }
 
-[deprecated]
+[deprecated: 'call SSLConn.read instead']
+[deprecated_after: '2021-11-04']
 pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
-	return none
+	return s.read(mut buffer)
 }
 
 pub fn (mut s SSLConn) read(mut buffer []byte) ?int {
