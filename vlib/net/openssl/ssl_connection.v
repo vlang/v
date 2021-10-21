@@ -179,7 +179,12 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	return res
 }
 
+[deprecated]
 pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
+	return none
+}
+
+pub fn (mut s SSLConn) read(mut buffer []byte) ?int {
 	res := s.socket_read_into_ptr(&byte(buffer.data), buffer.len) ?
 	return res
 }
