@@ -138,13 +138,34 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		if b.pref.is_verbose {
 			println('running $run_process.filename with arguments $run_process.args')
 		}
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		mut prev_quit_handler := os.SignalHandler(eshcb)
+		$if !windows { // There's no sigquit on windows
+			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+		}
 		run_process.wait()
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+		}
 		ret := run_process.code
 		run_process.close()
 		b.cleanup_run_executable_after_exit(compiled_file)
 		exit(ret)
 	}
 	exit(0)
+}
+
+fn eshcb(_ os.Signal) {
+}
+
+[noreturn]
+fn serror(reason string, e IError) {
+	eprintln('could not $reason handler')
+	panic(e)
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
