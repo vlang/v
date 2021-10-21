@@ -29,31 +29,31 @@
 - Fast compilation: ≈110k loc/s with a Clang backend,
     ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
-- Performance: as fast as C (V's main backend compiles to human readable C)
+- Performance: as fast as C (V's main backend compiles to human-readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
 - [Innovative memory management](https://vlang.io/#memory) ([demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
-- Easy cross compilation
+- Easy cross-compilation
 - REPL
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
 - [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
-- Great for writing low level software ([Vinix OS](https://github.com/vlang/vinix))
+- Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
 ## Stability guarantee and future changes
 
 Despite being at an early development stage, the V language is relatively stable and has
-backwards compatibility guarantee, meaning that the code you write today is guaranteed
+backward compatibility guarantee, meaning that the code you write today is guaranteed
 to work a month, a year, or five years from now.
 
 There still may be minor syntax changes before the 1.0 release, but they will be handled
 automatically via `vfmt`, as has been done in the past.
 
 The V core APIs (primarily the `os` module) will still have minor changes until
-they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
+they are stabilized in V 1.0. Of course, the APIs will grow after that, but without breaking
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
@@ -112,7 +112,7 @@ sudo ./v symlink
 ```
 
 On Windows, start a new shell with administrative privileges, for
-example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
+example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right-click on its menu
 entry, and choose `Run as administrator`. In the new administrative
 shell, cd to the path, where you have compiled v.exe, then type:
 
@@ -125,7 +125,7 @@ Please restart your shell/editor after that, so that it can pick
 the new PATH variable.
 
 NB: there is no need to run `v symlink` more than once - v will
-continue to be available, even after `v up`, restarts and so on.
+continue to be available, even after `v up`, restarts, and so on.
 You only need to run it again, if you decide to move the V repo
 folder somewhere else.
 
@@ -203,7 +203,7 @@ sudo dnf install openssl-devel
 ```
 
 ## V sync
-V's `sync` module and channel implementation uses libatomic.
+V's `sync` module and channel implementation use libatomic.
 It is most likely already installed on your system, but if not,
 you can install it, by doing the following:
 ```bash
@@ -268,7 +268,7 @@ https://github.com/vlang/gitly
 
 ## Vinix, an OS/kernel written in V
 
-V is great for writing low level software like drivers and kernels.
+V is great for writing low-level software like drivers and kernels.
 Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 
 https://github.com/vlang/vinix
