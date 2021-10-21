@@ -2362,6 +2362,7 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 					}
 					g.writeln(') {')
 					g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+					g.writeln('break;')
 					g.writeln('}')
 				}
 				g.dec_indent()
@@ -2423,6 +2424,7 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 			}
 			g.writeln(') {')
 			g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+			g.writeln('break;')
 			g.writeln('}')
 		}
 		g.dec_indent()
