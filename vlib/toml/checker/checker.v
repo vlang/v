@@ -101,6 +101,10 @@ fn (c Checker) check_number(num ast.Number) ? {
 	} else {
 		if !hex_bin_oct {
 			if !is_float && lit[0] == `0` {
+				if lit[1] in [`B`, `O`, `X`] {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' numbers like "$lit" only lowercase notation in ...${c.excerpt(num.pos)}...')
+				}
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' numbers like "$lit" can not start with a zero in ...${c.excerpt(num.pos)}...')
 			}
