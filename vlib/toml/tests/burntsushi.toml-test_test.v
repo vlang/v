@@ -21,7 +21,6 @@ const (
 		'string/basic-out-of-range-unicode-escape-2.toml',
 		'string/bad-uni-esc.toml',
 		// Integer
-		'integer/capital-bin.toml',
 		'integer/invalid-bin.toml',
 		'integer/invalid-oct.toml',
 		// Encoding
