@@ -186,7 +186,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 	if os.is_dir(tool_source) {
 		source_files := os.walk_ext(tool_source, '.v')
 		mut newest_sfile := ''
-		mut newest_sfile_mtime := 0
+		mut newest_sfile_mtime := i64(0)
 		for sfile in source_files {
 			mtime := os.file_last_mod_unix(sfile)
 			if mtime > newest_sfile_mtime {
