@@ -160,6 +160,10 @@ fn (c Checker) check_number(num ast.Number) ? {
 	}
 
 	if has_exponent_notation {
+		if lit.to_lower().all_after('e').starts_with('_') {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' the exponent in "$lit" can not start with an underscore in ...${c.excerpt(num.pos)}...')
+		}
 		if lit.to_lower().all_after('e').contains('.') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (with exponent) can not have a decimal point in ...${c.excerpt(num.pos)}...')

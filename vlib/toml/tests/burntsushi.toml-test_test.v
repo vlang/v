@@ -22,8 +22,6 @@ const (
 		// Encoding
 		'encoding/bad-utf8-in-comment.toml',
 		'encoding/bad-utf8-in-string.toml',
-		// Float
-		'float/exp-leading-us.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
