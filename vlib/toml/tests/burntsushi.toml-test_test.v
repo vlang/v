@@ -9,7 +9,6 @@ import toml
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	valid_exceptions   = [
-		'float/inf-and-nan.toml',
 		'table/array-table-array.toml',
 	]
 	invalid_exceptions = [

@@ -693,13 +693,6 @@ arrays there is a second initialization syntax:
 mut a := []int{len: 10000, cap: 30000, init: 3}
 ```
 
-You can initialize the array by accessing the it variable as shown here:
-
-```v
-mut square := []int{len: 6, init: it * it}
-// square == [0, 1, 4, 9, 16, 25]
-```
-
 This creates an array of 10000 `int` elements that are all initialized with `3`. Memory
 space is reserved for 30000 elements. The parameters `len`, `cap` and `init` are optional;
 `len` defaults to `0` and `init` to the default initialization of the element type (`0`
@@ -728,6 +721,13 @@ for i in 0 .. 1000 {
 ```
 Note: The above code uses a [range `for`](#range-for) statement and a
 [push operator (`<<`)](#array-operations).
+
+You can initialize the array by accessing the `it` variable as shown here:
+
+```v
+mut square := []int{len: 6, init: it * it}
+// square == [0, 1, 4, 9, 16, 25]
+```
 
 #### Array Types
 
