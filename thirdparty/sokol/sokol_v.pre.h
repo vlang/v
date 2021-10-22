@@ -1,4 +1,4 @@
-#ifndef V_ANDROID_LOG_PRINT_OFF
+#if defined(V_ANDROID_LOG_PRINT)
 	#if defined(__ANDROID__)
 		// Adapted from https://stackoverflow.com/a/196018/1904615
 		#define V_ANDROID_LOG_STR_VALUE(arg) #arg
