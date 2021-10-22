@@ -61,7 +61,7 @@ fn get_scan_timeout_seconds() int {
 
 struct VFileStat {
 	path  string
-	mtime int
+	mtime i64
 }
 
 [unsafe]

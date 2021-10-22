@@ -7,10 +7,6 @@ pub const (
 	args = []string{}
 )
 
-struct C.dirent {
-	d_name [256]char
-}
-
 fn C.readdir(voidptr) &C.dirent
 
 fn C.readlink(pathname &char, buf &char, bufsiz usize) int
@@ -40,36 +36,6 @@ fn C.chown(&char, int, int) int
 fn C.ftruncate(voidptr, u64) int
 
 fn C._chsize_s(voidptr, u64) int
-
-// fn C.proc_pidpath(int, byteptr, int) int
-struct C.stat {
-	st_size  u64
-	st_mode  u32
-	st_mtime int
-}
-
-struct C.__stat64 {
-	st_size  u64
-	st_mode  u32
-	st_mtime int
-}
-
-struct C.DIR {
-}
-
-type FN_SA_Handler = fn (sig int)
-
-struct C.sigaction {
-mut:
-	sa_mask      int
-	sa_sigaction int
-	sa_flags     int
-	sa_handler   FN_SA_Handler
-}
-
-struct C.dirent {
-	d_name &byte
-}
 
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
@@ -890,12 +856,12 @@ pub fn wait() int {
 }
 
 // file_last_mod_unix returns the "last modified" time stamp of file in `path`.
-pub fn file_last_mod_unix(path string) int {
+pub fn file_last_mod_unix(path string) i64 {
 	attr := C.stat{}
 	// # struct stat attr;
 	unsafe { C.stat(&char(path.str), &attr) }
 	// # stat(path.str, &attr);
-	return attr.st_mtime
+	return i64(attr.st_mtime)
 	// # return attr.st_mtime ;
 }
 

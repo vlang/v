@@ -70,7 +70,7 @@ fn (ctx Context) write_file_or_print(file string) {
 // generate ast json file and c source code file
 fn (ctx Context) watch_for_changes(file string) {
 	println('start watching...')
-	mut timestamp := 0
+	mut timestamp := i64(0)
 	for {
 		new_timestamp := os.file_last_mod_unix(file)
 		if timestamp != new_timestamp {
