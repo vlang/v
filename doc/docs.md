@@ -2496,8 +2496,6 @@ particularly useful for initializing a C library.
 
 ### Manage Packages
 
-Briefly:
-
 ```powershell
 v [module option] [param]
 ```
@@ -2514,9 +2512,7 @@ v [module option] [param]
    outdated          Show installed modules that need updates.
 ```
 
-Read more:
-
-You can also install modules already created by someone else with [VPM](https://vpm.vlang.io/):
+You can install modules already created by someone else with [VPM](https://vpm.vlang.io/):
 ```powershell
 v install [module]
 ```
