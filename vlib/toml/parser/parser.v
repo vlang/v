@@ -509,8 +509,8 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 				continue
 			}
 			.eof {
-				// End Of File
-				return arr
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not parse array. Reached EOF "$p.tok.kind" "$p.tok.lit" ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..."')
 			}
 			.hash {
 				// TODO array.comments << p.comment()

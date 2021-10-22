@@ -43,20 +43,6 @@ pub const (
 	s_ixoth = 0o0001 // Execute by others
 )
 
-struct C.utsname {
-mut:
-	sysname  &char
-	nodename &char
-	release  &char
-	version  &char
-	machine  &char
-}
-
-struct C.utimbuf {
-	actime  int
-	modtime int
-}
-
 fn C.utime(&char, voidptr) int
 
 fn C.uname(name voidptr) int

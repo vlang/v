@@ -22,8 +22,6 @@ const (
 		// Encoding
 		'encoding/bad-utf8-in-comment.toml',
 		'encoding/bad-utf8-in-string.toml',
-		// Float
-		'float/exp-leading-us.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
@@ -35,37 +33,14 @@ const (
 		'table/duplicate-table-array.toml',
 		// Array
 		'array/tables-1.toml',
-		'array/no-close-2.toml',
 		'array/missing-separator.toml',
 		'array/text-after-array-entries.toml',
-		'array/no-close.toml',
 		'array/text-before-array-separator.toml',
 		// Date / Time
 		'datetime/impossible-date.toml',
 		'datetime/no-leads-with-milli.toml',
 		'datetime/no-leads.toml',
-		// Control
-		'control/string-us.toml',
-		'control/comment-lf.toml',
-		'control/multi-us.toml',
-		'control/rawstring-del.toml',
-		'control/rawmulti-del.toml',
-		'control/rawstring-us.toml',
-		'control/string-bs.toml',
-		'control/multi-null.toml',
-		'control/rawstring-lf.toml',
-		'control/rawmulti-null.toml',
-		'control/comment-null.toml',
-		'control/multi-lf.toml',
-		'control/comment-del.toml',
-		'control/rawstring-null.toml',
-		'control/rawmulti-lf.toml',
-		'control/multi-del.toml',
-		'control/string-del.toml',
-		'control/rawmulti-us.toml',
-		'control/comment-us.toml',
-		'control/string-lf.toml',
-		'control/string-null.toml',
+		// Inline table
 		'inline-table/empty.toml',
 		'inline-table/double-comma.toml',
 		'inline-table/trailing-comma.toml',
