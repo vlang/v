@@ -1052,7 +1052,7 @@ println(typeof(fnums).name) // => [3]int
 
 fnums2 := [1, 10, 100]! // short init syntax that does the same (the syntax will probably change)
 
-anums := fnums[0..fnums.len]
+anums := fnums[..] // same as `anums := fnums[0..fnums.len]`
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
