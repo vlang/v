@@ -36,3 +36,9 @@ pub fn (t Time) local() Time {
 	// if it is not we should try to use Intl for getting local time.
 	return t
 }
+
+pub fn sleep(dur Duration) {
+	#let now = new Date().getTime()
+	#let toWait = BigInt(dur.val) / BigInt(time__millisecond)
+	#while (new Date().getTime() < now + Number(toWait)) {}
+}
