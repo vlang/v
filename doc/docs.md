@@ -479,7 +479,18 @@ windows_newline := '\r\n' // escape special characters like in C
 assert windows_newline.len == 2
 ```
 
-In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
+In V, a string is a read-only array of bytes. String data is encoded using UTF-8:
+```v
+s := 'hello 🌎' // emoji takes 4 bytes
+assert s.len == 10
+
+arr := s.bytes() // convert `string` to `[]byte`
+assert arr.len == 10
+
+s2 := string(arr) // convert `[]byte` to `string`
+assert s2 == s
+```
+
 String values are immutable. You cannot mutate elements:
 
 ```v failcompile
