@@ -175,7 +175,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 			}
 			`#` {
 				start := s.pos //+ 1
-				s.ignore_line()
+				s.ignore_line() ?
 				hash := s.text[start..s.pos]
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
@@ -318,9 +318,14 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 
 // ignore_line forwards the scanner to the end of the current line.
 [direct_array_access; inline]
-fn (mut s Scanner) ignore_line() {
+fn (mut s Scanner) ignore_line() ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL')
 	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(c) {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$c.hex()` is not allowed ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
+		}
 		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
 		continue
@@ -384,6 +389,11 @@ fn (mut s Scanner) extract_string() ?string {
 		c := s.at()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
 
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(c) {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
+		}
 		// Check for escaped chars
 		if c == byte(92) {
 			esc, skip := s.handle_escapes(quote, is_multiline)
@@ -446,6 +456,11 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 			lit += c.ascii_str()
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `\\n` / $c')
 			continue
+		}
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(c) {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 		// Check for escaped chars
 		if c == byte(92) {
