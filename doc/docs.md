@@ -1843,7 +1843,6 @@ mut p := Point{
 	x: 10
 	y: 20
 }
-// you can omit the struct name when it's already known
 p = Point{
 	x: 30
 	y: 4
