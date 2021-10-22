@@ -147,6 +147,7 @@ fn C.usleep(usec u32) int
 [typedef]
 struct C.DIR {
 }
+
 fn C.opendir(&char) &C.DIR
 
 fn C.closedir(dirp &C.DIR) int
