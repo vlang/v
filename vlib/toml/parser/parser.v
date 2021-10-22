@@ -508,6 +508,10 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma array value seperator "$p.tok.lit"')
 				continue
 			}
+			.eof {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not parse array. Reached EOF "$p.tok.kind" "$p.tok.lit" ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..."')
+			}
 			.hash {
 				// TODO array.comments << p.comment()
 				c := p.comment()
