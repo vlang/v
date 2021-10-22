@@ -23,16 +23,7 @@ const (
 		'encoding/bad-utf8-in-comment.toml',
 		'encoding/bad-utf8-in-string.toml',
 		// Float
-		'float/exp-double-us.toml',
 		'float/exp-leading-us.toml',
-		'float/nan_underscore.toml',
-		'float/nan-incomplete-1.toml',
-		'invalid/float/exp-point-1.toml',
-		'float/trailing-us.toml',
-		'float/us-after-point.toml',
-		'float/exp-double-e-1.toml',
-		'float/inf-incomplete-1.toml',
-		'float/inf_underscore.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
