@@ -35,10 +35,8 @@ const (
 		'table/duplicate-table-array.toml',
 		// Array
 		'array/tables-1.toml',
-		'array/no-close-2.toml',
 		'array/missing-separator.toml',
 		'array/text-after-array-entries.toml',
-		'array/no-close.toml',
 		'array/text-before-array-separator.toml',
 		// Date / Time
 		'datetime/impossible-date.toml',
