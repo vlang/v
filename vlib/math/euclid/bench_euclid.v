@@ -6,6 +6,7 @@ import math.euclid.prime {
 	PrimeCfg,
 	PrimeSet,
 }
+
 interface TestDataI {
 	r big.Integer
 	aa big.Integer
@@ -22,8 +23,8 @@ const (
 
 fn main() {
 	fp := @VROOT + '/vlib/math/euclid/primes.toml'
-	if !prime_file_exists( fp ) {
-		panic( 'expected file |$fp| - not found.')
+	if !prime_file_exists(fp) {
+		panic('expected file |$fp| - not found.')
 	}
 
 	mut clocks := Clocks(map[string]benchmark.Benchmark{})
@@ -76,13 +77,12 @@ fn main() {
 		['giga.5', 'mega', 'giga'],
 		['crazy', 'mega', 'giga'],
 		['s', 'biggest', 'crazy'],
-		['biggest', 'crazy', 'giga']
+		['biggest', 'crazy', 'giga'],
 	].map(PrimeCfg{it[0], it[1], it[2]})
 
-	println( '\n${cfgs.len } x Tests' )
+	println('\n$cfgs.len x Tests')
 
 	for i, prime_cfg in cfgs {
-
 		println('\n#-${i + 1}(Stack) "$prime_cfg"')
 		bench_euclid_vs_binary(prime_cfg, false, predicate_fn, mut clocks)
 
@@ -91,7 +91,9 @@ fn main() {
 		// bench_euclid_vs_binary(prime_cfg, true,  predicate_fn, mut clocks)
 	}
 	println('')
-	for _, mut clock in clocks { clock.stop() }
+	for _, mut clock in clocks {
+		clock.stop()
+	}
 
 	println(clocks['euclid'].total_message('both algorithms '))
 
@@ -114,45 +116,50 @@ fn main() {
 }
 
 fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
-
 	mut testdata := []TestDataI{}
 	for elem in data {
 		// if elem is StackData || elem is HeapData{
 		// 	testdata << elem
 		// }
 		// TODO: this reads strange
-		if elem is StackData { testdata << elem }
-		if elem is HeapData  { testdata << elem }
+		if elem is StackData {
+			testdata << elem
+		}
+		if elem is HeapData {
+			testdata << elem
+		}
 	}
 	// some statistics
 	//
 	mut tmp := []int{cap: testdata.len * 3}
 	for set in testdata {
-		for prime in [ set.r, set.aa, set.bb ]{
-      bi, _ := prime.bytes()
-        tmp << bi_buffer_len( bi )
+		for prime in [set.r, set.aa, set.bb] {
+			bi, _ := prime.bytes()
+			tmp << bi_buffer_len(bi)
 		}
 	}
 	tmp.sort()
 	min_byte := tmp.first() * 4
-	max_byte := tmp.last()  * 4
+	max_byte := tmp.last() * 4
 	mut buffer_space := 0
-	for tmp.len != 0 { buffer_space += tmp.pop() }
+	for tmp.len != 0 {
+		buffer_space += tmp.pop()
+	}
 
 	// trying to balance prime-size and item-count
 	// minimum rounds is 100-times
 	//
-	mut rounds := 2000 / ((3 * buffer_space) / testdata.len )
-  rounds = if rounds < 100 { 100 } else { rounds }
+	mut rounds := 2000 / ((3 * buffer_space) / testdata.len)
+	rounds = if rounds < 100 { 100 } else { rounds }
 
 	ratio := (buffer_space * 4) / (testdata.len * 3)
 
 	msg := [
 		'avg-$ratio-byte/Prime, $min_byte-byte < Prime < $max_byte-byte \n',
-		'~${buffer_space * 4 / 1024}-Kb-'
-		if heap {'Heap'} else {'Stack'},
-		'-space for ${testdata.len}-items x ',
-		'${rounds}-rounds',
+		'~${buffer_space * 4 / 1024}-Kb-',
+		if heap { 'Heap' } else { 'Stack' },
+		'-space for $testdata.len-items x ',
+		'$rounds-rounds',
 	].join('')
 	println(msg)
 
@@ -227,22 +234,16 @@ fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps P
 	// here to avoid measuring string-parsing-cycles
 	// during later testing.
 	//
-	mut casted_sets := if heap {
-			gcd_primes.map( unsafe {
-				DataI(&PrimeSet(&it)).cast<HeapData>()
-			})
-		} else {
-			gcd_primes.map( unsafe {
-				DataI(&PrimeSet(&it)).cast<StackData>()
-			})
-	}
+	mut casted_sets := if heap { gcd_primes.map(unsafe {
+			DataI(&PrimeSet(&it)).cast<HeapData>()
+		}) } else { gcd_primes.map(unsafe {
+			DataI(&PrimeSet(&it)).cast<StackData>()
+		}) }
 
 	// ready use the primes in the benchmark
 	//
 	return run_benchmark(casted_sets, heap, mut clocks)
 }
-
-
 
 fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
 	if !primeset.predicate(test) {
@@ -253,14 +254,13 @@ fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
 
 	cast_bi := bi_from_decimal_string
 
-	r 	:= cast_bi(primeset.r)
-	aa 	:= cast_bi(primeset.a) * r
-	bb 	:= cast_bi(primeset.b) * r
+	r := cast_bi(primeset.r)
+	aa := cast_bi(primeset.a) * r
+	bb := cast_bi(primeset.b) * r
 	gcd := aa.gcd(bb)
 
 	return GCDSet{'$gcd', '$aa', '$bb'}
 }
-
 
 fn prime_file_exists(path string) bool {
 	return os.is_readable(path)
@@ -278,25 +278,28 @@ pub fn bi_from_decimal_string(s string) big.Integer {
 		panic(msg)
 	}
 }
+
 // need the bi.digits.len - during test only - to calculate
 // the size of big.Integers-buffer
 //
 fn bi_buffer_len(input []byte) int {
-  if input.len == 0 { return 0 }
-  // pad input
-  mut padded_input := []byte{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
-  padded_input << input
-  mut digits := []u32{len: padded_input.len / 4}
-  // combine every 4 bytes into a u32 and insert into n.digits
-  for i := 0; i < padded_input.len; i += 4 {
-    x3 := u32(padded_input[i])
-    x2 := u32(padded_input[i + 1])
-    x1 := u32(padded_input[i + 2])
-    x0 := u32(padded_input[i + 3])
-    val := (x3 << 24) | (x2 << 16) | (x1 << 8) | x0
-    digits[(padded_input.len - i) / 4 - 1] = val
-  }
-  return digits.len
+	if input.len == 0 {
+		return 0
+	}
+	// pad input
+	mut padded_input := []byte{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+	padded_input << input
+	mut digits := []u32{len: padded_input.len / 4}
+	// combine every 4 bytes into a u32 and insert into n.digits
+	for i := 0; i < padded_input.len; i += 4 {
+		x3 := u32(padded_input[i])
+		x2 := u32(padded_input[i + 1])
+		x1 := u32(padded_input[i + 2])
+		x0 := u32(padded_input[i + 3])
+		val := (x3 << 24) | (x2 << 16) | (x1 << 8) | x0
+		digits[(padded_input.len - i) / 4 - 1] = val
+	}
+	return digits.len
 }
 
 [heap]
@@ -305,16 +308,18 @@ pub mut:
 	r  big.Integer
 	aa big.Integer
 	bb big.Integer
-	}
+}
+
 pub fn (hd HeapData) to_primeset() PrimeSet {
 	return PrimeSet{
 		r: '$hd.r'
 		a: '$hd.aa'
 		b: '$hd.bb'
 	}
-	}
+}
+
 pub fn (hd HeapData) from_primeset(p PrimeSet) DataI {
-	return DataI( HeapData{
+	return DataI(HeapData{
 		r: bi_from_decimal_string(p.r)
 		aa: bi_from_decimal_string(p.a)
 		bb: bi_from_decimal_string(p.b)
@@ -326,13 +331,16 @@ pub mut:
 	r  big.Integer
 	aa big.Integer
 	bb big.Integer
-	}
+}
+
 pub fn (sd StackData) to_primeset() PrimeSet {
 	return PrimeSet{
 		r: '$sd.r'
 		a: '$sd.aa'
 		b: '$sd.bb'
-	}}
+	}
+}
+
 pub fn (sd StackData) from_primeset(p PrimeSet) DataI {
 	return DataI(StackData{
 		r: bi_from_decimal_string(p.r)
