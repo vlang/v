@@ -86,6 +86,7 @@ mut:
 	array_sort_fn          map[string]bool
 	wasm_export            map[string][]string
 	wasm_import            map[string][]string
+	init_global            map[string]map[string]ast.Expr // initializers for constants or globals, should be invoked before module init.
 }
 
 fn (mut g JsGen) write_tests_definitions() {
@@ -204,6 +205,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 	for mod_name in g.table.modules {
 		g.writeln('// Initializations for module $mod_name')
+		for global, expr in g.init_global[mod_name] {
+			g.write('$global = ')
+			g.expr(expr)
+			g.writeln(';')
+		}
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
@@ -213,6 +219,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			}
 		}
 	}
+
 	if !g.pref.is_shared {
 		g.write('loadRoutine().then(_ => js_main());')
 	}
@@ -1214,7 +1221,7 @@ fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
 fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 	if stmt.left.len > stmt.right.len {
 		// multi return
-		g.write('const [')
+		g.write('let [')
 		for i, left in stmt.left {
 			if !left.is_blank_ident() {
 				g.expr(left)
@@ -1469,8 +1476,17 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 		if field.is_pub {
 			g.push_pub_var(field.name)
 		}
-		g.write('const ${g.js_name(field.name)} = ')
-		g.expr(field.expr)
+
+		if field.expr is ast.StringInterLiteral || field.expr is ast.StringLiteral
+			|| field.expr is ast.IntegerLiteral || field.expr is ast.FloatLiteral
+			|| field.expr is ast.BoolLiteral {
+			g.write('const ${g.js_name(field.name)} = ')
+			g.expr(field.expr)
+		} else {
+			g.write('let ${g.js_name(field.name)} = ')
+			g.write('undefined')
+			g.init_global[g.ns.name][g.js_name(field.name)] = field.expr
+		}
 		g.writeln(';')
 	}
 	g.writeln('')
