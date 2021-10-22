@@ -86,7 +86,7 @@ mut:
 	array_sort_fn          map[string]bool
 	wasm_export            map[string][]string
 	wasm_import            map[string][]string
-	init_global            map[string]map[string]ast.Expr // initializers for constants or globals, should be invoked after module init.
+	init_global            map[string]map[string]ast.Expr // initializers for constants or globals, should be invoked before module init.
 }
 
 fn (mut g JsGen) write_tests_definitions() {
