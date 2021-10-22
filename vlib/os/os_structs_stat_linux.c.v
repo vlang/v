@@ -11,9 +11,9 @@ struct C.stat {
 	st_size    u64 // 8
 	st_blksize u64 // 8
 	st_blocks  u64 // 8
-	st_atime   u64 // 8
-	st_mtime   u64 // 8
-	st_ctime   u64 // 8
+	st_atime   i64 // 8
+	st_mtime   i64 // 8
+	st_ctime   i64 // 8
 }
 
 struct C.__stat64 {
