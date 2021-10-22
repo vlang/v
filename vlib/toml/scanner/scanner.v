@@ -389,11 +389,6 @@ fn (mut s Scanner) extract_string() ?string {
 		c := s.at()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
 
-		// Check for control characters (allow TAB)
-		if util.is_illegal_ascii_control_character(c) {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
-		}
 		// Check for escaped chars
 		if c == byte(92) {
 			esc, skip := s.handle_escapes(quote, is_multiline)
@@ -403,6 +398,11 @@ fn (mut s Scanner) extract_string() ?string {
 				s.col += skip
 				continue
 			}
+		}
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(c) {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
 		if c == quote {
@@ -457,11 +457,6 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `\\n` / $c')
 			continue
 		}
-		// Check for control characters (allow TAB)
-		if util.is_illegal_ascii_control_character(c) {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
-		}
 		// Check for escaped chars
 		if c == byte(92) {
 			esc, skip := s.handle_escapes(quote, true)
@@ -471,6 +466,11 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				s.col += skip
 				continue
 			}
+		}
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(c) {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$c.hex()` is not allowed at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
 		if c == quote {
