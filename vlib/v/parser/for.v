@@ -154,7 +154,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					key_var_pos)
 			}
 			if val_is_mut {
-				p.error_with_pos('variable in range `for` cannot be mut', mut_pos)
+				return p.error_with_pos('variable in range `for` cannot be mut', mut_pos)
 			}
 		} else {
 			// this type will be set in checker
