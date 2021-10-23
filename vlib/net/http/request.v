@@ -33,6 +33,8 @@ pub mut:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	use_proxy              bool
+	proxy                  &HttpProxy = &HttpProxy{}
 }
 
 fn (mut req Request) free() {
@@ -52,7 +54,7 @@ pub fn (mut req Request) add_custom_header(key string, val string) ? {
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
-pub fn (req &Request) do() ?Response {
+pub fn (mut req Request) do() ?Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url $req.url') }
 	mut rurl := url
 	mut resp := Response{}
@@ -84,7 +86,7 @@ pub fn (req &Request) do() ?Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Response {
+fn (mut req Request) method_and_url_to_response(method Method, url urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -111,7 +113,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
+fn (mut req Request) build_request_headers(method Method, host_name string, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string{}
 	if !req.header.contains(.host) {
@@ -135,7 +137,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 	return '$method $path $version\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
-fn (req &Request) build_request_cookies_header() string {
+fn (mut req Request) build_request_cookies_header() string {
 	if req.cookies.keys().len < 1 {
 		return ''
 	}
@@ -147,10 +149,19 @@ fn (req &Request) build_request_cookies_header() string {
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
-fn (req &Request) http_do(host string, method Method, path string) ?Response {
+fn (mut req Request) http_do(host string, method Method, path string) ?Response {
 	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
-	mut client := net.dial_tcp(host) ?
+
+	mut client := &net.TcpConn{}
+
+	if req.use_proxy == true {
+		req.proxy.prepare(req, host) ?
+		client = req.proxy.conn
+	} else {
+		client = net.dial_tcp(host) ?
+	}
+
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
 	// TODO this really needs to be exposed somehow
@@ -168,7 +179,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 }
 
 // referer returns 'Referer' header value of the given request
-pub fn (req &Request) referer() string {
+pub fn (mut req Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 

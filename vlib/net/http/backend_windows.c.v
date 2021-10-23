@@ -9,7 +9,11 @@ module http
 
 fn C.new_tls_context() C.TlsContext
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
+fn (mut req Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
+	if req.use_proxy == true {
+		return error('not implemented')
+	}
+
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
@@ -25,4 +29,8 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		eprintln('< $response_text')
 	}
 	return parse_response(response_text)
+}
+
+fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn {
+	return error('not implemented')
 }

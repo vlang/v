@@ -43,6 +43,10 @@ fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
 
 fn C.BIO_set_conn_hostname(b &C.BIO, name &char) int
 
+fn C.BIO_set_fd(b &C.BIO, fd int, close_flags int) int
+
+fn C.BIO_get_fd(b &C.BIO, fd_ptr voidptr) int
+
 // there are actually 2 macros for BIO_get_ssl
 // fn C.BIO_get_ssl(bp &C.BIO, ssl charptr, c int)
 // fn C.BIO_get_ssl(bp &C.BIO, sslp charptr)
