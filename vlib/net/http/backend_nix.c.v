@@ -30,17 +30,28 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	mut cert_key := req.cert_key
 	if req.in_memory_verification {
 		now := time.now().unix.str()
+
 		verify = os.temp_dir() + '/v_verify' + now
 		cert = os.temp_dir() + '/v_cert' + now
 		cert_key = os.temp_dir() + '/v_cert_key' + now
+
 		if req.verify != '' {
 			os.write_file(verify, req.verify) ?
+			defer {
+				os.rm(verify) or { eprintln('http: could not remove $verify') }
+			}
 		}
 		if req.cert != '' {
 			os.write_file(cert, req.cert) ?
+			defer {
+				os.rm(cert) or { eprintln('http: could not remove $cert') }
+			}
 		}
 		if req.cert_key != '' {
 			os.write_file(cert_key, req.cert_key) ?
+			defer {
+				os.rm(cert_key) or { eprintln('http: could not remove $verify') }
+			}
 		}
 	}
 	mut res := 0
@@ -164,19 +175,31 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 
 	if proxy.in_memory_verification {
 		now := time.now().unix.str()
+
 		verify = os.temp_dir() + '/v_verify' + now
 		cert = os.temp_dir() + '/v_cert' + now
 		cert_key = os.temp_dir() + '/v_cert_key' + now
+
 		if proxy.verify != '' {
 			os.write_file(verify, proxy.verify) ?
+			defer {
+				os.rm(verify) or { eprintln('http: could not remove $verify') }
+			}
 		}
 		if proxy.cert != '' {
 			os.write_file(cert, proxy.cert) ?
+			defer {
+				os.rm(cert) or { eprintln('http: could not remove $cert') }
+			}
 		}
 		if proxy.cert_key != '' {
 			os.write_file(cert_key, proxy.cert_key) ?
+			defer {
+				os.rm(cert_key) or { eprintln('http: could not remove $cert_key') }
+			}
 		}
 	}
+
 	mut res := 0
 	if proxy.verify != '' {
 		res = C.SSL_CTX_load_verify_locations(ctx, &char(verify.str), 0)
