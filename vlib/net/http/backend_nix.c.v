@@ -37,21 +37,12 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 
 		if req.verify != '' {
 			os.write_file(verify, req.verify) ?
-			defer {
-				os.rm(verify) or { eprintln('http: could not remove $verify') }
-			}
 		}
 		if req.cert != '' {
 			os.write_file(cert, req.cert) ?
-			defer {
-				os.rm(cert) or { eprintln('http: could not remove $cert') }
-			}
 		}
 		if req.cert_key != '' {
 			os.write_file(cert_key, req.cert_key) ?
-			defer {
-				os.rm(cert_key) or { eprintln('http: could not remove $verify') }
-			}
 		}
 	}
 	mut res := 0
@@ -73,6 +64,13 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 			return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
 		}
 	}
+
+	if req.in_memory_verification {
+		os.rm(verify) ?
+		os.rm(cert) ?
+		os.rm(cert_key) ?
+	}
+
 	// the setup is done, prepare an ssl connection from the SSL context:
 	web := C.BIO_new_ssl_connect(ctx)
 	defer {
@@ -182,21 +180,12 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 
 		if proxy.verify != '' {
 			os.write_file(verify, proxy.verify) ?
-			defer {
-				os.rm(verify) or { eprintln('http: could not remove $verify') }
-			}
 		}
 		if proxy.cert != '' {
 			os.write_file(cert, proxy.cert) ?
-			defer {
-				os.rm(cert) or { eprintln('http: could not remove $cert') }
-			}
 		}
 		if proxy.cert_key != '' {
 			os.write_file(cert_key, proxy.cert_key) ?
-			defer {
-				os.rm(cert_key) or { eprintln('http: could not remove $cert_key') }
-			}
 		}
 	}
 
@@ -219,6 +208,13 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 			return error('http_proxy: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
 		}
 	}
+
+	if proxy.in_memory_verification {
+		os.rm(verify) ?
+		os.rm(cert) ?
+		os.rm(cert_key) ?
+	}
+
 	// the setup is done, prepare an ssl connection from the SSL context:
 	web := C.BIO_new_ssl_connect(ctx)
 	defer {
@@ -230,7 +226,7 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 	ssl := &openssl.SSL(0)
 	C.BIO_get_ssl(web, &ssl)
 
-	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:MD5:!RC4'
+	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
 	res = C.SSL_set_cipher_list(voidptr(ssl), &char(preferred_ciphers.str))
 
 	if res != 1 {
