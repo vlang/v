@@ -290,6 +290,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		// shared libs do not need to have a main
 		return
 	}
+	if c.pref.no_builtin {
+		// `v -no-builtin module/` do not necessarily need to have a `main` function
+		// This is useful for compiling linux kernel modules for example.
+		return
+	}
 	if !has_main_mod_file {
 		c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
 			token.Position{})

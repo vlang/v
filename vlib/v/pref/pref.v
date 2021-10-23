@@ -144,20 +144,17 @@ pub mut:
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	compress bool // when set, use `upx` to compress the generated executable
-	// skip_builtin     bool   // Skips re-compilation of the builtin module
-	// to increase compilation time.
-	// This is on by default, since a vast majority of users do not
-	// work on the builtin module itself.
 	// generating_vh    bool
+	no_builtin       bool // Skip adding the `builtin` module implicitly. The generated C code may not compile.
 	enable_globals   bool // allow __global for low level code
 	is_fmt           bool
 	is_vet           bool
-	is_bare          bool
+	is_bare          bool   // set by -freestanding
+	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
 	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path      []string
-	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
-	output_cross_c   bool   // true, when the user passed `-os cross`
+	output_cross_c   bool // true, when the user passed `-os cross`
 	prealloc         bool
 	vroot            string
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
@@ -404,6 +401,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-no-retry-compilation' {
 				res.retry_compilation = false
+			}
+			'-no-builtin' {
+				res.no_builtin = true
+				res.build_options << arg
 			}
 			'-no-preludes' {
 				res.no_preludes = true

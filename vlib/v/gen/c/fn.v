@@ -305,6 +305,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.writeln(');')
 		return
 	}
+	if node.params.len == 0 {
+		g.definitions.write_string('void')
+	}
 	g.definitions.writeln(');')
 	g.writeln(') {')
 	for i, is_promoted in heap_promoted {
