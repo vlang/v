@@ -41,6 +41,18 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	return error('dial_tcp failed')
 }
 
+pub fn tcp_conn_from_handle(sockfd int) ?&TcpConn {
+	connection_socket := tcp_socket_from_handle(sockfd) ?
+
+	connection := &TcpConn{
+		sock: connection_socket
+		read_timeout: net.tcp_default_read_timeout
+		write_timeout: net.tcp_default_write_timeout
+	}
+
+	return connection
+}
+
 pub fn (mut c TcpConn) close() ? {
 	$if trace_tcp ? {
 		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
