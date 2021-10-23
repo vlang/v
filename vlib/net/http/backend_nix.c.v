@@ -66,9 +66,15 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	}
 
 	if req.in_memory_verification {
-		os.rm(verify) ?
-		os.rm(cert) ?
-		os.rm(cert_key) ?
+		if req.verify != '' {
+			os.rm(verify) ?
+		}
+		if req.cert != '' {
+			os.rm(cert) ?
+		}
+		if req.cert_key != '' {
+			os.rm(cert_key) ?
+		}
 	}
 
 	// the setup is done, prepare an ssl connection from the SSL context:
@@ -210,9 +216,15 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 	}
 
 	if proxy.in_memory_verification {
-		os.rm(verify) ?
-		os.rm(cert) ?
-		os.rm(cert_key) ?
+		if proxy.verify != '' {
+			os.rm(verify) ?
+		}
+		if proxy.cert != '' {
+			os.rm(cert) ?
+		}
+		if proxy.cert_key != '' {
+			os.rm(cert_key) ?
+		}
 	}
 
 	// the setup is done, prepare an ssl connection from the SSL context:
