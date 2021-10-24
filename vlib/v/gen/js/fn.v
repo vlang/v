@@ -248,7 +248,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err.val.msg})`'
+				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {
@@ -340,7 +340,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err.val.msg})`'
+				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {

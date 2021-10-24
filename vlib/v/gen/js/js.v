@@ -17,7 +17,7 @@ const (
 		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
 		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
 		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map']
+		'Array', 'Map', 'document']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any']
@@ -1549,6 +1549,9 @@ fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		}
 		else {}
 	}
+	if styp.starts_with('JS__') {
+		styp = styp[4..]
+	}
 	return styp
 }
 
@@ -1745,6 +1748,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('const $tmp = new ')
 
 		g.writeln('Option({});')
+		g.write('${tmp}.state = new byte(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
 			g.expr(it.exprs[0])
@@ -1781,11 +1785,21 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.doc.gen_fac_fn(node.fields)
 	g.write('function ${js_name}({ ')
 	for i, field in node.fields {
-		g.write('$field.name = ')
-		if field.has_default_expr {
-			g.expr(field.default_expr)
-		} else {
-			g.write('${g.to_js_typ_val(field.typ)}')
+		g.write('$field.name')
+		mut keep := true
+		for attr in field.attrs {
+			if attr.name == 'noinit' {
+				keep = false
+			}
+		}
+		if keep {
+			g.write(' = ')
+
+			if field.has_default_expr {
+				g.expr(field.default_expr)
+			} else {
+				g.write('${g.to_js_typ_val(field.typ)}')
+			}
 		}
 		if i < node.fields.len - 1 {
 			g.write(', ')
@@ -1802,7 +1816,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.inc_indent()
 	for embed in node.embeds {
 		etyp := g.typ(embed.typ)
-		g.writeln('...${etyp}.prototype,')
+		g.writeln('...${g.js_name(etyp)}.prototype,')
 	}
 	fns := g.method_fn_decls[name]
 	// gen toString method
@@ -1829,8 +1843,16 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	for field in node.fields {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
-		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
-		g.writeln(',')
+		mut keep := true
+		for attr in field.attrs {
+			if attr.name == 'noinit' {
+				keep = false
+			}
+		}
+		if keep {
+			g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
+			g.writeln(',')
+		}
 	}
 	g.writeln('\$toJS() { return this; }')
 
