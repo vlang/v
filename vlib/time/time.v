@@ -121,10 +121,9 @@ pub fn (t Time) add_days(days int) Time {
 	return t.add(days * 24 * time.hour)
 }
 
-// since returns a number of seconds elapsed since a given time.
-fn since(t Time) int {
-	// TODO Use time.Duration instead of seconds
-	return 0
+// since returns the time duration elapsed since a given time.
+pub fn since(t Time) Duration {
+	return now() - t
 }
 
 // relative returns a string representation of the difference between t
