@@ -18,7 +18,7 @@ pub fn get<T>(a []T, index usize) ?&T {
 	if in_bounds<T>(a, index) {
 		return &a[index]
 	}
-	return error('Index is out of bounce')
+	return error('Index is out of bounds')
 }
 
 // min returns the minimum value in the array
