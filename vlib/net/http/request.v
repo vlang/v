@@ -153,24 +153,29 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
 
-	mut client := &net.TcpConn{}
+	mut conn_layer := ProxyConnLayer{}
 
 	if req.use_proxy == true {
 		req.proxy.prepare(req, host) ?
-		client = req.proxy.conn
+		conn_layer = req.proxy.conn
 	} else {
-		client = net.dial_tcp(host) ?
+		mut client := net.dial_tcp(host) ?
+
+		conn_layer = ProxyConnLayer{
+			fd: client.sock.handle
+		}
 	}
 
-	client.set_read_timeout(req.read_timeout)
-	client.set_write_timeout(req.write_timeout)
+	conn_layer.set_read_timeout(req.read_timeout)
+	conn_layer.set_write_timeout(req.write_timeout)
+
 	// TODO this really needs to be exposed somehow
-	client.write(s.bytes()) ?
+	conn_layer.write(s.bytes()) ?
 	$if trace_http_request ? {
 		eprintln('> $s')
 	}
-	mut bytes := io.read_all(reader: client) ?
-	client.close() ?
+	mut bytes := io.read_all(reader: conn_layer) ?
+	conn_layer.close() ?
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
 		eprintln('< $response_text')
