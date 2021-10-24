@@ -454,7 +454,7 @@ pub fn walk_ext(path string, ext string) []string {
 	return res
 }
 
-pub fn impl_walk_ext(path string, ext string, mut out []string) {
+fn impl_walk_ext(path string, ext string, mut out []string) {
 	if !is_dir(path) {
 		return
 	}
