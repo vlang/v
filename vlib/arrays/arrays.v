@@ -11,7 +11,7 @@ module arrays
 // in_bounds checks if provided index in bounds of array
 [direct_array_access]
 pub fn in_bounds<T>(a []T, index usize) bool {
-	return index < a.len
+	return index < usize(a.len)
 }
 
 // get returns reference to value in array if index in bounds
