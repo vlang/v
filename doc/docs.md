@@ -5226,7 +5226,7 @@ To improve safety and maintainability, operator overloading is limited:
 - `!=`, `>`, `<=` and `>=` are auto generated when `==` and `<` are defined.
 - Both arguments must have the same type (just like with all operators in V).
 - Assignment operators (`*=`, `+=`, `/=`, etc)
-are auto generated when the operators are defined though they must return the same type.
+are auto generated when the corresponding operators are defined and operands are of the same type.
 
 ## Inline assembly
 <!-- ignore because it doesn't pass fmt test (why?) -->
