@@ -201,6 +201,8 @@ fn test_ls() {
 fn create_tree() ? {
 	os.mkdir_all('myfolder/f1/f2/f3') ?
 	os.mkdir_all('myfolder/a1/a2/a3') ?
+	f3 := os.real_path('myfolder/f1/f2/f3')
+	assert os.is_dir(f3)
 	create_file('myfolder/f1/f2/f3/a.txt') ?
 	create_file('myfolder/f1/f2/f3/b.txt') ?
 	create_file('myfolder/f1/f2/f3/c.txt') ?

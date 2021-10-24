@@ -535,7 +535,8 @@ pub fn log(s string) {
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
-pub fn mkdir_all(path string) ? {
+pub fn mkdir_all(opath string) ? {
+	path := opath.replace('/', path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {
