@@ -8,6 +8,19 @@ module arrays
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - zip - concat two arrays into one map
 
+// in_bounds checks if provided index in bounds of array
+pub fn in_bounds<T>(a []T, index usize) bool {
+	return index < a.len
+}
+
+// get returns reference to value in array if index in bounds
+pub fn get<T>(a []T, index usize) ?&T {
+	if in_bounds<T>(a, index) {
+		return &a[index]
+	}
+	return error('Index is out of bounce')
+}
+
 // min returns the minimum value in the array
 pub fn min<T>(a []T) ?T {
 	if a.len == 0 {

@@ -1,5 +1,25 @@
 module arrays
 
+fn test_in_bounds() ? {
+	a := [8, 2, 6, 4]
+
+	assert in_bounds(a, 0)
+	assert in_bounds(a, 3)
+	// As I understand literal just overflows so -1 equals to max usize value
+	// and this is also out of bounce
+	assert !in_bounds(a, -1)
+	assert !in_bounds(a, 4)
+	assert !in_bounds(a, 5)
+}
+
+fn test_get() ? {
+	a := [8, 2, 6, 4]
+
+	assert 8 == *get(a, 0) ?
+	assert 4 == *get(a, 3) ?
+	assert 4 == *get(a, 3) ?
+}
+
 fn test_min() ? {
 	a := [8, 2, 6, 4]
 	mut ri := min(a) ?
