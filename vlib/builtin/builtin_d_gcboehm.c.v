@@ -1,6 +1,11 @@
 module builtin
 
 #flag -DGC_THREADS=1
+$if freebsd {
+	#flag -DBUS_PAGE_FAULT=T_PAGEFT
+	#flag @VEXEROOT/thirdparty/libgc/gc.o
+}
+
 
 $if static_boehm ? {
 	$if macos {
