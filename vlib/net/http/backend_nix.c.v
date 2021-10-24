@@ -70,7 +70,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 			os.rm(verify) ?
 		}
 		if req.cert != '' {
-			os.rm(cert) ?
+			os.write_file(cert, req.verify) ?
 		}
 		if req.cert_key != '' {
 			os.rm(cert_key) ?
@@ -98,7 +98,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 
 	if req.use_proxy {
 		req.proxy.prepare(req, '$host_name:$port') ?
-		proxy_connection_fd := req.proxy.conn.sock.handle
+		proxy_connection_fd := req.proxy.conn.fd
 
 		res = C.BIO_set_fd(web, proxy_connection_fd, C.BIO_NOCLOSE)
 
@@ -161,7 +161,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	return parse_response(response_text)
 }
 
-fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn {
+fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?ProxyConnLayer {
 	ctx := C.SSL_CTX_new(C.TLS_method())
 	defer {
 		if ctx != 0 {
@@ -276,5 +276,7 @@ fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn
 		return error('http_proxy: openssl: could not get fd')
 	}
 
-	return net.tcp_conn_from_handle(connection_fd)
+	return ProxyConnLayer{
+		fd: connection_fd
+	}
 }
