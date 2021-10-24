@@ -386,9 +386,8 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 
 //================================== GLOBALS =================================*/
 int load_so(byteptr);
-void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
-void _vcleanup();
+void _vcleanup(void);
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
@@ -569,7 +568,6 @@ typedef __builtin_va_list va_list;
 
 //================================== GLOBALS =================================*/
 int load_so(byteptr);
-void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);

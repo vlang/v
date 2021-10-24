@@ -595,7 +595,7 @@ pub fn (mut g Gen) init() {
 		g.stringliterals.writeln('')
 		g.stringliterals.writeln('// >> string literal consts')
 		if g.pref.build_mode != .build_module {
-			g.stringliterals.writeln('void vinit_string_literals(){')
+			g.stringliterals.writeln('void vinit_string_literals(void){')
 		}
 	}
 	if g.pref.compile_defines_all.len > 0 {
@@ -6152,7 +6152,7 @@ fn (mut g Gen) write_init_function() {
 	}
 	//
 	fn_vcleanup_start_pos := g.out.len
-	g.writeln('void _vcleanup() {')
+	g.writeln('void _vcleanup(void) {')
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()
