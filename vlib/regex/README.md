@@ -28,6 +28,7 @@ simple token, is a single character.
 `abc` OR `ebc`. Instead it is evaluated like `ab`, followed by `c OR e`,
 followed by `bc`, because the **token is the base element**,
 not the sequence of symbols.
+Note: **Two char classes with an `OR` in the middle is a syntax error.**
 
 - The **match operation stops at the end of the string**. It does *NOT* stop 
 at new line characters.
@@ -155,6 +156,7 @@ match too, finally test the token `c`.
 
 NB: ** unlike in PCRE, the OR operation works at token level!** 
 It doesn't work at concatenation level!
+NB2: **Two char classes with an `OR` in the middle is a syntax error.**
 
 That also means, that a query string like `abc|bde` is not equal to 
 `(abc)|(bde)`, but instead to `ab(c|b)de.
@@ -474,21 +476,21 @@ the behavior of the parser itself.
 ```v ignore
 // example of flag settings
 mut re := regex.new()
-re.flag = regex.F_BIN
+re.flag = regex.f_bin
 ```
 
-- `F_BIN`: parse a string as bytes, utf-8 management disabled.
+- `f_bin`: parse a string as bytes, utf-8 management disabled.
 
-- `F_EFM`: exit on the first char matches in the query, used by the 
+- `f_efm`: exit on the first char matches in the query, used by the 
            find function.
 	
-- `F_MS`:  matches only if the index of the start match is 0,
+- `f_ms`:  matches only if the index of the start match is 0,
            same as `^` at the start of the query string.
 	
-- `F_ME`:  matches only if the end index of the match is the last char
+- `f_me`:  matches only if the end index of the match is the last char
            of the input string, same as `$` end of query string.
 	
-- `F_NL`:  stop the matching if found a new line char `\n` or `\r`
+- `f_nl`:  stop the matching if found a new line char `\n` or `\r`
 
 ## Functions
 

@@ -40,6 +40,7 @@ pub const (
 	err_groups_max_nested  = -8 // max number of nested group reached
 	err_group_not_balanced = -9 // group not balanced
 	err_group_qm_notation  = -10 // group invalid notation
+	err_invalid_or_with_cc = -11 // invalid or on two consecutive char class
 )
 
 const (
@@ -196,6 +197,7 @@ pub fn (re RE) get_parse_error_string(err int) string {
 		regex.err_groups_max_nested { return 'err_groups_max_nested' }
 		regex.err_group_not_balanced { return 'err_group_not_balanced' }
 		regex.err_group_qm_notation { return 'err_group_qm_notation' }
+		regex.err_invalid_or_with_cc { return 'err_invalid_or_with_cc' }
 		else { return 'err_unknown' }
 	}
 }
@@ -252,6 +254,8 @@ mut:
 	// dot_char token variables
 	dot_check_pc  int = -1 // pc of the next token to check
 	last_dot_flag bool // if true indicate that is the last dot_char in the regex
+	// debug fields
+	source_index int
 }
 
 [inline]
@@ -1028,11 +1032,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 		// OR branch
 		if char_len == 1 && pc > 0 && byte(char_tmp) == `|` {
-			// two consecutive ist_dot_char are an error
 			if pc > 0 && re.prog[pc - 1].ist == regex.ist_or_branch {
 				return regex.err_syntax_error, i
 			}
 			re.prog[pc].ist = u32(0) | regex.ist_or_branch
+			re.prog[pc].source_index = i
 			pc = pc + 1
 			i = i + char_len
 			continue
@@ -1252,10 +1256,18 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	pc1 = 0
 	for pc1 < pc - 2 {
 		// println("Here $pc1 ${pc-2}")
-		// two consecutive OR are a syntax error
-		if re.prog[pc1 + 1].ist == regex.ist_or_branch
-			&& re.prog[pc1 + 2].ist == regex.ist_or_branch {
-			return regex.err_syntax_error, i
+		// println("source index: ${pc1 + 1} => ${re.prog[pc1+1].source_index}")
+		if re.prog[pc1 + 1].ist == regex.ist_or_branch {
+			// two consecutive OR are a syntax error
+			if re.prog[pc1 + 2].ist == regex.ist_or_branch {
+				return regex.err_syntax_error, i
+			}
+
+			// check for []|[] errors
+			if re.prog[pc1].ist == regex.ist_char_class_pos
+				&& re.prog[pc1 + 2].ist == regex.ist_char_class_pos {
+				return regex.err_invalid_or_with_cc, re.prog[pc1 + 1].source_index
+			}
 		}
 
 		// manange a|b chains like a|(b)|c|d...
@@ -1280,7 +1292,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 				pc2++
 			}
-			// special case query of few chars, teh true can't go on the first instruction
+			// special case query of few chars, the true can't go on the first instruction
 			if re.prog[pc1 + 1].rep_max == pc1 {
 				re.prog[pc1 + 1].rep_max = 3
 			}
