@@ -131,7 +131,7 @@ pub fn new_http_proxy(raw_url string) ?HttpProxy {
 	}
 }
 
-fn (mut proxy HttpProxy) build_proxy_headers(request &Request, host string) string {
+fn (proxy HttpProxy) build_proxy_headers(request &Request, host string) string {
 	ua := request.user_agent
 	mut uheaders := []string{}
 
@@ -149,7 +149,7 @@ fn (mut proxy HttpProxy) build_proxy_headers(request &Request, host string) stri
 
 		encoded_authinfo := base64.encode(authinfo.bytes())
 
-		uheaders << 'Proxy-Authorization: Basic $encoded_authinfo'
+		uheaders << 'Proxy-Authorization: Basic $encoded_authinfo\r\n'
 	}
 
 	version := Version.v1_1

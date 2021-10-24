@@ -155,7 +155,7 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 
 	mut conn_layer := ProxyConnLayer{}
 
-	if req.use_proxy == true {
+	if req.use_proxy {
 		req.proxy.prepare(req, host) ?
 		conn_layer = req.proxy.conn
 	} else {
@@ -175,7 +175,11 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 		eprintln('> $s')
 	}
 	mut bytes := io.read_all(reader: conn_layer) ?
-	conn_layer.close() ?
+
+	if !req.use_proxy {
+		conn_layer.close() ?
+	}
+
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
 		eprintln('< $response_text')
