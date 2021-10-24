@@ -254,6 +254,9 @@ fn init_os_args(argc int, argv &&byte) []string {
 }
 
 pub fn ls(path string) ?[]string {
+	if path.len == 0 {
+		return error('ls() expects a folder, not an empty string')
+	}
 	mut res := []string{}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {

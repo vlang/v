@@ -449,11 +449,16 @@ pub fn join_path(base string, dirs ...string) string {
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
 pub fn walk_ext(path string, ext string) []string {
-	if !is_dir(path) {
-		return []
-	}
-	mut files := ls(path) or { return [] }
 	mut res := []string{}
+	impl_walk_ext(path, ext, mut res)
+	return res
+}
+
+pub fn impl_walk_ext(path string, ext string, mut out []string) {
+	if !is_dir(path) {
+		return
+	}
+	mut files := ls(path) or { return }
 	separator := if path.ends_with(path_separator) { '' } else { path_separator }
 	for file in files {
 		if file.starts_with('.') {
@@ -461,12 +466,11 @@ pub fn walk_ext(path string, ext string) []string {
 		}
 		p := path + separator + file
 		if is_dir(p) && !is_link(p) {
-			res << walk_ext(p, ext)
+			impl_walk_ext(p, ext, mut out)
 		} else if file.ends_with(ext) {
-			res << p
+			out << p
 		}
 	}
-	return res
 }
 
 // walk recursively traverses the given directory `path`.

@@ -84,12 +84,22 @@ fn test_open_file_binary() {
 // 	assert line1 == 'line 1\n'
 // 	assert line2 == 'line 2'
 // }
-fn test_create_file() {
+
+fn create_file(fpath string) ? {
+	mut f := os.create(fpath) ?
+	f.close()
+}
+
+fn create_and_write_to_file(fpath string, content string) ? {
+	mut f := os.create(fpath) ?
+	f.write_string(content) ?
+	f.close()
+}
+
+fn test_create_file() ? {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	mut f := os.create(filename) or { panic(err) }
-	f.write_string(hello) or { panic(err) }
-	f.close()
+	create_and_write_to_file(filename, hello) ?
 	assert hello.len == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
 }
@@ -173,6 +183,61 @@ fn test_write_and_read_bytes() {
 	file_read.close()
 	// We finally delete the test file.
 	os.rm(file_name) or { panic(err) }
+}
+
+fn test_ls() {
+	if x := os.ls('') {
+		assert false
+	} else {
+		assert true
+	}
+	if x := os.ls('.') {
+		assert x.len > 0
+		dump(x)
+	} else {
+		assert false
+	}
+}
+
+fn test_walk_ext() ? {
+	os.mkdir_all('myfolder/f1/f2/f3') ?
+	os.mkdir_all('myfolder/a1/a2/a3') ?
+	create_file('myfolder/f1/f2/f3/a.txt') ?
+	create_file('myfolder/f1/f2/f3/b.txt') ?
+	create_file('myfolder/f1/f2/f3/c.txt') ?
+	create_file('myfolder/f1/f2/f3/d.md') ?
+	create_file('myfolder/f1/0.txt') ?
+	create_file('myfolder/another.md') ?
+	create_file('myfolder/a1/a2/a3/x.txt') ?
+	create_file('myfolder/a1/a2/a3/y.txt') ?
+	create_file('myfolder/a1/a2/a3/z.txt') ?
+	create_file('myfolder/a1/1.txt') ?
+	create_file('myfolder/xyz.ini') ?
+	all := os.walk_ext('.', '')
+	assert all.len > 10
+	mut top := os.walk_ext('myfolder', '.txt')
+	top.sort()
+	assert top == [
+		'myfolder/a1/1.txt',
+		'myfolder/a1/a2/a3/x.txt',
+		'myfolder/a1/a2/a3/y.txt',
+		'myfolder/a1/a2/a3/z.txt',
+		'myfolder/f1/0.txt',
+		'myfolder/f1/f2/f3/a.txt',
+		'myfolder/f1/f2/f3/b.txt',
+		'myfolder/f1/f2/f3/c.txt',
+	]
+	mut subfolder_txts := os.walk_ext('myfolder/a1/a2', '.txt')
+	subfolder_txts.sort()
+	assert subfolder_txts == [
+		'myfolder/a1/a2/a3/x.txt',
+		'myfolder/a1/a2/a3/y.txt',
+		'myfolder/a1/a2/a3/z.txt',
+	]
+	mut mds := os.walk_ext('myfolder', '.md')
+	mds.sort()
+	assert mds == ['myfolder/another.md', 'myfolder/f1/f2/f3/d.md']
+	os.rmdir_all('myfolder') ?
 }
 
 fn test_create_and_delete_folder() {
@@ -346,8 +411,7 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 fn test_realpath_absolutepath_symlink() ? {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
-	mut f := os.create(file_name) ?
-	f.close()
+	create_file(file_name) ?
 	assert os.symlink(file_name, symlink_name) ?
 	rpath := os.real_path(symlink_name)
 	println(rpath)
@@ -406,13 +470,12 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	assert symlink_exists == false
 }
 
-fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	mut f := os.create(file) or { panic(err) }
-	f.close()
+	create_file(file) ?
 	os.symlink(file, symlink) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -421,13 +484,12 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	assert symlink_exists == false
 }
 
-fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	mut f := os.create(file) or { panic(err) }
-	f.close()
+	create_file(file) ?
 	os.link(file, symlink) or { panic(err) }
 	assert os.exists(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -470,13 +532,9 @@ fn test_symlink() {
 	}
 }
 
-fn test_is_executable_writable_readable() {
+fn test_is_executable_writable_readable() ? {
 	file_name := 'rwxfile.exe'
-	mut f := os.create(file_name) or {
-		eprintln('failed to create file $file_name')
-		return
-	}
-	f.close()
+	create_file(file_name) ?
 	$if !windows {
 		os.chmod(file_name, 0o600) or {} // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
@@ -634,12 +692,12 @@ cmd.close()
 	*/
 }
 
-fn test_posix_set_bit() {
+fn test_posix_set_bit() ? {
 	$if windows {
 		assert true
 	} $else {
-		fpath := '/tmp/permtest'
-		os.create(fpath) or { panic("Couldn't create file") }
+		fpath := 'permtest'
+		create_file(fpath) ?
 		os.chmod(fpath, 0o0777) or { panic(err) }
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
@@ -694,11 +752,11 @@ fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('ls')
 }
 
-fn test_truncate() {
+fn test_truncate() ? {
 	filename := './test_trunc.txt'
 	hello := 'hello world!'
-	mut f := os.create(filename) or { panic(err) }
-	f.write_string(hello) or { panic(err) }
+	mut f := os.create(filename) ?
+	f.write_string(hello) ?
 	f.close()
 	assert hello.len == os.file_size(filename)
 	newlen := u64(40000)
@@ -711,17 +769,14 @@ fn test_hostname() {
 	assert os.hostname().len > 2
 }
 
-fn test_glob() {
+fn test_glob() ? {
 	os.mkdir('test_dir') or { panic(err) }
 	for i in 0 .. 4 {
 		if i == 3 {
-			mut f := os.create('test_dir/test0_another') or { panic(err) }
-			f.close()
-			mut f1 := os.create('test_dir/test') or { panic(err) }
-			f1.close()
+			create_file('test_dir/test0_another') ?
+			create_file('test_dir/test') ?
 		} else {
-			mut f := os.create('test_dir/test' + i.str()) or { panic(err) }
-			f.close()
+			create_file('test_dir/test' + i.str()) ?
 		}
 	}
 	files := os.glob('test_dir/t*') or { panic(err) }
