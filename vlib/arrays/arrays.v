@@ -9,11 +9,13 @@ module arrays
 // - zip - concat two arrays into one map
 
 // in_bounds checks if provided index in bounds of array
+[direct_array_access]
 pub fn in_bounds<T>(a []T, index usize) bool {
 	return index < a.len
 }
 
 // get returns reference to value in array if index in bounds
+[direct_array_access]
 pub fn get<T>(a []T, index usize) ?&T {
 	if in_bounds<T>(a, index) {
 		return &a[index]
