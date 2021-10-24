@@ -220,6 +220,12 @@ fn remove_tree() {
 	os.rmdir_all('myfolder') or {}
 }
 
+fn normalise_paths(paths []string) []string {
+	mut res := paths.map(it.replace(os.path_separator, '/'))
+	res.sort()
+	return res
+}
+
 fn test_walk_ext() ? {
 	create_tree() ?
 	defer {
@@ -227,8 +233,7 @@ fn test_walk_ext() ? {
 	}
 	all := os.walk_ext('.', '')
 	assert all.len > 10
-	mut top := os.walk_ext('myfolder', '.txt')
-	top.sort()
+	top := normalise_paths(os.walk_ext('myfolder', '.txt'))
 	assert top == [
 		'myfolder/a1/1.txt',
 		'myfolder/a1/a2/a3/x.txt',
@@ -239,15 +244,13 @@ fn test_walk_ext() ? {
 		'myfolder/f1/f2/f3/b.txt',
 		'myfolder/f1/f2/f3/c.txt',
 	]
-	mut subfolder_txts := os.walk_ext('myfolder/a1/a2', '.txt')
-	subfolder_txts.sort()
+	subfolder_txts := normalise_paths(os.walk_ext('myfolder/a1/a2', '.txt'))
 	assert subfolder_txts == [
 		'myfolder/a1/a2/a3/x.txt',
 		'myfolder/a1/a2/a3/y.txt',
 		'myfolder/a1/a2/a3/z.txt',
 	]
-	mut mds := os.walk_ext('myfolder', '.md')
-	mds.sort()
+	mut mds := normalise_paths(os.walk_ext('myfolder', '.md'))
 	assert mds == ['myfolder/another.md', 'myfolder/f1/f2/f3/d.md']
 }
 
@@ -260,6 +263,7 @@ fn test_walk_with_context() ? {
 	os.walk_with_context('myfolder', &res, fn (mut res []string, fpath string) {
 		res << fpath
 	})
+	res = normalise_paths(res)
 	assert 'myfolder/f1/f2/f3/b.txt' in res
 	assert 'myfolder/another.md' in res
 }
