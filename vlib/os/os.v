@@ -473,9 +473,13 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 	}
 }
 
-// walk recursively traverses the given directory `path`.
-// When a file is encountred it will call the callback function with current file as argument.
+// walk traverses the given directory `path`.
+// When a file is encountred it will call the
+// callback function `f` with current file as argument.
 pub fn walk(path string, f fn (string)) {
+	if path.len == 0 {
+		return
+	}
 	if !is_dir(path) {
 		return
 	}
@@ -495,13 +499,39 @@ pub fn walk(path string, f fn (string)) {
 	return
 }
 
+// FnWalkContextCB is used to define the callback functions, passed to os.walk_context
+pub type FnWalkContextCB = fn (voidptr, string)
+
+// walk_with_context traverses the given directory `path`.
+// For each encountred file, it will call your `fcb` callback,
+// passing it the arbitrary `context` in its first parameter,
+// and the path to the file in its second parameter.
+pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
+	if path.len == 0 {
+		return
+	}
+	if !is_dir(path) {
+		return
+	}
+	mut files := ls(path) or { return }
+	mut local_path_separator := path_separator
+	if path.ends_with(path_separator) {
+		local_path_separator = ''
+	}
+	for file in files {
+		p := path + local_path_separator + file
+		if is_dir(p) && !is_link(p) {
+			walk_with_context(p, context, fcb)
+		} else {
+			fcb(context, p)
+		}
+	}
+	return
+}
+
 // log will print "os.log: "+`s` ...
 pub fn log(s string) {
-	//$if macos {
-	// Use NSLog() on macos
-	//} $else {
 	println('os.log: ' + s)
-	//}
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.

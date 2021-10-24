@@ -193,13 +193,12 @@ fn test_ls() {
 	}
 	if x := os.ls('.') {
 		assert x.len > 0
-		dump(x)
 	} else {
 		assert false
 	}
 }
 
-fn test_walk_ext() ? {
+fn create_tree() ? {
 	os.mkdir_all('myfolder/f1/f2/f3') ?
 	os.mkdir_all('myfolder/a1/a2/a3') ?
 	create_file('myfolder/f1/f2/f3/a.txt') ?
@@ -213,6 +212,17 @@ fn test_walk_ext() ? {
 	create_file('myfolder/a1/a2/a3/z.txt') ?
 	create_file('myfolder/a1/1.txt') ?
 	create_file('myfolder/xyz.ini') ?
+}
+
+fn remove_tree() {
+	os.rmdir_all('myfolder') or {}
+}
+
+fn test_walk_ext() ? {
+	create_tree() ?
+	defer {
+		remove_tree()
+	}
 	all := os.walk_ext('.', '')
 	assert all.len > 10
 	mut top := os.walk_ext('myfolder', '.txt')
@@ -237,7 +247,19 @@ fn test_walk_ext() ? {
 	mut mds := os.walk_ext('myfolder', '.md')
 	mds.sort()
 	assert mds == ['myfolder/another.md', 'myfolder/f1/f2/f3/d.md']
-	os.rmdir_all('myfolder') ?
+}
+
+fn test_walk_with_context() ? {
+	create_tree() ?
+	defer {
+		remove_tree()
+	}
+	mut res := []string{}
+	os.walk_with_context('myfolder', &res, fn (mut res []string, fpath string) {
+		res << fpath
+	})
+	assert 'myfolder/f1/f2/f3/b.txt' in res
+	assert 'myfolder/another.md' in res
 }
 
 fn test_create_and_delete_folder() {
