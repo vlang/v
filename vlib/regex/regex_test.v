@@ -389,9 +389,8 @@ fn test_regex(){
 		}
 
 		if start != to.s || end != to.e {
-			//println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			println("#$c [$to.src] q[$to.q] res[$tmp_str] base:[${to.s},${to.e}] $start, $end")
 			eprintln("ERROR!")
-			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
 		}	
@@ -430,8 +429,8 @@ fn test_regex(){
 			for ln:=0; ln < re.groups.len; ln++ {
 				if re.groups[ln] != to.cg[ln] {
 					eprintln("Capture group doesn't match:")
-					eprintln("true ground: [${to.cg}]")
-					eprintln("elaborated : [${re.groups}]")
+					eprintln("true ground: ${to.cg}")
+					eprintln("elaborated : ${re.groups}")
 					assert false
 				}
 			} 
@@ -551,7 +550,6 @@ fn test_regex(){
 		if start != to.s || end != to.e {
 			eprintln("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
 			eprintln("ERROR!")
-			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
 		}
@@ -705,4 +703,20 @@ fn test_groups_in_find(){
 		assert end == test_obj.e
 		assert re.groups == test_obj.res
 	}
+}
+
+const(
+	err_query_list = [
+		r'([a]|[b])*'
+	]
+)
+fn test_errors(){
+	mut count := 0
+	for query in err_query_list {
+		_, err, _ := regex.regex_base(query)
+		if err != regex.compile_ok {
+			count++
+		}
+	}
+	assert count == err_query_list.len
 }
