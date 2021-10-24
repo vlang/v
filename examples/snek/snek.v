@@ -55,6 +55,7 @@ mut:
 	best       HighScore
 	snake      []Pos
 	dir        Direction
+	last_dir   Direction
 	food       Pos
 	start_time i64
 	last_tick  i64
@@ -70,6 +71,7 @@ fn (mut app App) reset_game() {
 		Pos{0, 8},
 	]
 	app.dir = .right
+	app.last_dir = app.dir
 	app.food = Pos{10, 8}
 	app.start_time = time.ticks()
 	app.last_tick = time.ticks()
@@ -91,22 +93,22 @@ fn (mut app App) move_food() {
 fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
-			if app.dir != .down {
+			if app.last_dir != .down {
 				app.dir = .up
 			}
 		}
 		.s, .down {
-			if app.dir != .up {
+			if app.last_dir != .up {
 				app.dir = .down
 			}
 		}
 		.a, .left {
-			if app.dir != .right {
+			if app.last_dir != .right {
 				app.dir = .left
 			}
 		}
 		.d, .right {
-			if app.dir != .left {
+			if app.last_dir != .left {
 				app.dir = .right
 			}
 		}
@@ -150,6 +152,8 @@ fn on_frame(mut app App) {
 			}
 			app.snake << app.snake.last() + app.snake.last() - app.snake[app.snake.len - 2]
 		}
+
+		app.last_dir = app.dir
 	}
 	// drawing snake
 	for pos in app.snake {
