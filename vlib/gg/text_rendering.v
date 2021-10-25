@@ -39,10 +39,8 @@ pub fn system_font_path() string {
 		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
 		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
-	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
-		'FreeSans.ttf', 'DejaVuSans.ttf']
 	$if macos {
-		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
+		fonts := ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
 			'/Library/Fonts/Arial.ttf']
 		for font in fonts {
 			if os.is_file(font) {
@@ -78,19 +76,18 @@ pub fn system_font_path() string {
 			}
 		}
 	}
-	s := os.execute('fc-list')
-	if s.exit_code != 0 {
-		panic('failed to fetch system fonts')
-	}
-	system_fonts := s.output.split('\n')
-	for line in system_fonts {
-		for font in fonts {
-			if line.contains(font) && line.contains(':') {
-				res := line.all_before(':')
-				debug_font_println('Using font "$res"')
-				return res
+	mut fm := os.execute('fc-match -v')
+	if fm.exit_code == 0 {
+		lines := fm.output.split('\n')
+		for l in lines {
+			if l.contains('file:') {
+				font := l.find_between('"', '"')
+				debug_font_println('Using font "$font"')
+				return font
 			}
 		}
+	} else {
+		panic('fc-match failed to fetch system font')
 	}
 	panic('failed to init the font')
 }
