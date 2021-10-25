@@ -1102,6 +1102,10 @@ The same optional check applies to arrays:
 arr := [1, 2, 3]
 large_index := 999
 val := arr[large_index] or { panic('out of bounds') }
+println(val)
+// you can also do this, if you want to *propagate* the access error:
+val2 := arr[333] ?
+println(val2)
 ```
 
 ## Module imports
