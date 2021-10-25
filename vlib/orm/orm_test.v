@@ -5,11 +5,12 @@ import time
 import sqlite
 
 struct Module {
-	id           int    [primary; sql: serial]
+	id           int       [primary; sql: serial]
 	name         string
 	nr_downloads int
 	test_id      u64
 	user         User
+	created      time.Time
 }
 
 [table: 'userlist']
@@ -330,4 +331,10 @@ fn test_orm_sqlite() {
 	}
 
 	assert test_id_mod.test_id == 11
+
+	t := time.now()
+
+	sql db {
+		update Module set created = t where id == 0
+	}
 }
