@@ -184,20 +184,6 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 							break
 						}
 					}
-					'u32binary' {
-						if set.r != set.aa.u32binary(set.bb) {
-							eprintln('$algo failed ?')
-							clock.fail()
-							break
-						}
-					}
-					'u64binary' {
-						if set.r != set.aa.u64binary(set.bb) {
-							eprintln('$algo failed ?')
-							clock.fail()
-							break
-						}
-					}
 					else {
 						eprintln('unknown algo was "$algo"')
 						continue
