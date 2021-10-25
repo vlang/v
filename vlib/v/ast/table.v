@@ -1690,7 +1690,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 
 						parent_sym := t.get_type_symbol(parent_info.parent_type)
 						for method in parent_sym.methods {
-							t.register_fn_concrete_types(method.name, info.concrete_types)
+							if method.generic_names.len == info.concrete_types.len {
+								t.register_fn_concrete_types(method.name, info.concrete_types)
+							}
 						}
 					} else {
 						util.verror('generic error', 'the number of generic types of struct `$parent.name` is inconsistent with the concrete types')
