@@ -1771,10 +1771,18 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 						}
 						for i in 0 .. variants.len {
-							if t_typ := t.resolve_generic_to_concrete(variants[i], generic_names,
-								info.concrete_types)
-							{
-								variants[i] = t_typ
+							if variants[i].has_flag(.generic) {
+								sym := t.get_type_symbol(variants[i])
+								if sym.kind == .struct_ && variants[i].idx() != info.parent_idx {
+									variants[i] = t.unwrap_generic_type(variants[i], generic_names,
+										info.concrete_types)
+								} else {
+									if t_typ := t.resolve_generic_to_concrete(variants[i],
+										generic_names, info.concrete_types)
+									{
+										variants[i] = t_typ
+									}
+								}
 							}
 						}
 						typ.info = SumType{
