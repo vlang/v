@@ -110,7 +110,7 @@ fn main() {
 		'\n',
 		'This test covers multiplied primes up-to a length of 300-char-digits in ',
 		'a decimal-string. This equals (188-byte) == 47 x u32-values.',
-		'edit/change primes in ./vlib/math/euclid/primes.toml',
+		'edit/change primes in $prime.toml_path',
 		'Improvements & critique are welcome : \n',
 		'https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/',
 	].join('\n')
