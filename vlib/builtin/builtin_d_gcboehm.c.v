@@ -6,7 +6,6 @@ $if freebsd {
 	#flag @VEXEROOT/thirdparty/libgc/gc.o
 }
 
-
 $if static_boehm ? {
 	$if macos {
 		#flag -I$first_existing("/opt/homebrew/include",     "/usr/local/include")
