@@ -2,6 +2,9 @@ module prime
 
 import rand
 import toml
+import os
+
+pub const toml_path = 'vlib/v/tests/bench/math_big_gcd/primes.toml'
 
 pub interface DataI {
 	to_primeset() PrimeSet
@@ -71,10 +74,10 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	fp := @VROOT + '/vlib/math/euclid/primes.toml'
+	fp := os.join_path(@VROOT, toml_path)
 
 	tm_doc := toml.parse_file(fp) or {
-		err_msg := 'expected @VROOT/vlib/math/euclid/primes.toml'
+		err_msg := 'expected $fp'
 		eprintln(err_msg)
 		panic(err)
 	}

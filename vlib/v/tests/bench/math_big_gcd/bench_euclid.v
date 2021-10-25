@@ -1,7 +1,10 @@
+module main
+
+// NB: this benchmark is preferable to be compiled with: `v -prod -cg -gc boehm bench_euclid.v`
 import math.big
 import benchmark
 import os
-import math.euclid.prime {
+import v.tests.bench.math_big_gcd.prime {
 	DataI,
 	PrimeCfg,
 	PrimeSet,
@@ -22,7 +25,7 @@ const (
 )
 
 fn main() {
-	fp := @VROOT + '/vlib/math/euclid/primes.toml'
+	fp := os.join_path(@VROOT, prime.toml_path)
 	if !prime_file_exists(fp) {
 		panic('expected file |$fp| - not found.')
 	}
@@ -103,7 +106,7 @@ fn main() {
 		'The gcd_binary-algo seems to be perform better, the larger the numbers/buffers get.',
 		'On my machine, i see consistent gains between ~10-30-percent with :',
 		'\n',
-		'v -prod -cg -v -gc boehm bench_euclid.v',
+		'v -prod -cg -gc boehm bench_euclid.v',
 		'\n',
 		'This test covers multiplied primes up-to a length of 300-char-digits in ',
 		'a decimal-string. This equals (188-byte) == 47 x u32-values.',
