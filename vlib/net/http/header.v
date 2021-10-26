@@ -432,17 +432,16 @@ pub fn (mut h Header) delete_custom(key string) {
 	}
 }
 
+[params]
 pub struct HeaderCoerceConfig {
 	canonicalize bool
 }
 
 // coerce coerces data in the Header by joining keys that match
 // case-insensitively into one entry.
-pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
-	canon := flags.any(it.canonicalize)
-
+pub fn (mut h Header) coerce(flags HeaderCoerceConfig) {
 	for kl, data_keys in h.keys {
-		master_key := if canon { canonicalize(kl) } else { data_keys[0] }
+		master_key := if flags.canonicalize { canonicalize(kl) } else { data_keys[0] }
 
 		// save master data
 		master_data := h.data[master_key]
@@ -465,13 +464,14 @@ pub fn (h Header) contains(key CommonHeader) bool {
 	return h.contains_custom(key.str())
 }
 
+[params]
 pub struct HeaderQueryConfig {
 	exact bool
 }
 
 // contains_custom returns whether the custom header key exists in the map.
-pub fn (h Header) contains_custom(key string, flags ...HeaderQueryConfig) bool {
-	if flags.any(it.exact) {
+pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
+	if flags.exact {
 		return key in h.data
 	}
 	return key.to_lower() in h.keys
@@ -485,9 +485,9 @@ pub fn (h Header) get(key CommonHeader) ?string {
 
 // get_custom gets the first value for the custom header, or none if
 // the key does not exist.
-pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
+pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) ?string {
 	mut data_key := key
-	if !flags.any(it.exact) {
+	if !flags.exact {
 		// get the first key from key metadata
 		k := key.to_lower()
 		if h.keys[k].len == 0 {
@@ -518,8 +518,8 @@ pub fn (h Header) values(key CommonHeader) []string {
 }
 
 // custom_values gets all values for the custom header.
-pub fn (h Header) custom_values(key string, flags ...HeaderQueryConfig) []string {
-	if flags.any(it.exact) {
+pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
+	if flags.exact {
 		return h.data[key]
 	}
 	// case insensitive lookup
