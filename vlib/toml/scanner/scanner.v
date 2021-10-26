@@ -19,25 +19,18 @@ pub:
 	config Config
 	text   string // the input TOML text
 mut:
-	col     int  // current column number (x coordinate)
+	col     int // current column number (x coordinate)
 	line_nr int = 1 // current line number (y coordinate)
-	pos     int  // current flat/index position in the `text` field
-	mode    Mode // sub-mode of the scanner
+	pos     int // current flat/index position in the `text` field
 }
 
 // State is a read-only copy of the scanner's internal state.
 // See also `Scanner.state()`.
 pub struct State {
 pub:
-	col     int  // current column number (x coordinate)
+	col     int // current column number (x coordinate)
 	line_nr int = 1 // current line number (y coordinate)
-	pos     int  // current flat/index position in the `text` field
-	mode    Mode // sub-mode of the scanner
-}
-
-enum Mode {
-	normal
-	inside_string
+	pos     int // current flat/index position in the `text` field
 }
 
 // Config is used to configure a Scanner instance.
@@ -616,6 +609,5 @@ pub fn (s Scanner) state() State {
 		col: s.col
 		line_nr: s.line_nr
 		pos: s.pos
-		mode: s.mode
 	}
 }
