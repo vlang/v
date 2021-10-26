@@ -298,7 +298,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' can not escape whitespaces before escapes in multi-line strings (`\\ \\`) at `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
 					}
-					if next_ch in [`\t`, `\n`, ` `] {
+					if next_ch in [`\t`, `\r`, `\n`, ` `] {
 						s.next()
 						continue
 					}
