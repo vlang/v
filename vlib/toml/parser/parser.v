@@ -59,6 +59,9 @@ fn (mut p Parser) run_checker() ? {
 			scanner: p.scanner
 		}
 		chckr.check(p.root_map) ?
+		for comment in p.ast_root.comments {
+			chckr.check_comment(comment) ?
+		}
 	}
 }
 
@@ -240,8 +243,8 @@ pub fn (mut p Parser) root_table() ? {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
 		match p.tok.kind {
 			.hash {
-				// TODO table.comments << p.comment()
 				c := p.comment()
+				p.ast_root.comments << c
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
 			}
 			//.whitespace, .tab, .nl {

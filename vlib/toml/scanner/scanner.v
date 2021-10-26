@@ -174,9 +174,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.quoted, ident_string, ident_string.len)
 			}
 			`#` {
-				start := s.pos //+ 1
-				s.ignore_line() ?
-				hash := s.text[start..s.pos]
+				hash := s.ignore_line() ?
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
 			}
@@ -318,18 +316,14 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 
 // ignore_line forwards the scanner to the end of the current line.
 [direct_array_access; inline]
-fn (mut s Scanner) ignore_line() ? {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL')
+fn (mut s Scanner) ignore_line() ?string {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
+	start := s.pos
 	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
-		// Check for control characters (allow TAB)
-		if util.is_illegal_ascii_control_character(c) {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' control character `$c.hex()` is not allowed ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
-		}
 		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
-		continue
 	}
+	return s.text[start..s.pos]
 }
 
 // inc_line_number increases the internal line number.

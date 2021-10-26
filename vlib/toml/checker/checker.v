@@ -5,9 +5,10 @@ module checker
 
 import toml.ast
 import toml.ast.walker
-// import toml.util
+import toml.util
 import toml.token
 import toml.scanner
+import encoding.utf8
 
 pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
 
@@ -255,9 +256,10 @@ fn (c Checker) check_quoted(q ast.Quoted) ? {
 	triple_quote := quote + quote + quote
 	if q.is_multiline && lit.ends_with(triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' string values like "$lit" is has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
+			' string values like "$lit" has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
 	}
 	c.check_quoted_escapes(q) ?
+	c.check_utf8_validity(q) ?
 }
 
 // check_quoted_escapes returns an error for any disallowed escape sequences.
@@ -312,5 +314,39 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 				}
 			}
 		}
+	}
+}
+
+// check_utf8_string returns an error if `str` is not valid UTF8.
+fn (c Checker) check_utf8_validity(q ast.Quoted) ? {
+	lit := q.text
+	if !utf8.validate_str(lit) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' the string value "$lit" is not valid UTF-8 in ...${c.excerpt(q.pos)}...')
+	}
+}
+
+pub fn (c Checker) check_comment(cmt ast.Comment) ? {
+	lit := cmt.text
+	// Setup a scanner in stack memory for easier navigation.
+	mut s := scanner.new_simple(lit) ?
+	for {
+		ch := s.next()
+		if ch == -1 {
+			break
+		}
+		ch_byte := byte(ch)
+		// Check for control characters (allow TAB)
+		if util.is_illegal_ascii_control_character(ch_byte) {
+			st := s.state()
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' control character `$ch_byte.hex()` is not allowed ($st.line_nr,$st.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(st.pos, 10)}...')
+		}
+	}
+
+	// Check for bad UTF-8 encoding
+	if !utf8.validate_str(lit) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' comment "$lit" is not valid UTF-8 in ...${c.excerpt(cmt.pos)}...')
 	}
 }
