@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module json
 
+#flag -lm
+
 #flag -I @VEXEROOT/thirdparty/cJSON
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
