@@ -1853,6 +1853,7 @@ V doesn't have default function arguments or named arguments, for that trailing 
 literal syntax can be used instead:
 
 ```v
+[params]
 struct ButtonConfig {
 	text        string
 	is_disabled bool
@@ -1886,6 +1887,13 @@ new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
 This only works for functions that take a struct for the last argument.
+
+NB: the `[params]` tag is used to tell V, that the trailing struct parameter
+can be ommited *entirely*, so that you can write `button := new_button()`. 
+Without it, you have to specify *at least* one of the field names, even if it
+has its default value, otherwise the compiler will produce this error message,
+when you call the function with no parameters:
+`error: expected 1 arguments, but got 0`.
 
 ### Access modifiers
 
