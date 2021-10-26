@@ -61,6 +61,7 @@ fn has_repeating(str string, repeats []rune) bool {
 
 fn (c Checker) check_number(num ast.Number) ? {
 	lit := num.text
+	lit_lower_case := lit.to_lower()
 	if lit in ['0', '0.0', '+0', '-0', '+0.0', '-0.0', '0e0', '+0e0', '-0e0', '0e00'] {
 		return
 	}
@@ -78,8 +79,8 @@ fn (c Checker) check_number(num ast.Number) ? {
 
 	mut hex_bin_oct := is_hex_bin_oct(lit)
 	mut is_bin, mut is_oct, mut is_hex := false, false, false
-	is_float := lit.to_lower().all_before('e').contains('.')
-	has_exponent_notation := lit.to_lower().contains('e')
+	is_float := lit_lower_case.all_before('e').contains('.')
+	has_exponent_notation := lit_lower_case.contains('e')
 	float_decimal_index := lit.index('.') or { -1 }
 	// mut is_first_digit := byte(lit[0]).is_digit()
 	mut ascii := byte(lit[0]).ascii_str()
@@ -160,15 +161,16 @@ fn (c Checker) check_number(num ast.Number) ? {
 	}
 
 	if has_exponent_notation {
-		if lit.to_lower().all_after('e').starts_with('_') {
+		if lit_lower_case.all_after('e').starts_with('_')
+			|| lit_lower_case.all_before('e').ends_with('_') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' the exponent in "$lit" can not start with an underscore in ...${c.excerpt(num.pos)}...')
+				' the exponent in "$lit" can not start nor end with an underscore in ...${c.excerpt(num.pos)}...')
 		}
-		if lit.to_lower().all_after('e').contains('.') {
+		if lit_lower_case.all_after('e').contains('.') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (with exponent) can not have a decimal point in ...${c.excerpt(num.pos)}...')
 		}
-		if !is_hex && lit.to_lower().count('e') > 1 {
+		if !is_hex && lit_lower_case.count('e') > 1 {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (with exponent) can only have one exponent in ...${c.excerpt(num.pos)}...')
 		}
@@ -189,9 +191,9 @@ fn (c Checker) check_number(num ast.Number) ? {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (float) can not have underscores before or after the decimal point in ...${c.excerpt(num.pos)}...')
 		}
-		if lit.contains('e.') || lit.contains('.e') || lit.contains('E.') || lit.contains('.E') {
+		if lit_lower_case.contains('e.') || lit.contains('.e') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" (float) can not have underscores before or after the decimal point in ...${c.excerpt(num.pos)}...')
+				' numbers like "$lit" (float) can not have decimal points on either side of the exponent notation in ...${c.excerpt(num.pos)}...')
 		}
 	} else {
 		if lit.len > 1 && lit.starts_with('0') && lit[1] !in [`b`, `o`, `x`] {
