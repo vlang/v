@@ -38,14 +38,10 @@ const (
 		'datetime/no-leads-with-milli.toml',
 		'datetime/no-leads.toml',
 		// Inline table
-		'inline-table/empty.toml',
-		'inline-table/double-comma.toml',
-		'inline-table/trailing-comma.toml',
 		'inline-table/linebreak-4.toml',
 		'inline-table/linebreak-3.toml',
 		'inline-table/linebreak-1.toml',
 		'inline-table/linebreak-2.toml',
-		'inline-table/no-comma.toml',
 		// Key
 		'key/duplicate.toml',
 		'key/after-table.toml',
