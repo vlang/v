@@ -19,9 +19,6 @@ const (
 		'string/basic-out-of-range-unicode-escape-1.toml',
 		'string/basic-out-of-range-unicode-escape-2.toml',
 		'string/bad-uni-esc.toml',
-		// Encoding
-		'encoding/bad-utf8-in-comment.toml',
-		'encoding/bad-utf8-in-string.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
