@@ -326,7 +326,7 @@ fn (c Checker) check_utf8_validity(q ast.Quoted) ? {
 	}
 }
 
-fn (c Checker) check_comment(cmt ast.Comment) ? {
+pub fn (c Checker) check_comment(cmt ast.Comment) ? {
 	lit := cmt.text
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple(lit) ?
