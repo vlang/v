@@ -320,7 +320,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 [direct_array_access; inline]
 fn (mut s Scanner) ignore_line() ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL')
-	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
+	for c := s.at(); c != -1 && c != `\n` && c != 0x0d; c = s.at() {
 		// Check for control characters (allow TAB)
 		if util.is_illegal_ascii_control_character(c) {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
