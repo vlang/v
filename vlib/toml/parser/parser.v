@@ -315,9 +315,18 @@ fn (p Parser) excerpt() string {
 pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
 
+	mut check_for_comma_unless_rcbr := false
 	for p.tok.kind != .eof {
 		p.next() ?
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+
+		if check_for_comma_unless_rcbr {
+			if p.tok.kind != .rcbr {
+				p.expect(.comma) ?
+			}
+			check_for_comma_unless_rcbr = false
+		}
+
 		match p.tok.kind {
 			.hash {
 				// TODO table.comments << p.comment()
@@ -328,11 +337,21 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			//	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "$p.tok.kind "$p.tok.lit"')
 			//}
 			.comma {
+				if p.peek_tok.kind == .rcbr {
+					p.next() ? // Forward to the peek_tok
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+				}
+				if p.peek_tok.kind == .comma {
+					p.next() ? // Forward to the peek_tok
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+				}
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
 				continue
 			}
 			.rcbr {
-				// ']' bracket
+				// '}' bracket
 				return
 			}
 			.bare, .quoted, .boolean, .number, .underscore {
@@ -356,23 +375,21 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' dead end at "$p.tok.kind" "$p.tok.lit"')
 				}
+				check_for_comma_unless_rcbr = true
 			}
 			.lsbr {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
-			}
-			.eof {
-				return
 			}
 			else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' could not parse $p.tok.kind ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..." token \n$p.tok')
 			}
 		}
-		if p.peek_tok.kind == .lsbr {
-			return
-		}
 	}
+	// Make sure the inline-table actually use the return at .rcbr match branch.
+	return error(@MOD + '.' + @STRUCT + '.' + @FN +
+		' unexpected end of inline-table "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
