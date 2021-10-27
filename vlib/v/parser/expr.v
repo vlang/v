@@ -18,7 +18,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		tok_pos := p.tok.position()
 		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr($precedence)')
 	}
-	// println('\n\nparser.expr()')
+
 	mut node := ast.empty_expr()
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
