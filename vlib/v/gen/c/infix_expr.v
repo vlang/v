@@ -163,14 +163,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('*')
 				}
 				if node.left is ast.ArrayInit {
-					s := g.typ(left.unaliased)
-					g.write('($s)')
+					if !node.left.has_it {
+						s := g.typ(left.unaliased)
+						g.write('($s)')
+					}
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if node.right is ast.ArrayInit {
-					s := g.typ(right.unaliased)
-					g.write('($s)')
+					if !node.right.has_it {
+						s := g.typ(right.unaliased)
+						g.write('($s)')
+					}
 				}
 				g.expr(node.right)
 				g.write(')')
