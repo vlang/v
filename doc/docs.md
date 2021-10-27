@@ -4172,7 +4172,7 @@ v install [module]
 v install ui
 ```
 
-Modules could be installed directly from git or mercurial repositories.
+Modules can be installed directly from git or mercurial repositories.
 ```powershell
 v install [--git|--hg] [url]
 ```
@@ -4260,7 +4260,8 @@ Modules are up to date.
 	mymodule.v
 	```
 
-	Check that your module name is used in `mymodule.v`:
+	The name of your module should be used with the `module` directive
+	at the top of all files in your module. For `mymodule.v`:
 	```v
 	module mymodule
 	
