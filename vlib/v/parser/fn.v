@@ -315,10 +315,15 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// <T>
 	mut generic_names := p.parse_generic_names()
 	// generic names can be infer with receiver's generic names
-	if is_method && rec.typ.has_flag(.generic) && generic_names.len == 0 {
+	if is_method && rec.typ.has_flag(.generic) {
 		sym := p.table.get_type_symbol(rec.typ)
 		if sym.info is ast.Struct {
-			generic_names = sym.info.generic_types.map(p.table.get_type_symbol(it).name)
+			rec_generic_names := sym.info.generic_types.map(p.table.get_type_symbol(it).name)
+			for gname in rec_generic_names {
+				if gname !in generic_names {
+					generic_names << gname
+				}
+			}
 		}
 	}
 	// Args
