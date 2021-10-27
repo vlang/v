@@ -3717,6 +3717,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					right.pos)
 			}
 		}
+		if right is ast.Ident {
+			if right.is_mut {
+				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
+			}
+		}
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
