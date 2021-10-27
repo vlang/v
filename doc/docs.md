@@ -487,7 +487,7 @@ assert s.len == 10
 arr := s.bytes() // convert `string` to `[]byte`
 assert arr.len == 10
 
-s2 := string(arr) // convert `[]byte` to `string`
+s2 := arr.bytestr() // convert `[]byte` to `string`
 assert s2 == s
 ```
 
