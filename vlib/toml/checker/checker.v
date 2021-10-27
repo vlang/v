@@ -40,15 +40,23 @@ fn (c Checker) visit(value &ast.Value) ? {
 	}
 }
 
-// excerpt returns a string of the characters surrounding`
+// excerpt returns a string of the token's surroundings
 fn (c Checker) excerpt(tp token.Position) string {
 	return c.scanner.excerpt(tp.pos, 10)
 }
 
-fn is_hex_bin_oct(hbo string) bool {
+// is_hex_bin_oct_prefixed returns true if `hbo` has either
+// of: `0x`, `0o` or `0b` - as a prefix.
+// Example: assert is_hex_bin_oct_prefixed('0xAF') == true
+// Example: assert is_hex_bin_oct_prefixed('xAF') == false
+fn is_hex_bin_oct_prefixed(hbo string) bool {
 	return hbo.len > 2 && (hbo.starts_with('0x') || hbo.starts_with('0o') || hbo.starts_with('0b'))
 }
 
+// has_repeating returns true if `str` has one or more repeating
+// `rune` characters provided in `repeats`.
+// Example: assert has_repeating('hello__v.', [`.`,`_`]) == true
+// Example: assert has_repeating('hello_v.', [`.`,`_`]) == false
 fn has_repeating(str string, repeats []rune) bool {
 	for i, r in str {
 		if r in repeats && i + 1 < str.len {
@@ -60,6 +68,7 @@ fn has_repeating(str string, repeats []rune) bool {
 	return false
 }
 
+// check_number returns an error if `num` is not a valid TOML number.
 fn (c Checker) check_number(num ast.Number) ? {
 	lit := num.text
 	lit_lower_case := lit.to_lower()
@@ -78,7 +87,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 		}
 	}
 
-	mut hex_bin_oct := is_hex_bin_oct(lit)
+	mut hex_bin_oct := is_hex_bin_oct_prefixed(lit)
 	mut is_bin, mut is_oct, mut is_hex := false, false, false
 	is_float := lit_lower_case.all_before('e').contains('.')
 	has_exponent_notation := lit_lower_case.contains('e')
@@ -89,7 +98,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 	mut lit_sans_sign := lit
 	if is_sign_prefixed { // +/- ...
 		lit_sans_sign = lit[1..]
-		hex_bin_oct = is_hex_bin_oct(lit_sans_sign)
+		hex_bin_oct = is_hex_bin_oct_prefixed(lit_sans_sign)
 		if hex_bin_oct {
 			ascii = byte(lit[0]).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -205,6 +214,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 	}
 }
 
+// is_valid_binary_literal returns true if `num` is valid TOML binary literal.
 fn (c Checker) is_valid_binary_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
@@ -217,6 +227,7 @@ fn (c Checker) is_valid_binary_literal(num string) bool {
 	return true
 }
 
+// is_valid_octal_literal returns true if `num` is valid TOML octal literal.
 fn (c Checker) is_valid_octal_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
@@ -229,6 +240,7 @@ fn (c Checker) is_valid_octal_literal(num string) bool {
 	return true
 }
 
+// is_valid_hex_literal returns true if `num` is valid TOML hexadecimal literal.
 fn (c Checker) is_valid_hex_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
@@ -241,6 +253,7 @@ fn (c Checker) is_valid_hex_literal(num string) bool {
 	return true
 }
 
+// check_boolean returns an error if `b` is not a valid TOML boolean.
 fn (c Checker) check_boolean(b ast.Bool) ? {
 	lit := b.text
 	if lit in ['true', 'false'] {
@@ -250,6 +263,7 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 		' boolean values like "$lit" can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
 }
 
+// check_quoted returns an error if `q` is not a valid quoted TOML string.
 fn (c Checker) check_quoted(q ast.Quoted) ? {
 	lit := q.text
 	quote := q.quote.ascii_str()
@@ -317,7 +331,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 	}
 }
 
-// check_utf8_string returns an error if `str` is not valid UTF8.
+// check_utf8_string returns an error if `str` is not valid UTF-8.
 fn (c Checker) check_utf8_validity(q ast.Quoted) ? {
 	lit := q.text
 	if !utf8.validate_str(lit) {
