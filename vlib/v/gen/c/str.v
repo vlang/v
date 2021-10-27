@@ -120,7 +120,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
 				g.write('($s')
-				if expr.has_default && expr.has_it {
+				if expr.has_it {
 					g.write('*')
 				}
 				g.write(')')
