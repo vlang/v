@@ -508,15 +508,32 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
 	mut arr := []ast.Value{}
 	p.expect(.lsbr) ? // '[' bracket
+	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
 		p.next() ?
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
+
+		if previous_token_was_value {
+			if p.tok.kind != .rsbr && p.tok.kind != .hash {
+				p.expect(.comma) ?
+			}
+			previous_token_was_value = false
+		}
+
 		match p.tok.kind {
 			.boolean {
 				arr << ast.Value(p.boolean() ?)
+				previous_token_was_value = true
 			}
 			.comma {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma array value seperator "$p.tok.lit"')
+				// Trailing commas before array close is allowed
+				// so we skip `if p.peek_tok.kind == .rsbr { ... }`
+				if p.peek_tok.kind == .comma {
+					p.next() ? // Forward to the peek_tok
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+				}
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
 				continue
 			}
 			.eof {
@@ -524,25 +541,29 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 					' could not parse array. Reached EOF "$p.tok.kind" "$p.tok.lit" ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..."')
 			}
 			.hash {
-				// TODO array.comments << p.comment()
 				c := p.comment()
+				p.ast_root.comments << c
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
 			}
 			.lcbr {
 				mut t := map[string]ast.Value{}
 				p.inline_table(mut t) ?
-				ast.Value(t)
+				arr << ast.Value(t)
+				previous_token_was_value = true
 			}
 			.number {
 				val := p.number_or_date() ?
 				arr << val
+				previous_token_was_value = true
 			}
 			.quoted {
 				arr << ast.Value(p.quoted())
+				previous_token_was_value = true
 			}
 			.lsbr {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "$p.tok.kind" "$p.tok.lit"')
 				arr << ast.Value(p.array() ?)
+				previous_token_was_value = true
 			}
 			.rsbr {
 				break
