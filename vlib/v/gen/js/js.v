@@ -2718,7 +2718,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 fn (mut g JsGen) gen_deref_ptr(ty ast.Type) {
 	mut t := ty
 	for t.is_ptr() {
-		g.write('.val')
+		g.write('.valueOf()')
 		t = t.deref()
 	}
 }
