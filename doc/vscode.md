@@ -19,19 +19,19 @@ provides V language support for Visual Studio Code.
 * Linter (Workspace files only).
 [more](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
 
-**Hint:** This extention will not add the V compiler! Information on how to
+**Hint:** This extension will not add the V compiler! Information on how to
 [install V compiler](https://github.com/vlang/v/blob/master/doc/docs.md#install-from-source)
 on your operating system.
 
-### Setup Extention
+### Setup Extension
 
-Install [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang).
+Install [V VS Code Extension](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang).
 
 ## Visual Debugging
 
 ![screenshot visual debugger](https://github.com/vlang/v/blob/master/doc/img/vscode-debugger.png?raw=true)
 
-The [C/C++ Extention](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
+The [C/C++ Extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 for Visual Studio Code provides visual conditional debugging.
 
 **Features:**
@@ -47,7 +47,7 @@ edit the variable.
 
 ### Setup Debugging
 
-1. Install the [C/C++ Extention](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
+1. Install the [C/C++ Extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 2. Open `RUN AND DEBUG` panel (Debug Icon in left panel).
 3. Click on `Show` all automatic debug configurations.
 4. Select `Add config`.
@@ -104,4 +104,4 @@ More Options are explained in the [docs](docs.md#debugging).
 `> (lldb) Start`, or use `F5` to launch your application in debug mode.
 
 For all options look at the official 
-[C/C++ Extention documentation](https://code.visualstudio.com/docs/cpp/cpp-debug).
+[C/C++ Extension documentation](https://code.visualstudio.com/docs/cpp/cpp-debug).
