@@ -63,7 +63,7 @@ pub interface INode {
 	typ() NodeType
 }
 
-pub fn (elem Node) add_event_listener(event string, cb fn (IEventTarget, IEvent)) {
+pub fn (elem Node) add_event_listener(event string, cb EventCallback) {
 	#elem.node.addEventListener(event.str, function (event) { let e = jsdom__dispatch_event_target(this);
 	#let ev = jsdom__dispatch_event(event); ev.event = event;
 	#return cb(e,ev)
@@ -174,3 +174,13 @@ fn dispatch_event_target(target JS.EventTarget) IEventTarget {
 }
 
 pub type EventCallback = fn (_ IEventTarget, _ IEvent)
+
+pub const (
+	document = Document{}
+	window   = Window{}
+)
+
+fn init() {
+	#jsdom__document.node = document;
+	#jsdom__window.node = window;
+}

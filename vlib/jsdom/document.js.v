@@ -120,14 +120,6 @@ mut:
 	hash     JS.String
 }
 
-pub const (
-	document = Document{}
-)
-
-fn init() {
-	#jsdom__document.node = document;
-}
-
 pub fn (doc Document) active_element() Element {
 	mut elem := Element{}
 	#elem.node = doc.node.activeElement;
