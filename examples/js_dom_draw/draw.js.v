@@ -28,6 +28,7 @@ fn draw_line(context ctx.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 in
 }
 
 fn main() {
+	/*
 	document := jsdom.document
 
 	elem := document.get_element_by_id('myButton') ?
@@ -69,4 +70,5 @@ fn main() {
 	elem.add_event_listener('click', fn [context, canv] (_ jsdom.IEventTarget, _ jsdom.IEvent) {
 		context.clear_rect(0, 0, canv.width(), canv.height())
 	})
+	*/
 }
