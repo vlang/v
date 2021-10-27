@@ -164,7 +164,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			g.expr(it.left)
 			mut ltyp := it.left_type
 			for ltyp.is_ptr() {
-				g.write('.val')
+				g.write('.valueOf()')
 				ltyp = ltyp.deref()
 			}
 			g.write('.')
