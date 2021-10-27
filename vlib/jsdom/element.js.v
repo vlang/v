@@ -19,26 +19,30 @@ pub struct JS.Element {
 }
 
 pub struct Element {
-	elem JS.Element [noinit]
+	Node
 }
 
 pub fn (e Element) str() string {
 	res := ''
-	#res.str = e.elem + ''
+	#res.str = e.node + ''
 
 	return res
 }
 
+pub fn (elem Element) typ() NodeType {
+	return .element
+}
+
 pub fn (e Element) class_name() string {
 	res := ''
-	#res.str = e.elem.className
+	#res.str = e.node.className
 
 	return res
 }
 
 pub fn (e Element) class_list() DOMTokenList {
 	list := DOMTokenList{}
-	#list.list = e.elem.classList
+	#list.list = e.node.classList
 
 	return list
 }
@@ -46,14 +50,44 @@ pub fn (e Element) class_list() DOMTokenList {
 // node casts `Element` back to `Node`.
 pub fn (elem Element) node() Node {
 	node := Node{}
-	#node.node = elem.elem
+	#node.node = elem.node
 
 	return node
 }
 
-pub fn (elem Element) on_click(cb fn (Element, MouseEvent)) {
-	#elem.elem.onclick = function (event) { let e = new jsdom__Element({});
-	#let ev = new jsdom__MouseEvent({}); ev.event = event;
-	#e.elem = this; return cb(e,ev)
-	#}
+pub fn (elem Element) add_event_listener(event string, cb EventCallback) {
+	#elem.node.addEventListener(event.str, function (event) { let e = jsdom__dispatch_event_target(this);
+	#let ev = jsdom__dispatch_event(event); ev.event = event;
+	#return cb(e,ev)
+	#});
+}
+
+pub interface IElement {
+	INode
+}
+
+pub struct HTMLElement {
+	Element
+}
+
+pub fn (elem HTMLElement) typ() NodeType {
+	return .element
+}
+
+pub fn (elem HTMLElement) access_key() string {
+	res := ''
+	#res.str = elem.node.accessKey;
+
+	return res
+}
+
+pub fn (mut elem HTMLElement) set_access_key(key string) {
+	#elem.val.node.accessKey = key.str;
+}
+
+pub fn (elem HTMLElement) add_event_listener(event string, cb EventCallback) {
+	#elem.node.addEventListener(event.str, function (event) { let e = jsdom__dispatch_event_target(this);
+	#let ev = jsdom__dispatch_event(event); ev.event = event;
+	#return cb(e,ev)
+	#});
 }

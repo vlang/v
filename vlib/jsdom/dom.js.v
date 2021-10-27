@@ -1,3 +1,4 @@
+// DOM API for JS backend
 module jsdom
 
 [heap]
@@ -46,14 +47,40 @@ pub fn (n Node) typ() NodeType {
 	return n.node.nodeType
 }
 
-pub fn (n Node) is_(ty NodeType) bool {
-	return n.node.nodeType == ty
+/// IEventTarget interface is implemented by objects that can receive events and may have listeners for them.
+// In other words, any target of events implements the three methods associated with this interface.
+// TODO: remove_event_listener and dispatch_event
+pub interface IEventTarget {
+	add_event_listener(event string, cb EventCallback)
 }
 
-pub fn (n Node) document() ?Document {
+/// The DOM Node interface is an abstract base class upon which many other DOM API objects are based, thus
+// letting those object types to be used similarly and often interchangeably. As an abstract class,
+// there is no such thing as a plain Node object. All objects that implement Node functionality are based on one of its subclasses.
+// Most notable are Document, Element, and DocumentFragment.
+pub interface INode {
+	IEventTarget
+	typ() NodeType
+}
+
+pub fn (elem Node) add_event_listener(event string, cb fn (IEventTarget, IEvent)) {
+	#elem.node.addEventListener(event.str, function (event) { let e = jsdom__dispatch_event_target(this);
+	#let ev = jsdom__dispatch_event(event); ev.event = event;
+	#return cb(e,ev)
+	#});
+}
+
+pub fn (n INode) is_(ty NodeType) bool {
+	res := false
+	#res.val = n.node.nodeType == ty
+
+	return res
+}
+
+pub fn (n INode) document() ?Document {
 	res := Document{}
 	if n.is_(.document) {
-		#res.doc = n.node
+		#res.node = n.node
 
 		return res
 	} else {
@@ -61,10 +88,10 @@ pub fn (n Node) document() ?Document {
 	}
 }
 
-pub fn (n Node) element() ?Element {
+pub fn (n INode) element() ?Element {
 	res := Element{}
 	if n.is_(.element) {
-		#res.elem = n.node
+		#res.node = n.node
 
 		return res
 	} else {
@@ -72,11 +99,11 @@ pub fn (n Node) element() ?Element {
 	}
 }
 
-pub fn (n Node) append_child(child Node) {
+pub fn (n INode) append_child(child INode) {
 	#n.node.appendChild(child.node)
 }
 
-pub fn (n Node) clone_node(deep ...int) Node {
+pub fn (n INode) clone_node(deep ...int) INode {
 	cloned := Node{}
 	if deep.len == 0 {
 		#cloned.node = n.node.cloneNode()
@@ -86,47 +113,64 @@ pub fn (n Node) clone_node(deep ...int) Node {
 	return cloned
 }
 
-pub fn (n Node) contains(other Node) bool {
+pub fn (n INode) contains(other INode) bool {
 	res := false
 	#res.val = n.node.contains(other.node)
 
 	return res
 }
 
-pub fn (n Node) get_root_node() Node {
+pub fn (n INode) get_root_node() INode {
 	root := Node{}
 	#root.node = n.node.getRootNode()
 
 	return root
 }
 
-pub fn (n Node) has_child_nodes() bool {
+pub fn (n INode) has_child_nodes() bool {
 	res := false
 	#res.val = n.node.hasChildNodes()
 
 	return res
 }
 
-pub fn (n Node) insert_before(new_node Node, reference_node Node) Node {
+pub fn (n INode) insert_before(new_node INode, reference_node INode) Node {
 	inserted := Node{}
 	#inserted.node = n.node.insertBefore(new_node.node,reference_node.node)
 
 	return inserted
 }
 
+/*
 pub fn (x Node) == (y Node) bool {
 	res := false
 	#res.val = x.node.isEqualNode(y.node)
 
 	return res
-}
+}*/
 
-pub fn (n Node) remove_child(child Node) {
+pub fn (n INode) remove_child(child INode) {
 	#n.node.removeChild(child.node)
 }
 
-pub fn (n Node) replace_child(new_child Node, old_child Node) Node {
+pub fn (n INode) replace_child(new_child INode, old_child INode) INode {
 	#old_child.node = n.node.replace_child(new_child.node,old_child.node)
 
 	return old_child
 }
+
+pub struct JS.EventTarget {}
+
+fn dispatch_event_target(target JS.EventTarget) IEventTarget {
+	mut ret := IEventTarget(Element{})
+	#if (target instanceof HTMLCanvasElement) { ret = new jsdom__HTMLCanvasElement({}); ret.node = target; }
+	#else if (target instanceof HTMLElement) { ret = new jsdom__HTMLElement({}); ret.node = target; }
+	#else if (target instanceof Window) { ret = new jsdom__Window({}); ret.node = target;}
+	#else if (target instanceof SVGElement) { ret = new jsdom__SVGElement({}); ret.node = target; }
+	#else if (target instanceof Element) { ret = new jsdom__Element({}); ret.node = target; }
+	#else if (target instanceof Document) { ret = new jsdom__Document({}); ret.node = target; }
+
+	return ret
+}
+
+pub type EventCallback = fn (_ IEventTarget, _ IEvent)

@@ -4,7 +4,7 @@ pub struct JS.Document {
 }
 
 pub struct Document {
-	doc JS.Document [noinit]
+	Node
 }
 
 pub struct Location {
@@ -125,21 +125,21 @@ pub const (
 )
 
 fn init() {
-	#jsdom__document.doc = document;
+	#jsdom__document.node = document;
 }
 
 pub fn (doc Document) active_element() Element {
 	mut elem := Element{}
-	#elem.elem = doc.doc.activeElement;
+	#elem.node = doc.node.activeElement;
 
 	return elem
 }
 
 pub fn (doc Document) get(name string) ?Element {
 	mut elem := Element{}
-	#elem.elem = doc.doc[name.str];
-	#console.log(elem.elem)
-	#if (elem.elem === null || elem.elem === undefined) return new $ref(new Option({state: new byte(2),err: none__}));
+	#elem.node = doc.node[name.str];
+	#console.log(elem.node)
+	#if (elem.node === null || elem.node === undefined) return new $ref(new Option({state: new byte(2),err: none__}));
 
 	return elem
 }
@@ -147,7 +147,7 @@ pub fn (doc Document) get(name string) ?Element {
 // location returns URI of the document
 pub fn (doc Document) location() Location {
 	mut loc := Location{}
-	#loc.loc = doc.doc.location;
+	#loc.loc = doc.node.location;
 
 	return loc
 }
@@ -155,20 +155,20 @@ pub fn (doc Document) location() Location {
 // get_title returns current title of document
 pub fn (doc Document) get_title() string {
 	res := ''
-	#res.str = doc.doc.title;
+	#res.str = doc.node.title;
 
 	return res
 }
 
 // set_title updates document title
 pub fn (doc Document) set_title(title string) {
-	#doc.doc.title = title.str;
+	#doc.node.title = title.str;
 }
 
 // url returns document location as a string
 pub fn (doc Document) url() string {
 	res := ''
-	#res.str = doc.doc.URL;
+	#res.str = doc.node.URL;
 
 	return res
 }
@@ -176,16 +176,17 @@ pub fn (doc Document) url() string {
 // node casts `Document` back to `Node`.
 pub fn (doc Document) node() Node {
 	node := Node{}
-	#node.node = doc.doc
+	#node.node = doc.node
 
 	return node
 }
 
-pub fn (doc Document) get_element_by_id(id string) ?Element {
-	elem := Element{}
+pub fn (doc Document) get_element_by_id(id string) ?IElement {
+	mut elem := IElement(Element{})
 	found := false
-	#elem.elem = doc.doc.getElementById(id.str);
-	#found.val = !(elem.elem == null)
+	#let tmp = doc.node.getElementById(id.str);
+	#elem = jsdom__dispatch_event_target(tmp);
+	#found.val = !(elem.node == null)
 	if !found {
 		return none
 	}
@@ -202,10 +203,10 @@ pub fn (doc Document) prepend(nodes_or_strings ...DocumentPrepend) ? {
 	for elem in nodes_or_strings {
 		match elem {
 			string {
-				#doc.doc.prepend(elem.str)
+				#doc.node.prepend(elem.str)
 			}
 			Node {
-				#doc.doc.prepend(elem.node)
+				#doc.node.prepend(elem.node)
 			}
 		}
 	}
@@ -217,14 +218,21 @@ pub fn (doc Document) prepend(nodes_or_strings ...DocumentPrepend) ? {
 
 pub fn (doc Document) create_element(tag_name string) Element {
 	elem := Element{}
-	#elem.elem = doc.doc.createElement(tag_name.str)
+	#elem.node = doc.node.createElement(tag_name.str)
 
 	return elem
 }
 
 pub fn get_document() Document {
 	doc := Document{}
-	#doc.doc = document;
+	#doc.node = document;
 
 	return doc
+}
+
+pub fn (elem Document) add_event_listener(event string, cb EventCallback) {
+	#elem.node.addEventListener(event.str, function (event) { let e = jsdom__dispatch_event_target(this);
+	#let ev = jsdom__dispatch_event(event); ev.event = event;
+	#return cb(e,ev)
+	#});
 }
