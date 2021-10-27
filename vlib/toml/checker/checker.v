@@ -12,6 +12,9 @@ import encoding.utf8
 
 pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
 
+// utf8_max is the value of hex2int('10FFFF')
+const utf8_max = 1114111
+
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
 	scanner &scanner.Scanner
@@ -288,12 +291,13 @@ fn (c Checker) check_quoted(q ast.Quoted) ? {
 // \r         - carriage return (U+000D)
 // \"         - quote           (U+0022)
 // \\         - backslash       (U+005C)
-// \uXXXX     - unicode         (U+XXXX)
-// \UXXXXXXXX - unicode         (U+XXXXXXXX)
+// \uXXXX     - Unicode         (U+XXXX)
+// \UXXXXXXXX - Unicode         (U+XXXXXXXX)
 fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple(q.text) ?
 
+	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
 	for {
 		ch := s.next()
@@ -308,6 +312,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 				s.next()
 				continue
 			}
+
 			escape := ch_byte.ascii_str() + next_ch.ascii_str()
 			if is_basic {
 				if q.is_multiline {
@@ -327,6 +332,27 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 						' unknown basic string escape character `$next_ch.ascii_str()` in `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
 				}
 			}
+			// Check Unicode escapes
+			if is_basic && escape.to_lower() == '\\u' {
+				// Long type Unicode (\UXXXXXXXX) is a maximum of 10 chars: '\' + 'U' + 8 hex characters
+				// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
+				// of 9 chars plus one extra.
+				if s.remaining() >= 10 {
+					pos := s.state().pos
+					c.check_unicode_escape(s.text[pos..pos + 11]) or {
+						st := s.state()
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+					}
+				} else {
+					pos := s.state().pos
+					c.check_unicode_escape(s.text[pos..]) or {
+						st := s.state()
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+					}
+				}
+			}
 		}
 	}
 }
@@ -340,8 +366,73 @@ fn (c Checker) check_utf8_validity(q ast.Quoted) ? {
 	}
 }
 
-pub fn (c Checker) check_comment(cmt ast.Comment) ? {
-	lit := cmt.text
+// hex2int returns the value of `hex` as `int`.
+// NOTE that the code assumes `hex` to be in uppercase A-F.
+// It does not work if the length of the input string is beyond the max value of `int`.
+// Also and there is no error trapping for illegal hex characters.
+fn hex2int(hex string) int {
+	// Adapted from https://stackoverflow.com/a/130552/1904615
+	mut val := 0
+	for i := 0; i < hex.len; i++ {
+		if hex[i] <= 57 {
+			val += (hex[i] - 48) * (1 << (4 * (hex.len - 1 - i)))
+		} else {
+			val += (hex[i] - 55) * (1 << (4 * (hex.len - 1 - i)))
+		}
+	}
+	return val
+}
+
+// validate_utf8_codepoint_string returns an error if `str` is not a valid Unicode code point.
+// `str` is expected to be a `string` containing *only* hex values.
+// Any preludes or prefixes like `0x` could pontentially yield wrong results.
+fn validate_utf8_codepoint_string(str string) ? {
+	int_val := hex2int(str)
+	if int_val > checker.utf8_max || int_val < 0 {
+		return error('Unicode code point `$str` is outside the valid Unicode scalar value ranges.')
+	}
+	// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
+	// TODO should probably be transferred / implemented in `utf8.validate(...)` also?
+	if !((int_val >= 0x0000 && int_val <= 0xD7FF) || (int_val >= 0xE000 && int_val <= 0x10FFFF)) {
+		return error('Unicode code point `$str` is not a valid Unicode scalar value.')
+	}
+	bytes := str.bytes()
+	if !utf8.validate(bytes.data, bytes.len) {
+		return error('Unicode code point `$str` is not a valid UTF-8 code point.')
+	}
+}
+
+// check_unicode_escape returns an error if `esc_unicode` is not
+// a valid Unicode escape sequence. `esc_unicode` is expected to be
+// prefixed with either `u` or `U`.
+fn (c Checker) check_unicode_escape(esc_unicode string) ? {
+	if esc_unicode.len < 5 || !esc_unicode.to_lower().starts_with('u') {
+		// Makes sure the input to this function is actually valid.
+		return error('`$esc_unicode` is not a valid escaped Unicode sequence.')
+	}
+	is_long_esc_type := esc_unicode.starts_with('U')
+	mut sequence := esc_unicode[1..]
+	hex_digits_len := if is_long_esc_type { 8 } else { 4 }
+	if sequence.len < hex_digits_len {
+		return error('Unicode escape sequence `$esc_unicode` should be at least $hex_digits_len in length.')
+	}
+	sequence = sequence[..hex_digits_len]
+	// TODO not enforced in BurnSushi testsuite??
+	// if !sequence.is_upper() {
+	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
+	//}
+	validate_utf8_codepoint_string(sequence.to_upper()) ?
+	if is_long_esc_type {
+		// Long escape type checks
+	} else {
+		// Short escape type checks
+	}
+}
+
+// check_comment returns an error if the contents of `comment` isn't
+// a valid TOML comment.
+pub fn (c Checker) check_comment(comment ast.Comment) ? {
+	lit := comment.text
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple(lit) ?
 	for {
@@ -361,6 +452,6 @@ pub fn (c Checker) check_comment(cmt ast.Comment) ? {
 	// Check for bad UTF-8 encoding
 	if !utf8.validate_str(lit) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' comment "$lit" is not valid UTF-8 in ...${c.excerpt(cmt.pos)}...')
+			' comment "$lit" is not valid UTF-8 in ...${c.excerpt(comment.pos)}...')
 	}
 }
