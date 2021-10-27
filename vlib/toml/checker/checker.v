@@ -12,8 +12,8 @@ import encoding.utf8
 
 pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
 
-// utf8_max is the value of hex2int('10FFFF')
-const utf8_max = 1114111
+// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
+const utf8_max = 0x10FFFF
 
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
