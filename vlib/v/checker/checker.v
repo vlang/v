@@ -3711,6 +3711,12 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_len = 0
 			}
 		}
+		if right is ast.InfixExpr {
+			if right.op == .arrow {
+				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
+					right.pos)
+			}
+		}
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
