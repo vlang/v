@@ -59,7 +59,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.writeln('{')
 			g.indent++
 			g.writeln('$elem_typ* pelem = ($elem_typ*)$tmp;')
-			g.writeln('size_t _len = sizeof($tmp) / sizeof($elem_typ);')
+			g.writeln('int _len = (int)sizeof($tmp) / sizeof($elem_typ);')
 			g.writeln('for(int it=0; it<_len; it++, pelem++) {')
 			g.indent++
 			g.write('*pelem = ')
