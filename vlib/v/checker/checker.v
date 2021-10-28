@@ -7893,7 +7893,7 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 		}
 	}
 	sym := c.table.get_type_symbol(field.typ)
-	if sym.kind == .struct_ {
+	if sym.kind == .struct_ && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
 	return name

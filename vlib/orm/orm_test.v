@@ -5,11 +5,12 @@ import time
 import sqlite
 
 struct Module {
-	id           int    [primary; sql: serial]
+	id           int       [primary; sql: serial]
 	name         string
 	nr_downloads int
 	test_id      u64
 	user         User
+	created      time.Time
 }
 
 [table: 'userlist']
@@ -330,4 +331,16 @@ fn test_orm_sqlite() {
 	}
 
 	assert test_id_mod.test_id == 11
+
+	t := time.now()
+	sql db {
+		update Module set created = t where id == 1
+	}
+	updated_time_mod := sql db {
+		select from Module where id == 1
+	}
+	// NB: usually updated_time_mod.created != t, because t has
+	// its microseconds set, while the value retrieved from the DB
+	// has them zeroed, because the db field resolution is seconds.
+	assert updated_time_mod.created.format_ss() == t.format_ss()
 }
