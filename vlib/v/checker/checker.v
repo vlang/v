@@ -5162,6 +5162,12 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(stmt)
+		if stmt is ast.GotoLabel {
+			unreachable = token.Position{
+				line_nr: -1
+			}
+			c.scope_returns = false
+		}
 	}
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)
