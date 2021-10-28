@@ -93,7 +93,7 @@ fn test_burnt_sushi_tomltest() {
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
-			relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
+			mut relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
 				'invalid')).trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
