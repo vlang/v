@@ -1,5 +1,5 @@
 // This tests the `toml` module for a known memory corruption.
-// The BUG shows below if no garbage-collection is done...
+// The BUG shows below if no string `.clone()` nor any garbage-collection is done...
 import os
 import toml
 
