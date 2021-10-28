@@ -66,13 +66,16 @@ mut:
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	generated_str_fns      []StrType
 	str_types              []StrType // types that need automatic str() generation
-	array_fn_definitions   []string  // array equality functions that have been defined
-	map_fn_definitions     []string  // map equality functions that have been defined
-	struct_fn_definitions  []string  // struct equality functions that have been defined
-	sumtype_fn_definitions []string  // sumtype equality functions that have been defined
-	alias_fn_definitions   []string  // alias equality functions that have been defined
-	auto_fn_definitions    []string  // auto generated functions defination list
-	anon_fn_definitions    []string  // anon generated functions defination list
+	copy_types             []StrType // types that need to be deep copied
+	generated_copy_fns     []StrType
+	array_fn_definitions   []string // array equality functions that have been defined
+	map_fn_definitions     []string // map equality functions that have been defined
+	struct_fn_definitions  []string // struct equality functions that have been defined
+	sumtype_fn_definitions []string // sumtype equality functions that have been defined
+	alias_fn_definitions   []string // alias equality functions that have been defined
+	auto_fn_definitions    []string // auto generated functions defination list
+	anon_fn_definitions    []string // anon generated functions defination list
+	copy_fn_definitions    []string
 	method_fn_decls        map[string][]ast.FnDecl
 	builtin_fns            []string // Functions defined in `builtin`
 	empty_line             bool
@@ -161,6 +164,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	for i := 0; i < g.str_types.len; i++ {
 		g.final_gen_str(g.str_types[i])
+	}
+	for i := 0; i < g.copy_types.len; i++ {
+		g.final_gen_copy(g.copy_types[i])
 	}
 	if g.pref.is_test {
 		g.gen_js_main_for_tests()
@@ -607,14 +613,14 @@ fn (mut g JsGen) gen_alias_type_decl(node ast.AliasTypeDecl) {
 
 fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
-	match node {
+	match mut node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
 			panic('inline asm is not supported by js')
 		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assert_stmt(node)
+			g.gen_assert_stmt(mut node)
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
@@ -648,7 +654,7 @@ fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 		}
 		ast.FnDecl {
 			g.write_v_source_line_info(node.pos)
-			g.fn_decl = unsafe { &node }
+
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
@@ -710,14 +716,14 @@ fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
-	match node {
+	match mut node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
 			panic('inline asm is not supported by js')
 		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assert_stmt(node)
+			g.gen_assert_stmt(mut node)
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
@@ -751,7 +757,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		}
 		ast.FnDecl {
 			g.write_v_source_line_info(node.pos)
-			g.fn_decl = unsafe { &node }
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
@@ -808,7 +813,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_struct_decl(node)
 		}
 		ast.TypeDecl {
-			match node {
+			match mut node {
 				ast.AliasTypeDecl {
 					g.gen_alias_type_decl(node)
 				}
@@ -820,10 +825,10 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 
 fn (mut g JsGen) expr(node ast.Expr) {
 	// NB: please keep the type names in the match here in alphabetical order:
-	match node {
+	match mut node {
 		ast.EmptyExpr {}
 		ast.AnonFn {
-			g.gen_fn_decl(node.decl)
+			g.gen_anon_fn(mut node)
 		}
 		ast.ArrayDecompose {}
 		ast.ArrayInit {
@@ -1091,7 +1096,7 @@ fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := g.file.path
-	fn_name := g.fn_decl.name
+	fn_name := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	line_nr := node.pos.line_nr
 	src := node.expr.str()
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
@@ -1176,8 +1181,7 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 }
 
 // TODO
-fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
-	mut node := orig_node
+fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 	if !node.is_used {
 		return
 	}
@@ -1192,18 +1196,18 @@ fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
 			node.expr.right = subst_expr
 		}
 	}
-	mut a := node
+
 	g.write('if( ')
-	g.expr(a.expr)
+	g.expr(node.expr)
 	g.write('.valueOf() ) {')
-	s_assertion := a.expr.str().replace('"', "'")
+	s_assertion := node.expr.str().replace('"', "'")
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
-		metaname_ok := g.gen_assert_metainfo(a)
+		metaname_ok := g.gen_assert_metainfo(node)
 		g.writeln('	g_test_oks++;')
 		g.writeln('	main__cb_assertion_ok($metaname_ok);')
 		g.writeln('} else {')
-		metaname_fail := g.gen_assert_metainfo(a)
+		metaname_fail := g.gen_assert_metainfo(node)
 		g.writeln('	g_test_fails++;')
 		g.writeln('	main__cb_assertion_failed($metaname_fail);')
 		g.writeln('	builtin__exit(1);')
@@ -1212,7 +1216,8 @@ fn (mut g JsGen) gen_assert_stmt(orig_node ast.AssertStmt) {
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('builtin__eprintln(new string("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion"));')
+	fname := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
+	g.writeln('builtin__eprintln(new string("$mod_path:${node.pos.line_nr + 1}: FAIL: fn ${fname}(): assert $s_assertion"));')
 	g.writeln('builtin__exit(1);')
 	g.dec_indent()
 	g.writeln('}')
@@ -1770,6 +1775,12 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 
 fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 	g.writeln(it.val)
+}
+
+fn (mut g JsGen) gen_sumtype_decl(it ast.SumTypeDecl) {
+	name := g.js_name(it.name)
+	g.push_pub_var('/** @type $name */\n\t\t$name')
+	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
@@ -3216,6 +3227,10 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		|| (it.expr is ast.FloatLiteral && it.typ in ast.float_type_idxs))
 	// Skip cast if type is the same as the parrent caster
 	tsym := g.table.get_final_type_symbol(it.typ)
+	if tsym.kind == .sum_type {
+		g.expr(it.expr)
+		return
+	}
 	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
