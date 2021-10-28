@@ -3713,8 +3713,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if right is ast.InfixExpr {
 			if right.op == .arrow {
-				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
-					right.pos)
+				c.error(
+					'Trying to assign the result of a channel push operation (<-) to a variable. ' +
+					'This is invalid, because the push operation does not return a result.',
+					node.pos)
 			}
 		}
 	}
