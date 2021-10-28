@@ -23,8 +23,7 @@ pub fn (a Any) string() string {
 	match a {
 		// NOTE if `.clone()` is not used here:
 		// string { return a as string }
-		// ... certain call-patterns
-		// to this function will cause a memory corruption.
+		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
 		time.Time { return a.format_ss_micro() }
