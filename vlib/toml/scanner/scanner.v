@@ -614,7 +614,6 @@ pub fn (s Scanner) state() State {
 }
 
 fn (mut s Scanner) validate_and_skip_headers() ? {
-
 	// UTF-16 / UTF-32 headers (BE/LE)
 	s.check_utf16_or_32_bom() ?
 
