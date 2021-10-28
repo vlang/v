@@ -560,6 +560,8 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
+	// preallocate space for tokens
+	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
 	s.comments_mode = oldmode
 	s.tidx = 0
