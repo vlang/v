@@ -14,6 +14,13 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 	return dval
 }
 
+fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
+	fun := g.get_copy_fn(t)
+	temp := g.new_tmp_var()
+	g.writeln('let $temp = ${fun}($tmp);')
+	return temp
+}
+
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
