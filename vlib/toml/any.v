@@ -21,7 +21,9 @@ pub type Any = Null
 // string returns `Any` as a string.
 pub fn (a Any) string() string {
 	match a {
-		// NOTE if `.clone()` is not used here - certain call-patterns
+		// NOTE if `.clone()` is not used here:
+		// string { return a as string }
+		// ... certain call-patterns
 		// to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }

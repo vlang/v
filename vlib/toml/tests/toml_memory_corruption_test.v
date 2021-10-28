@@ -11,14 +11,11 @@ fn test_toml_known_memory_corruption() {
 
 	owner := toml_doc.value('owner') as map[string]toml.Any
 	any_name := owner.value('name') or { panic(err) }
-	any_name_value := any_name.string()
-	assert any_name_value == 'Tom Preston-Werner'
-
 	// This assert code path will cause the corruption.
 	assert any_name.string() == 'Tom Preston-Werner'
 
-	// This code triggered the bug before the fix.
-	// Also see note in toml/toml.v in function `pub fn (d Doc) value(key string) Any`
+	// This code then triggered the bug before the fix.
+	// Also see note in toml/any.v in function `pub fn (a Any) string() string`
 	assert toml_doc.value('owner.name') as string == 'Tom Preston-Werner'
 
 	// Repeat the pattern
