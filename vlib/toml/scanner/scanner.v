@@ -626,7 +626,7 @@ fn (mut s Scanner) validate_and_skip_headers() ? {
 		s.skip_n(s.header_len)
 	}
 
-	// Check after we've skipped UTF-16 / UTF-32 headers (BE/LE)
+	// Check after we've skipped UTF-8 BOM
 	s.check_utf16_or_32_bom() ?
 }
 
