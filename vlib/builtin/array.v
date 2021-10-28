@@ -34,9 +34,13 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
 		len: mylen
 		cap: cap_
+	}
+	if cap_ > 0 && mylen == 0 {
+		arr.data = unsafe { malloc(cap_ * elm_size) }
+	} else {
+		arr.data = vcalloc(cap_ * elm_size)
 	}
 	if val != 0 {
 		for i in 0 .. arr.len {
@@ -50,7 +54,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
+		data: unsafe { malloc(cap_ * elm_size) }
 		len: mylen
 		cap: cap_
 	}
@@ -66,7 +70,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
+		data: unsafe { malloc(cap_ * elm_size) }
 		len: len
 		cap: cap_
 	}
