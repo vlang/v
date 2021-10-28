@@ -70,7 +70,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: unsafe { malloc(cap_ * elm_size) }
+		data: vcalloc(cap_ * elm_size)
 		len: len
 		cap: cap_
 	}
