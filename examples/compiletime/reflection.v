@@ -1,4 +1,4 @@
-// An example serializer implementation
+// An example deserializer implementation
 
 struct User {
 	name string
