@@ -144,6 +144,9 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
+	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
+		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name, false)
+	}
 	g.str_types << StrType{
 		typ: unwrapped
 		styp: styp
@@ -157,7 +160,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.get_type_symbol(typ.typ)
-	if sym.has_method('str') && !typ.typ.has_flag(.optional) {
+	if sym.has_method_with_generic_parent('str') && !typ.typ.has_flag(.optional) {
 		return
 	}
 	styp := typ.styp

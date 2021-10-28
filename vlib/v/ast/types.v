@@ -1186,6 +1186,11 @@ pub fn (t &TypeSymbol) has_method(name string) bool {
 	return true
 }
 
+pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
+	t.find_method_with_generic_parent(name) or { return false }
+	return true
+}
+
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	for method in t.methods {
 		if method.name == name {
@@ -1240,7 +1245,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut has_str_method := false
 	mut expects_ptr := false
 	mut nr_args := 0
-	if sym_str_method := t.find_method('str') {
+	if sym_str_method := t.find_method_with_generic_parent('str') {
 		has_str_method = true
 		nr_args = sym_str_method.params.len
 		if nr_args > 0 {
