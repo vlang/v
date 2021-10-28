@@ -9,42 +9,42 @@ import toml
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	valid_exceptions   = [
-		'table${os.path_separator}array-table-array.toml',
+		'table/array-table-array.toml',
 	]
 	invalid_exceptions = [
 		// Table
-		'table${os.path_separator}rrbrace.toml',
-		'table${os.path_separator}duplicate-table-array2.toml',
-		'table${os.path_separator}duplicate.toml',
-		'table${os.path_separator}array-implicit.toml',
-		'table${os.path_separator}injection-2.toml',
-		'table${os.path_separator}llbrace.toml',
-		'table${os.path_separator}injection-1.toml',
-		'table${os.path_separator}duplicate-table-array.toml',
+		'table/rrbrace.toml',
+		'table/duplicate-table-array2.toml',
+		'table/duplicate.toml',
+		'table/array-implicit.toml',
+		'table/injection-2.toml',
+		'table/llbrace.toml',
+		'table/injection-1.toml',
+		'table/duplicate-table-array.toml',
 		// Array
-		'array${os.path_separator}tables-1.toml',
-		'array${os.path_separator}missing-separator.toml',
-		'array${os.path_separator}text-after-array-entries.toml',
-		'array${os.path_separator}text-before-array-separator.toml',
+		'array/tables-1.toml',
+		'array/missing-separator.toml',
+		'array/text-after-array-entries.toml',
+		'array/text-before-array-separator.toml',
 		// Date / Time
-		'datetime${os.path_separator}impossible-date.toml',
-		'datetime${os.path_separator}no-leads-with-milli.toml',
-		'datetime${os.path_separator}no-leads.toml',
+		'datetime/impossible-date.toml',
+		'datetime/no-leads-with-milli.toml',
+		'datetime/no-leads.toml',
 		// Inline table
-		'inline-table${os.path_separator}linebreak-4.toml',
-		'inline-table${os.path_separator}linebreak-3.toml',
-		'inline-table${os.path_separator}linebreak-1.toml',
-		'inline-table${os.path_separator}linebreak-2.toml',
+		'inline-table/linebreak-4.toml',
+		'inline-table/linebreak-3.toml',
+		'inline-table/linebreak-1.toml',
+		'inline-table/linebreak-2.toml',
 		// Key
-		'key${os.path_separator}duplicate.toml',
-		'key${os.path_separator}after-table.toml',
-		'key${os.path_separator}duplicate-keys.toml',
-		'key${os.path_separator}after-value.toml',
-		'key${os.path_separator}newline.toml',
-		'key${os.path_separator}without-value-2.toml',
-		'key${os.path_separator}no-eol.toml',
-		'key${os.path_separator}after-array.toml',
-		'key${os.path_separator}multiline.toml',
+		'key/duplicate.toml',
+		'key/after-table.toml',
+		'key/duplicate-keys.toml',
+		'key/after-value.toml',
+		'key/newline.toml',
+		'key/without-value-2.toml',
+		'key/no-eol.toml',
+		'key/after-array.toml',
+		'key/multiline.toml',
 	]
 )
 
@@ -59,7 +59,11 @@ fn test_burnt_sushi_tomltest() {
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
-			relative := valid_test_file.all_after(os.join_path('toml-test', 'tests', 'valid')).trim_left(os.path_separator)
+			mut relative := valid_test_file.all_after(os.join_path('toml-test', 'tests',
+				'valid')).trim_left(os.path_separator)
+			$if windows {
+				relative = relative.replace('/', '\\')
+			}
 			if relative !in valid_exceptions {
 				println('OK   [$i/$valid_test_files.len] "$valid_test_file"...')
 				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
@@ -91,6 +95,9 @@ fn test_burnt_sushi_tomltest() {
 		for i, invalid_test_file in invalid_test_files {
 			relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
 				'invalid')).trim_left(os.path_separator)
+			$if windows {
+				relative = relative.replace('/', '\\')
+			}
 			if relative !in invalid_exceptions {
 				println('OK   [$i/$invalid_test_files.len] "$invalid_test_file"...')
 				if toml_doc := toml.parse_file(invalid_test_file) {
