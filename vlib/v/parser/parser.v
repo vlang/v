@@ -2974,7 +2974,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	p.next()
 	// no return
 	mut comments := p.eat_comments()
-	if p.tok.kind == .rcbr || ( p.tok.kind == .name && p.peek_tok.kind == .colon ) {
+	if p.tok.kind == .rcbr || (p.tok.kind == .name && p.peek_tok.kind == .colon) {
 		return ast.Return{
 			comments: comments
 			pos: first_pos
