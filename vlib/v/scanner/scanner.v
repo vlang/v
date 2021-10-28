@@ -675,7 +675,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
-			kind := token.keywords[name]
+			kind := token.matcher.find(name)
 			if kind != .unknown {
 				return s.new_token(kind, name, name.len)
 			}

@@ -499,6 +499,28 @@ fn (s string) == (a string) bool {
 	}
 }
 
+// compare returns -1 if `s` < `a`, 0 if `s` == `a`, and 1 if `s` > `a`
+[direct_array_access]
+pub fn (s string) compare(a string) int {
+	min_len := if s.len < a.len { s.len } else { a.len }
+	for i in 0 .. min_len {
+		if s[i] < a[i] {
+			return -1
+		}
+		if s[i] > a[i] {
+			return 1
+		}
+	}
+	if s.len < a.len {
+		return -1
+	}
+	if s.len > a.len {
+		return 1
+	}
+	return 0
+}
+
+[direct_array_access]
 fn (s string) < (a string) bool {
 	for i in 0 .. s.len {
 		if i >= a.len || s[i] > a[i] {
@@ -513,6 +535,7 @@ fn (s string) < (a string) bool {
 	return false
 }
 
+[direct_array_access]
 fn (s string) + (a string) string {
 	new_len := a.len + s.len
 	mut res := string{

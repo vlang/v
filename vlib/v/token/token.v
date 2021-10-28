@@ -132,15 +132,11 @@ pub enum Kind {
 	_end_
 }
 
-pub const (
-	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
-		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
-		.unsigned_right_shift_assign]
-)
+pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+	.unsigned_right_shift_assign]
 
-const (
-	nr_tokens = int(Kind._end_)
-)
+const nr_tokens = int(Kind._end_)
 
 // @FN => will be substituted with the name of the current V function
 // @METHOD => will be substituted with ReceiverType.MethodName
@@ -182,10 +178,8 @@ pub enum AtKind {
 	vexeroot_path
 }
 
-pub const (
-	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
-)
+pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -315,13 +309,11 @@ fn build_token_str() []string {
 	return s
 }
 
-const (
-	token_str = build_token_str()
-)
+const token_str = build_token_str()
 
-pub const (
-	keywords = build_keys()
-)
+pub const keywords = build_keys()
+
+pub const matcher = new_keywords_matcher(keywords)
 
 [inline]
 pub fn is_key(key string) bool {
@@ -365,10 +357,8 @@ pub fn (t Token) str() string {
 
 // Representation of highest and lowest precedence
 /*
-pub const (
-	lowest_prec = 0
-	highest_prec = 8
-)
+pub const lowest_prec = 0
+pub const highest_prec = 8
 */
 pub enum Precedence {
 	lowest
@@ -439,9 +429,7 @@ pub fn build_precedences() []Precedence {
 	return p
 }
 
-const (
-	precedences = build_precedences()
-)
+const precedences = build_precedences()
 
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
 [inline]
