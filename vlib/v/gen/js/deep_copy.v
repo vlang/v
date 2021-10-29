@@ -155,15 +155,32 @@ fn (mut g JsGen) gen_copy_for_struct(info ast.Struct, styp string, copy_fn_name 
 		g.definitions.writeln(fn_builder.str())
 	}
 
-	fn_builder.writeln('function ${copy_fn_name}(it) {')
+	fn_builder.writeln('function ${copy_fn_name}(it) { return it }')
 
+	/*
 	tmp := g.new_tmp_var()
 	fn_builder.writeln('\tlet $tmp = new ${styp}({});')
 	for field in info.fields {
-		func_name := g.get_copy_fn(field.typ)
-		fn_builder.writeln('\t${tmp}.$field.name = ${func_name}(it.$field.name);')
+		println(field)
+		if field.name.len == 0 {
+
+		} else {
+			mut shall_copy := true
+			for attr in field.attrs {
+				if attr.name == 'noinit' {
+					shall_copy = false
+					break
+				}
+			}
+			if shall_copy {
+				func_name := g.get_copy_fn(field.typ)
+				fn_builder.writeln('\t${tmp}.$field.name = ${func_name}(it.$field.name);')
+			} else {
+				fn_builder.writeln('\t${tmp}.$field.name = it.$field.name')
+			}
+		}
 	}
-	fn_builder.writeln('\treturn $tmp;\n}')
+	fn_builder.writeln('\treturn $tmp;\n}')*/
 }
 
 fn (mut g JsGen) final_gen_copy(typ StrType) {
@@ -181,9 +198,9 @@ fn (mut g JsGen) final_gen_copy(typ StrType) {
 		g.gen_copy_for_option(typ.typ, styp, copy_fn_name)
 		return
 	}
-	match sym.kind {
-		.byte, .u8, .u16, .u32, .u64, .i16, .int, .i64, .isize, .usize, .bool, .int_literal,
-		.float_literal, .f32, .f64 {
+	match styp {
+		'byte', 'u8', 'u16', 'u32', 'u64', 'i16', 'int', 'i64', 'isize', 'usize', 'bool',
+		'int_literal', 'float_literal', 'f32', 'f64', 'voidptr' {
 			g.definitions.writeln('function ${sym.cname}_\$copy(it) { return new ${sym.cname}(it.val); }')
 			return
 		}
