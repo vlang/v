@@ -159,5 +159,11 @@ pub fn (mut b Builder) str() string {
 // free is for manually freeing the contents of the buffer
 [unsafe]
 pub fn (mut b Builder) free() {
-	unsafe { free(b.data) }
+	if b.data != 0 {
+		unsafe { free(b.data) }
+		mut pd := &b.data
+		unsafe {
+			(*pd) = voidptr(0)
+		}
+	}
 }
