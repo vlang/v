@@ -4,6 +4,7 @@
 module http
 
 import net.urllib
+import os
 
 const (
 	max_redirects        = 4
@@ -137,6 +138,17 @@ pub fn fetch(config FetchConfig) ?Response {
 		return error('http.fetch: empty url')
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url $config.url') }
+
+	environment := os.environ()
+
+	mut has_proxy := false
+	mut proxy := HttpProxy{}
+
+	if 'HTTP_PROXY' in environment {
+		proxy = new_http_proxy(environment['HTTP_PROXY']) ?
+		has_proxy = true
+	}
+
 	mut req := Request{
 		method: config.method
 		url: url
@@ -151,6 +163,8 @@ pub fn fetch(config FetchConfig) ?Response {
 		cert: config.cert
 		cert_key: config.cert_key
 		in_memory_verification: config.in_memory_verification
+		use_proxy: has_proxy
+		proxy: &proxy
 	}
 	res := req.do() ?
 	return res
