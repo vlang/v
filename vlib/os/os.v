@@ -148,9 +148,12 @@ pub fn rmdir_all(path string) ? {
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
+[manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
-	return items.len == 0
+	res := items.len == 0
+	unsafe { items.free() }
+	return res
 }
 
 // file_ext will return the part after the last occurence of `.` in `path`.
@@ -437,7 +440,7 @@ pub fn is_abs_path(path string) bool {
 // join_path returns a path as string from input string parameter(s).
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
-	mut result := []string{}
+	mut result := []string{cap: 256}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
@@ -639,13 +642,17 @@ pub fn resource_abs_path(path string) string {
 	mut base_path := real_path(dexe)
 	vresource := getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
+		unsafe { base_path.free() }
 		base_path = vresource
 	}
 	fp := join_path(base_path, path)
 	res := real_path(fp)
 	unsafe {
 		fp.free()
+		vresource.free()
 		base_path.free()
+		dexe.free()
+		exe.free()
 	}
 	return res
 }

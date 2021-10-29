@@ -257,7 +257,7 @@ pub fn ls(path string) ?[]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')
 	}
-	mut res := []string{}
+	mut res := []string{cap: 50}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
@@ -472,6 +472,7 @@ pub fn debugger_present() bool {
 fn C.mkstemp(stemplate &byte) int
 
 // `is_writable_folder` - `folder` exists and is writable to the process
+[manualfree]
 pub fn is_writable_folder(folder string) ?bool {
 	if !exists(folder) {
 		return error('`$folder` does not exist')
@@ -480,6 +481,9 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('`folder` is not a folder')
 	}
 	tmp_perm_check := join_path(folder, 'XXXXXX')
+	defer {
+		unsafe { tmp_perm_check.free() }
+	}
 	unsafe {
 		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {

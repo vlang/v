@@ -55,6 +55,9 @@ mut:
 	is_lit int
 }
 
+// runes returns an array of all the utf runes in the string `s`
+// which is useful if you want random access to them
+[direct_array_access]
 pub fn (s string) runes() []rune {
 	mut runes := []rune{cap: s.len}
 	for i := 0; i < s.len; i++ {
@@ -350,7 +353,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// Remember positions of all rep strings, and calculate the length
 	// of the new string to do just one allocation.
 	mut new_len := s.len
-	mut idxs := []RepIndex{}
+	mut idxs := []RepIndex{cap: 6}
 	mut idx := 0
 	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
@@ -672,6 +675,7 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
+[direct_array_access]
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking ? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
@@ -699,6 +703,7 @@ pub fn (s string) substr(start int, end int) string {
 
 // index returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
+[direct_array_access]
 fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
@@ -778,6 +783,7 @@ pub fn (s string) index_any(chars string) int {
 }
 
 // last_index returns the position of the last occurence of the input string.
+[direct_array_access]
 fn (s string) last_index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
@@ -806,6 +812,7 @@ pub fn (s string) last_index(p string) ?int {
 }
 
 // index_after returns the position of the input string, starting search from `start` position.
+[direct_array_access]
 pub fn (s string) index_after(p string, start int) int {
 	if p.len > s.len {
 		return -1
@@ -835,6 +842,7 @@ pub fn (s string) index_after(p string, start int) int {
 
 // index_byte returns the index of byte `c` if found in the string.
 // index_byte returns -1 if the byte can not be found.
+[direct_array_access]
 pub fn (s string) index_byte(c byte) int {
 	for i in 0 .. s.len {
 		if unsafe { s.str[i] } == c {
@@ -846,6 +854,7 @@ pub fn (s string) index_byte(c byte) int {
 
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
+[direct_array_access]
 pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
@@ -857,6 +866,7 @@ pub fn (s string) last_index_byte(c byte) int {
 
 // count returns the number of occurrences of `substr` in the string.
 // count returns -1 if no `substr` could be found.
+[direct_array_access]
 pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
 		return 0
@@ -926,6 +936,7 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 }
 
 // starts_with returns `true` if the string starts with `p`.
+[direct_array_access]
 pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
@@ -939,6 +950,7 @@ pub fn (s string) starts_with(p string) bool {
 }
 
 // ends_with returns `true` if the string ends with `p`.
+[direct_array_access]
 pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
@@ -953,6 +965,7 @@ pub fn (s string) ends_with(p string) bool {
 
 // to_lower returns the string in all lowercase characters.
 // TODO only works with ASCII
+[direct_array_access]
 pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
@@ -982,6 +995,7 @@ pub fn (s string) is_lower() bool {
 
 // to_upper returns the string in all uppercase characters.
 // Example: assert 'Hello V'.to_upper() == 'HELLO V'
+[direct_array_access]
 pub fn (s string) to_upper() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
