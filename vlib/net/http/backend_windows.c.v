@@ -22,15 +22,35 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	$if trace_http_request ? {
 		eprintln('> $sdata')
 	}
+
+	if req.use_proxy == true {
+		C.use_proxy = true
+		C.proxy_fd = req.proxy.conn.fd
+	}
+
 	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
 	C.vschannel_cleanup(&ctx)
+
 	response_text := unsafe { buff.vstring_with_len(length) }
 	$if trace_http_response ? {
 		eprintln('< $response_text')
 	}
+
 	return parse_response(response_text)
 }
 
-fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?&net.TcpConn {
+fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?ProxyConnLayer {
+	mut ctx := C.new_tls_context()
+	C.vschannel_init(&ctx)
+	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
+
+	if C.connect_to_server(&ctx, hostname, port) {
+		return error('could not connect to host')
+	}
+
+	conn_fd := int(ctx.socket)
+
+	C.vschannel_cleanup(&ctx)
+
 	return error('not implemented')
 }

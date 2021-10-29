@@ -16,46 +16,51 @@ pub mut:
 }
 
 fn (mut c ProxyConnLayer) read(mut buf []byte) ?int {
-	set := C.fd_set{}
-
-	C.FD_ZERO(&set)
-	C.FD_SET(c.fd, &set)
-
-	seconds := c.read_timeout / time.second
-	microseconds := time.Duration(c.read_timeout - (seconds * time.second)).microseconds()
-
-	timeout := C.timeval{
-		tv_sec: u64(seconds)
-		tv_usec: u64(microseconds)
-	}
-
-	C.@select(c.fd + 1, &set, C.NULL, C.NULL, &timeout)
-
 	mut res := C.recv(c.fd, voidptr(buf.data), buf.len, 0)
-
-	if res < 0 {
-		return error('ProxyConnLayer: error $res')
-	}
-
-	$if trace_tcp ? {
-		eprintln('<<< ProxyConnLayer.read_ptr  | c.sock.handle: $c.sock.handle | ' +
-			'buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-	}
-
 	if res > 0 {
-		$if trace_tcp_data_read ? {
-			eprintln('<<< ProxyConnLayer.read_ptr  | 1 data.len: ${res:6} | data: ' +
-				unsafe { buf_ptr.vstring_with_len(res) })
-		}
 		return res
+	}
+
+	code := net.error_code()
+	if code == int(net.error_ewouldblock) {
+		net.wait_for_read(c.fd, time.unix(0), c.read_timeout) ?
+
+		res = C.recv(c.fd, voidptr(buf.data), buf.len, 0)
+
+		if res > 0 {
+			return res
+		}
+	} else {
+		net.wrap_error(code) ?
 	}
 
 	return none
 }
 
 fn (mut c ProxyConnLayer) write(bytes []byte) ?int {
-	os.fd_write(c.fd, bytes.bytestr())
-	return bytes.len
+	unsafe {
+		b := bytes.data
+		len := bytes.len
+
+		mut ptr_base := &byte(b)
+		mut total_sent := 0
+		for total_sent < len {
+			ptr := ptr_base + total_sent
+			remaining := len - total_sent
+			mut sent := C.send(c.fd, ptr, remaining, net.msg_nosignal)
+			if sent < 0 {
+				code := net.error_code()
+				if code == int(net.error_ewouldblock) {
+					net.wait_for_write(c.fd, time.unix(0), c.write_timeout) ?
+					continue
+				} else {
+					net.wrap_error(code) ?
+				}
+			}
+			total_sent += sent
+		}
+		return total_sent
+	}
 }
 
 fn (mut c ProxyConnLayer) close() ? {
@@ -179,6 +184,10 @@ pub fn (mut proxy HttpProxy) prepare(request &Request, host string) ? {
 }
 
 pub fn (mut proxy HttpProxy) open_connection(request &Request, host string) ? {
+	$if trace_http_proxy ? {
+		eprintln('<<< HttpProxy.open_connection  | host: $host')
+	}
+
 	proxy_headers := proxy.build_proxy_headers(request, host)
 
 	mut client := proxy.create_tcp_layer() ?
@@ -197,8 +206,10 @@ pub fn (mut proxy HttpProxy) open_connection(request &Request, host string) ? {
 	_, status_code, status_msg := parse_status_line(proxy_response_status) ?
 
 	if status_code < 200 || status_code >= 300 {
-		return error('could not connect to proxy: $status_msg')
+		return error('could not connect to proxy: $status_code $status_msg')
 	}
+
+	proxy_reader.free()
 
 	proxy.conn = client
 	proxy.remote_host = host

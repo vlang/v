@@ -119,11 +119,11 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 }
 
 // wait_for_write waits for a write io operation to be available
-fn wait_for_write(handle int, deadline time.Time, timeout time.Duration) ? {
+pub fn wait_for_write(handle int, deadline time.Time, timeout time.Duration) ? {
 	return wait_for_common(handle, deadline, timeout, .write)
 }
 
 // wait_for_read waits for a read io operation to be available
-fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ? {
+pub fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ? {
 	return wait_for_common(handle, deadline, timeout, .read)
 }

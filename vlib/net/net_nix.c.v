@@ -10,7 +10,7 @@ module net
 
 #flag solaris -lsocket
 
-fn error_code() int {
+pub fn error_code() int {
 	return C.errno
 }
 
@@ -18,9 +18,7 @@ fn init() {
 }
 
 pub const (
-	msg_nosignal = 0x4000
-)
+	msg_nosignal      = 0x4000
 
-const (
 	error_ewouldblock = C.EWOULDBLOCK
 )
