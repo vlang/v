@@ -21,6 +21,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
+
 	if typ.has_flag(.optional) {
 		unwrapped.set_flag(.optional)
 	}
@@ -50,6 +51,9 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 		return
 	}
 	styp := typ.styp
+	if styp == 'any' {
+		return
+	}
 	str_fn_name := styp_to_str_fn_name(styp)
 	if typ.typ.has_flag(.optional) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
@@ -346,37 +350,25 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 	for typ in info.types {
 		subtype := g.table.get_type_symbol(typ)
 		mut func_name := g.get_str_fn(typ)
-		sym_has_str_method, _, _ := subtype.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
-
+		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '.valueOf()' }
 		// str_intp
 
 		if typ == ast.string_type {
-			/*
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
-				val += ', indent_count'
-			}
-			val += ')'
-			val = val
-			*/
-			res := '"TODO"'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			fn_builder.write_string(' return $res;')
+			fn_builder.write_string('\tif (x.val instanceof string)')
+			fn_builder.write_string(' return "new string(${clean_interface_v_type_name}(" + x.val.str + ")");')
 		} else {
-			/*
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			mut val := '${func_name}(x $deref'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
-			val = val
-			*/
-			res := '"TODO'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			fn_builder.write_string(' return $res;\n')
+
+			fn_builder.write_string('\tif (x.val instanceof $subtype.cname)')
+			fn_builder.write_string(' return new string("${clean_interface_v_type_name}(" + ${val}.str + ")");\n')
 		}
 	}
 	fn_builder.writeln('\treturn new string("unknown interface value");')

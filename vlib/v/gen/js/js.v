@@ -20,7 +20,7 @@ const (
 		'Array', 'Map', 'document']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any']
+		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .bool, .string]
 )
@@ -1709,7 +1709,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// TODO: interfaces are always `pub`?
 	name := g.js_name(it.name)
 	g.push_pub_var('/** @type $name */\n\t\t$name')
-	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
+	g.writeln('function ${g.js_name(it.name)} (arg) { return new \$ref(arg); }')
 }
 
 fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
@@ -2335,6 +2335,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 					g.write(' instanceof ')
 					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
+					g.write('.val')
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						g.write(' instanceof ')
 						g.expr(branch.exprs[sumtype_index])
