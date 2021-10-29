@@ -366,7 +366,6 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 				val += ', indent_count'
 			}
 			val += ')'
-			val = val
 
 			fn_builder.write_string('\tif (x.val instanceof $subtype.cname)')
 			fn_builder.write_string(' return new string("${clean_interface_v_type_name}(" + ${val}.str + ")");\n')
