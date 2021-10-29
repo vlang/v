@@ -425,7 +425,7 @@ pub fn is_writable(path string) bool {
 		p := path.replace('/', '\\')
 		wp := p.to_wide()
 		res := C._waccess(wp, w_ok) != -1
-		unsafe { wp.free() }
+		unsafe { free(wp) } // &u16
 		unsafe { p.free() }
 		return res
 	} $else {
@@ -440,7 +440,7 @@ pub fn is_readable(path string) bool {
 		p := path.replace('/', '\\')
 		wp := p.to_wide()
 		res := C._waccess(wp, r_ok) != -1
-		unsafe { wp.free() }
+		unsafe { free(wp) } // &u16
 		unsafe { p.free() }
 		return res
 	} $else {
