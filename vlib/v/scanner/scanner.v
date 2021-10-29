@@ -222,10 +222,11 @@ fn (mut s Scanner) ident_name() string {
 	s.pos++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !(util.is_name_char(c) || c.is_digit()) {
-			break
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			s.pos++
+			continue
 		}
-		s.pos++
+		break
 	}
 	name := s.text[start..s.pos]
 	s.pos--
