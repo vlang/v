@@ -99,7 +99,7 @@ pub mut:
 }
 
 pub fn new_http_proxy(raw_url string) ?HttpProxy {
-	mut url := urllib.parse(raw_url) ?
+	mut url := urllib.parse(raw_url) or { return error('malformed proxy url') }
 	scheme := url.scheme
 
 	if scheme != 'http' && scheme != 'https' {
