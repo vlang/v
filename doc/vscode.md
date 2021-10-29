@@ -54,7 +54,9 @@ edit the variable.
 4. Select `Add config`.
 5. Select environment `C++ (GDB/LLDB)`.
 6. Change the line `"program": "Enter the program name, e.g. \"${workspaceFolder}/a.out\"",`
-to point to your compiled application e.g. `"program": "${workspaceFolder}/hello",` or a more flexible one `"program": "${fileDirname}/${fileBasenameNoExtension}",` when you want to debug the current opened file.
+to point to your compiled application e.g. `"program": "${workspaceFolder}/hello",`
+or a more flexible one `"program": "${fileDirname}/${fileBasenameNoExtension}",`
+when you want to debug the current opened file.
 
 This will add a block to your `.workspace` file,
 or create the file `.vscode/launch.json`:
@@ -87,14 +89,21 @@ or create the file `.vscode/launch.json`:
 any current open source file with an existing binary with the same name but without any extension.
 
 #### Step2: Configure the task.json file
-Generally, you can manually compile the application with cmd `v -b c -g hello.v -o hello` or short `v -g hello.v` and then call the debugger.
+Generally, you can manually compile the application with: `v -b c -g hello.v -o hello`,
+or for short: `v -g hello.v`, and then call the debugger.
 
-> The `-g` option will add the needed debugging informations. More Options are explained in the [docs](docs.md#debugging).
+The `-g` option will add the needed debugging information.
+You can find more debugging options in the [docs](docs.md#debugging).
 
-VS Code provides a hook called `preLaunchTask` which can be used to compile the application automatially every time you call the debugger. 
-> [preLaunchTask]((https://code.visualstudio.com/docs/editor/debugging#_launchjson-attributes)) - to launch a task before the start of a debug session, set this attribute to the label of a task specified in [task.json](https://code.visualstudio.com/docs/editor/tasks) (in the workspace's .vscode folder). Or, this can be set to ${defaultBuildTask} to use your default build task.
+VS Code provides a hook called `preLaunchTask`, which can be used to compile
+the application automatially every time you call the debugger. 
+[preLaunchTask](https://code.visualstudio.com/docs/editor/debugging#_launchjson-attributes) launches
+a task before the start of a debug session, set this attribute to the label of a task specified
+in [task.json](https://code.visualstudio.com/docs/editor/tasks) (in the workspace's .vscode folder).
+Or, this can be set to `${defaultBuildTask}`, to use your default build task.
 
-As explained, the `"preLaunchTask": "build"` needs to work with a `.vscode/task.json` with a label named `build`. 
+As explained, the `"preLaunchTask": "build"` needs to work with a `.vscode/task.json`
+with a label named `build`. 
 ```json
 {
     // See https://go.microsoft.com/fwlink/?LinkId=733558
