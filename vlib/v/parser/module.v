@@ -18,7 +18,7 @@ fn (p &Parser) prepend_mod(name string) string {
 	if p.builtin_mod {
 		return name
 	}
-	return '${p.mod}.$name'
+	return p.mod + '.' + name
 }
 
 fn (p &Parser) is_used_import(alias string) bool {
