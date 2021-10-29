@@ -630,7 +630,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { cstring_to_vstring(xresult) }
+		res := unsafe { tos_clone(xresult) }
 		return res
 	}
 	$if windows {
@@ -674,7 +674,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		res := unsafe { cstring_to_vstring(result) }
+		res := unsafe { tos_clone(result) }
 		return res
 	}
 	$if freebsd {
@@ -685,7 +685,7 @@ pub fn executable() string {
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
 		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
-		res := unsafe { cstring_to_vstring(result) }
+		res := unsafe { tos_clone(result) }
 		return res
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
@@ -705,7 +705,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { cstring_to_vstring(result) }
+		res := unsafe { tos_clone(result) }
 		return res
 	}
 	$if dragonfly {
@@ -718,7 +718,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { cstring_to_vstring(result) }
+		res := unsafe { tos_clone(result) }
 		return res
 	}
 	return executable_fallback()
@@ -792,7 +792,7 @@ pub fn getwd() string {
 				free(buf)
 				return ''
 			}
-			res := cstring_to_vstring(buf)
+			res := tos_clone(buf)
 			free(buf)
 			return res
 		}
@@ -856,7 +856,7 @@ pub fn real_path(fpath string) string {
 		// resulting string from that buffer, to a shorter one, and then free the
 		// 4KB fullpath buffer.
 		unsafe { res.free() }
-		res = unsafe { cstring_to_vstring(fullpath) }
+		res = unsafe { tos_clone(fullpath) }
 		unsafe { free(fullpath) }
 	}
 	unsafe { normalize_drive_letter(res) }
