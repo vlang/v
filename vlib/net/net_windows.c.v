@@ -737,7 +737,7 @@ pub fn wsa_error(code int) WsaError {
 	return WsaError(code)
 }
 
-const (
+pub const (
 	error_ewouldblock = WsaError.wsaewouldblock
 )
 
@@ -747,14 +747,14 @@ const (
 #include <ws2tcpip.h>
 
 // Constants that windows needs
-const (
+pub const (
 	fionbio      = C.FIONBIO
 	msg_nosignal = 0
 	wsa_v22      = 0x202 // C.MAKEWORD(2, 2)
 )
 
 // Error code returns the last socket error
-fn error_code() int {
+pub fn error_code() int {
 	return C.WSAGetLastError()
 }
 

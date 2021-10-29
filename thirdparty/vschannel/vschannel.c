@@ -2,8 +2,7 @@
 #include <sspi.h>
 
 // Proxy
-WCHAR *  psz_proxy_server  = L"proxy";
-INT     i_proxy_port      = 80;
+INT     proxy_fd        = 0;
 
 // Options
 INT     port_number     = 443;
@@ -153,7 +152,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
-	
+
 	// Send a close_notify alert to the server and
 	// close down the connection.
 	if(disconnect_from_server(tls_ctx)) {
@@ -276,11 +275,24 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 		return WSAGetLastError();
 	}
 
-	LPWSTR connect_name = use_proxy ? psz_proxy_server : host;
+	LPWSTR connect_name = host;
 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
+	if(use_proxy) {
+		Socket = socket(PF_UNSPEC, SOCK_RAW, 0);
+		if(Socket == INVALID_SOCKET) {
+			wprintf(L"Error %d creating socket\n", WSAGetLastError());
+			return WSAGetLastError();
+		}
+
+		Socket.handle = proxy_fd;
+		tls_ctx->socket = Socket;
+
+		return SEC_E_OK;
+	}
+	
 	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
 		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
 		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
@@ -290,36 +302,7 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 		closesocket(Socket);
 		return WSAGetLastError();
 	}
-
-	if(use_proxy) {
-		BYTE  pbMessage[200]; 
-		DWORD cbMessage;
-
-		// Build message for proxy server
-		strcpy(pbMessage, "CONNECT ");
-		strcat(pbMessage, host);
-		strcat(pbMessage, ":");
-		_itoa(port_number, pbMessage + strlen(pbMessage), 10);
-		strcat(pbMessage, " HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n");
-		cbMessage = (DWORD)strlen(pbMessage);
-
-		// Send message to proxy server
-		if(send(Socket, pbMessage, cbMessage, 0) == SOCKET_ERROR) {
-			wprintf(L"Error %d sending message to proxy!\n", WSAGetLastError());
-			return WSAGetLastError();
-		}
-
-		// Receive message from proxy server
-		cbMessage = recv(Socket, pbMessage, 200, 0);
-		if(cbMessage == SOCKET_ERROR) {
-			wprintf(L"Error %d receiving message from proxy\n", WSAGetLastError());
-			return WSAGetLastError();
-		}
-
-		// this sample is limited but in normal use it 
-		// should continue to receive until CR LF CR LF is received
-	}
-
+	
 	tls_ctx->socket = Socket;
 
 	return SEC_E_OK;
