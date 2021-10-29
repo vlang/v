@@ -37,6 +37,10 @@ TlsContext new_tls_context() {
 	};
 };
 
+INT get_tls_context_fd(TlsContext *tls_ctx) {
+	return tls_ctx->socket;
+}
+
 void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the server certificate context.
 	if(tls_ctx->p_pemote_cert_context) {
@@ -281,15 +285,14 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	int res = wsprintf(service_name, L"%d", port_number);
 
 	if(use_proxy) {
-		Socket = socket(PF_UNSPEC, SOCK_RAW, 0);
-		if(Socket == INVALID_SOCKET) {
-			wprintf(L"Error %d creating socket\n", WSAGetLastError());
-			return WSAGetLastError();
+		tls_ctx->socket = proxy_fd;
+		int mode = 0;
+		if (ioctlsocket(proxy_fd, FIONBIO, &mode)) {
+			wprintf(L"Error setting socket %d to blocking: %d\n",
+				proxy_fd,
+				WSAGetLastError());
+			return SEC_E_INTERNAL_ERROR;
 		}
-
-		Socket.handle = proxy_fd;
-		tls_ctx->socket = Socket;
-
 		return SEC_E_OK;
 	}
 	
@@ -516,10 +519,10 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 		// Read data from server.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			if(fDoRead) {
-				cbData = recv(tls_ctx->socket, 
-							  IoBuffer + cbIoBuffer, 
-							  IO_BUFFER_SIZE - cbIoBuffer, 
-							  0);
+				cbData = recv(tls_ctx->socket,
+					      IoBuffer + cbIoBuffer,
+					      IO_BUFFER_SIZE - cbIoBuffer,
+					      0);
 				if(cbData == SOCKET_ERROR) {
 					wprintf(L"Error %d reading data from server\n", WSAGetLastError());
 					scRet = SEC_E_INTERNAL_ERROR;
@@ -582,9 +585,9 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 		   FAILED(scRet) && (dwSSPIOutFlags & ISC_RET_EXTENDED_ERROR)) {
 			if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL) {
 				cbData = send(tls_ctx->socket,
-							  OutBuffers[0].pvBuffer,
-							  OutBuffers[0].cbBuffer,
-							  0);
+					      OutBuffers[0].pvBuffer,
+					      OutBuffers[0].cbBuffer,
+					      0);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
 					wprintf(L"Error %d sending data to server (2)\n", 
 						WSAGetLastError());
