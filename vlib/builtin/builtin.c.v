@@ -510,7 +510,7 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 		return vcalloc_noscan(1)
 	}
 	unsafe {
-		mem := vcalloc_noscan(sz)
+		mem := malloc_noscan(sz)
 		return C.memcpy(mem, src, sz)
 	}
 }
