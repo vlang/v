@@ -25,6 +25,12 @@ mut:
 	data map[string][]string
 }
 
+pub fn new_ordered_dependency_map() OrderedDepMap {
+	mut res := OrderedDepMap{}
+	unsafe { res.keys.flags.set(.noslices) }
+	return res
+}
+
 pub fn (mut o OrderedDepMap) set(name string, deps []string) {
 	if name !in o.data {
 		o.keys << name
@@ -92,8 +98,8 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
-	mut node_names := OrderedDepMap{}
-	mut node_deps := OrderedDepMap{}
+	mut node_names := new_ordered_dependency_map()
+	mut node_deps := new_ordered_dependency_map()
 	for node in graph.nodes {
 		node_names.add(node.name, node.deps)
 		node_deps.add(node.name, node.deps)
