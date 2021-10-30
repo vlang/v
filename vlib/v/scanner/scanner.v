@@ -1455,15 +1455,19 @@ pub fn verror(s string) {
 	util.verror('scanner error', s)
 }
 
+// codegen allows you to generate V code, so that it can be parsed,
+// checked, markused, cgen-ed etc further, just like user's V code.
 pub fn (mut s Scanner) codegen(newtext string) {
 	$if debug_codegen ? {
 		eprintln('scanner.codegen:\n $newtext')
 	}
-	// codegen makes sense only during normal compilation
-	// feeding code generated V code to vfmt or vdoc will
-	// cause them to output/document ephemeral stuff.
 	if s.comments_mode == .skip_comments {
-		s.all_tokens.delete_last() // remove .eof from end of .all_tokens
+		// Calling codegen makes sense only during normal compilation, since
+		// feeding code generated V code to vfmt or vdoc will cause them to
+		// output/document ephemeral stuff.
+		for s.all_tokens.len > 0 && s.all_tokens.last().kind == .eof {
+			s.all_tokens.delete_last()
+		}
 		s.text += newtext
 		old_tidx := s.tidx
 		s.tidx = s.all_tokens.len
