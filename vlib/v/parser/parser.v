@@ -111,7 +111,9 @@ pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 	}
-	return p.parse()
+	res := p.parse()
+	unsafe { p.free_scanner() }
+	return res
 }
 
 pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
@@ -128,13 +130,23 @@ pub fn parse_text(text string, path string, table &ast.Table, comments_mode scan
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	return p.parse()
+	res := p.parse()
+	unsafe { p.free_scanner() }
+	return res
 }
 
 [unsafe]
 pub fn (mut p Parser) free() {
+	unsafe { p.free_scanner() }
+}
+
+[unsafe]
+pub fn (mut p Parser) free_scanner() {
 	unsafe {
-		p.scanner.free()
+		if p.scanner != 0 {
+			p.scanner.free()
+			p.scanner = &scanner.Scanner(0)
+		}
 	}
 }
 
@@ -190,7 +202,9 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	return p.parse()
+	res := p.parse()
+	unsafe { p.free_scanner() }
+	return res
 }
 
 pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&ast.File, []vet.Error) {
@@ -225,6 +239,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&
 	}
 	p.vet_errors << p.scanner.vet_errors
 	file := p.parse()
+	unsafe { p.free_scanner() }
 	return file, p.vet_errors
 }
 
@@ -367,7 +382,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		}
 		*/
 	}
-	mut files := []&ast.File{}
+	mut files := []&ast.File{cap: paths.len}
 	for path in paths {
 		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref)

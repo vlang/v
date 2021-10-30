@@ -151,7 +151,11 @@ fn (mut s Scanner) init_scanner() {
 [unsafe]
 pub fn (mut s Scanner) free() {
 	unsafe {
-		s.text.free()
+		// NB: s.text is not freed here, because it is shared with all other util.read_file instances,
+		// and strings are not reference counted yet:
+		// s.text.free()
+		// .all_tokens however are not shared with anything, and can be freed:
+		s.all_tokens.free()
 	}
 }
 
