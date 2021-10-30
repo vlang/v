@@ -1663,8 +1663,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					c.fail_if_immutable(expr.expr)
 				}
 				.array, .string {
-					// This should only happen in `builtin`
-					if c.file.mod.name != 'builtin' {
+					// should only happen in `builtin` and unsafe blocks
+					inside_builtin := c.file.mod.name == 'builtin'
+					if !inside_builtin && !c.inside_unsafe {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 						return '', expr.pos
 					}
