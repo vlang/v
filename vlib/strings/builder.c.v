@@ -11,7 +11,9 @@ pub type Builder = []byte
 
 // new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
-	return Builder([]byte{cap: initial_size})
+	mut res := Builder([]byte{cap: initial_size})
+	unsafe { res.flags.set(.noslices) }
+	return res
 }
 
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
@@ -161,9 +163,8 @@ pub fn (mut b Builder) str() string {
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
 		unsafe { free(b.data) }
-		mut pd := &b.data
 		unsafe {
-			(*pd) = voidptr(0)
+			b.data = voidptr(0)
 		}
 	}
 }

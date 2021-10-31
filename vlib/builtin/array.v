@@ -238,6 +238,11 @@ pub fn (mut a array) delete_many(i int, size int) {
 		vmemcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
 			(a.len - i - size) * a.element_size)
 	}
+	if a.flags.has(.noslices) {
+		unsafe {
+			free(old_data)
+		}
+	}
 	a.len = new_size
 	a.cap = new_cap
 }
