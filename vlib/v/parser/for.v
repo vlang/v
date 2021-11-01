@@ -153,6 +153,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				return p.error_with_pos('cannot declare index variable with range `for`',
 					key_var_pos)
 			}
+			if val_is_mut {
+				return p.error_with_pos('variable in range `for` cannot be mut', mut_pos)
+			}
 		} else {
 			// this type will be set in checker
 			p.scope.register(ast.Var{

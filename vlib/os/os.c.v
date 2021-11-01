@@ -419,20 +419,30 @@ pub fn is_executable(path string) bool {
 }
 
 // is_writable returns `true` if `path` is writable.
+[manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), w_ok) != -1
+		wp := p.to_wide()
+		res := C._waccess(wp, w_ok) != -1
+		unsafe { free(wp) } // &u16
+		unsafe { p.free() }
+		return res
 	} $else {
 		return C.access(&char(path.str), w_ok) != -1
 	}
 }
 
 // is_readable returns `true` if `path` is readable.
+[manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), r_ok) != -1
+		wp := p.to_wide()
+		res := C._waccess(wp, r_ok) != -1
+		unsafe { free(wp) } // &u16
+		unsafe { p.free() }
+		return res
 	} $else {
 		return C.access(&char(path.str), r_ok) != -1
 	}
@@ -612,17 +622,24 @@ pub fn on_segfault(f voidptr) {
 pub fn executable() string {
 	$if linux {
 		mut xresult := vcalloc_noscan(max_path_len)
+		defer {
+			unsafe { free(xresult) }
+		}
 		count := C.readlink(c'/proc/self/exe', &char(xresult), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		return unsafe { xresult.vstring() }
+		res := unsafe { tos_clone(xresult) }
+		return res
 	}
 	$if windows {
 		max := 512
 		size := max * 2 // max_path_len * sizeof(wchar_t)
 		mut result := unsafe { &u16(vcalloc_noscan(size)) }
+		defer {
+			unsafe { free(result) }
+		}
 		len := C.GetModuleFileName(0, result, max)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(result)
@@ -648,20 +665,28 @@ pub fn executable() string {
 	}
 	$if macos {
 		mut result := vcalloc_noscan(max_path_len)
+		defer {
+			unsafe { free(result) }
+		}
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, max_path_len)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		return unsafe { result.vstring() }
+		res := unsafe { tos_clone(result) }
+		return res
 	}
 	$if freebsd {
 		mut result := vcalloc_noscan(max_path_len)
+		defer {
+			unsafe { free(result) }
+		}
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
 		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
-		return unsafe { result.vstring() }
+		res := unsafe { tos_clone(result) }
+		return res
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
 	$if openbsd {
@@ -672,21 +697,29 @@ pub fn executable() string {
 	}
 	$if netbsd {
 		mut result := vcalloc_noscan(max_path_len)
+		defer {
+			unsafe { free(result) }
+		}
 		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		return unsafe { result.vstring_with_len(count) }
+		res := unsafe { tos_clone(result) }
+		return res
 	}
 	$if dragonfly {
 		mut result := vcalloc_noscan(max_path_len)
+		defer {
+			unsafe { free(result) }
+		}
 		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		return unsafe { result.vstring_with_len(count) }
+		res := unsafe { tos_clone(result) }
+		return res
 	}
 	return executable_fallback()
 }
@@ -738,6 +771,7 @@ pub fn chdir(path string) ? {
 }
 
 // getwd returns the absolute path of the current directory.
+[manualfree]
 pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
@@ -747,7 +781,9 @@ pub fn getwd() string {
 				free(buf)
 				return ''
 			}
-			return string_from_wide(buf)
+			res := string_from_wide(buf)
+			free(buf)
+			return res
 		}
 	} $else {
 		buf := vcalloc_noscan(max_path_len)
@@ -756,7 +792,9 @@ pub fn getwd() string {
 				free(buf)
 				return ''
 			}
-			return buf.vstring()
+			res := tos_clone(buf)
+			free(buf)
+			return res
 		}
 	}
 }
@@ -782,10 +820,13 @@ pub fn real_path(fpath string) string {
 			C.CloseHandle(file)
 			if final_len < size {
 				rt := unsafe { string_from_wide2(fullpath, final_len) }
+				unsafe { free(fullpath) }
+				unsafe { res.free() }
 				res = rt[4..]
 			} else {
-				unsafe { free(fullpath) }
 				eprintln('os.real_path() saw that the file path was too long')
+				unsafe { res.free() }
+				unsafe { free(fullpath) }
 				return fpath.clone()
 			}
 		} else {
@@ -794,19 +835,29 @@ pub fn real_path(fpath string) string {
 			// TODO: check errors if path len is not enough
 			ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 			if ret == 0 {
+				unsafe { res.free() }
 				unsafe { free(fullpath) }
 				return fpath.clone()
 			}
+			unsafe { res.free() }
 			res = unsafe { string_from_wide(fullpath) }
+			unsafe { free(fullpath) }
 		}
 	} $else {
 		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
+			unsafe { res.free() }
 			unsafe { free(fullpath) }
 			return fpath.clone()
 		}
-		res = unsafe { fullpath.vstring() }
+		// NB: fullpath is much larger (usually ~4KB), than what C.realpath will
+		// actually fill in the vast majority of the cases => it pays to copy the
+		// resulting string from that buffer, to a shorter one, and then free the
+		// 4KB fullpath buffer.
+		unsafe { res.free() }
+		res = unsafe { tos_clone(fullpath) }
+		unsafe { free(fullpath) }
 	}
 	unsafe { normalize_drive_letter(res) }
 	return res

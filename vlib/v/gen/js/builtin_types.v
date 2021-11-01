@@ -14,6 +14,13 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 	return dval
 }
 
+fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
+	fun := g.get_copy_fn(t)
+	temp := g.new_tmp_var()
+	g.writeln('let $temp = ${fun}($tmp);')
+	return temp
+}
+
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
@@ -39,7 +46,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
 		}
 		.voidptr {
-			styp = 'null'
+			styp = 'new voidptr(null)'
 		}
 		else {
 			// TODO
@@ -101,7 +108,7 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 			styp = 'array'
 		}
 		.voidptr {
-			styp = 'any'
+			styp = 'voidptr'
 		}
 		.rune {
 			styp = 'rune'
@@ -130,7 +137,7 @@ fn (mut g JsGen) base_type(_t ast.Type) string {
 pub fn (mut g JsGen) typ(t ast.Type) string {
 	sym := g.table.get_final_type_symbol(t)
 	if sym.kind == .voidptr {
-		return 'any'
+		return 'voidptr'
 	}
 
 	styp := g.base_type(t)
@@ -150,7 +157,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			styp = 'void'
 		}
 		.voidptr {
-			styp = 'any'
+			styp = 'voidptr'
 		}
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
@@ -429,6 +436,18 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
 					eq: 'new bool(vEq(self, other))'
 					to_jsval: 'this.arr'
+				)
+			}
+			'voidptr' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					val_name: 'val'
+					default_value: 'null'
+					constructor: 'this.val = val;'
+					value_of: 'this'
+					to_string: '"voidptr(" + this.val + ")"'
+					eq: 'this.val === other.val'
+					to_jsval: 'this.val'
 				)
 			}
 			'any' {

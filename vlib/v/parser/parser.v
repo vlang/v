@@ -419,7 +419,7 @@ pub fn (mut p Parser) parse_block() []ast.Stmt {
 
 pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
-	mut stmts := []ast.Stmt{}
+	mut stmts := []ast.Stmt{cap: 20}
 	if p.tok.kind != .rcbr {
 		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
@@ -2974,7 +2974,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	p.next()
 	// no return
 	mut comments := p.eat_comments()
-	if p.tok.kind == .rcbr {
+	if p.tok.kind == .rcbr || (p.tok.kind == .name && p.peek_tok.kind == .colon) {
 		return ast.Return{
 			comments: comments
 			pos: first_pos

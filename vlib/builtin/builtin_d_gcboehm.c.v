@@ -1,6 +1,17 @@
 module builtin
 
-#flag -DGC_THREADS=1
+$if freebsd {
+	// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
+	#flag -DBUS_PAGE_FAULT=T_PAGEFLT
+	$if !tinyc {
+		#flag -DGC_THREADS=1
+		#flag -DGC_BUILTIN_ATOMIC=1
+		#flag @VEXEROOT/thirdparty/libgc/gc.o
+		#flag -lpthread
+	}
+} $else {
+	#flag -DGC_THREADS=1
+}
 
 $if static_boehm ? {
 	$if macos {

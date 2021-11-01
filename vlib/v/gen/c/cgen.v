@@ -595,7 +595,7 @@ pub fn (mut g Gen) init() {
 		g.stringliterals.writeln('')
 		g.stringliterals.writeln('// >> string literal consts')
 		if g.pref.build_mode != .build_module {
-			g.stringliterals.writeln('void vinit_string_literals(){')
+			g.stringliterals.writeln('void vinit_string_literals(void){')
 		}
 	}
 	if g.pref.compile_defines_all.len > 0 {
@@ -1557,7 +1557,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			old_is_void_expr_stmt := g.is_void_expr_stmt
 			g.is_void_expr_stmt = !node.is_expr
-			if node.typ != ast.void_type && g.expected_cast_type != 0 {
+			if node.typ != ast.void_type && g.expected_cast_type != 0 && node.expr !is ast.MatchExpr {
 				g.expr_with_cast(node.expr, node.typ, g.expected_cast_type)
 			} else {
 				g.expr(node.expr)
@@ -3197,18 +3197,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							if val.has_default {
-								g.write('{')
-								g.expr(val.default_expr)
-								info := right_sym.info as ast.ArrayFixed
-								for _ in 1 .. info.size {
-									g.write(', ')
-									g.expr(val.default_expr)
-								}
-								g.write('}')
-							} else {
-								g.write('{0}')
-							}
+							g.array_init(val)
 						} else {
 							g.write('{0}')
 						}
@@ -6152,7 +6141,7 @@ fn (mut g Gen) write_init_function() {
 	}
 	//
 	fn_vcleanup_start_pos := g.out.len
-	g.writeln('void _vcleanup() {')
+	g.writeln('void _vcleanup(void) {')
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()

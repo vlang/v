@@ -12,16 +12,6 @@ const (
 		'table/array-table-array.toml',
 	]
 	invalid_exceptions = [
-		// String
-		'string/basic-multiline-out-of-range-unicode-escape-1.toml',
-		'string/bad-codepoint.toml',
-		'string/basic-multiline-out-of-range-unicode-escape-2.toml',
-		'string/basic-out-of-range-unicode-escape-1.toml',
-		'string/basic-out-of-range-unicode-escape-2.toml',
-		'string/bad-uni-esc.toml',
-		// Encoding
-		'encoding/bad-utf8-in-comment.toml',
-		'encoding/bad-utf8-in-string.toml',
 		// Table
 		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
@@ -33,7 +23,7 @@ const (
 		'table/duplicate-table-array.toml',
 		// Array
 		'array/tables-1.toml',
-		'array/missing-separator.toml',
+		//'array/missing-separator.toml',
 		'array/text-after-array-entries.toml',
 		'array/text-before-array-separator.toml',
 		// Date / Time
@@ -41,14 +31,10 @@ const (
 		'datetime/no-leads-with-milli.toml',
 		'datetime/no-leads.toml',
 		// Inline table
-		'inline-table/empty.toml',
-		'inline-table/double-comma.toml',
-		'inline-table/trailing-comma.toml',
 		'inline-table/linebreak-4.toml',
 		'inline-table/linebreak-3.toml',
 		'inline-table/linebreak-1.toml',
 		'inline-table/linebreak-2.toml',
-		'inline-table/no-comma.toml',
 		// Key
 		'key/duplicate.toml',
 		'key/after-table.toml',
@@ -73,7 +59,11 @@ fn test_burnt_sushi_tomltest() {
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
-			relative := valid_test_file.all_after(os.join_path('toml-test', 'tests', 'valid')).trim_left(os.path_separator)
+			mut relative := valid_test_file.all_after(os.join_path('toml-test', 'tests',
+				'valid')).trim_left(os.path_separator)
+			$if windows {
+				relative = relative.replace('/', '\\')
+			}
 			if relative !in valid_exceptions {
 				println('OK   [$i/$valid_test_files.len] "$valid_test_file"...')
 				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
@@ -103,8 +93,11 @@ fn test_burnt_sushi_tomltest() {
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
-			relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
+			mut relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
 				'invalid')).trim_left(os.path_separator)
+			$if windows {
+				relative = relative.replace('/', '\\')
+			}
 			if relative !in invalid_exceptions {
 				println('OK   [$i/$invalid_test_files.len] "$invalid_test_file"...')
 				if toml_doc := toml.parse_file(invalid_test_file) {

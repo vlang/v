@@ -45,10 +45,9 @@ pub mut:
 	is_print_rel_paths_on_error bool
 	quote                       byte // which quote is used to denote current string: ' or "
 	inter_quote                 byte
-	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                    int   // total number of lines in the source file that were scanned
-	is_vh                       bool  // Keep newlines
-	is_fmt                      bool  // Used for v fmt.
+	nr_lines                    int  // total number of lines in the source file that were scanned
+	is_vh                       bool // Keep newlines
+	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
@@ -223,10 +222,11 @@ fn (mut s Scanner) ident_name() string {
 	s.pos++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !(util.is_name_char(c) || c.is_digit()) {
-			break
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			s.pos++
+			continue
 		}
-		s.pos++
+		break
 	}
 	name := s.text[start..s.pos]
 	s.pos--
@@ -512,6 +512,11 @@ fn (mut s Scanner) ident_number() string {
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == 8 {
+			// tabs are most common
+			s.pos++
+			continue
+		}
 		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
 			return
 		}
@@ -556,6 +561,8 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 	}
 	oldmode := s.comments_mode
 	s.comments_mode = mode
+	// preallocate space for tokens
+	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
 	s.comments_mode = oldmode
 	s.tidx = 0
@@ -671,7 +678,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
-			kind := token.keywords[name]
+			kind := token.matcher.find(name)
 			if kind != .unknown {
 				return s.new_token(kind, name, name.len)
 			}
@@ -1354,7 +1361,6 @@ fn (mut s Scanner) inc_line_number() {
 		s.last_nl_pos++
 	}
 	s.line_nr++
-	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
 	}

@@ -21,6 +21,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
+
 	if typ.has_flag(.optional) {
 		unwrapped.set_flag(.optional)
 	}
@@ -50,6 +51,9 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 		return
 	}
 	styp := typ.styp
+	if styp == 'any' {
+		return
+	}
 	str_fn_name := styp_to_str_fn_name(styp)
 	if typ.typ.has_flag(.optional) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
@@ -221,7 +225,7 @@ fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name strin
 	g.definitions.writeln('function ${str_fn_name}(it) { return indent_${str_fn_name}(it, 0); }')
 	g.definitions.writeln('function indent_${str_fn_name}(it, indent_count) {')
 	g.definitions.writeln('\tlet res;')
-	g.definitions.writeln('\tif (it.state == 0) {')
+	g.definitions.writeln('\tif (it.state.val == 0) {')
 	if sym.kind == .string {
 		tmp_res := '${parent_str_fn_name}(it.data)'
 		g.definitions.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
@@ -281,7 +285,7 @@ fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str
 		} else {
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_arg_ptr, typ)
 			fn_builder.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( $deref a[$i]));')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( a[$i] $deref ));')
 		}
 		if i != info.types.len - 1 {
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, new string(", "));')
@@ -346,37 +350,25 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 	for typ in info.types {
 		subtype := g.table.get_type_symbol(typ)
 		mut func_name := g.get_str_fn(typ)
-		sym_has_str_method, _, _ := subtype.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
-
+		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '.valueOf()' }
 		// str_intp
 
 		if typ == ast.string_type {
-			/*
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
-				val += ', indent_count'
-			}
-			val += ')'
-			val = val
-			*/
-			res := '"TODO"'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			fn_builder.write_string(' return $res;')
+			fn_builder.write_string('\tif (x.val instanceof string)')
+			fn_builder.write_string(' return "new string(${clean_interface_v_type_name}(" + x.val.str + ")");')
 		} else {
-			/*
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			mut val := '${func_name}(x $deref'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
-			val = val
-			*/
-			res := '"TODO'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			fn_builder.write_string(' return $res;\n')
+
+			fn_builder.write_string('\tif (x.val instanceof $subtype.cname)')
+			fn_builder.write_string(' return new string("${clean_interface_v_type_name}(" + ${val}.str + ")");\n')
 		}
 	}
 	fn_builder.writeln('\treturn new string("unknown interface value");')
@@ -385,6 +377,26 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 }
 
 fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_name string) {
+	g.definitions.writeln('function ${str_fn_name}(x) { return indent_${str_fn_name}(x, 0); }')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('function indent_${str_fn_name}(x, indent_count) {')
+	for typ in info.variants {
+		typ_str := g.typ(typ)
+		mut func_name := g.get_str_fn(typ)
+		sym := g.table.get_type_symbol(typ)
+		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		deref := if sym_has_str_method && str_method_expects_ptr {
+			' '
+		} else {
+			if typ.is_ptr() { '.valueOf()' } else { ' ' }
+		}
+		if should_use_indent_func(sym.kind) && !sym_has_str_method {
+			func_name = 'indent_$func_name'
+		}
+		fn_builder.writeln('if (x instanceof $typ_str) { return ${func_name}(x$deref); }')
+	}
+	fn_builder.writeln('builtin__panic(new string("unknown sum type value"));\n}')
+	g.definitions.writeln(fn_builder.str())
 }
 
 fn (mut g JsGen) fn_decl_str(info ast.FnType) string {

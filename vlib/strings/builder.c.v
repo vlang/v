@@ -150,7 +150,7 @@ pub fn (b &Builder) after(n int) string {
 // .str() call.
 pub fn (mut b Builder) str() string {
 	b << byte(0)
-	bcopy := unsafe { &byte(memdup(b.data, b.len)) }
+	bcopy := unsafe { &byte(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
 	b.trim(0)
 	return s

@@ -18,6 +18,7 @@ pub fn new_timers(should_print bool) &Timers {
 	return &Timers{
 		swatches: map[string]time.StopWatch{}
 		should_print: should_print
+		already_shown: []string{cap: 100}
 	}
 }
 

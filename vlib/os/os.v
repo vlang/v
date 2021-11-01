@@ -148,9 +148,12 @@ pub fn rmdir_all(path string) ? {
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
+[manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
-	return items.len == 0
+	res := items.len == 0
+	unsafe { items.free() }
+	return res
 }
 
 // file_ext will return the part after the last occurence of `.` in `path`.
@@ -437,7 +440,7 @@ pub fn is_abs_path(path string) bool {
 // join_path returns a path as string from input string parameter(s).
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
-	mut result := []string{}
+	mut result := []string{cap: 256}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
@@ -449,11 +452,16 @@ pub fn join_path(base string, dirs ...string) string {
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
 pub fn walk_ext(path string, ext string) []string {
-	if !is_dir(path) {
-		return []
-	}
-	mut files := ls(path) or { return [] }
 	mut res := []string{}
+	impl_walk_ext(path, ext, mut res)
+	return res
+}
+
+fn impl_walk_ext(path string, ext string, mut out []string) {
+	if !is_dir(path) {
+		return
+	}
+	mut files := ls(path) or { return }
 	separator := if path.ends_with(path_separator) { '' } else { path_separator }
 	for file in files {
 		if file.starts_with('.') {
@@ -461,17 +469,20 @@ pub fn walk_ext(path string, ext string) []string {
 		}
 		p := path + separator + file
 		if is_dir(p) && !is_link(p) {
-			res << walk_ext(p, ext)
+			impl_walk_ext(p, ext, mut out)
 		} else if file.ends_with(ext) {
-			res << p
+			out << p
 		}
 	}
-	return res
 }
 
-// walk recursively traverses the given directory `path`.
-// When a file is encountred it will call the callback function with current file as argument.
+// walk traverses the given directory `path`.
+// When a file is encountred it will call the
+// callback function `f` with current file as argument.
 pub fn walk(path string, f fn (string)) {
+	if path.len == 0 {
+		return
+	}
 	if !is_dir(path) {
 		return
 	}
@@ -491,17 +502,44 @@ pub fn walk(path string, f fn (string)) {
 	return
 }
 
+// FnWalkContextCB is used to define the callback functions, passed to os.walk_context
+pub type FnWalkContextCB = fn (voidptr, string)
+
+// walk_with_context traverses the given directory `path`.
+// For each encountred file, it will call your `fcb` callback,
+// passing it the arbitrary `context` in its first parameter,
+// and the path to the file in its second parameter.
+pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
+	if path.len == 0 {
+		return
+	}
+	if !is_dir(path) {
+		return
+	}
+	mut files := ls(path) or { return }
+	mut local_path_separator := path_separator
+	if path.ends_with(path_separator) {
+		local_path_separator = ''
+	}
+	for file in files {
+		p := path + local_path_separator + file
+		if is_dir(p) && !is_link(p) {
+			walk_with_context(p, context, fcb)
+		} else {
+			fcb(context, p)
+		}
+	}
+	return
+}
+
 // log will print "os.log: "+`s` ...
 pub fn log(s string) {
-	//$if macos {
-	// Use NSLog() on macos
-	//} $else {
 	println('os.log: ' + s)
-	//}
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
-pub fn mkdir_all(path string) ? {
+pub fn mkdir_all(opath string) ? {
+	path := opath.replace('/', path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {
@@ -604,13 +642,17 @@ pub fn resource_abs_path(path string) string {
 	mut base_path := real_path(dexe)
 	vresource := getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
+		unsafe { base_path.free() }
 		base_path = vresource
 	}
 	fp := join_path(base_path, path)
 	res := real_path(fp)
 	unsafe {
 		fp.free()
+		vresource.free()
 		base_path.free()
+		dexe.free()
+		exe.free()
 	}
 	return res
 }

@@ -761,3 +761,71 @@ pub fn (a Integer) isqrt() Integer {
 	}
 	return result
 }
+
+[inline]
+fn bi_min(a Integer, b Integer) Integer {
+	return if a < b { a } else { b }
+}
+
+[inline]
+fn bi_max(a Integer, b Integer) Integer {
+	return if a > b { a } else { b }
+}
+
+[direct_array_access]
+fn (bi Integer) msb() u32 {
+	for idx := 0; idx < bi.digits.len; idx += 1 {
+		word := bi.digits[idx]
+		if word > 0 {
+			return u32((idx * 32) + bits.trailing_zeros_32(word))
+		}
+	}
+	return u32(32)
+}
+
+// Greatest-Common-Divisor https://en.wikipedia.org/wiki/Binary_GCD_algorithm
+// The code below follows the 2013-christmas-special by D. Lemire & R. Corderoy
+// https://en.algorithmica.org/hpc/analyzing-performance/gcd/
+//
+// discussion & further info https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
+
+pub fn (x Integer) gcd_binary(y Integer) Integer {
+	// Since standard-euclid-gcd is much faster on smaller sizes 4-8-Byte.
+	// In such a case, one could delegate back to big.Integer.gcd()
+	// Uncomment below and a all long-long goes to euclid-gcd.
+	//
+	// if x.digits.len + y.digits.len <= 4 {
+	//   return x.gcd( y )
+	// }
+
+	if x.signum == 0 {
+		return y.abs()
+	}
+	if y.signum == 0 {
+		return x.abs()
+	}
+
+	if x.signum < 0 {
+		return x.neg().gcd(y)
+	}
+	if y.signum < 0 {
+		return x.gcd(y.neg())
+	}
+
+	mut a := x
+	mut b := y
+
+	mut az := a.msb()
+	bz := b.msb()
+	shift := util.umin(az, bz)
+	b = b.rshift(bz)
+
+	for a.signum != 0 {
+		a = a.rshift(az)
+		diff := b - a
+		az = diff.msb()
+		b = bi_min(a, b)
+		a = diff.abs()
+	}
+	return b.lshift(shift)
+}

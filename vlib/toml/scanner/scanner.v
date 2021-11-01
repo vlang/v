@@ -19,25 +19,19 @@ pub:
 	config Config
 	text   string // the input TOML text
 mut:
-	col     int  // current column number (x coordinate)
-	line_nr int = 1 // current line number (y coordinate)
-	pos     int  // current flat/index position in the `text` field
-	mode    Mode // sub-mode of the scanner
+	col        int // current column number (x coordinate)
+	line_nr    int = 1 // current line number (y coordinate)
+	pos        int // current flat/index position in the `text` field
+	header_len int // Length, how many bytes of header was found
 }
 
 // State is a read-only copy of the scanner's internal state.
 // See also `Scanner.state()`.
 pub struct State {
 pub:
-	col     int  // current column number (x coordinate)
+	col     int // current column number (x coordinate)
 	line_nr int = 1 // current line number (y coordinate)
-	pos     int  // current flat/index position in the `text` field
-	mode    Mode // sub-mode of the scanner
-}
-
-enum Mode {
-	normal
-	inside_string
+	pos     int // current flat/index position in the `text` field
 }
 
 // Config is used to configure a Scanner instance.
@@ -80,6 +74,8 @@ pub fn new_simple(toml_input string) ?Scanner {
 // scan returns the next token from the input.
 [direct_array_access]
 pub fn (mut s Scanner) scan() ?token.Token {
+	s.validate_and_skip_headers() ?
+
 	for {
 		c := s.next()
 		byte_c := byte(c)
@@ -174,9 +170,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.quoted, ident_string, ident_string.len)
 			}
 			`#` {
-				start := s.pos //+ 1
-				s.ignore_line() ?
-				hash := s.text[start..s.pos]
+				hash := s.ignore_line() ?
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
 			}
@@ -299,37 +293,37 @@ pub fn (mut s Scanner) reset() {
 	s.pos = 0
 	s.col = 0
 	s.line_nr = 1
+	s.header_len = 0
 }
 
 // new_token returns a new `token.Token`.
 [inline]
 fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
-	// line_offset := 1
 	// println('new_token($lit)')
+	mut col := s.col - len + 1
+	if s.line_nr == 1 {
+		col -= s.header_len
+	}
 	return token.Token{
 		kind: kind
 		lit: lit
-		col: mathutil.max(1, s.col - len + 1)
-		line_nr: s.line_nr + 1 //+ line_offset
-		pos: s.pos - len + 1
+		col: mathutil.max(1, col)
+		line_nr: s.line_nr + 1
+		pos: s.pos - s.header_len - len + 1
 		len: len
 	}
 }
 
 // ignore_line forwards the scanner to the end of the current line.
 [direct_array_access; inline]
-fn (mut s Scanner) ignore_line() ? {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL')
+fn (mut s Scanner) ignore_line() ?string {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
+	start := s.pos
 	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
-		// Check for control characters (allow TAB)
-		if util.is_illegal_ascii_control_character(c) {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' control character `$c.hex()` is not allowed ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
-		}
 		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
-		continue
 	}
+	return s.text[start..s.pos]
 }
 
 // inc_line_number increases the internal line number.
@@ -616,6 +610,38 @@ pub fn (s Scanner) state() State {
 		col: s.col
 		line_nr: s.line_nr
 		pos: s.pos
-		mode: s.mode
+	}
+}
+
+fn (mut s Scanner) validate_and_skip_headers() ? {
+	// UTF-16 / UTF-32 headers (BE/LE)
+	s.check_utf16_or_32_bom() ?
+
+	// NICE-TO-HAVE-TODO Check other types of (UTF-?) headers and yield an error. TOML is UTF-8 only.
+
+	// Skip optional UTF-8 heaser, if any.
+	if s.at() == 0xEF && s.peek(1) == 0xBB && s.peek(2) == 0xBF {
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping UTF-8 byte order mark (BOM)')
+		s.header_len = 3
+		s.skip_n(s.header_len)
+	}
+
+	// Check after we've skipped UTF-8 BOM
+	s.check_utf16_or_32_bom() ?
+}
+
+fn (mut s Scanner) check_utf16_or_32_bom() ? {
+	if (s.at() == 0xFF && s.peek(1) == 0xFE && s.peek(2) == 0x00 && s.peek(3) == 0x00)
+		|| (s.at() == 0x00 && s.peek(1) == 0x00 && s.peek(2) == 0xFE && s.peek(3) == 0xFF) {
+		s.header_len = 4
+		s.skip_n(s.header_len)
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' UTF-32 is not a valid TOML encoding at $s.pos ($s.line_nr,$s.col) near ...${s.excerpt(s.pos, 5)}...')
+	}
+	if (s.at() == 0xFE && s.peek(1) == 0xFF) || (s.at() == 0xFF && s.peek(1) == 0xFE) {
+		s.header_len = 2
+		s.skip_n(s.header_len)
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' UTF-16 is not a valid TOML encoding at $s.pos ($s.line_nr,$s.col) near ...${s.excerpt(s.pos, 5)}...')
 	}
 }

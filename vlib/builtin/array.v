@@ -34,9 +34,13 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
 		len: mylen
 		cap: cap_
+	}
+	if cap_ > 0 && mylen == 0 {
+		arr.data = unsafe { malloc(cap_ * elm_size) }
+	} else {
+		arr.data = vcalloc(cap_ * elm_size)
 	}
 	if val != 0 {
 		for i in 0 .. arr.len {
@@ -50,7 +54,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc(cap_ * elm_size)
+		data: unsafe { malloc(cap_ * elm_size) }
 		len: mylen
 		cap: cap_
 	}
@@ -540,18 +544,25 @@ pub fn (mut a []string) free() {
 // => '["a", "b", "c"]'.
 [manualfree]
 pub fn (a []string) str() string {
-	mut sb := strings.new_builder(a.len * 3)
-	sb.write_string('[')
+	mut sb_len := 4 // 2x" + 1x, + 1xspace
+	if a.len > 0 {
+		// assume that most strings will be ~large as the first
+		sb_len += a[0].len
+		sb_len *= a.len
+	}
+	sb_len += 2 // 1x[ + 1x]
+	mut sb := strings.new_builder(sb_len)
+	sb.write_b(`[`)
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write_string("'")
+		sb.write_b(`'`)
 		sb.write_string(val)
-		sb.write_string("'")
+		sb.write_b(`'`)
 		if i < a.len - 1 {
 			sb.write_string(', ')
 		}
 	}
-	sb.write_string(']')
+	sb.write_b(`]`)
 	res := sb.str()
 	unsafe { sb.free() }
 	return res

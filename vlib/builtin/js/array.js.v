@@ -15,7 +15,7 @@ struct array_buffer {
 fn (mut a array_buffer) make_copy() {
 	if a.index_start != 0 || a.has_slice {
 		mut new_arr := JS.makeEmtpyJSArray()
-		for mut i in 0 .. a.len {
+		for i in 0 .. a.len {
 			#new_arr.push(a.val.get(i))
 
 			mut x := i

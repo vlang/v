@@ -1460,7 +1460,8 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					if cmt.is_inline {
 						f.write(' ')
 						f.comment(cmt, iembed: true)
-						if cmt.pos.line_nr == expr_pos.last_line && cmt.pos.pos < expr_pos.pos {
+						if !set_comma && cmt.pos.line_nr == expr_pos.last_line
+							&& cmt.pos.pos < expr_pos.pos {
 							f.write(',')
 							set_comma = true
 						} else {
@@ -1471,9 +1472,12 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 							}
 						}
 					} else {
-						f.write(', ')
+						if !set_comma {
+							f.write(',')
+							set_comma = true
+						}
+						f.write(' ')
 						f.comment(cmt, iembed: false)
-						set_comma = true
 					}
 				}
 				last_comment_was_inline = cmt.is_inline

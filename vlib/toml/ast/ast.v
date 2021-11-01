@@ -11,7 +11,8 @@ pub struct Root {
 pub:
 	input input.Config // User input configuration
 pub mut:
-	table Value
+	comments []Comment
+	table    Value
 	// errors           []errors.Error    // all the checker errors in the file
 }
 

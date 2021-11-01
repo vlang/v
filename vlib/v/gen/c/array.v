@@ -23,6 +23,61 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('HEAP($array_styp, ')
 	}
 	if array_type.unaliased_sym.kind == .array_fixed {
+		if node.has_it {
+			g.inside_lambda = true
+			tmp := g.new_tmp_var()
+			mut s := g.go_before_stmt(0)
+			s_ends_with_ln := s.ends_with('\n')
+			s = s.trim_space()
+			ret_typ := g.typ(node.typ)
+			elem_typ := g.typ(node.elem_type)
+			g.empty_line = true
+			g.write('$ret_typ $tmp =')
+			g.write('{')
+			if node.has_val {
+				for i, expr in node.exprs {
+					if expr.is_auto_deref_var() {
+						g.write('*')
+					}
+					g.write('0')
+					if i != node.exprs.len - 1 {
+						g.write(', ')
+					}
+				}
+			} else if node.has_default {
+				g.write('0')
+				info := array_type.unaliased_sym.info as ast.ArrayFixed
+				for _ in 1 .. info.size {
+					g.write(', ')
+					g.write('0')
+				}
+			} else {
+				g.write('0')
+			}
+			g.write('}')
+			g.writeln(';')
+			g.writeln('{')
+			g.indent++
+			g.writeln('$elem_typ* pelem = ($elem_typ*)$tmp;')
+			g.writeln('int _len = (int)sizeof($tmp) / sizeof($elem_typ);')
+			g.writeln('for(int it=0; it<_len; it++, pelem++) {')
+			g.indent++
+			g.write('*pelem = ')
+			g.expr(node.default_expr)
+			g.writeln(';')
+			g.indent--
+			g.writeln('}')
+			g.indent--
+			g.writeln('}')
+			if s_ends_with_ln {
+				g.writeln(s)
+			} else {
+				g.write(s)
+			}
+			g.write(tmp)
+			g.inside_lambda = false
+			return
+		}
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {

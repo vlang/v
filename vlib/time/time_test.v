@@ -244,3 +244,13 @@ fn test_offset() {
 
 	assert diff_seconds == time.offset()
 }
+
+fn test_since() {
+	t1 := time.now()
+	time.sleep(20 * time.millisecond)
+	d1 := time.since(t1)
+	assert d1 >= 20_000_000
+	time.sleep(20 * time.millisecond)
+	d2 := time.since(t1)
+	assert d2 >= 40_000_000
+}

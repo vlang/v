@@ -3711,6 +3711,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_len = 0
 			}
 		}
+		if right is ast.InfixExpr {
+			if right.op == .arrow {
+				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
+					right.pos)
+			}
+		}
+		if right is ast.Ident {
+			if right.is_mut {
+				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
+			}
+		}
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
@@ -5156,6 +5167,12 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(stmt)
+		if stmt is ast.GotoLabel {
+			unreachable = token.Position{
+				line_nr: -1
+			}
+			c.scope_returns = false
+		}
 	}
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)
@@ -7881,7 +7898,7 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 		}
 	}
 	sym := c.table.get_type_symbol(field.typ)
-	if sym.kind == .struct_ {
+	if sym.kind == .struct_ && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
 	return name

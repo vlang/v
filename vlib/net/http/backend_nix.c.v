@@ -424,3 +424,117 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	}
 	return parse_response(response_text)
 }
+
+fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?ProxyConnLayer {
+	ctx := C.SSL_CTX_new(C.TLS_method())
+	defer {
+		if ctx != 0 {
+			C.SSL_CTX_free(ctx)
+		}
+	}
+	C.SSL_CTX_set_verify_depth(ctx, 4)
+	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
+	C.SSL_CTX_set_options(ctx, flags)
+
+	// Support client certificates:
+	mut verify := proxy.verify
+	mut cert := proxy.cert
+	mut cert_key := proxy.cert_key
+
+	if proxy.in_memory_verification {
+		now := time.now().unix.str()
+
+		verify = os.temp_dir() + '/v_verify' + now
+		cert = os.temp_dir() + '/v_cert' + now
+		cert_key = os.temp_dir() + '/v_cert_key' + now
+
+		if proxy.verify != '' {
+			os.write_file(verify, proxy.verify) ?
+		}
+		if proxy.cert != '' {
+			os.write_file(cert, proxy.cert) ?
+		}
+		if proxy.cert_key != '' {
+			os.write_file(cert_key, proxy.cert_key) ?
+		}
+	}
+
+	mut res := 0
+	if proxy.verify != '' {
+		res = C.SSL_CTX_load_verify_locations(ctx, &char(verify.str), 0)
+		if proxy.validate && res != 1 {
+			return error('http_proxy: openssl: SSL_CTX_load_verify_locations failed')
+		}
+	}
+	if proxy.cert != '' {
+		res = C.SSL_CTX_use_certificate_file(ctx, &char(cert.str), C.SSL_FILETYPE_PEM)
+		if proxy.validate && res != 1 {
+			return error('http_proxy: openssl: SSL_CTX_use_certificate_file failed, res: $res')
+		}
+	}
+	if proxy.cert_key != '' {
+		res = C.SSL_CTX_use_PrivateKey_file(ctx, &char(cert_key.str), C.SSL_FILETYPE_PEM)
+		if proxy.validate && res != 1 {
+			return error('http_proxy: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
+		}
+	}
+
+	if proxy.in_memory_verification {
+		if proxy.verify != '' {
+			os.rm(verify) ?
+		}
+		if proxy.cert != '' {
+			os.rm(cert) ?
+		}
+		if proxy.cert_key != '' {
+			os.rm(cert_key) ?
+		}
+	}
+
+	// the setup is done, prepare an ssl connection from the SSL context:
+	web := C.BIO_new_ssl_connect(ctx)
+	defer {
+		if web != 0 {
+			C.BIO_free_all(web)
+		}
+	}
+
+	ssl := &openssl.SSL(0)
+	C.BIO_get_ssl(web, &ssl)
+
+	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
+	res = C.SSL_set_cipher_list(voidptr(ssl), &char(preferred_ciphers.str))
+
+	if res != 1 {
+		return error('http_proxy: openssl: SSL_set_cipher_list failed, res: $res')
+	}
+
+	addr := '$hostname:$port'
+
+	res = C.SSL_set_tlsext_host_name(voidptr(ssl), hostname.str)
+	res = C.BIO_set_conn_hostname(web, addr.str)
+
+	res = C.BIO_do_connect(web)
+
+	if res != 1 {
+		return error('http_proxy: openssl: BIO_do_connect failed, res: $res')
+	}
+
+	res = C.BIO_do_handshake(web)
+
+	pcert := C.SSL_get_peer_certificate(voidptr(ssl))
+	defer {
+		if pcert != 0 {
+			C.X509_free(pcert)
+		}
+	}
+
+	res = C.SSL_get_verify_result(voidptr(ssl))
+	if proxy.validate && res != C.X509_V_OK {
+		return error('http_proxy: openssl: SSL_get_verify_result failed, res: $res')
+	}
+
+	return SslConnLayer{
+		bio: web
+	}
+}

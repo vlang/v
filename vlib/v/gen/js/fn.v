@@ -164,7 +164,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			g.expr(it.left)
 			mut ltyp := it.left_type
 			for ltyp.is_ptr() {
-				g.write('.val')
+				g.write('.valueOf()')
 				ltyp = ltyp.deref()
 			}
 			g.write('.')
@@ -248,7 +248,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err.val.msg})`'
+				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {
@@ -340,7 +340,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate {
-				panicstr := '`optional not set (\${err.val.msg})`'
+				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {
@@ -428,6 +428,7 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 		return
 	}
 	cur_fn_decl := g.fn_decl
+	g.fn_decl = unsafe { &it }
 	g.gen_method_decl(it, res)
 	g.fn_decl = cur_fn_decl
 }
@@ -600,4 +601,76 @@ fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
 			g.write(', ')
 		}
 	}
+}
+
+fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
+	if fun.has_gen {
+		return
+	}
+	fun.has_gen = true
+	it := fun.decl
+	unsafe {
+		g.fn_decl = &it
+	}
+	cur_fn_save := g.table.cur_fn
+	defer {
+		g.table.cur_fn = cur_fn_save
+	}
+	unsafe {
+		g.table.cur_fn = &it
+	}
+	mut name := it.name
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+		name = util.replace_op(name)
+	}
+	g.writeln('(function () { ')
+	mut inherited2copy := map[string]string{}
+	for inherited in fun.inherited_vars {
+		if !inherited.is_mut {
+			copy := g.copy_val(inherited.typ, inherited.name)
+			inherited2copy[inherited.name] = copy
+		}
+	}
+
+	name = g.js_name(name)
+
+	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	if name in parser.builtin_functions {
+		name = 'builtin__$name'
+	}
+	if it.is_pub && !it.is_method {
+		g.push_pub_var(name)
+	}
+	g.gen_attrs(it.attrs)
+
+	g.write('return function (')
+
+	mut args := it.params
+
+	g.fn_args(args, it.is_variadic)
+	g.writeln(') {')
+
+	g.inc_indent()
+	for i, arg in args {
+		is_varg := i == args.len - 1 && it.is_variadic
+		arg_name := g.js_name(arg.name)
+		if is_varg {
+			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
+		} else {
+			if arg.typ.is_ptr() || arg.is_mut {
+				g.writeln('$arg_name = new \$ref($arg_name)')
+			}
+		}
+	}
+
+	for inherited in fun.inherited_vars {
+		if !inherited.is_mut {
+			g.writeln('let $inherited.name = ${inherited2copy[inherited.name]};')
+		}
+	}
+	g.stmts(it.stmts)
+	g.dec_indent()
+	g.writeln('}})()')
+
+	g.fn_decl = voidptr(0)
 }
