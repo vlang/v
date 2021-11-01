@@ -144,8 +144,8 @@ pub fn fetch(config FetchConfig) ?Response {
 	mut has_proxy := false
 	mut proxy := HttpProxy{}
 
-	if 'HTTP_PROXY' in environment {
-		proxy = new_http_proxy(environment['HTTP_PROXY']) ?
+	if os.getenv('HTTP_PROXY') != '' {
+		proxy = new_http_proxy(os.getenv('HTTP_PROXY')) ?
 		has_proxy = true
 	}
 
