@@ -25,6 +25,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 		req.proxy.prepare(req, '$host_name:$port') ?
 		C.use_proxy = 1
 		C.proxy_fd = req.proxy.conn.fd
+		return error('not implemented')
 	}
 
 	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
@@ -38,23 +39,24 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	return parse_response(response_text)
 }
 
-fn (mut proxy HttpProxy) create_ssl_tcp(hostname string, port int) ?ProxyConnLayer {
-	mut ctx := C.new_tls_context()
+fn (mut proxy HttpProxy) create_ssl_layer(hostname string, port int) ?ProxyConnLayer {
+	return error('not implemented')
+	// mut ctx := C.new_tls_context()
 
-	conn_res := C.connect_to_server(&ctx, hostname.to_wide(), port)
-	if conn_res != 0 {
-		return error('could not connect to host')
-	}
+	// conn_res := C.connect_to_server(&ctx, hostname.to_wide(), port)
+	// if conn_res != 0 {
+	//	return error('could not connect to host')
+	//}
 
-	connection_fd := C.get_tls_context_fd(&ctx)
+	// connection_fd := C.get_tls_context_fd(&ctx)
 
-	if connection_fd < 0 {
-		return error('could not create fd from socket')
-	}
+	// if connection_fd < 0 {
+	//	return error('could not create fd from socket')
+	//}
 
-	C.vschannel_cleanup(&ctx)
+	// C.vschannel_cleanup(&ctx)
 
-	return ProxyConnLayer{
-		fd: connection_fd
-	}
+	// return ProxyConnLayer{
+	//	fd: connection_fd
+	//}
 }

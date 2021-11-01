@@ -153,17 +153,14 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
 
-	mut conn_layer := ProxyConnLayer{}
+	mut conn_layer := ProxyConnLayer(PlainConnLayer{})
 
 	if req.use_proxy {
 		req.proxy.prepare(req, host) ?
 		conn_layer = req.proxy.conn
 	} else {
 		mut client := net.dial_tcp(host) ?
-
-		conn_layer = ProxyConnLayer{
-			fd: client.sock.handle
-		}
+		conn_layer = PlainConnLayer{client}
 	}
 
 	conn_layer.set_read_timeout(req.read_timeout)
@@ -174,7 +171,7 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 	$if trace_http_request ? {
 		eprintln('> $s')
 	}
-	mut bytes := io.read_all(reader: conn_layer) ?
+	mut bytes := io.read_all(reader: conn_layer as io.Reader) ?
 
 	if !req.use_proxy {
 		conn_layer.close() ?

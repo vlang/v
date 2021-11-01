@@ -122,7 +122,7 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
 			$if trace_tcp_data_write ? {
-				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: chunk_size:6, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
 			}
 			if sent < 0 {
 				code := error_code()

@@ -39,6 +39,25 @@ pub struct SSL_METHOD {
 pub struct OPENSSL_INIT_SETTINGS {
 }
 
+pub struct C.BIO {
+}
+
+pub struct C.BIO_METHOD {
+}
+
+pub struct C.BIO_info_cb {
+}
+
+pub struct C.BIO_SSL {
+}
+
+// BIO
+fn C.BIO_new(method &C.BIO_METHOD) &C.BIO
+
+fn C.BIO_new_ssl(ctx &C.SSL_CTX, client int) &C.BIO
+
+fn C.BIO_push(b0 &C.BIO, b1 &C.BIO) &C.BIO
+
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
 
 fn C.BIO_set_conn_hostname(b &C.BIO, name &char) int
@@ -46,6 +65,16 @@ fn C.BIO_set_conn_hostname(b &C.BIO, name &char) int
 fn C.BIO_set_fd(b &C.BIO, fd int, close_flags int) int
 
 fn C.BIO_get_fd(b &C.BIO, fd_ptr voidptr) int
+
+fn C.BIO_set_init(b &C.BIO, data int) int
+
+fn C.BIO_set_data(b &C.BIO, data voidptr) int
+
+fn C.BIO_get_data(b &C.BIO) voidptr
+
+fn C.BIO_set_shutdown(b &C.BIO, data int) int
+
+fn C.BIO_clear_flags(b &C.BIO, flags int) int
 
 // there are actually 2 macros for BIO_get_ssl
 // fn C.BIO_get_ssl(bp &C.BIO, ssl charptr, c int)
@@ -58,10 +87,54 @@ fn C.BIO_do_handshake(b &C.BIO) int
 
 fn C.BIO_puts(b &C.BIO, buf &char)
 
+fn C.BIO_write(b &C.BIO, buf voidptr, len int) int
+
 fn C.BIO_read(b &C.BIO, buf voidptr, len int) int
 
-fn C.BIO_free_all(a &C.BIO)
+fn C.BIO_free_all(b &C.BIO)
 
+fn C.BIO_flush(b &C.BIO) int
+
+// BIO methods
+type BIO_meth_create_fn = fn (bio &C.BIO) int
+
+type BIO_meth_destroy_fn = fn (bio &C.BIO) int
+
+type BIO_meth_ctrl_fn = fn (bio &C.BIO, cb int, arg0 i64, arg1 voidptr) i64
+
+type BIO_meth_callback_fn = fn (bio &C.BIO, cb int, info voidptr) i64
+
+type BIO_meth_read_fn = fn (bio &C.BIO, buf &byte, len int) int
+
+type BIO_meth_write_fn = fn (bio &C.BIO, buf &byte, len int) int
+
+type BIO_meth_gets_fn = fn (bio &C.BIO, buf &byte, len int) int
+
+type BIO_meth_puts_fn = fn (bio &C.BIO, buf &byte) int
+
+fn C.BIO_get_new_index() int
+
+fn C.BIO_meth_new(typ int, name &byte) &C.BIO_METHOD
+
+fn C.BIO_meth_free(biom &C.BIO_METHOD)
+
+fn C.BIO_meth_set_create(method &C.BIO_METHOD, f BIO_meth_create_fn) int
+
+fn C.BIO_meth_set_destroy(method &C.BIO_METHOD, f BIO_meth_destroy_fn) int
+
+fn C.BIO_meth_set_ctrl(method &C.BIO_METHOD, f BIO_meth_ctrl_fn) int
+
+fn C.BIO_meth_set_callback_ctrl(method &C.BIO_METHOD, f BIO_meth_callback_fn) int
+
+fn C.BIO_meth_set_read(method &C.BIO_METHOD, f BIO_meth_read_fn) int
+
+fn C.BIO_meth_set_write(method &C.BIO_METHOD, f BIO_meth_write_fn) int
+
+fn C.BIO_meth_set_gets(method &C.BIO_METHOD, f BIO_meth_gets_fn) int
+
+fn C.BIO_meth_set_puts(method &C.BIO_METHOD, f BIO_meth_puts_fn) int
+
+// SSL methods
 fn C.SSL_CTX_new(method &C.SSL_METHOD) &C.SSL_CTX
 
 fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options int)
@@ -87,6 +160,10 @@ fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 fn C.SSL_get_peer_certificate(ssl &SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
+
+fn C.ERR_get_error() int
+
+fn C.ERR_error_string(code int, buf &byte) &byte
 
 fn C.ERR_clear_error()
 

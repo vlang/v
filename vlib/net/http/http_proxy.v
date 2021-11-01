@@ -1,80 +1,42 @@
 module http
 
 import io
-import os
-import net
+import net { TcpConn }
 import net.urllib
 import encoding.base64
 import time
 
-// would be nice to have this as an interface..
-struct ProxyConnLayer {
-pub mut:
-	fd            int = -1
-	read_timeout  time.Duration = 30 * time.second
-	write_timeout time.Duration = 30 * time.second
+pub interface ProxyConnLayer {
+mut:
+	read(mut buf []byte) ?int
+	write(buf []byte) ?int
+	close() ?
+	set_read_timeout(timeout time.Duration)
+	set_write_timeout(timeout time.Duration)
 }
 
-fn (mut c ProxyConnLayer) read(mut buf []byte) ?int {
-	mut res := C.recv(c.fd, voidptr(buf.data), buf.len, 0)
-	if res > 0 {
-		return res
-	}
-
-	code := net.error_code()
-	if code == int(net.error_ewouldblock) {
-		net.wait_for_read(c.fd, time.unix(0), c.read_timeout) ?
-
-		res = C.recv(c.fd, voidptr(buf.data), buf.len, 0)
-
-		if res > 0 {
-			return res
-		}
-	} else {
-		net.wrap_error(code) ?
-	}
-
-	return none
+struct PlainConnLayer {
+	TcpConn
 }
 
-fn (mut c ProxyConnLayer) write(bytes []byte) ?int {
-	unsafe {
-		b := bytes.data
-		len := bytes.len
-
-		mut ptr_base := &byte(b)
-		mut total_sent := 0
-		for total_sent < len {
-			ptr := ptr_base + total_sent
-			remaining := len - total_sent
-			mut sent := C.send(c.fd, ptr, remaining, net.msg_nosignal)
-			if sent < 0 {
-				code := net.error_code()
-				if code == int(net.error_ewouldblock) {
-					net.wait_for_write(c.fd, time.unix(0), c.write_timeout) ?
-					continue
-				} else {
-					net.wrap_error(code) ?
-				}
-			}
-			total_sent += sent
-		}
-		return total_sent
-	}
+fn (mut l PlainConnLayer) write(buf []byte) ?int {
+	return l.TcpConn.write(buf)
 }
 
-fn (mut c ProxyConnLayer) close() ? {
-	if os.fd_close(c.fd) != 0 {
-		return error('could not close ProxyConnLayer')
-	}
+fn (mut l PlainConnLayer) read(mut bytes []byte) ?int {
+	return l.TcpConn.read(mut bytes)
 }
 
-fn (mut c ProxyConnLayer) set_read_timeout(timeout time.Duration) {
-	c.read_timeout = timeout
+fn (mut l PlainConnLayer) close() ? {
+	l.TcpConn.close() ?
 }
 
-fn (mut c ProxyConnLayer) set_write_timeout(timeout time.Duration) {
-	c.write_timeout = timeout
+fn (mut l PlainConnLayer) set_read_timeout(t time.Duration) {
+	l.TcpConn.set_read_timeout(t)
+}
+
+fn (mut l PlainConnLayer) set_write_timeout(t time.Duration) {
+	l.TcpConn.set_write_timeout(t)
 }
 
 struct HttpProxy {
@@ -95,7 +57,7 @@ mut:
 	has_conn    bool
 	remote_host string
 pub mut:
-	conn ProxyConnLayer = ProxyConnLayer{}
+	conn ProxyConnLayer = ProxyConnLayer(PlainConnLayer{})
 }
 
 pub fn new_http_proxy(raw_url string) ?HttpProxy {
@@ -162,14 +124,12 @@ fn (proxy HttpProxy) build_proxy_headers(request &Request, host string) string {
 	return 'CONNECT $host $version\r\n' + uheaders.join('') + '\r\n'
 }
 
-fn (mut proxy HttpProxy) create_tcp_layer() ?ProxyConnLayer {
+fn (mut proxy HttpProxy) create_conn_layer() ?ProxyConnLayer {
 	if proxy.scheme == 'http' {
 		tcp_connection := net.dial_tcp(proxy.host) ?
-		return ProxyConnLayer{
-			fd: tcp_connection.sock.handle
-		}
+		return PlainConnLayer{tcp_connection}
 	} else if proxy.scheme == 'https' {
-		return proxy.create_ssl_tcp(proxy.hostname, proxy.port)
+		return proxy.create_ssl_layer(proxy.hostname, proxy.port)
 	} else {
 		return error('wrong schema')
 	}
@@ -190,9 +150,9 @@ pub fn (mut proxy HttpProxy) open_connection(request &Request, host string) ? {
 
 	proxy_headers := proxy.build_proxy_headers(request, host)
 
-	mut client := proxy.create_tcp_layer() ?
+	mut client := proxy.create_conn_layer() ?
 
-	mut proxy_reader := io.new_buffered_reader(reader: client)
+	mut proxy_reader := io.new_buffered_reader(reader: client as io.Reader)
 
 	client.write(proxy_headers.bytes()) ?
 
@@ -210,6 +170,10 @@ pub fn (mut proxy HttpProxy) open_connection(request &Request, host string) ? {
 	}
 
 	proxy_reader.free()
+
+	$if trace_http_proxy ? {
+		eprintln('<<< HttpProxy.open_connection  | connection opened successfully')
+	}
 
 	proxy.conn = client
 	proxy.remote_host = host
