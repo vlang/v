@@ -4284,7 +4284,7 @@ Modules are up to date.
 	https://vpm.vlang.io/new
 
 	You will have to login with your Github account to register the module.
-	**Warning:** _Currently it is not possible to edit your entry after submiting.
+	**Warning:** _Currently it is not possible to edit your entry after submitting.
 	Check your module name and github url twice as this cannot be changed by you later._
 6. The final module name is a combination of your github account and
 	the module name you provided e.g. `mygithubname.mymodule`.
