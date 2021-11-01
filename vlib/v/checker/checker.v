@@ -4500,7 +4500,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		stmt_pos := node.pos
 		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
 	}
-	// c.expected_type = ast.void_type
+	c.expected_type = ast.void_type
 	match mut node {
 		ast.EmptyStmt {
 			if c.pref.is_verbose {
