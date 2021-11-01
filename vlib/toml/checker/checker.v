@@ -141,12 +141,6 @@ fn (c Checker) check_number(num ast.Number) ? {
 		is_oct = lit_sans_sign.starts_with('0o')
 		is_hex = lit_sans_sign.starts_with('0x')
 
-		third := lit[2]
-		if third in scanner.digit_extras {
-			ascii = byte(third).ascii_str()
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" (hex, octal and binary) can not have `$ascii` in ...${c.excerpt(num.pos)}...')
-		}
 		lit_sans_sign_and_type_prefix := lit_sans_sign[2..]
 
 		if lit_sans_sign_and_type_prefix.starts_with('_')
