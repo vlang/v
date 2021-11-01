@@ -2226,13 +2226,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			concrete_types = node.concrete_types
 		}
 		// resolve return generics struct to concrete type
-		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
+			&& c.table.cur_fn.generic_names.len == 0 {
 			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
 				concrete_types)
 		} else {
 			node.return_type = method.return_type
 		}
-		if node.concrete_types.len > 0 && method.return_type != 0 {
+		if node.concrete_types.len > 0 && method.return_type != 0
+			&& c.table.cur_fn.generic_names.len == 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
 				concrete_types)
 			{
