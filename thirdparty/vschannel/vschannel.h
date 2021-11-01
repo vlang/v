@@ -20,6 +20,11 @@
 // Define here to be sure
 #define SP_PROT_TLS1_2_CLIENT 0x00000800
 
+// Proxy-related
+typedef struct VsChannelConn VsChannelConn;
+typedef struct IdConnData IdConnData;
+
+// VsChannel
 typedef struct TlsContext TlsContext;
 
 TlsContext new_tls_context();

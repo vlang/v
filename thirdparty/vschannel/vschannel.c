@@ -1,14 +1,57 @@
 #include <vschannel.h>
 #include <sspi.h>
 
-// Proxy
-INT     proxy_fd        = 0;
-
 // Options
-INT     port_number     = 443;
-BOOL    use_proxy       = FALSE;
-DWORD   protocol        = 0;
-ALG_ID  aid_key_exch    = 0;
+INT         port_number     = 443;
+DWORD       protocol        = 0;
+ALG_ID      aid_key_exch    = 0;
+
+// Proxy structs and methods
+struct VsChannelConn {
+  void* data_ptr;
+	TlsContext* ctx;
+  int (*read) (VsChannelConn* l, char *, int);
+  int (*write) (VsChannelConn* l, const char *, int);
+	void (*free) (VsChannelConn* l);
+};
+
+struct IdConnData {
+	SOCKET socket;
+	int flags;
+}
+
+int id_conn_read(VsChannelConn* l, char* buffer, int len) {
+	SOCKET socket = ((IdConnData*) l->data_ptr)->socket;
+	int flags = ((IdConnData*) l->data_ptr)->flags;
+	return recv(socket, buffer, len, flags);
+}
+
+int id_conn_write(VsChannelConn* l, char* buffer, int len) {
+	SOCKET socket = ((IdConnData*) l->data_ptr)->socket;
+	int flags = ((IdConnData*) l->data_ptr)->flags;
+	return send(socket, buffer, len, flags);
+}
+
+void id_conn_free(VsChannelConn* l) {
+	LocalFree(l->data_ptr);
+	LocalFree(l);
+}
+
+VsChannelConn* new_id_conn(TlsContext* ctx, SOCKET socket, int default_flags) {
+	VsChannelConn* new_layer = LocalAlloc(LPTR, sizeof(VsChannelConn));
+	IdConnData data;
+	data.socket = socket;
+	data.flags = default_flags;
+	
+	new_layer->data_ptr = *IdConnData;
+	new_layer->ctx = ctx;
+
+	new_layer->read = id_conn_read;
+	new_layer->write = id_conn_write;
+	new_layer->free = id_conn_free;
+
+	return new_id_conn;
+}
 
 // TODO: joe-c
 // socket / tls ctx
@@ -25,6 +68,8 @@ struct TlsContext {
 	PCCERT_CONTEXT         p_pemote_cert_context;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
+	// Connection & Proxy
+	VsChannelConn*            conn_layer;
 };
 
 TlsContext new_tls_context() {
@@ -33,13 +78,10 @@ TlsContext new_tls_context() {
 		.socket                = INVALID_SOCKET,
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
-		.p_pemote_cert_context = NULL
+		.p_pemote_cert_context = NULL,
+		.conn_layer           = NULL
 	};
 };
-
-INT get_tls_context_fd(TlsContext *tls_ctx) {
-	return tls_ctx->socket;
-}
 
 void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the server certificate context.
@@ -71,6 +113,11 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 		CertCloseStore(tls_ctx->cert_store, 0);
 		tls_ctx->cert_store = NULL;
 	}
+
+	// Free the proxy or connection layer
+	if(tls_ctx->conn_layer) {
+		tls_ctx->conn_layer->free(tls_ctx->conn_layer);
+	}
 }
 
 void vschannel_init(TlsContext *tls_ctx) {
@@ -90,6 +137,31 @@ void vschannel_init(TlsContext *tls_ctx) {
 	tls_ctx->creds_initialized = TRUE;
 }
 
+void vschannel_set_proxy(TlsContext *tls_ctx,
+												 void* data_ptr,
+												 int (*read) (VsChannelConn* l, char *, int),
+												 int (*write) (VsChannelConn* l, const char *, int),
+												 void (*free) (VsChannelConn* l)) {
+	VsChannelConn* new_conn_layer = LocalAlloc(LPTR, sizeof(VsChannelConn));
+	
+	new_conn_layer->data_ptr = data_ptr;
+	new_conn_layer->ctx = tls_ctx;
+	
+	new_conn_layer->read = read;
+	new_conn_layer->write = write;
+	new_conn_layer->free = free;
+
+	if (tls_ctx->conn_layer) {
+		tls_ctx->conn_layer->free(tls_ctx->conn_layer);
+	}
+
+	tls_ctx->conn_layer = new_conn_layer;
+}
+
+VsChannelConn* vschannel_get_conn(TlsContext *tls_ctx) {
+	return tls_ctx->conn_layer
+}
+
 INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 {
 	SecBuffer  ExtraData;
@@ -106,7 +178,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 	port_number = iport;
 
 	// Connect to server.
-	if(connect_to_server(tls_ctx, host, port_number)) {
+	if(!tls_ctx->conn_layer && connect_to_server(tls_ctx, host, port_number)) {
 		wprintf(L"Error connecting to server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
@@ -283,18 +355,6 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
-
-	if(use_proxy) {
-		tls_ctx->socket = proxy_fd;
-		int mode = 0;
-		if (ioctlsocket(proxy_fd, FIONBIO, &mode)) {
-			wprintf(L"Error setting socket %d to blocking: %d\n",
-				proxy_fd,
-				WSAGetLastError());
-			return SEC_E_INTERNAL_ERROR;
-		}
-		return SEC_E_OK;
-	}
 	
 	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
 		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
@@ -307,6 +367,7 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	}
 	
 	tls_ctx->socket = Socket;
+	tls_ctx->conn_layer = new_id_conn(tls_ctx, Socket, 0);
 
 	return SEC_E_OK;
 }
@@ -376,7 +437,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 	// Send the close notify message to the server.
 
 	if(pbMessage != NULL && cbMessage != 0) {
-		cbData = send(tls_ctx->socket, pbMessage, cbMessage, 0);
+		cbData = tls_ctx->conn_layer->write(pbMessage, cbMessage);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			Status = WSAGetLastError();
 			wprintf(L"Error %d sending close notify\n", Status);
@@ -451,7 +512,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 	// Send response to server if there is one.
 	if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL)
 	{
-		cbData = send(tls_ctx->socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
+		cbData = tls_ctx->conn_layer->write(OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			wprintf(L"Error %d sending data to server (1)\n", WSAGetLastError());
 			tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
@@ -519,10 +580,8 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 		// Read data from server.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			if(fDoRead) {
-				cbData = recv(tls_ctx->socket,
-					      IoBuffer + cbIoBuffer,
-					      IO_BUFFER_SIZE - cbIoBuffer,
-					      0);
+				cbData = tls_ctx->conn_layer->read(IoBuffer + cbIoBuffer,
+																						IO_BUFFER_SIZE - cbIoBuffer);
 				if(cbData == SOCKET_ERROR) {
 					wprintf(L"Error %d reading data from server\n", WSAGetLastError());
 					scRet = SEC_E_INTERNAL_ERROR;
@@ -584,10 +643,8 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 		   scRet == SEC_I_CONTINUE_NEEDED ||
 		   FAILED(scRet) && (dwSSPIOutFlags & ISC_RET_EXTENDED_ERROR)) {
 			if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL) {
-				cbData = send(tls_ctx->socket,
-					      OutBuffers[0].pvBuffer,
-					      OutBuffers[0].cbBuffer,
-					      0);
+				cbData = tls_ctx->conn_layer->write(OutBuffers[0].pvBuffer,
+																						 OutBuffers[0].cbBuffer);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
 					wprintf(L"Error %d sending data to server (2)\n", 
 						WSAGetLastError());
@@ -775,7 +832,10 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 	}
 
 	// Send the encrypted data to the server.
-	cbData = send(tls_ctx->socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
+	cbData = tls_ctx->conn_layer->write(pbIoBuffer,
+																			 Buffers[0].cbBuffer +
+																			 Buffers[1].cbBuffer +
+																			 Buffers[2].cbBuffer);
 	if(cbData == SOCKET_ERROR || cbData == 0) {
 		wprintf(L"Error %d sending data to server (3)\n",  WSAGetLastError());
 		tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
@@ -788,7 +848,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 	while(TRUE){
 		// Read some data.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
-			cbData = recv(tls_ctx->socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
+			cbData = tls_ctx->conn_layer->read(pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer);
 			if(cbData == SOCKET_ERROR) {
 				wprintf(L"Error %d reading data from server\n", WSAGetLastError());
 				scRet = SEC_E_INTERNAL_ERROR;

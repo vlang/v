@@ -9,23 +9,78 @@ module http
 
 fn C.new_tls_context() C.TlsContext
 fn C.connect_to_server(&C.TlsContext, &u16, int) int
-fn C.get_tls_context_fd(&C.TlsContext) int
 
+struct C.VsChannelConn {
+    data_ptr voidptr
+    read fn (channel voidptr, &byte, int) int
+    write fn (channel voidptr, &byte, int) int
+    free fn (channel voidptr)
+}
+
+/*
+* SslConnLayer
+*/
+struct SslConnLayer {
+	vschan &C.VsChannelConn
+}
+
+fn (mut l SslConnLayer) write(buf []byte) ?int {
+	buf_ptr = &char(buf[0])
+	return l.ctx.conn_layer.write(buf_ptr, buf.len)
+}
+
+fn (mut l SslConnLayer) read(mut bytes []byte) ?int {
+	buf_ptr = &char(bytes[0])
+	return l.ctx.conn_layer.read(buf_ptr, bytes.len)
+}
+
+fn (mut l SslConnLayer) close() ? {
+	C.vschannel_cleanup(l.vschan.ctx)
+}
+
+// noops
+fn (mut l SslConnLayer) set_read_timeout(t time.Duration) {}
+
+fn (mut l SslConnLayer) set_write_timeout(t time.Duration) {}
+
+// helpers
+
+fn vschannel_set_proxy(ctx &C.TlsContext, mut proxy ProxyConnLayer) {
+    fn chan_read := fn [mut proxy] (_ &C.VsChannelConn, buf &char, len int) {
+        vbuf := buf.vbytes(len)
+        return proxy.read(vbuf)
+    }
+
+    fn chan_write := fn [mut proxy] (_ &C.VsChannelConn, buf &char, len int) {
+        vbuf := buf.vbytes(len)
+        return proxy.write(vbuf)
+    }
+
+    fn chan_free := fn (_ &C.VsChannelConn) {}
+
+    C.vschannel_set_proxy(ctx, 0, chan_read, chan_write, chan_free)
+}
+
+/*
+* Request specific methods
+*/
 fn (mut req Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
+    
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
+    
 	addr := host_name
 	sdata := req.build_request_headers(method, host_name, path)
+    
 	$if trace_http_request ? {
 		eprintln('> $sdata')
 	}
 
 	if req.use_proxy == true {
 		req.proxy.prepare(req, '$host_name:$port') ?
-		C.use_proxy = 1
-		C.proxy_fd = req.proxy.conn.fd
-		return error('not implemented')
+
+        vschannel_set_proxy(&ctx, req.proxy.conn)
 	}
 
 	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
@@ -39,24 +94,21 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	return parse_response(response_text)
 }
 
+/*
+* HttpProxy specific methods
+*/
 fn (mut proxy HttpProxy) create_ssl_layer(hostname string, port int) ?ProxyConnLayer {
-	return error('not implemented')
-	// mut ctx := C.new_tls_context()
+	mut ctx := C.new_tls_context()
+	C.vschannel_init(&ctx)
 
-	// conn_res := C.connect_to_server(&ctx, hostname.to_wide(), port)
-	// if conn_res != 0 {
-	//	return error('could not connect to host')
-	//}
+	conn_res := C.connect_to_server(&ctx, hostname.to_wide(), port)
+	if conn_res != 0 {
+		return error('could not connect to host')
+	}
 
-	// connection_fd := C.get_tls_context_fd(&ctx)
-
-	// if connection_fd < 0 {
-	//	return error('could not create fd from socket')
-	//}
-
-	// C.vschannel_cleanup(&ctx)
-
-	// return ProxyConnLayer{
-	//	fd: connection_fd
-	//}
+    mut vschannel := C.vschannel_get_conn(&ctx)
+    
+	return SslConnLayer {
+        vschan: vschannel
+	}
 }
