@@ -5290,7 +5290,7 @@ This will generate a directory `libsodium` with a V module.
 
 Example of a C2V generated libsodium wrapper:
 
-https://github.com/medvednikov/libsodium
+https://github.com/vlang/libsodium
 
 <br>
 
