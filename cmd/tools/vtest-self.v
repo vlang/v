@@ -88,6 +88,7 @@ const (
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/http_proxy_test.v',
 		'vlib/net/http/header_test.v',
 		'vlib/net/http/server_test.v',
 		'vlib/net/http/response_test.v',
