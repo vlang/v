@@ -426,8 +426,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ? {
 // check_comment returns an error if the contents of `comment` isn't
 // a valid TOML comment.
 pub fn (c Checker) check_comment(comment ast.Comment) ? {
-	// As long as Toml does not support multi-line comments, this should be safe
-	lit := comment.text.trim_right('\r\n')
+	lit := comment.text
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple(lit) ?
 	for {

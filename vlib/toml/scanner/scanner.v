@@ -273,6 +273,12 @@ pub fn (s &Scanner) at() byte {
 	return byte(-1)
 }
 
+// at_crlf returns `true` if the scanner is at a `\r` character
+// and the next character is a `\n`.
+fn (s Scanner) at_crlf() bool {
+	return s.at() == `\r` && s.peek(1) == `\n`
+}
+
 // peek returns the character code from the input text at position + `n`.
 // peek returns `-1` if it can't peek `n` characters ahead.
 [direct_array_access; inline]
@@ -322,6 +328,10 @@ fn (mut s Scanner) ignore_line() ?string {
 	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
 		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
+		if s.at_crlf() {
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
+			return s.text[start..s.pos]
+		}
 	}
 	return s.text[start..s.pos]
 }
