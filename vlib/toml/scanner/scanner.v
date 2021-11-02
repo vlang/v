@@ -40,8 +40,8 @@ pub:
 // Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
 pub struct Config {
 pub:
-	input              input.Config
-	tokenize_formating bool // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
+	input               input.Config
+	tokenize_formatting bool = true // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
 }
 
 // new_scanner returns a new *heap* allocated `Scanner` instance.
@@ -136,14 +136,16 @@ pub fn (mut s Scanner) scan() ?token.Token {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified, what could be, a space between a RFC 3339 date and time ("$ascii") ($ascii.len)')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
 				}
-				if s.config.tokenize_formating {
+				if s.config.tokenize_formatting {
 					mut kind := token.Kind.whitespace
 					if c == `\t` {
 						kind = token.Kind.tab
+					} else if c == `\r` {
+						kind = token.Kind.cr
 					} else if c == `\n` {
 						kind = token.Kind.nl
 					}
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified one of " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified formatting character ("$ascii") ($ascii.len)')
 					return s.new_token(kind, ascii, ascii.len)
 				} else {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')

@@ -23,7 +23,6 @@ const (
 		'table/duplicate-table-array.toml',
 		// Array
 		'array/tables-1.toml',
-		//'array/missing-separator.toml',
 		'array/text-after-array-entries.toml',
 		'array/text-before-array-separator.toml',
 		// Date / Time
