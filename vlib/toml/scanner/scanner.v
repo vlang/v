@@ -11,6 +11,8 @@ import toml.util
 
 pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
 
+const end_of_text = -1
+
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also refered to as "lexing" or "tokenizing".
 // The Scanner methods are based on much of the work in `vlib/strings/textscanner`.
@@ -79,7 +81,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 	for {
 		c := s.next()
 		byte_c := byte(c)
-		if c == -1 {
+		if c == scanner.end_of_text {
 			s.inc_line_number()
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'reached EOF')
 			return s.new_token(.eof, '', 1)
@@ -266,11 +268,11 @@ pub fn (mut s Scanner) skip_n(n int) {
 // at returns `-1` if it can't get the current character.
 // unlike `next()`, `at()` does not change the state of the scanner.
 [direct_array_access; inline]
-pub fn (s &Scanner) at() byte {
+pub fn (s &Scanner) at() int {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
-	return byte(-1)
+	return -1
 }
 
 // at_crlf returns `true` if the scanner is at a `\r` character
@@ -325,9 +327,9 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 fn (mut s Scanner) ignore_line() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
-	for c := s.at(); c != -1 && c != `\n`; c = s.at() {
+	for c := s.at(); c != scanner.end_of_text && c != `\n`; c = s.at() {
 		s.next()
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()}"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()} / $c"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
 			return s.text[start..s.pos]
@@ -350,7 +352,7 @@ fn (mut s Scanner) extract_key() string {
 	s.col--
 	start := s.pos
 	for s.pos < s.text.len {
-		c := s.at()
+		c := byte(s.at())
 		if !(util.is_key_char(c) || c.is_digit() || c in [`_`, `-`]) {
 			break
 		}
@@ -370,7 +372,7 @@ fn (mut s Scanner) extract_string() ?string {
 	// a byte that is the start of a string so we rewind it to start at the correct
 	s.pos--
 	s.col--
-	quote := s.at()
+	quote := byte(s.at())
 	start := s.pos
 	mut lit := quote.ascii_str()
 
@@ -390,7 +392,7 @@ fn (mut s Scanner) extract_string() ?string {
 				' unfinished single-line string literal `$quote.ascii_str()` started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
-		c := s.at()
+		c := byte(s.at())
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
 
 		// Check for escaped chars
@@ -433,7 +435,7 @@ fn (mut s Scanner) extract_string() ?string {
 fn (mut s Scanner) extract_multiline_string() ?string {
 	// extract_multiline_string is called from extract_string so we know the 3 first
 	// characters is the quotes
-	quote := s.at()
+	quote := byte(s.at())
 	start := s.pos
 	mut lit := quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
 
@@ -452,7 +454,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 				' unfinished multi-line string literal ($quote.ascii_str()$quote.ascii_str()$quote.ascii_str()) started at $start ($s.line_nr,$s.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 
-		c := s.at()
+		c := byte(s.at())
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `$c.ascii_str()` / $c (quote type: $quote/$quote.ascii_str())')
 
 		if c == `\n` {
@@ -479,7 +481,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 
 		if c == quote {
 			if s.peek(1) == quote && s.peek(2) == quote {
-				if s.peek(3) == -1 {
+				if s.peek(3) == scanner.end_of_text {
 					s.pos += 3
 					s.col += 3
 					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
@@ -504,7 +506,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 // handle_escapes returns any escape character sequence.
 // For escape sequence validation see `Checker.check_quoted_escapes`.
 fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
-	c := s.at()
+	c := byte(s.at())
 	mut lit := c.ascii_str()
 	is_literal_string := quote == `'`
 	if !is_literal_string {
