@@ -8,17 +8,17 @@ ALG_ID      aid_key_exch    = 0;
 
 // Proxy structs and methods
 struct VsChannelConn {
-  void* data_ptr;
+	void* data_ptr;
 	TlsContext* ctx;
-  int (*read) (VsChannelConn* l, char *, int);
-  int (*write) (VsChannelConn* l, const char *, int);
+	int (*read) (VsChannelConn* l, char *, int);
+	int (*write) (VsChannelConn* l, const char *, int);
 	void (*free) (VsChannelConn* l);
 };
 
 struct IdConnData {
 	SOCKET socket;
 	int flags;
-}
+};
 
 int id_conn_read(VsChannelConn* l, char* buffer, int len) {
 	SOCKET socket = ((IdConnData*) l->data_ptr)->socket;
@@ -39,11 +39,11 @@ void id_conn_free(VsChannelConn* l) {
 
 VsChannelConn* new_id_conn(TlsContext* ctx, SOCKET socket, int default_flags) {
 	VsChannelConn* new_layer = LocalAlloc(LPTR, sizeof(VsChannelConn));
-	IdConnData data;
-	data.socket = socket;
-	data.flags = default_flags;
+	IdConnData *data = LocalAlloc(LPTR, sizeof(IdConnData));
+	data->socket = socket;
+	data->flags = default_flags;
 	
-	new_layer->data_ptr = *IdConnData;
+	new_layer->data_ptr = data;
 	new_layer->ctx = ctx;
 
 	new_layer->read = id_conn_read;
@@ -69,7 +69,7 @@ struct TlsContext {
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
 	// Connection & Proxy
-	VsChannelConn*            conn_layer;
+	VsChannelConn*         conn_layer;
 };
 
 TlsContext new_tls_context() {
@@ -79,7 +79,7 @@ TlsContext new_tls_context() {
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
 		.p_pemote_cert_context = NULL,
-		.conn_layer           = NULL
+		.conn_layer            = NULL
 	};
 };
 
@@ -117,6 +117,7 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the proxy or connection layer
 	if(tls_ctx->conn_layer) {
 		tls_ctx->conn_layer->free(tls_ctx->conn_layer);
+		tls_ctx->conn_layer = NULL;
 	}
 }
 
@@ -139,17 +140,17 @@ void vschannel_init(TlsContext *tls_ctx) {
 
 void vschannel_set_proxy(TlsContext *tls_ctx,
 												 void* data_ptr,
-												 int (*read) (VsChannelConn* l, char *, int),
-												 int (*write) (VsChannelConn* l, const char *, int),
-												 void (*free) (VsChannelConn* l)) {
+												 int (*read_cb) (VsChannelConn* l, char *, int),
+												 int (*write_cb) (VsChannelConn* l, const char *, int),
+												 void (*free_cb) (VsChannelConn* l)) {
 	VsChannelConn* new_conn_layer = LocalAlloc(LPTR, sizeof(VsChannelConn));
 	
 	new_conn_layer->data_ptr = data_ptr;
 	new_conn_layer->ctx = tls_ctx;
 	
-	new_conn_layer->read = read;
-	new_conn_layer->write = write;
-	new_conn_layer->free = free;
+	new_conn_layer->read = read_cb;
+	new_conn_layer->write = write_cb;
+	new_conn_layer->free = free_cb;
 
 	if (tls_ctx->conn_layer) {
 		tls_ctx->conn_layer->free(tls_ctx->conn_layer);
@@ -159,7 +160,7 @@ void vschannel_set_proxy(TlsContext *tls_ctx,
 }
 
 VsChannelConn* vschannel_get_conn(TlsContext *tls_ctx) {
-	return tls_ctx->conn_layer
+	return tls_ctx->conn_layer;
 }
 
 INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
@@ -320,14 +321,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	}
 
 cleanup:
-
 	// Free the certificate context. Schannel has already made its own copy.
-
 	if(pCertContext) {
 		CertFreeCertificateContext(pCertContext);
 	}
-
-
 	return Status;
 }
 
@@ -447,16 +444,12 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		// Free output buffer.
 		tls_ctx->sspi->FreeContextBuffer(pbMessage);
 	}
-	
 
 cleanup:
-
 	// Free the security context.
 	tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
-
 	// Close the socket.
 	closesocket(tls_ctx->socket);
-
 	return Status;
 }
 
@@ -477,10 +470,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 				  ISC_REQ_ALLOCATE_MEMORY   |
 				  ISC_REQ_STREAM;
 
-	//
 	//  Initiate a ClientHello message and generate a token.
-	//
-
 	OutBuffers[0].pvBuffer   = NULL;
 	OutBuffers[0].BufferType = SECBUFFER_TOKEN;
 	OutBuffers[0].cbBuffer   = 0;
@@ -552,9 +542,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 				  ISC_REQ_ALLOCATE_MEMORY   |
 				  ISC_REQ_STREAM;
 
-	//
 	// Allocate data buffer.
-	//
 
 	IoBuffer = LocalAlloc(LPTR, IO_BUFFER_SIZE);
 	if(IoBuffer == NULL)

@@ -3,12 +3,15 @@
 // that can be found in the LICENSE file.
 module http
 
+import time
+
 #flag windows -I @VEXEROOT/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"
 
 fn C.new_tls_context() C.TlsContext
-fn C.connect_to_server(&C.TlsContext, &u16, int) int
+fn C.connect_to_server(tls_ctx &C.TlsContext, host &u16, port_number int) int
+fn C.vschannel_get_conn(tls_ctx &C.TlsContext) &C.VsChannelConn
 
 type FnVsChannelReadCallback = fn (channel &C.VsChannelConn, buffer &byte, len int) int
 
@@ -31,17 +34,18 @@ struct SslConnLayer {
 }
 
 fn (mut l SslConnLayer) write(buf []byte) ?int {
-	buf_ptr = &char(buf[0])
-	return l.ctx.conn_layer.write(buf_ptr, buf.len)
+	// return l.ctx.conn_layer.write(&char(&buf[0]), buf.len)
+	return error('${@METHOD} is not implemented on windows')
 }
 
 fn (mut l SslConnLayer) read(mut bytes []byte) ?int {
-	buf_ptr = &char(bytes[0])
-	return l.ctx.conn_layer.read(buf_ptr, bytes.len)
+	// return l.ctx.conn_layer.read(&char(&bytes[0]), bytes.len)
+	return error('${@METHOD} is not implemented on windows')
 }
 
 fn (mut l SslConnLayer) close() ? {
-	C.vschannel_cleanup(l.vschan.ctx)
+	// C.vschannel_cleanup(l.vschan.ctx)
+	return error('${@METHOD} is not implemented on windows')
 }
 
 // noops
@@ -51,7 +55,7 @@ fn (mut l SslConnLayer) set_write_timeout(t time.Duration) {}
 
 // helpers
 
-fn vschannel_set_proxy(ctx &C.TlsContext, mut proxy ProxyConnLayer) {
+fn vschannel_set_proxy(ctx &C.TlsContext, proxy &ProxyConnLayer) {
 	// TODO: closures are not implemented on windows yet.
 	eprintln('windows vschannel http proxy support is NOT implemented')
 	/*
@@ -87,7 +91,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	if req.use_proxy == true {
 		req.proxy.prepare(req, '$host_name:$port') ?
 
-		vschannel_set_proxy(&ctx, req.proxy.conn)
+		vschannel_set_proxy(&ctx, &req.proxy.conn)
 	}
 
 	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
