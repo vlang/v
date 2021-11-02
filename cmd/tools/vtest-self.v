@@ -37,6 +37,7 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 		'vlib/net/http/server_test.v',
+		'vlib/net/http/http_proxy_test.v',
 		'vlib/net/udp_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
