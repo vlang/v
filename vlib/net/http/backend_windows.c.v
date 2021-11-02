@@ -10,11 +10,17 @@ module http
 fn C.new_tls_context() C.TlsContext
 fn C.connect_to_server(&C.TlsContext, &u16, int) int
 
+type FnVsChannelReadCallback = fn (channel &C.VsChannelConn, buffer &byte, len int) int
+
+type FnVsChannelWriteCallback = fn (channel &C.VsChannelConn, const_data &byte, len int) int
+
+type FnVsChannelFreeCallback = fn (channel &C.VsChannelConn)
+
 struct C.VsChannelConn {
-    data_ptr voidptr
-    read fn (channel voidptr, &byte, int) int
-    write fn (channel voidptr, &byte, int) int
-    free fn (channel voidptr)
+	data_ptr voidptr
+	read     FnVsChannelReadCallback
+	write    FnVsChannelWriteCallback
+	free     FnVsChannelFreeCallback
 }
 
 /*
@@ -46,19 +52,20 @@ fn (mut l SslConnLayer) set_write_timeout(t time.Duration) {}
 // helpers
 
 fn vschannel_set_proxy(ctx &C.TlsContext, mut proxy ProxyConnLayer) {
-    fn chan_read := fn [mut proxy] (_ &C.VsChannelConn, buf &char, len int) {
+	// TODO: closures are not implemented on windows yet.
+	eprintln('windows vschannel http proxy support is NOT implemented')
+	/*
+	fn chan_read := fn [mut proxy] (_ &C.VsChannelConn, buf &char, len int) {
         vbuf := buf.vbytes(len)
         return proxy.read(vbuf)
     }
-
     fn chan_write := fn [mut proxy] (_ &C.VsChannelConn, buf &char, len int) {
         vbuf := buf.vbytes(len)
         return proxy.write(vbuf)
     }
-
     fn chan_free := fn (_ &C.VsChannelConn) {}
-
     C.vschannel_set_proxy(ctx, 0, chan_read, chan_write, chan_free)
+	*/
 }
 
 /*
@@ -67,12 +74,12 @@ fn vschannel_set_proxy(ctx &C.TlsContext, mut proxy ProxyConnLayer) {
 fn (mut req Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
-    
+
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
-    
+
 	addr := host_name
 	sdata := req.build_request_headers(method, host_name, path)
-    
+
 	$if trace_http_request ? {
 		eprintln('> $sdata')
 	}
@@ -80,7 +87,7 @@ fn (mut req Request) ssl_do(port int, method Method, host_name string, path stri
 	if req.use_proxy == true {
 		req.proxy.prepare(req, '$host_name:$port') ?
 
-        vschannel_set_proxy(&ctx, req.proxy.conn)
+		vschannel_set_proxy(&ctx, req.proxy.conn)
 	}
 
 	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
@@ -106,9 +113,9 @@ fn (mut proxy HttpProxy) create_ssl_layer(hostname string, port int) ?ProxyConnL
 		return error('could not connect to host')
 	}
 
-    mut vschannel := C.vschannel_get_conn(&ctx)
-    
-	return SslConnLayer {
-        vschan: vschannel
+	mut vschannel := C.vschannel_get_conn(&ctx)
+
+	return SslConnLayer{
+		vschan: vschannel
 	}
 }
