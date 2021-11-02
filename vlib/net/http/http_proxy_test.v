@@ -1,7 +1,6 @@
 module http
 
 import net.http
-import os
 import encoding.base64
 
 const (
