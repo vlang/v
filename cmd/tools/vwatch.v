@@ -300,7 +300,6 @@ const ccontext = Context{
 }
 
 fn main() {
-	dump(scan_timeout_s)
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
