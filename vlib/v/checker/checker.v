@@ -2888,13 +2888,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	// resolve return generics struct to concrete type
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
+		&& c.table.cur_fn.generic_names.len == 0 {
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
 		node.return_type = func.return_type
 	}
-	if node.concrete_types.len > 0 && func.return_type != 0 {
+	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			concrete_types)
 		{
