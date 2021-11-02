@@ -185,7 +185,7 @@ fn (mut req Request) http_do(host string, method Method, path string) ?Response 
 }
 
 // referer returns 'Referer' header value of the given request
-pub fn (mut req Request) referer() string {
+pub fn (req &Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 
