@@ -139,8 +139,6 @@ pub fn fetch(config FetchConfig) ?Response {
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url $config.url') }
 
-	environment := os.environ()
-
 	mut has_proxy := false
 	mut proxy := HttpProxy{}
 
