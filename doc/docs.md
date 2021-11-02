@@ -102,8 +102,6 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Manage Packages](#manage-packages)
-	* [Publish package](#publish-package)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -127,6 +125,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [Profiling](#profiling)
+* [Package Management](#package-management)
+	* [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
     * [Memory-unsafe code](#memory-unsafe-code)
@@ -479,7 +479,18 @@ windows_newline := '\r\n' // escape special characters like in C
 assert windows_newline.len == 2
 ```
 
-In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
+In V, a string is a read-only array of bytes. String data is encoded using UTF-8:
+```v
+s := 'hello 🌎' // emoji takes 4 bytes
+assert s.len == 10
+
+arr := s.bytes() // convert `string` to `[]byte`
+assert arr.len == 10
+
+s2 := arr.bytestr() // convert `[]byte` to `string`
+assert s2 == s
+```
+
 String values are immutable. You cannot mutate elements:
 
 ```v failcompile
@@ -488,8 +499,8 @@ s[0] = `H` // not allowed
 ```
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. 
-Indexes correspond to bytes in the string, not Unicode code points. If you want to 
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`.
+Indexes correspond to bytes in the string, not Unicode code points. If you want to
 convert the `byte` to a `string`, use the `ascii_str()` method:
 
 ```v
@@ -1041,7 +1052,7 @@ println(typeof(fnums).name) // => [3]int
 
 fnums2 := [1, 10, 100]! // short init syntax that does the same (the syntax will probably change)
 
-anums := fnums[0..fnums.len]
+anums := fnums[..] // same as `anums := fnums[0..fnums.len]`
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
@@ -1832,7 +1843,6 @@ mut p := Point{
 	x: 10
 	y: 20
 }
-// you can omit the struct name when it's already known
 p = Point{
 	x: 30
 	y: 4
@@ -1889,7 +1899,7 @@ new_button(ButtonConfig{text:'Click me', width:100})
 This only works for functions that take a struct for the last argument.
 
 NB: the `[params]` tag is used to tell V, that the trailing struct parameter
-can be ommited *entirely*, so that you can write `button := new_button()`. 
+can be omitted *entirely*, so that you can write `button := new_button()`.
 Without it, you have to specify *at least* one of the field names, even if it
 has its default value, otherwise the compiler will produce this error message,
 when you call the function with no parameters:
@@ -2065,15 +2075,13 @@ println(nums)
 Note, that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
-It is preferable to return values instead of modifying arguments.
+It is preferable to return values instead of modifying arguments,
+e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
 Modifying arguments should only be done in performance-critical parts of your application
 to reduce allocations and copying.
 
 For this reason V doesn't allow the modification of arguments with primitive types (e.g. integers).
 Only more complex types such as arrays and maps may be modified.
-
-Use `user.register()` or `user = register(user)`
-instead of `register(mut user)`.
 
 #### Struct update syntax
 
@@ -2486,156 +2494,6 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
-### Manage Packages
-
-Briefly:
-
-```powershell
-v [module option] [param]
-```
-
-###### module options:
-
-```
-   install           Install a module from VPM.
-   remove            Remove a module that was installed from VPM.
-   search            Search for a module from VPM.
-   update            Update an installed module from VPM.
-   upgrade           Upgrade all the outdated modules.
-   list              List all installed modules.
-   outdated          Show installed modules that need updates.
-```
-
-Read more:
-
-You can also install modules already created by someone else with [VPM](https://vpm.vlang.io/):
-```powershell
-v install [module]
-```
-**Example:**
-```powershell
-v install ui
-```
-
-Modules could install directly from git or mercurial repositories.
-```powershell
-v install [--git|--hg] [url]
-```
-**Example:**
-```powershell
-v install --git https://github.com/vlang/markdown
-```
-
-Removing a module with v:
-
-```powershell
-v remove [module]
-```
-**Example:**
-```powershell
-v remove ui
-```
-
-Updating an installed module from [VPM](https://vpm.vlang.io/):
-
-```powershell
-v update [module]
-```
-**Example:**
-```powershell
-v update ui
-```
-
-Or you can update all your modules:
-```powershell
-v update
-```
-
-To see all the modules you have installed, you can use:
-
-```powershell
-v list
-```
-**Example:**
-```powershell
-> v list
-Installed modules:
-  markdown
-  ui
-```
-
-To see all the modules that need updates:
-```powershell
-v outdated
-```
-**Example:**
-```powershell
-> v outdated
-Modules are up to date.
-```
-
-### Publish package
-
-1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
-
-	```sh
-	v new mymodule
-	Input your project description: My nice module.
-	Input your project version: (0.0.0) 0.0.1
-	Input your project license: (MIT)
-	Initialising ...
-	Complete!
-	```
-
-	Example `v.mod`:
-	```v ignore
-	Module {
-		name: 'mymodule'
-		description: 'My nice module.'
-		version: '0.0.1'
-		license: 'MIT'
-		dependencies: []
-	}
-	```
-
-	Minimal file structure:
-	```
-	v.mod
-	mymodule.v
-	```
-
-	Check that your module name is used in `mymodule.v`:
-	```v
-	module mymodule
-	
-	pub fn hello_world() {
-		println('Hello World!')
-	}
-	```
-
-2. Create a git repository in the folder with the `v.mod` file
-	(this is not required if you used `v new` or `v init`):
-	```sh
-	git init
-	git add .
-	git commit -m "INIT"
-	````
-
-3. Create a public repository on github.com.
-4. Connect your local repository to the remote repository and push the changes.
-5. Add your module to the public V module registry VPM:
-	https://vpm.vlang.io/new
-
-	You will have to login with your Github account to register the module.
-	**Warning:** _Currently it is not possibility to edit your entry after submiting.
-	Check your module name and github url twice as this cannot be changed by you later._
-6. The final module name is a combination of your github account and
-	the module name you provided e.g. `mygithubname.mymodule`.
-
-**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
-to allow for a better search experience.
-
 ## Type Declarations
 
 ### Interfaces
@@ -2925,7 +2783,7 @@ println('Grocery IDs: $g1, $g2, $g3')
 
 Output: `Grocery IDs: 0, 5, 6`.
 
-Operations are not allowed on enum variables; they must be explicity cast to `int`.
+Operations are not allowed on enum variables; they must be explicitly cast to `int`.
 
 ### Sum types
 
@@ -3573,7 +3431,7 @@ fn main() {
 
 The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
 It is also possible to proceed immediately if no channel is ready in the moment `select` is called
-by adding an `else { ... }` branch. `else` and `> timeout` are mutually exclusive.
+by adding an `else { ... }` branch. `else` and `<timeout>` are mutually exclusive.
 
 The `select` command can be used as an *expression* of type `bool`
 that becomes `false` if all channels are closed:
@@ -4287,6 +4145,153 @@ fn main() {
 }
 ```
 
+## Package management
+
+```powershell
+v [module option] [param]
+```
+
+###### module options:
+
+```
+   install           Install a module from VPM.
+   remove            Remove a module that was installed from VPM.
+   search            Search for a module from VPM.
+   update            Update an installed module from VPM.
+   upgrade           Upgrade all the outdated modules.
+   list              List all installed modules.
+   outdated          Show installed modules that need updates.
+```
+
+You can install modules already created by someone else with [VPM](https://vpm.vlang.io/):
+```powershell
+v install [module]
+```
+**Example:**
+```powershell
+v install ui
+```
+
+Modules can be installed directly from git or mercurial repositories.
+```powershell
+v install [--git|--hg] [url]
+```
+**Example:**
+```powershell
+v install --git https://github.com/vlang/markdown
+```
+
+Removing a module with v:
+
+```powershell
+v remove [module]
+```
+**Example:**
+```powershell
+v remove ui
+```
+
+Updating an installed module from [VPM](https://vpm.vlang.io/):
+
+```powershell
+v update [module]
+```
+**Example:**
+```powershell
+v update ui
+```
+
+Or you can update all your modules:
+```powershell
+v update
+```
+
+To see all the modules you have installed, you can use:
+
+```powershell
+v list
+```
+**Example:**
+```powershell
+> v list
+Installed modules:
+  markdown
+  ui
+```
+
+To see all the modules that need updates:
+```powershell
+v outdated
+```
+**Example:**
+```powershell
+> v outdated
+Modules are up to date.
+```
+
+### Publish package
+
+1. Put a `v.mod` file inside the toplevel folder of your module (if you
+	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
+
+	```sh
+	v new mymodule
+	Input your project description: My nice module.
+	Input your project version: (0.0.0) 0.0.1
+	Input your project license: (MIT)
+	Initialising ...
+	Complete!
+	```
+
+	Example `v.mod`:
+	```v ignore
+	Module {
+		name: 'mymodule'
+		description: 'My nice module.'
+		version: '0.0.1'
+		license: 'MIT'
+		dependencies: []
+	}
+	```
+
+	Minimal file structure:
+	```
+	v.mod
+	mymodule.v
+	```
+
+	The name of your module should be used with the `module` directive
+	at the top of all files in your module. For `mymodule.v`:
+	```v
+	module mymodule
+	
+	pub fn hello_world() {
+		println('Hello World!')
+	}
+	```
+
+2. Create a git repository in the folder with the `v.mod` file
+	(this is not required if you used `v new` or `v init`):
+	```sh
+	git init
+	git add .
+	git commit -m "INIT"
+	````
+
+3. Create a public repository on github.com.
+4. Connect your local repository to the remote repository and push the changes.
+5. Add your module to the public V module registry VPM:
+	https://vpm.vlang.io/new
+
+	You will have to login with your Github account to register the module.
+	**Warning:** _Currently it is not possible to edit your entry after submitting.
+	Check your module name and github url twice as this cannot be changed by you later._
+6. The final module name is a combination of your github account and
+	the module name you provided e.g. `mygithubname.mymodule`.
+
+**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
+to allow for a better search experience.
+
 # Advanced Topics
 
 ## Dumping expressions at runtime
@@ -4686,7 +4691,7 @@ If no flags are passed it will add `--cflags` and `--libs`, both lines below do 
 The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
 extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
-To check the existance of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
+To check the existence of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
 to handle other cases.
 
@@ -4953,13 +4958,13 @@ V can embed arbitrary files into the executable with the `$embed_file(<path>)`
 compile time call. Paths can be absolute or relative to the source file.
 
 When you do not use `-prod`, the file will not be embedded. Instead, it will
-be loaded *the first time* your program calls `f.data()` at runtime, making
+be loaded *the first time* your program calls `embedded_file.data()` at runtime, making
 it easier to change in external editor programs, without needing to recompile
 your executable.
 
 When you compile with `-prod`, the file *will be embedded inside* your
 executable, increasing your binary size, but making it more self contained
-and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
+and thus easier to distribute. In this case, `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
 #### `$tmpl` for embedding and parsing V template files
@@ -5135,7 +5140,7 @@ but may impact the size of your executable.
 
 `[direct_array_access]` - in functions tagged with `[direct_array_access]`
 the compiler will translate array operations directly into C array operations -
-omiting bounds checking. This may save a lot of time in a function that iterates
+omitting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
 the boundaries will be checked by the user.
 
@@ -5154,38 +5159,26 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile-time `if` and `for` constructs:
 
-```v wip
-// TODO: not fully implemented
-
+```v
 struct User {
-    name string
-    age  int
+	name string
+	age  int
 }
 
-// Note: T should be passed a struct name only
-fn decode<T>(data string) T {
-    mut result := T{}
-    // compile-time `for` loop
-    // T.fields gives an array of a field metadata type
-    $for field in T.fields {
-        $if field.typ is string {
-            // $(string_expr) produces an identifier
-            result.$(field.name) = get_string(data, field.name)
-        } $else $if field.typ is int {
-            result.$(field.name) = get_int(data, field.name)
-        }
-    }
-    return result
+fn main() {
+	$for field in User.fields {
+		$if field.typ is string {
+			println('$field.name is of type string')
+		}
+	}
 }
 
-// `decode<User>` generates:
-fn decode_User(data string) User {
-    mut result := User{}
-    result.name = get_string(data, 'name')
-    result.age = get_int(data, 'age')
-    return result
-}
+// Output:
+// name is of type string
 ```
+
+See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
+for a more complete example.
 
 ## Limited operator overloading
 
@@ -5227,14 +5220,14 @@ operator overloading is an important feature to have in order to improve readabi
 To improve safety and maintainability, operator overloading is limited:
 
 - It's only possible to overload `+, -, *, /, %, <, >, ==, !=, <=, >=` operators.
-- `==` and `!=` are self generated by the compiler but can be overriden.
+- `==` and `!=` are self generated by the compiler but can be overridden.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
 - When using `<` and `==` operators, the return type must be `bool`.
 - `!=`, `>`, `<=` and `>=` are auto generated when `==` and `<` are defined.
 - Both arguments must have the same type (just like with all operators in V).
 - Assignment operators (`*=`, `+=`, `/=`, etc)
-are auto generated when the operators are defined though they must return the same type.
+are auto generated when the corresponding operators are defined and operands are of the same type.
 
 ## Inline assembly
 <!-- ignore because it doesn't pass fmt test (why?) -->
@@ -5297,7 +5290,7 @@ This will generate a directory `libsodium` with a V module.
 
 Example of a C2V generated libsodium wrapper:
 
-https://github.com/medvednikov/libsodium
+https://github.com/vlang/libsodium
 
 <br>
 
@@ -5559,7 +5552,7 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 // Windows only:
 // If a default graphics library is imported (ex. gg, ui), then the graphical window takes
 // priority and no console window is created, effectively disabling println() statements.
-// Use to explicity create console window. Valid before main() only.
+// Use to explicitly create console window. Valid before main() only.
 [console]
 fn main() {
 }

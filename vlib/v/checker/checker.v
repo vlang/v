@@ -1663,8 +1663,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					c.fail_if_immutable(expr.expr)
 				}
 				.array, .string {
-					// This should only happen in `builtin`
-					if c.file.mod.name != 'builtin' {
+					// should only happen in `builtin` and unsafe blocks
+					inside_builtin := c.file.mod.name == 'builtin'
+					if !inside_builtin && !c.inside_unsafe {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 						return '', expr.pos
 					}
@@ -2226,13 +2227,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			concrete_types = node.concrete_types
 		}
 		// resolve return generics struct to concrete type
-		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
+			&& c.table.cur_fn.generic_names.len == 0 {
 			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
 				concrete_types)
 		} else {
 			node.return_type = method.return_type
 		}
-		if node.concrete_types.len > 0 && method.return_type != 0 {
+		if node.concrete_types.len > 0 && method.return_type != 0
+			&& c.table.cur_fn.generic_names.len == 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
 				concrete_types)
 			{
@@ -4499,7 +4502,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		stmt_pos := node.pos
 		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
 	}
-	// c.expected_type = ast.void_type
+	c.expected_type = ast.void_type
 	match mut node {
 		ast.EmptyStmt {
 			if c.pref.is_verbose {

@@ -5,19 +5,26 @@ module builtin
 
 import strings
 
-// array is a struct used for denoting array types in V
+// `array` is a struct, used for denoting all array types in V.
+// `.data` is a void pointer to the backing heap memory block,
+// which avoids using generics and thus without generating extra
+// code for every type.
 pub struct array {
 pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
 	offset int // in bytes (should be `usize`)
-	len    int // length of the array.
-	cap    int // capacity of the array.
+	len    int // length of the array in elements.
+	cap    int // capacity of the array in elements.
+	flags  ArrayFlags
 }
 
-// array.data uses a void pointer, which allows implementing arrays without generics and without generating
-// extra code for every type.
+[flag]
+pub enum ArrayFlags {
+	noslices
+}
+
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
@@ -104,6 +111,11 @@ fn (mut a array) ensure_cap(required int) {
 	if a.data != voidptr(0) {
 		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
+		if a.flags.has(.noslices) {
+			unsafe {
+				free(a.data)
+			}
+		}
 	}
 	a.data = new_data
 	a.offset = 0
@@ -225,6 +237,11 @@ pub fn (mut a array) delete_many(i int, size int) {
 	unsafe {
 		vmemcpy(&byte(a.data) + i * a.element_size, &byte(old_data) + (i + size) * a.element_size,
 			(a.len - i - size) * a.element_size)
+	}
+	if a.flags.has(.noslices) {
+		unsafe {
+			free(old_data)
+		}
 	}
 	a.len = new_size
 	a.cap = new_cap

@@ -260,58 +260,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	global_g.timers.show('cgen init')
 	global_g.tests_inited = false
 	if !pref.no_parallel {
-		mut pp := pool.new_pool_processor(
-			callback: fn (p &pool.PoolProcessor, idx int, wid int) &Gen {
-				file := p.get_item<&ast.File>(idx)
-				mut global_g := &Gen(p.get_shared_context())
-				mut g := &Gen{
-					file: file
-					out: strings.new_builder(512000)
-					cheaders: strings.new_builder(15000)
-					includes: strings.new_builder(100)
-					typedefs: strings.new_builder(100)
-					typedefs2: strings.new_builder(100)
-					type_definitions: strings.new_builder(100)
-					definitions: strings.new_builder(100)
-					gowrappers: strings.new_builder(100)
-					stringliterals: strings.new_builder(100)
-					auto_str_funcs: strings.new_builder(100)
-					comptime_defines: strings.new_builder(100)
-					pcs_declarations: strings.new_builder(100)
-					hotcode_definitions: strings.new_builder(100)
-					embedded_data: strings.new_builder(1000)
-					options: strings.new_builder(100)
-					shared_types: strings.new_builder(100)
-					shared_functions: strings.new_builder(100)
-					channel_definitions: strings.new_builder(100)
-					json_forward_decls: strings.new_builder(100)
-					enum_typedefs: strings.new_builder(100)
-					sql_buf: strings.new_builder(100)
-					init: strings.new_builder(100)
-					global_init: strings.new_builder(0)
-					cleanup: strings.new_builder(100)
-					table: global_g.table
-					pref: global_g.pref
-					fn_decl: 0
-					indent: -1
-					module_built: global_g.module_built
-					timers: util.new_timers(global_g.timers_should_print)
-					inner_loop: &ast.EmptyStmt{}
-					field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
-					array_sort_fn: global_g.array_sort_fn
-					threaded_fns: global_g.threaded_fns
-					done_optionals: global_g.done_optionals
-					is_autofree: global_g.pref.autofree
-				}
-				g.gen_file()
-				return g
-			}
-		)
+		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
 		pp.work_on_items(files)
 		global_g.timers.start('cgen unification')
 		// tg = thread gen
-		for g in pp.get_results<Gen>() {
+		for g in pp.get_results_ref<Gen>() {
 			global_g.embedded_files << g.embedded_files
 			global_g.out.write(g.out) or { panic(err) }
 			global_g.cheaders.write(g.cheaders) or { panic(err) }
@@ -381,16 +335,23 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
+			unsafe { g.free_builders() }
 		}
 	} else {
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
+
 			global_g.inits[file.mod.name].write(global_g.init) or { panic(err) }
+			unsafe { global_g.init.free() }
 			global_g.init = strings.new_builder(100)
+
 			global_g.cleanups[file.mod.name].write(global_g.cleanup) or { panic(err) }
+			unsafe { global_g.cleanup.free() }
 			global_g.cleanup = strings.new_builder(100)
+
 			global_g.global_inits[file.mod.name].write(global_g.global_init) or { panic(err) }
+			unsafe { global_g.global_init.free() }
 			global_g.global_init = strings.new_builder(100)
 		}
 		global_g.timers.start('cgen unification')
@@ -523,7 +484,98 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.out.str())
 	b.writeln('\n// THE END.')
 	g.timers.show('cgen common')
-	return b.str()
+	res := b.str()
+	unsafe { b.free() }
+	unsafe { g.free_builders() }
+	return res
+}
+
+fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
+	file := p.get_item<&ast.File>(idx)
+	mut global_g := &Gen(p.get_shared_context())
+	mut g := &Gen{
+		file: file
+		out: strings.new_builder(512000)
+		cheaders: strings.new_builder(15000)
+		includes: strings.new_builder(100)
+		typedefs: strings.new_builder(100)
+		typedefs2: strings.new_builder(100)
+		type_definitions: strings.new_builder(100)
+		definitions: strings.new_builder(100)
+		gowrappers: strings.new_builder(100)
+		stringliterals: strings.new_builder(100)
+		auto_str_funcs: strings.new_builder(100)
+		comptime_defines: strings.new_builder(100)
+		pcs_declarations: strings.new_builder(100)
+		hotcode_definitions: strings.new_builder(100)
+		embedded_data: strings.new_builder(1000)
+		options: strings.new_builder(100)
+		shared_types: strings.new_builder(100)
+		shared_functions: strings.new_builder(100)
+		channel_definitions: strings.new_builder(100)
+		json_forward_decls: strings.new_builder(100)
+		enum_typedefs: strings.new_builder(100)
+		sql_buf: strings.new_builder(100)
+		init: strings.new_builder(100)
+		global_init: strings.new_builder(0)
+		cleanup: strings.new_builder(100)
+		table: global_g.table
+		pref: global_g.pref
+		fn_decl: 0
+		indent: -1
+		module_built: global_g.module_built
+		timers: util.new_timers(global_g.timers_should_print)
+		inner_loop: &ast.EmptyStmt{}
+		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+		array_sort_fn: global_g.array_sort_fn
+		threaded_fns: global_g.threaded_fns
+		done_optionals: global_g.done_optionals
+		is_autofree: global_g.pref.autofree
+	}
+	g.gen_file()
+	return g
+}
+
+// free_builders should be called only when a Gen would NOT be used anymore
+// it frees the bulk of the memory that is private to the Gen instance
+// (the various string builders)
+[unsafe]
+pub fn (mut g Gen) free_builders() {
+	unsafe {
+		g.out.free()
+		g.cheaders.free()
+		g.includes.free()
+		g.typedefs.free()
+		g.typedefs2.free()
+		g.type_definitions.free()
+		g.definitions.free()
+		g.global_init.free()
+		g.init.free()
+		g.cleanup.free()
+		g.gowrappers.free()
+		g.stringliterals.free()
+		g.auto_str_funcs.free()
+		g.comptime_defines.free()
+		g.pcs_declarations.free()
+		g.hotcode_definitions.free()
+		g.embedded_data.free()
+		g.shared_types.free()
+		g.shared_functions.free()
+		g.channel_definitions.free()
+		g.options.free()
+		g.json_forward_decls.free()
+		g.enum_typedefs.free()
+		g.sql_buf.free()
+		for _, mut v in g.global_inits {
+			v.free()
+		}
+		for _, mut v in g.inits {
+			v.free()
+		}
+		for _, mut v in g.cleanups {
+			v.free()
+		}
+	}
 }
 
 pub fn (mut g Gen) gen_file() {
@@ -6203,7 +6255,7 @@ fn (mut g Gen) write_builtin_types() {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
-	mut types := []ast.TypeSymbol{} // structs that need to be sorted
+	mut types := []ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
 	for typ in g.table.type_symbols {
 		if typ.name !in c.builtins {
 			types << typ
@@ -6445,7 +6497,7 @@ fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut types_sorted := []ast.TypeSymbol{}
+	mut types_sorted := []ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
 	for node in dep_graph_sorted.nodes {
 		types_sorted << g.table.type_symbols[g.table.type_idxs[node.name]]
 	}

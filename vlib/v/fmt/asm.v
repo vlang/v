@@ -57,6 +57,10 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg)
 		}
 		ast.AsmAddressing {
+			if arg.segment != '' {
+				f.write(arg.segment)
+				f.write(':')
+			}
 			f.write('[')
 			base := arg.base
 			index := arg.index

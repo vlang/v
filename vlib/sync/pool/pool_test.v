@@ -34,6 +34,11 @@ fn test_work_on_strings() {
 		println(x.s)
 		assert x.s.len > 1
 	}
+	println('---------- pool_s.get_results_ref: --------------')
+	for x in pool_s.get_results_ref<SResult>() {
+		println(x.s)
+		assert x.s.len > 1
+	}
 }
 
 fn test_work_on_ints() {
@@ -46,6 +51,11 @@ fn test_work_on_ints() {
 
 	pool_i.work_on_items([1, 2, 3, 4, 5, 6, 7, 8])
 	for x in pool_i.get_results<IResult>() {
+		println(x.i)
+		assert x.i > 100
+	}
+	println('---------- pool_i.get_results_ref: --------------')
+	for x in pool_i.get_results_ref<IResult>() {
 		println(x.i)
 		assert x.i > 100
 	}
