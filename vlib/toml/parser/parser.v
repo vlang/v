@@ -576,14 +576,11 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			p.last_aot_index = 0
 		}
 
-		util.printdbg('xxx', '1 now at "$p.tok.kind" "$p.tok.lit"')
 		mut t_arr := &(table[p.last_aot] as []ast.Value)
-		util.printdbg('xxx', '2 now at "$p.tok.kind" "$p.tok.lit"')
 		mut t_map := ast.Value(map[string]ast.Value{})
 		if t_arr.len > 0 {
 			t_map = t_arr[p.last_aot_index]
 		}
-		util.printdbg('xxx', '3 now at "$p.tok.kind" "$p.tok.lit"')
 		mut t := &(t_map as map[string]ast.Value)
 
 		if last in t.keys() {
