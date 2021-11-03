@@ -1,3 +1,3 @@
-module ctx
+module jsdom
 
 pub struct WebGLRenderingContext {}
