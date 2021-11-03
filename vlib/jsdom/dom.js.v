@@ -184,3 +184,67 @@ fn init() {
 	#jsdom__document.node = document;
 	#jsdom__window.node = window;
 }
+
+pub struct JS.DOMMatrix {
+pub:
+	is_2d       JS.Boolean [noinit]
+	is_identity JS.Boolean [noinit]
+pub mut:
+	m11 JS.Number [noinit]
+	m12 JS.Number [noinit]
+	m13 JS.Number [noinit]
+	m14 JS.Number [noinit]
+	m21 JS.Number [noinit]
+	m22 JS.Number [noinit]
+	m23 JS.Number [noinit]
+	m24 JS.Number [noinit]
+	m31 JS.Number [noinit]
+	m32 JS.Number [noinit]
+	m33 JS.Number [noinit]
+	m34 JS.Number [noinit]
+	m41 JS.Number [noinit]
+	m42 JS.Number [noinit]
+	m43 JS.Number [noinit]
+	m44 JS.Number [noinit]
+	a   JS.Number [noinit]
+	b   JS.Number [noinit]
+	c   JS.Number [noinit]
+	d   JS.Number [noinit]
+	e   JS.Number [noinit]
+	f   JS.Number [noinit]
+}
+
+pub struct DOMMatrix {
+	matrix JS.DOMMatrix
+}
+
+pub fn (matrix DOMMatrix) str() string {
+	fmt := ''
+	#fmt.str = matrix.matrix + ''
+
+	return fmt
+}
+
+pub fn new_matrix(init []f64) DOMMatrix {
+	#let tmp = new Array();
+
+	for val in init {
+		_ := val
+		#tmp.push(val);
+	}
+	mut m := JS.DOMMatrix{}
+	#m = new DOMMatrix(tmp);
+
+	return DOMMatrix{m}
+}
+
+pub fn (m DOMMatrix) invert_self() {
+	#m.matrix.invertSelf();
+}
+
+pub fn (m DOMMatrix) is_2d() bool {
+	res := false
+	#res.val = m.matrix.is2D.val;
+
+	return res
+}
