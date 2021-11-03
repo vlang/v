@@ -523,7 +523,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 			{
 				if val is []ast.Value {
 					arr := &(table[key_str] as []ast.Value)
-					arr << p.double_bracket_array() ?
+					arr << p.array_of_tables_contents() ?
 					table[key_str] = arr
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -531,7 +531,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 				}
 			}
 		} else {
-			table[key_str] = p.double_bracket_array() ?
+			table[key_str] = p.array_of_tables_contents() ?
 		}
 	}
 	p.last_aot = key_str
@@ -594,7 +594,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			{
 				if val is []ast.Value {
 					arr := &(val as []ast.Value)
-					arr << p.double_bracket_array() ?
+					arr << p.array_of_tables_contents() ?
 					t[last] = arr
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -602,7 +602,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 				}
 			}
 		} else {
-			t[last] = p.double_bracket_array() ?
+			t[last] = p.array_of_tables_contents() ?
 		}
 		if t_arr.len == 0 {
 			t_arr << t
@@ -612,7 +612,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 }
 
 // array parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) double_bracket_array() ?[]ast.Value {
+pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
 	for p.tok.kind in [.bare, .quoted, .boolean, .number] {
