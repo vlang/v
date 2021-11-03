@@ -79,3 +79,14 @@ fn test_hex_values() {
 	assert value as i64 == 11
 	assert value.i64() == 11
 }
+
+fn test_comment_as_last_value() {
+	toml_txt := '
+test = 42
+# this line has comment as last thing'
+	toml_doc := toml.parse(toml_txt) or { panic(err) }
+
+	value := toml_doc.value('test')
+	assert value as i64 == 42
+	assert value.i64() == 42
+}
