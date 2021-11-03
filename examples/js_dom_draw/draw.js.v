@@ -1,6 +1,5 @@
 import jsdom
 
-
 fn get_2dcontext(canvas jsdom.IElement) ?jsdom.CanvasRenderingContext2D {
 	if canvas is jsdom.HTMLCanvasElement {
 		c := canvas.get_context('2d')
