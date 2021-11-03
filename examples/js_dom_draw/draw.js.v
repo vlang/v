@@ -1,11 +1,11 @@
 import jsdom
-import jsdom.ctx
 
-fn get_2dcontext(canvas jsdom.IElement) ?ctx.CanvasRenderingContext2D {
+
+fn get_2dcontext(canvas jsdom.IElement) ?jsdom.CanvasRenderingContext2D {
 	if canvas is jsdom.HTMLCanvasElement {
 		c := canvas.get_context('2d')
 		match c {
-			ctx.CanvasRenderingContext2D {
+			jsdom.CanvasRenderingContext2D {
 				return c
 			}
 			else {
@@ -17,7 +17,7 @@ fn get_2dcontext(canvas jsdom.IElement) ?ctx.CanvasRenderingContext2D {
 	}
 }
 
-fn draw_line(context ctx.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
+fn draw_line(context jsdom.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
 	context.begin_path()
 	context.set_stroke_style('black')
 	context.set_line_width(1)
