@@ -2081,8 +2081,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			c.fail_if_unreadable(node.left, left_type, 'receiver')
 		}
-		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
-			&& method.no_body {
+		if left_type_sym.language != .js && (!left_type_sym.is_builtin() && method.mod != 'builtin')
+			&& method.language == .v && method.no_body {
 			c.error('cannot call a method that does not have a body', node.pos)
 		}
 		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
