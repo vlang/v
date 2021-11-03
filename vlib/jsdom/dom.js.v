@@ -215,7 +215,7 @@ pub mut:
 }
 
 pub struct DOMMatrix {
-	matrix JS.DOMMatrix
+	matrix JS.DOMMatrix [noinit]
 }
 
 pub fn (matrix DOMMatrix) str() string {
