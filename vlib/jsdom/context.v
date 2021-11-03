@@ -1,6 +1,6 @@
 // Wrapper around 2d context and WebGL APIs
 
-module ctx
+module jsdom
 
 pub struct ContextAttributes {
 pub:
@@ -30,3 +30,5 @@ pub:
 pub struct NoneContext {}
 
 pub type ContextResult = CanvasRenderingContext2D | NoneContext | WebGLRenderingContext
+
+pub struct JS.CanvasGradient {}

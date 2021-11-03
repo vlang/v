@@ -1,7 +1,5 @@
 module jsdom
 
-import jsdom.ctx
-
 pub struct HTMLCanvasElement {
 	HTMLElement
 }
@@ -31,10 +29,10 @@ pub fn (elem HTMLCanvasElement) add_event_listener(event string, cb EventCallbac
 	#});
 }
 
-pub fn (elem HTMLCanvasElement) get_context(ctx_ string) ctx.ContextResult {
-	mut res := ctx.NoneContext{}
+pub fn (elem HTMLCanvasElement) get_context(ctx_ string) ContextResult {
+	mut res := NoneContext{}
 	#let ctx = elem.node.getContext(ctx_.str);
-	#if (ctx instanceof CanvasRenderingContext2D) { res = new jsdom__ctx__CanvasRenderingContext2D(ctx); res.ctx = ctx; }
+	#if (ctx instanceof CanvasRenderingContext2D) { res = new jsdom__CanvasRenderingContext2D(ctx); res.ctx = ctx; }
 
 	return res
 }
