@@ -18,6 +18,7 @@ mut:
 	prev_tok  token.Token
 	tok       token.Token
 	peek_tok  token.Token
+	tokens    []token.Token // To be able to peek more than one token ahead.
 	skip_next bool
 	// The root map (map is called table in TOML world)
 	root_map     map[string]ast.Value
@@ -48,6 +49,7 @@ pub fn new_parser(config Config) Parser {
 // init initializes the parser.
 pub fn (mut p Parser) init() ? {
 	p.root_map = map[string]ast.Value{}
+	p.tokens << p.scanner.scan() ?
 	p.next() ?
 }
 
@@ -79,10 +81,43 @@ pub fn (mut p Parser) parse() ?&ast.Root {
 fn (mut p Parser) next() ? {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan() ?
+	if p.tokens.len > 0 {
+		p.peek_tok = p.tokens.pop()
+		p.peek(1) ?
+	} else {
+		p.peek(1) ?
+		p.peek_tok = p.tokens.pop()
+	}
 }
 
-// check returns true if the current token's `Kind` is equal that of `expected_token`.
+// peek peeks forward `n` tokens.
+// peek returns `.unknown` if it can not peek ahead long enough.
+fn (mut p Parser) peek(n int) ?token.Token {
+	if n < 0 {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' peeking backwards is not supported.')
+	}
+	if n == 0 {
+		return p.peek_tok
+	} else {
+		// n >= 1
+		if n <= p.tokens.len {
+			return p.tokens[n - 1]
+		} else {
+			mut token := token.Token{}
+			mut count := n - p.tokens.len
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering $count tokens...')
+			for token.kind != .eof && count != 0 {
+				token = p.scanner.scan() ?
+				p.tokens << token
+				count--
+			}
+			return token
+		}
+	}
+}
+
+// check forwards the parser to the next token if the current
+// token's `Kind` is equal that of `check_token`.
 fn (mut p Parser) check(check_token token.Kind) ? {
 	if p.tok.kind == check_token {
 		p.next() ?
