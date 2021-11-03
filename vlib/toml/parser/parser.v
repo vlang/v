@@ -143,33 +143,43 @@ fn (mut p Parser) check_one_of(tokens []token.Kind) ? {
 	}
 }
 
-// allow_any_of forwards the parser to the next token if the current
-// token's `Kind` can be found in `tokens`. In contray to `check_one_of`
-// `allow_any_of` will not return any errors.
-fn (mut p Parser) allow_any_of(tokens []token.Kind) {
+// ignore_while forwards the parser to the next token as long as the current
+// token's `Kind` can be found in `tokens`. This is helpful for ignoring
+// a stream of formatting tokens.
+fn (mut p Parser) ignore_while(tokens []token.Kind) {
 	if p.tok.kind in tokens {
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allowing "$p.tok.kind" ...')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'ignoring "$p.tok.kind" ...')
 		p.next() or { return }
+		p.ignore_while(tokens)
 	}
 }
 
-// eat_any_of forwards the parser to the next token as long as the current
-// token's `Kind` can be found in `tokens`.
-fn (mut p Parser) eat_any_of(tokens []token.Kind) {
-	if p.tok.kind in tokens {
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'eating "$p.tok.kind" ...')
-		p.next() or { return }
-		p.eat_any_of(tokens)
-	}
-}
-
-// eat_peek_any_of forwards the parser to the next token as long as the peek
-// token's `Kind` can be found in `tokens`.
-fn (mut p Parser) eat_peek_any_of(tokens []token.Kind) {
+// ignore_while_peek forwards the parser to the next token as long as `peek_tok`
+// token's `Kind` can be found in `tokens`. This is helpful for ignoring
+// a stream of formatting tokens.
+// In contrast to `ignore_while`, `ignore_while_peek` compares on `peek_tok` this is
+// sometimes necessary since not all parser calls forward using the `next()` call.
+fn (mut p Parser) ignore_while_peek(tokens []token.Kind) {
 	for p.peek_tok.kind in tokens {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'eating "$p.tok.kind" ...')
 		p.next() or { return }
 	}
+}
+
+// peek_over peeks ahead from token starting at `i` skipping over
+// any `token.Kind`s found in `tokens`. `peek_over` returns the next token *not*
+// found in `tokens`.
+fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?token.Token {
+	mut peek_tok := p.peek_tok
+
+	// Peek ahead as far as we can from token at `i` while the peeked
+	// token is found in `tokens`.
+	mut peek_i := i
+	for peek_tok.kind in tokens {
+		peek_tok = p.peek(peek_i) ?
+		peek_i++
+	}
+	return peek_tok
 }
 
 // is_at returns true if the token kind is equal to `expected_token`.
@@ -286,16 +296,15 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 pub fn (mut p Parser) sub_key() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key...')
 	key := p.key() ?
-	p.eat_peek_any_of(parser.space_formatting)
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'XXXXXXXX now at "$p.tok.kind" "$p.tok.lit"')
+	p.ignore_while_peek(parser.space_formatting)
 	mut text := key.str()
 	for p.peek_tok.kind == .period {
 		p.next() ? // .
 		p.check(.period) ?
-		p.eat_any_of(parser.space_formatting)
+		p.ignore_while(parser.space_formatting)
 		next_key := p.key() ?
 		text += '.' + next_key.text
-		p.eat_peek_any_of(parser.space_formatting)
+		p.ignore_while_peek(parser.space_formatting)
 	}
 	p.next() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed nested key `$text` now at "$p.tok.kind" "$p.tok.lit"')
@@ -328,19 +337,15 @@ pub fn (mut p Parser) root_table() ? {
 			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
 				mut peek_tok := p.peek_tok
 
-				// Lookhead as far as we can
-				mut peek_i := 1
-				for peek_tok.kind in parser.space_formatting {
-					peek_tok = p.peek(peek_i) ?
-					peek_i++
-				}
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok = p.peek_over(1, parser.space_formatting) ?
 
 				if peek_tok.kind == .period {
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					subkey := p.sub_key() ?
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					p.check(.assign) ?
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					val := p.value() ?
 
 					sub_table, key := p.sub_table_key(subkey)
@@ -351,7 +356,7 @@ pub fn (mut p Parser) root_table() ? {
 						t[key] = val
 					}
 				} else {
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					key, val := p.key_value() ?
 
 					t := p.find_table() ?
@@ -363,25 +368,20 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			.lsbr {
 				p.check(.lsbr) ? // '[' bracket
-				p.eat_any_of(parser.space_formatting)
+				p.ignore_while(parser.space_formatting)
 
 				mut peek_tok := p.peek_tok
-
-				// Lookhead as far as we can
-				mut peek_i := 1
-				for peek_tok.kind in parser.space_formatting {
-					peek_tok = p.peek(peek_i) ?
-					peek_i++
-				}
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok = p.peek_over(1, parser.space_formatting) ?
 
 				if p.tok.kind == .lsbr {
 					p.array_of_tables(mut &p.root_map) ?
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					p.root_map_key = p.sub_key() ?
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
 				} else {
@@ -419,7 +419,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 
 		if previous_token_was_value {
-			p.eat_any_of(parser.space_formatting)
+			p.ignore_while(parser.space_formatting)
 			if p.tok.kind != .rcbr {
 				p.expect(.comma) ?
 			}
@@ -437,7 +437,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 				continue
 			}
 			.comma {
-				p.eat_peek_any_of(parser.space_formatting)
+				p.ignore_while_peek(parser.space_formatting)
 				if p.peek_tok.kind == .rcbr {
 					p.next() ? // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -457,20 +457,15 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			}
 			.bare, .quoted, .boolean, .number, .underscore {
 				mut peek_tok := p.peek_tok
-
-				// Lookhead as far as we can
-				mut peek_i := 1
-				for peek_tok.kind in parser.space_formatting {
-					peek_tok = p.peek(peek_i) ?
-					peek_i++
-				}
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok = p.peek_over(1, parser.space_formatting) ?
 
 				if peek_tok.kind == .period {
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					subkey := p.sub_key() ?
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					p.check(.assign) ?
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					val := p.value() ?
 
 					sub_table, key := p.sub_table_key(subkey)
@@ -481,7 +476,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 						t[key] = val
 					}
 				} else {
-					p.eat_any_of(parser.space_formatting)
+					p.ignore_while(parser.space_formatting)
 					key, val := p.key_value() ?
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key.str()" = $val.to_json() into ${ptr_str(tbl)}')
 					tbl[key.str()] = val
@@ -515,6 +510,8 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	p.next() ?
 	p.check(.rsbr) ?
 	p.check(.rsbr) ?
+
+	p.ignore_while(parser.all_formatting)
 
 	key_str := key.str()
 	unsafe {
@@ -565,12 +562,10 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
 	}
-	// TODO BUG
-	/*
+
 	first := ks[0]
 	last := ks[1]
-	*/
-	/*
+
 	unsafe {
 		// NOTE this is starting to get EVEN uglier. TOML is not at all simple at this point...
 		if p.last_aot != first {
@@ -584,7 +579,10 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		util.printdbg('xxx', '1 now at "$p.tok.kind" "$p.tok.lit"')
 		mut t_arr := &(table[p.last_aot] as []ast.Value)
 		util.printdbg('xxx', '2 now at "$p.tok.kind" "$p.tok.lit"')
-		mut t_map := t_arr[p.last_aot_index] or { ast.Value(map[string]{}) }
+		mut t_map := ast.Value(map[string]ast.Value{})
+		if t_arr.len > 0 {
+			t_map = t_arr[p.last_aot_index]
+		}
 		util.printdbg('xxx', '3 now at "$p.tok.kind" "$p.tok.lit"')
 		mut t := &(t_map as map[string]ast.Value)
 
@@ -606,20 +604,41 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		} else {
 			t[last] = p.double_bracket_array() ?
 		}
-	}*/
+		if t_arr.len == 0 {
+			t_arr << t
+			p.last_aot_index = 0
+		}
+	}
 }
 
 // array parses next tokens into an array of `ast.Value`s.
 pub fn (mut p Parser) double_bracket_array() ?[]ast.Value {
-	mut arr := []ast.Value{}
-	for p.tok.kind in [.bare, .quoted, .boolean, .number] && p.peek_tok.kind == .assign {
-		mut tbl := map[string]ast.Value{}
-		p.eat_any_of(parser.space_formatting)
-		key, val := p.key_value() ?
-		tbl[key.str()] = val
-		arr << tbl
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables contents from "$p.tok.kind" "$p.tok.lit"')
+	mut tbl := map[string]ast.Value{}
+	for p.tok.kind in [.bare, .quoted, .boolean, .number] {
+		if p.peek_tok.kind == .period {
+			subkey := p.sub_key() ?
+			p.check(.assign) ?
+			val := p.value() ?
+
+			sub_table, key := p.sub_table_key(subkey)
+
+			mut t := p.find_in_table(mut tbl, sub_table) ?
+			unsafe {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+				t[key] = val
+			}
+		} else {
+			key, val := p.key_value() ?
+			tbl[key.str()] = val
+		}
 		p.next() ?
+		p.ignore_while(parser.all_formatting)
 	}
+	mut arr := []ast.Value{}
+	arr << tbl
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables ${arr.str().replace('\n',
+		' ')}. leaving at "$p.tok.kind" "$p.tok.lit"')
 	return arr
 }
 
@@ -634,7 +653,7 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
 
 		if previous_token_was_value {
-			p.eat_any_of(parser.all_formatting)
+			p.ignore_while(parser.all_formatting)
 			if p.tok.kind != .rsbr && p.tok.kind != .hash {
 				p.expect(.comma) ?
 			}
@@ -667,7 +686,7 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
 			}
 			.lcbr {
-				p.eat_any_of(parser.space_formatting)
+				p.ignore_while(parser.space_formatting)
 				mut t := map[string]ast.Value{}
 				p.inline_table(mut t) ?
 				arr << ast.Value(t)
@@ -684,7 +703,6 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 			}
 			.lsbr {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "$p.tok.kind" "$p.tok.lit"')
-				p.allow_any_of(parser.all_formatting)
 				arr << ast.Value(p.array() ?)
 				previous_token_was_value = true
 			}
@@ -768,9 +786,9 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
 	key := p.key() ?
 	p.next() ?
-	p.eat_any_of(parser.space_formatting)
+	p.ignore_while(parser.space_formatting)
 	p.check(.assign) ? // Assignment operator
-	p.eat_any_of(parser.space_formatting)
+	p.ignore_while(parser.space_formatting)
 	value := p.value() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = $value.to_json()')
 	return key, value
@@ -801,7 +819,7 @@ pub fn (mut p Parser) value() ?ast.Value {
 				ast.Value(p.array() ?)
 			}
 			.lcbr {
-				p.eat_any_of(parser.space_formatting)
+				p.ignore_while(parser.space_formatting)
 				mut t := map[string]ast.Value{}
 				p.inline_table(mut t) ?
 				// table[key_str] = ast.Value(t)

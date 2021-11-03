@@ -67,26 +67,25 @@ fn test_tables() {
 	value = m.value('x.a.b.c.d.e') or { panic(err) }
 	assert value.int() == 1
 
-	/*
-	TODO BUG
-
 	arr := toml_doc.value('arr') as []toml.Any
+
+	for i := 0; i < arr.len; i++ {
+		entry := (arr[i] as map[string]toml.Any)
+		value = entry.value('t.a.b') or { panic(err) }
+		assert value.int() == i + 1
+		value = entry.value('T.a.b') or { panic(err) }
+		assert value.int() == i + 1
+	}
 
 	arr0 := arr[0] as map[string]toml.Any
 	value = arr0.value('t.a.b') or { panic(err) }
 	assert value.int() == 1
-
-	arr1 := arr[1] as map[string]toml.Any
-	value = arr1.value('T.a.b') or { panic(err) }
+	value = arr0.value('T.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	arr2 := arr[2] as map[string]toml.Any
-	value = arr2.value('t.a.b') or { panic(err) }
+	arr1 := arr[1] as map[string]toml.Any
+	value = arr1.value('t.a.b') or { panic(err) }
 	assert value.int() == 2
-
-	arr3 := arr[3] as map[string]toml.Any
-	value = arr3.value('T.a.b') or { panic(err) }
+	value = arr1.value('T.a.b') or { panic(err) }
 	assert value.int() == 2
-	*/
-	return
 }

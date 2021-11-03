@@ -13,7 +13,6 @@ const (
 	]
 	invalid_exceptions = [
 		// Table
-		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
 		'table/duplicate.toml',
 		'table/array-implicit.toml',

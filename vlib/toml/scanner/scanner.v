@@ -232,7 +232,7 @@ pub fn (s &Scanner) remaining() int {
 }
 
 // next returns the next character code from the input text.
-// next returns `-1` if it can't reach the next character.
+// next returns `end_of_text` if it can't reach the next character.
 [direct_array_access; inline]
 pub fn (mut s Scanner) next() int {
 	if s.pos < s.text.len {
@@ -242,7 +242,7 @@ pub fn (mut s Scanner) next() int {
 		c := s.text[opos]
 		return c
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // skip skips one character ahead.
@@ -267,14 +267,14 @@ pub fn (mut s Scanner) skip_n(n int) {
 }
 
 // at returns the *current* character code from the input text.
-// at returns `-1` if it can't get the current character.
+// at returns `end_of_text` if it can't get the current character.
 // unlike `next()`, `at()` does not change the state of the scanner.
 [direct_array_access; inline]
 pub fn (s &Scanner) at() int {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // at_crlf returns `true` if the scanner is at a `\r` character
@@ -284,7 +284,7 @@ fn (s Scanner) at_crlf() bool {
 }
 
 // peek returns the character code from the input text at position + `n`.
-// peek returns `-1` if it can't peek `n` characters ahead.
+// peek returns `end_of_text` if it can't peek `n` characters ahead.
 [direct_array_access; inline]
 pub fn (s &Scanner) peek(n int) int {
 	if s.pos + n < s.text.len {
@@ -295,7 +295,7 @@ pub fn (s &Scanner) peek(n int) int {
 		}
 		return s.text[s.pos + n]
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // reset resets the internal state of the scanner.
