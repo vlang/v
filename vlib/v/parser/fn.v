@@ -591,6 +591,10 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		}
 	}
 
+	if rec.language != .v {
+		p.check_for_impure_v(rec.language, rec.type_pos)
+	}
+
 	params << ast.Param{
 		pos: rec_start_pos
 		name: rec.name
@@ -833,6 +837,10 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 				p.next()
 			}
+			alanguage := p.table.get_type_symbol(arg_type).language
+			if alanguage != .v {
+				p.check_for_impure_v(alanguage, pos)
+			}
 			args << ast.Param{
 				pos: pos
 				name: ''
@@ -918,6 +926,10 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
+				alanguage := p.table.get_type_symbol(typ).language
+				if alanguage != .v {
+					p.check_for_impure_v(alanguage, type_pos[i])
+				}
 				args << ast.Param{
 					pos: arg_pos[i]
 					name: arg_name

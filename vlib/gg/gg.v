@@ -122,7 +122,7 @@ pub fn (mut ctx Context) refresh_ui() {
 	ctx.ticks = 0
 }
 
-fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
+fn gg_event_fn(ce voidptr, user_data voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
 	mut e := unsafe { &Event(ce) }
 	mut g := unsafe { &Context(user_data) }
