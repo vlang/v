@@ -2277,7 +2277,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if field := c.table.find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(c.unwrap_generic(field.typ))
 		if field_type_sym.kind == .function {
-			// node.is_method = false
+			node.is_method = false
 			node.is_field = true
 			info := field_type_sym.info as ast.FnType
 			node.return_type = info.func.return_type
@@ -2288,6 +2288,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				earg_types << targ
 			}
 			node.expected_arg_types = earg_types
+			c.check_expected_arg_count(mut node, info.func) or { return info.func.return_type }
+			node.is_method = true
 			return info.func.return_type
 		}
 	}
