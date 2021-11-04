@@ -23,23 +23,15 @@ const (
 		// Array
 		'array/tables-1.toml',
 		'array/text-after-array-entries.toml',
-		'array/text-before-array-separator.toml',
 		// Date / Time
 		'datetime/impossible-date.toml',
 		'datetime/no-leads-with-milli.toml',
 		'datetime/no-leads.toml',
-		// Inline table
-		'inline-table/linebreak-4.toml',
-		'inline-table/linebreak-3.toml',
-		'inline-table/linebreak-1.toml',
-		'inline-table/linebreak-2.toml',
 		// Key
 		'key/duplicate.toml',
 		'key/after-table.toml',
 		'key/duplicate-keys.toml',
 		'key/after-value.toml',
-		'key/newline.toml',
-		'key/without-value-2.toml',
 		'key/no-eol.toml',
 		'key/after-array.toml',
 	]
