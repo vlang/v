@@ -762,9 +762,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 				ast.Key(p.quoted())
 			}
 			else {
-				error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' key expected .bare, .number, .quoted or .boolean but got "$p.tok.kind"')
-				ast.Key(ast.Bare{}) // TODO workaround bug
+				ast.Key(ast.Null{})
 			}
 		}
 	}
@@ -773,6 +771,24 @@ pub fn (mut p Parser) key() ?ast.Key {
 	// util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok')
 	// return ast.Key(ast.Bare{})
+
+	if key is ast.Null {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' key expected .bare, .number, .quoted or .boolean but got "$p.tok.kind"')
+	}
+
+	// A small exception that can't easily be done via `checker`
+	// since the `is_multiline` information is lost when using the key.text as a
+	// V `map` key directly.
+	if p.config.run_checks {
+		if key is ast.Quoted {
+			quoted := key as ast.Quoted
+			if quoted.is_multiline {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' multiline string as key is not allowed. (excerpt): "...${p.excerpt()}..."')
+			}
+		}
+	}
 
 	return key
 }
