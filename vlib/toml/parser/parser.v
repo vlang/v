@@ -265,7 +265,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 			if k in t.keys() {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
 				if val := t[k] or {
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					panic(@MOD + '.' + @STRUCT + '.' + @FN +
 						' this should never happen. Key "$k" was checked before access')
 				}
 				{
@@ -531,7 +531,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	unsafe {
 		if key_str in table.keys() {
 			if val := table[key_str] or {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' this should never happen. Key "$key_str" was checked before access')
 			}
 			{
@@ -599,7 +599,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 
 		if last in t.keys() {
 			if val := t[last] or {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				panic(@MOD + '.' + @STRUCT + '.' + @FN +
 					' this should never happen. Key "$last" was checked before access')
 			}
 			{
