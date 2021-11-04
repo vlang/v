@@ -602,6 +602,7 @@ fn (t Tree) struct_field(node ast.StructField) &Node {
 	obj.add('is_pub', t.bool_node(node.is_pub))
 	obj.add('is_mut', t.bool_node(node.is_mut))
 	obj.add('is_global', t.bool_node(node.is_global))
+	obj.add('is_volatile', t.bool_node(node.is_volatile))
 	obj.add('attrs', t.array_node_attr(node.attrs))
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('pos', t.position(node.pos))
@@ -1548,6 +1549,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add('has_len', t.bool_node(node.has_len))
 	obj.add('has_cap', t.bool_node(node.has_cap))
 	obj.add('has_default', t.bool_node(node.has_default))
+	obj.add('has_it', t.bool_node(node.has_it))
 	obj.add('expr_types', t.array_node_type(node.expr_types))
 	obj.add('pos', t.position(node.pos))
 	return obj
