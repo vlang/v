@@ -2280,15 +2280,27 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.is_method = false
 			node.is_field = true
 			info := field_type_sym.info as ast.FnType
+
+			c.check_expected_arg_count(mut node, info.func) or { return info.func.return_type }
 			node.return_type = info.func.return_type
 			mut earg_types := []ast.Type{}
-			for mut arg in node.args {
+
+			for i, mut arg in node.args {
 				targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 				arg.typ = targ
 				earg_types << targ
+
+				if i < info.func.params.len {
+					exp_arg_typ := info.func.params[i].typ
+					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language) or {
+						if targ != ast.void_type {
+							c.error('$err.msg in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
+								arg.pos)
+						}
+					}
+				}
 			}
 			node.expected_arg_types = earg_types
-			c.check_expected_arg_count(mut node, info.func) or { return info.func.return_type }
 			node.is_method = true
 			return info.func.return_type
 		}
