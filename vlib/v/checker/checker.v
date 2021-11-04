@@ -2852,6 +2852,19 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if typ == ast.int_type && param_typ_sym.kind == .enum_ {
 					continue
 				}
+				// In C unsafe number casts are used all the time (e.g. `char*` where
+				// `int*` is expected etc), so just allow them all.
+				mut param_is_number := param.typ.is_number()
+				if param.typ.is_ptr() {
+					param_is_number = param.typ.deref().is_number()
+				}
+				mut typ_is_number := typ.is_number()
+				if typ.is_ptr() {
+					typ_is_number = typ.deref().is_number()
+				}
+				if param_is_number && typ_is_number {
+					continue
+				}
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
@@ -6374,7 +6387,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 	}
 	if is_exhaustive {
-		if has_else {
+		if has_else && !c.pref.translated {
 			c.error('match expression is exhaustive, `else` is unnecessary', else_branch.pos)
 		}
 		return
