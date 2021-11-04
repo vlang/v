@@ -13,7 +13,6 @@ const (
 	]
 	invalid_exceptions = [
 		// Table
-		'table/rrbrace.toml',
 		'table/duplicate-table-array2.toml',
 		'table/duplicate.toml',
 		'table/array-implicit.toml',
@@ -23,7 +22,6 @@ const (
 		'table/duplicate-table-array.toml',
 		// Array
 		'array/tables-1.toml',
-		//'array/missing-separator.toml',
 		'array/text-after-array-entries.toml',
 		'array/text-before-array-separator.toml',
 		// Date / Time

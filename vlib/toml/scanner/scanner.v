@@ -40,8 +40,8 @@ pub:
 // Only one of the fields `text` and `file_path` is allowed to be set at time of configuration.
 pub struct Config {
 pub:
-	input              input.Config
-	tokenize_formating bool // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
+	input               input.Config
+	tokenize_formatting bool = true // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
 }
 
 // new_scanner returns a new *heap* allocated `Scanner` instance.
@@ -136,14 +136,16 @@ pub fn (mut s Scanner) scan() ?token.Token {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified, what could be, a space between a RFC 3339 date and time ("$ascii") ($ascii.len)')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
 				}
-				if s.config.tokenize_formating {
+				if s.config.tokenize_formatting {
 					mut kind := token.Kind.whitespace
 					if c == `\t` {
 						kind = token.Kind.tab
+					} else if c == `\r` {
+						kind = token.Kind.cr
 					} else if c == `\n` {
 						kind = token.Kind.nl
 					}
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified one of " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified formatting character ("$ascii") ($ascii.len)')
 					return s.new_token(kind, ascii, ascii.len)
 				} else {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping " ", "\\t" or "\\n" ("$ascii") ($ascii.len)')
@@ -230,7 +232,7 @@ pub fn (s &Scanner) remaining() int {
 }
 
 // next returns the next character code from the input text.
-// next returns `-1` if it can't reach the next character.
+// next returns `end_of_text` if it can't reach the next character.
 [direct_array_access; inline]
 pub fn (mut s Scanner) next() int {
 	if s.pos < s.text.len {
@@ -240,7 +242,7 @@ pub fn (mut s Scanner) next() int {
 		c := s.text[opos]
 		return c
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // skip skips one character ahead.
@@ -265,14 +267,14 @@ pub fn (mut s Scanner) skip_n(n int) {
 }
 
 // at returns the *current* character code from the input text.
-// at returns `-1` if it can't get the current character.
+// at returns `end_of_text` if it can't get the current character.
 // unlike `next()`, `at()` does not change the state of the scanner.
 [direct_array_access; inline]
 pub fn (s &Scanner) at() int {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // at_crlf returns `true` if the scanner is at a `\r` character
@@ -282,7 +284,7 @@ fn (s Scanner) at_crlf() bool {
 }
 
 // peek returns the character code from the input text at position + `n`.
-// peek returns `-1` if it can't peek `n` characters ahead.
+// peek returns `end_of_text` if it can't peek `n` characters ahead.
 [direct_array_access; inline]
 pub fn (s &Scanner) peek(n int) int {
 	if s.pos + n < s.text.len {
@@ -293,7 +295,7 @@ pub fn (s &Scanner) peek(n int) int {
 		}
 		return s.text[s.pos + n]
 	}
-	return -1
+	return scanner.end_of_text
 }
 
 // reset resets the internal state of the scanner.
