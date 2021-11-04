@@ -28,4 +28,8 @@ fn main() {
 	println(fun1.call(42))
 	println(fun1.call())
 	println(fun1.call(42, 43))
+
+	println(fun1.call(true))
+	println(fun1.call('text'))
+	println(fun1.call(22.2))
 }
