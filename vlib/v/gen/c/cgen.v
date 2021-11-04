@@ -988,6 +988,7 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 void ${fn_name}($thread_arr_typ a) {
 	for (int i = 0; i < a.len; ++i) {
 		$thread_typ t = (($thread_typ*)a.data)[i];
+		if (t == 0) continue;
 		__v_thread_wait(t);
 	}
 }')
@@ -996,8 +997,13 @@ void ${fn_name}($thread_arr_typ a) {
 $ret_typ ${fn_name}($thread_arr_typ a) {
 	$ret_typ res = __new_array_with_default(a.len, a.len, sizeof($eltyp), 0);
 	for (int i = 0; i < a.len; ++i) {
-		$thread_typ t = (($thread_typ*)a.data)[i];
-		(($eltyp*)res.data)[i] = __v_thread_${eltyp}_wait(t);
+		$thread_typ t = (($thread_typ*)a.data)[i];')
+			if g.pref.os == .windows {
+				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
+			} else {
+				g.gowrappers.writeln('\t\tif (t == 0) continue;')
+			}
+			g.gowrappers.writeln('\t\t(($eltyp*)res.data)[i] = __v_thread_${eltyp}_wait(t);
 	}
 	return res;
 }')
