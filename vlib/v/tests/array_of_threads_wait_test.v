@@ -3,7 +3,7 @@ import math { floor, sqrt }
 fn async(arr_size int, init_val f64) f64 {
 	mut val_arr := []f64{}
 
-	for _ in 1..arr_size {
+	for _ in 1 .. arr_size {
 		val_arr << floor((sqrt(init_val) / 2) * 3)
 	}
 
@@ -23,9 +23,9 @@ fn sum(val_arr []f64) f64 {
 fn test_array_of_threads_wait() {
 	size := 2000_000
 	init_val := 123456
-	println("Async")
-	mut results := []thread f64{ cap: 16, len: 16 }
-	for num in 0..15 {
+	println('Async')
+	mut results := []thread f64{len: 16, cap: 16}
+	for num in 0 .. 15 {
 		results << go async(size, init_val + num)
 	}
 	waited_results := results.wait()
