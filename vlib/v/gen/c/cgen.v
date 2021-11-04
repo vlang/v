@@ -6343,7 +6343,8 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						}
 						type_name := g.typ(field.typ)
 						field_name := c_name(field.name)
-						g.type_definitions.writeln('\t$type_name $field_name;')
+						volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
+						g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name;')
 					}
 				} else {
 					g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')

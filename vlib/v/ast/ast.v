@@ -267,6 +267,7 @@ pub:
 	default_val      string
 	is_mut           bool
 	is_global        bool
+	is_volatile      bool
 pub mut:
 	default_expr     Expr
 	default_expr_typ Type

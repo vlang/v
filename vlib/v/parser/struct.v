@@ -170,6 +170,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			field_start_pos := p.tok.position()
+			mut is_field_volatile := false
+			if p.tok.kind == .key_volatile {
+				p.next()
+				is_field_volatile = true
+			}
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
@@ -255,6 +260,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_pub: is_embed || is_field_pub
 					is_mut: is_embed || is_field_mut
 					is_global: is_field_global
+					is_volatile: is_field_volatile
 				}
 			}
 			// save embeds as table fields too, it will be used in generation phase
@@ -270,6 +276,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_embed || is_field_pub
 				is_mut: is_embed || is_field_mut
 				is_global: is_field_global
+				is_volatile: is_field_volatile
 			}
 			p.attrs = []
 		}

@@ -108,7 +108,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
 		// Handle comments before the field
 		f.comments_before_field(before_comments)
-		f.write('\t$field.name ')
+		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
+		f.write('\t$volatile_prefix$field.name ')
 		// Handle comments between field name and type
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
