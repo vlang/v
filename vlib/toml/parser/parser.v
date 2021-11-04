@@ -291,9 +291,9 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 	return t
 }
 
-// sub_key parses next tokens as sub/nested keys. This is the also referred to as
-// a "dotted" key (`a.b.c`). sub_key returns a string in dotted form.
-pub fn (mut p Parser) sub_key() ?string {
+// dotted_key returns a string of the next tokens parsed as
+// sub/nested/path keys (e.g. `a.b.c`). In TOML, this form of key is referred to as a "dotted" key.
+pub fn (mut p Parser) dotted_key() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key...')
 	key := p.key() ?
 	p.ignore_while_peek(parser.space_formatting)
@@ -342,13 +342,13 @@ pub fn (mut p Parser) root_table() ? {
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
-					subkey := p.sub_key() ?
+					dotkey := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
 					p.check(.assign) ?
 					p.ignore_while(parser.space_formatting)
 					val := p.value() ?
 
-					sub_table, key := p.sub_table_key(subkey)
+					sub_table, key := p.sub_table_key(dotkey)
 
 					t := p.find_sub_table(sub_table) ?
 					unsafe {
@@ -380,7 +380,7 @@ pub fn (mut p Parser) root_table() ? {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
-					p.root_map_key = p.sub_key() ?
+					p.root_map_key = p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
@@ -462,13 +462,13 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
-					subkey := p.sub_key() ?
+					dotkey := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
 					p.check(.assign) ?
 					p.ignore_while(parser.space_formatting)
 					val := p.value() ?
 
-					sub_table, key := p.sub_table_key(subkey)
+					sub_table, key := p.sub_table_key(dotkey)
 
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
@@ -614,11 +614,11 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 	mut tbl := map[string]ast.Value{}
 	for p.tok.kind in [.bare, .quoted, .boolean, .number] {
 		if p.peek_tok.kind == .period {
-			subkey := p.sub_key() ?
+			dotkey := p.dotted_key() ?
 			p.check(.assign) ?
 			val := p.value() ?
 
-			sub_table, key := p.sub_table_key(subkey)
+			sub_table, key := p.sub_table_key(dotkey)
 
 			mut t := p.find_in_table(mut tbl, sub_table) ?
 			unsafe {
