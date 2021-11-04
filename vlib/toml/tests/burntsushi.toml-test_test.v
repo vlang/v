@@ -17,7 +17,6 @@ const (
 		'table/duplicate.toml',
 		'table/array-implicit.toml',
 		'table/injection-2.toml',
-		'table/llbrace.toml',
 		'table/injection-1.toml',
 		'table/duplicate-table-array.toml',
 		// Array
