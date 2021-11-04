@@ -42,7 +42,6 @@ const (
 		'key/without-value-2.toml',
 		'key/no-eol.toml',
 		'key/after-array.toml',
-		'key/multiline.toml',
 	]
 )
 
