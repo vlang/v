@@ -21,7 +21,6 @@ fn test_tables() {
 
 	toml_json := toml_doc.to_json()
 
-	eprintln(toml_json)
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
