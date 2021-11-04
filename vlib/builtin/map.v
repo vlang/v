@@ -602,7 +602,7 @@ pub fn (mut m map) delete(key voidptr) {
 }
 
 // Returns all keys in the map.
-fn (m &map) keys() array {
+pub fn (m &map) keys() array {
 	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe { &byte(keys.data) }
 	if m.key_values.deletes == 0 {
