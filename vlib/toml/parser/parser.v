@@ -265,19 +265,15 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 			if val := t[k] {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
 				if val is map[string]ast.Value {
-					// unsafe {
-					t = &(t[k] as map[string]ast.Value)
-					//}
+					t = &(val as map[string]ast.Value)
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a map')
 				}
 			} else {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" found, allocating new map "$k" in map ${ptr_str(t)}"')
-				// unsafe {
 				t[k] = map[string]ast.Value{}
 				t = &(t[k] as map[string]ast.Value)
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocated new map ${ptr_str(t)}"')
-				//}
 			}
 		}
 	}
