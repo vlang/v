@@ -363,7 +363,7 @@ pub fn (mut p Parser) root_table() ? {
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val.to_json() in table ${ptr_str(t)}')
 						key_str := key.str()
-						if key_str in t.keys() {
+						if _ := t[key_str] {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key "$key" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 						}
