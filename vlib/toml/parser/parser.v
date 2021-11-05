@@ -262,20 +262,14 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 	ks := key.split('.')
 	unsafe {
 		for k in ks {
-			if k in t.keys() {
+			if val := t[k] {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
-				if val := t[k] or {
-					panic(@MOD + '.' + @STRUCT + '.' + @FN +
-						' this should never happen. Key "$k" was checked before access')
-				}
-				{
-					if val is map[string]ast.Value {
-						// unsafe {
-						t = &(t[k] as map[string]ast.Value)
-						//}
-					} else {
-						return error(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a map')
-					}
+				if val is map[string]ast.Value {
+					// unsafe {
+					t = &(t[k] as map[string]ast.Value)
+					//}
+				} else {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN + ' "$k" is not a map')
 				}
 			} else {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" found, allocating new map "$k" in map ${ptr_str(t)}"')
@@ -529,20 +523,14 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 
 	key_str := key.str()
 	unsafe {
-		if key_str in table.keys() {
-			if val := table[key_str] or {
-				panic(@MOD + '.' + @STRUCT + '.' + @FN +
-					' this should never happen. Key "$key_str" was checked before access')
-			}
-			{
-				if val is []ast.Value {
-					arr := &(table[key_str] as []ast.Value)
-					arr << p.array_of_tables_contents() ?
-					table[key_str] = arr
-				} else {
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' table[$key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
-				}
+		if val := table[key_str] {
+			if val is []ast.Value {
+				arr := &(table[key_str] as []ast.Value)
+				arr << p.array_of_tables_contents() ?
+				table[key_str] = arr
+			} else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' table[$key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
 			table[key_str] = p.array_of_tables_contents() ?
@@ -597,20 +585,14 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		}
 		mut t := &(t_map as map[string]ast.Value)
 
-		if last in t.keys() {
-			if val := t[last] or {
-				panic(@MOD + '.' + @STRUCT + '.' + @FN +
-					' this should never happen. Key "$last" was checked before access')
-			}
-			{
-				if val is []ast.Value {
-					arr := &(val as []ast.Value)
-					arr << p.array_of_tables_contents() ?
-					t[last] = arr
-				} else {
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' t[$last] is not an array. (excerpt): "...${p.excerpt()}..."')
-				}
+		if val := t[last] {
+			if val is []ast.Value {
+				arr := &(val as []ast.Value)
+				arr << p.array_of_tables_contents() ?
+				t[last] = arr
+			} else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' t[$last] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
 			t[last] = p.array_of_tables_contents() ?
