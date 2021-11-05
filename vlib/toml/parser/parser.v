@@ -368,23 +368,37 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			.lsbr {
 				p.check(.lsbr) ? // '[' bracket
+				mut peek_tok := p.peek_tok
+
+				// Disallow `[ [table]]`
+				if p.tok.kind in parser.space_formatting {
+					peek_tok = p.peek_over(1, parser.space_formatting) ?
+					if peek_tok.kind == .lsbr {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+					}
+				}
+
+				// Allow `[ d.e.f]`
 				p.ignore_while(parser.space_formatting)
 
-				mut peek_tok := p.peek_tok
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok = p.peek_over(1, parser.space_formatting) ?
 
 				if p.tok.kind == .lsbr {
+					// Parse `[[table]]`
 					p.array_of_tables(mut &p.root_map) ?
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
+					// Parse `[d.e.f]`
 					p.ignore_while(parser.space_formatting)
 					p.root_map_key = p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
 				} else {
+					// Parse `[key]`
 					key := p.key() ?
 					p.root_map_key = key.str()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
