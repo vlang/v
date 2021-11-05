@@ -362,7 +362,12 @@ pub fn (mut p Parser) root_table() ? {
 					t := p.find_table() ?
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val.to_json() in table ${ptr_str(t)}')
-						t[key.str()] = val
+						key_str := key.str()
+						if _ := t[key_str] {
+							return error(@MOD + '.' + @STRUCT + '.' + @FN +
+								' key "$key" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+						}
+						t[key_str] = val
 					}
 				}
 			}
@@ -549,7 +554,11 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 		}
 	}
 	p.last_aot = key_str
-	p.last_aot_index = 0
+
+	unsafe {
+		arr := &(table[p.last_aot] as []ast.Value)
+		p.last_aot_index = arr.len - 1
+	}
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
@@ -570,6 +579,8 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	p.check(.rsbr) ?
 	p.check(.rsbr) ?
 
+	p.ignore_while(parser.all_formatting)
+
 	ks := key_str.split('.')
 
 	if ks.len != 2 {
@@ -577,24 +588,35 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
 	}
 
-	first := ks[0]
-	last := ks[1]
+	first := ks[0] // The array that holds the entries
+	last := ks[1] // The key the parsed array data should be added to
+
+	mut t_arr := &[]ast.Value(0)
+	mut t_map := ast.Value(ast.Null{})
 
 	unsafe {
 		// NOTE this is starting to get EVEN uglier. TOML is not at all simple at this point...
-		if p.last_aot != first {
-			table[first] = []ast.Value{}
-			p.last_aot = first
-			mut t_arr := &(table[p.last_aot] as []ast.Value)
-			t_arr << map[string]ast.Value{}
-			p.last_aot_index = 0
+		if first != p.last_aot {
+			// Implicit allocation
+			if p.last_aot == '' {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of array for nested key `$key_str`.')
+				table[first] = []ast.Value{}
+				p.last_aot = first
+				t_arr = &(table[p.last_aot] as []ast.Value)
+				t_arr << ast.Value(map[string]ast.Value{})
+				p.last_aot_index = t_arr.len - 1
+			} else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' nested array of tables key "$first" does not match "$p.last_aot". (excerpt): "...${p.excerpt()}..."')
+			}
 		}
 
-		mut t_arr := &(table[p.last_aot] as []ast.Value)
-		mut t_map := ast.Value(map[string]ast.Value{})
-		if t_arr.len > 0 {
+		t_arr = &(table[p.last_aot] as []ast.Value)
+		t_map = ast.Value(map[string]ast.Value{})
+		if p.last_aot_index < t_arr.len {
 			t_map = t_arr[p.last_aot_index]
 		}
+
 		mut t := &(t_map as map[string]ast.Value)
 
 		if last in t.keys() {
@@ -617,7 +639,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		}
 		if t_arr.len == 0 {
 			t_arr << t
-			p.last_aot_index = 0
+			p.last_aot_index = t_arr.len - 1
 		}
 	}
 }

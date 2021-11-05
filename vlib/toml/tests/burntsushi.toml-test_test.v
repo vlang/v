@@ -27,9 +27,7 @@ const (
 		'datetime/no-leads-with-milli.toml',
 		'datetime/no-leads.toml',
 		// Key
-		'key/duplicate.toml',
 		'key/after-table.toml',
-		'key/duplicate-keys.toml',
 		'key/after-value.toml',
 		'key/no-eol.toml',
 		'key/after-array.toml',
