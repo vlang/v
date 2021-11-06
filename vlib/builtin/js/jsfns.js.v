@@ -7,6 +7,8 @@
 
 module builtin
 
+pub struct JS.BigInt {}
+
 pub struct JS.Number {}
 
 pub struct JS.String {
