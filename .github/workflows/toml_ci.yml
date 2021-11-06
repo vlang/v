@@ -11,17 +11,21 @@ on:
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-20.04
-    timeout-minutes: 121
+    timeout-minutes: 10
+    env:
+      TOML_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
+      TOML_TESTS_PINNED_COMMIT: 982482f
     steps:
 
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make -j2 && ./v -cc gcc -o v cmd/v
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make -j2 && ./v -cc gcc -o v cmd/v
 
-    - name: Clone BurntSushi/toml-test
-      run: |
-        cd vlib/toml/tests/testdata
-        git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test
+      - name: Clone BurntSushi/toml-test
+        run: |
+          git clone https://github.com/BurntSushi/toml-test.git $TOML_TESTS_PATH
+          ## TODO: update/remove this pinning once all our skip lists are empty:
+          git -C $TOML_TESTS_PATH checkout $TOML_TESTS_PINNED_COMMIT
 
-    - name: Run tests
-      run: ./v -stats test vlib/toml
+      - name: Run tests
+        run: ./v -stats test vlib/toml
