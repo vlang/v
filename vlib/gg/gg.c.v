@@ -54,6 +54,7 @@ pub mut:
 	window      C.sapp_desc
 	timage_pip  C.sgl_pipeline
 	config      Config
+	user_data   voidptr
 	ft          &FT
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
@@ -153,7 +154,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
-		g.config.init_fn(g.config.user_data)
+		g.config.init_fn(g.user_data)
 	}
 	// Create images now that we can do that after sg is inited
 	if g.native_rendering {
@@ -170,6 +171,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 //
 pub fn new_context(cfg Config) &Context {
 	mut g := &Context{
+		user_data: cfg.user_data
 		width: cfg.width
 		height: cfg.height
 		config: cfg

@@ -113,7 +113,7 @@ fn gg_frame_fn(user_data voidptr) {
 			return
 		}
 	}
-	ctx.config.frame_fn(ctx.config.user_data)
+	ctx.config.frame_fn(ctx.user_data)
 	ctx.needs_refresh = false
 }
 
