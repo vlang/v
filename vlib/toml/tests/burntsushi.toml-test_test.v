@@ -19,6 +19,8 @@ const (
 		'table/injection-2.toml',
 		'table/injection-1.toml',
 		'table/duplicate-table-array.toml',
+		// Inline-table
+		'inline-table/duplicate-key.toml',
 		// Array
 		'array/tables-1.toml',
 		'array/text-after-array-entries.toml',
@@ -29,6 +31,7 @@ const (
 		// Key
 		'key/after-table.toml',
 		'key/after-value.toml',
+		//'key/no-eol.toml',
 		'key/no-eol.toml',
 		'key/after-array.toml',
 	]
