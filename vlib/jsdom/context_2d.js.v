@@ -27,6 +27,14 @@ pub enum LineJoin {
 	miter
 }
 
+pub enum TextAlign {
+	left
+	right
+	center
+	start
+	end
+}
+
 pub struct CanvasRenderingContext2D {
 mut:
 	ctx JS.CanvasRenderingContext2D [noinit]
@@ -38,16 +46,54 @@ pub fn (ctx CanvasRenderingContext2D) begin_path() {
 	#ctx.ctx.beginPath();
 }
 
+pub fn (ctx CanvasRenderingContext2D) set_line_dash(arr []f64) {
+	#let tmp = []
+
+	for x in arr {
+		#tmp.push(x.val);
+
+		_ := x
+	}
+	#ctx.ctx.setLineDash(tmp);
+}
+
+pub fn (ctx CanvasRenderingContext2D) get_line_dash() []f64 {
+	arr := []f64{}
+	#for (elem of ctx.ctx.getLineDash()) { array_push(arr,elem); }
+
+	return arr
+}
+
+pub fn (ctx CanvasRenderingContext2D) set_text_align(align TextAlign) {
+	match align {
+		.left {
+			#ctx.ctx.textAlign = 'start';
+		}
+		.right {
+			#ctx.ctx.textAlign = 'right';
+		}
+		.center {
+			#ctx.ctx.textAlign = 'center';
+		}
+		.start {
+			#ctx.ctx.textAlign = 'start';
+		}
+		.end {
+			#ctx.ctx.textAlign = 'end';
+		}
+	}
+}
+
 pub fn (ctx CanvasRenderingContext2D) set_line_join(j LineJoin) {
 	match j {
 		.bevel {
-			#ctx.ctx.lineJoin = 'bevel'.str
+			#ctx.ctx.lineJoin = 'bevel'
 		}
 		.round {
-			#ctx.ctx.lineJoin = 'round'.str
+			#ctx.ctx.lineJoin = 'round'
 		}
 		.miter {
-			#ctx.ctx.lineJoin = 'miter'.str
+			#ctx.ctx.lineJoin = 'miter'
 		}
 	}
 }
@@ -150,6 +196,10 @@ pub fn (ctx CanvasRenderingContext2D) draw_focus_if_needed(el IElement) {
 	#ctx.ctx.drawFocusIfNeeded(el.val.node);
 }
 
+pub fn (ctx CanvasRenderingContext2D) draw_focus_if_needed_wpath(path Path2D, el IElement) {
+	#ctx.ctx.drawFocusIfNeeded(path.path, el.val.node);
+}
+
 fn (ctx JS.CanvasRenderingContext2D) createRadialGradient(x0 f64, y0 f64, r0 f64, x1 f64, y1 f64, r1 f64) JS.CanvasGradient
 
 fn (ctx JS.CanvasRenderingContext2D) createConicGradient(startAngle f64, x f64, y f64) JS.CanvasGradient
@@ -157,3 +207,203 @@ fn (ctx JS.CanvasRenderingContext2D) createConicGradient(startAngle f64, x f64, 
 fn (ctx JS.CanvasRenderingContext2D) createLinearGradient(x0 f64, y0 f64, x1 f64, y1 f64) JS.CanvasGradient
 
 pub fn (gradient JS.CanvasGradient) addColorStop(x f64, color string)
+
+/// fill_text draws a text string at the specified coordinates. `max_width` allows specifying a maximum
+/// width for the rendered text, set max_width to -1.0 to automatically adjust text width.
+pub fn (ctx CanvasRenderingContext2D) fill_text(text string, x f64, y f64, max_width f64) {
+	if max_width == -1.0 {
+		#ctx.ctx.fillText(text.str,x.val,y.val,max_width.val)
+	} else {
+		#ctx.ctx.fillText(text.str,x.val,y.val)
+	}
+}
+
+/// stoke_text strokes — that is, draws the outlines of — the characters of a text string at the specified coordinates.
+///  `max_width` allows specifying a maximum width for the rendered text, set max_width to -1.0 to automatically adjust text width.
+pub fn (ctx CanvasRenderingContext2D) stroke_text(text string, x f64, y f64, max_width f64) {
+	if max_width == -1.0 {
+		#ctx.ctx.stokeText(text.str,x.val,y.val,max_width.val)
+	} else {
+		#ctx.ctx.stokeText(text.str,x.val,y.val)
+	}
+}
+
+pub fn (ctx CanvasRenderingContext2D) measure_text(text string) TextMetrics {
+	metrics := TextMetrics{}
+	#let tmp = ctx.ctx.measureText(text.str);
+	#metrics.width = new f64(tmp.width);
+	#metrics.actual_bounding_box_left = new f64(tmp.actualBoundingBoxLeft);
+	#metrics.actual_bounding_box_right = new f64(tmp.actualBoundingBoxRight);
+	#metrics.actual_bounding_box_ascent = new f64(tmp.actualBoundingBoxAscent);
+	#metrics.actual_bounding_box_descent = new f64(tmp.actualBoundingBoxDescent);
+	#metrics.font_bounding_box_ascent = new f64(tmp.fontBoundingBoxAscent);
+	#metrics.font_bounding_box_descent = new f64(tmp.fontBoundingBoxDescent);
+	#metrics.em_height_ascent = new f64(tmp.emHeightAscent);
+	#metrics.em_height_descent = new f64(tmp.emHeightDescent);
+	#metrics.hanging_baseline = new f64(tmp.hangingBaseline);
+	#metrics.alphabetic_baseline = new f64(tmp.alphabeticBaseline);
+	#metrics.ideographic_baseline = new f64(tmp.ideographicBaseline);
+
+	return metrics
+}
+
+pub fn (ctx CanvasRenderingContext2D) fill_path(p Path2D) {
+	#ctx.ctx.fill(p.path);
+}
+
+pub enum FillRule {
+	nonzero
+	evenodd
+}
+
+pub fn (ctx CanvasRenderingContext2D) clip_rule(rule FillRule) {
+	match rule {
+		.nonzero {
+			#ctx.ctx.clip('nonzero')
+		}
+		.evenodd {
+			#ctx.ctx.clip('evenodd')
+		}
+	}
+}
+
+pub fn (ctx CanvasRenderingContext2D) clip() {
+	#ctx.ctx.clip();
+}
+
+pub fn (ctx CanvasRenderingContext2D) clip_path(path Path2D) {
+	#ctx.ctx.clip(path.path);
+}
+
+pub fn (ctx CanvasRenderingContext2D) clip_path_rule(path Path2D, rule FillRule) {
+	match rule {
+		.nonzero {
+			#ctx.ctx.clip(path.path, 'nonzero')
+		}
+		.evenodd {
+			#ctx.ctx.clip(path.path,'evenodd')
+		}
+	}
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_path(x f64, y f64) bool {
+	res := false
+	#res.val = ctx.ctx.isPointInPath(x.val,y.val);
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_path_2(path Path2D, x f64, y f64) bool {
+	res := false
+	#res.val = ctx.ctx.isPointInPath(path.path,x.val,y.val);
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_path_3(path Path2D, x f64, y f64, rule FillRule) bool {
+	res := false
+	match rule {
+		.nonzero {
+			#res.val = ctx.ctx.isPointInPath(path.path,x.val,y.val,'nonzero');
+		}
+		.evenodd {
+			#res.val = ctx.ctx.isPointInPath(path.path,x.val,y.val,'evenadd');
+		}
+	}
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_path_4(x f64, y f64, rule FillRule) bool {
+	res := false
+	match rule {
+		.nonzero {
+			#res.val = ctx.ctx.isPointInPath(x.val,y.val,'nonzero');
+		}
+		.evenodd {
+			#res.val = ctx.ctx.isPointInPath(x.val,y.val,'evenadd');
+		}
+	}
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_stroke(x f64, y f64) bool {
+	res := false
+	#res.val = ctx.ctx.isPointInStroke(x.val,y.val);
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) is_point_in_stroke_path(path Path2D, x f64, y f64) bool {
+	res := false
+	#res.val = ctx.ctx.isPointInStroke(path.path, x.val,y.val);
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) get_transform() DOMMatrix {
+	m := DOMMatrix{}
+	#m.matrix = ctx.ctx.getTransform();
+
+	return m
+}
+
+pub fn (ctx CanvasRenderingContext2D) rotate(angle f64) {
+	#ctx.ctx.rotate(angle.val);
+}
+
+pub fn (ctx CanvasRenderingContext2D) scale(x f64, y f64) {
+	#ctx.ctx.scale(x.val,y.val);
+}
+
+pub fn (ctx CanvasRenderingContext2D) translate(x f64, y f64) {
+	#ctx.ctx.translate(x.val,y.val)
+}
+
+pub fn (ctx CanvasRenderingContext2D) transform(a f64, b f64, c f64, d f64, e f64, f f64) {
+	#ctx.ctx.transform(a.val,b.val,c.val,d.val,e.val,f.val);
+}
+
+pub fn (ctx CanvasRenderingContext2D) set_transform_matrix(m DOMMatrix) {
+	#ctx.ctx.setTransform(m.matrix);
+}
+
+pub fn (ctx CanvasRenderingContext2D) set_transform(a f64, b f64, c f64, d f64, e f64, f f64) {
+	#ctx.ctx.setTransform(a.val,b.val,c.val,d.val,e.val,f.val);
+}
+
+pub fn (ctx CanvasRenderingContext2D) global_alpha() f64 {
+	res := 0.0
+	#res.val = ctx.ctx.globalAlpha
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) set_global_alpha(alpha f64) {
+	#ctx.ctx.globalAlpha = alpha.val;
+}
+
+pub fn (ctx CanvasRenderingContext2D) global_composite_operation() string {
+	res := ''
+	#res.str = ctx.ctx.globalCompositeOperation
+
+	return res
+}
+
+pub fn (ctx CanvasRenderingContext2D) set_global_composite_operation(typ string) {
+	#ctx.ctx.globalCompositeOperation = typ.str;
+}
+
+pub fn (ctx CanvasRenderingContext2D) save() {
+	#ctx.ctx.save();
+}
+
+pub fn (ctx CanvasRenderingContext2D) restore() {
+	#ctx.ctx.restore()
+}
+
+pub fn (ctx CanvasRenderingContext2D) canvas() HTMLCanvasElement {
+	elem := HTMLCanvasElement{}
+	#elem.node = ctx.ctx.canvas()
+
+	return elem
+}

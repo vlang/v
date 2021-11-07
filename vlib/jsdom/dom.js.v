@@ -184,3 +184,19 @@ fn init() {
 	#jsdom__document.node = document;
 	#jsdom__window.node = window;
 }
+
+pub struct TextMetrics {
+pub:
+	width                       f64
+	actual_bounding_box_left    f64
+	actual_bounding_box_right   f64
+	font_bounding_box_ascent    f64
+	font_bounding_box_descent   f64
+	actual_bounding_box_ascent  f64
+	actual_bounding_box_descent f64
+	em_height_ascent            f64
+	em_height_descent           f64
+	hanging_baseline            f64
+	alphabetic_baseline         f64
+	ideographic_baseline        f64
+}

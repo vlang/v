@@ -36,3 +36,12 @@ pub fn (elem HTMLCanvasElement) get_context(ctx_ string) ContextResult {
 
 	return res
 }
+
+pub fn (elem HTMLCanvasElement) get_context_2d() CanvasRenderingContext2D {
+	mut res := CanvasRenderingContext2D{}
+	#let ctx = elem.node.getContext('2d');
+	#res = new jsdom__CanvasRenderingContext2D(ctx);
+	#res.ctx = ctx;
+
+	return res
+}
