@@ -4009,8 +4009,8 @@ V's ORM provides a number of benefits:
 ```v
 import sqlite
 
+[table: 'customers'] // sets a custom table name. Default is struct name (case-sensitive)
 struct Customer {
-	// struct name has to be the same as the table name (for now)
 	id        int    [primary; sql: serial] // a field named `id` of integer type must be the first field
 	name      string [nonull]
 	nr_orders int
