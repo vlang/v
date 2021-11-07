@@ -2103,3 +2103,26 @@ pub fn (expr Expr) is_literal() bool {
 		}
 	}
 }
+
+pub fn type_can_start_with_token(tok &token.Token) bool {
+	match tok.kind {
+		.name {
+			return (tok.lit.len > 0 && tok.lit[0].is_capital())
+				|| builtin_type_names_matcher.find(tok.lit) > 0
+		}
+		// Note: return type (T1, T2) should be handled elsewhere
+		.amp, .key_fn, .lsbr, .question {
+			return true
+		}
+		else {}
+	}
+	return false
+}
+
+fn build_builtin_type_names_matcher() token.KeywordsMatcher {
+	mut m := map[string]int{}
+	for i, name in builtin_type_names {
+		m[name] = i
+	}
+	return token.new_keywords_matcher<int>(m)
+}

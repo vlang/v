@@ -683,8 +683,8 @@ fn (mut s Scanner) text_scan() token.Token {
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
 			kind := token.matcher.find(name)
-			if kind != .unknown {
-				return s.new_token(kind, name, name.len)
+			if kind != -1 {
+				return s.new_token(token.Kind(kind), name, name.len)
 			}
 			// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 			// at the next ', skip it
@@ -942,7 +942,8 @@ fn (mut s Scanner) text_scan() token.Token {
 							// if any typ is neither Type nor builtin, then the case is non-generic
 							typs.all(it.len > 0
 								&& ((it[0].is_capital() && it[1..].bytes().all(it.is_alnum()
-								|| it == `_`)) || it in ast.builtin_type_names))
+								|| it == `_`))
+								|| ast.builtin_type_names_matcher.find(it) > 0))
 						} else {
 							false
 						}

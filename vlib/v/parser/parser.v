@@ -1961,7 +1961,7 @@ fn (p &Parser) is_generic_call() bool {
 const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
 
 fn (mut p Parser) is_generic_cast() bool {
-	if !p.tok.can_start_type(ast.builtin_type_names) {
+	if !ast.type_can_start_with_token(p.tok) {
 		return false
 	}
 	mut i := 0
@@ -2160,7 +2160,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
-		// if name in ast.builtin_type_names {
+		// if name in ast.builtin_type_names_to_idx {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
 			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
 			|| (language == .v && name.len > 0 && name[0].is_capital()) {

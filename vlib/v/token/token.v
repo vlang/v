@@ -313,7 +313,7 @@ const token_str = build_token_str()
 
 pub const keywords = build_keys()
 
-pub const matcher = new_keywords_matcher(keywords)
+pub const matcher = new_keywords_matcher<Kind>(keywords)
 
 [inline]
 pub fn is_key(key string) bool {
@@ -471,16 +471,4 @@ pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
 		.right_shift, .unsigned_right_shift, .arrow]
-}
-
-// Pass ast.builtin_type_names
-// Note: can't import table here due to circular module dependency
-pub fn (tok &Token) can_start_type(builtin_types []string) bool {
-	match tok.kind {
-		.name { return (tok.lit.len > 0 && tok.lit[0].is_capital()) || tok.lit in builtin_types }
-		// Note: return type (T1, T2) should be handled elsewhere
-		.amp, .key_fn, .lsbr, .question { return true }
-		else {}
-	}
-	return false
 }
