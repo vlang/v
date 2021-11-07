@@ -716,9 +716,11 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			return ast.void_type
 		}
 	}
-	unwrapped_struct_type := c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
-		c.table.cur_concrete_types)
-	c.ensure_type_exists(unwrapped_struct_type, node.pos) or {}
+	// register generic struct type when current fn is generic fn
+	if c.table.cur_fn.generic_names.len > 0 {
+		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+	}
+	c.ensure_type_exists(node.typ, node.pos) or {}
 	type_sym := c.table.get_type_symbol(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
 		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
