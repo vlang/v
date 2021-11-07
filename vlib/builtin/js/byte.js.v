@@ -30,6 +30,7 @@ pub fn (c byte) repeat(count int) string {
 	return res
 }
 
+[inline]
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
@@ -38,7 +39,7 @@ pub fn (c byte) is_digit() bool {
 // Example: assert byte(`F`) == true
 [inline]
 pub fn (c byte) is_hex_digit() bool {
-	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
@@ -66,10 +67,13 @@ pub fn (c byte) is_letter() bool {
 // Example: assert byte(`V`) == true
 [inline]
 pub fn (c byte) is_alnum() bool {
-	return c.is_letter() || c.is_digit()
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
 }
 
-// Define this on byte as well, so that we can do `s[0].is_capital()`
+// is_capital returns `true`, if the byte is a Latin capital letter.
+// Example: assert `H`.is_capital() == true
+// Example: assert 'h`.is_capital() == false
+[inline]
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }

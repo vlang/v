@@ -1041,8 +1041,10 @@ pub fn (s string) capitalize() string {
 	return res
 }
 
-// is_capital returns `true` if the first character in the string is a capital letter.
+// is_capital returns `true`, if the first character in the string `s`,
+// is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
+// Example: assert 'HelloWorld'.is_capital() == false
 [direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
@@ -1052,6 +1054,18 @@ pub fn (s string) is_capital() bool {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+	}
+	return true
+}
+
+// starts_with_capital returns `true`, if the first character in the string `s`,
+// is a capital letter, even if the rest are not.
+// Example: assert 'Hello'.starts_with_capital() == true
+// Example: assert 'Hello. World.'.starts_with_capital() == true
+[direct_array_access]
+pub fn (s string) starts_with_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
 	}
 	return true
 }
@@ -1068,7 +1082,7 @@ pub fn (s string) title() string {
 	return title
 }
 
-// is_title returns true if all words of the string is capitalized.
+// is_title returns true if all words of the string are capitalized.
 // Example: assert 'Hello V Developer'.is_title() == true
 pub fn (s string) is_title() bool {
 	words := s.split(' ')
@@ -1292,7 +1306,7 @@ pub fn (c byte) is_digit() bool {
 // Example: assert byte(`F`) == true
 [inline]
 pub fn (c byte) is_hex_digit() bool {
-	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
@@ -1320,7 +1334,7 @@ pub fn (c byte) is_letter() bool {
 // Example: assert byte(`V`) == true
 [inline]
 pub fn (c byte) is_alnum() bool {
-	return c.is_letter() || c.is_digit()
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
 }
 
 // free allows for manually freeing the memory occupied by the string

@@ -484,7 +484,10 @@ pub fn (b byte) str_escaped() string {
 	return str
 }
 
-// Define this on byte as well, so that we can do `s[0].is_capital()`
+// is_capital returns `true`, if the byte is a Latin capital letter.
+// Example: assert `H`.is_capital() == true
+// Example: assert 'h`.is_capital() == false
+[inline]
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }

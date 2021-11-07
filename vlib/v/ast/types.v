@@ -1184,8 +1184,12 @@ pub fn (t &TypeSymbol) embed_name() string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	t.find_method(name) or { return false }
-	return true
+	for method in t.methods {
+		if method.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
@@ -1295,8 +1299,10 @@ pub fn (i &Interface) find_method(name string) ?Fn {
 }
 
 pub fn (i &Interface) has_method(name string) bool {
-	if _ := i.find_method(name) {
-		return true
+	for method in i.methods {
+		if method.name == name {
+			return true
+		}
 	}
 	return false
 }

@@ -669,6 +669,14 @@ fn test_starts_with() {
 	assert s.starts_with('Language') == false
 }
 
+fn test_starts_with_capital() {
+	assert 'A sentence'.starts_with_capital()
+	assert 'A paragraph. It also does.'.starts_with_capital()
+	assert ''.starts_with_capital() == false
+	assert 'no'.starts_with_capital() == false
+	assert ' No'.starts_with_capital() == false
+}
+
 fn test_trim_prefix() {
 	s := 'V Programming Language'
 	assert s.trim_prefix('V ') == 'Programming Language'

@@ -817,8 +817,10 @@ pub fn (s string) is_title() bool {
 	return true
 }
 
-// is_capital returns `true` if the first character in the string is a capital letter.
+// is_capital returns `true`, if the first character in the string `s`,
+// is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
+// Example: assert 'HelloWorld'.is_capital() == false
 [direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
@@ -828,6 +830,18 @@ pub fn (s string) is_capital() bool {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+	}
+	return true
+}
+
+// starts_with_capital returns `true`, if the first character in the string `s`,
+// is a capital letter, even if the rest are not.
+// Example: assert 'Hello'.starts_with_capital() == true
+// Example: assert 'Hello. World.'.starts_with_capital() == true
+[direct_array_access]
+pub fn (s string) starts_with_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
 	}
 	return true
 }
