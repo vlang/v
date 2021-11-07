@@ -1105,7 +1105,7 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				info := typ.info as ast.Array
 				elem_sym := g.table.get_type_symbol(info.elem_type)
-				if elem_sym.kind != .placeholder {
+				if elem_sym.kind != .placeholder && !info.elem_type.has_flag(.generic) {
 					g.type_definitions.writeln('typedef array $typ.cname;')
 				}
 			}
