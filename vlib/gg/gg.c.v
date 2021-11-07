@@ -179,6 +179,9 @@ pub fn new_context(cfg Config) &Context {
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 	}
+	if isnil(cfg.user_data) {
+		g.user_data = g
+	}
 	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{

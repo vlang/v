@@ -11,7 +11,6 @@ fn main() {
 		window_title: 'Polygons'
 		frame_fn: frame
 	)
-	context.user_data = context
 	context.run()
 }
 
