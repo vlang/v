@@ -4030,7 +4030,7 @@ sql db {
 	create table Customer
 }
 
-// select count(*) from Customer
+// select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
 }
