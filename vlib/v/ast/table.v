@@ -1661,16 +1661,14 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						generic_names := parent_info.generic_types.map(t.get_type_symbol(it).name)
 						for i in 0 .. fields.len {
 							if fields[i].typ.has_flag(.generic) {
-								sym := t.get_type_symbol(fields[i].typ)
-								if sym.kind == .struct_ && fields[i].typ.idx() != info.parent_idx {
+								if fields[i].typ.idx() != info.parent_idx {
 									fields[i].typ = t.unwrap_generic_type(fields[i].typ,
 										generic_names, info.concrete_types)
-								} else {
-									if t_typ := t.resolve_generic_to_concrete(fields[i].typ,
-										generic_names, info.concrete_types)
-									{
-										fields[i].typ = t_typ
-									}
+								}
+								if t_typ := t.resolve_generic_to_concrete(fields[i].typ,
+									generic_names, info.concrete_types)
+								{
+									fields[i].typ = t_typ
 								}
 							}
 						}
