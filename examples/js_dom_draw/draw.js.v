@@ -40,7 +40,7 @@ fn main() {
 	elemc := document.get_element_by_id('myCanvas') or { panic('no canvas') }
 	canv := jsdom.get_html_canvas_element(elemc) or { panic('expected canvas') }
 
-	context := get_2dcontext(canv) or { panic('wow') }
+	context := canv.get_context_2d()
 	mut state := DrawState{}
 	canv.add_event_listener('mousedown', fn [mut state] (_ jsdom.IEventTarget, event jsdom.IEvent) {
 		state.drawing = true
