@@ -80,7 +80,7 @@ fn main() {
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	// v build.vsh gcc -> (v run foo.vsh gcc)
+	// v build.vsh gcc -> v run build.vsh gcc
 	if args.len > 0 && args[0].ends_with('.vsh') {
 		args_and_flags.prepend('run')
 	}
