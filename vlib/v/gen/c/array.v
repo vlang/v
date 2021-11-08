@@ -762,6 +762,9 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	}
 	g.expr(node.left)
 	g.write(', ')
+	if node.args[0].expr.is_auto_deref_var() {
+		g.write('*')
+	}
 	g.expr(node.args[0].expr)
 	g.write(')')
 }
