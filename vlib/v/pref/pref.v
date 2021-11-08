@@ -697,6 +697,14 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
+	if command.ends_with('.vsh') {
+		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
+		// i.e. compiling, then running the script, passing the args
+		// after it to the script:
+		res.is_run = true
+		res.path = command
+		res.run_args = args[command_pos + 1..]
+	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
 		if command_pos + 1 >= args.len {
