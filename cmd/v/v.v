@@ -79,7 +79,11 @@ fn main() {
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
-	args_and_flags := util.join_env_vflags_and_os_args()[1..]
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
+	// v build.vsh gcc -> (v run foo.vsh gcc)
+	if args.len > 0 && args[0].ends_with('.vsh') {
+		args_and_flags.prepend('run')
+	}
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
