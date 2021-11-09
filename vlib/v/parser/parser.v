@@ -2440,7 +2440,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut concrete_list_pos := p.tok.position()
 	if is_generic_call {
 		// `g.foo<int>(10)`
-		concrete_types = p.parse_generic_type_list()
+		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
@@ -2533,7 +2533,57 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	return sel_expr
 }
 
-fn (mut p Parser) parse_generic_type_list() []ast.Type {
+fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
+	mut types := []ast.Type{}
+	mut param_names := []string{}
+	if p.tok.kind != .lt {
+		return types, param_names
+	}
+	p.check(.lt)
+	mut first_done := false
+	mut count := 0
+	for p.tok.kind !in [.gt, .eof] {
+		if first_done {
+			p.check(.comma)
+		}
+		name := p.tok.lit
+		if name.len > 0 && !name[0].is_capital() {
+			p.error('generic parameter needs to be uppercase')
+		}
+		if name.len > 1 {
+			p.error('generic parameter name needs to be exactly one char')
+		}
+		if !util.is_generic_type_name(p.tok.lit) {
+			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
+		}
+		if name in param_names {
+			p.error('duplicated generic parameter `$name`')
+		}
+		if count > 8 {
+			p.error('cannot have more than 9 generic parameters')
+		}
+		p.check(.name)
+		param_names << name
+
+		mut idx := p.table.find_type_idx(name)
+		if idx == 0 {
+			idx = p.table.register_type_symbol(ast.TypeSymbol{
+				name: name
+				cname: util.no_dots(name)
+				mod: p.mod
+				kind: .any
+				is_public: true
+			})
+		}
+		types << ast.new_type(idx).set_flag(.generic)
+		first_done = true
+		count++
+	}
+	p.check(.gt)
+	return types, param_names
+}
+
+fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
 	if p.tok.kind != .lt {
 		return types
@@ -2549,6 +2599,11 @@ fn (mut p Parser) parse_generic_type_list() []ast.Type {
 	}
 	p.check(.gt) // `>`
 	return types
+}
+
+// is_generic_name returns true if the current token is a generic name.
+fn (p Parser) is_generic_name() bool {
+	return p.tok.kind == .name && util.is_generic_type_name(p.tok.lit)
 }
 
 // `.green`
@@ -3238,7 +3293,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
-	generic_types := p.parse_generic_type_list()
+	generic_types, _ := p.parse_generic_types()
 	decl_pos_with_generics := decl_pos.extend(p.prev_tok.position())
 	p.check(.assign)
 	mut type_pos := p.tok.position()
