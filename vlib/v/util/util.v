@@ -483,7 +483,8 @@ pub fn get_vtmp_folder() string {
 	if vtmp.len > 0 {
 		return vtmp
 	}
-	vtmp = os.join_path(os.temp_dir(), 'v')
+	uid := os.getuid()
+	vtmp = os.join_path(os.temp_dir(), 'v_$uid')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
 		os.mkdir_all(vtmp) or { panic(err) }
 	}
