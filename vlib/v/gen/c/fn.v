@@ -1296,7 +1296,14 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
-	args := if g.is_js_call { node.args[1..] } else { node.args }
+	args := if g.is_js_call {
+		if node.args.len < 1 {
+			g.error('node should have at least 1 arg', node.pos)
+		}
+		node.args[1..]
+	} else {
+		node.args
+	}
 	expected_types := node.expected_arg_types
 	// only v variadic, C variadic args will be appeneded like normal args
 	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
