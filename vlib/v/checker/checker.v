@@ -1963,8 +1963,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.array_builtin_method_call(mut node, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete'] {
-		return c.map_builtin_method_call(mut node, left_type, left_type_sym)
+	} else if (left_type_sym.kind == .map || c.table.get_final_type_symbol(left_type).kind == .map)
+		&& method_name in ['clone', 'keys', 'move', 'delete'] {
+		if left_type_sym.kind == .map {
+			return c.map_builtin_method_call(mut node, left_type, left_type_sym)
+		} else {
+			parent_type := (left_type_sym.info as ast.Alias).parent_type
+			parent_sym := c.table.get_type_symbol(parent_type)
+			return c.map_builtin_method_call(mut node, parent_type, parent_sym)
+		}
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
 			if node.args.len != 2 {
