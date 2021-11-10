@@ -204,14 +204,14 @@ fn test_http_client_json_post() ? {
 fn test_http_client_multipart_form_data() ? {
 	boundary := '6844a625b1f0b299'
 	name := 'foo'
-	ct := 'multipart/form-data; boundary=------------------------$boundary'
+	ct := 'multipart/form-data; boundary=$boundary'
 	contents := 'baz buzz'
-	data := "--------------------------$boundary
-Content-Disposition: form-data; name=\"$name\"
-
-$contents
---------------------------$boundary--
-"
+	data := '--$boundary\r
+Content-Disposition: form-data; name="$name"\r
+\r
+$contents\r
+--$boundary--\r
+'
 	mut x := http.fetch(
 		url: 'http://127.0.0.1:$sport/form_echo'
 		method: .post
