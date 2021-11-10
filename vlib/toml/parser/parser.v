@@ -132,6 +132,18 @@ fn (mut p Parser) check(check_token token.Kind) ? {
 	}
 }
 
+// peek_for_correct_line_ending_or_fail peeks past any formatting tokens
+// and return an error if the next token is not one of [.cr, .nl, .hash, .eof].
+fn (mut p Parser) peek_for_correct_line_ending_or_fail() ? {
+	// Disallow anything else than [.cr, .nl, .hash, .eof] after any space formatting.
+	peek_tok := p.peek_over(1, parser.space_formatting) ?
+	if peek_tok.kind !in [.cr, .nl, .hash, .eof] {
+		p.next() ? // Forward to the peek_tok
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' unexpected EOL "$p.tok.kind" "$p.tok.lit" expected one of [.cr, .nl, .hash, .eof] at this (excerpt): "...${p.excerpt()}..."')
+	}
+}
+
 // check_one_of forwards the parser to the next token if the current
 // token's `Kind` can be found in `tokens`. Otherwise it returns an error.
 fn (mut p Parser) check_one_of(tokens []token.Kind) ? {
@@ -360,6 +372,7 @@ pub fn (mut p Parser) root_table() ? {
 						t[key_str] = val
 					}
 				}
+				p.peek_for_correct_line_ending_or_fail() ?
 			}
 			.lsbr {
 				p.check(.lsbr) ? // '[' bracket
@@ -392,6 +405,7 @@ pub fn (mut p Parser) root_table() ? {
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
+					p.peek_for_correct_line_ending_or_fail() ?
 				} else {
 					// Parse `[key]`
 					key := p.key() ?
@@ -399,6 +413,7 @@ pub fn (mut p Parser) root_table() ? {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.next() ?
 					p.expect(.rsbr) ?
+					p.peek_for_correct_line_ending_or_fail() ?
 				}
 			}
 			.eof {
@@ -518,6 +533,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	key := p.key() ?
 	p.next() ?
 	p.check(.rsbr) ?
+	p.peek_for_correct_line_ending_or_fail() ?
 	p.check(.rsbr) ?
 
 	p.ignore_while(parser.all_formatting)
