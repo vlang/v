@@ -1,6 +1,15 @@
 <h2>File Upload</h2>
 
+File form:
 <form method="POST" enctype="multipart/form-data" action="/upload">
-	<input type="file" name="upfile" multiple>
-    <input type="submit" value="Press">
+	<input type="hidden" name="file_id" value="aafueB5Quie" />
+	<input type="file" name="upfile" multiple/>
+	<input type="submit" value="Upload"/>
+</form>
+
+Text form:
+<form method="POST" enctype="multipart/form-data" action="/submit">
+	<input type="text" name="content1" value="abc" />
+	<input type="text" name="content2" value="xyz" />
+	<input type="submit" value="Submit content">
 </form>
