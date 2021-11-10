@@ -1,4 +1,3 @@
-
 fn JS.Math.pow(JS.Number, JS.Number) JS.Number
 
 fn test_js_prim_cast() {
