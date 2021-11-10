@@ -24,10 +24,6 @@ const (
 		// Array
 		'array/tables-1.toml',
 		'array/text-after-array-entries.toml',
-		// Date / Time
-		'datetime/impossible-date.toml',
-		'datetime/no-leads-with-milli.toml',
-		'datetime/no-leads.toml',
 	]
 )
 

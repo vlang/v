@@ -112,6 +112,8 @@ fn test_parse_iso8601_invalid() {
 		'2020-06-05Z',
 		'2020-06-05+00:00',
 		'15:38:06',
+		'2020-06-32T15:38:06.015959',
+		'2020-13-13T15:38:06.015959',
 	]
 	for format in formats {
 		time.parse_iso8601(format) or {

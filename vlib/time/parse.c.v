@@ -4,22 +4,26 @@
 module time
 
 // parse_rfc3339 returns time from a date string in RFC 3339 datetime format.
+// See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
+// the differences between ISO-8601 and RFC 3339.
 pub fn parse_rfc3339(s string) ?Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
-	mut t := parse_iso8601(s) or { Time{} }
+	// Normalize the input before parsing. Good since iso8601 doesn't permit lower case `t` and `z`.
+	sn := s.replace_each(['t', 'T', 'z', 'Z'])
+	mut t := parse_iso8601(sn) or { Time{} }
 	// If parse_iso8601 DID NOT result in default values (i.e. date was parsed correctly)
 	if t != Time{} {
 		return t
 	}
 
-	t_i := s.index('T') or { -1 }
-	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
+	t_i := sn.index('T') or { -1 }
+	parts := if t_i != -1 { [sn[..t_i], sn[t_i + 1..]] } else { sn.split(' ') }
 
-	// Check if s is date only
+	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
-		year, month, day := parse_iso8601_date(s) ?
+		year, month, day := parse_iso8601_date(sn) ?
 		t = new_time(Time{
 			year: year
 			month: month
@@ -27,7 +31,7 @@ pub fn parse_rfc3339(s string) ?Time {
 		})
 		return t
 	}
-	// Check if s is time only
+	// Check if sn is time only
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0]) ?
@@ -172,6 +176,15 @@ fn parse_iso8601_date(s string) ?(int, int, int) {
 	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
 		return error_invalid_time(10)
+	}
+	if year > 9999 {
+		return error_invalid_time(13)
+	}
+	if month > 12 {
+		return error_invalid_time(14)
+	}
+	if day > 31 {
+		return error_invalid_time(15)
 	}
 	return year, month, day
 }
