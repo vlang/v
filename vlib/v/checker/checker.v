@@ -5567,7 +5567,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
 
 	if (to_type_sym.is_number() && from_type_sym.name == 'JS.Number')
-		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.BigInt')
+		|| (to_type_sym.is_number() && from_type_sym.name == 'JS.BigInt')
 		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.String')
 		|| (node.typ.is_bool() && from_type_sym.name == 'JS.Boolean')
 		|| (node.expr_type.is_bool() && to_type_sym.name == 'JS.Boolean')

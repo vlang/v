@@ -3240,7 +3240,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		return
 	}
 	if (to_type_sym.is_number() && from_type_sym.name == 'JS.Number')
-		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.BigInt')
+		|| (to_type_sym.is_number() && from_type_sym.name == 'JS.BigInt')
 		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.String') {
 		g.write('new ${to_type_sym.kind.str()}(')
 		g.expr(it.expr)
