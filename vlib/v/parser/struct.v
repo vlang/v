@@ -450,7 +450,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	name_pos := p.tok.position()
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
-	interface_name := p.prepend_mod(modless_name).clone()
+	mut interface_name := p.prepend_mod(modless_name).clone()
+	if language == .js {
+		interface_name = 'JS.' + interface_name
+	}
 	generic_types, _ := p.parse_generic_types()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)

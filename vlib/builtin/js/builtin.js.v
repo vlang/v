@@ -167,3 +167,20 @@ pub fn booltojs(b bool) JS.Boolean {
 
 	return res
 }
+
+#function Any(val) { return val; }
+
+pub interface JS.Any {}
+
+pub interface JS.Array {
+	length JS.Number
+	push(JS.Any) JS.Any
+	pop() JS.Any
+}
+
+pub fn js_array(init ...any) JS.Array {
+	mut x := JS.Array(0)
+	#x = new Array(...init.arr.arr);
+
+	return x
+}

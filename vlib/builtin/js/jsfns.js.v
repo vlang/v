@@ -17,9 +17,10 @@ pub struct JS.String {
 
 pub struct JS.Boolean {}
 
+/*
 pub struct JS.Array {
 	length JS.Number
-}
+}*/
 
 pub struct JS.Map {}
 

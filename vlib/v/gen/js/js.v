@@ -1702,6 +1702,10 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 }
 
 fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
+	if it.language != .v {
+		// JS interfaces do not need codegen
+		return
+	}
 	// JS is dynamically typed, so we don't need any codegen at all
 	// We just need the JSDoc so TypeScript type checking works
 	g.doc.gen_interface(it)
@@ -2335,7 +2339,9 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 					g.write(' instanceof ')
 					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
-					g.write('.val')
+					if !sym.name.starts_with('JS.') {
+						g.write('.val')
+					}
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						g.write(' instanceof ')
 						g.expr(branch.exprs[sumtype_index])

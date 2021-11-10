@@ -458,6 +458,7 @@ pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, 
 pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	c.check_valid_pascal_case(node.name, 'interface name', node.pos)
 	mut decl_sym := c.table.get_type_symbol(node.typ)
+	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
 		if node.ifaces.len > 0 {
 			all_ifaces := c.expand_iface_embeds(node, 0, node.ifaces)
@@ -552,8 +553,25 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.check_valid_snake_case(method.name, 'method name', method.pos)
 			}
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
-			for param in method.params {
+			if is_js {
+				mtyp := c.table.get_type_symbol(method.return_type)
+				if (mtyp.language != .js && !method.return_type.is_void())
+					&& !mtyp.name.starts_with('JS.') {
+					c.error('method $method.name returns non JS type', method.pos)
+				}
+			}
+			for j, param in method.params {
+				if j == 0 && is_js {
+					continue // no need to check first param
+				}
 				c.ensure_type_exists(param.typ, param.pos) or { return }
+				if is_js {
+					ptyp := c.table.get_type_symbol(param.typ)
+					if ptyp.language != .js && !ptyp.name.starts_with('JS.') {
+						c.error('method $method.name accepts non JS type as parameter',
+							method.pos)
+					}
+				}
 			}
 			for field in node.fields {
 				field_sym := c.table.get_type_symbol(field.typ)
@@ -573,6 +591,12 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
+			if is_js {
+				tsym := c.table.get_type_symbol(field.typ)
+				if tsym.language != .js {
+					c.error('field $field.name uses non JS type', field.pos)
+				}
+			}
 			if field.typ == node.typ {
 				c.error('recursive interface fields are not allowed because they cannot be initialised',
 					field.type_pos)
@@ -1916,7 +1940,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	node.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
-	// or there will be hard to diagnose 0 type panics in cgen.
+	// or there will be hard tRo diagnose 0 type panics in cgen.
 	node.return_type = left_type
 	node.receiver_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
@@ -3067,6 +3091,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
+
+	if inter_sym.name.starts_with('JS.') {
+		// TODO: Actually have some form of limited support of implementing JS interfaces for V types
+		return true
+	}
 	if mut inter_sym.info is ast.Interface {
 		mut generic_type := interface_type
 		mut generic_info := inter_sym.info
