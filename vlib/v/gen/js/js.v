@@ -3226,8 +3226,39 @@ fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in ast.integer_type_idxs)
 		|| (it.expr is ast.FloatLiteral && it.typ in ast.float_type_idxs))
+	from_type_sym := g.table.get_type_symbol(it.expr_type)
+	to_type_sym := g.table.get_type_symbol(it.typ) // type to be used as cast
+	if it.typ.is_bool() && from_type_sym.name == 'JS.Boolean' {
+		g.write('new bool(')
+		g.expr(it.expr)
+		g.write(')')
+		return
+	}
+	if it.expr_type.is_bool() && to_type_sym.name == 'JS.Boolean' {
+		g.expr(it.expr)
+		g.write('.\$toJS()')
+		return
+	}
+	if (to_type_sym.is_number() && from_type_sym.name == 'JS.Number')
+		|| (to_type_sym.is_number() && from_type_sym.name == 'JS.BigInt')
+		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.String') {
+		g.write('new ${to_type_sym.kind.str()}(')
+		g.expr(it.expr)
+		g.write(')')
+		return
+	}
+
+	if (from_type_sym.is_number() && to_type_sym.name == 'JS.Number')
+		|| (from_type_sym.is_number() && to_type_sym.name == 'JS.BigInt')
+		|| (from_type_sym.is_string() && to_type_sym.name == 'JS.String') {
+		g.write('${g.typ(it.typ)}(')
+		g.expr(it.expr)
+		g.write('.\$toJS())')
+		return
+	}
+
 	// Skip cast if type is the same as the parrent caster
-	tsym := g.table.get_final_type_symbol(it.typ)
+	tsym := to_type_sym
 	if tsym.kind == .sum_type {
 		g.expr(it.expr)
 		return
