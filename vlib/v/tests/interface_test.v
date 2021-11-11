@@ -59,6 +59,10 @@ fn (mut d Dog) set_breed(new string) {
 
 // do not add to Dog the utility function 'str', so the default one will be used, as a sample
 
+struct Bird {
+	breed string
+}
+
 fn (a Bird) speak(s string) {
 	println('tweet')
 }
@@ -68,7 +72,7 @@ fn (a Bird) name() string {
 }
 
 fn (a Bird) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(a)}, breed:${a.breed}'
+	return '$pet_name the ${typeof(a).name}, breed:${a.breed}'
 }
 
 fn (mut d Bird) set_breed(new string) {
@@ -102,6 +106,7 @@ fn perform_speak(a Animal) {
 	println(a.name())
 	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
+	assert is_dog_or_cat(a) // TODO: fix compiler error
 }
 
 fn perform_speak_on_ptr(a &Animal) {
@@ -116,6 +121,7 @@ fn perform_speak_on_ptr(a &Animal) {
 	println(a.name())
 	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
+	assert is_dog_or_cat(a) // TODO: fix compiler error
 }
 
 fn test_perform_speak() {
@@ -139,11 +145,6 @@ fn test_perform_speak() {
 	})
 	perform_speak_on_ptr(new_cat('Persian'))
 	handle_animals([dog, cat])
-	/*
-	f := Foo {
-		speaker: dog
-	}
-	*/
 }
 
 fn change_animal_breed(mut a Animal, new string) {
@@ -331,15 +332,18 @@ fn test_is_bool() {
 	println('---- ${@FN} ----')
 	dog := Dog{}
 	assert is_dog(dog) == true
+	assert is_dog_or_cat(dog) // TODO: fix compiler error
 	cat := Cat{}
 	assert is_dog(cat) == false
+	assert is_dog_or_cat(cat) // TODO: fix compiler error
 	bird := Bird{}
 	assert is_dog(bird) == false
+	assert !is_dog_or_cat(bird) // TODO: fix compiler error
 }
 
 fn is_dog(a Animal) bool {
 	println("Got animal: '$a'")  // implicit call to 'str' function of implementations
-	println("with type: ${typeof(a)}")  // get implementation type (if possible)
+	println("with type: ${typeof(a).name}")  // get implementation type (if possible)
 
 	// sample (additional checks) here
 	is_dog_or_cat := if (a is Dog) || (a is Cat) { true } else { false }
