@@ -60,23 +60,25 @@ fn (mut d Dog) set_breed(new string) {
 // do not add to Dog the utility function 'str', so the default one will be used, as a sample
 
 struct Bird {
+mut:
 	breed string
 }
 
-fn (a Bird) speak(s string) {
+fn (b Bird) speak(s string) {
 	println('tweet')
 }
 
-fn (a Bird) name() string {
-	return a.breed
+fn (b Bird) name() string {
+	return b.breed
 }
 
-fn (a Bird) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(a).name}, breed:${a.breed}'
+fn (b Bird) name_detailed(pet_name string) string {
+	return '$pet_name the ${typeof(b).name}, breed:$b.breed'
 }
 
-fn (mut d Bird) set_breed(new string) {
+fn (mut b Bird) set_breed(new string) {
 	println('canary')
+	b.breed = new
 }
 
 // do not add to Bird the utility function 'str', so the default one will be used, as a sample
@@ -92,8 +94,14 @@ fn is_dog_or_cat(a Animal) bool {
 	return is_dog_or_cat
 }
 
+fn is_dog_or_cat_or_bird(a Animal) bool {
+	ret := a is Dog || a is Cat || a is Bird
+	println('Animal is Dog or Cat or Bird: $ret')
+	return ret
+}
+
 fn perform_speak(a Animal) {
-	println('---- ${@FN} ----')
+	println('---- ${@FN}, given Animal: $a ----')
 	a.speak('Hi !')
 	assert true
 	name := a.name()
@@ -106,11 +114,11 @@ fn perform_speak(a Animal) {
 	println(a.name())
 	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
-	assert is_dog_or_cat(a) // TODO: fix compiler error
+	assert is_dog_or_cat(a)
 }
 
 fn perform_speak_on_ptr(a &Animal) {
-	println('---- ${@FN} ----')
+	println('---- ${@FN}, given &Animal: $a ----')
 	a.speak('Hi !')
 	assert true
 	name := a.name()
@@ -121,7 +129,7 @@ fn perform_speak_on_ptr(a &Animal) {
 	println(a.name())
 	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
-	assert is_dog_or_cat(a) // TODO: fix compiler error
+	assert is_dog_or_cat(a)
 }
 
 fn test_perform_speak() {
@@ -156,7 +164,6 @@ fn test_interface_ptr_modification() {
 	mut cat := Cat{
 		breed: 'Persian'
 	}
-	// TODO Should fail and require `mut cat`
 	change_animal_breed(mut cat, 'Siamese')
 	assert cat.breed == 'Siamese'
 }
@@ -296,10 +303,11 @@ fn test_interface_array() {
 	assert true
 	animals << Cat{}
 	assert true
-	// TODO .str() from the real types should be called
+	animals << Bird{}
+	assert true
 	// println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
-	// println('Animals array contains: ${animals}') // implicit call to 'str' function
-	assert animals.len == 3
+	println('Animals array contains: $animals') // implicit call to 'str' function
+	assert animals.len == 4
 }
 
 fn test_interface_ptr_array() {
@@ -311,16 +319,20 @@ fn test_interface_ptr_array() {
 	assert true
 	animals << Cat{}
 	assert true
-	assert animals.len == 3
+	animals << Bird{}
+	assert true
+	// println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
+	println('Animals array contains: $animals') // implicit call to 'str' function
+	assert animals.len == 4
 }
 
 fn test_is() {
 	println('---- ${@FN} ----')
 	dog := Dog{}
-	assert foo2(dog) == 1
+	assert is_dog_int(dog) == 1
 }
 
-fn foo2(a Animal) int {
+fn is_dog_int(a Animal) int {
 	if a is Dog {
 		return 1
 	} else {
@@ -332,23 +344,25 @@ fn test_is_bool() {
 	println('---- ${@FN} ----')
 	dog := Dog{}
 	assert is_dog(dog) == true
-	assert is_dog_or_cat(dog) // TODO: fix compiler error
+	assert is_dog_or_cat(dog)
 	cat := Cat{}
 	assert is_dog(cat) == false
-	assert is_dog_or_cat(cat) // TODO: fix compiler error
+	assert is_dog_or_cat(cat)
 	bird := Bird{}
 	assert is_dog(bird) == false
-	assert !is_dog_or_cat(bird) // TODO: fix compiler error
+	assert !is_dog_or_cat(bird)
+	assert is_dog_or_cat_or_bird(bird)
 }
 
 fn is_dog(a Animal) bool {
-	println("Got animal: '$a'")  // implicit call to 'str' function of implementations
-	println("with type: ${typeof(a).name}")  // get implementation type (if possible)
+	println("Got animal: '$a'") // implicit call to 'str' function of implementations
+	println('with type: ${typeof(a).name}') // get implementation type (if possible)
 
 	// sample (additional checks) here
 	is_dog_or_cat := if (a is Dog) || (a is Cat) { true } else { false }
 	println('Animal is Dog or Cat: $is_dog_or_cat')
 
+	// use/test even another syntax
 	if a is Dog {
 		return true
 	} else {
