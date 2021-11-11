@@ -8,8 +8,8 @@ import toml
 // See also the CI toml tests
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
-	valid_exceptions   = [
-		'table/array-table-array.toml',
+	valid_exceptions   = [''
+		//'table/array-table-array.toml',
 	]
 	invalid_exceptions = [
 		// Table

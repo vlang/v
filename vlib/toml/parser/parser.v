@@ -136,7 +136,7 @@ fn (mut p Parser) check(check_token token.Kind) ? {
 // and return an error if the next token is not one of [.cr, .nl, .hash, .eof].
 fn (mut p Parser) peek_for_correct_line_ending_or_fail() ? {
 	// Disallow anything else than [.cr, .nl, .hash, .eof] after any space formatting.
-	peek_tok := p.peek_over(1, parser.space_formatting) ?
+	peek_tok,_ := p.peek_over(1, parser.space_formatting) ?
 	if peek_tok.kind !in [.cr, .nl, .hash, .eof] {
 		p.next() ? // Forward to the peek_tok
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -181,7 +181,7 @@ fn (mut p Parser) ignore_while_peek(tokens []token.Kind) {
 // peek_over peeks ahead from token starting at `i` skipping over
 // any `token.Kind`s found in `tokens`. `peek_over` returns the next token *not*
 // found in `tokens`.
-fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?token.Token {
+fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?(token.Token,int) {
 	mut peek_tok := p.peek_tok
 
 	// Peek ahead as far as we can from token at `i` while the peeked
@@ -191,7 +191,7 @@ fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?token.Token {
 		peek_tok = p.peek(peek_i) ?
 		peek_i++
 	}
-	return peek_tok
+	return peek_tok, peek_i
 }
 
 // is_at returns true if the token kind is equal to `expected_token`.
@@ -340,7 +340,7 @@ pub fn (mut p Parser) root_table() ? {
 				mut peek_tok := p.peek_tok
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok = p.peek_over(1, parser.space_formatting) ?
+				peek_tok,_ = p.peek_over(1, parser.space_formatting) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
@@ -380,7 +380,7 @@ pub fn (mut p Parser) root_table() ? {
 
 				// Disallow `[ [table]]`
 				if p.tok.kind in parser.space_formatting {
-					peek_tok = p.peek_over(1, parser.space_formatting) ?
+					peek_tok,_ = p.peek_over(1, parser.space_formatting) ?
 					if peek_tok.kind == .lsbr {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
@@ -391,7 +391,7 @@ pub fn (mut p Parser) root_table() ? {
 				p.ignore_while(parser.space_formatting)
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok = p.peek_over(1, parser.space_formatting) ?
+				peek_tok,_ = p.peek_over(1, parser.space_formatting) ?
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
@@ -482,7 +482,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			.bare, .quoted, .boolean, .number, .underscore {
 				mut peek_tok := p.peek_tok
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok = p.peek_over(1, parser.space_formatting) ?
+				peek_tok,_ = p.peek_over(1, parser.space_formatting) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
@@ -534,7 +534,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	p.next() ?
 	p.check(.rsbr) ?
 	p.peek_for_correct_line_ending_or_fail() ?
-	p.check(.rsbr) ?
+	p.expect(.rsbr) ?
 
 	p.ignore_while(parser.all_formatting)
 
@@ -577,7 +577,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 
 	p.next() ?
 	p.check(.rsbr) ?
-	p.check(.rsbr) ?
+	p.expect(.rsbr) ?
 
 	p.ignore_while(parser.all_formatting)
 
@@ -642,30 +642,78 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
-	for p.tok.kind in [.bare, .quoted, .boolean, .number] {
-		if p.peek_tok.kind == .period {
-			dotkey := p.dotted_key() ?
-			p.check(.assign) ?
-			val := p.value() ?
 
-			sub_table, key := p.sub_table_key(dotkey)
+	mut peeked_over := 0
+	mut peek_tok := p.peek_tok
 
-			mut t := p.find_in_table(mut tbl, sub_table) ?
-			unsafe {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
-				t[key] = val
-			}
-		} else {
-			key, val := p.key_value() ?
-			tbl[key.str()] = val
-		}
+	for p.tok.kind != .eof {
 		p.next() ?
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 		p.ignore_while(parser.all_formatting)
+
+		// Peek forward as far as we can skipping over space formatting tokens.
+		peek_tok, peeked_over = p.peek_over(1, parser.space_formatting) ?
+		if peek_tok.kind == .lsbr {
+			peek_tok, peeked_over = p.peek_over(peeked_over+1, parser.space_formatting) ?
+			if peek_tok.kind == .lsbr {
+				mut arr := []ast.Value{}
+				arr << tbl
+				return arr
+			}
+		}
+
+		match p.tok.kind {
+			.bare, .quoted, .boolean, .number {
+				if p.peek_tok.kind == .period {
+					dotkey := p.dotted_key() ?
+					p.ignore_while(parser.space_formatting)
+					p.check(.assign) ?
+					val := p.value() ?
+
+					sub_table, key := p.sub_table_key(dotkey)
+
+					mut t := p.find_in_table(mut tbl, sub_table) ?
+					unsafe {
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+						t[key] = val
+					}
+				} else {
+					key, val := p.key_value() ?
+					tbl[key.str()] = val
+				}
+			}
+			.lsbr {
+				p.check(.lsbr) ? // '[' bracket
+				peek_tok = p.peek_tok
+
+				// Allow `[ d.e.f]`
+				p.ignore_while(parser.space_formatting)
+
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok,_ = p.peek_over(1, parser.space_formatting) ?
+
+				if peek_tok.kind == .period {
+					// Parse `[d.e.f]`
+					p.ignore_while(parser.space_formatting)
+					dotkey := p.dotted_key() ?
+					p.ignore_while(parser.space_formatting)
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting dotted key to `$dotkey` ? `$p.last_aot` at "$p.tok.kind" "$p.tok.lit"')
+					p.expect(.rsbr) ?
+					p.peek_for_correct_line_ending_or_fail() ?
+					continue
+				} else {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+				}
+			}
+			else {
+				break
+			}
+		}
+
 	}
 	mut arr := []ast.Value{}
 	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables ${arr.str().replace('\n',
-		' ')}. leaving at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr).to_json()}. leaving at "$p.tok.kind" "$p.tok.lit"')
 	return arr
 }
 
