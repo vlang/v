@@ -179,7 +179,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			sym := g.table.get_type_symbol(ty)
 
 			for method in iface.methods {
-				p_sym := g.table.get_type_symbol(method.params[0].typ)
+				p_sym := g.table.get_type_symbol(ty)
 				mname := g.js_name(p_sym.name) + '_' + method.name
 				g.write('${g.js_name(sym.name)}.prototype.$method.name = function(')
 				for i, param in method.params {
