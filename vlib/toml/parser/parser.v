@@ -462,12 +462,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			}
 			.comma {
 				p.ignore_while_peek(parser.space_formatting)
-				if p.peek_tok.kind == .rcbr {
-					p.next() ? // Forward to the peek_tok
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
-				}
-				if p.peek_tok.kind == .comma {
+				if p.peek_tok.kind in [.comma, .rcbr] {
 					p.next() ? // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
@@ -693,9 +688,12 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 				previous_token_was_value = true
 			}
 			.comma {
+				p.ignore_while_peek(parser.space_formatting)
 				// Trailing commas before array close is allowed
-				// so we skip `if p.peek_tok.kind == .rsbr { ... }`
-				if p.peek_tok.kind == .comma {
+				// so we do not do `if p.peek_tok.kind == .rsbr { ... }`
+
+				// Check for known errors:
+				if p.peek_tok.kind in [.comma, .bare] {
 					p.next() ? // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')

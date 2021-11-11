@@ -23,7 +23,6 @@ const (
 		'inline-table/duplicate-key.toml',
 		// Array
 		'array/tables-1.toml',
-		'array/text-after-array-entries.toml',
 	]
 )
 
