@@ -237,6 +237,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
+	gfx.shutdown()
 }
 
 fn gg_fail_fn(msg &char, user_data voidptr) {

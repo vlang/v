@@ -88,11 +88,12 @@ fn on_frame(mut app App) {
 }
 
 // Rotate a polygon round the centerpoint
+[manualfree]
 fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gx.Color, angle f32) {
 	sa := math.sin(math.pi * angle / 180.0)
 	ca := math.cos(math.pi * angle / 180.0)
 
-	mut rotated_points := []f32{}
+	mut rotated_points := []f32{cap: points.len}
 	for i := 0; i < points.len / 2; i++ {
 		x := points[2 * i]
 		y := points[2 * i + 1]
@@ -102,6 +103,7 @@ fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gx
 		rotated_points << (yn + center) * dpi_scale
 	}
 	ctx.draw_convex_poly(rotated_points, c)
+	unsafe { rotated_points.free() }
 }
 
 fn (mut app App) resize() {
@@ -133,7 +135,7 @@ fn on_event(e &gg.Event, mut app App) {
 					.q {
 						println('Good bye.')
 						// do we need to free anything here?
-						exit(0)
+						app.gg.quit()
 					}
 					else {}
 				}
