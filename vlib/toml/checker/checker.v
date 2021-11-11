@@ -202,7 +202,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 		if last in scanner.digit_extras {
 			ascii = byte(last).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' numbers like "$lit" (float) can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
+				' numbers like "$lit" (float) can not end with `$ascii` in ...${c.excerpt(num.pos)}...')
 		}
 		if lit.contains('_.') || lit.contains('._') {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
