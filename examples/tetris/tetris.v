@@ -459,7 +459,7 @@ fn (mut game Game) key_down(key gg.KeyCode) {
 	// global keys
 	match key {
 		.escape {
-			exit(0)
+			game.gg.quit()
 		}
 		.space {
 			if game.state == .running {

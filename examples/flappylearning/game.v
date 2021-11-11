@@ -274,7 +274,7 @@ fn (mut app App) key_down(key gg.KeyCode) {
 	// global keys
 	match key {
 		.escape {
-			exit(0)
+			app.gg.quit()
 		}
 		._0 {
 			app.timer_period_ms = 0

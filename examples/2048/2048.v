@@ -788,7 +788,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
 		.a { app.is_ai_mode = !app.is_ai_mode }
-		.escape { exit(0) }
+		.escape { app.gg.quit() }
 		.n, .r { app.new_game() }
 		.backspace { app.undo() }
 		.enter { app.next_tile_format() }
