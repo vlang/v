@@ -567,8 +567,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 				if is_js {
 					ptyp := c.table.get_type_symbol(param.typ)
-					if ptyp.language != .js && !ptyp.name.starts_with('JS.') {
-						c.error('method $method.name accepts non JS type as parameter',
+					if ptyp.kind != .function && ptyp.language != .js
+						&& !ptyp.name.starts_with('JS.') {
+						c.error('method `$method.name` accepts non JS type as parameter',
 							method.pos)
 					}
 				}
@@ -593,8 +594,8 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(field.typ, field.pos) or { return }
 			if is_js {
 				tsym := c.table.get_type_symbol(field.typ)
-				if tsym.language != .js {
-					c.error('field $field.name uses non JS type', field.pos)
+				if tsym.language != .js && !tsym.name.starts_with('JS.') {
+					c.error('field `$field.name` uses non JS type', field.pos)
 				}
 			}
 			if field.typ == node.typ {
@@ -3092,8 +3093,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
 
-	if inter_sym.name.starts_with('JS.') {
-		// TODO: Actually have some form of limited support of implementing JS interfaces for V types
+	// small hack for JS.Any type. Since `any` in regular V is getting deprecated we have our own JS.Any type for JS backend.
+	if typ_sym.name == 'JS.Any' {
 		return true
 	}
 	if mut inter_sym.info is ast.Interface {
@@ -3134,7 +3135,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && styp != 'JS.Any'
+		&& inter_sym.name != 'JS.Any' {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
 	}
