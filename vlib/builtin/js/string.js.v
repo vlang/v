@@ -25,7 +25,7 @@ pub fn (s string) substr(start int, end int) string {
 }
 
 pub fn (s string) after(dot string) string {
-	return string(s.str.slice(s.str.lastIndexOf(dot.str) + 1, int(s.str.length)))
+	return string(s.str.slice(JS.Number(int(s.str.lastIndexOf(dot.str)) + 1), s.str.length))
 }
 
 pub fn (s string) after_char(dot byte) string {
@@ -34,7 +34,7 @@ pub fn (s string) after_char(dot byte) string {
 }
 
 pub fn (s string) all_after(dot string) string {
-	pos := if dot.len == 0 { -1 } else { s.str.indexOf(dot.str) }
+	pos := if dot.len == 0 { -1 } else { int(s.str.indexOf(dot.str)) }
 	if pos == -1 {
 		return s.clone()
 	}
@@ -43,7 +43,7 @@ pub fn (s string) all_after(dot string) string {
 
 // why does this exist?
 pub fn (s string) all_after_last(dot string) string {
-	pos := if dot.len == 0 { -1 } else { s.str.lastIndexOf(dot.str) }
+	pos := if dot.len == 0 { -1 } else { int(s.str.lastIndexOf(dot.str)) }
 	if pos == -1 {
 		return s.clone()
 	}
@@ -51,7 +51,7 @@ pub fn (s string) all_after_last(dot string) string {
 }
 
 pub fn (s string) all_before(dot string) string {
-	pos := if dot.len == 0 { -1 } else { s.str.indexOf(dot.str) }
+	pos := if dot.len == 0 { -1 } else { int(s.str.indexOf(dot.str)) }
 	if pos == -1 {
 		return s.clone()
 	}
@@ -60,7 +60,7 @@ pub fn (s string) all_before(dot string) string {
 }
 
 pub fn (s string) all_before_last(dot string) string {
-	pos := if dot.len == 0 { -1 } else { s.str.lastIndexOf(dot.str) }
+	pos := if dot.len == 0 { -1 } else { int(s.str.lastIndexOf(dot.str)) }
 	if pos == -1 {
 		return s.clone()
 	}
@@ -72,16 +72,27 @@ pub fn (s string) bool() bool {
 }
 
 pub fn (s string) split(dot string) []string {
-	mut arr := s.str.split(dot.str).map(string(it))
-	#arr = new array(new array_buffer({arr,index_start: new int(0),len: new int(arr.length)}))
+	tmparr := s.str.split(dot.str).map(fn (it JS.Any) JS.Any {
+		res := ''
+		#res.str = it
+
+		return res
+	})
+	_ := tmparr
+	mut arr := []string{}
+	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
 
 	return arr
 }
 
 pub fn (s string) bytes() []byte {
 	sep := ''
-	mut arr := s.str.split(sep.str).map(it.charCodeAt(0))
-	#arr = new array(new array_buffer({arr,index_start: new int(0),len: new int(arr.length)}))
+	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
+		return JS.Any(byte(JS.String(it).charCodeAt(0)))
+	})
+	_ := tmparr
+	mut arr := []byte{}
+	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
 
 	return arr
 }
@@ -96,13 +107,14 @@ pub fn (s string) clone() string {
 }
 
 pub fn (s string) contains(substr string) bool {
-	return s.str.includes(substr.str)
+	return bool(s.str.includes(substr.str))
 }
 
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
-	for x in chars.str.split(sep.str) {
-		if s.str.includes(x) {
+	res := chars.str.split(sep.str)
+	for i in 0 .. int(res.length) {
+		if bool(s.str.includes(JS.String(res.at(JS.Number(i))))) {
 			return true
 		}
 	}
@@ -114,7 +126,7 @@ pub fn (s string) contains_any_substr(chars []string) bool {
 		return true
 	}
 	for x in chars {
-		if s.str.includes(x.str) {
+		if bool(s.str.includes(x.str)) {
 			return true
 		}
 	}
@@ -124,7 +136,12 @@ pub fn (s string) contains_any_substr(chars []string) bool {
 pub fn (s string) count(substr string) int {
 	// TODO: "error: `[]JS.String` is not a struct" when returning arr.length or arr.len
 	arr := s.str.split(substr.str)
-	return native_str_arr_len(arr)
+	len := int(arr.length)
+	if len == 0 {
+		return 0
+	} else {
+		return len - 1
+	}
 }
 
 pub fn (s string) ends_with(p string) bool {
@@ -135,7 +152,7 @@ pub fn (s string) ends_with(p string) bool {
 }
 
 pub fn (s string) starts_with(p string) bool {
-	return s.str.startsWith(p.str)
+	return bool(s.str.startsWith(p.str))
 }
 
 pub fn (s string) fields() []string {
@@ -170,7 +187,7 @@ pub fn (s string) fields() []string {
 }
 
 pub fn (s string) find_between(start string, end string) string {
-	return string(s.str.slice(s.str.indexOf(start.str) + 1, s.str.indexOf(end.str)))
+	return string(s.str.slice(JS.Number(int(s.str.indexOf(start.str)) + 1), s.str.indexOf(end.str)))
 }
 
 // unnecessary in the JS backend, implemented for api parity.
