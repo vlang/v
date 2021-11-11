@@ -9,6 +9,7 @@ import toml.util
 import toml.token
 import toml.scanner
 import encoding.utf8
+import time
 
 pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
 
@@ -36,6 +37,15 @@ fn (c Checker) visit(value &ast.Value) ? {
 		}
 		ast.Quoted {
 			c.check_quoted(value) ?
+		}
+		ast.DateTime {
+			c.check_date_time(value) ?
+		}
+		ast.Date {
+			c.check_date(value) ?
+		}
+		ast.Time {
+			c.check_time(value) ?
 		}
 		else {
 			// TODO add more checks to make BurntSushi/toml-test invalid TOML pass
@@ -258,6 +268,100 @@ fn (c Checker) check_boolean(b ast.Bool) ? {
 	}
 	return error(@MOD + '.' + @STRUCT + '.' + @FN +
 		' boolean values like "$lit" can only be `true` or `false` literals, not `$lit` in ...${c.excerpt(b.pos)}...')
+}
+
+// check_date_time returns an error if `dt` is not a valid TOML date-time string (RFC 3339).
+// See also https://ijmacd.github.io/rfc3339-iso8601 for a more
+// visual representation of the RFC 3339 format.
+fn (c Checker) check_date_time(dt ast.DateTime) ? {
+	lit := dt.text
+	mut split := []string{}
+	// RFC 3339 Date-Times can be split via 4 separators (` `, `_`, `T` and `t`).
+	if lit.to_lower().contains_any(' _t') {
+		if lit.contains(' ') {
+			split = lit.split(' ')
+		} else if lit.contains('_') {
+			split = lit.split('_')
+		} else if lit.contains('T') {
+			split = lit.split('T')
+		} else if lit.contains('t') {
+			split = lit.split('t')
+		}
+		// Validate the split into date and time parts.
+		if split.len != 2 {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "$lit" contains too many date/time separators in ...${c.excerpt(dt.pos)}...')
+		}
+		// Re-use date and time validation code for detailed testing of each part
+		c.check_date(ast.Date{
+			text: split[0]
+			pos: token.Position{
+				len: split[0].len
+				line_nr: dt.pos.line_nr
+				pos: dt.pos.pos
+				col: dt.pos.col
+			}
+		}) ?
+		c.check_time(ast.Time{
+			text: split[1]
+			pos: token.Position{
+				len: split[1].len
+				line_nr: dt.pos.line_nr
+				pos: dt.pos.pos + split[0].len
+				col: dt.pos.col + split[0].len
+			}
+		}) ?
+		// Use V's builtin functionality to validate the string
+		time.parse_rfc3339(lit) or {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "$lit" is not a valid RFC 3339 Date-Time format string "$err". In ...${c.excerpt(dt.pos)}...')
+		}
+	} else {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" is not a valid RFC 3339 Date-Time format string in ...${c.excerpt(dt.pos)}...')
+	}
+}
+
+// check_time returns an error if `date` is not a valid TOML date string (RFC 3339).
+fn (c Checker) check_date(date ast.Date) ? {
+	lit := date.text
+	parts := lit.split('-')
+	if parts.len != 3 {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" is not a valid RFC 3339 Date format string in ...${c.excerpt(date.pos)}...')
+	}
+	yyyy := parts[0]
+	if yyyy.len != 4 {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" does not have a valid RFC 3339 year indication in ...${c.excerpt(date.pos)}...')
+	}
+	mm := parts[1]
+	if mm.len != 2 {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" does not have a valid RFC 3339 month indication in ...${c.excerpt(date.pos)}...')
+	}
+	dd := parts[2]
+	if dd.len != 2 {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" does not have a valid RFC 3339 day indication in ...${c.excerpt(date.pos)}...')
+	}
+	// Use V's builtin functionality to validate the string
+	time.parse_rfc3339(lit) or {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" is not a valid RFC 3339 Date format string "$err". In ...${c.excerpt(date.pos)}...')
+	}
+}
+
+// check_time returns an error if `t` is not a valid TOML time string (RFC 3339).
+fn (c Checker) check_time(t ast.Time) ? {
+	lit := t.text
+	// Split any offsets from the time
+	parts := lit.split('-')
+	// Use V's builtin functionality to validate the time string
+	time.parse_rfc3339(parts[0]) or {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "$lit" is not a valid RFC 3339 Time format string "$err". In ...${c.excerpt(t.pos)}...')
+	}
 }
 
 // check_quoted returns an error if `q` is not a valid quoted TOML string.
