@@ -30,7 +30,7 @@ fn test_nested_generics_struct_init() {
 	result2 := '$bar2'
 	assert result2.contains('Bar<int>{')
 	assert result2.contains('foos: [Foo<int>{')
-	assert result2.contains("foo: 22")
+	assert result2.contains('foo: 22')
 
 	mut bar3 := Bar<f64>{}
 	bar3.add(2.2)
@@ -39,7 +39,7 @@ fn test_nested_generics_struct_init() {
 	result3 := '$bar3'
 	assert result3.contains('Bar<f64>{')
 	assert result3.contains('foos: [Foo<f64>{')
-	assert result3.contains("foo: 2.2")
+	assert result3.contains('foo: 2.2')
 
 	mut bar4 := Bar<bool>{}
 	bar4.add(true)
@@ -48,5 +48,5 @@ fn test_nested_generics_struct_init() {
 	result4 := '$bar4'
 	assert result4.contains('Bar<bool>{')
 	assert result4.contains('foos: [Foo<bool>{')
-	assert result4.contains("foo: true")
+	assert result4.contains('foo: true')
 }
