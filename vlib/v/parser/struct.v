@@ -498,8 +498,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
 			iface_pos := p.tok.position()
-			iface_name := p.tok.lit
+			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
+			if iface_name == 'JS' {
+				iface_name = p.table.get_type_symbol(iface_type).name
+			}
 			comments := p.eat_comments()
 			ifaces << ast.InterfaceEmbedding{
 				name: iface_name
