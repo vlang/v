@@ -497,8 +497,13 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 				} else {
 					p.ignore_while(parser.space_formatting)
 					key, val := p.key_value() ?
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key.str()" = $val.to_json() into ${ptr_str(tbl)}')
-					tbl[key.str()] = val
+					key_str := key.str()
+					if _ := tbl[key_str] {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' key "$key_str" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+					}
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key_str" = $val.to_json() into ${ptr_str(tbl)}')
+					tbl[key_str] = val
 				}
 				previous_token_was_value = true
 			}
