@@ -459,6 +459,7 @@ fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) 
 }
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
+	cur_fn_decl := g.fn_decl
 	unsafe {
 		g.fn_decl = &it
 	}
@@ -528,7 +529,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	mut args := it.params
 
 	g.fn_args(args, it.is_variadic)
-	g.write(') {')
+	g.writeln(') {')
 	for i, arg in args {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
@@ -584,7 +585,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		}
 	}
 
-	g.fn_decl = voidptr(0)
+	g.fn_decl = cur_fn_decl
 }
 
 fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
@@ -609,6 +610,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	}
 	fun.has_gen = true
 	it := fun.decl
+	cur_fn_decl := g.fn_decl
 	unsafe {
 		g.fn_decl = &it
 	}
@@ -672,5 +674,5 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	g.dec_indent()
 	g.writeln('}})()')
 
-	g.fn_decl = voidptr(0)
+	g.fn_decl = cur_fn_decl
 }
