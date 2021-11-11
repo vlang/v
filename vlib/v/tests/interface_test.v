@@ -430,7 +430,8 @@ fn get_animal_name(mut a Animal2) string {
 	return a.get_name()
 }
 
-fn main() {
+fn test_aa() {
+	println('---- ${@FN} ----')
 	mut aa := AA{}
 	mut ii := II(aa)
 	assert ii.my_field == 0
