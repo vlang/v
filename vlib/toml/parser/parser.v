@@ -874,7 +874,7 @@ pub fn (mut p Parser) value() ?ast.Value {
 		}
 		if value is ast.Null {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit"')
+				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 		}
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "$p.tok.kind" as value $value.to_json()')
