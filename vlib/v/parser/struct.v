@@ -450,9 +450,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	name_pos := p.tok.position()
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
-	mut interface_name := p.prepend_mod(modless_name).clone()
+	mut interface_name := ''
 	if language == .js {
-		interface_name = 'JS.' + interface_name
+		interface_name = 'JS.' + modless_name
+	} else {
+		interface_name = p.prepend_mod(modless_name)
 	}
 	generic_types, _ := p.parse_generic_types()
 	// println('interface decl $interface_name')
@@ -475,6 +477,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 		}
+		language: language
 	)
 	if reg_idx == -1 {
 		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
