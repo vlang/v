@@ -51,11 +51,11 @@ pub fn (path Path2D) rect(x f64, y f64, width f64, height f64) {
 }
 
 pub fn (path Path2D) line_to(x f64, y f64) {
-	path.path.lineTo(f64tonum(x), f64tonum(y))
+	path.path.lineTo(JS.Number(x), JS.Number(y))
 }
 
 pub fn (path Path2D) move_to(x f64, y f64) {
-	path.path.lineTo(f64tonum(x), f64tonum(y))
+	path.path.lineTo(JS.Number(x), JS.Number(y))
 }
 
 pub fn (path Path2D) close_path() {
