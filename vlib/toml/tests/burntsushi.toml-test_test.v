@@ -9,7 +9,7 @@ import toml
 // TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	// Kept for easier handling of future updates to the tests
-	valid_exceptions   = ['']
+	valid_exceptions   = []string{}
 	invalid_exceptions = [
 		// Table
 		'table/duplicate-table-array2.toml',
