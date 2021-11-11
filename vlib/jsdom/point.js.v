@@ -16,44 +16,44 @@ mut:
 pub fn new_dompoint(x f64, y f64, z f64, w f64) DOMPoint {
 	mut point := DOMPoint{}
 
-	point.point.x = f64tonum(x)
-	point.point.y = f64tonum(y)
-	point.point.z = f64tonum(z)
-	point.point.w = f64tonum(w)
+	point.point.x = JS.Number(x)
+	point.point.y = JS.Number(y)
+	point.point.z = JS.Number(z)
+	point.point.w = JS.Number(w)
 
 	return point
 }
 
 pub fn (p DOMPoint) x() f64 {
-	return tof64(p.point.x)
+	return f64(p.point.x)
 }
 
 pub fn (p DOMPoint) y() f64 {
-	return tof64(p.point.y)
+	return f64(p.point.y)
 }
 
 pub fn (p DOMPoint) z() f64 {
-	return tof64(p.point.z)
+	return f64(p.point.z)
 }
 
 pub fn (p DOMPoint) w() f64 {
-	return tof64(p.point.w)
+	return f64(p.point.w)
 }
 
 pub fn (mut p DOMPoint) set_x(x f64) {
-	p.point.x = f64tonum(x)
+	p.point.x = JS.Number(x)
 }
 
 pub fn (mut p DOMPoint) set_y(y f64) {
-	p.point.y = f64tonum(y)
+	p.point.y = JS.Number(y)
 }
 
 pub fn (mut p DOMPoint) set_z(z f64) {
-	p.point.z = f64tonum(z)
+	p.point.z = JS.Number(z)
 }
 
 pub fn (mut p DOMPoint) set_w(w f64) {
-	p.point.w = f64tonum(w)
+	p.point.w = JS.Number(w)
 }
 
 pub fn (p DOMPoint) matrix_transform(matrix DOMMatrix) DOMPoint {

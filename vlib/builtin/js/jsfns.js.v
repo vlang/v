@@ -7,21 +7,62 @@
 
 module builtin
 
-pub struct JS.BigInt {}
+pub interface JS.Object {}
 
-pub struct JS.Number {}
+pub interface JS.BigInt {
+	JS.Any
+}
 
-pub struct JS.String {
+pub interface JS.Number {
+	JS.Any
+}
+
+pub interface JS.String {
+	JS.Any
+	length JS.Number
+	charAt(index JS.Number) JS.String
+	charCodeAt(index JS.Number) JS.Number
+	toUpperCase() JS.String
+	toLowerCase() JS.String
+	concat(a JS.String) JS.String
+	includes(substr JS.String) JS.Boolean
+	endsWith(substr JS.String) JS.Boolean
+	startsWith(substr JS.String) JS.Boolean
+	slice(a JS.Number, b JS.Number) JS.String
+	split(dot JS.String) JS.Array
+	indexOf(needle JS.String) JS.Number
+	lastIndexOf(needle JS.String) JS.Number
+}
+
+pub interface JS.Boolean {
+	JS.Any
+}
+
+pub interface JS.Map {
+	JS.Any
+	size JS.Number
+	clear()
+	delete(key JS.Any) JS.Boolean
+	get(key JS.Any) JS.Any
+	has(key JS.Any) JS.Any
+	set(key JS.Any, val JS.Any)
+}
+
+#function Any(val) { return val; }
+
+pub interface JS.Any {}
+
+pub interface JS.Array {
+	JS.Any // map(fn (JS.Any) JS.Any) JS.Array
+	map(JS.Any) JS.Array
+	push(JS.Any) JS.Any
+	pop() JS.Any
+	at(JS.Number) JS.Any
+mut:
 	length JS.Number
 }
 
-pub struct JS.Boolean {}
-
-pub struct JS.Array {
-	length JS.Number
-}
-
-pub struct JS.Map {}
+pub fn JS.Array.prototype.constructor(...any) JS.Array
 
 // browser: https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/Error
 // node: https://nodejs.org/api/errors.html#errors_class_error
@@ -110,18 +151,3 @@ fn JS.Math.tan(f64) f64
 // JSON
 fn JS.JSON.stringify(any) string
 fn JS.JSON.parse(string) any
-
-// String
-fn (v JS.String) slice(a int, b int) JS.String
-fn (v JS.String) split(dot JS.String) []JS.String
-fn (s JS.String) indexOf(needle JS.String) int
-fn (s JS.String) lastIndexOf(needle JS.String) int
-
-fn (s JS.String) charAt(i int) JS.String
-fn (s JS.String) charCodeAt(i int) byte
-fn (s JS.String) toUpperCase() JS.String
-fn (s JS.String) toLowerCase() JS.String
-fn (s JS.String) concat(a JS.String) JS.String
-fn (s JS.String) includes(substr JS.String) bool
-fn (s JS.String) endsWith(substr JS.String) bool
-fn (s JS.String) startsWith(substr JS.String) bool

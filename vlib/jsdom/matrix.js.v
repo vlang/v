@@ -1,37 +1,36 @@
 module jsdom
 
-pub struct JS.DOMMatrix {
-pub:
-	is_2d       JS.Boolean [noinit]
-	is_identity JS.Boolean [noinit]
-pub mut:
-	m11 JS.Number [noinit]
-	m12 JS.Number [noinit]
-	m13 JS.Number [noinit]
-	m14 JS.Number [noinit]
-	m21 JS.Number [noinit]
-	m22 JS.Number [noinit]
-	m23 JS.Number [noinit]
-	m24 JS.Number [noinit]
-	m31 JS.Number [noinit]
-	m32 JS.Number [noinit]
-	m33 JS.Number [noinit]
-	m34 JS.Number [noinit]
-	m41 JS.Number [noinit]
-	m42 JS.Number [noinit]
-	m43 JS.Number [noinit]
-	m44 JS.Number [noinit]
-	a   JS.Number [noinit]
-	b   JS.Number [noinit]
-	c   JS.Number [noinit]
-	d   JS.Number [noinit]
-	e   JS.Number [noinit]
-	f   JS.Number [noinit]
+pub interface JS.DOMMatrix {
+	is_2d JS.Boolean
+	is_identity JS.Boolean
+mut:
+	m11 JS.Number
+	m12 JS.Number
+	m13 JS.Number
+	m14 JS.Number
+	m21 JS.Number
+	m22 JS.Number
+	m23 JS.Number
+	m24 JS.Number
+	m31 JS.Number
+	m32 JS.Number
+	m33 JS.Number
+	m34 JS.Number
+	m41 JS.Number
+	m42 JS.Number
+	m43 JS.Number
+	m44 JS.Number
+	a JS.Number
+	b JS.Number
+	c JS.Number
+	d JS.Number
+	e JS.Number
+	f JS.Number
 }
 
 pub struct DOMMatrix {
 mut:
-	matrix JS.DOMMatrix [noinit]
+	matrix JS.DOMMatrix = JS.DOMMatrix(voidptr(0))
 }
 
 pub fn (matrix DOMMatrix) str() string {
@@ -48,7 +47,7 @@ pub fn new_matrix(init []f64) DOMMatrix {
 		_ := val
 		#tmp.push(val);
 	}
-	mut m := JS.DOMMatrix{}
+	mut m := JS.DOMMatrix(voidptr(0))
 	#m = new DOMMatrix(tmp);
 
 	return DOMMatrix{m}
@@ -190,177 +189,177 @@ pub fn (m DOMMatrix) is_2d() bool {
 }
 
 pub fn (m DOMMatrix) a() f64 {
-	return tof64(m.matrix.a)
+	return f64(m.matrix.a)
 }
 
 pub fn (m DOMMatrix) b() f64 {
-	return tof64(m.matrix.b)
+	return f64(m.matrix.b)
 }
 
 pub fn (m DOMMatrix) c() f64 {
-	return tof64(m.matrix.c)
+	return f64(m.matrix.c)
 }
 
 pub fn (m DOMMatrix) d() f64 {
-	return tof64(m.matrix.d)
+	return f64(m.matrix.d)
 }
 
 pub fn (m DOMMatrix) e() f64 {
-	return tof64(m.matrix.e)
+	return f64(m.matrix.e)
 }
 
 pub fn (m DOMMatrix) f() f64 {
-	return tof64(m.matrix.f)
+	return f64(m.matrix.f)
 }
 
 pub fn (mut m DOMMatrix) set_a(a f64) {
-	m.matrix.a = f64tonum(a)
+	m.matrix.a = JS.Number(a)
 }
 
 pub fn (mut m DOMMatrix) set_b(b f64) {
-	m.matrix.b = f64tonum(b)
+	m.matrix.b = JS.Number(b)
 }
 
 pub fn (mut m DOMMatrix) set_c(c f64) {
-	m.matrix.c = f64tonum(c)
+	m.matrix.c = JS.Number(c)
 }
 
 pub fn (mut m DOMMatrix) set_d(d f64) {
-	m.matrix.d = f64tonum(d)
+	m.matrix.d = JS.Number(d)
 }
 
 pub fn (mut m DOMMatrix) set_e(e f64) {
-	m.matrix.e = f64tonum(e)
+	m.matrix.e = JS.Number(e)
 }
 
 pub fn (mut m DOMMatrix) set_f(f f64) {
-	m.matrix.f = f64tonum(f)
+	m.matrix.f = JS.Number(f)
 }
 
 pub fn (m DOMMatrix) m11() f64 {
-	return tof64(m.matrix.m11)
+	return f64(m.matrix.m11)
 }
 
 pub fn (m DOMMatrix) m12() f64 {
-	return tof64(m.matrix.m12)
+	return f64(m.matrix.m12)
 }
 
 pub fn (m DOMMatrix) m13() f64 {
-	return tof64(m.matrix.m13)
+	return f64(m.matrix.m13)
 }
 
 pub fn (m DOMMatrix) m14() f64 {
-	return tof64(m.matrix.m14)
+	return f64(m.matrix.m14)
 }
 
 pub fn (m DOMMatrix) m21() f64 {
-	return tof64(m.matrix.m21)
+	return f64(m.matrix.m21)
 }
 
 pub fn (m DOMMatrix) m22() f64 {
-	return tof64(m.matrix.m22)
+	return f64(m.matrix.m22)
 }
 
 pub fn (m DOMMatrix) m23() f64 {
-	return tof64(m.matrix.m23)
+	return f64(m.matrix.m23)
 }
 
 pub fn (m DOMMatrix) m24() f64 {
-	return tof64(m.matrix.m24)
+	return f64(m.matrix.m24)
 }
 
 pub fn (m DOMMatrix) m31() f64 {
-	return tof64(m.matrix.m31)
+	return f64(m.matrix.m31)
 }
 
 pub fn (m DOMMatrix) m32() f64 {
-	return tof64(m.matrix.m32)
+	return f64(m.matrix.m32)
 }
 
 pub fn (m DOMMatrix) m33() f64 {
-	return tof64(m.matrix.m33)
+	return f64(m.matrix.m33)
 }
 
 pub fn (m DOMMatrix) m34() f64 {
-	return tof64(m.matrix.m34)
+	return f64(m.matrix.m34)
 }
 
 pub fn (m DOMMatrix) m41() f64 {
-	return tof64(m.matrix.m41)
+	return f64(m.matrix.m41)
 }
 
 pub fn (m DOMMatrix) m42() f64 {
-	return tof64(m.matrix.m42)
+	return f64(m.matrix.m42)
 }
 
 pub fn (m DOMMatrix) m43() f64 {
-	return tof64(m.matrix.m43)
+	return f64(m.matrix.m43)
 }
 
 pub fn (m DOMMatrix) m44() f64 {
-	return tof64(m.matrix.m44)
+	return f64(m.matrix.m44)
 }
 
 pub fn (mut m DOMMatrix) set_m11(x f64) {
-	m.matrix.m11 = f64tonum(x)
+	m.matrix.m11 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m12(x f64) {
-	m.matrix.m12 = f64tonum(x)
+	m.matrix.m12 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m13(x f64) {
-	m.matrix.m13 = f64tonum(x)
+	m.matrix.m13 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m14(x f64) {
-	m.matrix.m14 = f64tonum(x)
+	m.matrix.m14 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m21(x f64) {
-	m.matrix.m21 = f64tonum(x)
+	m.matrix.m21 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m22(x f64) {
-	m.matrix.m22 = f64tonum(x)
+	m.matrix.m22 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m23(x f64) {
-	m.matrix.m23 = f64tonum(x)
+	m.matrix.m23 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m24(x f64) {
-	m.matrix.m24 = f64tonum(x)
+	m.matrix.m24 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m31(x f64) {
-	m.matrix.m31 = f64tonum(x)
+	m.matrix.m31 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m32(x f64) {
-	m.matrix.m32 = f64tonum(x)
+	m.matrix.m32 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m33(x f64) {
-	m.matrix.m33 = f64tonum(x)
+	m.matrix.m33 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m34(x f64) {
-	m.matrix.m34 = f64tonum(x)
+	m.matrix.m34 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m41(x f64) {
-	m.matrix.m41 = f64tonum(x)
+	m.matrix.m41 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m42(x f64) {
-	m.matrix.m42 = f64tonum(x)
+	m.matrix.m42 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m43(x f64) {
-	m.matrix.m43 = f64tonum(x)
+	m.matrix.m43 = JS.Number(x)
 }
 
 pub fn (mut m DOMMatrix) set_m44(x f64) {
-	m.matrix.m44 = f64tonum(x)
+	m.matrix.m44 = JS.Number(x)
 }

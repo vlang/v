@@ -147,7 +147,7 @@ pub fn (a array) repeat(count int) array {
 	}
 }
 
-#function makeEmptyArray() { return new array(new array_buffer({})); }
+#function makeEmptyArray() { return new array(new array_buffer({ arr: [], len: new int(0), index_start: new int(0), cap: new int(0) })); }
 #function makeEmtpyJSArray() { return new Array(); }
 
 fn JS.makeEmptyArray() array

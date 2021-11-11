@@ -173,11 +173,13 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	g.enter_namespace('main')
 	// generate JS methods for interface methods
-	for _, iface_types in g.table.iface_types {
+	for iface_name, iface_types in g.table.iface_types {
+		iface := g.table.find_type(iface_name) or { panic('unreachable: interface must exist') }
 		for ty in iface_types {
 			sym := g.table.get_type_symbol(ty)
-			for method in sym.methods {
-				p_sym := g.table.get_type_symbol(method.params[0].typ)
+
+			for method in iface.methods {
+				p_sym := g.table.get_type_symbol(ty)
 				mname := g.js_name(p_sym.name) + '_' + method.name
 				g.write('${g.js_name(sym.name)}.prototype.$method.name = function(')
 				for i, param in method.params {
@@ -1702,6 +1704,10 @@ fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 }
 
 fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
+	if it.language != .v {
+		// JS interfaces do not need codegen
+		return
+	}
 	// JS is dynamically typed, so we don't need any codegen at all
 	// We just need the JSDoc so TypeScript type checking works
 	g.doc.gen_interface(it)
@@ -1828,6 +1834,17 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	for embed in node.embeds {
 		etyp := g.typ(embed.typ)
 		g.writeln('...${g.js_name(etyp)}.prototype,')
+	}
+	for iface, iface_types in g.table.iface_types {
+		if iface.starts_with('JS.') {
+			for ty in iface_types {
+				sym := g.table.get_type_symbol(ty)
+
+				if sym.name == node.name {
+					g.writeln('...${g.js_name(iface)}.prototype,')
+				}
+			}
+		}
 	}
 	fns := g.method_fn_decls[name]
 	// gen toString method
@@ -2335,7 +2352,9 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 					g.write(' instanceof ')
 					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
-					g.write('.val')
+					if !sym.name.starts_with('JS.') {
+						g.write('.val')
+					}
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						g.write(' instanceof ')
 						g.expr(branch.exprs[sumtype_index])

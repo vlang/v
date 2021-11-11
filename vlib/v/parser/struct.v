@@ -450,7 +450,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	name_pos := p.tok.position()
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
-	interface_name := p.prepend_mod(modless_name).clone()
+	mut interface_name := ''
+	if language == .js {
+		interface_name = 'JS.' + modless_name
+	} else {
+		interface_name = p.prepend_mod(modless_name)
+	}
 	generic_types, _ := p.parse_generic_types()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
@@ -472,6 +477,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 		}
+		language: language
 	)
 	if reg_idx == -1 {
 		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
@@ -492,8 +498,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
 			iface_pos := p.tok.position()
-			iface_name := p.tok.lit
+			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
+			if iface_name == 'JS' {
+				iface_name = p.table.get_type_symbol(iface_type).name
+			}
 			comments := p.eat_comments()
 			ifaces << ast.InterfaceEmbedding{
 				name: iface_name
