@@ -6,4 +6,6 @@ fn g<T>(arr []T) {
 
 fn test_generic_array_append() {
 	g([1, 2, 3])
+	g([1.1, 2.2, 3.3])
+	g(['aa', 'bb', 'cc'])
 }
