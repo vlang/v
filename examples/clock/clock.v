@@ -144,6 +144,10 @@ fn on_event(e &gg.Event, mut app App) {
 	}
 }
 
+fn on_init(mut app App) {
+	app.resize()
+}
+
 // is needed for easier diagnostics on windows
 [console]
 fn main() {
@@ -163,6 +167,7 @@ fn main() {
 		user_data: app
 		frame_fn: on_frame
 		event_fn: on_event
+		init_fn: on_init
 		font_path: font_path
 	)
 
