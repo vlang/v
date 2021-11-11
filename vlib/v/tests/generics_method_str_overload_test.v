@@ -9,7 +9,19 @@ fn (g Gen<G>) str() string {
 }
 
 fn test_generics_method_str_overload() {
-	mut g := Gen<string>{'Gen', 0, 10}
-	println(g)
-	assert '$g' == 'Gen<G> 0, Gen, 10.'
+	mut g1 := Gen<string>{'aaa', 0, 10}
+	println(g1)
+	assert '$g1' == 'Gen<G> 0, aaa, 10.'
+
+	mut g2 := Gen<int>{22, 0, 10}
+	println(g2)
+	assert '$g2' == 'Gen<G> 0, 22, 10.'
+
+	mut g3 := Gen<f64>{2.22, 0, 10}
+	println(g3)
+	assert '$g3' == 'Gen<G> 0, 2.22, 10.'
+
+	mut g4 := Gen<bool>{true, 0, 10}
+	println(g4)
+	assert '$g4' == 'Gen<G> 0, true, 10.'
 }
