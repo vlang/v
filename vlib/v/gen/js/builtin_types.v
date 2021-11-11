@@ -40,7 +40,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = 'new map(new Map())'
 		}
 		.array {
-			styp = '$prefix${g.sym_to_js_typ(sym)}()'
+			styp = 'empty_array()'
 		}
 		.struct_ {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
