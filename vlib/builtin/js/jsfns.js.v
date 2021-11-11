@@ -10,15 +10,15 @@ module builtin
 pub interface JS.Object {}
 
 pub interface JS.BigInt {
-	JS
+	JS.Any
 }
 
 pub interface JS.Number {
-	JS
+	JS.Any
 }
 
 pub interface JS.String {
-	JS
+	JS.Any
 	length JS.Number
 	charAt(index JS.Number) JS.String
 	charCodeAt(index JS.Number) JS.Number
@@ -35,11 +35,11 @@ pub interface JS.String {
 }
 
 pub interface JS.Boolean {
-	JS
+	JS.Any
 }
 
 pub interface JS.Map {
-	JS
+	JS.Any
 	size JS.Number
 	clear()
 	delete(key JS.Any) JS.Boolean
@@ -53,8 +53,8 @@ pub interface JS.Map {
 pub interface JS.Any {}
 
 pub interface JS.Array {
-	JS
-	(JS.Any) JS.Any) JS.Array
+	JS.Any // map(fn (JS.Any) JS.Any) JS.Array
+	map(JS.Any) JS.Array
 	push(JS.Any) JS.Any
 	pop() JS.Any
 	at(JS.Number) JS.Any
