@@ -14,6 +14,21 @@ pub const (
 	space_formatting = [token.Kind.whitespace, .tab]
 )
 
+type DottedKey = []string
+
+pub fn (dk DottedKey) str() string {
+	return dk.join('.')
+}
+
+pub fn (a []DottedKey) has(target DottedKey) bool {
+	for dk in a {
+		if dk == target {
+			return true
+		}
+	}
+	return false
+}
+
 // Parser contains the necessary fields for keeping the state of the parsing process.
 pub struct Parser {
 pub:
@@ -26,10 +41,11 @@ mut:
 	tokens    []token.Token // To be able to peek more than one token ahead.
 	skip_next bool
 	// The root map (map is called table in TOML world)
-	root_map     map[string]ast.Value
-	root_map_key string
+	root_map          map[string]ast.Value
+	root_map_key      DottedKey
+	explicit_declared []DottedKey
 	// Array of Tables state
-	last_aot       string
+	last_aot       DottedKey
 	last_aot_index int
 	// Root of the tree
 	ast_root &ast.Root = &ast.Root{}
@@ -220,7 +236,7 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 	unsafe {
 		t = &p.root_map
 	}
-	if p.root_map_key == '' {
+	if p.root_map_key.len == 0 {
 		return t
 	}
 
@@ -229,11 +245,10 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 
 // sub_table_key returns the logic parts of a dotted key (`a.b.c`) for
 // use with the `find_sub_table` method.
-pub fn (mut p Parser) sub_table_key(key string) (string, string) {
-	mut ks := key.split('.')
-	last := ks.last()
-	ks.delete_last()
-	return ks.join('.'), last
+pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
+	last := DottedKey([key.last()])
+	first := DottedKey(key[..key.len - 1])
+	return first, last
 }
 
 // find_sub_table returns a reference to a map if found in the *root* table given a "dotted" key (`a.b.c`).
@@ -241,9 +256,11 @@ pub fn (mut p Parser) sub_table_key(key string) (string, string) {
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
-pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
-	mut ky := p.root_map_key + '.' + key
-	if p.root_map_key == '' {
+pub fn (mut p Parser) find_sub_table(key DottedKey) ?&map[string]ast.Value {
+	mut ky := DottedKey([]string{})
+	ky << p.root_map_key
+	ky << key
+	if p.root_map_key.len == 0 {
 		ky = key
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$ky" in map ${ptr_str(p.root_map)}')
@@ -251,7 +268,7 @@ pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
 	unsafe {
 		t = &p.root_map
 	}
-	if ky == '' {
+	if ky.len == 0 {
 		return t
 	}
 
@@ -262,7 +279,7 @@ pub fn (mut p Parser) find_sub_table(key string) ?&map[string]ast.Value {
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) ?&map[string]ast.Value {
+pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKey) ?&map[string]ast.Value {
 	// NOTE This code is the result of much trial and error.
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
@@ -271,9 +288,8 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 	unsafe {
 		t = &table
 	}
-	ks := key.split('.')
 	unsafe {
-		for k in ks {
+		for k in key {
 			if val := t[k] {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
 				if val is map[string]ast.Value {
@@ -296,22 +312,23 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key string) 
 
 // dotted_key returns a string of the next tokens parsed as
 // sub/nested/path keys (e.g. `a.b.c`). In TOML, this form of key is referred to as a "dotted" key.
-pub fn (mut p Parser) dotted_key() ?string {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested key...')
+pub fn (mut p Parser) dotted_key() ?DottedKey {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key...')
+	mut dotted_key := DottedKey([]string{})
 	key := p.key() ?
 	p.ignore_while_peek(parser.space_formatting)
-	mut text := key.str()
+	dotted_key << key.str()
 	for p.peek_tok.kind == .period {
 		p.next() ? // .
 		p.check(.period) ?
 		p.ignore_while(parser.space_formatting)
 		next_key := p.key() ?
-		text += '.' + next_key.text
+		dotted_key << next_key.text
 		p.ignore_while_peek(parser.space_formatting)
 	}
 	p.next() ?
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed nested key `$text` now at "$p.tok.kind" "$p.tok.lit"')
-	return text
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `$dotted_key` now at "$p.tok.kind" "$p.tok.lit"')
+	return dotted_key
 }
 
 // root_table parses next tokens into the root map of `ast.Value`s.
@@ -356,7 +373,7 @@ pub fn (mut p Parser) root_table() ? {
 					t := p.find_sub_table(sub_table) ?
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val.to_json() in table ${ptr_str(t)}')
-						t[key] = val
+						t[key.str()] = val
 					}
 				} else {
 					p.ignore_while(parser.space_formatting)
@@ -403,6 +420,14 @@ pub fn (mut p Parser) root_table() ? {
 					// Parse `[d.e.f]`
 					p.ignore_while(parser.space_formatting)
 					p.root_map_key = p.dotted_key() ?
+
+					// Disallow redeclaring the key
+					if p.explicit_declared.has(p.root_map_key) {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' key `$p.root_map_key` is already explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+					}
+					p.explicit_declared << p.root_map_key
+
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
@@ -410,7 +435,15 @@ pub fn (mut p Parser) root_table() ? {
 				} else {
 					// Parse `[key]`
 					key := p.key() ?
-					p.root_map_key = key.str()
+					p.root_map_key = DottedKey([key.str()])
+
+					// Disallow redeclaring the key
+					if p.explicit_declared.has(p.root_map_key) {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' key `$p.root_map_key` is already explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+					}
+					p.explicit_declared << p.root_map_key
+
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$p.root_map_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.next() ?
 					p.expect(.rsbr) ?
@@ -493,7 +526,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
-						t[key] = val
+						t[key.str()] = val
 					}
 				} else {
 					p.ignore_while(parser.space_formatting)
@@ -539,25 +572,26 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 
 	p.ignore_while(parser.all_formatting)
 
-	key_str := key.str()
+	dotted_key := DottedKey([key.str()])
+	dotted_key_str := dotted_key.str()
 	unsafe {
-		if val := table[key_str] {
+		if val := table[dotted_key_str] {
 			if val is []ast.Value {
-				arr := &(table[key_str] as []ast.Value)
+				arr := &(table[dotted_key_str] as []ast.Value)
 				arr << p.array_of_tables_contents() ?
-				table[key_str] = arr
+				table[dotted_key_str] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' table[$key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
+					' table[$dotted_key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			table[key_str] = p.array_of_tables_contents() ?
+			table[dotted_key_str] = p.array_of_tables_contents() ?
 		}
 	}
-	p.last_aot = key_str
+	p.last_aot = dotted_key
 
 	unsafe {
-		arr := &(table[p.last_aot] as []ast.Value)
+		arr := &(table[p.last_aot.str()] as []ast.Value)
 		p.last_aot_index = arr.len - 1
 	}
 }
@@ -585,7 +619,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
-						t[key] = val
+						t[key.str()] = val
 					}
 				} else {
 					key, val := p.key_value() ?
@@ -607,15 +641,17 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables of arrays "$p.tok.kind" "$p.tok.lit"')
 
+	mut dotted_key := DottedKey([]string{})
+
 	key := p.key() ?
-	mut key_str := key.str()
+	dotted_key << key.str()
 	for p.peek_tok.kind == .period {
 		p.next() ? // .
 		p.check(.period) ?
 		next_key := p.key() ?
-		key_str += '.' + next_key.text
+		dotted_key << next_key.text
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed nested key `$key_str` now at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `$dotted_key` now at "$p.tok.kind" "$p.tok.lit"')
 
 	p.next() ?
 	p.check(.rsbr) ?
@@ -623,15 +659,13 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 
 	p.ignore_while(parser.all_formatting)
 
-	ks := key_str.split('.')
-
-	if ks.len != 2 {
+	if dotted_key.len != 2 {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
 	}
 
-	first := ks[0] // The array that holds the entries
-	last := ks[1] // The key the parsed array data should be added to
+	first := DottedKey([dotted_key[0]]) // The array that holds the entries
+	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
 
 	mut t_arr := &[]ast.Value(0)
 	mut t_map := ast.Value(ast.Null{})
@@ -640,11 +674,11 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		// NOTE this is starting to get EVEN uglier. TOML is not at all simple at this point...
 		if first != p.last_aot {
 			// Implicit allocation
-			if p.last_aot == '' {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of array for nested key `$key_str`.')
-				table[first] = []ast.Value{}
+			if p.last_aot.len == 0 {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of array for dotted key `$dotted_key`.')
+				table[first.str()] = []ast.Value{}
 				p.last_aot = first
-				t_arr = &(table[p.last_aot] as []ast.Value)
+				t_arr = &(table[p.last_aot.str()] as []ast.Value)
 				t_arr << ast.Value(map[string]ast.Value{})
 				p.last_aot_index = t_arr.len - 1
 			} else {
@@ -653,7 +687,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			}
 		}
 
-		t_arr = &(table[p.last_aot] as []ast.Value)
+		t_arr = &(table[p.last_aot.str()] as []ast.Value)
 		t_map = ast.Value(map[string]ast.Value{})
 		if p.last_aot_index < t_arr.len {
 			t_map = t_arr[p.last_aot_index]
@@ -661,17 +695,17 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 
 		mut t := &(t_map as map[string]ast.Value)
 
-		if val := t[last] {
+		if val := t[last.str()] {
 			if val is []ast.Value {
 				arr := &(val as []ast.Value)
-				arr << p.double_array_of_tables_contents(key_str) ?
-				t[last] = arr
+				arr << p.double_array_of_tables_contents(dotted_key) ?
+				t[last.str()] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' t[$last] is not an array. (excerpt): "...${p.excerpt()}..."')
+					' t[$last.str()] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			t[last] = p.double_array_of_tables_contents(key_str) ?
+			t[last.str()] = p.double_array_of_tables_contents(dotted_key) ?
 		}
 		if t_arr.len == 0 {
 			t_arr << t
@@ -681,11 +715,11 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 }
 
 // double_array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) double_array_of_tables_contents(target_key string) ?[]ast.Value {
+pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
 
-	mut implicit_allocation_key := ''
+	mut implicit_allocation_key := DottedKey([]string{})
 	mut peeked_over := 0
 	mut peek_tok := p.peek_tok
 
@@ -709,21 +743,20 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key string) ?[]ast.
 		match p.tok.kind {
 			.bare, .quoted, .boolean, .number {
 				if p.peek_tok.kind == .period {
-					dotkey := p.dotted_key() ?
+					mut dotkey := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
 					p.check(.assign) ?
 					val := p.value() ?
 
-					mut implicit := ''
-					if implicit_allocation_key != '' {
-						implicit = implicit_allocation_key + '.'
+					if implicit_allocation_key.len > 0 {
+						dotkey.insert(0, implicit_allocation_key)
 					}
-					sub_table, key := p.sub_table_key(implicit + dotkey)
+					sub_table, key := p.sub_table_key(dotkey)
 
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
-						t[key] = val
+						t[key.str()] = val
 					}
 				} else {
 					key, val := p.key_value() ?
@@ -732,7 +765,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key string) ?[]ast.
 					unsafe {
 						t = &tbl
 					}
-					if implicit_allocation_key != '' {
+					if implicit_allocation_key.len > 0 {
 						t = p.find_in_table(mut tbl, implicit_allocation_key) ?
 					}
 					unsafe {
@@ -755,7 +788,10 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key string) ?[]ast.
 					// Parse `[d.e.f]`
 					p.ignore_while(parser.space_formatting)
 					dotkey := p.dotted_key() ?
-					implicit_allocation_key = dotkey.all_after(target_key + '.')
+					implicit_allocation_key = dotkey
+					if dotkey.len > 2 {
+						implicit_allocation_key = dotkey[2..]
+					}
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'keys are: dotted `$dotkey`, target `$target_key`, implicit `$implicit_allocation_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
