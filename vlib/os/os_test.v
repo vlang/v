@@ -842,21 +842,21 @@ fn test_expand_tilde_to_home() {
 	assert os.expand_tilde_to_home('~') == os.home_dir()
 }
 
-fn test_execute() {
-	$if !linux {
-		return
-	}
+fn test_execute() ? {
+	print0script := os.join_path(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
-	// contains it. NB: TERM, SHELL and HOME are used here, because they are
-	// very likely to be present, unlike LANGUAGE and LANG.
-	result := os.execute('printenv --null TERM SHELL HOME')
+	// contains it.
+	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n') ?
+	defer {
+		os.rm(print0script) or {}
+	}
+	result := os.execute('"' + @VEXE + '" run "$print0script"')
 	hexresult := result.output.bytes().hex()
-	println('exit_code: $result.exit_code')
-	println('output: |$result.output|')
-	println('output.len: $result.output.len')
-	println('output hexresult: $hexresult')
+	// println('exit_code: $result.exit_code')
+	// println('output: |$result.output|')
+	// println('output.len: $result.output.len')
+	// println('output hexresult: $hexresult')
 	assert result.exit_code == 0
-	assert result.output.len > 0
-	assert hexresult.contains('002f')
+	assert hexresult == '7374617274004d4944444c450066696e6973680a7878'
 }
