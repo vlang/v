@@ -25,3 +25,44 @@ pub fn is_illegal_ascii_control_character(byte_char byte) bool {
 pub fn printdbg(id string, message string) {
 	eprintln(id + ' ' + message)
 }
+
+// parse_dotted_key converts `key` string to an array of strings.
+// parse_dotted_key preserves strings delimited by both `"` and `'`.
+pub fn parse_dotted_key(key string) ?[]string {
+	mut out := []string{}
+	mut buf := ''
+	mut in_string := false
+	mut delim := byte(` `)
+	for ch in key {
+		if ch in [`"`, `'`] {
+			if !in_string {
+				delim = ch
+			}
+			in_string = !in_string && ch == delim
+			if !in_string {
+				if buf != '' && buf != ' ' {
+					out << buf
+				}
+				buf = ''
+				delim = ` `
+			}
+			continue
+		}
+		buf += ch.ascii_str()
+		if !in_string && ch == `.` {
+			if buf != '' && buf != ' ' {
+				out << buf[..buf.len - 1]
+			}
+			buf = ''
+			continue
+		}
+	}
+	if buf != '' && buf != ' ' {
+		out << buf
+	}
+	if in_string {
+		return error(@FN +
+			': could not parse key, missing closing string delimiter `$delim.ascii_str()`')
+	}
+	return out
+}

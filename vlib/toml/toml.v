@@ -90,9 +90,36 @@ pub fn (d Doc) to_json() string {
 }
 
 // value queries a value from the TOML document.
+// `key` should be in "dotted" form (`a.b.c`).
+// `key` supports quoted keys like `a."b.c"`.
 pub fn (d Doc) value(key string) Any {
 	values := d.ast.table as map[string]ast.Value
-	return d.get_map_value_as_any(values, key)
+	key_split := util.parse_dotted_key(key) or { return Any(Null{}) }
+	return d.value_(values, key_split)
+}
+
+// value_ returns the value found at `key` in the map `values` as `Any` type.
+fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key[0]}"')
+	if key[0] in values.keys() {
+		value := values[key[0]] or {
+			return Any(Null{})
+			// TODO decide this
+			// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key[0]" does not exist')
+		}
+		// `match` isn't currently very suitable for these types of sum type constructs...
+		if value is map[string]ast.Value {
+			if key.len <= 1 {
+				return d.ast_to_any(value)
+			}
+			m := (value as map[string]ast.Value)
+			return d.value_(m, key[1..])
+		}
+		return d.ast_to_any(value)
+	}
+	return Any(Null{})
+	// TODO decide this
+	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
 
 // ast_to_any_value converts `from` ast.Value to toml.Any value.
@@ -176,30 +203,4 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 	// TODO decide this
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
 	// return Any('')
-}
-
-// get_map_value_as_any returns the value found at `key` in the map `values` as `Any` type.
-fn (d Doc) get_map_value_as_any(values map[string]ast.Value, key string) Any {
-	key_split := key.split('.')
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
-	if key_split[0] in values.keys() {
-		value := values[key_split[0]] or {
-			return Any(Null{})
-			// TODO decide this
-			// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
-		}
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]ast.Value {
-			m := (value as map[string]ast.Value)
-			next_key := key_split[1..].join('.')
-			if next_key == '' {
-				return d.ast_to_any(value)
-			}
-			return d.get_map_value_as_any(m, next_key)
-		}
-		return d.ast_to_any(value)
-	}
-	return Any(Null{})
-	// TODO decide this
-	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
 }
