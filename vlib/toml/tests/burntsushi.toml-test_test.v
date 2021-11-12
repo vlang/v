@@ -13,7 +13,6 @@ const (
 	invalid_exceptions = [
 		// Table
 		'table/duplicate-table-array2.toml',
-		'table/duplicate.toml', // TODO
 		'table/array-implicit.toml',
 		'table/injection-2.toml',
 		'table/injection-1.toml',
