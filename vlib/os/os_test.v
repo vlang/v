@@ -848,13 +848,15 @@ fn test_execute() {
 	}
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
-	// contains it:
-	result := os.execute('printenv --null LANGUAGE LANG')
+	// contains it. NB: TERM, SHELL and HOME are used here, because they are
+	// very likely to be present, unlike LANGUAGE and LANG.
+	result := os.execute('printenv --null TERM SHELL HOME')
 	hexresult := result.output.bytes().hex()
-	println(result.exit_code)
-	println(result.output.len)
-	println(hexresult)
+	println('exit_code: $result.exit_code')
+	println('output: |$result.output|')
+	println('output.len: $result.output.len')
+	println('output hexresult: $hexresult')
 	assert result.exit_code == 0
 	assert result.output.len > 0
-	assert hexresult.contains('00')
+	assert hexresult.contains('002f')
 }
