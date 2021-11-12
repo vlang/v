@@ -841,3 +841,20 @@ fn test_expand_tilde_to_home() {
 	assert home_test == home_expansion_test
 	assert os.expand_tilde_to_home('~') == os.home_dir()
 }
+
+fn test_execute() {
+	$if !linux {
+		return
+	}
+	// The output of the next command contains a 0 byte in the middle.
+	// Nevertheless, the execute function *should* return a string that
+	// contains it:
+	result := os.execute('printenv --null LANGUAGE LANG')
+	hexresult := result.output.bytes().hex()
+	println(result.exit_code)
+	println(result.output.len)
+	println(hexresult)
+	assert result.exit_code == 0
+	assert result.output.len > 0
+	assert hexresult.contains('00')
+}

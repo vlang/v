@@ -343,16 +343,19 @@ pub fn execute(cmd string) Result {
 			output: 'exec("$cmd") failed'
 		}
 	}
+	fd := fileno(f)
 	buf := unsafe { malloc_noscan(4096) }
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
 	}
 	unsafe {
-		bufbp := buf
-		for C.fgets(&char(bufbp), 4096, f) != 0 {
-			buflen := vstrlen(bufbp)
-			res.write_ptr(bufbp, buflen)
+		for {
+			len := C.read(fd, buf, 4096)
+			if len == 0 {
+				break
+			}
+			res.write_ptr(buf, len)
 		}
 	}
 	soutput := res.str()
