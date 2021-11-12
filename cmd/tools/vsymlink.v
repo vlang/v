@@ -70,7 +70,7 @@ fn setup_symlink_windows(vexe string) {
 			if os.exists(vsymlink) {
 				os.rm(vsymlink) or { panic(err) }
 			}
-			os.write_file(vsymlink, '@echo off\n$vexe %*') or { panic(err) }
+			os.write_file(vsymlink, '@echo off\n"$vexe" %*') or { panic(err) }
 			eprintln('$vsymlink file written.')
 		}
 		if !os.exists(vsymlink) {
