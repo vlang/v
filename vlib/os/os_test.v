@@ -858,5 +858,6 @@ fn test_execute() ? {
 	// println('output.len: $result.output.len')
 	// println('output hexresult: $hexresult')
 	assert result.exit_code == 0
-	assert hexresult == '7374617274004d4944444c450066696e6973680a7878'
+	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
+	assert hexresult.ends_with('0a7878')
 }

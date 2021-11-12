@@ -344,23 +344,23 @@ pub fn execute(cmd string) Result {
 		}
 	}
 	fd := fileno(f)
-	buf := unsafe { malloc_noscan(4096) }
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
 	}
+	buf := [4096]byte{}
 	unsafe {
+		pbuf := &buf[0]
 		for {
-			len := C.read(fd, buf, 4096)
+			len := C.read(fd, pbuf, 4096)
 			if len == 0 {
 				break
 			}
-			res.write_ptr(buf, len)
+			res.write_ptr(pbuf, len)
 		}
 	}
 	soutput := res.str()
 	exit_code := vpclose(f)
-	unsafe { free(buf) }
 	return Result{
 		exit_code: exit_code
 		output: soutput
