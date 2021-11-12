@@ -2145,7 +2145,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 	} else if node.kind == .struct_ {
 		cond_type_sym := g.table.get_type_symbol(node.cond_type)
-		next_fn := cond_type_sym.find_method('next') or {
+		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
 			verror('`next` method not found')
 			return
 		}
@@ -2162,7 +2162,14 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		t_var := g.new_tmp_var()
 		receiver_typ := next_fn.params[0].typ
 		receiver_styp := g.typ(receiver_typ)
-		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
+		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
+		receiver_sym := g.table.get_type_symbol(receiver_typ)
+		if receiver_sym.info is ast.Struct {
+			if receiver_sym.info.concrete_types.len > 0 {
+				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name,
+					false)
+			}
+		}
 		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')

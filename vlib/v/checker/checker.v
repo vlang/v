@@ -4816,7 +4816,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		sym := c.table.get_final_type_symbol(typ)
 		if sym.kind == .struct_ {
 			// iterators
-			next_fn := sym.find_method('next') or {
+			next_fn := sym.find_method_with_generic_parent('next') or {
 				c.error('a struct must have a `next()` method to be an iterator', node.cond.position())
 				return
 			}
