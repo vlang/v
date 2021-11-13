@@ -160,22 +160,18 @@ pub fn (m map[string]Any) value(key string) ?Any {
 }
 
 fn (m map[string]Any) value_(key []string) ?Any {
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key[0]}"')
-	if key[0] in m {
-		value := m[key[0]] or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "${key[0]}" does not exist')
-		}
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Any {
-			if key.len <= 1 {
-				return value
-			}
-			nm := (value as map[string]Any)
-			return nm.value_(key[1..])
-		}
-		return value
+	value := m[key[0]] or {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "${key[0]}" does not exist')
 	}
-	return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// `match` isn't currently very suitable for these types of sum type constructs...
+	if value is map[string]Any {
+		if key.len <= 1 {
+			return value
+		}
+		nm := (value as map[string]Any)
+		return nm.value_(key[1..])
+	}
+	return value
 }
 
 pub fn (a []Any) as_strings() []string {
