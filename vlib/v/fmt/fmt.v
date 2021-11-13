@@ -1096,41 +1096,48 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
-		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		f.writeln('\t$field.name $ft')
-		f.mark_types_import_as_used(field.typ)
+		f.interface_field(field)
 	}
 	for method in immut_methods {
-		f.write('\t')
-		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
-		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
-		f.writeln('')
-		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
-		for param in method.params {
-			f.mark_types_import_as_used(param.typ)
-		}
-		f.mark_types_import_as_used(method.return_type)
+		f.interface_method(method)
 	}
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
-			mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-			f.writeln('\t$field.name $ft')
-			f.mark_types_import_as_used(field.typ)
+			f.interface_field(field)
 		}
 		for method in mut_methods {
-			f.write('\t')
-			f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
-			f.comments(method.comments, inline: true, has_nl: false, level: .indent)
-			f.writeln('')
-			f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
-			for param in method.params {
-				f.mark_types_import_as_used(param.typ)
-			}
-			f.mark_types_import_as_used(method.return_type)
+			f.interface_method(method)
 		}
 	}
 	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) interface_field(field ast.StructField) {
+	mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+	end_pos := field.pos.pos + field.pos.len
+	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
+	between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
+	after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
+	f.write('\t$field.name $ft')
+	if after_type_comments.len > 0 {
+		f.comments(after_type_comments, level: .indent)
+	} else {
+		f.writeln('')
+	}
+	f.mark_types_import_as_used(field.typ)
+}
+
+pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
+	f.write('\t')
+	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+	f.writeln('')
+	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+	for param in method.params {
+		f.mark_types_import_as_used(param.typ)
+	}
+	f.mark_types_import_as_used(method.return_type)
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
