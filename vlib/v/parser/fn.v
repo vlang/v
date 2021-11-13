@@ -465,7 +465,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
-		if language != .v {
+		if language != .v && language != .js {
 			p.error_with_pos('interop functions cannot have a body', p.tok.position())
 		}
 		p.inside_fn = true
