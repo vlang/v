@@ -161,7 +161,7 @@ pub fn (m map[string]Any) value(key string) ?Any {
 
 fn (m map[string]Any) value_(key []string) ?Any {
 	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key[0]}"')
-	if key[0] in m.keys() {
+	if key[0] in m {
 		value := m[key[0]] or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "${key[0]}" does not exist')
 		}

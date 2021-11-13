@@ -101,25 +101,20 @@ pub fn (d Doc) value(key string) Any {
 // value_ returns the value found at `key` in the map `values` as `Any` type.
 fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key[0]}"')
-	if key[0] in values.keys() {
-		value := values[key[0]] or {
-			return Any(Null{})
-			// TODO decide this
-			// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key[0]" does not exist')
-		}
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]ast.Value {
-			if key.len <= 1 {
-				return d.ast_to_any(value)
-			}
-			m := (value as map[string]ast.Value)
-			return d.value_(m, key[1..])
-		}
-		return d.ast_to_any(value)
+	value := values[key[0]] or {
+		return Any(Null{})
+		// TODO decide this
+		// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key[0]" does not exist')
 	}
-	return Any(Null{})
-	// TODO decide this
-	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// `match` isn't currently very suitable for these types of sum type constructs...
+	if value is map[string]ast.Value {
+		if key.len <= 1 {
+			return d.ast_to_any(value)
+		}
+		m := (value as map[string]ast.Value)
+		return d.value_(m, key[1..])
+	}
+	return d.ast_to_any(value)
 }
 
 // ast_to_any_value converts `from` ast.Value to toml.Any value.
