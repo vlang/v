@@ -4,6 +4,7 @@
 module toml
 
 import time
+import toml.util
 
 // Pretty much all the same builtin types as the `json2.Any` type plus `time.Time`
 pub type Any = Null
@@ -150,26 +151,27 @@ pub fn (a Any) datetime() time.Time {
 	}
 }
 
+// value queries a value from the map.
+// `key` should be in "dotted" form (`a.b.c`).
+// `key` supports quoted keys like `a."b.c"`.
 pub fn (m map[string]Any) value(key string) ?Any {
-	// return m[key] ?
-	key_split := key.split('.')
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key_split[0]}"')
-	if key_split[0] in m.keys() {
-		value := m[key_split[0]] or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
-		}
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Any {
-			nm := (value as map[string]Any)
-			next_key := key_split[1..].join('.')
-			if next_key == '' {
-				return value
-			}
-			return nm.value(next_key)
-		}
-		return value
+	key_split := util.parse_dotted_key(key) ?
+	return m.value_(key_split)
+}
+
+fn (m map[string]Any) value_(key []string) ?Any {
+	value := m[key[0]] or {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "${key[0]}" does not exist')
 	}
-	return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
+	// `match` isn't currently very suitable for these types of sum type constructs...
+	if value is map[string]Any {
+		if key.len <= 1 {
+			return value
+		}
+		nm := (value as map[string]Any)
+		return nm.value_(key[1..])
+	}
+	return value
 }
 
 pub fn (a []Any) as_strings() []string {

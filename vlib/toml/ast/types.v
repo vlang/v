@@ -63,51 +63,6 @@ pub fn (dtt DateTimeType) str() string {
 	return dtt.text
 }
 
-// value queries a value from the map.
-// `key` should be in "dotted" form (`a.b.c`).
-pub fn (v map[string]Value) value(key string) &Value {
-	null := &Value(Null{})
-	key_split := key.split('.')
-	// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' retreiving value at "$key"')
-	if key_split[0] in v.keys() {
-		value := v[key_split[0]] or {
-			return null
-			// TODO return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
-		}
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Value {
-			m := (value as map[string]Value)
-			next_key := key_split[1..].join('.')
-			if next_key == '' {
-				return &value
-			}
-			return m.value(next_key)
-		}
-		return &value
-	}
-	return null
-	// TODO return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key" does not exist')
-}
-
-// exists returns true if the "dotted" `key` path exists in the map.
-pub fn (v map[string]Value) exists(key string) bool {
-	key_split := key.split('.')
-	if key_split[0] in v.keys() {
-		value := v[key_split[0]] or { return false }
-		// `match` isn't currently very suitable for these types of sum type constructs...
-		if value is map[string]Value {
-			m := (value as map[string]Value)
-			next_key := key_split[1..].join('.')
-			if next_key == '' {
-				return true
-			}
-			return m.exists(next_key)
-		}
-		return true
-	}
-	return false
-}
-
 // Comment is the data representation of a TOML comment (`# This is a comment`).
 pub struct Comment {
 pub:
