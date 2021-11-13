@@ -247,7 +247,8 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 // use with the `find_sub_table` method.
 pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
 	last := DottedKey([key.last()])
-	first := DottedKey(key[..key.len - 1])
+	all_before_last := key[..key.len - 1]
+	first := DottedKey(all_before_last)
 	return first, last
 }
 
