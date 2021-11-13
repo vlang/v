@@ -404,7 +404,7 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 
 fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 	res := g.fn_gen_type(it)
-	if it.language == .js {
+	if it.language == .js && it.no_body {
 		for attr in it.attrs {
 			match attr.name {
 				'wasm_import' {
@@ -415,7 +415,6 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 				else {}
 			}
 		}
-
 		return
 	}
 	if g.inside_builtin {
@@ -483,17 +482,21 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 	}
-
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
 	if name in parser.builtin_functions {
 		name = 'builtin__$name'
 	}
-	has_go := fn_has_go(it)
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
 	}
+	if it.language == .js && it.is_method {
+		g.writeln('${g.typ(it.receiver.typ)}.prototype.$it.name = ')
+	}
+
+	has_go := fn_has_go(it)
+
 	is_main := it.name == 'main.main'
 	g.gen_attrs(it.attrs)
 	if is_main {
