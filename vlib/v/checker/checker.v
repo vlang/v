@@ -6870,6 +6870,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						&& c.table.get_type_symbol(former_expected_type).kind == .sum_type {
 						continue
 					}
+					if is_noreturn_callexpr(last_expr.expr) {
+						continue
+					}
+
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)
 				}

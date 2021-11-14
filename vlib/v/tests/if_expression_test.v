@@ -234,3 +234,32 @@ fn test_if_expr_with_or_block() {
 	a := if arr.len == 0 || arr[0] == '-' { 123 } else { return_optional() or { -1 } }
 	assert a == 1
 }
+
+type Num = f32 | f64 | i64 | int
+
+[noreturn]
+fn assert_false_noreturn() {
+	assert false
+	exit(1)
+}
+
+fn test_noreturn() {
+	n := Num(int(0))
+	_ := if n is int {
+		n
+	} else if n is f32 {
+		int(n)
+	} else {
+		exit(1)
+	}
+
+	_ := if 1 == 0 {
+		0
+	} else if 1 == 1 {
+		1
+	} else if 1 == 2 {
+		panic('err')
+	} else {
+		assert_false_noreturn()
+	}
+}
