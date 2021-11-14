@@ -366,7 +366,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
-					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(val) }'
+					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
 					value_of: 'this.val | 0'
 					to_string: 'new string(this.val + "")'
 					eq: 'new bool(self.valueOf() === other.valueOf())'
