@@ -174,3 +174,82 @@ fn multiple_of_power_of_five_64(v u64, p u32) bool {
 fn multiple_of_power_of_two_64(v u64, p u32) bool {
 	return u32(bits.trailing_zeros_64(v)) >= p
 }
+
+// dec_digits return the number of decimal digit of an u64
+pub fn dec_digits(n u64) int {
+	if n <= 9_999_999_999 { // 1-10
+		if n <= 99_999 { // 5
+			if n <= 99 { // 2
+				if n <= 9 { // 1
+					return 1
+				} else {
+					return 2
+				}
+			} else {
+				if n <= 999 { // 3
+					return 3
+				} else {
+					if n <= 9999 { // 4
+						return 4
+					} else {
+						return 5
+					}
+				}
+			}
+		} else {
+			if n <= 9_999_999 { // 7
+				if n <= 999_999 { // 6
+					return 6
+				} else {
+					return 7
+				}
+			} else {
+				if n <= 99_999_999 { // 8
+					return 8
+				} else {
+					if n <= 999_999_999 { // 9
+						return 9
+					}
+					return 10
+				}
+			}
+		}
+	} else {
+		if n <= 999_999_999_999_999 { // 5
+			if n <= 999_999_999_999 { // 2
+				if n <= 99_999_999_999 { // 1
+					return 11
+				} else {
+					return 12
+				}
+			} else {
+				if n <= 9_999_999_999_999 { // 3
+					return 13
+				} else {
+					if n <= 99_999_999_999_999 { // 4
+						return 14
+					} else {
+						return 15
+					}
+				}
+			}
+		} else {
+			if n <= 99_999_999_999_999_999 { // 7
+				if n <= 9_999_999_999_999_999 { // 6
+					return 16
+				} else {
+					return 17
+				}
+			} else {
+				if n <= 999_999_999_999_999_999 { // 8
+					return 18
+				} else {
+					if n <= 9_999_999_999_999_999_999 { // 9
+						return 19
+					}
+					return 20
+				}
+			}
+		}
+	}
+}
