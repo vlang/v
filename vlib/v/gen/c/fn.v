@@ -810,6 +810,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if rec_type.has_flag(.shared_f) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
+		if node.left is ast.ComptimeSelector {
+			if node.left.field_expr is ast.SelectorExpr {
+				if node.left.field_expr.expr is ast.Ident {
+					key_str := '${node.left.field_expr.expr.name}.typ'
+					rec_type = g.comptime_var_type_map[key_str] or { rec_type }
+					g.gen_expr_to_string(node.left, rec_type)
+					return
+				}
+			}
+		}
 		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
 		mut rec_type := node.receiver_type
@@ -1113,6 +1123,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('; ${c_name(print_method)}($tmp); string_free(&$tmp);')
 			} else {
 				g.write('${c_name(print_method)}(')
+				if expr is ast.ComptimeSelector {
+					if expr.field_expr is ast.SelectorExpr {
+						if expr.field_expr.expr is ast.Ident {
+							key_str := '${expr.field_expr.expr.name}.typ'
+							typ = g.comptime_var_type_map[key_str] or { typ }
+						}
+					}
+				}
 				g.gen_expr_to_string(expr, typ)
 				g.write(')')
 			}
