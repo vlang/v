@@ -2493,6 +2493,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if method_name in ['first', 'last', 'pop'] {
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
+			c.fail_if_immutable(node.left)
 			node.receiver_type = left_type.ref()
 		} else {
 			node.receiver_type = left_type
