@@ -18,14 +18,14 @@ pub fn (c rune) repeat(count int) string {
 		return c.str()
 	}
 	res := ''
-	#res.str = String.fromCharCode(c.val)
+	#res.str = String.fromCharCode(Number(c.val))
 
 	return res.repeat(count)
 }
 
 pub fn (c rune) str() string {
 	res := ''
-	#res.str = String.fromCharCode(c.val)
+	#res.str = String.fromCharCode(Number(c.val))
 
 	return res
 }
