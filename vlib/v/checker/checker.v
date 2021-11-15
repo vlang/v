@@ -20,29 +20,29 @@ const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
 
 const (
-	valid_comp_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+	valid_comptime_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'serenity', 'vinix']
-	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comp_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
-	valid_comp_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
-	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
+	valid_comptime_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comptime_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
+	valid_comptime_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
+	valid_comptime_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
-	valid_comp_not_user_defined = all_valid_comptime_idents()
-	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	reserved_type_names         = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64',
-		'f32', 'f64', 'string', 'rune']
-	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+	valid_comptime_not_user_defined = all_valid_comptime_idents()
+	array_builtin_methods           = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
+		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	reserved_type_names             = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32',
+		'u64', 'f32', 'f64', 'string', 'rune']
+	vroot_is_deprecated_message     = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
 fn all_valid_comptime_idents() []string {
 	mut res := []string{}
-	res << checker.valid_comp_if_os
-	res << checker.valid_comp_if_compilers
-	res << checker.valid_comp_if_platforms
-	res << checker.valid_comp_if_cpu_features
-	res << checker.valid_comp_if_other
+	res << checker.valid_comptime_if_os
+	res << checker.valid_comptime_if_compilers
+	res << checker.valid_comptime_if_platforms
+	res << checker.valid_comptime_if_cpu_features
+	res << checker.valid_comptime_if_other
 	return res
 }
 
@@ -4596,7 +4596,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			c.comp_for(node)
+			c.comptime_for(node)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -4614,7 +4614,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if id.info is ast.IdentVar {
-					if id.comptime && id.name in checker.valid_comp_not_user_defined {
+					if id.comptime && id.name in checker.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
@@ -4772,7 +4772,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count--
 }
 
-fn (mut c Checker) comp_for(node ast.CompFor) {
+fn (mut c Checker) comptime_for(node ast.CompFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.get_type_symbol(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
@@ -6725,7 +6725,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
-				should_skip = c.comp_if_branch(branch.cond, branch.pos)
+				should_skip = c.comptime_if_branch(branch.cond, branch.pos)
 				node.branches[i].pkg_exist = !should_skip
 			} else {
 				// check condition type is boolean
@@ -6922,22 +6922,22 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	return node.typ
 }
 
-// comp_if_branch checks the condition of a compile-time `if` branch. It returns `true`
+// comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
+fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
 		ast.BoolLiteral {
 			return !cond.val
 		}
 		ast.ParExpr {
-			return c.comp_if_branch(cond.expr, pos)
+			return c.comptime_if_branch(cond.expr, pos)
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			return !c.comp_if_branch(cond.right, cond.pos)
+			return !c.comptime_if_branch(cond.right, cond.pos)
 		}
 		ast.PostfixExpr {
 			if cond.op != .question {
@@ -6951,13 +6951,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					l := c.comp_if_branch(cond.left, cond.pos)
-					r := c.comp_if_branch(cond.right, cond.pos)
+					l := c.comptime_if_branch(cond.left, cond.pos)
+					r := c.comptime_if_branch(cond.right, cond.pos)
 					return l || r // skip (return true) if at least one should be skipped
 				}
 				.logical_or {
-					l := c.comp_if_branch(cond.left, cond.pos)
-					r := c.comp_if_branch(cond.right, cond.pos)
+					l := c.comptime_if_branch(cond.left, cond.pos)
+					r := c.comptime_if_branch(cond.right, cond.pos)
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
@@ -7011,16 +7011,16 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 		ast.Ident {
 			cname := cond.name
-			if cname in checker.valid_comp_if_os {
+			if cname in checker.valid_comptime_if_os {
 				mut is_os_target_different := false
 				if !c.pref.output_cross_c {
 					target_os := c.pref.os.str().to_lower()
 					is_os_target_different = cname != target_os
 				}
 				return is_os_target_different
-			} else if cname in checker.valid_comp_if_compilers {
+			} else if cname in checker.valid_comptime_if_compilers {
 				return pref.cc_from_string(cname) != c.pref.ccompiler_type
-			} else if cname in checker.valid_comp_if_platforms {
+			} else if cname in checker.valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', pos)
 				}
@@ -7034,9 +7034,9 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'rv32' { return c.pref.arch != .rv32 }
 					else { return false }
 				}
-			} else if cname in checker.valid_comp_if_cpu_features {
+			} else if cname in checker.valid_comptime_if_cpu_features {
 				return false
-			} else if cname in checker.valid_comp_if_other {
+			} else if cname in checker.valid_comptime_if_other {
 				match cname {
 					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
@@ -8020,7 +8020,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	}
 	if node.ct_expr is ast.Ident {
 		if node.ct_opt {
-			if node.ct_expr.name in checker.valid_comp_not_user_defined {
+			if node.ct_expr.name in checker.valid_comptime_not_user_defined {
 				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
@@ -8030,7 +8030,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			node.ct_evaled = true
 			return node.ct_skip
 		} else {
-			if node.ct_expr.name !in checker.valid_comp_not_user_defined {
+			if node.ct_expr.name !in checker.valid_comptime_not_user_defined {
 				c.note('`[if $node.ct_expr.name]` is deprecated. Use `[if $node.ct_expr.name ?]` instead',
 					node.pos)
 				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
@@ -8047,7 +8047,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = c.comp_if_branch(node.ct_expr, node.pos)
+	node.ct_skip = c.comptime_if_branch(node.ct_expr, node.pos)
 	c.inside_ct_attr = false
 	node.ct_evaled = true
 	return node.ct_skip

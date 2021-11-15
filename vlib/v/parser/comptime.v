@@ -39,7 +39,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comp_call() ast.ComptimeCall {
+fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
 	}
@@ -232,8 +232,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 }
 
-fn (mut p Parser) comp_for() ast.CompFor {
-	// p.comp_for() handles these special forms:
+fn (mut p Parser) comptime_for() ast.CompFor {
+	// p.comptime_for() handles these special forms:
 	// $for method in App(methods) {
 	// $for field in App(fields) {
 	p.next()

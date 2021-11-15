@@ -18,9 +18,9 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	// check for field.name
 	if node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
-			if node.field_expr.expr.name == g.comp_for_field_var
+			if node.field_expr.expr.name == g.comptime_for_field_var
 				&& node.field_expr.field_name == 'name' {
-				g.write(c_name(g.comp_for_field_value.name))
+				g.write(c_name(g.comptime_for_field_value.name))
 				return
 			}
 		}
@@ -79,7 +79,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	g.trace_autofree('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := node.sym.find_method(g.comp_for_method) or { return }
+		m := node.sym.find_method(g.comptime_for_method) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])
@@ -107,7 +107,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 			return
 		}
 		// TODO: check argument types
-		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+		g.write('${util.no_dots(node.sym.name)}_${g.comptime_for_method}(')
 
 		// try to see if we need to pass a pointer
 		if node.left is ast.Ident {
@@ -192,7 +192,7 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 	return res
 }
 
-fn (mut g Gen) comp_at(node ast.AtExpr) {
+fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
 		val := cnewlines(node.val.replace('\r', ''))
 		g.write('_SLIT("$val")')
@@ -202,7 +202,7 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 	}
 }
 
-fn (mut g Gen) comp_if(node ast.IfExpr) {
+fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {
 		if node.branches[0].stmts.len == 0 {
 			// empty ifdef; result of target OS != conditional => skip
@@ -231,7 +231,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 	} else {
 		''
 	}
-	mut comp_if_stmts_skip := false // don't write any statements if the condition is false
+	mut comptime_if_stmts_skip := false // don't write any statements if the condition is false
 	// (so that for example windows calls don't get generated inside `$if macos` which
 	// will lead to compilation errors)
 
@@ -239,14 +239,14 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('#else')
-			comp_if_stmts_skip = false
+			comptime_if_stmts_skip = false
 		} else {
 			if i == 0 {
 				g.write('#if ')
 			} else {
 				g.write('#elif ')
 			}
-			comp_if_stmts_skip = !g.comp_if_cond(branch.cond, branch.pkg_exist)
+			comptime_if_stmts_skip = !g.comptime_if_cond(branch.cond, branch.pkg_exist)
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
@@ -278,7 +278,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			if !comp_if_stmts_skip {
+			if !comptime_if_stmts_skip {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
@@ -294,7 +294,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 // returning `false` means the statements inside the $if can be skipped
 */
 // returns the value of the bool comptime expression
-fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
+fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	match cond {
 		ast.BoolLiteral {
 			g.expr(cond)
@@ -302,16 +302,16 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		}
 		ast.ParExpr {
 			g.write('(')
-			is_cond_true := g.comp_if_cond(cond.expr, pkg_exist)
+			is_cond_true := g.comptime_if_cond(cond.expr, pkg_exist)
 			g.write(')')
 			return is_cond_true
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			return g.comp_if_cond(cond.right, pkg_exist)
+			return g.comptime_if_cond(cond.right, pkg_exist)
 		}
 		ast.PostfixExpr {
-			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
+			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
 				verror(err.msg)
 				return false
 			}
@@ -321,9 +321,9 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l := g.comp_if_cond(cond.left, pkg_exist)
+					l := g.comptime_if_cond(cond.left, pkg_exist)
 					g.write(' $cond.op ')
-					r := g.comp_if_cond(cond.right, pkg_exist)
+					r := g.comptime_if_cond(cond.right, pkg_exist)
 					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
@@ -390,7 +390,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 			}
 		}
 		ast.Ident {
-			ifdef := g.comp_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
+			ifdef := g.comptime_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
 			g.write('defined($ifdef)')
 			return true
 		}
@@ -406,7 +406,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
-fn (mut g Gen) comp_for(node ast.CompFor) {
+fn (mut g Gen) comptime_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
 	g.indent++
@@ -426,7 +426,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				continue
 			}
 			*/
-			g.comp_for_method = method.name
+			g.comptime_for_method = method.name
 			g.writeln('/* method $i */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("$method.name");')
 			if method.attrs.len == 0 {
@@ -499,8 +499,8 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\tFieldData $node.val_var = {0};')
 			}
 			for field in fields {
-				g.comp_for_field_var = node.val_var
-				g.comp_for_field_value = field
+				g.comptime_for_field_var = node.val_var
+				g.comptime_for_field_value = field
 				g.writeln('/* field $i */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {
@@ -545,7 +545,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 	g.writeln('}// \$for')
 }
 
-fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
+fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?string {
 	match name {
 		// platforms/os-es:
 		'windows' {

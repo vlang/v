@@ -82,7 +82,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					return p.comp_call()
+					return p.comptime_call()
 				}
 				.key_if {
 					return p.if_expr(true)

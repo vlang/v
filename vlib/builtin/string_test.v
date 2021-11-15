@@ -781,7 +781,7 @@ fn test_c_r() {
 	println('$r')
 }
 
-fn test_inter_before_comp_if() {
+fn test_inter_before_comptime_if() {
 	s := '123'
 	// This used to break ('123 $....')
 	$if linux {
