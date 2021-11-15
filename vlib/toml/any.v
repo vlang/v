@@ -5,6 +5,7 @@ module toml
 
 import time
 import toml.util
+import x.json2
 
 // Pretty much all the same builtin types as the `json2.Any` type plus `time.Time`
 pub type Any = Null
@@ -188,16 +189,23 @@ pub fn (a Any) to_json() string {
 		Null {
 			return 'null'
 		}
+		time.Time {
+			json_text := json2.Any(a.format_ss_micro())
+			return '"$json_text.json_str()"'
+		}
 		string {
-			return '"$a.str()"'
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
 		}
 		bool, f32, f64, i64, int, u64 {
-			return a.str()
+			json_text := json2.Any(a.str())
+			return json_text.json_str()
 		}
 		map[string]Any {
 			mut str := '{'
 			for key, val in a {
-				str += ' "$key": $val.to_json(),'
+				json_key := json2.Any(key)
+				str += ' "$json_key.json_str()": $val.to_json(),'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -211,9 +219,6 @@ pub fn (a Any) to_json() string {
 			str = str.trim_right(',')
 			str += ' ]'
 			return str
-		}
-		time.Time {
-			return '"$a.format_ss_micro()"'
 		}
 	}
 }
