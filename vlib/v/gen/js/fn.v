@@ -268,6 +268,9 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+	if it.should_be_skipped {
+		return
+	}
 	if it.is_method && g.table.get_type_symbol(it.receiver_type).name.starts_with('JS.') {
 		g.js_method_call(it)
 		return
