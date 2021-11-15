@@ -235,8 +235,23 @@ pub fn (a Any) to_json_any() json2.Any {
 		string {
 			return json2.Any(a.str())
 		}
-		bool, f32, f64, i64, int, u64 {
-			return json2.Any(a.str())
+		bool {
+			return json2.Any(bool(a))
+		}
+		int {
+			return json2.Any(int(a))
+		}
+		f32 {
+			return json2.Any(f32(a))
+		}
+		f64 {
+			return json2.Any(f64(a))
+		}
+		i64 {
+			return json2.Any(i64(a))
+		}
+		u64 {
+			return json2.Any(u64(a))
 		}
 		map[string]Any {
 			mut jmap := map[string]json2.Any{}
