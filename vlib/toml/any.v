@@ -222,3 +222,37 @@ pub fn (a Any) to_json() string {
 		}
 	}
 }
+
+// to_json_any returns `Any` as a `x.json2.Any` type.
+pub fn (a Any) to_json_any() json2.Any {
+	match a {
+		Null {
+			return json2.Null{}
+		}
+		time.Time {
+			return json2.Any(a.format_ss_micro())
+		}
+		string {
+			return json2.Any(a.str())
+		}
+		bool, f32, f64, i64, int, u64 {
+			return json2.Any(a.str())
+		}
+		map[string]Any {
+			mut jmap := map[string]json2.Any{}
+			for key, val in a {
+				jmap[key] = val.to_json_any()
+			}
+			return jmap
+		}
+		[]Any {
+			mut jarr := []json2.Any{}
+
+			for val in a {
+				jarr << val.to_json_any()
+			}
+
+			return jarr
+		}
+	}
+}
