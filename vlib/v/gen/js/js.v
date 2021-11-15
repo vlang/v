@@ -979,17 +979,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				}
 			} else {
 				g.write(node.op.str())
-
-				// if node.op in [.inc, .dec,.minus,.plus] {
 				g.expr(node.right)
 				g.write('.val ')
-				/*} else {
-					println('${node.op.str()} ${g.ns.name}')
-					g.write('(')
-					g.expr(node.right)
-					g.write('')
-					g.write(')')
-				}*/
 			}
 		}
 		ast.RangeExpr {
