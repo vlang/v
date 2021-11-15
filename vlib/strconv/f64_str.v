@@ -1,4 +1,5 @@
 module strconv
+
 // pow of ten table used by n_digit reduction
 const (
 	ten_pow_table_64 = [
