@@ -9,13 +9,15 @@ import v.pref
 import v.util.vtest
 import runtime
 
-const github_job = os.getenv('GITHUB_JOB')
+pub const github_job = os.getenv('GITHUB_JOB')
 
-const show_start = os.getenv('VTEST_SHOW_START') == '1'
+pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
-const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
+pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
 
-const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+
+pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
 pub struct TestSession {
 pub mut:
@@ -26,6 +28,7 @@ pub mut:
 	vtmp_dir      string
 	vargs         string
 	failed        bool
+	fail_fast     bool
 	benchmark     benchmark.Benchmark
 	rm_binaries   bool = true
 	silent_mode   bool
@@ -186,6 +189,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		vexe: vexe
 		vroot: vroot
 		skip_files: skip_files
+		fail_fast: testing.fail_fast
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
 		silent_mode: _vargs.contains('-silent')
@@ -258,6 +262,11 @@ pub fn (mut ts TestSession) test() {
 
 fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
+	if ts.fail_fast {
+		if ts.failed {
+			return pool.no_result
+		}
+	}
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings

@@ -12,9 +12,10 @@ fn main() {
 		return
 	}
 	args_to_executable := args[1..]
-	args_before := cmdline.options_before(args_to_executable, ['test'])
-	args_after := cmdline.options_after(args_to_executable, ['test'])
-	if args_after.join(' ') == 'v' {
+	mut args_before := cmdline.options_before(args_to_executable, ['test'])
+	mut args_after := cmdline.options_after(args_to_executable, ['test'])
+	fail_fast := extract_flag('-fail-fast', mut args_after, testing.fail_fast)
+	if args_after == ['v'] {
 		eprintln('`v test v` has been deprecated.')
 		eprintln('Use `v test-all` instead.')
 		exit(1)
@@ -23,6 +24,7 @@ fn main() {
 	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] } // this giant mess because closures are not implemented
 
 	mut ts := testing.new_test_session(args_before.join(' '), true)
+	ts.fail_fast = fail_fast
 	for targ in args_after {
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory
@@ -132,4 +134,15 @@ fn should_test(path string, backend string) ShouldTestStatus {
 		}
 	}
 	return .ignore
+}
+
+fn extract_flag(flag_name string, mut after []string, flag_default bool) bool {
+	mut res := flag_default
+	orig_after := after.clone() // workaround for after.filter() codegen bug, when `mut after []string`
+	matches_after := orig_after.filter(it != flag_name)
+	if matches_after.len < after.len {
+		after = matches_after.clone()
+		res = true
+	}
+	return res
 }
