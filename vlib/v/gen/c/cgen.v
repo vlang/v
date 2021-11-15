@@ -2968,7 +2968,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			scope: 0
 		}
 		left_sym := g.table.get_type_symbol(g.unwrap_generic(var_type))
-		if left is ast.Ident {
+		if mut left is ast.Ident {
 			ident = left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
@@ -2984,7 +2984,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					var_type = var_type.set_flag(.atomic_f)
 				}
 			}
-			if left.obj is ast.Var {
+			if mut left.obj is ast.Var {
+				if val is ast.ComptimeSelector {
+					if val.field_expr is ast.SelectorExpr {
+						if val.field_expr.expr is ast.Ident {
+							key_str := '${val.field_expr.expr.name}.typ'
+							var_type = g.comptime_var_type_map[key_str] or { var_type }
+							left.obj.typ = var_type
+						}
+					}
+				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
@@ -4098,7 +4107,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			.unknown {
 				if node.field_name == 'name' {
 					// typeof(expr).name
-					g.type_name(node.name_type)
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						if node.expr.expr is ast.ComptimeSelector {
+							if node.expr.expr.field_expr is ast.SelectorExpr {
+								if node.expr.expr.field_expr.expr is ast.Ident {
+									key_str := '${node.expr.expr.field_expr.expr.name}.typ'
+									name_type = g.comptime_var_type_map[key_str] or { name_type }
+								}
+							}
+						}
+					}
+					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
 					// typeof(expr).idx

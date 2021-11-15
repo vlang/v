@@ -819,6 +819,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					return
 				}
 			}
+		} else if node.left is ast.Ident && g.comptime_var_type_map.len > 0 {
+			if node.left.obj is ast.Var {
+				rec_type = node.left.obj.typ
+				g.gen_expr_to_string(node.left, rec_type)
+				return
+			}
 		}
 		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
@@ -1129,6 +1135,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							key_str := '${expr.field_expr.expr.name}.typ'
 							typ = g.comptime_var_type_map[key_str] or { typ }
 						}
+					}
+				} else if expr is ast.Ident {
+					if expr.obj is ast.Var {
+						typ = expr.obj.typ
 					}
 				}
 				g.gen_expr_to_string(expr, typ)
