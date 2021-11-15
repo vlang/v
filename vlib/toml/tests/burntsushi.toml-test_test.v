@@ -6,20 +6,11 @@ import toml
 // `cd vlib/toml/tests/testdata`
 // `git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test`
 // See also the CI toml tests
-// TODO Goal: make parsing AND value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
+// TODO Goal: make value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions   = []string{}
-	invalid_exceptions = [
-		// Table
-		'table/duplicate-table-array2.toml',
-		'table/array-implicit.toml',
-		'table/injection-2.toml',
-		'table/injection-1.toml',
-		'table/duplicate-table-array.toml',
-		// Array
-		'array/tables-1.toml',
-	]
+	invalid_exceptions = []string{}
 )
 
 // test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
@@ -58,9 +49,6 @@ fn test_burnt_sushi_tomltest() {
 			println('TODO Skipped parsing of $valid_exceptions.len valid TOML files...')
 		}
 
-		// NOTE uncomment to see list of skipped files
-		// assert false
-
 		// TODO test cases where the parser should fail
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
 		println('Testing $invalid_test_files.len invalid TOML files...')
@@ -82,7 +70,7 @@ fn test_burnt_sushi_tomltest() {
 					assert false
 				} else {
 					println('     $err.msg')
-					assert true // err.msg == 'your error'
+					assert true
 				}
 				invalid++
 			} else {
@@ -94,9 +82,6 @@ fn test_burnt_sushi_tomltest() {
 		if invalid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
 		}
-
-		// NOTE uncomment to see list of skipped files
-		// assert false
 	} else {
 		println('No test data directory found in "$test_root"')
 		assert true

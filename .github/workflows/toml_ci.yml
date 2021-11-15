@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 10
     env:
       TOML_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
-      TOML_TESTS_PINNED_COMMIT: 982482f
+      TOML_TESTS_PINNED_COMMIT: 576db85
     steps:
 
       - uses: actions/checkout@v2
