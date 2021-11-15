@@ -4098,7 +4098,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			.unknown {
 				if node.field_name == 'name' {
 					// typeof(expr).name
-					g.type_name(node.name_type)
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						if node.expr.expr is ast.ComptimeSelector {
+							if node.expr.expr.field_expr is ast.SelectorExpr {
+								if node.expr.expr.field_expr.expr is ast.Ident {
+									key_str := '${node.expr.expr.field_expr.expr.name}.typ'
+									name_type = g.comptime_var_type_map[key_str] or { name_type }
+								}
+							}
+						}
+					}
+					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
 					// typeof(expr).idx
