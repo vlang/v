@@ -102,8 +102,10 @@ fn multiple_of_power_of_two_32(v u32, p u32) bool {
 fn log10_pow2(e int) u32 {
 	// The first value this approximation fails for is 2^1651
 	// which is just greater than 10^297.
-	assert1(e >= 0, 'e >= 0')
-	assert1(e <= 1650, 'e <= 1650')
+	$if !js {
+		assert1(e >= 0, 'e >= 0')
+		assert1(e <= 1650, 'e <= 1650')
+	}
 	return (u32(e) * 78913) >> 18
 }
 
@@ -111,18 +113,22 @@ fn log10_pow2(e int) u32 {
 fn log10_pow5(e int) u32 {
 	// The first value this approximation fails for is 5^2621
 	// which is just greater than 10^1832.
-	assert1(e >= 0, 'e >= 0')
-	assert1(e <= 2620, 'e <= 2620')
+	$if !js {
+		assert1(e >= 0, 'e >= 0')
+		assert1(e <= 2620, 'e <= 2620')
+	}
 	return (u32(e) * 732923) >> 20
 }
 
 // pow5_bits returns ceil(log_2(5^e)), or else 1 if e==0.
 fn pow5_bits(e int) int {
-	// This approximation works up to the point that the multiplication
-	// overflows at e = 3529. If the multiplication were done in 64 bits,
-	// it would fail at 5^4004 which is just greater than 2^9297.
-	assert1(e >= 0, 'e >= 0')
-	assert1(e <= 3528, 'e <= 3528')
+	$if !js {
+		// This approximation works up to the point that the multiplication
+		// overflows at e = 3529. If the multiplication were done in 64 bits,
+		// it would fail at 5^4004 which is just greater than 2^9297.
+		assert1(e >= 0, 'e >= 0')
+		assert1(e <= 3528, 'e <= 3528')
+	}
 	return int(((u32(e) * 1217359) >> 19) + 1)
 }
 
@@ -137,7 +143,9 @@ fn shift_right_128(v Uint128, shift int) u64 {
 	// (It is in the range [2, 59].)
 	// Check this here in case a future change requires larger shift
 	// values. In this case this function needs to be adjusted.
-	assert1(shift < 64, 'shift < 64')
+	$if !js {
+		assert1(shift < 64, 'shift < 64')
+	}
 	return (v.hi << u64(64 - shift)) | (v.lo >> u32(shift))
 }
 
