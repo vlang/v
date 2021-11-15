@@ -146,14 +146,14 @@ mut:
 	inside_or_block        bool
 	strs_to_free0          []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
-	inside_call           bool
-	has_main              bool
-	inside_const          bool
-	comp_for_method       string // $for method in T.methods {}
-	comp_for_field_var    string // $for field in T.fields {}; the variable name
-	comp_for_field_value  ast.StructField // value of the field variable
-	comp_for_field_type   ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
-	comptime_var_type_map map[string]ast.Type
+	inside_call              bool
+	has_main                 bool
+	inside_const             bool
+	comptime_for_method      string // $for method in T.methods {}
+	comptime_for_field_var   string // $for field in T.fields {}; the variable name
+	comptime_for_field_value ast.StructField // value of the field variable
+	comptime_for_field_type  ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
+	comptime_var_type_map    map[string]ast.Type
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
 	// autofree_pregen_buf   strings.Builder
@@ -1569,7 +1569,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 		}
 		ast.CompFor {
-			g.comp_for(node)
+			g.comptime_for(node)
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
@@ -1689,7 +1689,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.ct_conds.len > 0 {
 				ct_condition_start := g.out.len
 				for idx, ct_expr in node.ct_conds {
-					g.comp_if_cond(ct_expr, false)
+					g.comptime_if_cond(ct_expr, false)
 					if idx < node.ct_conds.len - 1 {
 						g.write(' && ')
 					}
@@ -3720,7 +3720,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.assoc(node)
 		}
 		ast.AtExpr {
-			g.comp_at(node)
+			g.comptime_at(node)
 		}
 		ast.BoolLiteral {
 			g.write(node.val.str())
@@ -3877,7 +3877,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.IsRefType {
-			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			typ := if node.typ == g.field_data_type {
+				g.comptime_for_field_value.typ
+			} else {
+				node.typ
+			}
 			node_typ := g.unwrap_generic(typ)
 			sym := g.table.get_type_symbol(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
@@ -3997,7 +4001,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.selector_expr(node)
 		}
 		ast.SizeOf {
-			typ := if node.typ == g.field_data_type { g.comp_for_field_value.typ } else { node.typ }
+			typ := if node.typ == g.field_data_type {
+				g.comptime_for_field_value.typ
+			} else {
+				node.typ
+			}
 			node_typ := g.unwrap_generic(typ)
 			sym := g.table.get_type_symbol(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
@@ -4046,7 +4054,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 // T.name, typeof(expr).name
 fn (mut g Gen) type_name(raw_type ast.Type) {
-	typ := if raw_type == g.field_data_type { g.comp_for_field_value.typ } else { raw_type }
+	typ := if raw_type == g.field_data_type { g.comptime_for_field_value.typ } else { raw_type }
 	sym := g.table.get_type_symbol(typ)
 	mut s := ''
 	if sym.kind == .function {
@@ -4063,7 +4071,7 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	typ := if node.expr_type == g.field_data_type {
-		g.comp_for_field_value.typ
+		g.comptime_for_field_value.typ
 	} else {
 		node.expr_type
 	}
@@ -5181,7 +5189,7 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
-		g.comp_if(node)
+		g.comptime_if(node)
 		return
 	}
 	// For simpe if expressions we can use C's `?:`

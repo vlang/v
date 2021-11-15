@@ -79,7 +79,7 @@ mut:
 	inside_asm          bool
 	global_labels       []string
 	inside_defer        bool
-	comp_if_cond        bool
+	comptime_if_cond    bool
 	defer_vars          []ast.Ident
 	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 }
@@ -778,11 +778,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					}
 				}
 				.key_for {
-					return p.comp_for()
+					return p.comptime_for()
 				}
 				.name {
 					mut pos := p.tok.position()
-					expr := p.comp_call()
+					expr := p.comptime_call()
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1566,11 +1566,11 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	if p.tok.kind == .key_if {
 		kind = .comptime_define
 		p.next()
-		p.comp_if_cond = true
+		p.comptime_if_cond = true
 		p.inside_if_expr = true
 		p.inside_ct_if_expr = true
 		comptime_cond = p.expr(0)
-		p.comp_if_cond = false
+		p.comptime_if_cond = false
 		p.inside_if_expr = false
 		p.inside_ct_if_expr = false
 		if comptime_cond is ast.PostfixExpr {
@@ -1862,7 +1862,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		return ast.Ident{
 			tok_kind: p.tok.kind
 			name: '_'
-			comptime: p.comp_if_cond
+			comptime: p.comptime_if_cond
 			kind: .blank_ident
 			pos: pos
 			info: ast.IdentVar{
@@ -1883,7 +1883,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		tok_kind: p.tok.kind
 		kind: .unresolved
 		name: name
-		comptime: p.comp_if_cond
+		comptime: p.comptime_if_cond
 		language: language
 		mod: p.mod
 		pos: pos

@@ -106,9 +106,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			prev_guard = true
 		} else {
 			prev_guard = false
-			p.comp_if_cond = true
+			p.comptime_if_cond = true
 			cond = p.expr(0)
-			p.comp_if_cond = false
+			p.comptime_if_cond = false
 		}
 		comments << p.eat_comments()
 		end_pos := p.prev_tok.position()

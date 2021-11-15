@@ -431,7 +431,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.branch_stmt(node)
 		}
 		ast.CompFor {
-			f.comp_for(node)
+			f.comptime_for(node)
 		}
 		ast.ConstDecl {
 			f.const_decl(node)
@@ -762,7 +762,7 @@ pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
 	f.writeln(node.str())
 }
 
-pub fn (mut f Fmt) comp_for(node ast.CompFor) {
+pub fn (mut f Fmt) comptime_for(node ast.CompFor) {
 	typ := f.no_cur_mod(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 	f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
 	f.mark_types_import_as_used(node.typ)
