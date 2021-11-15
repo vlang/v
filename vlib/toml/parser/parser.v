@@ -396,7 +396,7 @@ pub fn (mut p Parser) root_table() ? {
 					// https://github.com/BurntSushi/toml-test/blob/576db8523df1b8705ef18c526b4a6ba9c271bbbc/tests/invalid/table/injection-1.toml
 					// https://github.com/BurntSushi/toml-test/blob/576db8523df1b8705ef18c526b4a6ba9c271bbbc/tests/invalid/table/injection-2.toml
 					// NOTE this is a *relatively* costly check. In general - and by specification,
-					// TOML documents are expected to be "small so this shouldn't be a problem. Famous last words.
+					// TOML documents are expected to be "small" so this shouldn't be a problem. Famous last words.
 					for explicit_key in p.explicit_declared {
 						if explicit_key.len == 1 || explicit_key == p.root_map_key {
 							continue
