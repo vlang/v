@@ -89,6 +89,12 @@ pub fn (d Doc) to_json() string {
 	return d.ast.to_json()
 }
 
+// to_any converts the `Doc` to map[string]toml.Any type.
+fn (d Doc) to_any() Any {
+	values := d.ast.table as map[string]ast.Value
+	return d.ast_to_any(values)
+}
+
 // value queries a value from the TOML document.
 // `key` should be in "dotted" form (`a.b.c`).
 // `key` supports quoted keys like `a."b.c"`.
