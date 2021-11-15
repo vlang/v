@@ -86,7 +86,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		i--
 	}
 
-	for j in 0 .. n_char {
+	for _ in 0 .. n_char {
 		i++
 		res.write_b(buf[i])
 	}

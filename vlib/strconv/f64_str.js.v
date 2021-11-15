@@ -1,26 +1,7 @@
 module strconv
 
-/*=============================================================================
+import math
 
-f64 to string
-
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
-Use of this source code is governed by an MIT license
-that can be found in the LICENSE file.
-
-This file contains the f64 to string functions
-
-These functions are based on the work of:
-Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
-Conference on Programming Language Design and ImplementationJune 2018
-Pages 270–282 https://doi.org/10.1145/3192366.3192369
-
-inspired by the Go version here:
-https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
-
-=============================================================================*/
-
-[direct_array_access]
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	mut n_digit := i_n_digit + 1
 	pad_digit := i_pad_digit + 1
@@ -39,7 +20,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	mut i := 0
 
 	if neg {
-		buf[i] = `-`
+		#buf.arr.arr[i.val] = '-'.charCodeAt()
 		i++
 	}
 
@@ -68,7 +49,8 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	y := i + out_len
 	mut x := 0
 	for x < (out_len - disp - 1) {
-		buf[y - x] = `0` + byte(out % 10)
+		#buf.arr.arr[y.val - x.val].val = '0'.charCodeAt() + Number(out.valueOf() % 10n)
+
 		out /= 10
 		i++
 		x++
@@ -76,10 +58,10 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 
 	// no decimal digits needed, end here
 	if i_n_digit == 0 {
-		unsafe {
-			buf[i] = 0
-			return tos(&byte(&buf[0]), i)
-		}
+		res := ''
+		#buf.arr.arr.forEach((it) => it.val == 0 ? res.str : res.str += String.fromCharCode(it.val))
+
+		return res
 	}
 
 	if out_len >= 1 {
@@ -89,26 +71,26 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	}
 
 	if y - x >= 0 {
-		buf[y - x] = `0` + byte(out % 10)
+		#buf.arr.arr[y.val - x.val].val = '0'.charCodeAt() + Number(out.valueOf() % 10n)
 		i++
 	}
 
 	for fw_zeros > 0 {
-		buf[i] = `0`
+		#buf.arr.arr[i.val].val = '0'.charCodeAt()
 		i++
 		fw_zeros--
 	}
 
-	buf[i] = `e`
+	#buf.arr.arr[i.val].val = 'e'.charCodeAt()
 	i++
 
 	mut exp := d_exp + out_len_original - 1
 	if exp < 0 {
-		buf[i] = `-`
+		#buf.arr.arr[i.val].val = '-'.charCodeAt()
 		i++
 		exp = -exp
 	} else {
-		buf[i] = `+`
+		#buf.arr.arr[i.val].val = '+'.charCodeAt()
 		i++
 	}
 
@@ -116,20 +98,23 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	d2 := exp % 10
 	exp /= 10
 	d1 := exp % 10
+	_ := d1
+	_ := d2
 	d0 := exp / 10
 	if d0 > 0 {
-		buf[i] = `0` + byte(d0)
+		#buf.arr.arr[i].val = '0'.charCodeAt() + d0.val
 		i++
 	}
-	buf[i] = `0` + byte(d1)
+	#buf.arr.arr[i].val = '0'.charCodeAt() + d1.val
 	i++
-	buf[i] = `0` + byte(d2)
+	#buf.arr.arr[i].val = '0' + d2.val
 	i++
-	buf[i] = 0
+	#buf.arr.arr[i].val = 0
 
-	return unsafe {
-		tos(&byte(&buf[0]), i)
-	}
+	res := ''
+	#buf.arr.arr.forEach((it) => it.val == 0 ? res.str : res.str += String.fromCharCode(it.val))
+
+	return res
 }
 
 fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
@@ -333,10 +318,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 
 // f64_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f64_to_str(f f64, n_digit int) string {
-	mut u1 := Uf64{}
-	u1.f = f
-	u := unsafe { u1.u }
-
+	u := math.f64_bits(f)
 	neg := (u >> (mantbits64 + expbits64)) != 0
 	mant := u & ((u64(1) << mantbits64) - u64(1))
 	exp := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
@@ -354,29 +336,4 @@ pub fn f64_to_str(f f64, n_digit int) string {
 	}
 	// println("${d.m} ${d.e}")
 	return d.get_string_64(neg, n_digit, 0)
-}
-
-// f64_to_str return a string in scientific notation with max n_digit after the dot
-pub fn f64_to_str_pad(f f64, n_digit int) string {
-	mut u1 := Uf64{}
-	u1.f = f
-	u := unsafe { u1.u }
-
-	neg := (u >> (mantbits64 + expbits64)) != 0
-	mant := u & ((u64(1) << mantbits64) - u64(1))
-	exp := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
-	// println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
-
-	// Exit early for easy cases.
-	if (exp == maxexp64) || (exp == 0 && mant == 0) {
-		return get_string_special(neg, exp == 0, mant == 0)
-	}
-
-	mut d, ok := f64_to_decimal_exact_int(mant, exp)
-	if !ok {
-		// println("to_decimal")
-		d = f64_to_decimal(mant, exp)
-	}
-	// println("DEBUG: ${d.m} ${d.e}")
-	return d.get_string_64(neg, n_digit, n_digit)
 }

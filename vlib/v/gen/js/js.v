@@ -979,16 +979,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 				}
 			} else {
 				g.write(node.op.str())
-
-				if node.op in [.inc, .dec] {
-					g.expr(node.right)
-					g.write('.val ')
-				} else {
-					g.write('(')
-					g.expr(node.right)
-					g.write('.valueOf()')
-					g.write(')')
-				}
+				g.expr(node.right)
+				g.write('.val ')
 			}
 		}
 		ast.RangeExpr {
