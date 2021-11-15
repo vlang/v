@@ -10,7 +10,7 @@ import toml.token
 import toml.scanner
 
 pub const (
-	all_formatting   = [token.Kind.whitespace, .tab, .nl]
+	all_formatting   = [token.Kind.whitespace, .tab, .cr, .nl]
 	space_formatting = [token.Kind.whitespace, .tab]
 )
 
