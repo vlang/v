@@ -1,5 +1,3 @@
-module test
-
 import sqlite
 
 fn test_sqlite() {
