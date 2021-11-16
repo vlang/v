@@ -2185,7 +2185,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			if exp_arg_typ.has_flag(.generic) {
 				continue
 			}
-			c.check_expected_call_arg(got_arg_typ, c.unwrap_generic(exp_arg_typ), node.language) or {
+			c.check_expected_call_arg(got_arg_typ, c.unwrap_generic(exp_arg_typ), node.language,
+				arg) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -2326,7 +2327,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 				if i < info.func.params.len {
 					exp_arg_typ := info.func.params[i].typ
-					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language) or {
+					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language,
+						arg) or {
 						if targ != ast.void_type {
 							c.error('$err.msg in argument ${i + 1} to `${left_sym.name}.$method_name`',
 								arg.pos)
@@ -2372,7 +2374,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			}
 			info := left_sym.info as ast.Map
 			arg_type := c.expr(node.args[0].expr)
-			c.check_expected_call_arg(arg_type, info.key_type, node.language) or {
+			c.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
 				c.error('$err.msg in argument 1 to `Map.delete`', node.args[0].pos)
 			}
 		}
@@ -2866,7 +2868,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			continue
 		}
-		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), node.language) or {
+		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), node.language, call_arg) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -2942,7 +2944,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 						}
 						continue
 					}
-					c.check_expected_call_arg(utyp, unwrap_typ, node.language) or {
+					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}
