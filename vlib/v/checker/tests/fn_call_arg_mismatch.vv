@@ -1,0 +1,9 @@
+fn abc(x []int) {
+	println(x)
+}
+
+fn main() {
+	a := [1, 2, 3]
+	go abc(&a)
+	println('done')
+}

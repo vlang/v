@@ -1161,7 +1161,7 @@ fn is_excluding_latin(table &RangeTable, r rune) bool {
 	}
 	r32 := &table.r32
 	if r32.len > 0 && r >= rune((*r32)[0].lo) {
-		return is_32(r32, u32(r))
+		return is_32(*r32, u32(r))
 	}
 	return false
 }

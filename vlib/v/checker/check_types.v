@@ -6,7 +6,7 @@ module checker
 import v.ast
 import v.token
 
-pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language) ? {
+pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
 	mut expected := expected_
 	// variadic
 	if expected.has_flag(.variadic) {
@@ -33,9 +33,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got == ast.int_type_idx {
 			return
 		}
-	}
-	if c.check_types(got, expected) {
-		return
 	}
 	idx_got := got.idx()
 	idx_expected := expected.idx()
@@ -69,6 +66,13 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		}
 		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx
 			&& muls_expected + 1 == muls_got {
+			return
+		}
+	}
+	if c.check_types(got, expected) {
+		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
+			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
+			|| c.table.get_type_symbol(expected_).kind !in [.array, .map] {
 			return
 		}
 	}
