@@ -406,7 +406,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
-fn (mut g Gen) comptime_for(node ast.CompFor) {
+fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
 	g.indent++

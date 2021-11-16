@@ -4595,7 +4595,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.BranchStmt {
 			c.branch_stmt(node)
 		}
-		ast.CompFor {
+		ast.ComptimeFor {
 			c.comptime_for(node)
 		}
 		ast.ConstDecl {
@@ -4772,7 +4772,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count--
 }
 
-fn (mut c Checker) comptime_for(node ast.CompFor) {
+fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.get_type_symbol(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {

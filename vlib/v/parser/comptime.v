@@ -232,7 +232,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 }
 
-fn (mut p Parser) comptime_for() ast.CompFor {
+fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// p.comptime_for() handles these special forms:
 	// $for method in App(methods) {
 	// $for field in App(fields) {
@@ -247,7 +247,7 @@ fn (mut p Parser) comptime_for() ast.CompFor {
 	typ_pos = typ_pos.extend(p.prev_tok.position())
 	p.check(.dot)
 	for_val := p.check_name()
-	mut kind := ast.CompForKind.methods
+	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
 	if for_val == 'methods' {
 		p.scope.register(ast.Var{
@@ -272,12 +272,12 @@ fn (mut p Parser) comptime_for() ast.CompFor {
 	} else {
 		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
 			p.prev_tok.position())
-		return ast.CompFor{}
+		return ast.ComptimeFor{}
 	}
 	spos := p.tok.position()
 	stmts := p.parse_block()
 	p.close_scope()
-	return ast.CompFor{
+	return ast.ComptimeFor{
 		val_var: val_var
 		stmts: stmts
 		kind: kind

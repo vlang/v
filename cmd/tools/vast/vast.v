@@ -405,7 +405,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.EnumDecl { return t.enum_decl(node) }
 		ast.InterfaceDecl { return t.interface_decl(node) }
 		ast.HashStmt { return t.hash_stmt(node) }
-		ast.CompFor { return t.comptime_for(node) }
+		ast.ComptimeFor { return t.comptime_for(node) }
 		ast.GlobalDecl { return t.global_decl(node) }
 		ast.DeferStmt { return t.defer_stmt(node) }
 		ast.TypeDecl { return t.type_decl(node) }
@@ -700,9 +700,9 @@ fn (t Tree) hash_stmt(node ast.HashStmt) &Node {
 	return obj
 }
 
-fn (t Tree) comptime_for(node ast.CompFor) &Node {
+fn (t Tree) comptime_for(node ast.ComptimeFor) &Node {
 	mut obj := new_object()
-	obj.add('ast_type', t.string_node('CompFor'))
+	obj.add('ast_type', t.string_node('ComptimeFor'))
 	obj.add('val_var', t.string_node(node.val_var))
 	obj.add('typ', t.type_node(node.typ))
 	obj.add('kind', t.enum_node(node.kind))
