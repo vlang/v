@@ -170,7 +170,8 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 			if value.text.contains('.') || value.text.to_lower().contains('e') {
 				return Any(value.text.f64())
 			}
-			return strconv.parse_int(value.text, 0, 0) or { i64(0) }
+			v := strconv.parse_int(value.text, 0, 0) or { i64(0) }
+			return Any(v)
 		}
 		ast.Bool {
 			str := (value as ast.Bool).text
