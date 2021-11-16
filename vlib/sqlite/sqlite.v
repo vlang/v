@@ -14,7 +14,7 @@ $if windows {
 
 #include "sqlite3.h"
 
-const (
+pub const (
 	sqlite_ok    = 0
 	sqlite_error = 1
 	sqlite_row   = 100
