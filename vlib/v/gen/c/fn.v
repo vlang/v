@@ -219,6 +219,22 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 	name = g.generic_fn_name(g.cur_concrete_types, name, true)
 
+	if g.pref.translated && node.attrs.contains('c') {
+		// This fixes unknown symbols errors when building separate .c => .v files
+		// into .o files
+		//
+		// example:
+		// [c: 'P_TryMove']
+		// fn p_trymove(thing &Mobj_t, x int, y int) bool
+		//
+		// =>
+		//
+		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
+		//
+		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
+		name = node.attrs[0].arg
+	}
+
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
 		mut key := node.name
@@ -1096,6 +1112,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = util.no_dots(name[2..])
 	} else {
 		name = c_name(name)
+	}
+	if g.pref.translated {
+		// For `[c: 'P_TryMove'] fn p_trymove( ... `
+		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
+		if f := g.table.find_fn(node.name) {
+			// TODO PERF fn lookup for each fn call in translated mode
+			if f.attrs.contains('c') {
+				name = f.attrs[0].arg
+			}
+		}
 	}
 	// Obfuscate only functions in the main module for now
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {

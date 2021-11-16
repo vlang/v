@@ -2902,6 +2902,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param_is_number && typ_is_number {
 					continue
 				}
+				// Allow voidptrs for everything
+				if param.typ == ast.voidptr_type_idx || typ == ast.voidptr_type_idx {
+					continue
+				}
+				// Allow `[32]i8` as `&i8` etc
+				if (typ_sym.kind == .array_fixed && param_is_number)
+					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
+					continue
+				}
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
