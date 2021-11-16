@@ -1,3 +1,4 @@
+[has_globals]
 module builtin
 
 // With -prealloc, V calls libc's malloc to get chunks, each at least 16MB

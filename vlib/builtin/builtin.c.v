@@ -1,3 +1,4 @@
+[has_globals]
 module builtin
 
 type FnExitCb = fn ()
