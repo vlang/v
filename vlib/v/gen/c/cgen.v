@@ -2120,7 +2120,11 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			} else {
 				val_styp := g.typ(node.val_type)
 				if node.val_type.is_ptr() {
-					g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
+					if node.val_is_mut {
+						g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
+					} else {
+						g.write('$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
+					}
 				} else {
 					g.write('$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
 				}

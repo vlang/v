@@ -1221,6 +1221,9 @@ pub fn (mut t Table) complete_interface_check() {
 			if idecl.fields.len > info.fields.len {
 				continue
 			}
+			if idecl.typ == 0 {
+				continue
+			}
 			// empty interface only generate type cast functions of the current module
 			if idecl.methods.len == 0 && idecl.fields.len == 0
 				&& tsym.mod != t.get_type_symbol(idecl.typ).mod {
