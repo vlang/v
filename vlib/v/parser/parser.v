@@ -34,6 +34,7 @@ mut:
 	table               &ast.Table
 	language            ast.Language
 	fn_language         ast.Language // .c for `fn C.abcd()` declarations
+	inside_vlib_file    bool // true for all vlib/ files
 	inside_test_file    bool // when inside _test.v or _test.vv file
 	inside_if           bool
 	inside_if_expr      bool
@@ -49,6 +50,7 @@ mut:
 	builtin_mod         bool       // are we in the `builtin` module?
 	mod                 string     // current module name
 	is_manualfree       bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals         bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
 	attrs               []ast.Attr // attributes before next decl stmt
 	expr_mod            string     // for constructing full type names in parse_type()
 	scope               &ast.Scope
@@ -154,6 +156,9 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
+	if p.file_name_dir.contains('vlib') {
+		p.inside_vlib_file = true
+	}
 	hash := fnv1a.sum64_string(path)
 	p.unique_prefix = hash.hex_full()
 	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
@@ -2823,6 +2828,14 @@ fn (mut p Parser) module_decl() ast.Module {
 				'manualfree' {
 					p.is_manualfree = true
 				}
+				'has_globals' {
+					if p.inside_vlib_file {
+						p.has_globals = true
+					} else {
+						p.error_with_pos('[has_globals] is allowed only in .v files of `vlib` modules',
+							ma.pos)
+					}
+				}
 				else {
 					p.error_with_pos('unknown module attribute `[$ma.name]`', ma.pos)
 					return mod_node
@@ -3061,15 +3074,14 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 }
 
-const (
-	// modules which allow globals by default
-	global_enabled_mods = ['rand', 'sokol.sapp']
-)
+// TODO: remove this whitelist of modules which allow globals by default
+const global_enabled_mods = ['rand', 'sokol.sapp']
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v
-		&& !p.pref.enable_globals && !p.pref.is_fmt && p.mod !in parser.global_enabled_mods {
+	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
+		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod
+		&& p.mod !in parser.global_enabled_mods {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}
