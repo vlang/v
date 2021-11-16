@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module rand
 
 import rand.config
@@ -35,9 +36,7 @@ mut:
 	free()
 }
 
-__global (
-	default_rng &PRNG
-)
+__global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
 [manualfree]

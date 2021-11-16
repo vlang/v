@@ -1,3 +1,4 @@
+[has_globals]
 module sapp
 
 import sokol.gfx
@@ -5,9 +6,7 @@ import sokol.gfx
 pub const used_import = gfx.used_import
 
 // Android needs a global reference to `g_desc`
-__global (
-	g_desc C.sapp_desc
-)
+__global g_desc C.sapp_desc
 
 pub fn create_desc() C.sg_desc {
 	metal_desc := C.sg_metal_context_desc{

@@ -3074,14 +3074,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 }
 
-// TODO: remove this whitelist of modules which allow globals by default
-const global_enabled_mods = ['rand', 'sokol.sapp']
-
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
-		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod
-		&& p.mod !in parser.global_enabled_mods {
+		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}
