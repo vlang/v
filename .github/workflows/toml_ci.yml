@@ -18,6 +18,10 @@ jobs:
     steps:
 
       - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y jq
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
 
