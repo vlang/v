@@ -31,4 +31,11 @@ vlib/v/checker/tests/invalid_variable_name_err.vv:14:2: error: invalid use of re
    14 |     f64 := 2.22
       |     ~~~
    15 |     println(f64)
-   16 | }
+   16 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:17:2: error: invalid use of reserved type `map` as a variable name
+   15 |     println(f64)
+   16 |
+   17 |     map := map[string]string
+      |     ~~~
+   18 |     println(map)
+   19 | }
