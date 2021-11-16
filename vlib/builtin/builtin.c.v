@@ -173,8 +173,25 @@ pub fn eprint(s string) {
 	}
 }
 
+pub fn flush_stdout() {
+	$if freestanding {
+		not_implemented := 'flush_stdout is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		C.fflush(C.stdout)
+	}
+}
+
+pub fn flush_stderr() {
+	$if freestanding {
+		not_implemented := 'flush_stderr is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		C.fflush(C.stderr)
+	}
+}
+
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
-// A call to `flush()` will flush the output buffer to stdout.
 [manualfree]
 pub fn print(s string) {
 	$if android {

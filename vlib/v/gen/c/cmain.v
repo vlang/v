@@ -151,8 +151,6 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 
 pub fn (mut g Gen) write_tests_definitions() {
 	g.includes.writeln('#include <setjmp.h> // write_tests_main')
-	g.definitions.writeln('int g_test_oks = 0;')
-	g.definitions.writeln('int g_test_fails = 0;')
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 }
 
@@ -161,8 +159,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
-	g.writeln('\tg_test_fails++;')
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -171,8 +168,7 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
-	g.writeln('\tg_test_fails++;')
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -192,27 +188,56 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('#endif')
 	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	g.writeln('\tmain__vtest_init();')
+	//
 	all_tfuncs := g.get_all_test_function_names()
+	g.writeln('string v_test_file = _SLIT("$g.pref.path");')
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
 	}
+	g.writeln('')
+	g.writeln('\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln('\tvoid * _vtobj = test_runner._object;')
+	g.writeln('')
+	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
+	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, $all_tfuncs.len);')
+	g.writeln('\t_vtrunner._method_start(_vtobj, $all_tfuncs.len);')
 	g.writeln('')
 	for tname in all_tfuncs {
 		tcname := util.no_dots(tname)
+		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
+		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(_SLIT("$tcname"), _SLIT("$tcname"), _SLIT("$tcname"), 1);')
+		g.writeln('\t\t_vtrunner._method_fn_start(_vtobj);')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
+		//
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
+			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
 		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${tcname}();')
+		g.writeln('\t\t${tcname}();')
+		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
+		//
+		g.writeln('\t}else{')
+		//
+		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		//
+		g.writeln('\t}')
 		if g.pref.is_stats {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}
+		g.writeln('')
 	}
-	g.writeln('')
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
+	g.writeln('')
+	g.writeln('\t_vtrunner._method_finish(_vtobj);')
+	g.writeln('\tint test_exit_code = _vtrunner._method_exit_code(_vtobj);')
+	//
+	g.writeln('\t_vtrunner._method__v_free(_vtobj);')
+	g.writeln('')
 	g.writeln('\t_vcleanup();')
-	g.writeln('\treturn g_test_fails > 0;')
+	g.writeln('')
+	g.writeln('\treturn test_exit_code;')
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
 		println(g.out.after(main_fn_start_pos))

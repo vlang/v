@@ -448,7 +448,7 @@ fn test_map_in() {
 		'Foo': 'bar'
 	}
 	if 'foo'.capitalize() in m {
-		println('ok')
+		assert true
 	} else {
 		assert false
 	}

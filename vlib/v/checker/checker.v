@@ -1431,7 +1431,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				c.error('cannot modify constant `$expr.name`', expr.pos)
+				if !c.inside_unsafe {
+					c.error('cannot modify constant `$expr.name`', expr.pos)
+				}
 			}
 		}
 		ast.IndexExpr {

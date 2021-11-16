@@ -110,7 +110,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'json.encode_u64',
 		'json.json_print',
 		'json.json_parse',
-		'main.cb_propagate_test_error',
+		'main.nasserts',
+		'main.vtest_init',
+		'main.vtest_new_metainfo',
+		'main.vtest_new_filemetainfo',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
@@ -382,6 +385,15 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused_fn_names ? {
 		for key, _ in walker.used_fns {
 			println('> used fn key: $key')
+		}
+	}
+
+	for kcon, con in all_consts {
+		if pref.is_shared && con.is_pub {
+			walker.mark_const_as_used(kcon)
+		}
+		if !pref.is_shared && con.is_pub && con.name.starts_with('main.') {
+			walker.mark_const_as_used(kcon)
 		}
 	}
 
