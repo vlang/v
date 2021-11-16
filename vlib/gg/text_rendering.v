@@ -76,11 +76,11 @@ pub fn system_font_path() string {
 			}
 		}
 	}
-	mut fm := os.execute('fc-match -v')
+	mut fm := os.execute('fc-match -v -s -b')
 	if fm.exit_code == 0 {
 		lines := fm.output.split('\n')
 		for l in lines {
-			if l.contains('file:') {
+			if l.contains('file:') && !l.contains('.ttc') {
 				font := l.find_between('"', '"')
 				debug_font_println('Using font "$font"')
 				return font
