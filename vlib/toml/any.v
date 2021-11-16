@@ -5,6 +5,7 @@ module toml
 
 import time
 import toml.util
+import x.json2
 
 // Pretty much all the same builtin types as the `json2.Any` type plus `time.Time`
 pub type Any = Null
@@ -188,16 +189,23 @@ pub fn (a Any) to_json() string {
 		Null {
 			return 'null'
 		}
+		time.Time {
+			json_text := json2.Any(a.format_ss_micro())
+			return '"$json_text.json_str()"'
+		}
 		string {
-			return '"$a.str()"'
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
 		}
 		bool, f32, f64, i64, int, u64 {
-			return a.str()
+			json_text := json2.Any(a.str())
+			return json_text.json_str()
 		}
 		map[string]Any {
 			mut str := '{'
 			for key, val in a {
-				str += ' "$key": $val.to_json(),'
+				json_key := json2.Any(key)
+				str += ' "$json_key.json_str()": $val.to_json(),'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -212,8 +220,54 @@ pub fn (a Any) to_json() string {
 			str += ' ]'
 			return str
 		}
+	}
+}
+
+// to_json_any returns `Any` as a `x.json2.Any` type.
+pub fn (a Any) to_json_any() json2.Any {
+	match a {
+		Null {
+			return json2.Null{}
+		}
 		time.Time {
-			return '"$a.format_ss_micro()"'
+			return json2.Any(a.format_ss_micro())
+		}
+		string {
+			return json2.Any(a.str())
+		}
+		bool {
+			return json2.Any(bool(a))
+		}
+		int {
+			return json2.Any(int(a))
+		}
+		f32 {
+			return json2.Any(f32(a))
+		}
+		f64 {
+			return json2.Any(f64(a))
+		}
+		i64 {
+			return json2.Any(i64(a))
+		}
+		u64 {
+			return json2.Any(u64(a))
+		}
+		map[string]Any {
+			mut jmap := map[string]json2.Any{}
+			for key, val in a {
+				jmap[key] = val.to_json_any()
+			}
+			return jmap
+		}
+		[]Any {
+			mut jarr := []json2.Any{}
+
+			for val in a {
+				jarr << val.to_json_any()
+			}
+
+			return jarr
 		}
 	}
 }
