@@ -2,6 +2,7 @@ fn print_field_values<T>(s T) {
 	mut value_list := []string{}
 	mut value_type_list := []string{}
 	mut var_value_list := []string{}
+	mut var_intp_value_list := []string{}
 
 	$for field in T.fields {
 		println(s.$(field.name))
@@ -13,6 +14,7 @@ fn print_field_values<T>(s T) {
 		val := s.$(field.name)
 		println(val)
 		var_value_list << val.str()
+		var_intp_value_list << 'field value: $val'
 	}
 	assert value_list.len == 4
 	assert value_list[0] == 'Simon'
@@ -31,6 +33,12 @@ fn print_field_values<T>(s T) {
 	assert var_value_list[1] == 'simon1234'
 	assert var_value_list[2] == 'simon@gmail.com'
 	assert var_value_list[3] == '15'
+
+	assert var_intp_value_list.len == 4
+	assert var_intp_value_list[0] == 'field value: Simon'
+	assert var_intp_value_list[1] == 'field value: simon1234'
+	assert var_intp_value_list[2] == 'field value: simon@gmail.com'
+	assert var_intp_value_list[3] == 'field value: 15'
 }
 
 struct Foo {

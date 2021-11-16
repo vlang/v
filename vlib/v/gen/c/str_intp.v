@@ -140,7 +140,13 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 			g.expr(expr)
 		}
 	} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
-		g.gen_expr_to_string(expr, typ)
+		mut exp_typ := typ
+		if expr is ast.Ident && g.comptime_var_type_map.len > 0 {
+			if expr.obj is ast.Var {
+				exp_typ = expr.obj.typ
+			}
+		}
+		g.gen_expr_to_string(expr, exp_typ)
 	} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 		if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 			// convert to unsigned first befors C's integer propagation strikes
