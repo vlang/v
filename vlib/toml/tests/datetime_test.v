@@ -56,7 +56,7 @@ fn test_dates() {
 	od_time := toml.Date{'1979-05-27'}
 	ld1 := toml_doc.value('ld1')
 	assert ld1.date() == od_time
-	//assert ld1.string() == '1979-05-27' TODO fails in ci but not locally?
+	assert ld1.string() == '1979-05-27'
 
 	// lt1 test section
 	mut ot_time := toml.Time{'07:32:00'}
