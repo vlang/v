@@ -15,7 +15,7 @@ fn (mut g Gen) gen_free_method_for_type(typ ast.Type) string {
 		}
 	}
 
-	if sym.has_method('free') {
+	if sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
 	match mut sym.info {
