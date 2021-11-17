@@ -516,7 +516,7 @@ fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
 			&& byte(s.peek(4)).is_hex_digit() && byte(s.peek(5)).is_hex_digit() {
 			lit += s.text[s.pos + 1..s.pos + 6] //.ascii_str()
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'gulp escaped unicode `$lit`')
-			return lit, 4
+			return lit, 5
 		} else if s.peek(1) == quote {
 			if (!is_multiline && s.peek(2) == `\n`)
 				|| (is_multiline && s.peek(2) == quote && s.peek(3) == quote && s.peek(4) == `\n`) {
