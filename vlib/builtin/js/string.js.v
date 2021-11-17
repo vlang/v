@@ -17,7 +17,7 @@ pub fn (s string) runes() []rune {
 }
 
 pub fn (s string) slice(a int, b int) string {
-	return string(s.str.slice(a, b))
+	return string(s.str.slice(JS.Number(a), JS.Number(b)))
 }
 
 pub fn (s string) substr(start int, end int) string {
@@ -88,7 +88,7 @@ pub fn (s string) split(dot string) []string {
 pub fn (s string) bytes() []byte {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
-		return JS.Any(byte(JS.String(it).charCodeAt(0)))
+		return JS.Any(byte(JS.String(it).charCodeAt(JS.Number(0))))
 	})
 	_ := tmparr
 	mut arr := []byte{}
@@ -98,8 +98,8 @@ pub fn (s string) bytes() []byte {
 }
 
 pub fn (s string) capitalize() string {
-	part := string(s.str.slice(1, int(s.str.length)))
-	return string(s.str.charAt(0).toUpperCase().concat(part.str))
+	part := string(s.str.slice(JS.Number(1), s.str.length))
+	return string(s.str.charAt(JS.Number(0)).toUpperCase().concat(part.str))
 }
 
 pub fn (s string) clone() string {

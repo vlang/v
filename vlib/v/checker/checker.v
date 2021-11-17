@@ -598,7 +598,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					c.error('field `$field.name` uses non JS type', field.pos)
 				}
 			}
-			if field.typ == node.typ {
+			if field.typ == node.typ && node.language != .js {
 				c.error('recursive interface fields are not allowed because they cannot be initialised',
 					field.type_pos)
 			}
@@ -765,7 +765,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
 			node.pos)
 	}
-	if type_sym.kind == .interface_ {
+	if type_sym.kind == .interface_ && type_sym.language != .js {
 		c.error('cannot instantiate interface `$type_sym.name`', node.pos)
 	}
 	if type_sym.info is ast.Alias {
@@ -2092,6 +2092,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	if has_method {
 		node.is_noreturn = method.is_noreturn
+		node.is_ctor_new = method.is_ctor_new
 		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
@@ -2696,6 +2697,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 
 	node.is_noreturn = func.is_noreturn
+	node.is_ctor_new = func.is_ctor_new
 	if !found_in_args {
 		if node.scope.known_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',

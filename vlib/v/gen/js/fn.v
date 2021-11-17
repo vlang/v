@@ -65,6 +65,15 @@ fn (mut g JsGen) js_mname(name_ string) string {
 fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.writeln('(function () {')
+		g.writeln('try {')
+		g.writeln('let tmp = ')
+	}
+	if it.is_ctor_new {
+		g.write('new ')
+	}
 	g.write('${g.js_mname(it.name)}(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
@@ -74,12 +83,51 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 	}
 	// end call
 	g.write(')')
+	if call_return_is_optional {
+		g.write(';\n')
+		g.writeln('if (tmp === null || tmp === undefined) throw "none";')
+		g.writeln('return tmp;')
+		g.writeln('} catch(err) {')
+		g.inc_indent()
+		// gen or block contents
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
+				}
+				// g.write('return ')
+				g.stmt(it.or_block.stmts.last())
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err + ""})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin__panic($panicstr)')
+				} else {
+					g.writeln('throw new Option({ state: new byte(2), err: error(new string($panicstr)) });')
+				}
+			}
+			else {}
+		}
+		// end catch
+		g.dec_indent()
+		g.writeln('}')
+		g.writeln('})()')
+	}
 	g.call_stack.delete_last()
 }
 
 fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.writeln('(function () {')
+		g.writeln('try {')
+		g.writeln('let tmp = ')
+	}
+	if it.is_ctor_new {
+		g.write('new ')
+	}
 	g.expr(it.left)
 	g.write('.${g.js_mname(it.name)}(')
 	for i, arg in it.args {
@@ -90,6 +138,36 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	}
 	// end method call
 	g.write(')')
+	if call_return_is_optional {
+		g.write(';\n')
+		g.writeln('if (tmp === null || tmp === undefined) throw "none";')
+		g.writeln('return tmp;')
+		g.writeln('} catch(err) {')
+		g.inc_indent()
+		// gen or block contents
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
+				}
+				// g.write('return ')
+				g.stmt(it.or_block.stmts.last())
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err + ""})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin__panic($panicstr)')
+				} else {
+					g.writeln('throw new Option({ state: new byte(2), err: error(new string($panicstr)) });')
+				}
+			}
+			else {}
+		}
+		// end catch
+		g.dec_indent()
+		g.writeln('}')
+		g.writeln('})()')
+	}
 	g.call_stack.delete_last()
 }
 

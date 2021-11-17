@@ -1063,6 +1063,7 @@ pub fn (mut f Fmt) hash_stmt(node ast.HashStmt) {
 }
 
 pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}

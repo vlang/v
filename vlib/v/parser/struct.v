@@ -431,6 +431,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
 	mut pos := p.tok.position()
+	attrs := p.attrs
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -629,6 +630,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		methods: methods
 		ifaces: ifaces
 		is_pub: is_pub
+		attrs: attrs
 		pos: pos
 		pre_comments: pre_comments
 		generic_types: generic_types

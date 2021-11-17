@@ -186,6 +186,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_unsafe := false
 	mut is_trusted := false
 	mut is_noreturn := false
+	mut is_ctor_new := false
 	mut is_c2v_variadic := false
 	for fna in p.attrs {
 		match fna.name {
@@ -199,6 +200,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'unsafe' { is_unsafe = true }
 			'trusted' { is_trusted = true }
 			'c2v_variadic' { is_c2v_variadic = true }
+			'use_new' { is_ctor_new = true }
 			else {}
 		}
 	}
@@ -446,6 +448,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_noreturn: is_noreturn
+			is_ctor_new: is_ctor_new
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
