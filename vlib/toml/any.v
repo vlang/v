@@ -29,9 +29,9 @@ pub fn (a Any) string() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
-		DateTime { return a.str() }
-		Date { return a.str() }
-		Time { return a.str() }
+		DateTime { return a.datetime }
+		Date { return a.date }
+		Time { return a.time }
 		else { return a.str() }
 	}
 }
