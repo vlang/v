@@ -202,12 +202,25 @@ pub fn (a Any) to_json() string {
 			return '"$json_text.json_str()"'
 		}
 		string {
-			json_text := json2.Any(a.str())
-			return '"$json_text.json_str()"'
+			return '"' + json2.Any(a.str()).json_str() + '"'
 		}
-		bool, f32, f64, i64, int, u64 {
-			json_text := json2.Any(a.str())
-			return json_text.json_str()
+		bool {
+			return json2.Any(bool(a)).json_str()
+		}
+		f32 {
+			return json2.Any(f32(a)).json_str()
+		}
+		f64 {
+			return json2.Any(f64(a)).json_str()
+		}
+		i64 {
+			return json2.Any(i64(a)).json_str()
+		}
+		int {
+			return json2.Any(int(a)).json_str()
+		}
+		u64 {
+			return json2.Any(u64(a)).json_str()
 		}
 		map[string]Any {
 			mut str := '{'

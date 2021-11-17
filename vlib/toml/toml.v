@@ -113,7 +113,7 @@ pub fn parse(toml string) ?Doc {
 
 // to_json returns a compact json string of the complete document.
 pub fn (d Doc) to_json() string {
-	return d.ast.to_json()
+	return d.ast_to_any(d.ast.table).to_json()
 }
 
 // to_any converts the `Doc` to toml.Any type.

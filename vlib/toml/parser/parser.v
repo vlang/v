@@ -412,7 +412,7 @@ pub fn (mut p Parser) root_table() ? {
 
 					t := p.find_sub_table(sub_table) ?
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val.to_json() in table ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -429,7 +429,7 @@ pub fn (mut p Parser) root_table() ? {
 
 					t := p.find_table() ?
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val.to_json() in table ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(t)}')
 						key_str := key.str()
 						if _ := t[key_str] {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -577,7 +577,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -588,7 +588,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' key "$key_str" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 					}
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key_str" = $val.to_json() into ${ptr_str(tbl)}')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key_str" = $val into ${ptr_str(tbl)}')
 					tbl[key_str] = val
 				}
 				previous_token_was_value = true
@@ -674,7 +674,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -689,7 +689,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 	}
 	mut arr := []ast.Value{}
 	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr).to_json()}. leaving at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "$p.tok.kind" "$p.tok.lit"')
 	return arr
 }
 
@@ -816,7 +816,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 
 					mut t := p.find_in_table(mut tbl, sub_table) ?
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val.to_json() into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -830,7 +830,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 						t = p.find_in_table(mut tbl, implicit_allocation_key) ?
 					}
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "$key" = $val.to_json() into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				}
@@ -870,7 +870,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 	}
 	mut arr := []ast.Value{}
 	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr).to_json()}. leaving at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "$p.tok.kind" "$p.tok.lit"')
 	return arr
 }
 
@@ -1041,7 +1041,7 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	p.check(.assign) ? // Assignment operator
 	p.ignore_while(parser.space_formatting)
 	value := p.value() ?
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = $value.to_json()')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = $value')
 	return key, value
 }
 
@@ -1085,7 +1085,7 @@ pub fn (mut p Parser) value() ?ast.Value {
 				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 		}
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "$p.tok.kind" as value $value.to_json()')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "$p.tok.kind" as value $value')
 	return value
 }
 

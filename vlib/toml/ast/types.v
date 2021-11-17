@@ -4,7 +4,6 @@
 module ast
 
 import toml.token
-import x.json2
 
 // Key is a sumtype representing all types of keys that
 // can be found in a TOML document.
@@ -26,21 +25,20 @@ pub type Value = Bool
 	| []Value
 	| map[string]Value
 
-pub fn (v Value) to_json() string {
+// str outputs the value in JSON-like format for eased
+// debugging
+pub fn (v Value) str() string {
 	match v {
 		Quoted, Date, DateTime, Time {
-			json_text := json2.Any(v.text)
-			return '"$json_text.json_str()"'
+			return '"$v.text"'
 		}
 		Bool, Null, Number {
-			json_text := json2.Any(v.text)
-			return json_text.json_str()
+			return v.text
 		}
 		map[string]Value {
 			mut str := '{'
 			for key, val in v {
-				json_key := json2.Any(key)
-				str += ' "$json_key.json_str()": $val.to_json(),'
+				str += ' "$key": $val,'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -49,7 +47,7 @@ pub fn (v Value) to_json() string {
 		[]Value {
 			mut str := '['
 			for val in v {
-				str += ' $val.to_json(),'
+				str += ' $val,'
 			}
 			str = str.trim_right(',')
 			str += ' ]'
