@@ -1127,6 +1127,13 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 	mut lit := p.tok.lit[1..p.tok.lit.len - 1]
 	if is_multiline {
 		lit = p.tok.lit[3..p.tok.lit.len - 3]
+		// From https://toml.io/en/v1.0.0#string
+		// "Multi-line literal strings [...] A newline immediately following the opening
+		// delimiter will be trimmed. All other content between the delimiters
+		// is interpreted as-is without modification."
+		if lit.len > 0 && lit[0] == `\n` {
+			lit = lit[1..]
+		}
 	}
 	return ast.Quoted{
 		text: lit

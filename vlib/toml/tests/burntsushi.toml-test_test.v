@@ -19,7 +19,6 @@ const (
 		// String
 		'string/double-quote-escape.toml',
 		'string/unicode-escape.toml',
-		'string/raw-multiline.toml',
 		'string/escapes.toml',
 		'string/escaped-escape.toml',
 		'string/nl.toml',
