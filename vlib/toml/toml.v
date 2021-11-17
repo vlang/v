@@ -92,8 +92,7 @@ pub fn (d Doc) to_json() string {
 
 // to_any converts the `Doc` to toml.Any type.
 pub fn (d Doc) to_any() Any {
-	values := d.ast.table as map[string]ast.Value
-	return d.ast_to_any(values)
+	return d.ast_to_any(d.ast.table)
 }
 
 // value queries a value from the TOML document.
