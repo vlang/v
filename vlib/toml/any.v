@@ -129,7 +129,7 @@ pub fn (a Any) bool() bool {
 pub fn (a Any) date() Date {
 	match a {
 		// string {  } // TODO
-		Date { return Date{a.str()} }
+		Date { return a }
 		else { return Date{''} }
 	}
 }
@@ -138,7 +138,7 @@ pub fn (a Any) date() Date {
 pub fn (a Any) time() Time {
 	match a {
 		// string {  } // TODO
-		Time { return Time{a.str()} }
+		Time { return a }
 		else { return Time{''} }
 	}
 }
@@ -147,7 +147,7 @@ pub fn (a Any) time() Time {
 pub fn (a Any) datetime() DateTime {
 	match a {
 		// string {  } // TODO
-		DateTime { return DateTime{a.str()} }
+		DateTime { return a }
 		else { return DateTime{''} }
 	}
 }
