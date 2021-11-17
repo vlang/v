@@ -36,6 +36,7 @@ pub interface JS.String {
 
 pub interface JS.Boolean {
 	JS.Any
+	length JS.Number
 }
 
 pub interface JS.Map {

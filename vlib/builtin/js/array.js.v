@@ -397,3 +397,11 @@ pub fn (a []string) str() string {
 	res := sb.str()
 	return res
 }
+
+pub fn (a array) to_js_array() JS.Array {
+	tmp := JS.Array.prototype.constructor()
+	for i in 0 .. a.len {
+		tmp.push(a.arr.get(i))
+	}
+	return tmp
+}
