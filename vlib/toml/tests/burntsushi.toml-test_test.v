@@ -1,5 +1,8 @@
 import os
 import toml
+import toml.ast
+import x.json2
+import strconv
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
@@ -140,7 +143,9 @@ fn test_burnt_sushi_tomltest() {
 					bs_toml_json_path := os.join_path(compare_work_dir_root,
 						os.file_name(valid_test_file).all_before_last('.') + '.json')
 
-					os.write_file(v_toml_json_path, toml_doc.to_burntsushi()) or { panic(err) }
+					os.write_file(v_toml_json_path, to_burntsushi(toml_doc.ast.table)) or {
+						panic(err)
+					}
 
 					bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json') or {
 						panic(err)
@@ -205,4 +210,69 @@ fn test_burnt_sushi_tomltest() {
 		println('No test data directory found in "$test_root"')
 		assert true
 	}
+}
+
+// to_burntsushi returns a BurntSushi compatible json string converted from the `value` ast.Value.
+fn to_burntsushi(value ast.Value) string {
+	match value {
+		ast.Quoted {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "string", "value": "$json_text" }'
+		}
+		ast.DateTime {
+			// Normalization for json
+			json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
+			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+				|| json_text.all_after('T').contains('+') {
+				'datetime'
+			} else {
+				'datetime-local'
+			}
+			return '{ "type": "$typ", "value": "$json_text" }'
+		}
+		ast.Date {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "date-local", "value": "$json_text" }'
+		}
+		ast.Time {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "time-local", "value": "$json_text" }'
+		}
+		ast.Bool {
+			json_text := json2.Any(value.text.bool()).json_str()
+			return '{ "type": "bool", "value": "$json_text" }'
+		}
+		ast.Null {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "null", "value": "$json_text" }'
+		}
+		ast.Number {
+			if value.text.contains('.') || value.text.to_lower().contains('e') {
+				json_text := value.text.f64()
+				return '{ "type": "float", "value": "$json_text" }'
+			}
+			i64_ := strconv.parse_int(value.text, 0, 0) or { i64(0) }
+			return '{ "type": "integer", "value": "$i64_" }'
+		}
+		map[string]ast.Value {
+			mut str := '{ '
+			for key, val in value {
+				json_key := json2.Any(key).json_str()
+				str += ' "$json_key": ${to_burntsushi(val)},'
+			}
+			str = str.trim_right(',')
+			str += ' }'
+			return str
+		}
+		[]ast.Value {
+			mut str := '[ '
+			for val in value {
+				str += ' ${to_burntsushi(val)},'
+			}
+			str = str.trim_right(',')
+			str += ' ]\n'
+			return str
+		}
+	}
+	return '<error>'
 }
