@@ -2029,6 +2029,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.kind == .rcbr {
 				p.next()
 			} else {
+				if p.pref.is_fmt {
+					map_init := p.map_init()
+					p.check(.rcbr)
+					return map_init
+				}
 				p.error('`}` expected; explicit `map` initialization does not support parameters')
 			}
 		}
