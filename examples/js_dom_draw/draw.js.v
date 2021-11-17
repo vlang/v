@@ -1,3 +1,4 @@
+/*
 import jsdom
 
 fn get_2dcontext(canvas jsdom.IElement) ?jsdom.CanvasRenderingContext2D {
@@ -73,4 +74,9 @@ fn main() {
 	elem.add_event_listener('click', fn [context, canv] (_ jsdom.IEventTarget, _ jsdom.IEvent) {
 		context.clear_rect(0, 0, canv.width(), canv.height())
 	})
+}
+*/
+
+fn main() {
+	panic('jsdom is being refactored; This example will be available soon')
 }
