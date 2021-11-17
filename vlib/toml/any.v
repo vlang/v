@@ -29,9 +29,9 @@ pub fn (a Any) string() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
-		DateTime { return a.datetime.clone() }
-		Date { return a.date.clone() }
-		Time { return a.time.clone() }
+		DateTime { return a.str() }
+		Date { return a.str() }
+		Time { return a.str() }
 		else { return a.str() }
 	}
 }
@@ -129,7 +129,7 @@ pub fn (a Any) bool() bool {
 pub fn (a Any) date() Date {
 	match a {
 		// string {  } // TODO
-		Date { return a }
+		Date { return Date{a.str()} }
 		else { return Date{''} }
 	}
 }
@@ -138,7 +138,7 @@ pub fn (a Any) date() Date {
 pub fn (a Any) time() Time {
 	match a {
 		// string {  } // TODO
-		Time { return a }
+		Time { return Time{a.str()} }
 		else { return Time{''} }
 	}
 }
@@ -147,7 +147,7 @@ pub fn (a Any) time() Time {
 pub fn (a Any) datetime() DateTime {
 	match a {
 		// string {  } // TODO
-		DateTime { return a }
+		DateTime { return DateTime{a.str()} }
 		else { return DateTime{''} }
 	}
 }
