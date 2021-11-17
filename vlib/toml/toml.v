@@ -15,24 +15,30 @@ pub struct Null {
 }
 
 // DateTime is the representation of an RFC 3339 date-only string.
-pub type DateTime = string
+pub struct DateTime {
+	datetime string
+}
 
 pub fn (dt DateTime) str() string {
-	return dt
+	return dt.datetime
 }
 
 // Date is the representation of an RFC 3339 datetime string.
-pub type Date = string
+pub struct Date {
+	date string
+}
 
 pub fn (d Date) str() string {
-	return d
+	return d.date
 }
 
 // Time is the representation of an RFC 3339 time-only string.
-pub type Time = string
+pub struct Time {
+	time string
+}
 
 pub fn (t Time) str() string {
-	return t
+	return t.time
 }
 
 // Config is used to configure the toml parser.
@@ -147,13 +153,13 @@ fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 fn (d Doc) ast_to_any(value ast.Value) Any {
 	match value {
 		ast.Date {
-			return Any(Date(value.text))
+			return Any(Date{value.text})
 		}
 		ast.Time {
-			return Any(Time(value.text))
+			return Any(Time{value.text})
 		}
 		ast.DateTime {
-			return Any(DateTime(value.text))
+			return Any(DateTime{value.text})
 		}
 		ast.Quoted {
 			return Any(value.text)

@@ -29,7 +29,9 @@ pub fn (a Any) string() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
-		DateTime, Date, Time { return a.str() }
+		DateTime { return a.str() }
+		Date { return a.str() }
+		Time { return a.str() }
 		else { return a.str() }
 	}
 }
@@ -128,7 +130,7 @@ pub fn (a Any) date() Date {
 	match a {
 		// string {  } // TODO
 		Date { return a }
-		else { return '' }
+		else { return Date{''} }
 	}
 }
 
@@ -137,7 +139,7 @@ pub fn (a Any) time() Time {
 	match a {
 		// string {  } // TODO
 		Time { return a }
-		else { return '' }
+		else { return Time{''} }
 	}
 }
 
@@ -146,7 +148,7 @@ pub fn (a Any) datetime() DateTime {
 	match a {
 		// string {  } // TODO
 		DateTime { return a }
-		else { return '' }
+		else { return DateTime{''} }
 	}
 }
 
@@ -187,7 +189,15 @@ pub fn (a Any) to_json() string {
 		Null {
 			return 'null'
 		}
-		DateTime, Date, Time {
+		DateTime {
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
+		}
+		Date {
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
+		}
+		Time {
 			json_text := json2.Any(a.str())
 			return '"$json_text.json_str()"'
 		}
@@ -227,7 +237,13 @@ pub fn (a Any) to_json_any() json2.Any {
 		Null {
 			return json2.Null{}
 		}
-		DateTime, Date, Time {
+		DateTime {
+			return json2.Any(a.str())
+		}
+		Date {
+			return json2.Any(a.str())
+		}
+		Time {
 			return json2.Any(a.str())
 		}
 		string {
