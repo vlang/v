@@ -9,6 +9,8 @@ import toml.input
 import toml.scanner
 import toml.parser
 import time
+import x.json2
+import strconv
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
@@ -165,11 +167,11 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 			return Any((value as ast.Quoted).text)
 		}
 		ast.Number {
-			str := (value as ast.Number).text
-			if str.contains('.') {
-				return Any(str.f64())
+			if value.text.contains('.') || value.text.to_lower().contains('e') {
+				return Any(value.text.f64())
 			}
-			return Any(str.i64())
+			v := strconv.parse_int(value.text, 0, 0) or { i64(0) }
+			return Any(v)
 		}
 		ast.Bool {
 			str := (value as ast.Bool).text
@@ -204,4 +206,76 @@ fn (d Doc) ast_to_any(value ast.Value) Any {
 	// TODO decide this
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
 	// return Any('')
+}
+
+// to_burntsushi returns a BurntSushi compatible json string of the complete document.
+pub fn (d Doc) to_burntsushi() string {
+	return d.to_burntsushi_(d.ast.table)
+}
+
+// to_burntsushi returns a BurntSushi compatible json string of the complete document.
+fn (d Doc) to_burntsushi_(value ast.Value) string {
+	match value {
+		ast.Quoted {
+			// txt := .replace(r'\\','\\').replace(r'\"','"')
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "string", "value": "$json_text" }'
+		}
+		ast.DateTime {
+			// Normalization for json
+			json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
+			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+				|| json_text.all_after('T').contains('+') {
+				'datetime'
+			} else {
+				'datetime-local'
+			}
+			return '{ "type": "$typ", "value": "$json_text" }'
+		}
+		ast.Date {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "date-local", "value": "$json_text" }'
+		}
+		ast.Time {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "time-local", "value": "$json_text" }'
+		}
+		ast.Bool {
+			json_text := json2.Any(value.text.bool()).json_str()
+			return '{ "type": "bool", "value": "$json_text" }'
+		}
+		ast.Null {
+			json_text := json2.Any(value.text).json_str()
+			return '{ "type": "null", "value": "$json_text" }'
+		}
+		ast.Number {
+			if value.text.contains('.') || value.text.to_lower().contains('e') {
+				json_text := value.text.f64()
+				return '{ "type": "float", "value": "$json_text" }'
+			}
+			i64_ := strconv.parse_int(value.text, 0, 0) or { i64(0) }
+			return '{ "type": "integer", "value": "$i64_" }'
+		}
+		map[string]ast.Value {
+			mut str := '{ '
+			for key, val in value {
+				json_key := json2.Any(key).json_str()
+				str += ' "$json_key": ${d.to_burntsushi_(val)},'
+				// str += d.to_burntsushi_(val, indent+1)
+			}
+			str = str.trim_right(',')
+			str += ' }'
+			return str
+		}
+		[]ast.Value {
+			mut str := '[ '
+			for val in value {
+				str += ' ${d.to_burntsushi_(val)},'
+			}
+			str = str.trim_right(',')
+			str += ' ]\n'
+			return str
+		}
+	}
+	return '<error>'
 }

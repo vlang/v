@@ -9,9 +9,76 @@ import toml
 // TODO Goal: make value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	// Kept for easier handling of future updates to the tests
-	valid_exceptions   = []string{}
-	invalid_exceptions = []string{}
+	valid_exceptions       = []string{}
+	invalid_exceptions     = []string{}
+
+	valid_value_exceptions = [
+		// String
+		'string/double-quote-escape.toml',
+		'string/unicode-escape.toml',
+		'string/raw-multiline.toml',
+		'string/escapes.toml',
+		'string/escaped-escape.toml',
+		'string/nl.toml',
+		'string/escape-tricky.toml',
+		'string/multiline.toml',
+		// Integer
+		'integer/literals.toml',
+		'integer/long.toml',
+		// Float
+		'float/exponent.toml',
+		'float/underscore.toml',
+		'float/inf-and-nan.toml',
+		// Comment
+		'comment/tricky.toml',
+		// Table
+		'table/empty.toml',
+		'table/array-implicit.toml',
+		'table/sub-empty.toml',
+		'table/without-super.toml',
+		'table/whitespace.toml',
+		'table/names.toml',
+		'table/no-eol.toml',
+		'table/keyword.toml',
+		// Array
+		'array/string-quote-comma.toml',
+		'array/string-quote-comma-2.toml',
+		'array/table-array-string-backslash.toml',
+		// Date-time
+		'datetime/milliseconds.toml',
+		// Inline-table
+		'inline-table/multiline.toml',
+		// Key
+		'key/numeric-dotted.toml',
+		'key/alphanum.toml',
+		'key/escapes.toml',
+	]
+
+	jq                     = os.find_abs_path_of_executable('jq') or { '' }
+	compare_work_dir_root  = os.join_path(os.temp_dir(), 'v', 'toml', 'burntsushi')
+	// From: https://stackoverflow.com/a/38266731/1904615
+	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
+def sorted_walk(f):
+  . as $in
+  | if type == "object" then
+      reduce keys[] as $key
+        ( {}; . + { ($key):  ($in[$key] | sorted_walk(f)) } ) | f
+  elif type == "array" then map( sorted_walk(f) ) | f
+  else f
+  end;
+
+def normalize: sorted_walk(if type == "array" then sort else . end);
+
+normalize'
 )
+
+fn run(args []string) ?string {
+	res := os.execute(args.join(' '))
+	if res.exit_code != 0 {
+		return error('${args[0]} failed with return code ${res.exit_code}.\n$res.output')
+	}
+	return res.output
+}
 
 // test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
 fn test_burnt_sushi_tomltest() {
@@ -32,12 +99,6 @@ fn test_burnt_sushi_tomltest() {
 			if relative !in valid_exceptions {
 				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
-
-				// parsed_json := toml_doc.to_json().replace(' ','')
-				// mut test_suite_json := os.read_file(valid_test_file.all_before_last('.')+'.json') or { panic(err) }
-				// test_suite_json = test_suite_json.replace('\n ','').replace(' ','')
-				// println(test_suite_json.replace('\n ','').replace(' ',''))
-				// assert parsed_json == test_suite_json
 				valid++
 			} else {
 				e++
@@ -47,6 +108,64 @@ fn test_burnt_sushi_tomltest() {
 		println('$valid/$valid_test_files.len TOML files was parsed correctly')
 		if valid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $valid_exceptions.len valid TOML files...')
+		}
+
+		// If the command-line tool `jq` is installed, value tests can be run as well.
+		if jq != '' {
+			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
+
+			if os.exists(compare_work_dir_root) {
+				os.rmdir_all(compare_work_dir_root) or { panic(err) }
+			}
+			os.mkdir_all(compare_work_dir_root) or { panic(err) }
+
+			jq_normalize_path := os.join_path(compare_work_dir_root, 'normalize.jq')
+			os.write_file(jq_normalize_path, jq_normalize) or { panic(err) }
+
+			valid = 0
+			e = 0
+			for i, valid_test_file in valid_test_files {
+				mut relative := valid_test_file.all_after(os.join_path('toml-test', 'tests',
+					'valid')).trim_left(os.path_separator)
+				$if windows {
+					relative = relative.replace('/', '\\')
+				}
+				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
+				if relative !in valid_exceptions && relative !in valid_value_exceptions {
+					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
+
+					v_toml_json_path := os.join_path(compare_work_dir_root,
+						os.file_name(valid_test_file).all_before_last('.') + '.v.json')
+					bs_toml_json_path := os.join_path(compare_work_dir_root,
+						os.file_name(valid_test_file).all_before_last('.') + '.json')
+
+					os.write_file(v_toml_json_path, toml_doc.to_burntsushi()) or { panic(err) }
+
+					bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json') or {
+						panic(err)
+					}
+					os.write_file(bs_toml_json_path, bs_json) or { panic(err) }
+
+					v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
+						panic(err)
+					}
+					bs_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', bs_toml_json_path]) or {
+						panic(err)
+					}
+
+					assert bs_normalized_json == v_normalized_json
+
+					valid++
+				} else {
+					e++
+					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
+				}
+			}
+			println('$valid/$valid_test_files.len TOML files was parsed correctly and value checked')
+			if valid_value_exceptions.len > 0 {
+				println('TODO Skipped value checks of $valid_value_exceptions.len valid TOML files...')
+			}
 		}
 
 		// TODO test cases where the parser should fail
