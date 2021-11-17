@@ -43,7 +43,7 @@ pub fn (t Transformer) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.BranchStmt {}
-		ast.CompFor {}
+		ast.ComptimeFor {}
 		ast.ConstDecl {
 			for mut field in node.fields {
 				expr := t.expr(field.expr)

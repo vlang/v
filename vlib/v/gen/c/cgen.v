@@ -1568,7 +1568,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.const_decl(node)
 			// }
 		}
-		ast.CompFor {
+		ast.ComptimeFor {
 			g.comptime_for(node)
 		}
 		ast.DeferStmt {

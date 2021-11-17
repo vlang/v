@@ -65,7 +65,7 @@ pub type Stmt = AsmStmt
 	| AssignStmt
 	| Block
 	| BranchStmt
-	| CompFor
+	| ComptimeFor
 	| ConstDecl
 	| DeferStmt
 	| EmptyStmt
@@ -898,17 +898,17 @@ pub:
 	post_comments []Comment
 }
 
-pub enum CompForKind {
+pub enum ComptimeForKind {
 	methods
 	fields
 	attributes
 }
 
-pub struct CompFor {
+pub struct ComptimeFor {
 pub:
 	val_var string
 	stmts   []Stmt
-	kind    CompForKind
+	kind    ComptimeForKind
 	pos     token.Position
 	typ_pos token.Position
 pub mut:
@@ -1904,7 +1904,7 @@ pub fn (node Node) children() []Node {
 		}
 	} else if node is Stmt {
 		match node {
-			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, CompFor {
+			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, ComptimeFor {
 				return node.stmts.map(Node(it))
 			}
 			ExprStmt, AssertStmt {

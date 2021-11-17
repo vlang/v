@@ -92,7 +92,7 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.Block {
 			w.stmts(node.stmts)
 		}
-		ast.CompFor {
+		ast.ComptimeFor {
 			w.stmts(node.stmts)
 		}
 		ast.ConstDecl {

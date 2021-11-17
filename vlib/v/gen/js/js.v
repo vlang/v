@@ -637,7 +637,7 @@ fn (mut g JsGen) stmt_no_semi(node ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_branch_stmt(node)
 		}
-		ast.CompFor {}
+		ast.ComptimeFor {}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
@@ -740,7 +740,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_branch_stmt(node)
 		}
-		ast.CompFor {}
+		ast.ComptimeFor {}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)

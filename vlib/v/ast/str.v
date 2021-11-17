@@ -580,7 +580,7 @@ fn field_to_string(f ConstField) string {
 	return '$x = $f.expr'
 }
 
-pub fn (e CompForKind) str() string {
+pub fn (e ComptimeForKind) str() string {
 	match e {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
