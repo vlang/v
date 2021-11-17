@@ -1,2 +1,2 @@
 // DOM API wrapper
-module jsdom 
+module jsdom

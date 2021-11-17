@@ -136,5 +136,3 @@ pub interface JS.DOMStringList {
 	contains(JS.String) JS.Boolean
 	item(index JS.Number) ?JS.String
 }
-
-pub fn JS.DOMStringList.prototype.constructor() JS.DOMStringList
