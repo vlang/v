@@ -173,8 +173,12 @@ fn imax(x int, y int) int {
 	return if x > y { x } else { y }
 }
 
+[manualfree]
 fn supports_escape_sequences(fd int) bool {
 	vcolors_override := os.getenv('VCOLORS')
+	defer {
+		unsafe { vcolors_override.free() }
+	}
 	if vcolors_override == 'always' {
 		return true
 	}
@@ -182,11 +186,17 @@ fn supports_escape_sequences(fd int) bool {
 		return false
 	}
 	env_term := os.getenv('TERM')
+	defer {
+		unsafe { env_term.free() }
+	}
 	if env_term == 'dumb' {
 		return false
 	}
 	$if windows {
 		env_conemu := os.getenv('ConEmuANSI')
+		defer {
+			unsafe { env_conemu.free() }
+		}
 		if env_conemu == 'ON' {
 			return true
 		}
