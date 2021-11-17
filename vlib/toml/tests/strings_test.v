@@ -28,6 +28,8 @@ two
 three
 four
 '''"
+	toml_unicode_escapes = r'short = "\u03B4"
+long = "\U000003B4"'
 )
 
 fn test_multiline_strings() {
@@ -64,6 +66,15 @@ fn test_multiline_strings() {
 	assert value.string() == 'aaa' + "'''" + 'bbb'
 	value = toml_doc.value('mismatch2')
 	assert value.string() == 'aaa' + '"""' + 'bbb'
+}
+
+fn test_unicode_escapes() {
+	mut toml_doc := toml.parse(toml_unicode_escapes) or { panic(err) }
+
+	mut value := toml_doc.value('short')
+	assert value.string() == r'\u03B4'
+	value = toml_doc.value('long')
+	assert value.string() == r'\U000003B4'
 }
 
 fn test_literal_strings() {
