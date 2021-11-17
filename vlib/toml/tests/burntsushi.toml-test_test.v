@@ -282,6 +282,8 @@ fn to_burntsushi(value ast.Value) string {
 	return '<error>'
 }
 
+// toml_to_json_escapes is a utility function for normalizing
+// TOML basic string to JSON string
 fn toml_to_json_escapes(q ast.Quoted) ?string {
 	mut s := scanner.new_simple(q.text) ?
 	mut r := ''
