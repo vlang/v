@@ -137,8 +137,4 @@ pub interface JS.DOMStringList {
 	item(index JS.Number) ?JS.String
 }
 
-#function foo() { return null; }
-
-pub fn JS.foo() ?JS.String
-
 pub fn JS.DOMStringList.prototype.constructor() JS.DOMStringList
