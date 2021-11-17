@@ -31,7 +31,7 @@ pushd %~dp0
 
 :verifyopt
 REM Read stdin EOF
-if ["%~1"] == [""] goto :init
+if ["%~1"] == [""] goto init
 
 REM Target options
 if !shift_counter! LSS 1 (
@@ -39,13 +39,13 @@ if !shift_counter! LSS 1 (
         if not ["%~2"] == [""] set "subcmd=%~2"& shift& set /a shift_counter+=1
     )
     for %%z in (build clean cleanall help) do (
-        if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
+        if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto verifyopt
     )
 )
 
 REM Compiler option
 for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
-    if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
+    if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto verifyopt
 )
 
 REM Standard options
@@ -57,14 +57,14 @@ if "%~1" == "--local" (
     set /a flag_local=1
     set /a shift_counter+=1
     shift
-    goto :verifyopt
+    goto verifyopt
 )
 
 echo Undefined option: %~1
 exit /b 2
 
 :init
-goto :!target!
+goto !target!
 
 :cleanall
 call :clean
@@ -98,7 +98,7 @@ exit /b %ERRORLEVEL%
 :build
 if !flag_local! NEQ 1 (
     call :download_tcc
-    if %ERRORLEVEL% NEQ 0 goto :error
+    if %ERRORLEVEL% NEQ 0 goto error
     pushd "%vc_dir%" && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!
@@ -111,7 +111,7 @@ if !flag_local! NEQ 1 (
 )
 
 echo Building V...
-if not [!compiler!] == [] goto :!compiler!_strap
+if not [!compiler!] == [] goto !compiler!_strap
 
 
 REM By default, use tcc, since we have it prebuilt:
@@ -119,12 +119,12 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with TCC
 "!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -w -o v.exe vc\v_win.c -ladvapi32
-if %ERRORLEVEL% NEQ 0 goto :compile_error
+if %ERRORLEVEL% NEQ 0 goto compile_error
 
 echo  ^> Compiling with .\v.exe self
 v.exe -cc "!tcc_exe!" self
-if %ERRORLEVEL% NEQ 0 goto :clang_strap
-goto :success
+if %ERRORLEVEL% NEQ 0 goto clang_strap
+goto success
 
 
 
@@ -132,8 +132,8 @@ goto :success
 where /q clang
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> Clang not found
-	if not [!compiler!] == [] goto :error
-	goto :gcc_strap
+	if not [!compiler!] == [] goto error
+	goto gcc_strap
 )
 
 echo  ^> Attempting to build v_win.c with Clang
@@ -141,20 +141,20 @@ clang -std=c99 -Ithirdparty/stdatomic/win -municode -w -o v.exe .\vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
-	goto :compile_error
+	goto compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
 v.exe -cc clang self
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-goto :success
+if %ERRORLEVEL% NEQ 0 goto compile_error
+goto success
 
 :gcc_strap
 where /q gcc
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> GCC not found
-	if not [!compiler!] == [] goto :error
-	goto :msvc_strap
+	if not [!compiler!] == [] goto error
+	goto msvc_strap
 )
 
 echo  ^> Attempting to build v_win.c with GCC
@@ -162,13 +162,13 @@ gcc -std=c99 -municode -Ithirdparty/stdatomic/win -w -o v.exe .\vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version
-	goto :compile_error
+	goto compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
 v.exe -cc gcc self
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-goto :success
+if %ERRORLEVEL% NEQ 0 goto compile_error
+goto success
 
 :msvc_strap
 set VsWhereDir=%ProgramFiles(x86)%
@@ -181,8 +181,8 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
-	if not [!compiler!] == [] goto :error
-	goto :compile_error
+	if not [!compiler!] == [] goto error
+	goto compile_error
 )
 
 for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
@@ -202,14 +202,14 @@ cl.exe /volatile:ms /I thirdparty\stdatomic\win /Fo%ObjFile% /O2 /MD /D_VBOOTSTR
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
     cl.exe
-    goto :compile_error
+    goto compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
 v.exe -cc msvc self
 del %ObjFile%
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-goto :success
+if %ERRORLEVEL% NEQ 0 goto compile_error
+goto success
 
 :download_tcc
 pushd %tcc_dir% && (
@@ -224,14 +224,14 @@ for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
     set "dattrib=%attrib:~0,1%"
     if /I not "%dattrib%" == "d" set "tcc_exe=%%~sfi"
 )
-if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error
+if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto error
 echo.
 exit /b 0
 
 :compile_error
 echo.
 echo Backend compiler error
-goto :error
+goto error
 
 :error
 echo.
@@ -247,7 +247,7 @@ echo  ^> To add V to your PATH, run `.\v.exe symlink`.
 echo.
 echo | set /p="V version: "
 .\v.exe version
-goto :eof
+goto eof
 
 :usage
 echo Usage:
