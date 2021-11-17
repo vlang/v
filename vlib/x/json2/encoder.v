@@ -150,6 +150,9 @@ fn json_string(s string) string {
 				}
 			} else if chr == `"` || chr == `/` || chr == `\\` {
 				sb.write_string('\\' + chr.ascii_str())
+			} else if int(chr) < 0x20 {
+				hex_code := chr.hex()
+				sb.write_string('\\u00$hex_code')
 			} else {
 				sb.write_b(chr)
 			}

@@ -5,6 +5,13 @@ fn test_raw_decode_string() ? {
 	assert str.str() == 'Hello!'
 }
 
+fn test_raw_decode_string_escape() ? {
+	jstr := raw_decode('"\u001b"') ?
+	str := jstr.str()
+	assert str.len == 1
+	assert str[0] == 27
+}
+
 fn test_raw_decode_number() ? {
 	num := raw_decode('123') ?
 	assert num.int() == 123

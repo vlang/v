@@ -5,6 +5,13 @@ fn test_json_string_characters() {
 	assert text.json_str() == '\\n\\r\\b\\f\\t\\\\\\"\\/'
 }
 
+fn test_json_escape_low_chars() {
+	esc := '\u001b'
+	assert esc.len == 1
+	text := json2.Any(esc)
+	assert text.json_str() == r'\u001b'
+}
+
 fn test_json_string() {
 	text := json2.Any('te✔st')
 	assert text.json_str() == r'te\u2714st'
