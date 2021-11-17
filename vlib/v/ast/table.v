@@ -78,6 +78,7 @@ pub:
 	is_variadic     bool
 	language        Language
 	is_pub          bool
+	is_ctor_new     bool // `[use_new] fn JS.Array.prototype.constructor()`
 	is_deprecated   bool // `[deprecated] fn abc(){}`
 	is_noreturn     bool // `[noreturn] fn abc(){}`
 	is_unsafe       bool // `[unsafe] fn abc(){}`
@@ -1298,6 +1299,12 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		return false
 	}
 	if mut inter_sym.info is Interface {
+		attrs := t.interfaces[inter_typ].attrs
+		for attr in attrs {
+			if attr.name == 'single_impl' {
+				return false
+			}
+		}
 		// do not check the same type more than once
 		for tt in inter_sym.info.types {
 			if tt.idx() == typ.idx() {

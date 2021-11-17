@@ -177,10 +177,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		iface := g.table.find_type(iface_name) or { panic('unreachable: interface must exist') }
 		for ty in iface_types {
 			sym := g.table.get_type_symbol(ty)
-
 			for method in iface.methods {
 				p_sym := g.table.get_type_symbol(ty)
-				mname := g.js_name(p_sym.name) + '_' + method.name
+
+				mname := if p_sym.has_method(method.name) {
+					g.js_name(p_sym.name) + '_' + method.name
+				} else {
+					g.js_name(iface_name) + '_' + method.name
+				}
 				g.write('${g.js_name(sym.name)}.prototype.$method.name = function(')
 				for i, param in method.params {
 					if i == 0 {
@@ -3154,8 +3158,23 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	name := type_sym.name
-	if it.fields.len == 0 {
+	if it.fields.len == 0 && type_sym.kind != .interface_ {
 		g.write('new ${g.js_name(name)}({})')
+	} else if it.fields.len == 0 && type_sym.kind == .interface_ {
+		g.write('new ${g.js_name(name)}()') // JS interfaces can be instantiated with default ctor
+	} else if type_sym.kind == .interface_ && it.fields.len != 0 {
+		g.writeln('(function () {')
+		g.inc_indent()
+		g.writeln('let tmp = new ${g.js_name(name)}()')
+
+		for field in it.fields {
+			g.write('tmp.$field.name = ')
+			g.expr(field.expr)
+			g.writeln(';')
+		}
+		g.writeln('return tmp')
+		g.dec_indent()
+		g.writeln('})()')
 	} else {
 		g.writeln('new ${g.js_name(name)}({')
 		g.inc_indent()

@@ -360,6 +360,7 @@ pub:
 	pos           token.Position
 	pre_comments  []Comment
 	generic_types []Type
+	attrs         []Attr
 pub mut:
 	methods []FnDecl
 	fields  []StructField
@@ -514,6 +515,7 @@ pub mut:
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
+	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	args               []CallArg
 	expected_arg_types []Type
 	language           Language
