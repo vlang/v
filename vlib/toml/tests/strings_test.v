@@ -40,9 +40,9 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi2')
 	assert value.string() == 'one\ntwo'
 	value = toml_doc.value('multi3')
-	assert value.string() == '\none\ntwo\nthree'
+	assert value.string() == 'one\ntwo\nthree'
 	value = toml_doc.value('multi4')
-	assert value.string() == '\none\ntwo\nthree\nfour\n'
+	assert value.string() == 'one\ntwo\nthree\nfour\n'
 
 	toml_doc = toml.parse(toml_multiline_text_2) or { panic(err) }
 	value = toml_doc.value('multi1')
@@ -50,9 +50,9 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi2')
 	assert value.string() == 'one\ntwo'
 	value = toml_doc.value('multi3')
-	assert value.string() == '\none\ntwo\nthree'
+	assert value.string() == 'one\ntwo\nthree'
 	value = toml_doc.value('multi4')
-	assert value.string() == '\none\ntwo\nthree\nfour\n'
+	assert value.string() == 'one\ntwo\nthree\nfour\n'
 
 	toml_file :=
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
@@ -91,7 +91,7 @@ fn test_literal_strings() {
 	// See `.gitattributes` in the project root for the rule in action.
 	// These lines would look like this on Windows:
 	// assert toml_doc.value('ml_lit1').string() == '\r\n\\'
-	assert toml_doc.value('ml_lit1').string() == '\n\\'
+	assert toml_doc.value('ml_lit1').string() == '\\'
 	assert toml_doc.value('ml_lit2').string() == '\\\n\\'
 	assert toml_doc.value('ml_lit3').string() == '\\\ntricky\\\n'
 }

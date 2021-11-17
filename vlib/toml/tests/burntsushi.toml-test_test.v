@@ -18,7 +18,8 @@ const (
 
 	valid_value_exceptions = [
 		// String
-		'string/raw-multiline.toml', // This test is not correct. Our parser *correctly* includes the newline at the start of the raw multiline.
+		'string/double-quote-escape.toml',
+		'string/unicode-escape.toml',
 		'string/escapes.toml',
 		'string/escape-tricky.toml',
 		'string/multiline.toml',
