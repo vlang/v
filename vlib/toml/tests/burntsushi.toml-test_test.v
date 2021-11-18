@@ -29,7 +29,7 @@ const (
 		'comment/tricky.toml',
 		// Table
 		'table/array-implicit.toml',
-		//'table/names.toml',
+		'table/names.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
 		// Inline-table
