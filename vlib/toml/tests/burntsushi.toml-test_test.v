@@ -1,5 +1,6 @@
 import os
 import toml
+import toml.util
 import toml.ast
 import toml.scanner
 import x.json2
@@ -22,11 +23,8 @@ const (
 		'string/escape-tricky.toml',
 		'string/multiline.toml',
 		// Integer
-		'integer/literals.toml',
 		'integer/long.toml',
 		// Float
-		'float/exponent.toml',
-		'float/underscore.toml',
 		'float/inf-and-nan.toml',
 		// Comment
 		'comment/tricky.toml',
@@ -241,12 +239,18 @@ fn to_burntsushi(value ast.Value) string {
 			return '{ "type": "null", "value": "$json_text" }'
 		}
 		ast.Number {
-			if value.text.contains('.') || value.text.to_lower().contains('e') {
-				json_text := value.text.f64()
-				return '{ "type": "float", "value": "$json_text" }'
+			if value.text.contains('inf') || value.text.contains('nan') {
+				return '{ "type": "float", "value": "$value.text" }'
 			}
-			i64_ := strconv.parse_int(value.text, 0, 0) or { i64(0) }
-			return '{ "type": "integer", "value": "$i64_" }'
+			if !value.text.starts_with('0x')
+				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
+				mut val := '$value.f64()'.replace('.e+', '.0e') // json notation
+				if !val.contains('.') && val != '0' { // json notation
+					val += '.0'
+				}
+				return '{ "type": "float", "value": "$val" }'
+			}
+			return '{ "type": "integer", "value": "$value.i64()" }'
 		}
 		map[string]ast.Value {
 			mut str := '{ '

@@ -10,6 +10,7 @@ import toml.token
 import toml.scanner
 import encoding.utf8
 import time
+import strconv
 
 pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
 
@@ -464,28 +465,11 @@ fn (c Checker) check_utf8_validity(q ast.Quoted) ? {
 	}
 }
 
-// hex2int returns the value of `hex` as `int`.
-// NOTE that the code assumes `hex` to be in uppercase A-F.
-// It does not work if the length of the input string is beyond the max value of `int`.
-// Also and there is no error trapping for illegal hex characters.
-fn hex2int(hex string) int {
-	// Adapted from https://stackoverflow.com/a/130552/1904615
-	mut val := 0
-	for i := 0; i < hex.len; i++ {
-		if hex[i] <= 57 {
-			val += (hex[i] - 48) * (1 << (4 * (hex.len - 1 - i)))
-		} else {
-			val += (hex[i] - 55) * (1 << (4 * (hex.len - 1 - i)))
-		}
-	}
-	return val
-}
-
 // validate_utf8_codepoint_string returns an error if `str` is not a valid Unicode code point.
 // `str` is expected to be a `string` containing *only* hex values.
 // Any preludes or prefixes like `0x` could pontentially yield wrong results.
 fn validate_utf8_codepoint_string(str string) ? {
-	int_val := hex2int(str)
+	int_val := strconv.parse_int(str, 16, 64) or { i64(-1) }
 	if int_val > checker.utf8_max || int_val < 0 {
 		return error('Unicode code point `$str` is outside the valid Unicode scalar value ranges.')
 	}
