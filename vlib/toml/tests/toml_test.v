@@ -1,5 +1,6 @@
 import os
 import toml
+import toml.to
 
 const toml_text = os.read_file(
 	os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
@@ -9,7 +10,7 @@ fn test_toml() {
 	// File containing the complete text from the example in the official TOML project README.md:
 	// https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example
 	toml_doc := toml.parse(toml_text) or { panic(err) }
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 
 	// NOTE Kept for easier debugging:
 	// dump(toml_doc.ast)
@@ -76,7 +77,7 @@ fn test_toml_file() {
 	os.write_file(test_file, toml_text) or { assert false }
 	toml_doc := toml.parse_file(test_file) or { panic(err) }
 
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 
 	// NOTE Kept for easier debugging:
 	// dump(toml_doc.ast)
@@ -90,7 +91,7 @@ fn test_toml_file() {
 
 fn test_toml_parse_text() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
@@ -98,7 +99,7 @@ fn test_toml_parse_text() {
 
 fn test_toml_parse() {
 	toml_doc := toml.parse(toml_text) or { panic(err) }
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
