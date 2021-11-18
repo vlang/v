@@ -1,4 +1,5 @@
 import toml
+import toml.to
 
 // Complete text from the example in the README.md:
 // https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example
@@ -43,6 +44,6 @@ fn main() {
 	ip := doc.value('servers.alpha.ip').string()
 	println('Server IP: "$ip"')
 
-	toml_json := doc.to_json()
+	toml_json := to.json(doc)
 	println(toml_json)
 }
