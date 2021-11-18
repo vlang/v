@@ -3,12 +3,14 @@
 // that can be found in the LICENSE file.
 module toml
 
-import time
 import toml.util
 import x.json2
 
-// Pretty much all the same builtin types as the `json2.Any` type plus `time.Time`
-pub type Any = Null
+// Pretty much all the same builtin types as the `json2.Any` type plus `DateTime`,`Date`,`Time`
+pub type Any = Date
+	| DateTime
+	| Null
+	| Time
 	| []Any
 	| bool
 	| f32
@@ -17,7 +19,6 @@ pub type Any = Null
 	| int
 	| map[string]Any
 	| string
-	| time.Time
 	| u64
 
 // string returns `Any` as a string.
@@ -28,7 +29,9 @@ pub fn (a Any) string() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
-		time.Time { return a.format_ss_micro() }
+		DateTime { return a.str() }
+		Date { return a.str() }
+		Time { return a.str() }
 		else { return a.str() }
 	}
 }
@@ -122,33 +125,30 @@ pub fn (a Any) bool() bool {
 	}
 }
 
-// date returns `Any` as a date encoded in a `time.Time` struct.
-pub fn (a Any) date() time.Time {
-	mut time := time.Time{}
+// date returns `Any` as a `toml.Date` struct.
+pub fn (a Any) date() Date {
 	match a {
 		// string {  } // TODO
-		time.Time { return a }
-		else { return time }
+		Date { return a }
+		else { return Date{''} }
 	}
 }
 
-// date returns `Any` as a time encoded in a `time.Time` struct.
-pub fn (a Any) time() time.Time {
-	mut time := time.Time{}
+// time returns `Any` as a `toml.Time` struct.
+pub fn (a Any) time() Time {
 	match a {
 		// string {  } // TODO
-		time.Time { return a }
-		else { return time }
+		Time { return a }
+		else { return Time{''} }
 	}
 }
 
-// date returns `Any` as a date+time encoded in a `time.Time` struct.
-pub fn (a Any) datetime() time.Time {
-	mut time := time.Time{}
+// datetime returns `Any` as a `toml.DateTime` struct.
+pub fn (a Any) datetime() DateTime {
 	match a {
 		// string {  } // TODO
-		time.Time { return a }
-		else { return time }
+		DateTime { return a }
+		else { return DateTime{''} }
 	}
 }
 
@@ -189,8 +189,16 @@ pub fn (a Any) to_json() string {
 		Null {
 			return 'null'
 		}
-		time.Time {
-			json_text := json2.Any(a.format_ss_micro())
+		DateTime {
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
+		}
+		Date {
+			json_text := json2.Any(a.str())
+			return '"$json_text.json_str()"'
+		}
+		Time {
+			json_text := json2.Any(a.str())
 			return '"$json_text.json_str()"'
 		}
 		string {
@@ -229,8 +237,14 @@ pub fn (a Any) to_json_any() json2.Any {
 		Null {
 			return json2.Null{}
 		}
-		time.Time {
-			return json2.Any(a.format_ss_micro())
+		DateTime {
+			return json2.Any(a.str())
+		}
+		Date {
+			return json2.Any(a.str())
+		}
+		Time {
+			return json2.Any(a.str())
 		}
 		string {
 			return json2.Any(a.str())

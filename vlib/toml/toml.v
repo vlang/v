@@ -8,11 +8,37 @@ import toml.util
 import toml.input
 import toml.scanner
 import toml.parser
-import time
 import strconv
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
+}
+
+// DateTime is the representation of an RFC 3339 date-only string.
+pub struct DateTime {
+	datetime string
+}
+
+pub fn (dt DateTime) str() string {
+	return dt.datetime
+}
+
+// Date is the representation of an RFC 3339 datetime string.
+pub struct Date {
+	date string
+}
+
+pub fn (d Date) str() string {
+	return d.date
+}
+
+// Time is the representation of an RFC 3339 time-only string.
+pub struct Time {
+	time string
+}
+
+pub fn (t Time) str() string {
+	return t.time
 }
 
 // Config is used to configure the toml parser.
@@ -123,46 +149,20 @@ fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 	return d.ast_to_any(value)
 }
 
-// ast_to_any_value converts `from` ast.Value to toml.Any value.
+// ast_to_any converts `from` ast.Value to toml.Any value.
 fn (d Doc) ast_to_any(value ast.Value) Any {
-	// `match` isn't currently very suitable for further unwrapping sumtypes in the if's...
-	if value is ast.Date || value is ast.Time || value is ast.DateTime {
-		mut tim := time.Time{}
-		if value is ast.Date {
-			date_str := (value as ast.Date).text
-
-			tim = time.parse_rfc3339(date_str) or {
-				return Any(Null{})
-				// TODO decide this
-				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				//	' failed converting "$date_str" to rfc3339: $err')
-			}
-		} else if value is ast.Time {
-			time_str := (value as ast.Time).text
-
-			tim = time.parse_rfc3339(time_str) or {
-				return Any(Null{})
-				// TODO decide this
-				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				//	' failed converting "$time_str" to rfc3339: $err')
-			}
-		} else {
-			// value is ast.DateTime
-			datetime_str := (value as ast.DateTime).text
-
-			tim = time.parse_rfc3339(datetime_str) or {
-				return Any(Null{})
-				// TODO decide this
-				// panic(@MOD + '.' + @STRUCT + '.' + @FN +
-				//	' failed converting "$datetime_str" to rfc3339: $err')
-			}
-		}
-		return Any(tim)
-	}
-
 	match value {
+		ast.Date {
+			return Any(Date{value.text})
+		}
+		ast.Time {
+			return Any(Time{value.text})
+		}
+		ast.DateTime {
+			return Any(DateTime{value.text})
+		}
 		ast.Quoted {
-			return Any((value as ast.Quoted).text)
+			return Any(value.text)
 		}
 		ast.Number {
 			if value.text.contains('.') || value.text.to_lower().contains('e') {
