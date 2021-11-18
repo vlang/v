@@ -1,6 +1,5 @@
 import os
 import toml
-import toml.util
 import toml.ast
 import toml.scanner
 import x.json2
@@ -30,7 +29,7 @@ const (
 		'comment/tricky.toml',
 		// Table
 		'table/array-implicit.toml',
-		'table/names.toml',
+		//'table/names.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
 		// Inline-table
