@@ -1,7 +1,0 @@
-vlib/v/checker/tests/test_functions_should_not_return_test.vv:9:1: error: test functions should either return nothing at all, or be marked to return `?`
-    7 | 
-    8 | // should be disallowed:
-    9 | fn test_returning_int() int {
-      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   10 | 
-   11 | }
