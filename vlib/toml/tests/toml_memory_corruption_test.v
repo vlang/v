@@ -10,7 +10,7 @@ fn test_toml_known_memory_corruption() {
 	toml_doc := toml.parse(toml_text) or { panic(err) }
 
 	owner := toml_doc.value('owner') as map[string]toml.Any
-	any_name := owner.value('name').default_to('Odin')
+	any_name := owner.value('name')
 	// This assert code path will cause the corruption.
 	assert any_name.string() == 'Tom Preston-Werner'
 
