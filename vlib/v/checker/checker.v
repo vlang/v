@@ -567,8 +567,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 				if is_js {
 					ptyp := c.table.get_type_symbol(param.typ)
-					if ptyp.kind != .function && ptyp.language != .js
-						&& !ptyp.name.starts_with('JS.') {
+					if (ptyp.kind != .function && ptyp.language != .js
+						&& !ptyp.name.starts_with('JS.')) && !(j == method.params.len - 1
+						&& method.is_variadic) {
 						c.error('method `$method.name` accepts non JS type as parameter',
 							method.pos)
 					}
@@ -594,7 +595,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(field.typ, field.pos) or { return }
 			if is_js {
 				tsym := c.table.get_type_symbol(field.typ)
-				if tsym.language != .js && !tsym.name.starts_with('JS.') {
+				if tsym.language != .js && !tsym.name.starts_with('JS.') && tsym.kind != .function {
 					c.error('field `$field.name` uses non JS type', field.pos)
 				}
 			}
@@ -3153,8 +3154,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && styp != 'JS.Any'
-		&& inter_sym.name != 'JS.Any' {
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
+		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
 	}
