@@ -42,12 +42,12 @@ fn new_normal_test_runner() &TestRunner {
 	return tr
 }
 
-fn (mut assertion NormalTestRunner) free() {
+fn (mut runner NormalTestRunner) free() {
 	unsafe {
-		assertion.all_assertsions.free()
-		assertion.fname.free()
-		assertion.fn_test_info.free()
-		assertion.file_test_info.free()
+		runner.all_assertsions.free()
+		runner.fname.free()
+		runner.fn_test_info.free()
+		runner.file_test_info.free()
 	}
 }
 
@@ -55,44 +55,45 @@ fn normalise_fname(name string) string {
 	return 'fn ' + name.replace('__', '.').replace('main.', '')
 }
 
-fn (mut assertion NormalTestRunner) start(ntests int) {
-	assertion.all_assertsions = []&VAssertMetaInfo{cap: 1000}
+fn (mut runner NormalTestRunner) start(ntests int) {
+	runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
 }
 
-fn (mut assertion NormalTestRunner) finish() {
+fn (mut runner NormalTestRunner) finish() {
 }
 
-fn (mut assertion NormalTestRunner) exit_code() int {
-	if assertion.fn_fails > 0 {
+fn (mut runner NormalTestRunner) exit_code() int {
+	if runner.fn_fails > 0 {
 		return 1
 	}
 	return 0
 }
 
-fn (mut assertion NormalTestRunner) fn_start() {
-	assertion.fn_assert_passes = 0
-	assertion.fname = normalise_fname(assertion.fn_test_info.name)
+fn (mut runner NormalTestRunner) fn_start() bool {
+	runner.fn_assert_passes = 0
+	runner.fname = normalise_fname(runner.fn_test_info.name)
+	return true
 }
 
-fn (mut assertion NormalTestRunner) fn_pass() {
-	assertion.fn_passes++
+fn (mut runner NormalTestRunner) fn_pass() {
+	runner.fn_passes++
 }
 
-fn (mut assertion NormalTestRunner) fn_fail() {
-	assertion.fn_fails++
+fn (mut runner NormalTestRunner) fn_fail() {
+	runner.fn_fails++
 }
 
-fn (mut assertion NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	filepath := if assertion.use_relative_paths { file.clone() } else { os.real_path(file) }
+fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+	filepath := if runner.use_relative_paths { file.clone() } else { os.real_path(file) }
 	mut final_filepath := filepath + ':$line_nr:'
-	if assertion.use_color {
+	if runner.use_color {
 		final_filepath = term.gray(final_filepath)
 	}
 	mut final_funcname := 'fn ' + fn_name.replace('main.', '').replace('__', '.')
-	if assertion.use_color {
+	if runner.use_color {
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
-	final_msg := if assertion.use_color { term.dim(errmsg) } else { errmsg.clone() }
+	final_msg := if runner.use_color { term.dim(errmsg) } else { errmsg.clone() }
 	eprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
 	if os.is_file(file) {
 		source_lines := os.read_lines(file) or { []string{len: line_nr + 1} }
@@ -100,24 +101,24 @@ fn (mut assertion NormalTestRunner) fn_error(line_nr int, file string, mod strin
 	}
 }
 
-fn (mut assertion NormalTestRunner) assert_pass(i &VAssertMetaInfo) {
-	assertion.total_assert_passes++
-	assertion.fn_assert_passes++
-	assertion.all_assertsions << i
+fn (mut runner NormalTestRunner) assert_pass(i &VAssertMetaInfo) {
+	runner.total_assert_passes++
+	runner.fn_assert_passes++
+	runner.all_assertsions << i
 }
 
-fn (mut assertion NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
-	assertion.total_assert_fails++
-	filepath := if assertion.use_relative_paths { i.fpath.clone() } else { os.real_path(i.fpath) }
+fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
+	runner.total_assert_fails++
+	filepath := if runner.use_relative_paths { i.fpath.clone() } else { os.real_path(i.fpath) }
 	mut final_filepath := filepath + ':${i.line_nr + 1}:'
-	if assertion.use_color {
+	if runner.use_color {
 		final_filepath = term.gray(final_filepath)
 	}
 	mut final_funcname := 'fn ' + i.fn_name.replace('main.', '').replace('__', '.')
-	if assertion.use_color {
+	if runner.use_color {
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
-	final_src := if assertion.use_color {
+	final_src := if runner.use_color {
 		term.dim('assert ${term.bold(i.src)}')
 	} else {
 		'assert ' + i.src
@@ -128,7 +129,7 @@ fn (mut assertion NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 		mut rvtitle := '    Right value:'
 		mut slvalue := '$i.lvalue'
 		mut srvalue := '$i.rvalue'
-		if assertion.use_color {
+		if runner.use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
 			lvtitle = term.gray(lvtitle)
@@ -150,5 +151,5 @@ fn (mut assertion NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 		eprintln('    $final_src')
 	}
 	eprintln('')
-	assertion.all_assertsions << i
+	runner.all_assertsions << i
 }

@@ -36,11 +36,11 @@ mut:
 	total_assert_fails  u64
 }
 
-fn (mut a TAPTestRunner) free() {
+fn (mut runner TAPTestRunner) free() {
 	unsafe {
-		a.fname.free()
-		a.fn_test_info.free()
-		a.file_test_info.free()
+		runner.fname.free()
+		runner.fn_test_info.free()
+		runner.file_test_info.free()
 	}
 }
 
@@ -48,18 +48,23 @@ fn normalise_fname(name string) string {
 	return 'fn ' + name.replace('__', '.').replace('main.', '')
 }
 
-fn (mut a TAPTestRunner) start(ntests int) {
-	a.plan_tests = ntests
-	println('1..$ntests')
+fn flush_println(s string) {
+	println(s)
 	flush_stdout()
 }
 
-fn (mut a TAPTestRunner) finish() {
-	println('# $a.plan_tests tests, ${a.total_assert_fails + a.total_assert_passes} assertions, $a.total_assert_fails failures')
+fn (mut runner TAPTestRunner) start(ntests int) {
+	runner.plan_tests = ntests
+	flush_println('1..$ntests')
 }
 
-fn (mut a TAPTestRunner) exit_code() int {
-	if a.fn_fails > 0 {
+fn (mut runner TAPTestRunner) finish() {
+	flush_println('# $runner.plan_tests tests, ${runner.total_assert_fails +
+		runner.total_assert_passes} assertions, $runner.total_assert_fails failures')
+}
+
+fn (mut runner TAPTestRunner) exit_code() int {
+	if runner.fn_fails > 0 {
 		return 1
 	}
 	return 0
@@ -67,43 +72,38 @@ fn (mut a TAPTestRunner) exit_code() int {
 
 //
 
-fn (mut a TAPTestRunner) fn_start() {
-	a.fn_assert_passes = 0
-	a.test_counter++
-	a.fname = normalise_fname(a.fn_test_info.name)
-	// eprintln('>>> TAPTestRunner fn_start $a.fname')
+fn (mut runner TAPTestRunner) fn_start() bool {
+	runner.fn_assert_passes = 0
+	runner.test_counter++
+	runner.fname = normalise_fname(runner.fn_test_info.name)
+	return true
 }
 
-fn (mut a TAPTestRunner) fn_pass() {
-	a.fn_passes++
-	println('ok $a.test_counter - $a.fname')
-	flush_stdout()
+fn (mut runner TAPTestRunner) fn_pass() {
+	runner.fn_passes++
+	flush_println('ok $runner.test_counter - $runner.fname')
 }
 
-fn (mut a TAPTestRunner) fn_fail() {
-	println('not ok $a.test_counter - $a.fname')
-	flush_stdout()
-	a.fn_fails++
+fn (mut runner TAPTestRunner) fn_fail() {
+	flush_println('not ok $runner.test_counter - $runner.fname')
+	runner.fn_fails++
 }
 
-fn (mut a TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	println('# test function propagated error: $a.fname, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
-	flush_stdout()
+fn (mut runner TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+	flush_println('# test function propagated error: $runner.fname, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
 }
 
 //
 
-fn (mut a TAPTestRunner) assert_pass(i &VAssertMetaInfo) {
-	a.total_assert_passes++
-	a.fn_assert_passes++
-	// eprintln('passed assert $a.fn_assert_passes in $a.fname, line: ${i.line_nr + 1}')
+fn (mut runner TAPTestRunner) assert_pass(i &VAssertMetaInfo) {
+	runner.total_assert_passes++
+	runner.fn_assert_passes++
 	unsafe { i.free() }
 }
 
-fn (mut a TAPTestRunner) assert_fail(i &VAssertMetaInfo) {
-	a.total_assert_fails++
-	println('# failed assert: ${a.fn_assert_passes + 1} in $a.fname, assert was in ${normalise_fname(i.fn_name)}, line: ${
+fn (mut runner TAPTestRunner) assert_fail(i &VAssertMetaInfo) {
+	runner.total_assert_fails++
+	flush_println('# failed assert: ${runner.fn_assert_passes + 1} in $runner.fname, assert was in ${normalise_fname(i.fn_name)}, line: ${
 		i.line_nr + 1}')
-	flush_stdout()
 	unsafe { i.free() }
 }

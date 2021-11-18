@@ -20,11 +20,11 @@ mut:
 	total_assert_fails  u64
 }
 
-fn (mut a SimpleTestRunner) free() {
+fn (mut runner SimpleTestRunner) free() {
 	unsafe {
-		a.fname.free()
-		a.fn_test_info.free()
-		a.file_test_info.free()
+		runner.fname.free()
+		runner.fn_test_info.free()
+		runner.file_test_info.free()
 	}
 }
 
@@ -32,16 +32,16 @@ fn normalise_fname(name string) string {
 	return 'fn ' + name.replace('__', '.').replace('main.', '')
 }
 
-fn (mut a SimpleTestRunner) start(ntests int) {
+fn (mut runner SimpleTestRunner) start(ntests int) {
 	eprintln('SimpleTestRunner testing start; expected: $ntests test functions')
 }
 
-fn (mut a SimpleTestRunner) finish() {
-	eprintln('SimpleTestRunner testing finish; fn:[passes: $a.fn_passes, fails: $a.fn_fails], assert:[passes: $a.total_assert_passes, fails: $a.total_assert_fails]')
+fn (mut runner SimpleTestRunner) finish() {
+	eprintln('SimpleTestRunner testing finish; fn:[passes: $runner.fn_passes, fails: $runner.fn_fails], assert:[passes: $runner.total_assert_passes, fails: $runner.total_assert_fails]')
 }
 
-fn (mut a SimpleTestRunner) exit_code() int {
-	if a.fn_fails > 0 {
+fn (mut runner SimpleTestRunner) exit_code() int {
+	if runner.fn_fails > 0 {
 		return 1
 	}
 	return 0
@@ -49,38 +49,36 @@ fn (mut a SimpleTestRunner) exit_code() int {
 
 //
 
-fn (mut a SimpleTestRunner) fn_start() {
-	a.fn_assert_passes = 0
-	a.fname = normalise_fname(a.fn_test_info.name)
-	// eprintln('>>> SimpleTestRunner fn_start $a.fname')
+fn (mut runner SimpleTestRunner) fn_start() bool {
+	runner.fn_assert_passes = 0
+	runner.fname = normalise_fname(runner.fn_test_info.name)
+	return true
 }
 
-fn (mut a SimpleTestRunner) fn_pass() {
-	a.fn_passes++
-	// eprintln('ok $a.fname')
+fn (mut runner SimpleTestRunner) fn_pass() {
+	runner.fn_passes++
 }
 
-fn (mut a SimpleTestRunner) fn_fail() {
-	a.fn_fails++
-	eprintln('>>> fail $a.fname')
+fn (mut runner SimpleTestRunner) fn_fail() {
+	runner.fn_fails++
+	eprintln('>>> fail $runner.fname')
 }
 
-fn (mut a SimpleTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	eprintln('>>> SimpleTestRunner fn_error $a.fname, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
+fn (mut runner SimpleTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+	eprintln('>>> SimpleTestRunner fn_error $runner.fname, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
 }
 
 //
 
-fn (mut a SimpleTestRunner) assert_pass(i &VAssertMetaInfo) {
-	a.total_assert_passes++
-	a.fn_assert_passes++
-	// eprintln('passed assert $a.fn_assert_passes in $a.fname, line: ${i.line_nr + 1}')
+fn (mut runner SimpleTestRunner) assert_pass(i &VAssertMetaInfo) {
+	runner.total_assert_passes++
+	runner.fn_assert_passes++
 	unsafe { i.free() }
 }
 
-fn (mut a SimpleTestRunner) assert_fail(i &VAssertMetaInfo) {
-	a.total_assert_fails++
-	eprintln('> failed assert ${a.fn_assert_passes + 1} in $a.fname, assert was in ${normalise_fname(i.fn_name)}, line: ${
+fn (mut runner SimpleTestRunner) assert_fail(i &VAssertMetaInfo) {
+	runner.total_assert_fails++
+	eprintln('> failed assert ${runner.fn_assert_passes + 1} in $runner.fname, assert was in ${normalise_fname(i.fn_name)}, line: ${
 		i.line_nr + 1}')
 	unsafe { i.free() }
 }

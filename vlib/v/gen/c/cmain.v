@@ -187,8 +187,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	g.writeln('\tmain__vtest_init();')
+	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	//
 	all_tfuncs := g.get_all_test_function_names()
 	g.writeln('string v_test_file = _SLIT("$g.pref.path");')
