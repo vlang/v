@@ -187,7 +187,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 
 	g.write_v_source_line_info(node.pos)
-	msvc_attrs := g.write_fn_attrs(node.attrs)
+	fn_attrs := g.write_fn_attrs(node.attrs)
 	// Live
 	is_livefn := node.attrs.contains('live')
 	is_livemain := g.pref.is_livemain && is_livefn
@@ -291,11 +291,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				g.definitions.write_string('VV_LOCAL_SYMBOL ')
 			}
 		}
-		fn_header := if msvc_attrs.len > 0 {
-			'$type_name $msvc_attrs ${name}('
-		} else {
-			'$type_name ${name}('
-		}
+		fn_header := '$type_name $fn_attrs${name}('
 		g.definitions.write_string(fn_header)
 		g.write(fn_header)
 	}
@@ -426,8 +422,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	for attr in node.attrs {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
-			calling_conv := if msvc_attrs.len > 0 { '$msvc_attrs ' } else { '' }
-			export_alias := '$type_name $calling_conv${attr.arg}($arg_str)'
+			export_alias := '$type_name $fn_attrs${attr.arg}($arg_str)'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $node.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
@@ -1565,7 +1560,7 @@ fn (g &Gen) fileis(s string) bool {
 }
 
 fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
-	mut msvc_attrs := ''
+	mut fn_attrs := ''
 	for attr in attrs {
 		match attr.name {
 			'inline' {
@@ -1574,6 +1569,12 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'noinline' {
 				// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 				g.write('__NOINLINE ')
+			}
+			'weak' {
+				// a `[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
+				// if there is another declaration of a symbol with the same name (a 'strong' one), it should be
+				// used instead, *without linker errors about duplicate symbols*.
+				g.write('VWEAK ')
 			}
 			'noreturn' {
 				// a `[noreturn]` tag tells the compiler, that a function
@@ -1641,7 +1642,7 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
-				msvc_attrs += '__stdcall '
+				fn_attrs += '__stdcall '
 			}
 			'console' {
 				g.force_main_console = true
@@ -1651,5 +1652,5 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			}
 		}
 	}
-	return msvc_attrs
+	return fn_attrs
 }

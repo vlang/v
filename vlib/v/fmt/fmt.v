@@ -1002,6 +1002,7 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 }
 
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
+	f.attrs(node.attrs)
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln('__global ()')
 		return

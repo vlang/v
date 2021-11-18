@@ -5853,6 +5853,10 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
+	mut attributes := ''
+	if node.attrs.contains('weak') {
+		attributes += 'VWEAK '
+	}
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {
@@ -5864,7 +5868,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		styp := g.typ(field.typ)
 		if field.has_expr {
-			g.definitions.write_string('$mod$styp $field.name')
+			g.definitions.write_string('$mod$styp $attributes $field.name')
 			if field.expr.is_literal() {
 				g.definitions.writeln(' = ${g.expr_string(field.expr)}; // global')
 			} else {
@@ -5874,9 +5878,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		} else {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' {
-				g.definitions.writeln('$mod$styp $field.name = {0}; // global')
+				g.definitions.writeln('$mod$styp $attributes $field.name = {0}; // global')
 			} else {
-				g.definitions.writeln('$mod$styp $field.name; // global')
+				g.definitions.writeln('$mod$styp $attributes $field.name; // global')
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
 					g.global_init.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
 				}

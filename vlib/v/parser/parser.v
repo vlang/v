@@ -3081,6 +3081,11 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
+	mut attrs := []ast.Attr{}
+	if p.attrs.len > 0 {
+		attrs = p.attrs
+		p.attrs = []
+	}
 	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
 		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
@@ -3173,6 +3178,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		fields: fields
 		end_comments: comments
 		is_block: is_block
+		attrs: attrs
 	}
 }
 

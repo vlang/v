@@ -254,6 +254,15 @@ const c_common_macros = '
 #undef __has_include
 #endif
 
+
+#if !defined(VWEAK)
+	#define VWEAK __attribute__((weak))
+	#ifdef _MSC_VER
+		#undef VWEAK
+		#define VWEAK
+	#endif
+#endif
+
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
 		#include <stdnoreturn.h>

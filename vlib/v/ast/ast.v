@@ -638,6 +638,7 @@ pub:
 	mod      string
 	pos      token.Position
 	is_block bool // __global() block
+	attrs    []Attr
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment

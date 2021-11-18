@@ -105,19 +105,22 @@ fn test_c_must_have_files() ? {
 		alloptions := '-o - $file_options.vflags'
 		print(mm('v $alloptions $relpath') +
 			' matches all line patterns in ${mm(must_have_relpath)} ')
-		compilation := os.execute('$vexe $alloptions $path')
+		cmd := '$vexe $alloptions $path'
+		compilation := os.execute(cmd)
 		ensure_compilation_succeeded(compilation)
 		expected_lines := os.read_lines(must_have_path) or { [] }
 		generated_c_lines := compilation.output.split_into_lines()
 		mut nmatches := 0
+		mut failed_patterns := []string{}
 		for idx_expected_line, eline in expected_lines {
 			if does_line_match_one_of_generated_lines(eline, generated_c_lines) {
 				nmatches++
 				// eprintln('> testing: $must_have_path has line: $eline')
 			} else {
+				failed_patterns << eline
 				println(term.red('FAIL'))
 				eprintln('$must_have_path:${idx_expected_line + 1}: expected match error:')
-				eprintln('`$vexe -o - $path` does NOT produce expected line:')
+				eprintln('`$cmd` did NOT produce expected line:')
 				eprintln(term.colorize(term.red, eline))
 				total_errors++
 				continue
@@ -128,6 +131,11 @@ fn test_c_must_have_files() ? {
 		} else {
 			eprintln('> ALL lines:')
 			eprintln(compilation.output)
+			eprintln('--------- failed patterns: -------------------------------------------')
+			for fpattern in failed_patterns {
+				eprintln(fpattern)
+			}
+			eprintln('----------------------------------------------------------------------')
 		}
 	}
 	assert total_errors == 0

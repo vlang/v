@@ -1,0 +1,9 @@
+u64 VWEAK  abc = ((u64)(1U)); // global
+u64  xyz = ((u64)(2U)); // global
+u64 VWEAK  weak_1 = ((u64)(4U)); // global
+u64 VWEAK  weak_2 = ((u64)(5U)); // global
+VV_LOCAL_SYMBOL int main__a_weak_function(void);
+VV_LOCAL_SYMBOL void main__main(void);
+
+VWEAK VV_LOCAL_SYMBOL int main__a_weak_function(void) {
+
