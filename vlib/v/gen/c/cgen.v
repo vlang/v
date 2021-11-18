@@ -5061,6 +5061,15 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node_info is ast.IdentFn {
+		if g.pref.translated {
+			// `p_mobjthinker` => `P_MobjThinker`
+			if f := g.table.find_fn(node.name) {
+				// TODO PERF fn lookup for each fn call in translated mode
+				if f.attrs.contains('c') {
+					name = f.attrs[0].arg
+				}
+			}
+		}
 		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
 			key := node.name
 			g.write('/* obf identfn: $key */')
@@ -5114,6 +5123,15 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 	} else {
 		styp := g.typ(node.typ)
+		if g.pref.translated && sym.kind == .function {
+			// TODO handle the type in fn casts, not just exprs
+			/*
+			info := sym.info as ast.FnType
+			if info.func.attrs.contains('c') {
+				// name = f.attrs[0].arg
+			}
+			*/
+		}
 		mut cast_label := ''
 		// `ast.string_type` is done for MSVC's bug
 		if sym.kind != .alias
