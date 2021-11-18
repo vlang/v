@@ -18,8 +18,6 @@ const (
 
 	valid_value_exceptions = [
 		// String
-		'string/double-quote-escape.toml',
-		'string/unicode-escape.toml',
 		'string/escapes.toml',
 		'string/escape-tricky.toml',
 		'string/multiline.toml',
