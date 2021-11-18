@@ -184,7 +184,7 @@ fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 }
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
-fn (d Doc) ast_to_any(value ast.Value) Any {
+pub fn (d Doc) ast_to_any(value ast.Value) Any {
 	match value {
 		ast.Date {
 			return Any(Date{value.text})
