@@ -44,9 +44,15 @@ mut:
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
-	relocs               []Reloc
-	size_pos             []int
-	nlines               int
+	// UNUSED relocs               []Reloc
+	size_pos    []int
+	nlines      int
+	callpatches []CallPatch
+}
+
+struct CallPatch {
+	name string
+	pos  int
 }
 
 enum Size {
@@ -141,6 +147,7 @@ pub fn (mut g Gen) create_executable() {
 }
 
 pub fn (mut g Gen) generate_footer() {
+	g.patch_calls()
 	match g.pref.os {
 		.macos {
 			g.generate_macho_footer()
