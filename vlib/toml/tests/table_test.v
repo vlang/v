@@ -84,8 +84,8 @@ fn test_tables() {
 	assert value.int() == 1
 
 	arr1 := arr[1] as map[string]toml.Any
-	value = arr1.value('t.a.b')
+	value = arr1.value('t.a.b') or { panic(err) }
 	assert value.int() == 2
-	value = arr1.value('T.a.b')
+	value = arr1.value('T.a.b') or { panic(err) }
 	assert value.int() == 2
 }
