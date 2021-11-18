@@ -7,7 +7,6 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
-import strconv
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
@@ -199,11 +198,14 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			return Any(value.text)
 		}
 		ast.Number {
-			if value.text.contains('.') || value.text.to_lower().contains('e') {
-				return Any(value.text.f64())
+			// if value.text.contains('inf') || value.text.contains('nan') {
+			// return Any() // TODO
+			//}
+			if !value.text.starts_with('0x')
+				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
+				return Any(value.f64())
 			}
-			v := strconv.parse_int(value.text, 0, 0) or { i64(0) }
-			return Any(v)
+			return Any(value.i64())
 		}
 		ast.Bool {
 			str := (value as ast.Bool).text

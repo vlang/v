@@ -4,6 +4,7 @@
 module ast
 
 import toml.token
+import strconv
 
 // Key is a sumtype representing all types of keys that
 // can be found in a TOML document.
@@ -166,6 +167,26 @@ pub fn (n Number) str() string {
 	str += '  pos:  $n.pos\n'
 	str += '}'
 	return str
+}
+
+// i64 returns the `n Number` as an `i64` value.
+pub fn (n Number) i64() i64 {
+	if n.text.starts_with('0x') {
+		hex := n.text.all_after('0x').to_upper().replace('_', '')
+		return strconv.parse_int(hex, 16, 64) or { i64(0) }
+	} else if n.text.starts_with('0o') {
+		oct := n.text.all_after('0o').replace('_', '')
+		return strconv.parse_int(oct, 8, 64) or { i64(0) }
+	} else if n.text.starts_with('0b') {
+		bin := n.text.all_after('0b').replace('_', '')
+		return strconv.parse_int(bin, 2, 64) or { i64(0) }
+	}
+	return strconv.parse_int(n.text, 0, 0) or { i64(0) }
+}
+
+// f64 returns the `n Number` as an `f64` value.
+pub fn (n Number) f64() f64 {
+	return n.text.replace('_', '').f64()
 }
 
 // Date is the data representation of a TOML date type (`YYYY-MM-DD`).
