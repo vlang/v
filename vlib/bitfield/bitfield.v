@@ -338,6 +338,7 @@ pub fn (instance BitField) clone() BitField {
 	return output
 }
 
+// == compares 2 bitfields, and returns true when they are equal
 pub fn (a BitField) == (b BitField) bool {
 	if a.size != b.size {
 		return false

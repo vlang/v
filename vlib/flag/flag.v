@@ -30,6 +30,11 @@ struct NoArgsExpectedError {
 	code int
 }
 
+// free frees the resources associated with a given Flag
+// It is called automatically when -autofree is used.
+// It should be called manually in functions that use Flags,
+// and are marked with [manualfree]. After you call .free() on
+// a Flag instance, you should NOT use that instance any more.
 [unsafe]
 fn (mut f Flag) free() {
 	unsafe {
@@ -39,12 +44,14 @@ fn (mut f Flag) free() {
 	}
 }
 
+// str returns a string representation of the given Flag
 pub fn (f Flag) str() string {
 	return '' + '    flag:\n' + '            name: $f.name\n' +
 		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
 		'            desc: $f.val_desc'
 }
 
+// str returns a string representation of the given array of Flags
 pub fn (af []Flag) str() string {
 	mut res := []string{}
 	res << '\n  []Flag = ['
@@ -55,7 +62,12 @@ pub fn (af []Flag) str() string {
 	return res.join('\n')
 }
 
-//
+// FlagParser is the heart of the `flag` module.
+// That structure is created with `mut parser := flag.new_flag_parser(os.args)`,
+// The returned instance can be further customised by calling various methods,
+// for specifying the accepted options and their values. The user should finally
+// call `rest := parser.finalize() ?` to get the rest of the non optional arguments
+// (if there are any left).
 pub struct FlagParser {
 pub:
 	original_args      []string // the original arguments to be parsed
@@ -80,6 +92,11 @@ pub mut:
 	footers                 []string // when set, --help will display all the collected footers at the bottom.
 }
 
+// free frees the resources allocated for the given FlagParser instance.
+// It should be called manually in functions that use it, and that are
+// marked with `[manualfree]`,  otherwise, it is called automatically
+// in programs, compiled with `-autofree`. NB: you should NOT use the
+// instance over which you have called .free() for anything after the call.
 [unsafe]
 fn (mut f FlagParser) free() {
 	unsafe {
@@ -107,7 +124,7 @@ pub const (
 	max_args_number = 4048
 )
 
-// create a new flag set for parsing command line arguments
+// new_flag_parser - create a new flag parser for the given args
 pub fn new_flag_parser(args []string) &FlagParser {
 	original_args := args.clone()
 	idx_dashdash := args.index('--')
@@ -418,17 +435,18 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?str
 	return res
 }
 
-// defining and parsing a string flag
-// if defined
-// the value is returned (string)
-// else
-// the default value is returned
-// version with abbr
+// string defines and parses a string flag/option.
+// If that flag is given as an option, then the parsed
+// value is returned as a string. Otherwise, the default
+// value is returned. This version supports abbreviations.
 pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage string) string {
 	value := fs.string_opt(name, abbr, usage) or { return sdefault }
 	return value
 }
 
+// limit_free_args_to_at_least restricts the list of free arguments (non options) to be
+// at least `n` in length. If the user gives less free arguments to the program,
+// the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ? {
 	if n > flag.max_args_number {
 		return error('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
@@ -439,6 +457,9 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ? {
 	fs.min_free_args = n
 }
 
+// limit_free_args_to_exactly restricts the list of free arguments (non options) to be
+// at exactly `n` in length. If the user gives more or less free arguments to the program,
+// the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ? {
 	if n > flag.max_args_number {
 		return error('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
@@ -450,8 +471,9 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ? {
 	fs.max_free_args = n
 }
 
-// this will cause an error in finalize() if free args are out of range
-// (min, ..., max)
+// limit_free_args restricts the list of free arguments (non options) to be between
+// `min` and `max` in length. If the user gives more or less free arguments to the program,
+// the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args(min int, max int) ? {
 	if min > max {
 		return error('flag.limit_free_args expect min < max, got $min >= $max')
@@ -460,11 +482,15 @@ pub fn (mut fs FlagParser) limit_free_args(min int, max int) ? {
 	fs.max_free_args = max
 }
 
+// arguments_description sets the description field of the parser.
+// This field is usually shown when the `--help` option is given to the program.
 pub fn (mut fs FlagParser) arguments_description(description string) {
 	fs.args_description = description
 }
 
-// collect all given information and
+// usage returns a nicely formatted usage screen, containing all the
+// possible options, as well as the description for the program.
+// That screen is usually shown when the `--help` option is given to the program.
 pub fn (fs FlagParser) usage() string {
 	positive_min_arg := (fs.min_free_args > 0)
 	positive_max_arg := (fs.max_free_args > 0 && fs.max_free_args != flag.max_args_number)
@@ -546,6 +572,8 @@ pub fn (fs FlagParser) usage() string {
 	return use.join('\n').replace('- ,', '   ')
 }
 
+// find_existing_flag looks up the given flag by name, and returns
+// it, if it was found in the FlagParser. If it was not, it returns an error.
 fn (mut fs FlagParser) find_existing_flag(fname string) ?Flag {
 	for f in fs.flags {
 		if f.name == fname {
@@ -555,6 +583,9 @@ fn (mut fs FlagParser) find_existing_flag(fname string) ?Flag {
 	return error('no such flag')
 }
 
+// handle_builtin_options handles the default behaviour of the very frequently
+// given options: `--help` and `--version`.
+// You can change/customise that, by defining your own options with these names.
 fn (mut fs FlagParser) handle_builtin_options() {
 	mut show_version := false
 	mut show_help := false
