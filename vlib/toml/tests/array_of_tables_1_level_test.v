@@ -1,5 +1,6 @@
 import os
 import toml
+import toml.to
 
 const (
 	toml_table_text = '
@@ -19,7 +20,7 @@ color = "gray"'
 fn test_tables() {
 	mut toml_doc := toml.parse(toml_table_text) or { panic(err) }
 
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 
 	assert toml_json == os.read_file(
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +

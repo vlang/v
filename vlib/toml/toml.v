@@ -4,7 +4,6 @@
 module toml
 
 import toml.ast
-import toml.util
 import toml.input
 import toml.scanner
 import toml.parser
@@ -14,7 +13,7 @@ import strconv
 pub struct Null {
 }
 
-// DateTime is the representation of an RFC 3339 date-only string.
+// DateTime is the representation of an RFC 3339 datetime string.
 pub struct DateTime {
 	datetime string
 }
@@ -23,7 +22,7 @@ pub fn (dt DateTime) str() string {
 	return dt.datetime
 }
 
-// Date is the representation of an RFC 3339 datetime string.
+// Date is the representation of an RFC 3339 date-only string.
 pub struct Date {
 	date string
 }
@@ -111,9 +110,45 @@ pub fn parse(toml string) ?Doc {
 	}
 }
 
-// to_json returns a compact json string of the complete document.
-pub fn (d Doc) to_json() string {
-	return d.ast.to_json()
+// parse_dotted_key converts `key` string to an array of strings.
+// parse_dotted_key preserves strings delimited by both `"` and `'`.
+pub fn parse_dotted_key(key string) ?[]string {
+	mut out := []string{}
+	mut buf := ''
+	mut in_string := false
+	mut delim := byte(` `)
+	for ch in key {
+		if ch in [`"`, `'`] {
+			if !in_string {
+				delim = ch
+			}
+			in_string = !in_string && ch == delim
+			if !in_string {
+				if buf != '' && buf != ' ' {
+					out << buf
+				}
+				buf = ''
+				delim = ` `
+			}
+			continue
+		}
+		buf += ch.ascii_str()
+		if !in_string && ch == `.` {
+			if buf != '' && buf != ' ' {
+				out << buf[..buf.len - 1]
+			}
+			buf = ''
+			continue
+		}
+	}
+	if buf != '' && buf != ' ' {
+		out << buf
+	}
+	if in_string {
+		return error(@FN +
+			': could not parse key, missing closing string delimiter `$delim.ascii_str()`')
+	}
+	return out
 }
 
 // to_any converts the `Doc` to toml.Any type.
@@ -126,13 +161,12 @@ pub fn (d Doc) to_any() Any {
 // `key` supports quoted keys like `a."b.c"`.
 pub fn (d Doc) value(key string) Any {
 	values := d.ast.table as map[string]ast.Value
-	key_split := util.parse_dotted_key(key) or { return Any(Null{}) }
+	key_split := parse_dotted_key(key) or { return Any(Null{}) }
 	return d.value_(values, key_split)
 }
 
 // value_ returns the value found at `key` in the map `values` as `Any` type.
 fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' getting "${key[0]}"')
 	value := values[key[0]] or {
 		return Any(Null{})
 		// TODO decide this
@@ -150,7 +184,7 @@ fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 }
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
-fn (d Doc) ast_to_any(value ast.Value) Any {
+pub fn (d Doc) ast_to_any(value ast.Value) Any {
 	match value {
 		ast.Date {
 			return Any(Date{value.text})

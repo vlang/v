@@ -1,5 +1,6 @@
 import os
 import toml
+import toml.to
 
 const (
 	toml_text = '[[a]]
@@ -15,7 +16,7 @@ const (
 fn test_nested_array_of_tables() {
 	mut toml_doc := toml.parse(toml_text) or { panic(err) }
 
-	toml_json := toml_doc.to_json()
+	toml_json := to.json(toml_doc)
 
 	eprintln(toml_json)
 	assert toml_json == os.read_file(
