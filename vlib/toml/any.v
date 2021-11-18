@@ -167,7 +167,7 @@ pub fn (m map[string]Any) value(key string) Any {
 	return m.value_(key_split)
 }
 
-fn (m map[string]Any) value_(key []string) ?Any {
+fn (m map[string]Any) value_(key []string) Any {
 	value := m[key[0]] or { return Any(Null{}) }
 	// `match` isn't currently very suitable for these types of sum type constructs...
 	if value is map[string]Any {
