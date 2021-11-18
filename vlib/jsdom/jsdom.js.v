@@ -146,6 +146,8 @@ pub interface JS.DOMRectList {
 	item(index JS.Number) ?JS.Rect
 }
 
+pub type DOMTokenListForEachCb = fn (JS.String, JS.Number, JS.DOMTokenList)
+
 pub interface JS.DOMTokenList {
 	length JS.Number
 	toString() JS.String
@@ -156,7 +158,7 @@ pub interface JS.DOMTokenList {
 	replace(token JS.String, newToken JS.String) JS.Boolean
 	supports(token JS.String) JS.Boolean
 	toggle(token JS.String, force JS.Boolean) JS.Boolean
-	(JS.String, JS.Number, JS.DOMTokenList), thisArg JS.Any)
+	forEach(cb DOMTokenListForEachCb, thisArg JS.Any)
 mut:
 	value JS.String
 }
@@ -166,9 +168,9 @@ pub struct JS.EventListenerOptions {
 }
 
 pub interface JS.EventTarget {
-	(JS.Event), options JS.EventListenerOptions)
+	addEventListener(cb EventCallback, options JS.EventListenerOptions)
 	dispatchEvent(event JS.Event) JS.Boolean
-	(JS.Event), options JS.EventListenerOptions)
+	removeEventListener(cb EventCallback, options JS.EventListenerOptions)
 }
 
 // Event is an event which takes place in the DOM.
