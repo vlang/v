@@ -7,7 +7,6 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
-import strconv
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
