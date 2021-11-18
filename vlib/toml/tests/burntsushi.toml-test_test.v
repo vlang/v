@@ -33,18 +33,8 @@ const (
 		// Comment
 		'comment/tricky.toml',
 		// Table
-		'table/empty.toml',
 		'table/array-implicit.toml',
-		'table/sub-empty.toml',
-		'table/without-super.toml',
-		'table/whitespace.toml',
 		'table/names.toml',
-		'table/no-eol.toml',
-		'table/keyword.toml',
-		// Array
-		'array/string-quote-comma.toml',
-		'array/string-quote-comma-2.toml',
-		'array/table-array-string-backslash.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
 		// Inline-table

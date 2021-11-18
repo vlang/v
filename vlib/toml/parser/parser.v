@@ -265,6 +265,19 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 	return p.find_in_table(mut t, p.root_map_key)
 }
 
+// allocate_table allocates all tables in "dotted" `key` (`a.b.c`) in the *root* table.
+pub fn (mut p Parser) allocate_table(key DottedKey) ? {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(p.root_map)}')
+	mut t := &map[string]ast.Value{}
+	unsafe {
+		t = &p.root_map
+	}
+	if key.len == 0 {
+		return
+	}
+	p.allocate_in_table(mut t, key) ?
+}
+
 // sub_table_key returns the logic parts of a dotted key (`a.b.c`) for
 // use with the `find_sub_table` method.
 pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
@@ -330,6 +343,33 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'returning map ${ptr_str(t)}"')
 	return t
+}
+
+// allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
+pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ? {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(table)}')
+	mut t := &map[string]ast.Value{}
+	unsafe {
+		t = &table
+	}
+	unsafe {
+		for k in key {
+			if val := t[k] {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
+				if val is map[string]ast.Value {
+					t = &(val as map[string]ast.Value)
+				} else {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' "$k" in "$key" is not a map ($val.type_name())')
+				}
+			} else {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" in "$key" found, allocating new map at key "$k" in map ${ptr_str(t)}"')
+				t[k] = map[string]ast.Value{}
+				t = &(t[k] as map[string]ast.Value)
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocated new map ${ptr_str(t)}"')
+			}
+		}
+	}
 }
 
 // dotted_key returns a string of the next tokens parsed as
@@ -476,6 +516,7 @@ pub fn (mut p Parser) root_table() ? {
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
+					p.allocate_table(p.root_map_key) ?
 					p.expect(.rsbr) ?
 					p.peek_for_correct_line_ending_or_fail() ?
 				} else {
@@ -497,6 +538,7 @@ pub fn (mut p Parser) root_table() ? {
 
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
+					p.allocate_table(p.root_map_key) ?
 					p.next() ?
 					p.expect(.rsbr) ?
 					p.peek_for_correct_line_ending_or_fail() ?
