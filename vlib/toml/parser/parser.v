@@ -254,10 +254,7 @@ fn (p Parser) check_explicitly_declared(key DottedKey) ? {
 // See also `find_in_table`.
 pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
-	mut t := &map[string]ast.Value{}
-	unsafe {
-		t = &p.root_map
-	}
+	mut t := unsafe { &p.root_map }
 	if p.root_map_key.len == 0 {
 		return t
 	}
@@ -268,10 +265,7 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 // allocate_table allocates all tables in "dotted" `key` (`a.b.c`) in the *root* table.
 pub fn (mut p Parser) allocate_table(key DottedKey) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(p.root_map)}')
-	mut t := &map[string]ast.Value{}
-	unsafe {
-		t = &p.root_map
-	}
+	mut t := unsafe { &p.root_map }
 	if key.len == 0 {
 		return
 	}
@@ -299,10 +293,7 @@ pub fn (mut p Parser) find_sub_table(key DottedKey) ?&map[string]ast.Value {
 		ky = key
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$ky" in map ${ptr_str(p.root_map)}')
-	mut t := &map[string]ast.Value{}
-	unsafe {
-		t = &p.root_map
-	}
+	mut t := unsafe { &p.root_map }
 	if ky.len == 0 {
 		return t
 	}
@@ -319,10 +310,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(table)}')
-	mut t := &map[string]ast.Value{}
-	unsafe {
-		t = &table
-	}
+	mut t := unsafe { &table }
 	unsafe {
 		for k in key {
 			if val := t[k] {
@@ -348,10 +336,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
 pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(table)}')
-	mut t := &map[string]ast.Value{}
-	unsafe {
-		t = &table
-	}
+	mut t := unsafe { &table }
 	unsafe {
 		for k in key {
 			if val := t[k] {
@@ -864,10 +849,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 				} else {
 					key, val := p.key_value() ?
 
-					mut t := &map[string]ast.Value{}
-					unsafe {
-						t = &tbl
-					}
+					mut t := unsafe { &tbl }
 					if implicit_allocation_key.len > 0 {
 						t = p.find_in_table(mut tbl, implicit_allocation_key) ?
 					}
