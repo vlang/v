@@ -25,7 +25,7 @@ fn test_toml_with_bom() {
 	assert title as string == 'TOML Example'
 
 	owner := toml_doc.value('owner') as map[string]toml.Any
-	any_name := owner.value('name') or { panic(err) }
+	any_name := owner.value('name')
 	assert any_name.string() == 'Tom Preston-Werner'
 
 	database := toml_doc.value('database') as map[string]toml.Any
