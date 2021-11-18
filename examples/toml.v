@@ -39,9 +39,9 @@ hosts = [
 
 fn main() {
 	doc := toml.parse(toml_text) or { panic(err) }
-	title := doc.value('title').string()
+	title := doc.value('title') or { 'Default title' }.string()
 	println('title: "$title"')
-	ip := doc.value('servers.alpha.ip').string()
+	ip := doc.value('servers.alpha.ip') or { '127.0.0.1' }.string()
 	println('Server IP: "$ip"')
 
 	toml_json := to.json(doc)

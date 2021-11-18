@@ -29,15 +29,15 @@ fn test_parse() {
 	// dump(toml_doc.ast)
 	// assert false
 
-	assert toml_doc.value('db.enabled').bool()
+	assert toml_doc.value('db.enabled') or { false }.bool() == true
 	// TODO make this work
-	assert toml_doc.value('servers.alpha.ip').string() == '10.0.0.1'
-	assert toml_doc.value('servers.alpha.dc').string() == 'eqdc10'
+	assert toml_doc.value('servers.alpha.ip') or { '' }.string() == '10.0.0.1'
+	assert toml_doc.value('servers.alpha.dc') or { '' }.string() == 'eqdc10'
 
-	assert toml_doc.value('servers.beta.ip').string() == '10.0.0.2'
-	assert toml_doc.value('servers.beta.dc').string() == 'eqdc10'
+	assert toml_doc.value('servers.beta.ip') or { '' }.string() == '10.0.0.2'
+	assert toml_doc.value('servers.beta.dc') or { '' }.string() == 'eqdc10'
 
-	assert toml_doc.value('servers.alpha.tricky.ip').string() == '10.0.0.100'
-	assert toml_doc.value('firewall.rules.limit.ip').string() == '10.0.0.101'
-	assert toml_doc.value('firewall.rules.block').bool() == true
+	assert toml_doc.value('servers.alpha.tricky.ip') or { '' }.string() == '10.0.0.100'
+	assert toml_doc.value('firewall.rules.limit.ip') or { '' }.string() == '10.0.0.101'
+	assert toml_doc.value('firewall.rules.block') or { false }.bool() == true
 }

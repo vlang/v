@@ -29,37 +29,37 @@ T = {a.b=2}'
 fn test_tables() {
 	mut toml_doc := toml.parse(toml_table_text) or { panic(err) }
 
-	mut value := toml_doc.value('inline.a.b')
+	mut value := toml_doc.value('inline.a.b') or { panic(err) }
 	assert value.int() == 42
 
-	value = toml_doc.value('many.dots.here.dot.dot.dot.a.b.c')
+	value = toml_doc.value('many.dots.here.dot.dot.dot.a.b.c') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('many.dots.here.dot.dot.dot.a.b.d')
+	value = toml_doc.value('many.dots.here.dot.dot.dot.a.b.d') or { panic(err) }
 	assert value.int() == 2
 
-	value = toml_doc.value('a.a.b')
+	value = toml_doc.value('a.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('b.a.b')
+	value = toml_doc.value('b.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('c.a.b')
+	value = toml_doc.value('c.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('d.a.b')
+	value = toml_doc.value('d.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('e.a.b')
+	value = toml_doc.value('e.a.b') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('tbl.a.b.c.d.e')
+	value = toml_doc.value('tbl.a.b.c.d.e') or { panic(err) }
 	assert value.int() == 1
 
-	value = toml_doc.value('tbl.x.a.b.c.d.e')
+	value = toml_doc.value('tbl.x.a.b.c.d.e') or { panic(err) }
 	assert value.int() == 1
 
-	mut m := toml_doc.value('tbl') as map[string]toml.Any
+	mut m := toml_doc.value('tbl') or { panic(err) } as map[string]toml.Any
 
 	value = m.value('a.b.c.d.e') or { panic(err) }
 	assert value.int() == 1
@@ -67,7 +67,7 @@ fn test_tables() {
 	value = m.value('x.a.b.c.d.e') or { panic(err) }
 	assert value.int() == 1
 
-	arr := toml_doc.value('arr') as []toml.Any
+	arr := toml_doc.value('arr') or { panic(err) } as []toml.Any
 
 	for i := 0; i < arr.len; i++ {
 		entry := (arr[i] as map[string]toml.Any)

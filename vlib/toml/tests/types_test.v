@@ -5,7 +5,7 @@ fn test_string() {
 	toml_txt := 'string = "test string"'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('string')
+	value := toml_doc.value('string') or { panic(err) }
 	assert value == toml.Any(str_value)
 	assert value as string == str_value
 	assert value.string() == str_value
@@ -15,7 +15,7 @@ fn test_i64() {
 	toml_txt := 'i64 = 120'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('i64')
+	value := toml_doc.value('i64') or { panic(err) }
 	assert value == toml.Any(i64(120))
 	assert value as i64 == 120
 	assert value.i64() == i64(120)
@@ -27,14 +27,14 @@ bool_true = true
 bool_false = false'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value_true := toml_doc.value('bool_true')
+	value_true := toml_doc.value('bool_true') or { panic(err) }
 	assert value_true == toml.Any(true)
 	assert value_true as bool == true
 	assert value_true != toml.Any(false)
 	assert value_true as bool != false
 	assert value_true.bool() == true
 
-	value_false := toml_doc.value('bool_false')
+	value_false := toml_doc.value('bool_false') or { panic(err) }
 	assert value_false == toml.Any(false)
 	assert value_false as bool == false
 	assert value_false != toml.Any(true)
@@ -47,13 +47,13 @@ fn test_bool_key_is_not_value() {
 false = false'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value_true := toml_doc.value('true')
+	value_true := toml_doc.value('true') or { panic(err) }
 	assert value_true == toml.Any(true)
 	assert value_true as bool == true
 	assert value_true != toml.Any(false)
 	assert value_true as bool != false
 
-	value_false := toml_doc.value('false')
+	value_false := toml_doc.value('false') or { panic(err) }
 	assert value_false == toml.Any(false)
 	assert value_false as bool == false
 	assert value_false != toml.Any(true)
@@ -65,7 +65,7 @@ fn test_single_letter_key() {
 open_sourced = "Jun 22 2019 20:20:28"'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('v.open_sourced').string()
+	value := toml_doc.value('v.open_sourced') or { panic(err) }.string()
 	assert value == 'Jun 22 2019 20:20:28'
 }
 
@@ -75,7 +75,7 @@ fn test_hex_values() {
 	toml_txt := 'hex = 0xb'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('hex')
+	value := toml_doc.value('hex') or { panic(err) }
 	assert value as i64 == 11
 	assert value.i64() == 11
 }
@@ -86,7 +86,7 @@ test = 42
 # this line has comment as last thing'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('test')
+	value := toml_doc.value('test') or { panic(err) }
 	assert value as i64 == 42
 	assert value.i64() == 42
 }

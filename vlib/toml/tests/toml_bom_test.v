@@ -20,15 +20,15 @@ fn test_toml_with_bom() {
 	toml_doc := toml.parse(toml_text_with_utf8_bom) or { panic(err) }
 	toml_json := to.json(toml_doc)
 
-	title := toml_doc.value('title')
+	title := toml_doc.value('title') or { panic(err) }
 	assert title == toml.Any('TOML Example')
 	assert title as string == 'TOML Example'
 
-	owner := toml_doc.value('owner') as map[string]toml.Any
+	owner := toml_doc.value('owner') or { panic(err) } as map[string]toml.Any
 	any_name := owner.value('name') or { panic(err) }
 	assert any_name.string() == 'Tom Preston-Werner'
 
-	database := toml_doc.value('database') as map[string]toml.Any
+	database := toml_doc.value('database') or { panic(err) } as map[string]toml.Any
 	db_serv := database['server'] or {
 		panic('could not access "server" index in "database" variable')
 	}

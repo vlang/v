@@ -6,7 +6,7 @@ fn test_crlf() {
 # Comment with CRLF\r\n'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('crlf_string')
+	value := toml_doc.value('crlf_string') or { panic(err) }
 	assert value == toml.Any(str_value)
 	assert value as string == str_value
 	assert value.string() == str_value

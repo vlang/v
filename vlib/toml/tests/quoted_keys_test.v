@@ -5,7 +5,7 @@ fn test_quoted_keys() {
 	toml_txt := 'a."b.c" = "V rocks!"'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
-	value := toml_doc.value('a."b.c"')
+	value := toml_doc.value('a."b.c"') or { panic(err) }
 	assert value == toml.Any(str_value)
 	assert value as string == str_value
 	assert value.string() == str_value

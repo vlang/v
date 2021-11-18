@@ -152,25 +152,23 @@ pub fn parse_dotted_key(key string) ?[]string {
 }
 
 // to_any converts the `Doc` to toml.Any type.
-pub fn (d Doc) to_any() Any {
+pub fn (d Doc) to_any() ?Any {
 	return d.ast_to_any(d.ast.table)
 }
 
 // value queries a value from the TOML document.
 // `key` should be in "dotted" form (`a.b.c`).
 // `key` supports quoted keys like `a."b.c"`.
-pub fn (d Doc) value(key string) Any {
+pub fn (d Doc) value(key string) ?Any {
 	values := d.ast.table as map[string]ast.Value
-	key_split := parse_dotted_key(key) or { return Any(Null{}) }
+	key_split := parse_dotted_key(key) ?
 	return d.value_(values, key_split)
 }
 
 // value_ returns the value found at `key` in the map `values` as `Any` type.
-fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
+fn (d Doc) value_(values map[string]ast.Value, key []string) ?Any {
 	value := values[key[0]] or {
-		return Any(Null{})
-		// TODO decide this
-		// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key[0]" does not exist')
+		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "$key[0]" does not exist')
 	}
 	// `match` isn't currently very suitable for these types of sum type constructs...
 	if value is map[string]ast.Value {
@@ -184,8 +182,11 @@ fn (d Doc) value_(values map[string]ast.Value, key []string) Any {
 }
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
-pub fn (d Doc) ast_to_any(value ast.Value) Any {
+pub fn (d Doc) ast_to_any(value ast.Value) ?Any {
 	match value {
+		ast.Null {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' cannot convert `ast.Null`')
+		}
 		ast.Date {
 			return Any(Date{value.text})
 		}
@@ -216,7 +217,7 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			m := (value as map[string]ast.Value)
 			mut am := map[string]Any{}
 			for k, v in m {
-				am[k] = d.ast_to_any(v)
+				am[k] = d.ast_to_any(v) ?
 			}
 			return am
 			// return d.get_map_value(m, key_split[1..].join('.'))
@@ -225,17 +226,9 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			a := (value as []ast.Value)
 			mut aa := []Any{}
 			for val in a {
-				aa << d.ast_to_any(val)
+				aa << d.ast_to_any(val) ?
 			}
 			return aa
 		}
-		else {
-			return Any(Null{})
-		}
 	}
-
-	return Any(Null{})
-	// TODO decide this
-	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
-	// return Any('')
 }
