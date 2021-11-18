@@ -18,6 +18,10 @@ const skip_on_ubuntu_musl = [
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
+// This is needed, because some of the .vv files are tests, and we do need stable
+// output from them, that can be compared against their .out files:
+const turn_on_normal_test_runner = os.setenv('VTEST_RUNNER', 'normal', true)
+
 const should_autofix = os.getenv('VAUTOFIX') != ''
 
 const github_job = os.getenv('GITHUB_JOB')
@@ -246,6 +250,7 @@ fn (mut tasks Tasks) run() {
 			line_can_be_erased = false
 		} else {
 			bench.ok()
+			assert true
 			if tasks.show_cmd {
 				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
 					task.took))
