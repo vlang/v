@@ -3091,9 +3091,12 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	}
 	g.expr(it.expr)
 	mut ltyp := it.expr_type
-	for ltyp.is_ptr() {
-		g.write('.val')
-		ltyp = ltyp.deref()
+	lsym := g.table.get_type_symbol(ltyp)
+	if lsym.kind != .interface_ && lsym.language != .js {
+		for ltyp.is_ptr() {
+			g.write('.val')
+			ltyp = ltyp.deref()
+		}
 	}
 	g.write('.$it.field_name')
 }
@@ -3159,7 +3162,11 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
 	name := type_sym.name
 	if it.fields.len == 0 && type_sym.kind != .interface_ {
-		g.write('new ${g.js_name(name)}({})')
+		if type_sym.kind == .struct_ && type_sym.language == .js {
+			g.write('{}')
+		} else {
+			g.write('new ${g.js_name(name)}({})')
+		}
 	} else if it.fields.len == 0 && type_sym.kind == .interface_ {
 		g.write('new ${g.js_name(name)}()') // JS interfaces can be instantiated with default ctor
 	} else if type_sym.kind == .interface_ && it.fields.len != 0 {
@@ -3176,7 +3183,11 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.dec_indent()
 		g.writeln('})()')
 	} else {
-		g.writeln('new ${g.js_name(name)}({')
+		if type_sym.kind == .struct_ && type_sym.language == .js {
+			g.writeln('{')
+		} else {
+			g.writeln('new ${g.js_name(name)}({')
+		}
 		g.inc_indent()
 		for i, field in it.fields {
 			g.write('$field.name: ')
@@ -3187,7 +3198,11 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 			g.writeln('')
 		}
 		g.dec_indent()
-		g.write('})')
+		if type_sym.kind == .struct_ && type_sym.language == .js {
+			g.writeln('}')
+		} else {
+			g.writeln('})')
+		}
 	}
 }
 
