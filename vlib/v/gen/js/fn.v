@@ -85,7 +85,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.write(')')
 	if call_return_is_optional {
 		g.write(';\n')
-		g.writeln('if (tmp === null || tmp === undefined) throw "none";')
+		g.writeln('if (tmp === null) throw "none";')
 		g.writeln('return tmp;')
 		g.writeln('} catch(err) {')
 		g.inc_indent()
@@ -140,7 +140,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	g.write(')')
 	if call_return_is_optional {
 		g.write(';\n')
-		g.writeln('if (tmp === null || tmp === undefined) throw "none";')
+		g.writeln('if (tmp === null) throw "none";')
 		g.writeln('return tmp;')
 		g.writeln('} catch(err) {')
 		g.inc_indent()
