@@ -26,7 +26,7 @@ mut:
 	pos        int // current flat/index position in the `text` field
 	header_len int // Length, how many bytes of header was found
 	// Quirks
-	digits_as_keys bool = true // indicates if digits are considered keys to prevent parsing `[1.2]` as the number `"1.2"`
+	is_parsing_key bool = true // indicates if the scanner is on the *left* side of an assignment
 }
 
 // State is a read-only copy of the scanner's internal state.
@@ -167,7 +167,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.plus, ascii, ascii.len)
 			}
 			`=` {
-				s.digits_as_keys = false
+				s.is_parsing_key = false
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified assignment "$ascii" ($ascii.len)')
 				return s.new_token(.assign, ascii, ascii.len)
 			}
@@ -348,7 +348,7 @@ fn (mut s Scanner) ignore_line() ?string {
 fn (mut s Scanner) inc_line_number() {
 	s.col = 0
 	s.line_nr++
-	s.digits_as_keys = true
+	s.is_parsing_key = true
 }
 
 // extract_key parses and returns a TOML key as a string.
@@ -572,7 +572,7 @@ fn (mut s Scanner) extract_number() ?string {
 			s.col += 2
 		}
 		c = s.at()
-		if !(byte(c).is_hex_digit() || c in scanner.digit_extras) || (c == `.` && s.digits_as_keys) {
+		if !(byte(c).is_hex_digit() || c in scanner.digit_extras) || (c == `.` && s.is_parsing_key) {
 			break
 		}
 		s.pos++
