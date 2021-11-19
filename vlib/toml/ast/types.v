@@ -97,8 +97,9 @@ pub fn (n Null) str() string {
 // Quoted is the data representation of a TOML quoted type (`"quoted-key" = "I'm a quoted value"`).
 // Quoted types can appear both as keys and values in TOML documents.
 pub struct Quoted {
+pub mut:
+	text string
 pub:
-	text         string
 	pos          token.Position
 	is_multiline bool
 	quote        byte

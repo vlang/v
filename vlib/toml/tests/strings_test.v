@@ -72,9 +72,9 @@ fn test_unicode_escapes() {
 	mut toml_doc := toml.parse(toml_unicode_escapes) or { panic(err) }
 
 	mut value := toml_doc.value('short')
-	assert value.string() == r'\u03B4'
+	assert value.string() == '\u03B4' // <- This escape is handled by V
 	value = toml_doc.value('long')
-	assert value.string() == r'\U000003B4'
+	assert value.string() == 'δ' // <- for the long escape we compare with the unicode point
 }
 
 fn test_literal_strings() {
