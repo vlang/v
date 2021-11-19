@@ -4444,6 +4444,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}
+	g.set_current_pos_as_last_stmt_pos()
 	g.write(cur_line)
 	if need_tmp_var {
 		g.write('$tmp_var')
