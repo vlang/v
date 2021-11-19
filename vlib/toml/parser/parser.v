@@ -690,7 +690,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 		p.ignore_while(parser.all_formatting)
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number {
+			.bare, .quoted, .boolean, .number, .underscore {
 				if p.peek_tok.kind == .period {
 					dotted_key := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
@@ -829,7 +829,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 		}
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number {
+			.bare, .quoted, .boolean, .number, .underscore {
 				if p.peek_tok.kind == .period {
 					mut dotted_key := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
