@@ -1,14 +1,12 @@
+import os
 import toml
-// import toml.to
-
-const (
-	toml_text = '34-11 = 23 # came out as "34-11 "
-1.2 = 3 # came out as "1.2"
-# TODO 34-12.2 = 42'
-)
+import toml.to
 
 fn test_keys() {
-	mut toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_file :=
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		'.toml'
+	toml_doc := toml.parse(toml_file) or { panic(err) }
 
 	mut value := toml_doc.value('34-11')
 	assert value.int() == 23
@@ -16,8 +14,14 @@ fn test_keys() {
 	value = toml_doc.value('1.2')
 	assert value.int() == 3
 
-	// TODO
-	// println(to.json(toml_doc))
-	// value = toml_doc.value('34-12.2')
-	// assert value.int() == 42
+	value = toml_doc.value('34-12.2')
+	assert value.int() == 42
+
+	toml_json := to.json(toml_doc)
+	out_file :=
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+		'.out'
+	out_file_json := os.read_file(out_file) or { panic(err) }
+	println(toml_json)
+	assert toml_json == out_file_json
 }

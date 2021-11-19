@@ -117,11 +117,13 @@ fn (mut p Parser) next() ? {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	if p.tokens.len > 0 {
-		p.peek_tok = p.tokens.pop()
+		p.peek_tok = p.tokens.first()
+		p.tokens.delete(0)
 		p.peek(1) ?
 	} else {
 		p.peek(1) ?
-		p.peek_tok = p.tokens.pop()
+		p.peek_tok = p.tokens.first()
+		p.tokens.delete(0)
 	}
 }
 
@@ -402,10 +404,8 @@ pub fn (mut p Parser) root_table() ? {
 				continue
 			}
 			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
-				mut peek_tok := p.peek_tok
-
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+				peek_tok, _ := p.peek_over(1, [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean, .number, .underscore]) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
@@ -1001,7 +1001,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 		if p.peek_tok.kind == .minus {
 			mut lits := p.tok.lit
 			pos := p.tok.position()
-			for p.peek_tok.kind != .assign {
+			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period {
 				p.next() ?
 				if p.tok.kind !in parser.space_formatting {
 					lits += p.tok.lit
