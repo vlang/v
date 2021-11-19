@@ -14,13 +14,11 @@ interface TestRunner {
 mut:
 	file_test_info VTestFileMetaInfo // filled in by generated code, before .start() is called.
 	fn_test_info VTestFnMetaInfo // filled in by generated code, before .fn_start() is called.
-	// The following commented fields, are not part of the interface, but illustrate how the
-	// interface callback functions are used usually:
-	// fn_assert_passes u64 // reset this to 0 in .fn_start(), increase it in .assert_pass()
-	// fn_passes u64 // increase this in .fn_pass()
-	// fn_fails u64 // increase this in .fn_fails()
-	// total_assert_passes u64 // increase this in .assert_pass()
-	// total_assert_fails u64 // increase this in .assert_fail()
+	fn_assert_passes u64 // reset this to 0 in .fn_start(), increase it in .assert_pass()
+	fn_passes u64 // increase this in .fn_pass()
+	fn_fails u64 // increase this in .fn_fails()
+	total_assert_passes u64 // increase this in .assert_pass()
+	total_assert_fails u64 // increase this in .assert_fail()
 	start(ntests int) // called before all tests, you can initialise private data here. ntests is the number of test functions in the _test.v file.
 	finish() // called after all tests are finished, you can print some stats if you want here.
 	exit_code() int // called right after finish(), it should return the exit code, that the test program will exit with.

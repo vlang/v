@@ -28,8 +28,6 @@ The names of the available test runners are:
 	`tap`    Format the output as required by the Test Anything Protocol (TAP).
 	`normal` Supports color output, nicest/most human readable, the default.
 
-	`coderunner` https://github.com/codewars/runner/blob/main/docs/messages.md
-
 You can also implement your own custom test runner, by providing the path to
 your .v file, that implements it to this option. For example, see:
 vlib/v/preludes/test_runner_tap.v .

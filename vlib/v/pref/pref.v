@@ -107,7 +107,7 @@ pub mut:
 	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_o              bool   // building an .o file
 	is_prof           bool   // benchmark every function
-	test_runner       string // can be '-' (fastest, but much less detailed), 'tap', 'coderunner', 'normal'
+	test_runner       string // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file      string // the profile results will be stored inside profile_file
 	profile_no_inline bool   // when true, [inline] functions would not be profiled
 	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
