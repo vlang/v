@@ -778,10 +778,6 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
-	if addr == 0 {
-		// g.warning('fn addr of `$name` = 0')
-		g.n_error('fn addr of `$name` = 0')
-	}
 	// Copy values to registers (calling convention)
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
@@ -808,9 +804,39 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	if node.args.len > 6 {
 		g.v_error('more than 6 args not allowed for now', node.pos)
 	}
-	g.call(int(addr))
+	if addr == 0 {
+		g.delay_fn_call(name)
+		g.call(int(0))
+	} else {
+		g.call(int(addr))
+	}
 	g.println('fn call `${name}()`')
 	// println('call $name $addr')
+}
+
+fn (mut g Gen) patch_calls() {
+	for c in g.callpatches {
+		addr := g.fn_addr[c.name]
+		if addr == 0 {
+			g.n_error('fn addr of `$c.name` = 0')
+			return
+		}
+		last := g.buf.len
+		g.call(int(addr + last - c.pos))
+		mut patch := []byte{}
+		for last < g.buf.len {
+			patch << g.buf.pop()
+		}
+		for i := 0; i < patch.len; i++ {
+			g.buf[c.pos + i] = patch[patch.len - i - 1]
+		}
+	}
+}
+
+fn (mut g Gen) delay_fn_call(name string) {
+	pos := g.buf.len
+	g.callpatches << CallPatch{name, pos}
+	// do nothing for now
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
