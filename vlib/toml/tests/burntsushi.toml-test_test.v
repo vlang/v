@@ -38,8 +38,6 @@ const (
 		// Inline-table
 		'inline-table/multiline.toml',
 		// Key
-		'key/numeric-dotted.toml',
-		'key/alphanum.toml',
 		'key/escapes.toml',
 	]
 

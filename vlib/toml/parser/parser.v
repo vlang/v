@@ -1003,7 +1003,9 @@ pub fn (mut p Parser) key() ?ast.Key {
 			pos := p.tok.position()
 			for p.peek_tok.kind != .assign {
 				p.next() ?
-				lits += p.tok.lit
+				if p.tok.kind !in parser.space_formatting {
+					lits += p.tok.lit
+				}
 			}
 			return ast.Key(ast.Bare{
 				text: lits
