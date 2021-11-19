@@ -2,12 +2,12 @@ module walker
 
 import toml.ast
 
-// Visitor defines a visit method which is invoked by the walker in each Value node it encounters.
+// Visitor defines a visit method which is invoked by the walker on each Value node it encounters.
 pub interface Visitor {
 	visit(value &ast.Value) ?
 }
 
-// Modifier defines a visit method which is invoked by the walker in each Value node it encounters.
+// Modifier defines a modify method which is invoked by the walker on each Value node it encounters.
 pub interface Modifier {
 	modify(mut value ast.Value) ?
 }
@@ -47,7 +47,8 @@ pub fn walk(visitor Visitor, value &ast.Value) ? {
 	}
 }
 
-// walk traverses the AST using the given modifier
+// walk_and_modify traverses the AST using the given modifier and lets the visitor
+// modify the contents.
 pub fn walk_and_modify(modifier Modifier, mut value ast.Value) ? {
 	if value is map[string]ast.Value {
 		mut value_map := value as map[string]ast.Value
