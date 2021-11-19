@@ -1,5 +1,5 @@
 import toml
-//import toml.to
+// import toml.to
 
 const (
 	toml_text = '34-11 = 23 # came out as "34-11 "
