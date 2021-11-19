@@ -44,10 +44,9 @@ mut:
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
-	// UNUSED relocs               []Reloc
-	size_pos    []int
-	nlines      int
-	callpatches []CallPatch
+	size_pos             []int
+	nlines               int
+	callpatches          []CallPatch
 }
 
 struct CallPatch {
@@ -99,9 +98,11 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	g.code_gen.g = g
 	g.generate_header()
 	for file in files {
+		/*
 		if file.warnings.len > 0 {
 			eprintln('warning: ${file.warnings[0]}')
 		}
+		*/
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
 		}
@@ -307,6 +308,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			}
 		}
 		ast.None {}
+		ast.EmptyExpr {
+			g.n_error('unhandled EmptyExpr')
+		}
 		ast.PostfixExpr {}
 		ast.PrefixExpr {}
 		ast.SelectorExpr {
@@ -323,6 +327,7 @@ g.expr
 			dump(expr)
 			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
 		}
+		ast.NodeError {}
 		/*
 		ast.AnonFn {}
 		ast.ArrayDecompose {}
@@ -339,45 +344,72 @@ g.expr
 		ast.ComptimeSelector {}
 		ast.ConcatExpr {}
 		ast.DumpExpr {}
-		ast.EmptyExpr {}
 		ast.EnumVal {}
-		ast.FloatLiteral {}
 		ast.GoExpr {}
-		ast.IfExpr {}
 		ast.IfGuardExpr {}
 		ast.IndexExpr {}
 		ast.InfixExpr {}
 		ast.IsRefType {}
-		ast.Likely {}
-		ast.LockExpr {}
 		ast.MapInit {}
 		ast.MatchExpr {}
-		ast.NodeError {}
 		ast.OrExpr {}
 		ast.ParExpr {}
 		ast.RangeExpr {}
 		ast.SelectExpr {}
 		ast.SqlExpr {}
-		ast.StringInterLiteral {}
-		ast.StructInit {}
 		ast.TypeNode {}
 		ast.TypeOf {}
-		ast.UnsafeExpr {}
 		*/
+		ast.LockExpr {
+			// passthru
+			eprintln('Warning: locks not implemented yet in the native backend')
+			g.expr(expr)
+		}
+		ast.Likely {
+			// passthru
+			g.expr(expr)
+		}
+		ast.UnsafeExpr {
+			// passthru
+			g.expr(expr)
+		}
+		ast.StringInterLiteral {
+			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
+		}
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
 			//	g.v_error('expected string as argument for print', expr.pos)
 			g.n_error('expected string as argument for print') // , expr.pos)
-			// g.warning('expected string as argument for print')
 		}
 	}
 }
 
+fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if g.pref.is_verbose {
+		println(term.green('\n$node.name:'))
+	}
+	if node.is_deprecated {
+		g.warning('fn_decl: $node.name is deprecated', node.pos)
+	}
+	if node.is_builtin {
+		g.warning('fn_decl: $node.name is builtin', node.pos)
+	}
+	g.stack_var_pos = 0
+	g.register_function_address(node.name)
+	if g.pref.arch == .arm64 {
+		g.fn_decl_arm64(node)
+	} else {
+		g.fn_decl_amd64(node)
+	}
+}
+
 pub fn (mut g Gen) register_function_address(name string) {
-	addr := g.pos()
-	// eprintln('register function $name = $addr')
-	g.fn_addr[name] = addr
+	if name == 'main.main' {
+		g.main_fn_addr = i64(g.buf.len)
+	} else {
+		g.fn_addr[name] = g.pos()
+	}
 }
 
 fn (mut g Gen) println(comment string) {
@@ -604,7 +636,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {}
 		ast.StructInit {}
 		ast.GoExpr {
-			g.v_error('native backend doesnt support threads yet', node.pos) // token.Position{})
+			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')

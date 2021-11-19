@@ -1,6 +1,5 @@
 module native
 
-import term
 import v.ast
 import v.token
 
@@ -152,8 +151,6 @@ fn (mut g Gen) cjmp(op JumpOp) int {
 	g.println('$op')
 	return int(pos)
 }
-
-// Returns the position of the address to jump to (set later).
 
 fn (mut g Gen) jmp(addr int) {
 	g.write8(0xe9)
@@ -424,10 +421,6 @@ pub fn (mut g Gen) gen_loop_start(from int) int {
 pub fn (mut g Gen) gen_loop_end(to int, label int) {
 	g.cmp(.r12, ._8, to)
 	g.jl(label)
-}
-
-pub fn (mut g Gen) save_main_fn_addr() {
-	g.main_fn_addr = i64(g.buf.len)
 }
 
 pub fn (mut g Gen) allocate_string(s string, opsize int) int {
@@ -1373,39 +1366,13 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.println('jmp after for')
 }
 
-fn (mut g Gen) fn_decl(node ast.FnDecl) {
-	if g.pref.is_verbose {
-		println(term.green('\n$node.name:'))
-	}
-	// if g.is_method
-	if node.is_deprecated {
-		eprintln('fn_decl: $node.name is deprecated')
-	}
-	if node.is_builtin {
-		eprintln('fn_decl: $node.name is builtin')
-	}
-	g.stack_var_pos = 0
-	is_main := node.name == 'main.main'
-	// println('saving addr $node.name $g.buf.len.hex2()')
-	if is_main {
-		g.save_main_fn_addr()
-	} else {
-		g.register_function_address(node.name)
-	}
-	if g.pref.arch == .arm64 {
-		g.fn_decl_arm64(node)
-		return
-	}
-
+fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.push(.rbp)
 	g.mov_rbp_rsp()
 	locals_count := node.scope.objects.len + node.params.len
 	g.stackframe_size = (locals_count * 8) + 0x10
 	g.sub8(.rsp, g.stackframe_size)
 
-	if node.params.len > 0 {
-		// g.mov(.r12, 0x77777777)
-	}
 	// Copy values from registers to local vars (calling convention)
 	mut offset := 0
 	for i in 0 .. node.params.len {
@@ -1418,6 +1385,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	//
 	g.stmts(node.stmts)
+	is_main := node.name == 'main.main'
 	if is_main {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{}
@@ -1442,8 +1410,7 @@ pub fn (mut g Gen) allocate_array(name string, size int, items int) int {
 }
 
 pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
-	// `a := 3`  =>
-	// `move DWORD [rbp-0x4],0x3`
+	// `a := 3`  => `mov DWORD [rbp-0x4],0x3`
 	match size {
 		1 {
 			// BYTE
@@ -1473,6 +1440,6 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-$n.hex2()],$initial_val (Allocate var `$name`)')
+	g.println('mov [rbp-$n.hex2()], $initial_val (Allocate var `$name`)')
 	return g.stack_var_pos
 }
