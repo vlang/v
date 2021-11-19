@@ -573,20 +573,20 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	return ast.int_literal_type
 }
 
-pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallExpr) {
+pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
-	for gi, gt_name in f.generic_names {
+	for gi, gt_name in func.generic_names {
 		// skip known types
-		if gi < call_expr.concrete_types.len {
-			inferred_types << call_expr.concrete_types[gi]
+		if gi < node.concrete_types.len {
+			inferred_types << node.concrete_types[gi]
 			continue
 		}
 		mut typ := ast.void_type
-		for i, param in f.params {
+		for i, param in func.params {
 			mut to_set := ast.void_type
 			// resolve generic struct receiver
-			if i == 0 && call_expr.is_method && param.typ.has_flag(.generic) {
-				sym := c.table.get_type_symbol(call_expr.receiver_type)
+			if i == 0 && node.is_method && param.typ.has_flag(.generic) {
+				sym := c.table.get_type_symbol(node.receiver_type)
 				match sym.info {
 					ast.Struct, ast.Interface, ast.SumType {
 						if c.table.cur_fn.generic_names.len > 0 { // in generic fn
@@ -607,20 +607,20 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					else {}
 				}
 			}
-			arg_i := if i != 0 && call_expr.is_method { i - 1 } else { i }
-			if call_expr.args.len <= arg_i {
+			arg_i := if i != 0 && node.is_method { i - 1 } else { i }
+			if node.args.len <= arg_i {
 				break
 			}
-			arg := call_expr.args[arg_i]
+			arg := node.args[arg_i]
 			param_type_sym := c.table.get_type_symbol(param.typ)
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
 				to_set = c.table.mktyp(arg.typ)
 				sym := c.table.get_type_symbol(arg.typ)
 				if sym.info is ast.FnType {
-					mut func := sym.info.func
-					func.name = ''
-					idx := c.table.find_or_register_fn_type(c.mod, func, true, false)
+					mut func_ := sym.info.func
+					func_.name = ''
+					idx := c.table.find_or_register_fn_type(c.mod, func_, true, false)
 					to_set = ast.new_type(idx).derive(arg.typ)
 				}
 				if arg.expr.is_auto_deref_var() {
@@ -720,17 +720,19 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+			c.error('could not infer generic type `$gt_name` in call to `$func.name`',
+				node.pos)
 			return
 		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
-			println('inferred `$f.name<$s>`')
+			println('inferred `$func.name<$s>`')
 		}
 		inferred_types << typ
-		call_expr.concrete_types << typ
+		node.concrete_types << typ
 	}
-	if c.table.register_fn_concrete_types(f.name, inferred_types) {
+
+	if c.table.register_fn_concrete_types(func.name, inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
 }
