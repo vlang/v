@@ -6250,7 +6250,7 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\tvinit_string_literals();')
 	//
 	for mod_name in g.table.modules {
-		g.writeln('\t// Initializations for module $mod_name :')
+		g.writeln('\t{ // Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())
 		g.write(g.global_inits[mod_name].str())
 		init_fn_name := '${mod_name}.init'
@@ -6261,6 +6261,7 @@ fn (mut g Gen) write_init_function() {
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
+		g.writeln('\t}')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
