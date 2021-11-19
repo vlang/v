@@ -614,7 +614,8 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			if node.args.len <= arg_i {
 				break
 			}
-			arg := node.args[arg_i]
+			mut arg := node.args[arg_i]
+			arg.typ = c.unwrap_generic(arg.typ)
 			param_type_sym := c.table.get_type_symbol(param.typ)
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
