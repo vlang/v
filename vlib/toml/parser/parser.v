@@ -405,7 +405,8 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean, .number, .underscore]) ?
+				peek_tok, _ := p.peek_over(1, [token.Kind.whitespace, .tab, .minus, .bare, .quoted,
+					.boolean, .number, .underscore]) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
