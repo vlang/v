@@ -74,6 +74,7 @@ fn gen_gitignore(name string) string {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'vls.log',
 		'',
 	].join('\n')
 }
