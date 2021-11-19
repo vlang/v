@@ -7,6 +7,9 @@ import v.ast
 import v.token
 
 pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
+	if got == 0 {
+		return error('unexpected 0 type')
+	}
 	mut expected := expected_
 	// variadic
 	if expected.has_flag(.variadic) {
