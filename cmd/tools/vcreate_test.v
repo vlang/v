@@ -34,6 +34,7 @@ fn init_and_check() ? {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'vls.log',
 		'',
 	].join('\n')
 }
