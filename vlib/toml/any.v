@@ -149,18 +149,26 @@ pub fn (a Any) datetime() DateTime {
 	}
 }
 
+// default_to returns `value` if `a Any` is `Null`.
+// This can be used to set default values when retrieving
+// values. E.g.: `toml_doc.value('wrong.key').default_to(123).int()`
+pub fn (a Any) default_to(value Any) Any {
+	match a {
+		Null { return value }
+		else { return a }
+	}
+}
+
 // value queries a value from the map.
 // `key` should be in "dotted" form (`a.b.c`).
 // `key` supports quoted keys like `a."b.c"`.
-pub fn (m map[string]Any) value(key string) ?Any {
-	key_split := parse_dotted_key(key) ?
+pub fn (m map[string]Any) value(key string) Any {
+	key_split := parse_dotted_key(key) or { return Any(Null{}) }
 	return m.value_(key_split)
 }
 
-fn (m map[string]Any) value_(key []string) ?Any {
-	value := m[key[0]] or {
-		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' key "${key[0]}" does not exist')
-	}
+fn (m map[string]Any) value_(key []string) Any {
+	value := m[key[0]] or { return Any(Null{}) }
 	// `match` isn't currently very suitable for these types of sum type constructs...
 	if value is map[string]Any {
 		if key.len <= 1 {
