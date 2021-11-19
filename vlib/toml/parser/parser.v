@@ -10,8 +10,10 @@ import toml.token
 import toml.scanner
 
 pub const (
-	all_formatting   = [token.Kind.whitespace, .tab, .cr, .nl]
-	space_formatting = [token.Kind.whitespace, .tab]
+	all_formatting            = [token.Kind.whitespace, .tab, .cr, .nl]
+	space_formatting          = [token.Kind.whitespace, .tab]
+	keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
+		.number, .underscore]
 )
 
 type DottedKey = []string
@@ -117,11 +119,13 @@ fn (mut p Parser) next() ? {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	if p.tokens.len > 0 {
-		p.peek_tok = p.tokens.pop()
+		p.peek_tok = p.tokens.first()
+		p.tokens.delete(0)
 		p.peek(1) ?
 	} else {
 		p.peek(1) ?
-		p.peek_tok = p.tokens.pop()
+		p.peek_tok = p.tokens.first()
+		p.tokens.delete(0)
 	}
 }
 
@@ -402,10 +406,8 @@ pub fn (mut p Parser) root_table() ? {
 				continue
 			}
 			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
-				mut peek_tok := p.peek_tok
-
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
@@ -482,7 +484,7 @@ pub fn (mut p Parser) root_table() ? {
 				p.ignore_while(parser.space_formatting)
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+				peek_tok, _ = p.peek_over(1, parser.keys_and_space_formatting) ?
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
@@ -690,7 +692,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 		p.ignore_while(parser.all_formatting)
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number {
+			.bare, .quoted, .boolean, .number, .underscore {
 				if p.peek_tok.kind == .period {
 					dotted_key := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
@@ -829,7 +831,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 		}
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number {
+			.bare, .quoted, .boolean, .number, .underscore {
 				if p.peek_tok.kind == .period {
 					mut dotted_key := p.dotted_key() ?
 					p.ignore_while(parser.space_formatting)
@@ -1001,9 +1003,11 @@ pub fn (mut p Parser) key() ?ast.Key {
 		if p.peek_tok.kind == .minus {
 			mut lits := p.tok.lit
 			pos := p.tok.position()
-			for p.peek_tok.kind != .assign {
+			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr {
 				p.next() ?
-				lits += p.tok.lit
+				if p.tok.kind !in parser.space_formatting {
+					lits += p.tok.lit
+				}
 			}
 			return ast.Key(ast.Bare{
 				text: lits
@@ -1036,7 +1040,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 
 	if key is ast.Null {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key expected .bare, .number, .quoted or .boolean but got "$p.tok.kind"')
+			' key expected .bare, .underscore, .number, .quoted or .boolean but got "$p.tok.kind"')
 	}
 
 	// A small exception that can't easily be done via `checker`
