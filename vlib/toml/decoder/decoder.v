@@ -14,8 +14,7 @@ pub struct Decoder {
 	scanner &scanner.Scanner
 }
 
-// check checks the `ast.Value` and all it's children
-// for common errors.
+// decode decodes certain `ast.Value`'s and all it's children.
 pub fn (d Decoder) decode(mut n ast.Value) ? {
 	walker.walk_and_modify(d, mut n) ?
 }
@@ -58,9 +57,9 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple(q.text) ?
 
-	println(q.text)
 	q.text = q.text.replace('\\"', '"')
 
+	// TODO use string builder
 	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
@@ -146,10 +145,4 @@ fn (d Decoder) decode_unicode_escape(esc_unicode string) ?string {
 	}
 	rn := rune(strconv.parse_int(unicode_point, 16, 0) ?)
 	return '$rn'
-	/*
-	if is_long_esc_type {
-		// Long escape type
-	} else {
-		// Short escape type
-	}*/
 }
