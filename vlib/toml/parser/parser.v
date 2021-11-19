@@ -1038,7 +1038,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 
 	if key is ast.Null {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key expected .bare, .number, .quoted or .boolean but got "$p.tok.kind"')
+			' key expected .bare, .underscore, .number, .quoted or .boolean but got "$p.tok.kind"')
 	}
 
 	// A small exception that can't easily be done via `checker`
