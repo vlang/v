@@ -10,8 +10,10 @@ import toml.token
 import toml.scanner
 
 pub const (
-	all_formatting   = [token.Kind.whitespace, .tab, .cr, .nl]
-	space_formatting = [token.Kind.whitespace, .tab]
+	all_formatting            = [token.Kind.whitespace, .tab, .cr, .nl]
+	space_formatting          = [token.Kind.whitespace, .tab]
+	keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
+		.number, .underscore]
 )
 
 type DottedKey = []string
@@ -405,8 +407,7 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, [token.Kind.whitespace, .tab, .minus, .bare, .quoted,
-					.boolean, .number, .underscore]) ?
+				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
 
 				if peek_tok.kind == .period {
 					p.ignore_while(parser.space_formatting)
@@ -483,7 +484,7 @@ pub fn (mut p Parser) root_table() ? {
 				p.ignore_while(parser.space_formatting)
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+				peek_tok, _ = p.peek_over(1, parser.keys_and_space_formatting) ?
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
@@ -1002,7 +1003,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 		if p.peek_tok.kind == .minus {
 			mut lits := p.tok.lit
 			pos := p.tok.position()
-			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period {
+			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr {
 				p.next() ?
 				if p.tok.kind !in parser.space_formatting {
 					lits += p.tok.lit
