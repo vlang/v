@@ -135,7 +135,7 @@ pub fn rmdir_all(path string) ? {
 	items := ls(path) ?
 	for item in items {
 		fullpath := join_path(path, item)
-		if is_dir(fullpath) {
+		if is_dir(fullpath) && !is_link(fullpath) {
 			rmdir_all(fullpath) or { ret_err = err.msg }
 		} else {
 			rm(fullpath) or { ret_err = err.msg }
