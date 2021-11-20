@@ -2365,7 +2365,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						if tsym.language == .js && (tsym.name == 'JS.Number'
 							|| tsym.name == 'JS.Boolean' || tsym.name == 'JS.String') {
 							g.write(' === "${tsym.name[3..].to_lower()}"')
-						} else{ 
+						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])
 						}
