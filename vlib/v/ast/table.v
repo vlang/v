@@ -267,7 +267,12 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	for i in 0 .. f.params.len {
 		// don't check receiver for `.typ`
 		has_unexpected_type := i > 0 && f.params[i].typ != func.params[i].typ
-
+		// temporary hack for JS ifaces
+		lsym := t.get_type_symbol(f.params[i].typ)
+		rsym := t.get_type_symbol(func.params[i].typ)
+		if lsym.language == .js && rsym.language == .js {
+			return ''
+		}
 		has_unexpected_mutability := !f.params[i].is_mut && func.params[i].is_mut
 
 		if has_unexpected_type || has_unexpected_mutability {

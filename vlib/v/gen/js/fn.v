@@ -129,6 +129,9 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 		g.write('new ')
 	}
 	g.expr(it.left)
+	lsym := g.table.get_type_symbol(it.left_type)
+	mut ltyp := it.left_type
+
 	g.write('.${g.js_mname(it.name)}(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
@@ -620,8 +623,11 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		if is_varg {
 			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
-			if arg.typ.is_ptr() || arg.is_mut {
-				g.writeln('$arg_name = new \$ref($arg_name)')
+			asym := g.table.get_type_symbol(arg.typ)
+			if asym.kind != .interface_ && asym.language != .js {
+				if arg.typ.is_ptr() || arg.is_mut {
+					g.writeln('$arg_name = new \$ref($arg_name)')
+				}
 			}
 		}
 	}
@@ -743,7 +749,9 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		if is_varg {
 			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
-			if arg.typ.is_ptr() || arg.is_mut {
+			asym := g.table.get_type_symbol(arg.typ)
+
+			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface_ && asym.language != .js) {
 				g.writeln('$arg_name = new \$ref($arg_name)')
 			}
 		}
