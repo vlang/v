@@ -1,6 +1,7 @@
 module c
 
 import v.ast
+import v.util
 import strings
 
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
@@ -43,25 +44,43 @@ fn (mut g Gen) dump_expr_definitions() {
 		{
 			continue
 		}
-		dump_fns.writeln('\teprint(${ctoslit('[')});')
-		dump_fns.writeln('\teprint(fpath);')
-		dump_fns.writeln('\teprint(${ctoslit(':')});')
-		dump_fns.writeln('\teprint(int_str(line));')
-		dump_fns.writeln('\teprint(${ctoslit('] ')});')
-		// dump_fns.writeln('\t/* dump_type: $dump_type | to_string_fn_name: $to_string_fn_name | is_ptr: $is_ptr | ptr_asterisk: $ptr_asterisk | dump_fn_name: $dump_fn_name | cnam: $cname */')
-		dump_fns.writeln('\teprint(sexpr);')
-		dump_fns.writeln('\teprint(${ctoslit(': ')});')
+		mut surrounder := util.new_surrounder(3)
+		surrounder.add('string sline = int_str(line);', 'string_free(&sline);')
+		surrounder.add('string value = ${to_string_fn_name}(${deref}dump_arg);', 'string_free(&value);')
+		surrounder.add('
+string res;
+strings__Builder sb = strings__new_builder(256);
+',
+			'
+res = strings__Builder_str(&sb);
+eprint(res);
+string_free(&res);
+strings__Builder_free(&sb);
+')
+		dump_fns.writeln(surrounder.before())
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '[');")
+		dump_fns.writeln('\tstrings__Builder_write_string(&sb, fpath);')
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
+		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sline);')
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ']');")
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
+		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sexpr);')
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
 		if is_ptr {
-			dump_fns.writeln('\teprint(${ctoslit('&')});')
+			dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
 		}
-		dump_fns.writeln('\teprintln(${to_string_fn_name}(${deref}dump_arg));')
+		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
+		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
+		dump_fns.writeln(surrounder.after())
 		dump_fns.writeln('\treturn dump_arg;')
 		dump_fns.writeln('}')
 	}
 	for tdef, _ in dump_typedefs {
 		g.definitions.writeln(tdef)
 	}
-	g.definitions.writeln(dump_fns.str())
+	defs := dump_fns.str()
+	g.definitions.writeln(defs)
 }
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {
