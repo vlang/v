@@ -191,7 +191,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	//
 	all_tfuncs := g.get_all_test_function_names()
-	g.writeln('string v_test_file = _SLIT("$g.pref.path");')
+	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
 	}
@@ -205,9 +205,11 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	for tname in all_tfuncs {
 		tcname := util.no_dots(tname)
+		testfn := g.table.fns[tname]
+		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
-		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(_SLIT("$tcname"), _SLIT("$tcname"), _SLIT("$tcname"), 1);')
-		g.writeln('\t\t_vtrunner._method_fn_start(_vtobj);')
+		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(_SLIT("$tcname"), _SLIT("$testfn.mod"), _SLIT("$testfn.file"), $lnum);')
+		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
 		if g.pref.is_stats {

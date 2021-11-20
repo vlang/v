@@ -409,6 +409,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			//
 			no_body: no_body
 			mod: p.mod
+			file: p.file_name
+			pos: start_pos
+			language: language
 		})
 	} else {
 		if language == .c {
@@ -454,6 +457,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			//
 			no_body: no_body
 			mod: p.mod
+			file: p.file_name
+			pos: start_pos
 			language: language
 		})
 	}
