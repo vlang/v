@@ -129,9 +129,6 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 		g.write('new ')
 	}
 	g.expr(it.left)
-	lsym := g.table.get_type_symbol(it.left_type)
-	mut ltyp := it.left_type
-
 	g.write('.${g.js_mname(it.name)}(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
