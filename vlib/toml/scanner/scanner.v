@@ -9,9 +9,10 @@ import toml.input
 import toml.token
 import toml.util
 
-pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-
-const end_of_text = -1
+pub const (
+	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+	end_of_text  = -1
+)
 
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also refered to as "lexing" or "tokenizing".
