@@ -366,3 +366,23 @@ fn main() {
 	println(dog.name)
 	println(get_animal_name(mut dog))
 }
+
+type Text = string
+
+fn (t Text) display() string {
+	return t
+}
+
+interface Displayable {
+	display() string
+}
+
+fn print_displayable(ds ...Displayable) {
+	for d in ds {
+		println(d.display())
+	}
+}
+
+fn test_variadic_interface() {
+	print_displayable(Text('test'), Text('hehe'))
+}
