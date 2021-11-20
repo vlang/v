@@ -5,6 +5,7 @@ module parser
 
 import toml.ast
 import toml.checker
+import toml.decoder
 import toml.util
 import toml.token
 import toml.scanner
@@ -69,10 +70,12 @@ mut:
 
 // Config is used to configure a Parser instance.
 // `run_checks` is used to en- or disable running of the strict `checker.Checker` type checks.
+// `decode_values` is used to en- or disable decoding of values with the `decoder.Decoder`.
 pub struct Config {
 pub:
-	scanner    &scanner.Scanner
-	run_checks bool = true
+	scanner       &scanner.Scanner
+	run_checks    bool = true
+	decode_values bool = true
 }
 
 // new_parser returns a new, stack allocated, `Parser`.
@@ -104,12 +107,24 @@ fn (mut p Parser) run_checker() ? {
 	}
 }
 
+// run_decoder decodes values in the parsed `ast.Value` nodes in the
+// the generated AST.
+fn (mut p Parser) run_decoder() ? {
+	if p.config.decode_values {
+		dcoder := decoder.Decoder{
+			scanner: p.scanner
+		}
+		dcoder.decode(mut p.root_map) ?
+	}
+}
+
 // parse starts parsing the input and returns the root
 // of the generated AST.
 pub fn (mut p Parser) parse() ?&ast.Root {
 	p.init() ?
 	p.root_table() ?
 	p.run_checker() ?
+	p.run_decoder() ?
 	p.ast_root.table = p.root_map
 	return p.ast_root
 }

@@ -19,7 +19,6 @@ const (
 	valid_value_exceptions = [
 		// String
 		'string/escapes.toml',
-		'string/escape-tricky.toml',
 		'string/multiline.toml',
 		// Integer
 		'integer/long.toml',
@@ -199,13 +198,7 @@ fn test_burnt_sushi_tomltest() {
 fn to_burntsushi(value ast.Value) string {
 	match value {
 		ast.Quoted {
-			mut json_text := ''
-			if value.quote == `"` {
-				json_text = toml_to_json_escapes(value) or { '<error>' }
-			} else {
-				json_text = json2.Any(value.text).json_str()
-			}
-
+			json_text := json2.Any(value.text).json_str()
 			return '{ "type": "string", "value": "$json_text" }'
 		}
 		ast.DateTime {
@@ -270,50 +263,4 @@ fn to_burntsushi(value ast.Value) string {
 		}
 	}
 	return '<error>'
-}
-
-// toml_to_json_escapes is a utility function for normalizing
-// TOML basic string to JSON string
-fn toml_to_json_escapes(q ast.Quoted) ?string {
-	mut s := scanner.new_simple(q.text) ?
-	mut r := ''
-	for {
-		ch := s.next()
-		if ch == scanner.end_of_text {
-			break
-		}
-		ch_byte := byte(ch)
-
-		if ch == `"` {
-			if byte(s.peek(-1)) != `\\` {
-				r += '\\'
-			}
-		}
-
-		if ch == `\\` {
-			next_ch := byte(s.at())
-
-			escape := ch_byte.ascii_str() + next_ch.ascii_str()
-			if escape.to_lower() == '\\u' {
-				mut b := s.next()
-				mut unicode_point := ''
-				for {
-					b = s.next()
-					if b != ` ` && b != scanner.end_of_text {
-						unicode_point += byte(b).ascii_str()
-					} else {
-						break
-					}
-				}
-				if unicode_point.len < 8 {
-					unicode_point = '0'.repeat(8 - unicode_point.len) + unicode_point
-				}
-				rn := rune(strconv.parse_int(unicode_point, 16, 0) ?)
-				r += '$rn'
-				continue
-			}
-		}
-		r += ch_byte.ascii_str()
-	}
-	return r
 }

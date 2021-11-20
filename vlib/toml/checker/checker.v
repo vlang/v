@@ -400,7 +400,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 	is_basic := q.quote == `\"`
 	for {
 		ch := s.next()
-		if ch == -1 {
+		if ch == scanner.end_of_text {
 			break
 		}
 		ch_byte := byte(ch)
