@@ -8,6 +8,13 @@ pub mut:
 	will_read_frequently bool
 }
 
+pub fn (settings CanvasRenderingContext2DSettings) to_js() JS.Any {
+	mut object := JS.Any{}
+	#object = { alpha: settings.alpha, colorSpace: settings.color_space.str, desynchronized: settings.desynchronized.val, willReadFrequently: settings.will_read_frequently.val };
+
+	return object
+}
+
 pub interface JS.DOMMatrix2DInit {
 mut:
 	a JS.Number
@@ -168,9 +175,9 @@ pub struct JS.EventListenerOptions {
 }
 
 pub interface JS.EventTarget {
-	addEventListener(cb EventCallback, options JS.EventListenerOptions)
+	addEventListener(event JS.String, cb EventCallback, options JS.EventListenerOptions)
 	dispatchEvent(event JS.Event) JS.Boolean
-	removeEventListener(cb EventCallback, options JS.EventListenerOptions)
+	removeEventListener(event JS.String, cb EventCallback, options JS.EventListenerOptions)
 }
 
 // Event is an event which takes place in the DOM.
@@ -320,6 +327,7 @@ pub interface JS.Document {
 	lastModified JS.String
 	inputEncoding JS.String
 	implementation JS.DOMImplementation
+	getElementById(id JS.String) ?JS.HTMLElement
 mut:
 	bgColor JS.String
 	body JS.HTMLElement
@@ -368,6 +376,14 @@ pub interface JS.Element {
 	scroll(x JS.Number, y JS.Number)
 	scrollBy(x JS.Number, y JS.Number)
 	toggleAttribute(qualifiedName JS.String, force JS.Boolean) JS.Boolean
+	getElementsByClassName(className JS.String) JS.HTMLCollection
+	getElementsByTagName(qualifiedName JS.String) JS.HTMLCollection
+	getEelementsByTagNameNS(namespaecURI JS.String, localName JS.String) JS.HTMLCollection
+	hasAttribute(qualifiedName JS.String) JS.Boolean
+	hasAttributeNS(namespace JS.String, localName JS.String) JS.Boolean
+	hasAttributes() JS.Boolean
+	hasPointerCapture(pointerId JS.Number) JS.Boolean
+	matches(selectors JS.String) JS.Boolean
 mut:
 	className JS.String
 	id JS.String
@@ -382,6 +398,13 @@ mut:
 pub const (
 	document = JS.Document{}
 )
+
+pub fn window() JS.Window {
+	mut x := JS.Any(voidptr(0))
+	#x = window;
+
+	return x
+}
 
 fn init() {
 	#jsdom__document = document;
@@ -398,3 +421,143 @@ pub fn event_listener(callback fn (JS.EventTarget, JS.Event)) EventCallback {
 		callback(target, event)
 	}
 }
+
+pub interface JS.HTMLCollection {
+	length JS.Number
+	item(idx JS.Number) ?JS.Any
+	namedItem(name JS.String) ?JS.Any
+}
+
+pub interface JS.HTMLElement {
+	JS.Element
+	accessKeyLabel JS.String
+	offsetHeight JS.Number
+	offsetLeft JS.Number
+	offsetParent JS.Any
+	offsetTop JS.Number
+	offsetWidth JS.Number
+	click()
+mut:
+	accessKey JS.String
+	autocapitalize JS.String
+	dir JS.String
+	draggable JS.Boolean
+	hidden JS.Boolean
+	innerText JS.String
+	lang JS.String
+	outerText JS.String
+	spellcheck JS.Boolean
+	title JS.String
+	translate JS.Boolean
+}
+
+pub fn JS.HTMLElement.prototype.constructor() JS.HTMLElement
+
+pub interface JS.HTMLEmbedElement {
+	getSVGDocument() ?JS.Document
+mut:
+	align JS.String
+	height JS.String
+	src JS.String
+	width JS.String
+}
+
+pub fn html_embed_type(embed JS.HTMLEmbedElement) JS.String {
+	mut str := JS.String{}
+	#str = embed.type
+
+	return str
+}
+
+pub fn JS.HTMLEmbedElement.prototype.constructor() JS.HTMLEmbedElement
+
+pub type CanvasContext = JS.CanvasRenderingContext2D
+	| JS.WebGL2RenderingContext
+	| JS.WebGLRenderingContext
+
+pub interface JS.HTMLCanvasElement {
+	JS.HTMLElement
+	getContext(contextId JS.String, options JS.Any) ?CanvasContext
+mut:
+	height JS.Number
+	width JS.Number
+}
+
+pub type FillStyle = JS.CanvasGradient | JS.CanvasPattern | JS.String
+
+pub interface JS.CanvasRenderingContext2D {
+	canvas JS.HTMLCanvasElement
+	beginPath()
+	clip(path JS.Path2D, fillRule JS.String)
+	fill(path JS.Path2D, fillRule JS.String)
+	isPointInPath(path JS.Path2D, x JS.Number, y JS.Number, fillRule JS.String) JS.Boolean
+	isPointInStroke(path JS.Path2D, x JS.Number, y JS.Number) JS.Boolean
+	stoke(path JS.Path2D)
+	createLinearGradient(x0 JS.Number, y0 JS.Number, x1 JS.Number, y1 JS.Number) JS.CanvasGradient
+	createRadialGradient(x0 JS.Number, y0 JS.Number, r0 JS.Number, x1 JS.Number, y1 JS.Number, r1 JS.Number) JS.CanvasGradient
+	createPattern(image JS.CanvasImageSource, repetition JS.String) ?JS.CanvasPattern
+	arc(x JS.Number, y JS.Number, radius JS.Number, startAngle JS.Number, endAngle JS.Number, counterclockwise JS.Boolean)
+	arcTo(x1 JS.Number, y1 JS.Number, x2 JS.Number, y2 JS.Number, radius JS.Number)
+	bezierCurveTo(cp1x JS.Number, cp1y JS.Number, cp2x JS.Number, cp2y JS.Number, x JS.Number, y JS.Number)
+	closePath()
+	ellipse(x JS.Number, y JS.Number, radiusX JS.Number, radiusY JS.Number, rotation JS.Number, startAngle JS.Number, endAngle JS.Number, counterclockwise JS.Boolean)
+	lineTo(x JS.Number, y JS.Number)
+	moveTo(x JS.Number, y JS.Number)
+	quadraticCurveTo(cpx JS.Number, cpy JS.Number, x JS.Number, y JS.Number)
+	rect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
+	getLineDash() JS.Array
+	setLineDash(segments JS.Array)
+	clearRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
+	fillRect(x JS.Number, y JS.Number, w JS.null, h JS.Number)
+	strokeRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
+	getTransformt() JS.DOMMatrix
+	resetTransform()
+	rotate(angle JS.Number)
+	scale(x JS.Number, y JS.Number)
+	setTransform(matrix JS.DOMMatrix)
+	transform(a JS.Number, b JS.Number, c JS.Number, d JS.Number, e JS.Number, f JS.Number)
+	translate(x JS.Number, y JS.Number)
+	drawFocusIfNeeded(path JS.Path2D, element JS.Element)
+	stroke()
+mut:
+	lineCap JS.String
+	lineDashOffset JS.Number
+	lineJoin JS.String
+	lineWidth JS.Number
+	miterLimit JS.Number
+	fillStyle FillStyle
+	strokeStyle FillStyle
+	globalAlpha JS.Number
+	globalCompositeOperation JS.String
+}
+
+pub interface JS.CanvasGradient {
+	addColorStop(offset JS.Number, color JS.String)
+}
+
+pub interface JS.CanvasPattern {
+	setTransform(transform JS.DOMMatrix)
+}
+
+pub interface JS.WebGLRenderingContext {
+	canvas JS.HTMLCanvasElement
+	drawingBufferHeight JS.Number
+	drawingBufferWidth JS.Number
+}
+
+pub interface JS.WebGL2RenderingContext {
+	JS.WebGLRenderingContext
+}
+
+pub interface JS.Window {
+	JS.EventTarget
+	closed JS.Boolean
+	devicePixelRatio JS.Number
+	document JS.Document
+	frameElement JS.Element
+	innerHeight JS.Number
+	innerWidth JS.Number
+	length JS.Number
+}
+
+pub interface JS.Path2D {}
