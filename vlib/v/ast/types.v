@@ -1247,6 +1247,34 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	return none
 }
 
+// is_js_compatible returns true if type can be converted to JS type and from JS type back to V type
+pub fn (t &TypeSymbol) is_js_compatible() bool {
+	mut table := global_table
+	if t.kind == .void {
+		return true
+	}
+	if t.kind == .function {
+		return true
+	}
+	if t.language == .js || t.name.starts_with('JS.') {
+		return true
+	}
+	match t.info {
+		SumType {
+			for variant in t.info.variants {
+				sym := table.get_final_type_symbol(variant)
+				if !sym.is_js_compatible() {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return true
+		}
+	}
+}
+
 pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut has_str_method := false
 	mut expects_ptr := false

@@ -2343,20 +2343,53 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 				} else {
 					g.write('if (')
 				}
+				if sym.kind == .sum_type || sym.kind == .interface_ {
+					x := branch.exprs[sumtype_index]
+
+					if x is ast.TypeNode {
+						typ := g.unwrap_generic(x.typ)
+
+						tsym := g.table.get_type_symbol(typ)
+						if tsym.language == .js && (tsym.name == 'JS.Number'
+							|| tsym.name == 'JS.Boolean' || tsym.name == 'JS.String') {
+							g.write('typeof ')
+						}
+					}
+				}
 				g.match_cond(cond_var)
 				if sym.kind == .sum_type {
-					g.write(' instanceof ')
-					g.expr(branch.exprs[sumtype_index])
+					x := branch.exprs[sumtype_index]
+					if x is ast.TypeNode {
+						typ := g.unwrap_generic(x.typ)
+						tsym := g.table.get_type_symbol(typ)
+						if tsym.language == .js && (tsym.name == 'JS.Number'
+							|| tsym.name == 'JS.Boolean' || tsym.name == 'JS.String') {
+							g.write(' === "${tsym.name[3..].to_lower()}"')
+						} else {
+							g.write(' instanceof ')
+							g.expr(branch.exprs[sumtype_index])
+						}
+					} else {
+						g.write(' instanceof ')
+						g.expr(branch.exprs[sumtype_index])
+					}
 				} else if sym.kind == .interface_ {
 					if !sym.name.starts_with('JS.') {
 						g.write('.val')
 					}
-					if branch.exprs[sumtype_index] is ast.TypeNode {
-						g.write(' instanceof ')
-						g.expr(branch.exprs[sumtype_index])
+					x := branch.exprs[sumtype_index]
+					if x is ast.TypeNode {
+						typ := g.unwrap_generic(x.typ)
+						tsym := g.table.get_type_symbol(typ)
+						if tsym.language == .js && (tsym.name == 'Number'
+							|| tsym.name == 'Boolean' || tsym.name == 'String') {
+							g.write(' === $tsym.name.to_lower()')
+						} else {
+							g.write(' instanceof ')
+							g.expr(branch.exprs[sumtype_index])
+						}
 					} else {
 						g.write(' instanceof ')
-
 						g.write('None__')
 					}
 				}

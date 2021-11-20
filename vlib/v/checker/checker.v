@@ -413,8 +413,10 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
 			c.error('unknown type `$sym.name`', variant.pos)
-		} else if sym.kind == .interface_ {
+		} else if sym.kind == .interface_ && sym.language != .js {
 			c.error('sum type cannot hold an interface', variant.pos)
+		} else if sym.kind == .struct_ && sym.language == .js {
+			c.error('sum type cannot hold an JS struct', variant.pos)
 		}
 		if sym.name.trim_prefix(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
@@ -555,8 +557,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 			if is_js {
 				mtyp := c.table.get_type_symbol(method.return_type)
-				if (mtyp.language != .js && !method.return_type.is_void())
-					&& !mtyp.name.starts_with('JS.') {
+				if !mtyp.is_js_compatible() {
 					c.error('method $method.name returns non JS type', method.pos)
 				}
 			}
@@ -567,8 +568,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 				if is_js {
 					ptyp := c.table.get_type_symbol(param.typ)
-					if (ptyp.kind != .function && ptyp.language != .js
-						&& !ptyp.name.starts_with('JS.')) && !(j == method.params.len - 1
+					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
 						&& method.is_variadic) {
 						c.error('method `$method.name` accepts non JS type as parameter',
 							method.pos)
@@ -595,7 +595,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(field.typ, field.pos) or { return }
 			if is_js {
 				tsym := c.table.get_type_symbol(field.typ)
-				if tsym.language != .js && !tsym.name.starts_with('JS.') && tsym.kind != .function {
+				if !tsym.is_js_compatible() {
 					c.error('field `$field.name` uses non JS type', field.pos)
 				}
 			}
@@ -5313,6 +5313,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	defer {
 		c.expr_level--
 	}
+
 	// c.expr_level set to 150 so that stack overflow does not occur on windows
 	if c.expr_level > 150 {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
@@ -6407,6 +6408,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				} else {
 					expr_type = expr_types[0].typ
 				}
+
 				c.smartcast(node.cond, node.cond_type, expr_type, mut branch.scope)
 			}
 		}
