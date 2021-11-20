@@ -3109,6 +3109,9 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 }
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
+	$if debug_interface_type_implements ? {
+		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
+	}
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
@@ -3212,9 +3215,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		inter_sym.info.types << utyp
-	}
-	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
 	}
 	return true
 }
