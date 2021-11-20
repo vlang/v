@@ -1,82 +1,90 @@
-/*
 import jsdom
 
-fn get_2dcontext(canvas jsdom.IElement) ?jsdom.CanvasRenderingContext2D {
-	if canvas is jsdom.HTMLCanvasElement {
-		c := canvas.get_context('2d')
-		match c {
-			jsdom.CanvasRenderingContext2D {
-				return c
-			}
-			else {
-				return error('cannot fetch 2d context')
-			}
+fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
+	match elem {
+		JS.HTMLCanvasElement {
+			return elem
 		}
-	} else {
-		return error('canvas is not an HTMLCanvasElement')
+		else {
+			panic('Not a canvas')
+		}
 	}
 }
 
-fn draw_line(context jsdom.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
-	context.begin_path()
-	context.set_stroke_style('black')
-	context.set_line_width(1)
-	context.move_to(x1, y1)
-	context.line_to(x2, y2)
+fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
+	context.beginPath()
+	context.strokeStyle = 'black'.str
+	context.lineWidth = JS.Number(1)
+	context.moveTo(x1, y1)
+	context.lineTo(x2, y2)
 	context.stroke()
-	context.close_path()
+	context.closePath()
 }
 
 struct DrawState {
 mut:
+	context JS.CanvasRenderingContext2D
 	drawing bool
 	x       int
 	y       int
 }
 
 fn main() {
+	window := jsdom.window()
 	document := jsdom.document
-
-	elem := document.get_element_by_id('myButton') ?
-	elemc := document.get_element_by_id('myCanvas') or { panic('no canvas') }
-	canv := jsdom.get_html_canvas_element(elemc) or { panic('expected canvas') }
-
-	context := canv.get_context_2d()
-	mut state := DrawState{}
-	canv.add_event_listener('mousedown', fn [mut state] (_ jsdom.IEventTarget, event jsdom.IEvent) {
-		state.drawing = true
-		if event is jsdom.MouseEvent {
-			state.x = event.offset_x()
-			state.y = event.offset_y()
+	clear_btn := document.getElementById('clearButton'.str) ?
+	canvas_elem := document.getElementById('canvas'.str) ?
+	canvas := get_canvas(canvas_elem)
+	ctx := canvas.getContext('2d'.str, js_undefined()) ?
+	context := match ctx {
+		JS.CanvasRenderingContext2D {
+			ctx
 		}
-	})
+		else {
+			panic('can not get 2d context')
+		}
+	}
+	mut state := DrawState{context, false, 0, 0}
 
-	canv.add_event_listener('mousemove', fn [context, mut state] (_ jsdom.IEventTarget, event jsdom.IEvent) {
+	canvas.addEventListener('mousedown'.str, fn [mut state] (event JS.Event) {
+		state.drawing = true
+		match event {
+			JS.MouseEvent {
+				state.x = int(event.offsetX)
+				state.y = int(event.offsetY)
+			}
+			else {}
+		}
+	}, JS.EventListenerOptions{})
+	canvas.addEventListener('mousemove'.str, fn [mut state] (event JS.Event) {
 		if state.drawing {
-			if event is jsdom.MouseEvent {
-				draw_line(context, state.x, state.y, event.offset_x(), event.offset_y())
-				state.x = event.offset_x()
-				state.y = event.offset_y()
+			match event {
+				JS.MouseEvent {
+					draw_line(mut state.context, state.x, state.y, int(event.offsetX),
+						int(event.offsetY))
+					state.x = int(event.offsetX)
+					state.y = int(event.offsetY)
+				}
+				else {}
 			}
 		}
-	})
+	}, JS.EventListenerOptions{})
 
-	jsdom.window.add_event_listener('mouseup', fn [context, mut state] (_ jsdom.IEventTarget, event jsdom.IEvent) {
+	window.addEventListener('mouseup'.str, fn [mut state] (event JS.Event) {
 		if state.drawing {
-			if event is jsdom.MouseEvent {
-				draw_line(context, state.x, state.y, event.offset_x(), event.offset_y())
+			match event {
+				JS.MouseEvent {
+					draw_line(mut state.context, state.x, state.y, int(event.offsetX),
+						int(event.offsetY))
+				}
+				else {}
 			}
 			state.x = 0
 			state.y = 0
 			state.drawing = false
 		}
-	})
-	elem.add_event_listener('click', fn [context, canv] (_ jsdom.IEventTarget, _ jsdom.IEvent) {
-		context.clear_rect(0, 0, canv.width(), canv.height())
-	})
-}
-*/
-
-fn main() {
-	panic('jsdom is being refactored; This example will be available soon')
+	}, JS.EventListenerOptions{})
+	clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
+		state.context.clearRect(0, 0, canvas.width, canvas.height)
+	}, JS.EventListenerOptions{})
 }
