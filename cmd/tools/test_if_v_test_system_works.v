@@ -40,17 +40,22 @@ fn cleanup_tdir() {
 	os.rmdir_all(tdir) or { eprintln(err) }
 }
 
+fn create_test(tname string, tcontent string) ?string {
+	tpath := os.join_path(tdir, tname)
+	os.write_file(tpath, tcontent) ?
+	return tpath
+}
+
 fn main() {
 	defer {
 		os.chdir(os.wd_at_startup) or {}
 	}
 	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
-	ok_fpath := os.join_path(tdir, 'single_test.v')
-	os.write_file(ok_fpath, 'fn test_ok(){ assert true }') ?
+	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }') ?
 	check_ok('"$vexe" $ok_fpath')
 	check_ok('"$vexe" test $ok_fpath')
-	fail_fpath := os.join_path(tdir, 'failing_test.v')
-	os.write_file(fail_fpath, 'fn test_fail(){ assert 1 == 2 }') ?
+	check_ok('"$vexe" test $tdir')
+	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }') ?
 	check_fail('"$vexe" $fail_fpath')
 	check_fail('"$vexe" test $fail_fpath')
 	check_fail('"$vexe" test $tdir')
