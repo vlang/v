@@ -506,6 +506,7 @@ fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }
 
+// deref_kind returns deref, deref_label
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
 	if str_method_expects_ptr != is_elem_ptr {
 		if is_elem_ptr {
@@ -823,9 +824,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		}
 
 		// custom methods management
-		has_custom_str := sym.has_method('str')
-		mut field_styp := g.typ(field.typ).replace('*', '')
-		field_styp_fn_name := if has_custom_str {
+		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		sftyp := g.typ(field.typ)
+		mut field_styp := sftyp.replace('*', '')
+		field_styp_fn_name := if sym_has_str_method {
 			'${field_styp}_str'
 		} else {
 			g.get_str_fn(field.typ)
@@ -839,7 +841,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			fn_builder.write_string('{_SLIT("$quote_str"), $g_fmt, {.${data_str(base_fmt)}=')
 		}
 
-		mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
+		mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name,
+			sym_has_str_method, str_method_expects_ptr)
 		if field.typ in ast.cptr_types {
 			func = '(voidptr) it.$field.name'
 		} else if field.typ.is_ptr() {
@@ -875,29 +878,26 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_builder.writeln('}')
 }
 
-fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
-	has_custom_str, expects_ptr, _ := sym.str_method_info()
+fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) string {
+	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
-		return '${fn_name}(it.${c_name(field_name)})'
+		return '${fn_name}(${deref}it.${c_name(field_name)})'
 	} else if should_use_indent_func(sym.kind) {
-		mut obj := 'it.${c_name(field_name)}'
-		if field_type.is_ptr() && !expects_ptr {
-			obj = '*$obj'
-		}
+		obj := 'it.${c_name(field_name)}'
 		if has_custom_str {
-			return '${fn_name}($obj)'
+			return '${fn_name}($deref$obj)'
 		}
-		return 'indent_${fn_name}($obj, indent_count + 1)'
+		return 'indent_${fn_name}($deref$obj, indent_count + 1)'
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		if has_custom_str {
-			return '${fn_name}(it.${c_name(field_name)})'
+			return '${fn_name}(${deref}it.${c_name(field_name)})'
 		}
-		return 'indent_${fn_name}(it.${c_name(field_name)}, indent_count + 1)'
+		return 'indent_${fn_name}(${deref}it.${c_name(field_name)}, indent_count + 1)'
 	} else if sym.kind == .function {
 		return '${fn_name}()'
 	} else {
 		if sym.kind == .chan {
-			return '${fn_name}(it.${c_name(field_name)})'
+			return '${fn_name}(${deref}it.${c_name(field_name)})'
 		}
 		mut method_str := 'it.${c_name(field_name)}'
 		if sym.kind == .bool {

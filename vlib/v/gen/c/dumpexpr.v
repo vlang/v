@@ -21,10 +21,12 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		to_string_fn_name := g.get_str_fn(dump_type)
-		is_ptr := ast.Type(dump_type).is_ptr()
-		ptr_asterisk := if is_ptr { '*' } else { '' }
 		dump_sym := g.table.get_type_symbol(dump_type)
+		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
+		is_ptr := ast.Type(dump_type).is_ptr()
+		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
+		to_string_fn_name := g.get_str_fn(dump_type)
+		ptr_asterisk := if is_ptr { '*' } else { '' }
 		mut str_dumparg_type := '$cname$ptr_asterisk'
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
@@ -36,7 +38,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			dump_typedefs['typedef $str_tdef;'] = true
 		}
 		dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
-		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type x)', mut
+		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg)', mut
 			dump_fns)
 		{
 			continue
@@ -52,8 +54,8 @@ fn (mut g Gen) dump_expr_definitions() {
 		if is_ptr {
 			dump_fns.writeln('\teprint(${ctoslit('&')});')
 		}
-		dump_fns.writeln('\teprintln(${to_string_fn_name}(${ptr_asterisk}x));')
-		dump_fns.writeln('\treturn x;')
+		dump_fns.writeln('\teprintln(${to_string_fn_name}(${deref}dump_arg));')
+		dump_fns.writeln('\treturn dump_arg;')
 		dump_fns.writeln('}')
 	}
 	for tdef, _ in dump_typedefs {
