@@ -2173,12 +2173,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					arg.pos)
 			}
 			mut final_arg_sym := exp_arg_sym
+			mut final_arg_typ := exp_arg_typ
 			if method.is_variadic && exp_arg_sym.info is ast.Array {
-				final_arg_sym = c.table.get_type_symbol(exp_arg_sym.array_info().elem_type)
+				final_arg_typ = exp_arg_sym.array_info().elem_type
+				final_arg_sym = c.table.get_type_symbol(final_arg_typ)
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position()) {
+				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.position()) {
 					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
 						got_arg_typ_sym := c.table.get_type_symbol(got_arg_typ)
 						if got_arg_typ_sym.kind != .interface_ {
@@ -2849,8 +2851,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		mut final_param_sym := param_typ_sym
+		mut final_param_typ := param.typ
 		if func.is_variadic && param_typ_sym.info is ast.Array {
-			final_param_sym = c.table.get_type_symbol(param_typ_sym.array_info().elem_type)
+			final_param_typ = param_typ_sym.array_info().elem_type
+			final_param_sym = c.table.get_type_symbol(final_param_typ)
 		}
 		// NB: Casting to voidptr is used as an escape mechanism, so:
 		// 1. allow passing *explicit* voidptr (native or through cast) to functions
@@ -2867,7 +2871,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, param.typ, call_arg.expr.position()) {
+			if c.type_implements(typ, final_param_typ, call_arg.expr.position()) {
 				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
 					&& typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
@@ -3105,9 +3109,6 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 }
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
-	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
-	}
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(interface_type)
@@ -3211,6 +3212,9 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		inter_sym.info.types << utyp
+	}
+	$if debug_interface_type_implements ? {
+		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
 	}
 	return true
 }
