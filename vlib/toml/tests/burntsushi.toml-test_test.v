@@ -17,22 +17,14 @@ const (
 	invalid_exceptions     = []string{}
 
 	valid_value_exceptions = [
-		// String
-		'string/escapes.toml',
-		'string/multiline.toml',
 		// Integer
 		'integer/long.toml',
 		// Float
 		'float/inf-and-nan.toml',
-		// Comment
-		'comment/tricky.toml',
 		// Table
 		'table/array-implicit.toml',
-		'table/names.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
-		// Inline-table
-		'inline-table/multiline.toml',
 		// Key
 		'key/escapes.toml',
 	]
