@@ -20,6 +20,17 @@ pub fn getenv(key string) string {
 	return res
 }
 
+// `getenv_opt` returns the value of the environment variable named by the key.
+// If such an environment variable does not exist, then it returns `none`.
+pub fn getenv_opt(key string) ?string {
+	#if (!$ENV[key]) return none__;
+
+	mut res := ''
+	#if ($ENV[key]) res = new string($ENV[key]);
+
+	return res
+}
+
 // unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	#$ENV[name] = ""

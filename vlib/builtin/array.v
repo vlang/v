@@ -554,7 +554,7 @@ pub fn (mut a []string) free() {
 	for s in a {
 		unsafe { s.free() }
 	}
-	unsafe { free(a.data) }
+	unsafe { (&array(&a)).free() }
 }
 
 // str returns a string representation of the array of strings

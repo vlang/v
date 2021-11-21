@@ -1762,7 +1762,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings', 'gg']
+			g.is_builtin_mod = node.name in ['builtin', 'strconv', 'strings']
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
@@ -5843,7 +5843,11 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	if g.is_autofree {
 		sym := g.table.get_type_symbol(typ)
 		if styp.starts_with('Array_') {
-			g.cleanup.writeln('\tarray_free(&$cname);')
+			if sym.has_method_with_generic_parent('free') {
+				g.cleanup.writeln('\t${styp}_free(&$cname);')
+			} else {
+				g.cleanup.writeln('\tarray_free(&$cname);')
+			}
 		} else if styp == 'string' {
 			g.cleanup.writeln('\tstring_free(&$cname);')
 		} else if sym.kind == .map {

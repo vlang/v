@@ -3,17 +3,19 @@
 // that can be found in the LICENSE file.
 module os
 
-pub const (
-	max_path_len  = 4096
-	wd_at_startup = getwd()
-)
+import strings
 
-const (
-	f_ok = 0
-	x_ok = 1
-	w_ok = 2
-	r_ok = 4
-)
+pub const max_path_len = 4096
+
+pub const wd_at_startup = getwd()
+
+const f_ok = 0
+
+const x_ok = 1
+
+const w_ok = 2
+
+const r_ok = 4
 
 pub struct Result {
 pub:
@@ -390,6 +392,15 @@ fn executable_fallback() string {
 	return exepath
 }
 
+pub struct ErrExecutableNotFound {
+	msg  string = 'os: failed to find executable'
+	code int
+}
+
+fn error_failed_to_find_executable() IError {
+	return IError(&ErrExecutableNotFound{})
+}
+
 // find_exe_path walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
@@ -400,7 +411,8 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		return real_path(exepath)
 	}
 	mut res := ''
-	paths := getenv('PATH').split(path_delimiter)
+	path := getenv('PATH')
+	paths := path.split(path_delimiter)
 	for p in paths {
 		found_abs_path := join_path(p, exepath)
 		if exists(found_abs_path) && is_executable(found_abs_path) {
@@ -411,7 +423,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	if res.len > 0 {
 		return real_path(res)
 	}
-	return error('failed to find executable')
+	return error_failed_to_find_executable()
 }
 
 // exists_in_system_path returns `true` if `prog` exists in the system's PATH
@@ -440,14 +452,23 @@ pub fn is_abs_path(path string) bool {
 // join_path returns a path as string from input string parameter(s).
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
-	mut result := []string{cap: 256}
-	result << base.trim_right('\\/')
-	for d in dirs {
-		result << d
+	defer {
+		unsafe { dirs.free() }
 	}
-	res := result.join(path_separator)
-	unsafe { result.free() }
-	return res
+	mut sb := strings.new_builder(base.len + dirs.len * 50)
+	defer {
+		unsafe { sb.free() }
+	}
+	sbase := base.trim_right('\\/')
+	defer {
+		unsafe { sbase.free() }
+	}
+	sb.write_string(sbase)
+	for d in dirs {
+		sb.write_string(path_separator)
+		sb.write_string(d)
+	}
+	return sb.str()
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
@@ -607,7 +628,9 @@ pub fn temp_dir() string {
 }
 
 fn default_vmodules_path() string {
-	return join_path(home_dir(), '.vmodules')
+	hdir := home_dir()
+	res := join_path(hdir, '.vmodules')
+	return res
 }
 
 // vmodules_dir returns the path to a folder, where v stores its global modules.
@@ -621,12 +644,28 @@ pub fn vmodules_dir() string {
 
 // vmodules_paths returns a list of paths, where v looks up for modules.
 // You can customize it through setting the environment variable VMODULES
+[manualfree]
 pub fn vmodules_paths() []string {
 	mut path := getenv('VMODULES')
 	if path == '' {
+		unsafe { path.free() }
 		path = default_vmodules_path()
 	}
-	list := path.split(path_delimiter).map(it.trim_right(path_separator))
+	defer {
+		unsafe { path.free() }
+	}
+	splitted := path.split(path_delimiter)
+	defer {
+		unsafe { splitted.free() }
+	}
+	mut list := []string{cap: splitted.len}
+	for i in 0 .. splitted.len {
+		si := splitted[i]
+		trimmed := si.trim_right(path_separator)
+		list << trimmed
+		unsafe { trimmed.free() }
+		unsafe { si.free() }
+	}
 	return list
 }
 

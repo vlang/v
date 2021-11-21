@@ -243,12 +243,9 @@ pub fn loginname() string {
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
-	mut args_ := []string{}
-	// mut args := []string(make(0, argc, sizeof(string)))
-	// mut args := []string{len:argc}
+	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
-		// args [i] = argv[i].vstring()
-		unsafe { args_ << (&byte(argv[i])).vstring_literal() }
+		args_[i] = unsafe { tos_clone(argv[i]) }
 	}
 	return args_
 }
