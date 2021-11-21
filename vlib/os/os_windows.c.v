@@ -95,9 +95,9 @@ struct C._utimbuf {
 fn C._utime(&char, voidptr) int
 
 fn init_os_args_wide(argc int, argv &&byte) []string {
-	mut args_ := []string{}
+	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
-		args_ << unsafe { string_from_wide(&u16(argv[i])) }
+		args_[i] = unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
 }
