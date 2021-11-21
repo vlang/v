@@ -57,7 +57,7 @@ eprint(res);
 string_free(&res);
 strings__Builder_free(&sb);
 ')
-		dump_fns.writeln(surrounder.before())
+		surrounder.builder_write_befores(mut dump_fns)
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '[');")
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, fpath);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
@@ -72,7 +72,7 @@ strings__Builder_free(&sb);
 		}
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
-		dump_fns.writeln(surrounder.after())
+		surrounder.builder_write_afters(mut dump_fns)
 		dump_fns.writeln('\treturn dump_arg;')
 		dump_fns.writeln('}')
 	}

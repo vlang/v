@@ -61,6 +61,30 @@ pub fn (s &Surrounder) after() string {
 	return ''
 }
 
+pub fn (s &Surrounder) builder_write_befores(mut sb strings.Builder) {
+	len := s.befores.len
+	if len > 0 {
+		for i := 0; i < len; i++ {
+			x := &s.befores[i]
+			if x.len > 0 {
+				sb.writeln(x)
+			}
+		}
+	}
+}
+
+pub fn (s &Surrounder) builder_write_afters(mut sb strings.Builder) {
+	len := s.afters.len
+	if len > 0 {
+		for i := len - 1; i >= 0; i-- {
+			x := &s.afters[i]
+			if x.len > 0 {
+				sb.writeln(x)
+			}
+		}
+	}
+}
+
 [unsafe]
 pub fn (mut s Surrounder) free() {
 	unsafe {

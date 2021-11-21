@@ -802,9 +802,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	mut fn_body_surrounder := util.new_surrounder(info.fields.len)
 	mut fn_body := strings.new_builder(info.fields.len * 256)
 	defer {
-		fn_builder.write_string(fn_body_surrounder.before())
+		fn_body_surrounder.builder_write_befores(mut fn_builder)
 		fn_builder << fn_body
-		fn_builder.write_string(fn_body_surrounder.after())
+		fn_body_surrounder.builder_write_afters(mut fn_builder)
 		fn_builder.writeln('\tstring_free(&indents);')
 		fn_builder.writeln('\treturn res;')
 		fn_builder.writeln('}')
