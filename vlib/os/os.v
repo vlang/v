@@ -644,27 +644,27 @@ pub fn vmodules_dir() string {
 
 // vmodules_paths returns a list of paths, where v looks up for modules.
 // You can customize it through setting the environment variable VMODULES
-[manualfree]
+// [manualfree]
 pub fn vmodules_paths() []string {
 	mut path := getenv('VMODULES')
 	if path == '' {
-		unsafe { path.free() }
+		// unsafe { path.free() }
 		path = default_vmodules_path()
 	}
 	defer {
-		unsafe { path.free() }
+		// unsafe { path.free() }
 	}
 	splitted := path.split(path_delimiter)
 	defer {
-		unsafe { splitted.free() }
+		// unsafe { splitted.free() }
 	}
 	mut list := []string{cap: splitted.len}
 	for i in 0 .. splitted.len {
 		si := splitted[i]
 		trimmed := si.trim_right(path_separator)
 		list << trimmed
-		unsafe { trimmed.free() }
-		unsafe { si.free() }
+		// unsafe { trimmed.free() }
+		// unsafe { si.free() }
 	}
 	return list
 }
