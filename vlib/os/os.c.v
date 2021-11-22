@@ -191,7 +191,7 @@ pub fn file_size(path string) u64 {
 pub fn mv(src string, dst string) ? {
 	mut rdst := dst
 	if is_dir(rdst) {
-		rdst = join_path(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
+		rdst = join_path_single(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
 	}
 	$if windows {
 		w_src := src.replace('/', '\\')

@@ -106,9 +106,9 @@ fn test_create_file() ? {
 
 fn test_is_file() {
 	// Setup
-	work_dir := os.join_path(os.getwd(), 'is_file_test')
+	work_dir := os.join_path_single(os.getwd(), 'is_file_test')
 	os.mkdir_all(work_dir) or { panic(err) }
-	tfile := os.join_path(work_dir, 'tmp_file')
+	tfile := os.join_path_single(work_dir, 'tmp_file')
 	// Test things that shouldn't be a file
 	assert os.is_file(work_dir) == false
 	assert os.is_file('non-existent_file.tmp') == false
@@ -120,7 +120,7 @@ fn test_is_file() {
 	$if windows {
 		assert true
 	} $else {
-		dsymlink := os.join_path(work_dir, 'dir_symlink')
+		dsymlink := os.join_path_single(work_dir, 'dir_symlink')
 		os.symlink(work_dir, dsymlink) or { panic(err) }
 		assert os.is_file(dsymlink) == false
 	}
@@ -128,7 +128,7 @@ fn test_is_file() {
 	$if windows {
 		assert true
 	} $else {
-		fsymlink := os.join_path(work_dir, 'file_symlink')
+		fsymlink := os.join_path_single(work_dir, 'file_symlink')
 		os.symlink(tfile, fsymlink) or { panic(err) }
 		assert os.is_file(fsymlink)
 	}
@@ -309,47 +309,47 @@ fn test_cp() {
 }
 
 fn test_mv() {
-	work_dir := os.join_path(os.getwd(), 'mv_test')
+	work_dir := os.join_path_single(os.getwd(), 'mv_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	// Setup test files
-	tfile1 := os.join_path(work_dir, 'file')
-	tfile2 := os.join_path(work_dir, 'file.test')
-	tfile3 := os.join_path(work_dir, 'file.3')
+	tfile1 := os.join_path_single(work_dir, 'file')
+	tfile2 := os.join_path_single(work_dir, 'file.test')
+	tfile3 := os.join_path_single(work_dir, 'file.3')
 	tfile_content := 'temporary file'
 	os.write_file(tfile1, tfile_content) or { panic(err) }
 	os.write_file(tfile2, tfile_content) or { panic(err) }
 	// Setup test dirs
-	tdir1 := os.join_path(work_dir, 'dir')
-	tdir2 := os.join_path(work_dir, 'dir2')
-	tdir3 := os.join_path(work_dir, 'dir3')
+	tdir1 := os.join_path_single(work_dir, 'dir')
+	tdir2 := os.join_path_single(work_dir, 'dir2')
+	tdir3 := os.join_path_single(work_dir, 'dir3')
 	os.mkdir(tdir1) or { panic(err) }
 	os.mkdir(tdir2) or { panic(err) }
 	// Move file with no extension to dir
 	os.mv(tfile1, tdir1) or { panic(err) }
-	mut expected := os.join_path(tdir1, 'file')
+	mut expected := os.join_path_single(tdir1, 'file')
 	assert os.exists(expected)
 	assert !os.is_dir(expected)
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2) or { panic(err) }
-	expected = os.join_path(tdir2, 'dir')
+	expected = os.join_path_single(tdir2, 'dir')
 	assert os.exists(expected)
 	assert os.is_dir(expected)
 	expected = os.join_path(tdir2, 'dir', 'file')
 	assert os.exists(expected)
 	assert !os.is_dir(expected)
 	// Move dir with contents to other dir (by renaming)
-	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
+	os.mv(os.join_path_single(tdir2, 'dir'), tdir3) or { panic(err) }
 	expected = tdir3
 	assert os.exists(expected)
 	assert os.is_dir(expected)
 	assert os.is_dir_empty(tdir2)
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2) or { panic(err) }
-	expected = os.join_path(tdir2, 'file.test')
+	expected = os.join_path_single(tdir2, 'file.test')
 	assert os.exists(expected)
 	assert !os.is_dir(expected)
 	// Move file to dir (by renaming)
-	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
+	os.mv(os.join_path_single(tdir2, 'file.test'), tfile3) or { panic(err) }
 	expected = tfile3
 	assert os.exists(expected)
 	assert !os.is_dir(expected)
@@ -375,7 +375,7 @@ fn test_cp_all() {
 	// regression test for executive runs with overwrite := true
 	os.cp_all('ex', './', true) or { panic(err) }
 	os.cp_all('ex', 'nonexisting', true) or { panic(err) }
-	assert os.exists(os.join_path('nonexisting', 'ex1.txt'))
+	assert os.exists(os.join_path_single('nonexisting', 'ex1.txt'))
 }
 
 fn test_realpath_of_empty_string_works() {
@@ -398,7 +398,7 @@ fn test_realpath_non_existing() {
 
 fn test_realpath_existing() {
 	existing_file_name := 'existing_file.txt'
-	existing_file := os.join_path(os.temp_dir(), existing_file_name)
+	existing_file := os.join_path_single(os.temp_dir(), existing_file_name)
 	os.rm(existing_file) or {}
 	os.write_file(existing_file, 'abc') or {}
 	assert os.exists(existing_file)
@@ -843,7 +843,7 @@ fn test_expand_tilde_to_home() {
 }
 
 fn test_execute() ? {
-	print0script := os.join_path(tfolder, 'print0.v')
+	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
 	// contains it.

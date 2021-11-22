@@ -7,8 +7,8 @@ fn main() {
 	println(os.args)
 	println(os.wd_at_startup)
 	//
-	fullpath := os.join_path('abc', 'xyz', 'def')
-	println(fullpath)
+	// fullpath := os.join_path('abc', 'xyz', 'def')
+	// println(fullpath)
 	//
 	x := 'abc'
 	t := x.trim_right('/')
@@ -30,7 +30,7 @@ fn main() {
 	// exeparent_folder := os.dir(exe_realpath)
 	// println(exeparent_folder)
 
-	cdir := os.join_path(os.home_dir(), '.cache')
+	cdir := os.join_path_single(os.home_dir(), '.cache')
 	println(cdir)
 
 	wd_realpath := os.real_path(os.wd_at_startup)

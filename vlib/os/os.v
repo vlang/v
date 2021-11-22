@@ -40,7 +40,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	// single file copy
 	if !is_dir(source_path) {
 		adjusted_path := if is_dir(dest_path) {
-			join_path(dest_path, file_name(source_path))
+			fname := file_name(source_path)
+			join_path_single(dest_path, fname)
 		} else {
 			dest_path
 		}
@@ -62,8 +63,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	}
 	files := ls(source_path) ?
 	for file in files {
-		sp := join_path(source_path, file)
-		dp := join_path(dest_path, file)
+		sp := join_path_single(source_path, file)
+		dp := join_path_single(dest_path, file)
 		if is_dir(sp) {
 			if !exists(dp) {
 				mkdir(dp) ?
@@ -136,7 +137,7 @@ pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
 	items := ls(path) ?
 	for item in items {
-		fullpath := join_path(path, item)
+		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
 			rmdir_all(fullpath) or { ret_err = err.msg }
 		} else {
@@ -379,7 +380,7 @@ fn executable_fallback() string {
 	if !is_abs_path(exepath) {
 		rexepath := exepath.replace_each(['/', path_separator, r'\', path_separator])
 		if rexepath.contains(path_separator) {
-			exepath = join_path(os.wd_at_startup, exepath)
+			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
@@ -414,7 +415,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	path := getenv('PATH')
 	paths := path.split(path_delimiter)
 	for p in paths {
-		found_abs_path := join_path(p, exepath)
+		found_abs_path := join_path_single(p, exepath)
 		if exists(found_abs_path) && is_executable(found_abs_path) {
 			res = found_abs_path
 			break
@@ -452,9 +453,8 @@ pub fn is_abs_path(path string) bool {
 // join_path returns a path as string from input string parameter(s).
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
-	defer {
-		unsafe { dirs.free() }
-	}
+	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
+	// but do not free the arr, when `os.join_path(base, ...arr)` is called.
 	mut sb := strings.new_builder(base.len + dirs.len * 50)
 	defer {
 		unsafe { sb.free() }
@@ -468,6 +468,26 @@ pub fn join_path(base string, dirs ...string) string {
 		sb.write_string(path_separator)
 		sb.write_string(d)
 	}
+	return sb.str()
+}
+
+// join_path_single appends the `elem` after `base`, using a platform specific
+// path_separator.
+[manualfree]
+pub fn join_path_single(base string, elem string) string {
+	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
+	// when freeing variadic args vs ...arr is solved in the compiler
+	mut sb := strings.new_builder(base.len + elem.len + 1)
+	defer {
+		unsafe { sb.free() }
+	}
+	sbase := base.trim_right('\\/')
+	defer {
+		unsafe { sbase.free() }
+	}
+	sb.write_string(sbase)
+	sb.write_string(path_separator)
+	sb.write_string(elem)
 	return sb.str()
 }
 
@@ -587,7 +607,7 @@ pub fn cache_dir() string {
 			return xdg_cache_home
 		}
 	}
-	cdir := join_path(home_dir(), '.cache')
+	cdir := join_path_single(home_dir(), '.cache')
 	if !is_dir(cdir) && !is_link(cdir) {
 		mkdir(cdir) or { panic(err) }
 	}
@@ -629,7 +649,7 @@ pub fn temp_dir() string {
 
 fn default_vmodules_path() string {
 	hdir := home_dir()
-	res := join_path(hdir, '.vmodules')
+	res := join_path_single(hdir, '.vmodules')
 	return res
 }
 
@@ -684,7 +704,7 @@ pub fn resource_abs_path(path string) string {
 		unsafe { base_path.free() }
 		base_path = vresource
 	}
-	fp := join_path(base_path, path)
+	fp := join_path_single(base_path, path)
 	res := real_path(fp)
 	unsafe {
 		fp.free()

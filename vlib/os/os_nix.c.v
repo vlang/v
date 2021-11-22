@@ -480,7 +480,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := join_path(folder, 'XXXXXX')
+	tmp_perm_check := join_path_single(folder, 'XXXXXX')
 	defer {
 		unsafe { tmp_perm_check.free() }
 	}

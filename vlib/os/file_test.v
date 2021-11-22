@@ -41,8 +41,8 @@ const (
 )
 
 const (
-	tfolder = os.join_path(os.temp_dir(), 'os_file_test')
-	tfile   = os.join_path(tfolder, 'test_file')
+	tfolder = os.join_path_single(os.temp_dir(), 'os_file_test')
+	tfile   = os.join_path_single(tfolder, 'test_file')
 )
 
 fn testsuite_begin() ? {
