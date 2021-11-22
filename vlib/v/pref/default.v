@@ -216,7 +216,19 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := os.real_path(os.executable())
+	myexe := os.executable()
+	mut real_vexe_path := myexe
+	for {
+		$if tinyc {
+			$if x32 {
+				// TODO: investigate why exactly tcc32 segfaults on os.real_path here,
+				// and remove this cludge.
+				break
+			}
+		}
+		real_vexe_path = os.real_path(real_vexe_path)
+		break
+	}
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }

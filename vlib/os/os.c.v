@@ -620,54 +620,49 @@ pub fn on_segfault(f voidptr) {
 // process.
 [manualfree]
 pub fn executable() string {
-	$if linux {
-		mut xresult := vcalloc_noscan(max_path_len)
-		defer {
-			unsafe { free(xresult) }
-		}
-		count := C.readlink(c'/proc/self/exe', &char(xresult), max_path_len)
-		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
-			return executable_fallback()
-		}
-		res := unsafe { tos_clone(xresult) }
-		return res
+	size := max_path_bufffer_size()
+	mut result := unsafe { vcalloc_noscan(size) }
+	defer {
+		unsafe { free(result) }
 	}
 	$if windows {
-		max := 512
-		size := max * 2 // max_path_len * sizeof(wchar_t)
-		mut result := unsafe { &u16(vcalloc_noscan(size)) }
-		defer {
-			unsafe { free(result) }
-		}
-		len := C.GetModuleFileName(0, result, max)
+		pu16_result := unsafe { &u16(result) }
+		len := C.GetModuleFileName(0, pu16_result, 512)
 		// determine if the file is a windows symlink
-		attrs := C.GetFileAttributesW(result)
+		attrs := C.GetFileAttributesW(pu16_result)
 		is_set := attrs & 0x400 // FILE_ATTRIBUTE_REPARSE_POINT
 		if is_set != 0 { // it's a windows symlink
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
-			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
+			file := C.CreateFile(pu16_result, 0x80000000, 1, 0, 3, 0x80, 0)
 			if file != voidptr(-1) {
-				final_path := unsafe { &u16(vcalloc_noscan(size)) }
+				defer {
+					C.CloseHandle(file)
+				}
+				final_path := unsafe { vcalloc_noscan(size) }
+				defer {
+					unsafe { free(final_path) }
+				}
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
+				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(final_path) },
+					size, 0)
 				if final_len < size {
-					ret := unsafe { string_from_wide2(final_path, final_len) }
+					ret := unsafe { string_from_wide2(&u16(final_path), final_len) }
+					defer {
+						unsafe { ret.free() }
+					}
 					// remove '\\?\' from beginning (see link above)
-					return ret[4..]
+					ret_slice := ret[4..]
+					res := ret_slice.clone()
+					return res
 				} else {
 					eprintln('os.executable() saw that the executable file path was too long')
 				}
 			}
-			C.CloseHandle(file)
 		}
-		return unsafe { string_from_wide2(result, len) }
+		res := unsafe { string_from_wide2(pu16_result, len) }
+		return res
 	}
 	$if macos {
-		mut result := vcalloc_noscan(max_path_len)
-		defer {
-			unsafe { free(result) }
-		}
 		pid := C.getpid()
 		ret := proc_pidpath(pid, result, max_path_len)
 		if ret <= 0 {
@@ -678,28 +673,12 @@ pub fn executable() string {
 		return res
 	}
 	$if freebsd {
-		mut result := vcalloc_noscan(max_path_len)
-		defer {
-			unsafe { free(result) }
-		}
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
-		size := max_path_len
 		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
 		res := unsafe { tos_clone(result) }
 		return res
 	}
-	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
-	$if openbsd {
-	}
-	$if solaris {
-	}
-	$if haiku {
-	}
 	$if netbsd {
-		mut result := vcalloc_noscan(max_path_len)
-		defer {
-			unsafe { free(result) }
-		}
 		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
@@ -709,10 +688,6 @@ pub fn executable() string {
 		return res
 	}
 	$if dragonfly {
-		mut result := vcalloc_noscan(max_path_len)
-		defer {
-			unsafe { free(result) }
-		}
 		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
@@ -720,6 +695,22 @@ pub fn executable() string {
 		}
 		res := unsafe { tos_clone(result) }
 		return res
+	}
+	$if linux {
+		count := C.readlink(c'/proc/self/exe', &char(result), max_path_len)
+		if count < 0 {
+			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			return executable_fallback()
+		}
+		res := unsafe { tos_clone(result) }
+		return res
+	}
+	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
+	$if openbsd {
+	}
+	$if solaris {
+	}
+	$if haiku {
 	}
 	return executable_fallback()
 }
@@ -770,30 +761,33 @@ pub fn chdir(path string) ? {
 	}
 }
 
+fn max_path_bufffer_size() int {
+	mut size := max_path_len
+	$if windows {
+		size *= 2
+	}
+	return size
+}
+
 // getwd returns the absolute path of the current directory.
 [manualfree]
 pub fn getwd() string {
-	$if windows {
-		max := 512 // max_path_len * sizeof(wchar_t)
-		unsafe {
-			buf := &u16(vcalloc_noscan(max * 2))
-			if C._wgetcwd(buf, max) == 0 {
-				free(buf)
+	unsafe {
+		buf := vcalloc_noscan(max_path_bufffer_size())
+		defer {
+			free(buf)
+		}
+		$if windows {
+			if C._wgetcwd(&u16(buf), max_path_len) == 0 {
 				return ''
 			}
-			res := string_from_wide(buf)
-			free(buf)
+			res := string_from_wide(&u16(buf))
 			return res
-		}
-	} $else {
-		buf := vcalloc_noscan(max_path_len)
-		unsafe {
+		} $else {
 			if C.getcwd(&char(buf), max_path_len) == 0 {
-				free(buf)
 				return ''
 			}
 			res := tos_clone(buf)
-			free(buf)
 			return res
 		}
 	}
@@ -806,49 +800,53 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
+	size := max_path_bufffer_size()
+	mut fullpath := unsafe { vcalloc_noscan(size) }
+	defer {
+		unsafe { free(fullpath) }
+	}
 	mut res := ''
 	$if windows {
-		size := max_path_len * 2
+		pu16_fullpath := unsafe { &u16(fullpath) }
 		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
 		// try to open the file to get symbolic link path
-		file := C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0)
+		fpath_wide := fpath.to_wide()
+		defer {
+			unsafe { free(voidptr(fpath_wide)) }
+		}
+		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
 		if file != voidptr(-1) {
-			mut fullpath := unsafe { &u16(vcalloc_noscan(size)) }
+			defer {
+				C.CloseHandle(file)
+			}
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandleW(file, fullpath, size, 0)
-			C.CloseHandle(file)
+			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, size, 0)
 			if final_len < size {
-				rt := unsafe { string_from_wide2(fullpath, final_len) }
-				unsafe { free(fullpath) }
+				rt := unsafe { string_from_wide2(pu16_fullpath, final_len) }
+				srt := rt[4..]
 				unsafe { res.free() }
-				res = rt[4..]
+				res = srt.clone()
 			} else {
 				eprintln('os.real_path() saw that the file path was too long')
 				unsafe { res.free() }
-				unsafe { free(fullpath) }
 				return fpath.clone()
 			}
 		} else {
 			// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
-			mut fullpath := unsafe { &u16(vcalloc_noscan(max_path_len * 2)) }
-			// TODO: check errors if path len is not enough
-			ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
+			ret := C.GetFullPathName(fpath_wide, max_path_len, pu16_fullpath, 0)
 			if ret == 0 {
+				// TODO: check errors if path len is not enough
 				unsafe { res.free() }
-				unsafe { free(fullpath) }
 				return fpath.clone()
 			}
 			unsafe { res.free() }
-			res = unsafe { string_from_wide(fullpath) }
-			unsafe { free(fullpath) }
+			res = unsafe { string_from_wide(pu16_fullpath) }
 		}
 	} $else {
-		mut fullpath := vcalloc_noscan(max_path_len)
 		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
 		if ret == 0 {
 			unsafe { res.free() }
-			unsafe { free(fullpath) }
 			return fpath.clone()
 		}
 		// NB: fullpath is much larger (usually ~4KB), than what C.realpath will
@@ -857,7 +855,6 @@ pub fn real_path(fpath string) string {
 		// 4KB fullpath buffer.
 		unsafe { res.free() }
 		res = unsafe { tos_clone(fullpath) }
-		unsafe { free(fullpath) }
 	}
 	unsafe { normalize_drive_letter(res) }
 	return res
