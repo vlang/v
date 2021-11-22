@@ -309,8 +309,9 @@ exit /b 0
 :bootstrap_tcc
 echo Bootstraping TCC...
 echo  ^> TCC not found
-if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
+if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! , branch !tcc_branch! ) else ( echo  ^> Downloading TCC64 from !tcc_url! , branch !tcc_branch! )
 git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
+git -C "%tcc_dir%" log -n3
 exit /b 0
 
 :cloning_vc
