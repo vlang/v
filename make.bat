@@ -122,7 +122,7 @@ echo  ^> Attempting to build v_win.c with TCC
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-v.exe -cc "!tcc_exe!" self
+v.exe -showcc -cc "!tcc_exe!" self
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 goto :success
 
@@ -137,15 +137,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with Clang
-clang -std=c99 -Ithirdparty/stdatomic/win -municode -w -o v.exe .\vc\v_win.c
+clang -std=c99 -Ithirdparty/stdatomic/win -municode -w -o v.exe .\vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
-	REM In most cases, compile errors happen because the version of Clang installed is too old
+	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -cc clang self
+v.exe -showcc -cc clang self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -158,15 +158,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with GCC
-gcc -std=c99 -municode -Ithirdparty/stdatomic/win -w -o v.exe .\vc\v_win.c
+gcc -std=c99 -municode -Ithirdparty/stdatomic/win -w -o v.exe .\vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
-	REM In most cases, compile errors happen because the version of GCC installed is too old
+	echo In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -cc gcc self
+v.exe -showcc -cc gcc self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -200,13 +200,13 @@ set ObjFile=.v.c.obj
 echo  ^> Attempting to build v_win.c with MSVC
 cl.exe /volatile:ms /I thirdparty\stdatomic\win /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
 if %ERRORLEVEL% NEQ 0 (
-    REM In some cases, compile errors happen because of the MSVC compiler version
+    echo In some cases, compile errors happen because of the MSVC compiler version
     cl.exe
     goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -cc msvc self
+v.exe -showcc -cc msvc self
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
