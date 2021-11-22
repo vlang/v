@@ -1,9 +1,7 @@
 import os
 import toml
 import toml.ast
-import toml.scanner
 import x.json2
-import strconv
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
@@ -25,8 +23,6 @@ const (
 		'table/array-implicit.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
-		// Key
-		'key/escapes.toml',
 	]
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }

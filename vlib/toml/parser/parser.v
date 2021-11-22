@@ -1040,7 +1040,9 @@ pub fn (mut p Parser) key() ?ast.Key {
 				ast.Key(p.boolean() ?)
 			}
 			.quoted {
-				ast.Key(p.quoted())
+				mut q := p.quoted()
+				decoder.decode_quoted_escapes(mut q) ?
+				ast.Key(q)
 			}
 			else {
 				ast.Key(ast.Null{})

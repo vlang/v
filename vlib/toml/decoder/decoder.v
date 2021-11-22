@@ -41,7 +41,7 @@ fn (d Decoder) excerpt(tp token.Position) string {
 
 // decode_quoted returns an error if `q` is not a valid quoted TOML string.
 fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
-	d.decode_quoted_escapes(mut q) ?
+	decode_quoted_escapes(mut q) ?
 }
 
 // decode_quoted_escapes returns an error for any disallowed escape sequences.
@@ -58,7 +58,7 @@ fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
 // \\         - backslash       (U+005C)
 // \uXXXX     - Unicode         (U+XXXX)
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
-fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
+pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
 	// TODO use string builder
@@ -155,7 +155,7 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 						pos := s.state().pos
 						sequence := s.text[pos..pos + 11]
 
-						decoded, unicode_val, sequence_length = d.decode_unicode_escape(sequence) or {
+						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
 							decoded_s += escape
 							continue
 						}
@@ -178,7 +178,7 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 					} else {
 						pos := s.state().pos
 						sequence := s.text[pos..]
-						decoded, _, _ = d.decode_unicode_escape(sequence) or {
+						decoded, _, _ = decode_unicode_escape(sequence) or {
 							decoded_s += escape
 							continue
 						}
@@ -197,7 +197,7 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 // decode_unicode_escape returns an error if `esc_unicode` is not
 // a valid Unicode escape sequence. `esc_unicode` is expected to be
 // prefixed with either `u` or `U`.
-fn (d Decoder) decode_unicode_escape(esc_unicode string) ?(string, int, int) {
+fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	is_long_esc_type := esc_unicode.starts_with('U')
 	mut sequence := esc_unicode[1..]
 	hex_digits_len := if is_long_esc_type { 8 } else { 4 }
