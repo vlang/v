@@ -110,8 +110,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
+	vhash := @VHASH
 	p.cache_manager = vcache.new_cache_manager([
-		@VHASH,
+		vhash,
 		// ensure that different v versions use separate build artefacts
 		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
