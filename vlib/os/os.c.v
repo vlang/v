@@ -646,13 +646,13 @@ pub fn executable() string {
 				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(final_path) },
 					size, 0)
 				if final_len < size {
-					ret := unsafe { string_from_wide2(&u16(final_path), final_len) }
+					sret := unsafe { string_from_wide2(&u16(final_path), final_len) }
 					defer {
-						unsafe { ret.free() }
+						unsafe { sret.free() }
 					}
 					// remove '\\?\' from beginning (see link above)
-					ret_slice := ret[4..]
-					res := ret_slice.clone()
+					sret_slice := sret[4..]
+					res := sret_slice.clone()
 					return res
 				} else {
 					eprintln('os.executable() saw that the executable file path was too long')
