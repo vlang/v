@@ -17,4 +17,22 @@ fn main() {
 
 	z := x + t
 	println(z)
+
+	me := os.executable()
+	println(me)
+
+	me_realpath := os.real_path(me)
+	println(me_realpath)
+
+	exe_realpath := os.real_path(os.executable())
+	println(exe_realpath)
+
+	// exeparent_folder := os.dir(exe_realpath)
+	// println(exeparent_folder)
+
+	cdir := os.join_path(os.home_dir(), '.cache')
+	println(cdir)
+
+	wd_realpath := os.real_path(os.wd_at_startup)
+	println(wd_realpath)
 }
