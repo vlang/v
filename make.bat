@@ -118,11 +118,11 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with TCC
-"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -w -o v.exe vc\v_win.c -ladvapi32
+"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-v.exe -showcc -cc "!tcc_exe!" self
+v.exe -keepc -g -showcc -cc "!tcc_exe!" self
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 goto :success
 
@@ -137,7 +137,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with Clang
-clang -std=c99 -Ithirdparty/stdatomic/win -municode -w -o v.exe .\vc\v_win.c -ladvapi32
+clang -std=c99 -Ithirdparty/stdatomic/win -municode -g -w -o v.exe .\vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
@@ -145,7 +145,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -showcc -cc clang self
+v.exe -keepc -g -showcc -cc clang self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -158,7 +158,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with GCC
-gcc -std=c99 -municode -Ithirdparty/stdatomic/win -w -o v.exe .\vc\v_win.c -ladvapi32
+gcc -std=c99 -municode -Ithirdparty/stdatomic/win -g -w -o v.exe .\vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version
@@ -166,7 +166,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -showcc -cc gcc self
+v.exe -keepc -g -showcc -cc gcc self
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -206,7 +206,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-v.exe -showcc -cc msvc self
+v.exe -keepc -g -showcc -cc msvc self
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
