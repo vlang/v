@@ -102,6 +102,11 @@ pub fn join_path(base string, dirs ...string) string {
 	return res
 }
 
+pub fn join_path_single(base string, elem string) string {
+	// TODO: deprecate this
+	return join_path(base, elem)
+}
+
 pub fn execute(cmd string) Result {
 	mut exit_code := 0
 	mut stdout := ''
