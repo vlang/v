@@ -473,23 +473,23 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 
 	mut i := 0
 	for i < in_string.len {
-		mut char := u16(in_string[i])
+		mut chr := u16(in_string[i])
 
 		// draw the space
-		if int(char) == 32 {
+		if int(chr) == 32 {
 			w += int(space_cw * bmp.space_cw)
 			i++
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((char >> 3) & 0x1e)) & 3) + 1
+		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
 		if c_len > 1 {
 			tmp_char := utf8.get_uchar(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
-			char = u16(tmp_char)
+			chr = u16(tmp_char)
 		}
 
-		c_index := bmp.tf.map_code(int(char))
+		c_index := bmp.tf.map_code(int(chr))
 		// Glyph not found
 		if c_index == 0 {
 			w += int(space_cw * bmp.space_cw)
@@ -500,8 +500,8 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		ax, ay := bmp.tf.next_kern(c_index)
 		// dprintln("char_index: $c_index ax: $ax ay: $ay")
 
-		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(char))
-		// dprintln("metrics: [${u16(char):c}] cw:$cw lsb:$lsb")
+		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
+		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
 
 		//----- Calc Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
@@ -544,23 +544,23 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 
 	mut i := 0
 	for i < in_string.len {
-		mut char := u16(in_string[i])
+		mut chr := u16(in_string[i])
 
 		// draw the space
-		if int(char) == 32 {
+		if int(chr) == 32 {
 			w += int(space_cw * bmp.space_cw)
 			i++
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((char >> 3) & 0x1e)) & 3) + 1
+		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
 		if c_len > 1 {
 			tmp_char := utf8.get_uchar(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
-			char = u16(tmp_char)
+			chr = u16(tmp_char)
 		}
 
-		c_index := bmp.tf.map_code(int(char))
+		c_index := bmp.tf.map_code(int(chr))
 		// Glyph not found
 		if c_index == 0 {
 			w += int(space_cw * bmp.space_cw)
@@ -570,8 +570,8 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 		ax, ay := bmp.tf.next_kern(c_index)
 		// dprintln("char_index: $c_index ax: $ax ay: $ay")
 
-		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(char))
-		// dprintln("metrics: [${u16(char):c}] cw:$cw lsb:$lsb")
+		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
+		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
 
 		//----- Calc Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
@@ -639,23 +639,23 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 
 	mut i := 0
 	for i < in_string.len {
-		mut char := u16(in_string[i])
+		mut chr := u16(in_string[i])
 
 		// draw the space
-		if int(char) == 32 {
+		if int(chr) == 32 {
 			w += int(space_cw * bmp.space_cw)
 			i++
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((char >> 3) & 0x1e)) & 3) + 1
+		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
 		if c_len > 1 {
 			tmp_char := utf8.get_uchar(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
-			char = u16(tmp_char)
+			chr = u16(tmp_char)
 		}
 
-		c_index := bmp.tf.map_code(int(char))
+		c_index := bmp.tf.map_code(int(chr))
 		// Glyph not found
 		if c_index == 0 {
 			bmp.draw_notdef_glyph(w, int(space_cw * bmp.space_cw))
@@ -667,9 +667,9 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		ax, ay := bmp.tf.next_kern(c_index)
 		// dprintln("char_index: $c_index ax: $ax ay: $ay")
 
-		cw, _ := bmp.tf.get_horizontal_metrics(u16(char))
-		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(char))
-		// dprintln("metrics: [${u16(char):c}] cw:$cw lsb:$lsb")
+		cw, _ := bmp.tf.get_horizontal_metrics(u16(chr))
+		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
+		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
 
 		//----- Draw_Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
