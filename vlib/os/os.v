@@ -39,8 +39,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	}
 	// single file copy
 	if !is_dir(source_path) {
+		fname := file_name(source_path)
 		adjusted_path := if is_dir(dest_path) {
-			fname := file_name(source_path)
 			join_path_single(dest_path, fname)
 		} else {
 			dest_path
