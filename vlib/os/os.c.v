@@ -673,8 +673,9 @@ pub fn executable() string {
 		return res
 	}
 	$if freebsd {
+		bufsize := usize(size)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
-		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
+		unsafe { C.sysctl(mib.data, mib.len, result, &bufsize, 0, 0) }
 		res := unsafe { tos_clone(result) }
 		return res
 	}
