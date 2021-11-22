@@ -8258,6 +8258,25 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						mut v := node.scope.find_var(param.name) or { continue }
 						v.is_auto_heap = true
 					}
+					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& info.concrete_types.len == 0 {
+						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+							param.type_pos)
+					}
+				} else if arg_typ_sym.kind == .interface_ {
+					info := arg_typ_sym.info as ast.Interface
+					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& info.concrete_types.len == 0 {
+						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo<T>',
+							param.type_pos)
+					}
+				} else if arg_typ_sym.kind == .sum_type {
+					info := arg_typ_sym.info as ast.SumType
+					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& info.concrete_types.len == 0 {
+						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo<T>',
+							param.type_pos)
+					}
 				}
 			}
 			if c.pref.translated && node.is_variadic && node.params.len == 1 && param.typ.is_ptr() {
@@ -8364,15 +8383,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else if !node.attrs.contains('_naked') {
 			c.error('missing return at end of function `$node.name`', node.pos)
-		}
-	}
-	if node.is_method {
-		sym := c.table.get_type_symbol(node.receiver.typ)
-		if sym.kind == .struct_ {
-			info := sym.info as ast.Struct
-			if info.is_generic && c.table.cur_fn.generic_names.len == 0 {
-				c.error('receiver must specify the generic type names, e.g. Foo<T>', node.method_type_pos)
-			}
 		}
 	}
 	node.source_file = c.file
