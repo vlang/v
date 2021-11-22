@@ -182,7 +182,7 @@ pub fn (n Number) i64() i64 {
 		bin := n.text.all_after('0b').replace('_', '')
 		return strconv.parse_int(bin, 2, 64) or { i64(0) }
 	}
-	return strconv.parse_int(n.text, 0, 0) or { i64(0) }
+	return strconv.parse_int(n.text, 0, 64) or { i64(0) }
 }
 
 // f64 returns the `n Number` as an `f64` value.
