@@ -25,16 +25,19 @@ fn match_vec(v Vec) {
 fn match_classic_num() {
 	match 42 {
 		0 {
-			assert (false)
+			assert false
+			(false)
 		}
 		1 {
-			assert (false)
+			assert false
+			(false)
 		}
 		42 {
 			println('life')
 		}
 		else {
-			assert (false)
+			assert false
+			(false)
 		}
 	}
 }
