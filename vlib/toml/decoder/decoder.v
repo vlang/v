@@ -10,10 +10,8 @@ import toml.scanner
 import strconv
 
 const (
-	whitespaces             = [` `, `\n`, `\t`]
-	allowed_escapes_letters = [`n`, `t`, `b`, `r`, `f`]
 	// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
-	utf8_max                = 0x10FFFF
+	utf8_max = 0x10FFFF
 )
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
@@ -81,7 +79,7 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 		}
 		ch_byte := byte(ch)
 
-		if eat_whitespace && ch in decoder.whitespaces {
+		if eat_whitespace && ch_byte.is_space() {
 			continue
 		}
 		eat_whitespace = false
@@ -97,7 +95,7 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 			}
 
 			if q.is_multiline {
-				if ch_next in decoder.whitespaces {
+				if ch_next_byte.is_space() {
 					eat_whitespace = true
 					continue
 				}
@@ -109,36 +107,34 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 				continue
 			}
 
-			if ch_next in decoder.allowed_escapes_letters {
-				if ch_next == `n` {
-					decoded_s += '\n'
-					s.next()
-					continue
-				}
+			if ch_next == `n` {
+				decoded_s += '\n'
+				s.next()
+				continue
+			}
 
-				if ch_next == `t` {
-					decoded_s += '\t'
-					s.next()
-					continue
-				}
+			if ch_next == `t` {
+				decoded_s += '\t'
+				s.next()
+				continue
+			}
 
-				if ch_next == `b` {
-					decoded_s += '\b'
-					s.next()
-					continue
-				}
+			if ch_next == `b` {
+				decoded_s += '\b'
+				s.next()
+				continue
+			}
 
-				if ch_next == `r` {
-					decoded_s += '\r'
-					s.next()
-					continue
-				}
+			if ch_next == `r` {
+				decoded_s += '\r'
+				s.next()
+				continue
+			}
 
-				if ch_next == `f` {
-					decoded_s += '\f'
-					s.next()
-					continue
-				}
+			if ch_next == `f` {
+				decoded_s += '\f'
+				s.next()
+				continue
 			}
 
 			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
