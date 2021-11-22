@@ -13,7 +13,7 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 	mod_paths << os.vmodules_paths()
 	mod_path := mod.replace('.', os.path_separator)
 	for search_path in mod_paths {
-		try_path := os.join_path(search_path, mod_path)
+		try_path := os.join_path_single(search_path, mod_path)
 		if os.is_dir(try_path) {
 			if m1 := mod_path_to_full_name(pref, mod, try_path) {
 				trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
@@ -70,7 +70,7 @@ pub fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?s
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i > 0; i-- {
-		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
+		try_path := os.join_path_single(path_parts[0..i].join(os.path_separator), mod_path)
 		// found module path
 		if os.is_dir(try_path) {
 			// we know we are in one of the `vmod_folders`

@@ -309,7 +309,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname.replace('.v', '')
 	}
-	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
+	generated_binary_fpath := os.join_path_single(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
@@ -406,7 +406,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
-	vlib_dir := os.join_path(parent_dir, 'vlib')
+	vlib_dir := os.join_path_single(parent_dir, 'vlib')
 	if !os.is_dir(vlib_dir) {
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
@@ -427,7 +427,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		eprintln('v compiler args: "$vargs"')
 	}
 	mut session := new_test_session(vargs, true)
-	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
+	files := os.walk_ext(os.join_path_single(parent_dir, folder), '.v')
 	mut mains := []string{}
 	mut skipped := oskipped.clone()
 	next_file: for f in files {
@@ -451,7 +451,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		maxc := if c.len > 300 { 300 } else { c.len }
 		start := c[0..maxc]
 		if start.contains('module ') && !start.contains('module main') {
-			skipped_f := f.replace(os.join_path(parent_dir, ''), '')
+			skipped_f := f.replace(os.join_path_single(parent_dir, ''), '')
 			skipped << skipped_f
 		}
 		for skip_prefix in oskipped {

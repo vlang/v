@@ -110,7 +110,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			// check absolute path first
 			if !os.exists(abs_path) {
 				// ... look relative to the source file:
-				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
+				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
 				if !os.exists(epath) {
 					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
 						spos)
@@ -144,11 +144,11 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	tmpl_path := if is_html { '${fn_path.last()}.html' } else { path_of_literal_string_param }
 	// Looking next to the vweb program
 	dir := os.dir(compiled_vfile_path)
-	mut path := os.join_path(dir, fn_path_joined)
+	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
-		path = os.join_path(dir, tmpl_path)
+		path = os.join_path_single(dir, tmpl_path)
 	}
 	if !os.exists(path) {
 		if is_html {

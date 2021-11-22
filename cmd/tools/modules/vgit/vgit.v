@@ -76,7 +76,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// NB: after clone_or_pull, the current repo branch is === HEAD === master
-	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path(local_worktree_path, '.git')) {
+	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
 		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')
 		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
@@ -107,7 +107,7 @@ pub mut:
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.real_path(os.join_path(vgit_context.path_v, vgit_context.vexename))
+	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {

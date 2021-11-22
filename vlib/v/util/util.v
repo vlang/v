@@ -46,7 +46,7 @@ pub fn set_vroot_folder(vroot_path string) {
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+	os.setenv('VEXE', os.real_path(os.join_path_single(vroot_path, vname)), true)
 	os.setenv('VCHILD', 'true', true)
 }
 
@@ -121,11 +121,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
-	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
+	tool_basename := os.real_path(os.join_path_single(tools_folder, tool_name))
 	mut tool_exe := ''
 	mut tool_source := ''
 	if os.is_dir(tool_basename) {
-		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_exe = path_of_executable(os.join_path_single(tool_basename, tool_name))
 		tool_source = tool_basename
 	} else {
 		tool_exe = path_of_executable(tool_basename)
@@ -240,7 +240,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 fn tool_source2name_and_exe(tool_source string) (string, string) {
 	sfolder := os.dir(tool_source)
 	tool_name := os.base(tool_source).replace('.v', '')
-	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
+	tool_exe := os.join_path_single(sfolder, path_of_executable(tool_name))
 	return tool_name, tool_exe
 }
 
@@ -357,8 +357,8 @@ fn non_empty(arg []string) []string {
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
-	mpath := os.join_path(os.vmodules_dir(), modulename)
-	mod_v_file := os.join_path(mpath, 'v.mod')
+	mpath := os.join_path_single(os.vmodules_dir(), modulename)
+	mod_v_file := os.join_path_single(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/$modulename'
 	if is_verbose {
 		eprintln('check_module_is_installed: mpath: $mpath')
@@ -484,7 +484,7 @@ pub fn get_vtmp_folder() string {
 		return vtmp
 	}
 	uid := os.getuid()
-	vtmp = os.join_path(os.temp_dir(), 'v_$uid')
+	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
 		os.mkdir_all(vtmp) or { panic(err) }
 	}
