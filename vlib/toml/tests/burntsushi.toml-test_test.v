@@ -21,7 +21,7 @@ const (
 		'string/escapes.toml',
 		'string/multiline.toml',
 		// Integer
-		'integer/long.toml',
+		'integer/long.toml', // TODO awaits BUG fix with strconv.parse_int('-9223372036854775808')
 		// Float
 		'float/inf-and-nan.toml',
 		// Comment
