@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_fn_arg_type_err.vv:14:23: error: generic interface in fn declaration must specify the generic type names, e.g. Foo<T>
+   12 | }
+   13 |
+   14 | fn do_list_thing(list List) { // <--- Error here
+      |                       ~~~~
+   15 |     // ...
+   16 | }
