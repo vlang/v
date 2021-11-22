@@ -31,8 +31,8 @@ const (
 	valid_comptime_not_user_defined = all_valid_comptime_idents()
 	array_builtin_methods           = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	reserved_type_names             = ['bool', 'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'map', 'string', 'rune']
+	reserved_type_names             = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
 	vroot_is_deprecated_message     = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
@@ -566,6 +566,10 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					continue // no need to check first param
 				}
 				c.ensure_type_exists(param.typ, param.pos) or { return }
+				if param.name in checker.reserved_type_names {
+					c.error('invalid use of reserved type `$param.name` as a parameter name',
+						param.pos)
+				}
 				if is_js {
 					ptyp := c.table.get_type_symbol(param.typ)
 					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
@@ -8242,6 +8246,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for mut param in node.params {
 			c.ensure_type_exists(param.typ, param.type_pos) or { return }
+			if param.name in checker.reserved_type_names {
+				c.error('invalid use of reserved type `$param.name` as a parameter name',
+					param.pos)
+			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.get_type_symbol(param.typ)
 				if arg_typ_sym.kind == .struct_ {
