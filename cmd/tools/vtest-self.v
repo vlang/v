@@ -104,6 +104,7 @@ const (
 		'vlib/context/deadline_test.v',
 		'vlib/context/empty_test.v',
 		'vlib/context/value_test.v',
+		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/closure_test.v',
