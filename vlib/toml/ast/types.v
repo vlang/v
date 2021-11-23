@@ -157,8 +157,9 @@ pub fn (b Bool) str() string {
 // Number can be integers, floats, infinite, NaN - they can have exponents (`5e2`) and be sign prefixed (`+2`).
 pub struct Number {
 pub:
+	pos token.Position
+pub mut:
 	text string
-	pos  token.Position
 }
 
 // str returns the `string` representation of the `Number` type.
