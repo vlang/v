@@ -30,6 +30,10 @@ fn (d Decoder) modify(mut value ast.Value) ? {
 			mut v := &(value as ast.Quoted)
 			d.decode_quoted(mut v) ?
 		}
+		ast.Number {
+			mut v := &(value as ast.Number)
+			d.decode_number(mut v) ?
+		}
 		else {}
 	}
 }
@@ -42,6 +46,13 @@ fn (d Decoder) excerpt(tp token.Position) string {
 // decode_quoted returns an error if `q` is not a valid quoted TOML string.
 fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
 	decode_quoted_escapes(mut q) ?
+}
+
+// decode_number decodes the `n ast.Number` into valid TOML.
+fn (d Decoder) decode_number(mut n ast.Number) ? {
+	if n.text == '-nan' || n.text == '+nan' {
+		n.text = 'nan'
+	}
 }
 
 // decode_quoted_escapes returns an error for any disallowed escape sequences.
