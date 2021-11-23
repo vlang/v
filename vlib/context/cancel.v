@@ -51,9 +51,10 @@ mut:
 pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(mut parent, mut c)
-	return Context(c), fn [mut c] () {
+	cancel_fn := fn [mut c] () {
 		c.cancel(true, canceled)
 	}
+	return Context(c), CancelFn(cancel_fn)
 }
 
 // new_cancel_context returns an initialized CancelContext.

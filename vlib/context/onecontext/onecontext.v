@@ -31,7 +31,7 @@ pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, con
 		cancel_ctx: cancel_ctx
 	}
 	go octx.run()
-	return context.Context(octx), cancel
+	return context.Context(octx), context.CancelFn(cancel)
 }
 
 pub fn (octx OneContext) deadline() ?time.Time {
