@@ -9,6 +9,11 @@ import toml.token
 import toml.scanner
 import strconv
 
+const (
+	// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
+	utf8_max = 0x10FFFF
+)
+
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
 	scanner &scanner.Scanner
@@ -36,7 +41,7 @@ fn (d Decoder) excerpt(tp token.Position) string {
 
 // decode_quoted returns an error if `q` is not a valid quoted TOML string.
 fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
-	d.decode_quoted_escapes(mut q) ?
+	decode_quoted_escapes(mut q) ?
 }
 
 // decode_quoted_escapes returns an error for any disallowed escape sequences.
@@ -53,12 +58,9 @@ fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
 // \\         - backslash       (U+005C)
 // \uXXXX     - Unicode         (U+XXXX)
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
-fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
+pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
-	mut s := scanner.new_simple(q.text) ?
-
-	q.text = q.text.replace('\\"', '"')
-
+	mut eat_whitespace := false
 	// TODO use string builder
 	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
@@ -66,6 +68,10 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 	if !is_basic {
 		return
 	}
+
+	mut s := scanner.new_simple(q.text) ?
+	q.text = q.text.replace('\\"', '"')
+
 	for {
 		ch := s.next()
 		if ch == scanner.end_of_text {
@@ -73,13 +79,26 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 		}
 		ch_byte := byte(ch)
 
+		if eat_whitespace && ch_byte.is_space() {
+			continue
+		}
+		eat_whitespace = false
+
 		if ch == `\\` {
-			ch_next := byte(s.at())
+			ch_next := s.at()
+			ch_next_byte := byte(ch_next)
 
 			if ch_next == `\\` {
-				decoded_s += ch_next.ascii_str()
+				decoded_s += ch_next_byte.ascii_str()
 				s.next()
 				continue
+			}
+
+			if q.is_multiline {
+				if ch_next_byte.is_space() {
+					eat_whitespace = true
+					continue
+				}
 			}
 
 			if ch_next == `"` {
@@ -94,33 +113,79 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 				continue
 			}
 
-			escape := ch_byte.ascii_str() + ch_next.ascii_str()
+			if ch_next == `t` {
+				decoded_s += '\t'
+				s.next()
+				continue
+			}
+
+			if ch_next == `b` {
+				decoded_s += '\b'
+				s.next()
+				continue
+			}
+
+			if ch_next == `r` {
+				decoded_s += '\r'
+				s.next()
+				continue
+			}
+
+			if ch_next == `f` {
+				decoded_s += '\f'
+				s.next()
+				continue
+			}
+
+			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
 			// Decode unicode escapes
 			if escape.to_lower() == '\\u' {
-				// Long type Unicode (\UXXXXXXXX) is a maximum of 10 chars: '\' + 'U' + 8 hex characters
-				// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
-				// of 9 chars plus one extra.
-				mut decoded := ''
-				if s.remaining() >= 10 {
-					pos := s.state().pos
-					decoded = d.decode_unicode_escape(s.text[pos..pos + 11]) or {
-						st := s.state()
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${d.excerpt(q.pos)}...')
+				is_valid_short := byte(s.peek(1)).is_hex_digit() && byte(s.peek(2)).is_hex_digit()
+					&& byte(s.peek(3)).is_hex_digit() && byte(s.peek(4)).is_hex_digit()
+
+				if is_valid_short {
+					// is_valid_long := byte(s.peek(5)).is_hex_digit() && byte(s.peek(6)).is_hex_digit() && byte(s.peek(7)).is_hex_digit() && byte(s.peek(8)).is_hex_digit()
+					// Long type Unicode (\UXXXXXXXX) is a maximum of 10 chars: '\' + 'U' + 8 hex characters
+					// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
+					// of 9 chars plus one extra.
+					mut decoded := ''
+					mut sequence_length := 0
+					mut unicode_val := 0
+					if s.remaining() >= 10 {
+						pos := s.state().pos
+						sequence := s.text[pos..pos + 11]
+
+						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
+							decoded_s += escape
+							continue
+						}
+						if unicode_val > decoder.utf8_max || unicode_val < 0 {
+							decoded_s += escape
+							continue
+						}
+						// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
+						if !((unicode_val >= 0x0000 && unicode_val <= 0xD7FF)
+							|| (unicode_val >= 0xE000 && unicode_val <= decoder.utf8_max)) {
+							decoded_s += escape
+							continue
+						}
+						if unicode_val in [0x7F, 0x1F, 0x5C, 0x75] {
+							sequence_length -= 2
+						}
+						decoded_s += decoded
+						s.skip_n(s.text[pos..pos + 2 + sequence_length + 1].len)
+						continue
+					} else {
+						pos := s.state().pos
+						sequence := s.text[pos..]
+						decoded, _, _ = decode_unicode_escape(sequence) or {
+							decoded_s += escape
+							continue
+						}
+						decoded_s += decoded
+						s.skip_n(s.text[pos..].len)
+						continue
 					}
-					decoded_s += decoded
-					s.skip_n(s.text[pos..pos + 11].len)
-					continue
-				} else {
-					pos := s.state().pos
-					decoded = d.decode_unicode_escape(s.text[pos..]) or {
-						st := s.state()
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${d.excerpt(q.pos)}...')
-					}
-					decoded_s += decoded
-					s.skip_n(s.text[pos..].len)
-					continue
 				}
 			}
 		}
@@ -132,10 +197,11 @@ fn (d Decoder) decode_quoted_escapes(mut q ast.Quoted) ? {
 // decode_unicode_escape returns an error if `esc_unicode` is not
 // a valid Unicode escape sequence. `esc_unicode` is expected to be
 // prefixed with either `u` or `U`.
-fn (d Decoder) decode_unicode_escape(esc_unicode string) ?string {
+fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	is_long_esc_type := esc_unicode.starts_with('U')
 	mut sequence := esc_unicode[1..]
 	hex_digits_len := if is_long_esc_type { 8 } else { 4 }
+	mut sequence_len := hex_digits_len
 
 	sequence = sequence[..hex_digits_len]
 
@@ -143,6 +209,7 @@ fn (d Decoder) decode_unicode_escape(esc_unicode string) ?string {
 	if unicode_point.len < 8 {
 		unicode_point = '0'.repeat(8 - unicode_point.len) + unicode_point
 	}
-	rn := rune(strconv.parse_int(unicode_point, 16, 0) ?)
-	return '$rn'
+	i64_val := strconv.parse_int(unicode_point, 16, 0) ?
+	rn := rune(i64_val)
+	return '$rn', int(i64_val), sequence_len
 }
