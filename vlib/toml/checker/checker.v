@@ -366,7 +366,7 @@ fn (c Checker) check_time(t ast.Time) ? {
 }
 
 // check_quoted returns an error if `q` is not a valid quoted TOML string.
-fn (c Checker) check_quoted(q ast.Quoted) ? {
+pub fn (c Checker) check_quoted(q ast.Quoted) ? {
 	lit := q.text
 	quote := q.quote.ascii_str()
 	triple_quote := quote + quote + quote
