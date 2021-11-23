@@ -1954,6 +1954,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.return_type = left_type
 	node.receiver_type = left_type
 
+	if c.table.cur_fn.generic_names.len > 0 {
+		c.table.unwrap_generic_type(left_type, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+	}
 	unwrapped_left_type := c.unwrap_generic(left_type)
 	left_sym := c.table.get_type_symbol(unwrapped_left_type)
 	final_left_sym := c.table.get_final_type_symbol(unwrapped_left_type)
