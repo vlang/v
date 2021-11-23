@@ -327,12 +327,25 @@ pub interface JS.Document {
 	lastModified JS.String
 	inputEncoding JS.String
 	implementation JS.DOMImplementation
+	doctype JS.DocumentType
+	embeds JS.HTMLCollection
+	forms JS.HTMLCollection
 	getElementById(id JS.String) ?JS.HTMLElement
 mut:
 	bgColor JS.String
+	fgColor JS.String
 	body JS.HTMLElement
 	cookie JS.String
 	domain JS.String
+	designMode JS.String
+	dir JS.String
+}
+
+pub fn document_url(doc JS.Document) JS.String {
+	mut url := JS.String{}
+	#url = doc.URL;
+
+	return url
 }
 
 pub interface JS.PointerEvent {
@@ -539,14 +552,28 @@ pub interface JS.CanvasPattern {
 	setTransform(transform JS.DOMMatrix)
 }
 
-pub interface JS.WebGLRenderingContext {
-	canvas JS.HTMLCanvasElement
-	drawingBufferHeight JS.Number
-	drawingBufferWidth JS.Number
+pub type OnDeviceMotion = fn (ev JS.DeviceMotionEvent) JS.Any
+
+pub type OnDeviceOrientation = fn (ev JS.DeviceOrientationEvent) JS.Any
+
+pub fn on_device_motion(cb fn (win JS.Window, ev JS.DeviceMotionEvent) JS.Any) OnDeviceMotion {
+	clos := fn [cb] (ev JS.DeviceMotionEvent) JS.Any {
+		mut win := JS.Any(voidptr(0))
+		#win = this;
+
+		return cb(win, ev)
+	}
+	return clos
 }
 
-pub interface JS.WebGL2RenderingContext {
-	JS.WebGLRenderingContext
+pub fn on_device_orientation(cb fn (win JS.Window, ev JS.DeviceOrientationEvent) JS.Any) OnDeviceOrientation {
+	clos := fn [cb] (ev JS.DeviceOrientationEvent) JS.Any {
+		mut win := JS.Any(voidptr(0))
+		#win = this;
+
+		return cb(win, ev)
+	}
+	return clos
 }
 
 pub interface JS.Window {
@@ -558,6 +585,158 @@ pub interface JS.Window {
 	innerHeight JS.Number
 	innerWidth JS.Number
 	length JS.Number
+	outerHeight JS.Number
+	outerWidth JS.Number
+	screenLeft JS.Number
+	screenTop JS.Number
+	screenX JS.Number
+	screenY JS.Number
+	scrollX JS.Number
+	scrollY JS.Number
+	alert(message JS.Any)
+	blur()
+	cancelIdleCallback(handle JS.Number)
+	captureEvents()
+	close()
+	confirm(message JS.String) JS.Boolean
+	focus()
+	moveBy(x JS.Number, y JS.Number)
+	moveTo(x JS.Number, y JS.Number)
+	print()
+	prompt(message JS.String, default_ JS.String) ?JS.String
+	stop()
+	resizeBy(x JS.Number, y JS.Number)
+	resizeTo(width JS.Number, height JS.Number)
+	scroll(x JS.Number, y JS.Number)
+	scrollBy(x JS.Number, y JS.Number)
+	scrollTo(x JS.Number, y JS.Number)
+mut:
+	name string
+	opener JS.Any
+	ondevicemotion OnDeviceMotion
+	ondeviceorientation OnDeviceOrientation
 }
 
 pub interface JS.Path2D {}
+
+pub struct JS.DeviceMotionEventAcceleration {
+	x JS.Number
+	y JS.Number
+	z JS.Number
+}
+
+pub struct JS.DeviceMotionEventRotationRate {
+	alpha JS.Number
+	beta  JS.Number
+	gamma JS.Number
+}
+
+pub interface JS.DeviceMotionEvent {
+	JS.Event
+	interval JS.Number
+	acceleration JS.DeviceMotionEventAcceleration
+	accelerationIncludingGravity JS.DeviceMotionEventAcceleration
+	rotationRate JS.DeviceMotionEventRotationRate
+}
+
+pub interface JS.DeviceOrientationEvent {
+	JS.Event
+	absolute JS.Boolean
+	alpha JS.Number
+	beta JS.Number
+	gamma JS.Number
+}
+
+pub interface JS.DocumentType {
+	JS.Node
+	JS.ChildNode
+	name JS.String
+	ownerDocument JS.Document
+	publicId JS.String
+	systemId JS.String
+}
+
+[single_impl]
+pub interface JS.WebGLProgram {}
+
+[single_impl]
+pub interface JS.WebGLShader {}
+
+[single_impl]
+pub interface JS.WebGLBuffer {}
+
+[single_impl]
+pub interface JS.WebGLFramebuffer {}
+
+[single_impl]
+pub interface JS.WebGLRenderbuffer {}
+
+[single_impl]
+pub interface JS.WebGLTexture {}
+
+[single_impl]
+pub interface JS.WebGLUniformLocation {}
+
+[single_impl]
+pub interface JS.WebGLVertexArrayObject {}
+
+pub interface JS.WebGLRenderingContext {
+	canvas JS.HTMLCanvasElement
+	drawingBufferHeight JS.Number
+	drawingBufferWidth JS.Number
+	activeTexture(texture JS.Number)
+	attachShader(program JS.WebGLProgram, shader JS.WebGLProgram)
+	linkProgram(program JS.WebGLProgram)
+	bindAttribLocation(program JS.WebGLProgram, index JS.Number, name JS.String)
+	bindBuffer(target JS.Number, buffer JS.WebGLBuffer)
+	bindFramebuffer(target JS.Number, buffer JS.WebGLFrameBuffer)
+	bindRenderbuffer(target JS.Number, renderbuffer JS.WebGLRenderbuffer)
+	bindTexture(target JS.Number, texture JS.WebGLTexture)
+	clear(mask JS.Number)
+	clearColor(red JS.Number, green JS.Number, blue JS.Number, alpha JS.Number)
+	clearDepth(depth JS.Number)
+	clearStencil(s JS.Number)
+	colorMask(red JS.Boolean, green JS.Boolean, blue JS.Boolean, alpha JS.Boolean)
+	compileShader(shader JS.WebGLShader)
+	createBuffer() ?JS.WebGLBuffer
+	createFramebuffer() ?JS.WebGLFrameBuffer
+	createProgram() ?JS.WebGLProgram
+	createRenderbuffer() ?JS.WebGLRenderbuffer
+	createShader(typ JS.Number) ?JS.WebGLShader
+	createTexture() ?JS.WebGLTexture
+	cullFace(mode JS.Number)
+	deleteBuffer(buffer JS.WebGLBuffer)
+	deleteFramebuffer(buffer JS.WebGLFrameBuffer)
+	deleteProgram(program JS.WebGLProgram)
+	deleteRenderbuffer(buffer JS.WebGLRenderbuffer)
+	deleteShader(shader JS.WebGLShader)
+	deleteTexture(texture JS.WebGLTexture)
+	depthFunc(func JS.Number)
+	depthMask(flag JS.Boolean)
+	depthRange(zNear JS.Number, zFar JS.Number)
+	detachShader(program JS.WebGLProgram, shader JS.WebGLShader)
+	disable(cap JS.Number)
+	disableVertexAttribArray(index JS.Number)
+	drawArrays(mode JS.Number, first JS.Number, count JS.Number)
+	drawElements(mode JS.Number, count JS.Number, typ JS.Number, offset JS.Number)
+	enable(cap JS.Number)
+	enableVertexAttribArray(index JS.Number)
+	finish()
+	flush()
+	framebufferRenderbuffer(target JS.Number, attachment JS.Number, renderbuffertarget JS.Number, renderbuffer JS.WebGLRenderbuffer)
+	framebufferTexture2D(target JS.Number, attachment JS.Number, textarget JS.Number, texture JS.WebGLTexture, level JS.Number)
+	frontFace(mode JS.Number)
+	generateMipmap(target JS.Number)
+	getError() JS.Number
+	getExtension(name JS.String) JS.Any
+	getParameter(name JS.Number) JS.Any
+	getProgramParameter(program JS.WebGLProgram, pname JS.Number) JS.Any
+	getShaderSource(shader JS.WebGLShader) ?JS.String
+	bufferData(target JS.Number, data JS.TypedArray, usage JS.Number)
+	shaderSource(shader JS.WebGLShader, source JS.String)
+	getShaderParameter(shader JS.WebGLShader, pname JS.Number) JS.Any
+}
+
+pub interface JS.WebGL2RenderingContext {
+	JS.WebGLRenderingContext
+}
