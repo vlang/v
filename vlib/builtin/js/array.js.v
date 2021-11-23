@@ -405,3 +405,204 @@ pub fn (a array) to_js_array() JS.Array {
 	}
 	return tmp
 }
+
+type EveryFn = fn (JS.Number, JS.Number) JS.Boolean
+
+type BigEveryFn = fn (JS.BigInt, JS.Number) JS.Boolean
+
+pub interface JS.TypedArray {
+mut:
+	byteLength JS.Number
+	byteOffset JS.Number
+	length JS.Number
+}
+
+pub interface JS.Uint8Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.Uint16Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.Uint32Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.BigUint64Array {
+	JS.TypedArray
+	at(index JS.Number) JS.BigInt
+	every(JS.BigEveryFn) JS.Boolean
+}
+
+pub interface JS.Int8Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.Int16Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.Int32Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.BigInt64Array {
+	JS.TypedArray
+	at(index JS.Number) JS.BigInt
+	every(JS.BigEveryFn) JS.Boolean
+}
+
+pub interface JS.Float32Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub interface JS.Float64Array {
+	JS.TypedArray
+	at(index JS.Number) JS.Number
+	every(JS.EveryFn) JS.Boolean
+}
+
+pub fn uint8_array(arr []byte) JS.Uint8Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut uint_arr := JS.Uint8Array{}
+	#uint_arr = new Uint8Array(tmp)
+
+	return uint_arr
+}
+
+pub fn uint16_array(arr []u16) JS.Uint16Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut uint_arr := JS.Uint16Array{}
+	#uint_arr = new Uint16Array(tmp)
+
+	return uint_arr
+}
+
+pub fn uint32_array(arr []u32) JS.Uint32Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut uint_arr := JS.Uint32Array{}
+	#uint_arr = new Uint32Array(tmp)
+
+	return uint_arr
+}
+
+pub fn int8_array(arr []i8) JS.Int8Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut int_arr := JS.Int8Array{}
+	#int_arr = new Int8Array(tmp)
+
+	return int_arr
+}
+
+pub fn int16_array(arr []i16) JS.Int16Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut int_arr := JS.Int16Array{}
+	#int_arr = new Int16Array(tmp)
+
+	return int_arr
+}
+
+pub fn int32_array(arr []int) JS.Int32Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut int_arr := JS.Int32Array{}
+	#int_arr = new Int32Array(tmp)
+
+	return int_arr
+}
+
+pub fn int64_array(arr []i64) JS.BigInt64Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut int_arr := JS.BigInt64Array{}
+	#int_arr = new BigInt64Array(tmp)
+
+	return int_arr
+}
+
+pub fn uint64_array(arr []u64) JS.BigUint64Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut int_arr := JS.BigUint64Array{}
+	#int_arr = new BigUint64Array(tmp)
+
+	return int_arr
+}
+
+pub fn float32_array(arr []f32) JS.Float32Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut float_arr := JS.Float32Array{}
+	#float_arr = new Float32Array(tmp)
+
+	return float_arr
+}
+
+pub fn float64_array(arr []f64) JS.Float64Array {
+	#let tmp = new Array();
+
+	for elem in arr {
+		_ := elem
+		#tmp.push(elem.val)
+	}
+	mut float_arr := JS.Float64Array{}
+	#float_arr = new Float64Array(tmp)
+
+	return float_arr
+}
