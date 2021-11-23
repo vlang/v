@@ -711,15 +711,11 @@ fn expr_is_single_line(expr ast.Expr) bool {
 
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
-	if node.expr is ast.ParExpr {
-		if node.expr.expr is ast.InfixExpr {
-			infix := node.expr.expr
-			f.expr(infix)
-			f.writeln('')
-			return
-		}
+	mut expr := node.expr
+	for expr is ast.ParExpr {
+		expr = (expr as ast.ParExpr).expr
 	}
-	f.expr(node.expr)
+	f.expr(expr)
 	f.writeln('')
 }
 
