@@ -776,16 +776,19 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			// Implicit allocation
 			if p.last_aot.len == 0 {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of array for dotted key `$dotted_key`.')
-				table[first.str()] = []ast.Value{}
 				p.last_aot = first
 				// We register this implicit allocation as *explicit* to be able to catch
 				// special cases like:
 				// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
 				p.explicit_declared << first
 
-				t_arr = &(table[p.last_aot.str()] as []ast.Value)
-				t_arr << ast.Value(map[string]ast.Value{})
-				p.last_aot_index = t_arr.len - 1
+				mut nm := map[string]ast.Value{}
+				nm[last.str()] = []ast.Value{}
+				table[first.str()] = ast.Value(nm)
+
+				t_arr = &(nm[last.str()] as []ast.Value)
+				t_arr << p.array_of_tables_contents() ?
+				return
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' nested array of tables key "$first" does not match "$p.last_aot". (excerpt): "...${p.excerpt()}..."')
@@ -1058,16 +1061,25 @@ pub fn (mut p Parser) key() ?ast.Key {
 			' key expected .bare, .underscore, .number, .quoted or .boolean but got "$p.tok.kind"')
 	}
 
-	// A small exception that can't easily be done via `checker`
-	// since the `is_multiline` information is lost when using the key.text as a
+	// A few small exceptions that can't easily be done via `checker` or `decoder` *after* the
+	// main table has been build since information like `is_multiline` is lost when using the key.text as a
 	// V `map` key directly.
-	if p.config.run_checks {
-		if key is ast.Quoted {
+	if key is ast.Quoted {
+		if p.config.run_checks {
 			quoted := key as ast.Quoted
 			if quoted.is_multiline {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' multiline string as key is not allowed. (excerpt): "...${p.excerpt()}..."')
 			}
+			chckr := checker.Checker{
+				scanner: p.scanner
+			}
+			chckr.check_quoted(quoted) ?
+		}
+		if p.config.decode_values {
+			mut quoted := key as ast.Quoted
+			decoder.decode_quoted_escapes(mut quoted) ?
+			key = ast.Key(quoted)
 		}
 	}
 
