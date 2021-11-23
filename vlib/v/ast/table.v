@@ -812,7 +812,12 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	if elem_type.is_ptr() {
 		res = '_ptr'.repeat(elem_type.nr_muls())
 	}
-	return 'Array_$elem_type_sym.cname' + res
+	if elem_type_sym.cname.contains('<') {
+		type_name := elem_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+		return 'Array_$type_name' + res
+	} else {
+		return 'Array_$elem_type_sym.cname' + res
+	}
 }
 
 // array_fixed_source_name generates the original name for the v source.
