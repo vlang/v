@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 10
     env:
       TOML_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
-      TOML_TESTS_PINNED_COMMIT: 576db85
+      TOML_TESTS_PINNED_COMMIT: 8baf830
     steps:
 
       - uses: actions/checkout@v2
@@ -25,11 +25,14 @@ jobs:
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
 
+      - name: Run local TOML tests
+        run: ./v test vlib/toml
+
       - name: Clone BurntSushi/toml-test
         run: |
           git clone https://github.com/BurntSushi/toml-test.git $TOML_TESTS_PATH
           ## TODO: update/remove this pinning once all our skip lists are empty:
           git -C $TOML_TESTS_PATH checkout $TOML_TESTS_PINNED_COMMIT
 
-      - name: Run tests
-        run: ./v -stats test vlib/toml
+      - name: Run BurntSushi TOML tests
+        run: ./v vlib/toml/tests/burntsushi.toml-test_test.v
