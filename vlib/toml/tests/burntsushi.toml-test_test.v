@@ -23,8 +23,6 @@ const (
 		'table/array-implicit.toml',
 		// Date-time
 		'datetime/milliseconds.toml',
-		// Key
-		'key/escapes.toml',
 	]
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
