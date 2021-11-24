@@ -406,6 +406,16 @@ pub fn (a array) to_js_array() JS.Array {
 	return tmp
 }
 
+pub fn (a array) to_number_array() JS.Array {
+	tmp := JS.Array.prototype.constructor()
+	for i in 0 .. a.len {
+		elem := a.arr.get(i)
+		_ := elem
+		#tmp.push(Number(elem.valueOf()));
+	}
+	return tmp
+}
+
 type EveryFn = fn (JS.Number, JS.Number) JS.Boolean
 
 type BigEveryFn = fn (JS.BigInt, JS.Number) JS.Boolean
