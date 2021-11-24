@@ -17,8 +17,6 @@ const (
 	valid_value_exceptions = [
 		// Integer
 		'integer/long.toml', // TODO awaits BUG fix with strconv.parse_int('-9223372036854775808')
-		// Date-time
-		'datetime/milliseconds.toml',
 	]
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
