@@ -150,6 +150,21 @@ pub fn parse_dotted_key(key string) ?[]string {
 	return out
 }
 
+// parse_array_key converts `key` string to a key and index part.
+fn parse_array_key(key string) (string, int) {
+	mut index := -1
+	mut k := key
+	if k.contains('[') {
+		index = k.all_after('[').all_before(']').int()
+		if k.starts_with('[') {
+			k = '' // k.all_after(']')
+		} else {
+			k = k.all_before('[')
+		}
+	}
+	return k, index
+}
+
 // to_any converts the `Doc` to toml.Any type.
 pub fn (d Doc) to_any() Any {
 	return d.ast_to_any(d.ast.table)
@@ -159,7 +174,7 @@ pub fn (d Doc) to_any() Any {
 // `key` supports a small query syntax scheme:
 // Maps can be queried in "dotted" form e.g. `a.b.c`.
 // quoted keys are supported as `a."b.c"` or `a.'b.c'`.
-// Arrays can be queried  with `a[0].b[1].[2]`.
+// Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (d Doc) value(key string) Any {
 	key_split := parse_dotted_key(key) or { return Any(Null{}) }
 	return d.value_(d.ast.table, key_split)
@@ -169,16 +184,8 @@ pub fn (d Doc) value(key string) Any {
 fn (d Doc) value_(value ast.Value, key []string) Any {
 	assert key.len > 0
 	mut ast_value := ast.Value(ast.Null{})
-	mut index := -1
-	mut k := key[0]
-	if k.contains('[') {
-		index = k.all_after('[').all_before(']').int()
-		if k.starts_with('[') {
-			k = '' // k.all_after(']')
-		} else {
-			k = k.all_before('[')
-		}
-	}
+	k, index := parse_array_key(key[0])
+
 	if k == '' {
 		a := value as []ast.Value
 		ast_value = a[index] or { return Any(Null{}) }
