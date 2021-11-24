@@ -34,6 +34,10 @@ fn (d Decoder) modify(mut value ast.Value) ? {
 			mut v := &(value as ast.Number)
 			d.decode_number(mut v) ?
 		}
+		ast.DateTime {
+			mut v := &(value as ast.DateTime)
+			d.decode_date_time(mut v) ?
+		}
 		else {}
 	}
 }
@@ -205,9 +209,10 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 	q.text = decoded_s
 }
 
-// decode_unicode_escape returns an error if `esc_unicode` is not
-// a valid Unicode escape sequence. `esc_unicode` is expected to be
-// prefixed with either `u` or `U`.
+// decode_unicode_escape decodes the Unicode escape sequence `esc_unicode`.
+// The sequence is expected to be prefixed with either `u` or `U`.
+// decode_unicode_escape returns the decoded rune as
+// a string, it's integer value and it's length.
 fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	is_long_esc_type := esc_unicode.starts_with('U')
 	mut sequence := esc_unicode[1..]
@@ -223,4 +228,31 @@ fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	i64_val := strconv.parse_int(unicode_point, 16, 0) ?
 	rn := rune(i64_val)
 	return '$rn', int(i64_val), sequence_len
+}
+
+// decode_date_time decodes the `dt ast.DateTime`.
+fn (d Decoder) decode_date_time(mut dt ast.DateTime) ? {
+	// Expand milliseconds that are only 1 char
+	if dt.text.contains('.') {
+		yymmddhhmmss := dt.text.all_before('.')
+		rest := dt.text.all_after('.')
+		z := if rest.contains('Z') { 'Z' } else { '' }
+		mut ms := rest
+		mut offset := ''
+		if rest.contains('+') {
+			offset = '+' + rest.all_after('+')
+			ms = rest.all_before('+')
+		} else if rest.contains('-') {
+			offset = '-' + rest.all_after('-')
+			ms = rest.all_before('-')
+		}
+		if z != '' {
+			ms = ms.replace('Z', '')
+		}
+		if ms.len > 1 {
+			return
+		}
+		ms = ms + '0'.repeat(6 - ms.len) + z
+		dt.text = yymmddhhmmss + '.' + ms + offset
+	}
 }

@@ -231,8 +231,9 @@ pub fn (t Time) str() string {
 // DateTime is the data representation of a TOML date-time type (`YYYY-MM-DDTHH:MM:SS.milli`).
 // DateTime types can appear only as values in TOML documents.
 pub struct DateTime {
-pub:
+pub mut:
 	text string
+pub:
 	pos  token.Position
 	date Date
 	time Time
