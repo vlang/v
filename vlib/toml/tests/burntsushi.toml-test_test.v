@@ -8,16 +8,14 @@ import x.json2
 // `cd vlib/toml/tests/testdata`
 // `git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test`
 // See also the CI toml tests
-// TODO Goal: make value retrieval of all of https://github.com/BurntSushi/toml-test/test/ pass
 const (
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions       = []string{}
 	invalid_exceptions     = []string{}
 
-	valid_value_exceptions = [
-		// Integer
-		'integer/long.toml', // TODO awaits BUG fix with strconv.parse_int('-9223372036854775808')
-	]
+	valid_value_exceptions = []string{}
+	// BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
+	//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
 	compare_work_dir_root  = os.join_path(os.temp_dir(), 'v', 'toml', 'burntsushi')
@@ -222,7 +220,12 @@ fn to_burntsushi(value ast.Value) string {
 				}
 				return '{ "type": "float", "value": "$val" }'
 			}
-			return '{ "type": "integer", "value": "$value.i64()" }'
+			v := value.i64()
+			// TODO workaround https://github.com/vlang/v/issues/9507
+			if v == i64(-9223372036854775807 - 1) {
+				return '{ "type": "integer", "value": "-9223372036854775808" }'
+			}
+			return '{ "type": "integer", "value": "$v" }'
 		}
 		map[string]ast.Value {
 			mut str := '{ '
