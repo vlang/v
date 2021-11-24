@@ -1486,7 +1486,7 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 			g.expr(field.expr)
 		} else if field.expr is ast.StringLiteral {
 			g.write('const ${g.js_name(field.name)} = ')
-			g.write('new string("')
+			g.write("new string('")
 			for char in field.expr.val {
 				if char == `\n` {
 					g.write(' \\\n')
@@ -1494,7 +1494,7 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 					g.write('$char.ascii_str()')
 				}
 			}
-			g.write('")')
+			g.write("')")
 		} else {
 			g.write('let ${g.js_name(field.name)} = ')
 			g.write('undefined')
