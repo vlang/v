@@ -16,8 +16,21 @@ colors = [
 	[ "transparent" ]
 ]
 
+[[tests]]
+id = 1
+
+[[tests]]
+id = 2
+
 [values]
 test = 2
+
+[[themes]]
+name = "Ice"
+colors = [
+	"blue",
+	"white"
+]
 '
 
 fn test_value_query_in_array() {
@@ -32,6 +45,8 @@ fn test_value_query_in_array() {
 	assert value == 'toml'
 	value = toml_doc.value('errors[11]').default_to('<none>').string()
 	assert value == '<none>'
+	value = toml_doc.value('themes[2].colors[0]').string()
+	assert value == 'blue'
 }
 
 fn test_any_value_query() {
