@@ -576,6 +576,8 @@ pub fn on_device_orientation(cb fn (win JS.Window, ev JS.DeviceOrientationEvent)
 	return clos
 }
 
+pub type AnimationFrameCallback = fn (JS.Number)
+
 pub interface JS.Window {
 	JS.EventTarget
 	closed JS.Boolean
@@ -610,6 +612,7 @@ pub interface JS.Window {
 	scroll(x JS.Number, y JS.Number)
 	scrollBy(x JS.Number, y JS.Number)
 	scrollTo(x JS.Number, y JS.Number)
+	requestAnimationFrame(callback AnimationFrameCallback)
 mut:
 	name string
 	opener JS.Any
@@ -735,8 +738,109 @@ pub interface JS.WebGLRenderingContext {
 	bufferData(target JS.Number, data JS.TypedArray, usage JS.Number)
 	shaderSource(shader JS.WebGLShader, source JS.String)
 	getShaderParameter(shader JS.WebGLShader, pname JS.Number) JS.Any
+	vertexAttribPointer(index JS.Number, size JS.Number, typ JS.Number, normalized JS.Boolean, stride JS.Number, offset JS.Number)
+	getAttribLocation(program JS.WebGLProgram, name JS.String) JS.Number
+	useProgram(program JS.WebGLProgram)
+	getUniformLocation(program JS.WebGLProgram, name JS.String) ?JS.WebGLUniformLocation
+	uniformMatrix2fv(location JS.WebGLUniformLocation, transpose JS.Boolean, value JS.Array)
+	uniformMatrix3fv(location JS.WebGLUniformLocation, transpose JS.Boolean, value JS.Array)
+	uniformMatrix4fv(location JS.WebGLUniformLocation, transpose JS.Boolean, value JS.Array)
+	getProgramInfoLog(program JS.WebGLProgram) JS.String
+	getShaderInfoLog(shader JS.WebGLShader) JS.String
+	viewport(x JS.Number, y JS.Number, width JS.Number, height JS.Number)
 }
 
 pub interface JS.WebGL2RenderingContext {
 	JS.WebGLRenderingContext
+}
+
+pub fn gl_vertex_shader() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.VERTEX_SHADER;
+
+	return num
+}
+
+pub fn gl_fragment_shader() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.FRAGMENT_SHADER;
+
+	return num
+}
+
+pub fn gl_element_array_buffer() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.ELEMENT_ARRAY_BUFFER;
+
+	return num
+}
+
+pub fn gl_array_buffer() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.ARRAY_BUFFER;
+
+	return num
+}
+
+pub fn gl_color_buffer_bit() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.COLOR_BUFFER_BIT;
+
+	return num
+}
+
+pub fn gl_depth_buffer_bit() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.COLOR_BUFFER_BIT;
+
+	return num
+}
+
+pub fn gl_triangles() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.TRIANGLES;
+
+	return num
+}
+
+pub fn gl_unsigned_short() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.UNSIGNED_SHORT;
+
+	return num
+}
+
+pub fn gl_static_draw() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.STATIC_DRAW;
+
+	return num
+}
+
+pub fn gl_link_status() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.LINK_STATUS;
+
+	return num
+}
+
+pub fn gl_compile_status() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.COMPILE_STATUS;
+
+	return num
+}
+
+pub fn gl_float() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.FLOAT;
+
+	return num
+}
+
+pub fn gl_depth_test() JS.Number {
+	mut num := JS.Number{}
+	#num = WebGLRenderingContext.DEPTH_TEST;
+
+	return num
 }
