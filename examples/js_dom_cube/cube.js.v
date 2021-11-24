@@ -308,7 +308,6 @@ mut:
 }
 
 fn animate(mut state State, time f64) {
-	dt := time - state.time_old
 	if !state.drag {
 		state.dx = state.dx * amortization
 		state.dy = state.dy * amortization
