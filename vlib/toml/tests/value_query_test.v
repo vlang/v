@@ -36,8 +36,11 @@ fn test_value_query_in_array() {
 
 fn test_any_value_query() {
 	toml_doc := toml.parse(toml_text) or { panic(err) }
-	mut any := toml_doc.value('themes')
-	assert any.value('[0].colors[0]').string() == 'red'
+	themes := toml_doc.value('themes')
+	assert themes.value('[0].colors[0]').string() == 'red'
+
+	mut any := themes
+	assert any.value('[1].name').string() == 'Lemon'
 	any = any.value('[1]')
 	assert any.value('name').string() == 'Lemon'
 
