@@ -202,11 +202,14 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 	if key.len <= 1 {
 		return d.ast_to_any(ast_value)
 	}
-	// `match` isn't currently very suitable for these types of sum type constructs...
-	if ast_value is map[string]ast.Value || ast_value is []ast.Value {
-		return d.value_(ast_value, key[1..])
+	match ast_value {
+		map[string]ast.Value, []ast.Value {
+			return d.value_(ast_value, key[1..])
+		}
+		else {
+			return d.ast_to_any(value)
+		}
 	}
-	return d.ast_to_any(value)
 }
 
 // ast_to_any converts `from` ast.Value to toml.Any value.

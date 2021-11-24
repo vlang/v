@@ -217,8 +217,12 @@ fn (a Any) value_(value Any, key []string) Any {
 	if key.len <= 1 {
 		return any_value
 	}
-	if any_value is map[string]Any || any_value is []Any {
-		return a.value_(any_value, key[1..])
+	match any_value {
+		map[string]Any, []Any {
+			return a.value_(any_value, key[1..])
+		}
+		else {
+			return value
+		}
 	}
-	return value
 }
