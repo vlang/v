@@ -37,6 +37,7 @@ const (
 		{{ head_assets }}
 	</head>
 	<body>
+		<div><a id="skip-to-content-link" href="#main-content">Skip to content</a></div>
 		<div id="page">
 			<header class="doc-nav hidden">
 				<div class="heading-container">
@@ -59,7 +60,7 @@ const (
 					</ul>
 				</nav>
 			</header>
-			<div class="doc-scrollview">
+			<div class="doc-scrollview" id="main-content">
 				<div class="doc-container">
 					<div class="doc-content">
 {{ contents }}
