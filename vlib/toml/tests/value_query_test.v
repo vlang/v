@@ -54,6 +54,9 @@ fn test_any_value_query() {
 	themes := toml_doc.value('themes')
 	assert themes.value('[0].colors[0]').string() == 'red'
 
+	themes_arr := toml_doc.value('themes') as []toml.Any
+	assert themes_arr[0].value('colors[0]').string() == 'red'
+
 	mut any := themes
 	assert any.value('[1].name').string() == 'Lemon'
 	any = any.value('[1]')
