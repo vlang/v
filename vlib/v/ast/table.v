@@ -92,12 +92,11 @@ pub:
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
-	return_type Type
-	name        string
-	params      []Param
-	source_fn   voidptr // set in the checker, while processing fn declarations
-	usages      int
-	//
+	return_type    Type
+	name           string
+	params         []Param
+	source_fn      voidptr // set in the checker, while processing fn declarations
+	usages         int
 	generic_names  []string
 	attrs          []Attr // all fn attributes
 	is_conditional bool   // true for `[if abc]fn(){}`
@@ -167,16 +166,6 @@ fn (p []Param) equals(o []Param) bool {
 	}
 	return true
 }
-
-/*
-pub struct Var {
-pub:
-	name   string
-	is_mut bool
-mut:
-	typ Type
-}
-*/
 
 pub fn new_table() &Table {
 	mut t := &Table{
@@ -301,7 +290,6 @@ pub fn (t &Table) known_fn(name string) bool {
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
-	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
 }
 
@@ -312,7 +300,6 @@ pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// returns a method index, stored in the ast.FnDecl
 	// for faster lookup in the checker's fn_decl method
-	// println('reg me $new_fn.name nr_args=$new_fn.args.len')
 	t.methods << new_fn
 	return t.methods.len - 1
 }
@@ -344,16 +331,12 @@ pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn
 }
 
 pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
-	// println('type_has_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	if _ := t.type_find_method(s, name) {
-		return true
-	}
-	return false
+	t.type_find_method(s, name) or { return false }
+	return true
 }
 
 // type_find_method searches from current type up through each parent looking for method
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
-	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := unsafe { s }
 	for {
 		if method := ts.find_method(name) {
@@ -454,11 +437,8 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructF
 }
 
 pub fn (t &Table) struct_has_field(struct_ &TypeSymbol, name string) bool {
-	// println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	if _ := t.find_field(struct_, name) {
-		return true
-	}
-	return false
+	t.find_field(struct_, name) or { return false }
+	return true
 }
 
 // struct_fields returns all fields including fields from embeds
@@ -477,7 +457,6 @@ pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
 
 // search from current type up through each parent looking for field
 pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
-	// println('find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := unsafe { s }
 	for {
 		match mut ts.info {
@@ -707,7 +686,6 @@ fn (mut t Table) check_for_already_registered_symbol(typ TypeSymbol, existing_id
 	match ex_type.kind {
 		.placeholder {
 			// override placeholder
-			// println('overriding type placeholder `$typ.name`')
 			t.type_symbols[existing_idx] = TypeSymbol{
 				...typ
 				methods: ex_type.methods
@@ -914,7 +892,6 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	value_type_sym := t.get_type_symbol(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
 	return 'Map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
-	// return 'map_${value_type_sym.name}' + suffix
 }
 
 pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
@@ -1099,7 +1076,6 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		language: language
 		mod: modname
 	}
-	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)
 }
 
