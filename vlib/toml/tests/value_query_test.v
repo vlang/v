@@ -15,6 +15,22 @@ colors = [
 	"yellow",
 	[ "transparent" ]
 ]
+
+[[tests]]
+id = 1
+
+[[tests]]
+id = 2
+
+[values]
+test = 2
+
+[[themes]]
+name = "Ice"
+colors = [
+	"blue",
+	"white"
+]
 '
 
 fn test_value_query_in_array() {
@@ -29,4 +45,33 @@ fn test_value_query_in_array() {
 	assert value == 'toml'
 	value = toml_doc.value('errors[11]').default_to('<none>').string()
 	assert value == '<none>'
+	value = toml_doc.value('themes[2].colors[0]').string()
+	assert value == 'blue'
+}
+
+fn test_any_value_query() {
+	toml_doc := toml.parse(toml_text) or { panic(err) }
+	themes := toml_doc.value('themes')
+	assert themes.value('[0].colors[0]').string() == 'red'
+
+	themes_arr := toml_doc.value('themes') as []toml.Any
+	assert themes_arr[0].value('colors[0]').string() == 'red'
+
+	mut any := themes
+	assert any.value('[1].name').string() == 'Lemon'
+	any = any.value('[1]')
+	assert any.value('name').string() == 'Lemon'
+
+	any = toml_doc.value('themes').value('[1].colors').value('[1]')
+	assert any.string() == 'yellow'
+
+	any = toml_doc.value('themes[1]').value('colors[1]')
+	assert any.string() == 'yellow'
+
+	any = toml_doc.value('themes[1].colors[0]')
+	assert any.string() == 'green'
+
+	any = toml_doc.value('values')
+	any = any.value('test')
+	assert any.int() == 2
 }

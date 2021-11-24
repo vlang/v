@@ -163,24 +163,21 @@ pub fn (a Any) default_to(value Any) Any {
 }
 
 // value queries a value from the map.
-// `key` should be in "dotted" form (`a.b.c`).
-// `key` supports quoted keys like `a."b.c"`.
+// `key` supports a small query syntax scheme:
+// Maps can be queried in "dotted" form e.g. `a.b.c`.
+// quoted keys are supported as `a."b.c"` or `a.'b.c'`.
+// Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (m map[string]Any) value(key string) Any {
-	key_split := parse_dotted_key(key) or { return Any(Null{}) }
-	return m.value_(key_split)
+	return Any(m).value(key)
 }
 
-fn (m map[string]Any) value_(key []string) Any {
-	value := m[key[0]] or { return Any(Null{}) }
-	// `match` isn't currently very suitable for these types of sum type constructs...
-	if value is map[string]Any {
-		if key.len <= 1 {
-			return value
-		}
-		nm := (value as map[string]Any)
-		return nm.value_(key[1..])
-	}
-	return value
+// value queries a value from the array.
+// `key` supports a small query syntax scheme:
+// The array can be queried with `[0].b[1].[2]`.
+// Maps can be queried in "dotted" form e.g. `a.b.c`.
+// quoted keys are supported as `a."b.c"` or `a.'b.c'`.
+pub fn (a []Any) value(key string) Any {
+	return Any(a).value(key)
 }
 
 pub fn (a []Any) as_strings() []string {
@@ -189,4 +186,43 @@ pub fn (a []Any) as_strings() []string {
 		sa << any.string()
 	}
 	return sa
+}
+
+// value queries a value from the `Any` type.
+// `key` supports a small query syntax scheme:
+// Maps can be queried in "dotted" form e.g. `a.b.c`.
+// quoted keys are supported as `a."b.c"` or `a.'b.c'`.
+// Arrays can be queried with `a[0].b[1].[2]`.
+pub fn (a Any) value(key string) Any {
+	key_split := parse_dotted_key(key) or { return Any(Null{}) }
+	return a.value_(a, key_split)
+}
+
+// value_ returns the `Any` value found at `key`.
+fn (a Any) value_(value Any, key []string) Any {
+	assert key.len > 0
+	mut any_value := Any(Null{})
+	k, index := parse_array_key(key[0])
+	if k == '' {
+		arr := value as []Any
+		any_value = arr[index] or { return Any(Null{}) }
+	}
+	if value is map[string]Any {
+		any_value = value[k] or { return Any(Null{}) }
+		if index > -1 {
+			arr := any_value as []Any
+			any_value = arr[index] or { return Any(Null{}) }
+		}
+	}
+	if key.len <= 1 {
+		return any_value
+	}
+	match any_value {
+		map[string]Any, []Any {
+			return a.value_(any_value, key[1..])
+		}
+		else {
+			return value
+		}
+	}
 }
