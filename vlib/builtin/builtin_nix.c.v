@@ -44,7 +44,7 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 	$if no_backtrace ? {
 		return false
 	} $else {
-		$if macos || freebsd || openbsd || netbsd {
+		$if macos || freebsd || netbsd {
 			buffer := [100]voidptr{}
 			nr_ptrs := C.backtrace(&buffer[0], 100)
 			if nr_ptrs < 2 {
