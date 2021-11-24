@@ -2,22 +2,10 @@ import jsdom
 import math
 
 const (
-	vert_code = 'attribute vec3 position;
-	uniform mat4 Pmatrix;
-	uniform mat4 Vmatrix;
-	uniform mat4 Mmatrix;
-	attribute vec3 color;
-	varying vec3 vColor;
-	void main(void) { 
-		gl_Position = Pmatrix * Vmatrix * Mmatrix * vec4(position,1.);
-		vColor = color;
-	}
+	vert_code = 'attribute vec3 position;uniform mat4 Pmatrix;uniform mat4 Vmatrix;uniform mat4 Mmatrix;attribute vec3 color;varying vec3 vColor;void main(void) {gl_Position = Pmatrix * Vmatrix * Mmatrix * vec4(position,1.);vColor = color;}
 	'
-	frag_code = 'precision mediump float;
-	varying vec3 vColor;
-	void main(void) {
-		gl_FragColor = vec4(vColor, 1.);
-	}
+
+	frag_code = 'precision mediump float;varying vec3 vColor;void main(void) {gl_FragColor = vec4(vColor, 1.);}
 	'
 
 	vertices     = [

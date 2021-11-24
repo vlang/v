@@ -1480,21 +1480,11 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 			g.push_pub_var(field.name)
 		}
 
-		if field.expr is ast.StringInterLiteral || field.expr is ast.IntegerLiteral
-			|| field.expr is ast.FloatLiteral || field.expr is ast.BoolLiteral {
+		if field.expr is ast.StringInterLiteral || field.expr is ast.StringLiteral
+			|| field.expr is ast.IntegerLiteral || field.expr is ast.FloatLiteral
+			|| field.expr is ast.BoolLiteral {
 			g.write('const ${g.js_name(field.name)} = ')
 			g.expr(field.expr)
-		} else if field.expr is ast.StringLiteral {
-			g.write('const ${g.js_name(field.name)} = ')
-			g.write("new string('")
-			for char in field.expr.val {
-				if char == `\n` {
-					g.write(' \\\n')
-				} else {
-					g.write('$char.ascii_str()')
-				}
-			}
-			g.write("')")
 		} else {
 			g.write('let ${g.js_name(field.name)} = ')
 			g.write('undefined')
@@ -3194,7 +3184,15 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.writeln('return s; })()')
 	} else {
-		g.write("\"$text\"")
+		g.write('"')
+		for char in text {
+			if char == `\n` {
+				g.write('\\n')
+			} else {
+				g.write('$char.ascii_str()')
+			}
+		}
+		g.write('"')
 	}
 	if true || should_cast {
 		g.write(')')
