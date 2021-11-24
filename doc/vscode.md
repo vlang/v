@@ -88,7 +88,7 @@ or create the file `.vscode/launch.json`:
 **Optional:** use `"program": "${fileDirname}/${fileBasenameNoExtension}"` to debug 
 any current open source file with an existing binary with the same name but without any extension.
 
-#### Step2: Configure the task.json file
+#### Step2: Configure the tasks.json file
 Generally, you can manually compile the application with: `v -b c -g hello.v -o hello`,
 or for short: `v -g hello.v`, and then call the debugger.
 
@@ -102,7 +102,7 @@ a task before the start of a debug session, set this attribute to the label of a
 in [task.json](https://code.visualstudio.com/docs/editor/tasks) (in the workspace's .vscode folder).
 Or, this can be set to `${defaultBuildTask}`, to use your default build task.
 
-As explained, the `"preLaunchTask": "build"` needs to work with a `.vscode/task.json`
+As explained, the `"preLaunchTask": "build"` needs to work with a `.vscode/tasks.json`
 with a label named `build`. 
 ```json
 {
