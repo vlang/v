@@ -730,3 +730,19 @@ pre {
     top: 0;
   }
 }
+
+#skip-to-content-link {
+  height: 30px;
+  left: 50%;
+  padding: 8px;
+  position: absolute;
+  transform: translateY(-100%);
+  transition: transform 0.3s;
+  background: var(--links);
+  color: var(--warn-text);
+  border-radius: 1px;
+}
+#skip-to-content-link:focus {
+  transform: translateY(0%);
+  z-index: 1000;
+}

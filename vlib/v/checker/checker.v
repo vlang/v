@@ -3395,7 +3395,14 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
-	typ := c.expr(node.expr)
+	mut typ := c.expr(node.expr)
+	if node.expr.is_auto_deref_var() {
+		if mut node.expr is ast.Ident {
+			if mut node.expr.obj is ast.Var {
+				typ = node.expr.obj.typ
+			}
+		}
+	}
 	c.inside_selector_expr = old_selector_expr
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
@@ -4857,7 +4864,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.position())
 			}
-			val_type := next_fn.return_type.clear_flag(.optional)
+			mut val_type := next_fn.return_type.clear_flag(.optional)
+			if node.val_is_mut {
+				val_type = val_type.ref()
+			}
 			node.cond_type = typ
 			node.kind = sym.kind
 			node.val_type = val_type

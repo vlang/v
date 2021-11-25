@@ -173,14 +173,11 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 		// ai_socktype: int(typ)
 		// ai_flags: C.AI_PASSIVE
 	}
+	unsafe { vmemset(&hints, 0, int(sizeof(hints))) }
 	hints.ai_family = int(family)
 	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
-	hints.ai_protocol = 0
-	hints.ai_addrlen = 0
-	hints.ai_addr = voidptr(0)
-	hints.ai_canonname = voidptr(0)
-	hints.ai_next = voidptr(0)
+
 	results := &C.addrinfo(0)
 
 	sport := '$port'
