@@ -85,6 +85,7 @@ mut:
 	sourcemap              &sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
 	comptime_var_type_map  map[string]ast.Type
 	defer_ifdef            string
+	cur_concrete_types     []ast.Type
 	out                    strings.Builder = strings.new_builder(128)
 	array_sort_fn          map[string]bool
 	wasm_export            map[string][]string
@@ -1012,15 +1013,12 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_literal(node)
 		}
 		ast.StructInit {
-			// TODO: once generic fns/unwrap_generic is implemented
-			// if node.unresolved {
-			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
-			// } else {
-			// 	// `user := User{name: 'Bob'}`
-			// 	g.gen_struct_init(node)
-			// }
-			// `user := User{name: 'Bob'}`
-			g.gen_struct_init(node)
+			if node.unresolved {
+				resolved := ast.resolve_init(node, g.unwrap_generic(node.typ), g.table)
+				g.expr(resolved)
+			} else {
+				g.gen_struct_init(node)
+			}
 		}
 		ast.TypeNode {
 			typ := g.unwrap_generic(node.typ)
@@ -1262,8 +1260,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					continue
 				}
 			}
-			mut styp := g.typ(stmt.left_types[i])
-			l_sym := g.table.get_type_symbol(stmt.left_types[i])
+
+			mut styp := if stmt.left_types.len > i { g.typ(stmt.left_types[i]) } else { '' }
+			// l_sym := g.table.get_type_symbol(stmt.left_types[i])
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
@@ -1324,6 +1323,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				if is_assign && array_set {
 					g.write('new ${styp}(')
 					g.expr(left)
+					l_sym := g.table.get_type_symbol(stmt.left_types[i])
 					if l_sym.kind == .string {
 						g.write('.str')
 					} else {
@@ -1366,11 +1366,13 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						}
 					}
 				} else if is_assign && !array_set {
+					l_sym := g.table.get_type_symbol(stmt.left_types[i])
 					if l_sym.kind == .string {
 						g.write('.str')
 					} else {
 						g.write('.val')
 					}
+
 					if !array_set {
 						g.write(' = ')
 					}
@@ -1418,9 +1420,13 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					}
 				}
 				// TODO: Multiple types??
-				should_cast :=
+
+				should_cast := if stmt.left_types.len == 0 {
+					false
+				} else {
 					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
-					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				}
 
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
@@ -1538,7 +1544,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
-	mut styp := sym.cname
+	mut styp := sym.cname.replace('>', '').replace('<', '')
 	match mut sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if sym.info.is_generic {
@@ -3231,7 +3237,9 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		}
 		g.inc_indent()
 		for i, field in it.fields {
-			g.write('$field.name: ')
+			if field.name.len != 0 {
+				g.write('$field.name: ')
+			}
 			g.expr(field.expr)
 			if i < it.fields.len - 1 {
 				g.write(',')
@@ -3461,8 +3469,20 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 
 fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.table.cur_concrete_types)
+		/*
+		resolve_generic_to_concrete should not mutate the table.
+		It mutates if the generic type is for example []T and the
+		concrete type is an array type that has not been registered
+		yet. This should have already happened in the checker, since
+		it also calls resolve_generic_to_concrete. g.table is made
+		non-mut to make sure no one else can accidentally mutates the table.
+		*/
+		mut muttable := unsafe { &ast.Table(g.table) }
+		if t_typ := muttable.resolve_generic_to_concrete(typ, if g.fn_decl != 0 {
+			g.fn_decl.generic_names
+		} else {
+			[]string{}
+		}, g.cur_concrete_types)
 		{
 			return t_typ
 		}
