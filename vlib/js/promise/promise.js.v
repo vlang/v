@@ -67,6 +67,7 @@ pub fn race<T, E>(promises []Promise<T, E>) Promise<T, E> {
 pub fn JS.Promise.all(JS.Array) JS.Promise
 pub fn JS.Promise.allSettled(JS.Array) JS.Promise
 
+/*
 // all takes an iterable of promises as an input, and returns a single Promise that resolves to an array of
 // the results of the input promises
 pub fn all(array []JS.Promise) Promise<JS.Array, JS.Any> {
@@ -75,3 +76,4 @@ pub fn all(array []JS.Promise) Promise<JS.Array, JS.Any> {
 
 	return Promise<Array,Any>{promise}
 }
+*/

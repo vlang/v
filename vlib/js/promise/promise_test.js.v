@@ -1,5 +1,3 @@
-import js.promise
-
 fn test_promise() {
 	// TODO: For some reason compiler errors: "error: unknown function: js.promise.new", fix this
 	/*
