@@ -134,7 +134,10 @@ pub fn parse_dotted_key(key string) ?[]string {
 		buf += ch.ascii_str()
 		if !in_string && ch == `.` {
 			if buf != '' && buf != ' ' {
-				out << buf[..buf.len - 1]
+				buf = buf[..buf.len - 1]
+				if buf != '' && buf != ' ' {
+					out << buf
+				}
 			}
 			buf = ''
 			continue

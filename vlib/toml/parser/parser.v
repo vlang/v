@@ -425,12 +425,7 @@ pub fn (mut p Parser) root_table() ? {
 				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
 
 				if peek_tok.kind == .period {
-					p.ignore_while(parser.space_formatting)
-					dotted_key := p.dotted_key() ?
-					p.ignore_while(parser.space_formatting)
-					p.check(.assign) ?
-					p.ignore_while(parser.space_formatting)
-					val := p.value() ?
+					dotted_key, val := p.dotted_key_value() ?
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
@@ -605,17 +600,11 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 				return
 			}
 			.bare, .quoted, .boolean, .number, .underscore {
-				mut peek_tok := p.peek_tok
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+				peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
 
 				if peek_tok.kind == .period {
-					p.ignore_while(parser.space_formatting)
-					dotted_key := p.dotted_key() ?
-					p.ignore_while(parser.space_formatting)
-					p.check(.assign) ?
-					p.ignore_while(parser.space_formatting)
-					val := p.value() ?
+					dotted_key, val := p.dotted_key_value() ?
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
@@ -654,8 +643,12 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
 	p.check(.lsbr) ? // '[' bracket
 
+	p.ignore_while(parser.space_formatting)
+	peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
+	p.ignore_while(parser.space_formatting)
+
 	// [[key.key]] horror
-	if p.peek_tok.kind == .period {
+	if peek_tok.kind == .period {
 		p.double_array_of_tables(mut table) ?
 		return
 	}
@@ -703,16 +696,16 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 
 	for p.tok.kind != .eof {
 		p.next() ?
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 		p.ignore_while(parser.all_formatting)
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 
 		match p.tok.kind {
 			.bare, .quoted, .boolean, .number, .underscore {
-				if p.peek_tok.kind == .period {
-					dotted_key := p.dotted_key() ?
-					p.ignore_while(parser.space_formatting)
-					p.check(.assign) ?
-					val := p.value() ?
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
+
+				if peek_tok.kind == .period {
+					dotted_key, val := p.dotted_key_value() ?
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
@@ -741,19 +734,9 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables of arrays "$p.tok.kind" "$p.tok.lit"')
 
-	mut dotted_key := DottedKey([]string{})
+	dotted_key := p.dotted_key() ?
+	p.ignore_while(parser.space_formatting)
 
-	key := p.key() ?
-	dotted_key << key.str()
-	for p.peek_tok.kind == .period {
-		p.next() ? // .
-		p.check(.period) ?
-		next_key := p.key() ?
-		dotted_key << next_key.text
-	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `$dotted_key` now at "$p.tok.kind" "$p.tok.lit"')
-
-	p.next() ?
 	p.check(.rsbr) ?
 	p.expect(.rsbr) ?
 
@@ -850,11 +833,11 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 
 		match p.tok.kind {
 			.bare, .quoted, .boolean, .number, .underscore {
-				if p.peek_tok.kind == .period {
-					mut dotted_key := p.dotted_key() ?
-					p.ignore_while(parser.space_formatting)
-					p.check(.assign) ?
-					val := p.value() ?
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
+
+				if peek_tok.kind == .period {
+					mut dotted_key, val := p.dotted_key_value() ?
 
 					if implicit_allocation_key.len > 0 {
 						dotted_key.insert(0, implicit_allocation_key)
@@ -1096,8 +1079,22 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	p.check(.assign) ? // Assignment operator
 	p.ignore_while(parser.space_formatting)
 	value := p.value() ?
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. "$key" = $value')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `$key = $value`')
 	return key, value
+}
+
+// dotted_key_value parse and returns a pair `DottedKey` and `ast.Value` type.
+// see also `key()` and `value()`
+pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key value pair...')
+	p.ignore_while(parser.space_formatting)
+	dotted_key := p.dotted_key() ?
+	p.ignore_while(parser.space_formatting)
+	p.check(.assign) ?
+	p.ignore_while(parser.space_formatting)
+	value := p.value() ?
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `$dotted_key = $value`...')
+	return dotted_key, value
 }
 
 // value parse and returns an `ast.Value` type.
