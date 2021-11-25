@@ -180,7 +180,6 @@ pub fn (d Doc) to_any() Any {
 // Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (d Doc) value(key string) Any {
 	key_split := parse_dotted_key(key) or { return Any(Null{}) }
-	println('XXX -> $key_split')
 	return d.value_(d.ast.table, key_split)
 }
 
@@ -191,7 +190,6 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 	k, index := parse_array_key(key[0])
 
 	if k == '' {
-		println('YYY ${key[0]} / $key')
 		a := value as []ast.Value
 		ast_value = a[index] or { return Any(Null{}) }
 	}
