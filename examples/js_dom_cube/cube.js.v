@@ -1,4 +1,4 @@
-import jsdom
+import js.dom
 import math
 
 const (
@@ -198,7 +198,8 @@ const (
 )
 
 fn get_webgl() (&JS.HTMLCanvasElement, JS.WebGLRenderingContext) {
-	elem := jsdom.document.getElementById('myCanvas'.str) or { panic('cannot get canvas') }
+	JS.console.log(dom.document)
+	elem := dom.document.getElementById('myCanvas'.str) or { panic('cannot get canvas') }
 	match elem {
 		JS.HTMLCanvasElement {
 			webgl := elem.getContext('experimental-webgl'.str, js_undefined()) or {
@@ -326,21 +327,20 @@ fn animate(mut state State, time f64) {
 	rotate_x(mut state.mo_matrix, state.phi)
 	rotate_y(mut state.mo_matrix, state.theta)
 	state.time_old = time
-	state.gl.enable(jsdom.gl_depth_test())
+	state.gl.enable(dom.gl_depth_test())
 	state.gl.clearColor(0.5, 0.5, 0.5, 0.9)
 	state.gl.clearDepth(1.0)
 	state.gl.viewport(0.0, 0.0, state.canvas.width, state.canvas.height)
-	state.gl.clear(JS.Number(int(jsdom.gl_color_buffer_bit()) | int(jsdom.gl_depth_buffer_bit())))
+	state.gl.clear(JS.Number(int(dom.gl_color_buffer_bit()) | int(dom.gl_depth_buffer_bit())))
 
 	state.gl.uniformMatrix4fv(state.pmatrix, JS.Boolean(false), state.proj_matrix.to_number_array())
 	state.gl.uniformMatrix4fv(state.vmatrix, JS.Boolean(false), state.view_matrix.to_number_array())
 	state.gl.uniformMatrix4fv(state.mmatrix, JS.Boolean(false), state.mo_matrix.to_number_array())
 
-	state.gl.bindBuffer(jsdom.gl_element_array_buffer(), state.index_buffer)
-	state.gl.drawElements(jsdom.gl_triangles(), indices.len, jsdom.gl_unsigned_short(),
-		0)
+	state.gl.bindBuffer(dom.gl_element_array_buffer(), state.index_buffer)
+	state.gl.drawElements(dom.gl_triangles(), indices.len, dom.gl_unsigned_short(), 0)
 
-	jsdom.window().requestAnimationFrame(fn [mut state] (time JS.Number) {
+	dom.window().requestAnimationFrame(fn [mut state] (time JS.Number) {
 		animate(mut state, f64(time))
 	})
 }
@@ -349,29 +349,29 @@ fn main() {
 	canvas, gl := get_webgl()
 
 	vertex_buffer := gl.createBuffer() ?
-	gl.bindBuffer(jsdom.gl_array_buffer(), vertex_buffer)
-	gl.bufferData(jsdom.gl_array_buffer(), float32_array(vertices), jsdom.gl_static_draw())
+	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
+	gl.bufferData(dom.gl_array_buffer(), float32_array(vertices), dom.gl_static_draw())
 
 	color_buffer := gl.createBuffer() ?
-	gl.bindBuffer(jsdom.gl_array_buffer(), color_buffer)
-	gl.bufferData(jsdom.gl_array_buffer(), float32_array(colors), jsdom.gl_static_draw())
+	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
+	gl.bufferData(dom.gl_array_buffer(), float32_array(colors), dom.gl_static_draw())
 
 	index_buffer := gl.createBuffer() ?
-	gl.bindBuffer(jsdom.gl_element_array_buffer(), index_buffer)
-	gl.bufferData(jsdom.gl_element_array_buffer(), uint16_array(indices), jsdom.gl_static_draw())
+	gl.bindBuffer(dom.gl_element_array_buffer(), index_buffer)
+	gl.bufferData(dom.gl_element_array_buffer(), uint16_array(indices), dom.gl_static_draw())
 
-	vert_shader := gl.createShader(jsdom.gl_vertex_shader()) ?
+	vert_shader := gl.createShader(dom.gl_vertex_shader()) ?
 	gl.shaderSource(vert_shader, vert_code.str)
 	gl.compileShader(vert_shader)
 
-	if !bool(JS.Boolean(gl.getShaderParameter(vert_shader, jsdom.gl_compile_status()))) {
+	if !bool(JS.Boolean(gl.getShaderParameter(vert_shader, dom.gl_compile_status()))) {
 		panic('An error occurred when compiling vertex shader: ${string(gl.getShaderInfoLog(vert_shader))}')
 	}
 
-	frag_shader := gl.createShader(jsdom.gl_fragment_shader()) ?
+	frag_shader := gl.createShader(dom.gl_fragment_shader()) ?
 	gl.shaderSource(frag_shader, frag_code.str)
 	gl.compileShader(frag_shader)
-	if !bool(JS.Boolean(gl.getShaderParameter(frag_shader, jsdom.gl_compile_status()))) {
+	if !bool(JS.Boolean(gl.getShaderParameter(frag_shader, dom.gl_compile_status()))) {
 		panic('An error occurred when compiling fragment shader: ${string(gl.getShaderInfoLog(frag_shader))}')
 	}
 
@@ -380,7 +380,7 @@ fn main() {
 	gl.attachShader(shader_program, frag_shader)
 	gl.linkProgram(shader_program)
 
-	if !bool(JS.Boolean(gl.getProgramParameter(shader_program, jsdom.gl_link_status()))) {
+	if !bool(JS.Boolean(gl.getProgramParameter(shader_program, dom.gl_link_status()))) {
 		panic('unable to initialize the shader program: ${string(gl.getProgramInfoLog(shader_program))}')
 	}
 
@@ -388,15 +388,15 @@ fn main() {
 	vmatrix := gl.getUniformLocation(shader_program, 'Vmatrix'.str) ?
 	mmatrix := gl.getUniformLocation(shader_program, 'Mmatrix'.str) ?
 
-	gl.bindBuffer(jsdom.gl_array_buffer(), vertex_buffer)
+	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
 	position := gl.getAttribLocation(shader_program, 'position'.str)
-	gl.vertexAttribPointer(position, JS.Number(3), jsdom.gl_float(), JS.Boolean(false),
+	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false),
 		JS.Number(0), JS.Number(0))
 	gl.enableVertexAttribArray(position)
 
-	gl.bindBuffer(jsdom.gl_array_buffer(), color_buffer)
+	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
 	color := gl.getAttribLocation(shader_program, 'color'.str)
-	gl.vertexAttribPointer(color, JS.Number(3), jsdom.gl_float(), JS.Boolean(false), JS.Number(0),
+	gl.vertexAttribPointer(color, JS.Number(3), dom.gl_float(), JS.Boolean(false), JS.Number(0),
 		JS.Number(0))
 	gl.enableVertexAttribArray(color)
 	gl.useProgram(shader_program)

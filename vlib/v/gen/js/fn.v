@@ -194,14 +194,16 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.get_str_fn(rec_type)
 	}
 	mut unwrapped_rec_type := node.receiver_type
-	if g.table.cur_fn.generic_names.len > 0 {
+	if g.fn_decl != 0 && g.fn_decl.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
-	} else {
+	} else { // in non-generic fn
 		sym := g.table.get_type_symbol(node.receiver_type)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
 				generic_names := sym.info.generic_types.map(g.table.get_type_symbol(it).name)
-				if utyp := g.table.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				// see comment at top of vlib/v/gen/c/utils.v
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp
@@ -296,7 +298,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
 
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	// name = g.generic_fn_name(node.concrete_types, name, false)
 	g.write('${name}(')
 	g.expr(it.left)
 	g.gen_deref_ptr(it.left_type)
@@ -539,6 +541,21 @@ fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) 
 }
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
+	node := it
+	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
+		// loop thru each generic type and generate a function
+		for concrete_types in g.table.fn_generic_types[node.name] {
+			if g.pref.is_verbose {
+				syms := concrete_types.map(g.table.get_type_symbol(it))
+				the_type := syms.map(it.name).join(', ')
+				println('gen fn `$node.name` for type `$the_type`')
+			}
+			g.cur_concrete_types = concrete_types
+			g.gen_method_decl(node, typ)
+		}
+		g.cur_concrete_types = []
+		return
+	}
 	cur_fn_decl := g.fn_decl
 	unsafe {
 		g.fn_decl = &it
@@ -550,22 +567,17 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	unsafe {
 		g.table.cur_fn = &it
 	}
-	node := it
 	mut name := it.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
 	}
 
 	if node.is_method {
-		unwrapped_rec_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver.typ))
-		if unwrapped_rec_sym.kind == .placeholder {
-			return
-		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 	}
 	name = g.js_name(name)
 
-	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	// name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
 	if name in parser.builtin_functions {
 		name = 'builtin__$name'
 	}
