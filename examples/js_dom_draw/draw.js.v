@@ -1,4 +1,4 @@
-import jsdom
+import js.dom
 
 fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
 	match elem {
@@ -30,8 +30,8 @@ mut:
 }
 
 fn main() {
-	window := jsdom.window()
-	document := jsdom.document
+	window := dom.window()
+	document := dom.document
 	clear_btn := document.getElementById('clearButton'.str) ?
 	canvas_elem := document.getElementById('canvas'.str) ?
 	canvas := get_canvas(canvas_elem)
