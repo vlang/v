@@ -58,9 +58,10 @@ mut:
 	tokens    []token.Token // To be able to peek more than one token ahead.
 	skip_next bool
 	// The root map (map is called table in TOML world)
-	root_map          map[string]ast.Value
-	root_map_key      DottedKey
-	explicit_declared []DottedKey
+	root_map                          map[string]ast.Value
+	root_map_key                      DottedKey
+	explicit_declared                 []DottedKey
+	explicit_declared_array_of_tables []DottedKey
 	// Array of Tables state
 	last_aot       DottedKey
 	last_aot_index int
@@ -266,6 +267,15 @@ fn (p Parser) check_explicitly_declared(key DottedKey) ? {
 	}
 }
 
+// check_explicitly_declared_array_of_tables returns an error if `key` has been
+// explicitly declared as an array of tables.
+fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ? {
+	if p.explicit_declared_array_of_tables.len > 0 && p.explicit_declared_array_of_tables.has(key) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' key `$key.str()` is already an explicitly declared array of tables. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+	}
+}
+
 // find_table returns a reference to a map if found in the *root* table given a "dotted" key (`a.b.c`).
 // If some segments of the key does not exist in the root table find_table will
 // allocate a new map for each segment. This behavior is needed because you can
@@ -338,7 +348,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 					t = &(val as map[string]ast.Value)
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' "$k" in "$key" is not a map ($val.type_name())')
+						' "$k" in "$key" is not a map but `$val.type_name()`')
 				}
 			} else {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" in "$key" found, allocating new map at key "$k" in map ${ptr_str(t)}"')
@@ -350,6 +360,27 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'returning map ${ptr_str(t)}"')
 	return t
+}
+
+// find_array_in_table returns a reference to an array if found in the root table.
+// If some segments of the state key does not exist find_array_in_table will return an error.
+pub fn (mut p Parser) find_array_of_tables() ?[]ast.Value {
+	mut t := unsafe { &p.root_map }
+	mut key := p.last_aot
+	if key.len > 1 {
+		key = DottedKey([key[0]])
+	}
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(t)}')
+	unsafe {
+		if val := t[key.str()] {
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$key" in $t.keys()')
+			if val is []ast.Value {
+				arr := (val as []ast.Value)
+				return arr
+			}
+		}
+	}
+	return error(@MOD + '.' + @STRUCT + '.' + @FN + 'no key `$key` found in map ${ptr_str(t)}"')
 }
 
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
@@ -503,8 +534,38 @@ pub fn (mut p Parser) root_table() ? {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
 					// Parse `[d.e.f]`
-					p.ignore_while(parser.space_formatting)
 					dotted_key := p.dotted_key() ?
+
+					// So apparently TOML is a *very* key context sensitive language...
+					// [[table]]   <- parsed previously
+					//   ...
+					// [table.key] <- parser is here
+					//
+					// `table.key` now shape shifts into being a *double array of tables* key...
+					// ... but with a different set of rules - making it hard to reuse the code we already have for that ...
+					// See `testdata/array_of_tables_edge_case_1_test.toml` for the type of construct parsed.
+					if p.last_aot.len == 1 && dotted_key.len == 2
+						&& dotted_key[0] == p.last_aot.str() {
+						// Disallow re-declaring the key
+						p.check_explicitly_declared_array_of_tables(dotted_key) ?
+						p.check(.rsbr) ?
+						p.ignore_while(parser.space_formatting)
+						arr := p.find_array_of_tables() ?
+						if val := arr[p.last_aot_index] {
+							if val is map[string]ast.Value {
+								mut m := map[string]ast.Value{}
+								p.table_contents(mut m) ?
+								unsafe {
+									mut mut_val := &val
+									mut_val[dotted_key[1].str()] = m
+								}
+							} else {
+								return error(@MOD + '.' + @STRUCT + '.' + @FN +
+									' "$p.last_aot_index" in array is not a map but `${typeof(val).name}`')
+							}
+						}
+						continue
+					}
 
 					// Disallow re-declaring the key
 					p.check_explicitly_declared(dotted_key) ?
@@ -555,6 +616,73 @@ pub fn (mut p Parser) root_table() ? {
 // excerpt returns a string of the characters surrounding `Parser.tok.pos`
 fn (p Parser) excerpt() string {
 	return p.scanner.excerpt(p.tok.pos, 10)
+}
+
+// table_contents parses next tokens into a map of `ast.Value`s.
+// The V `map` type is corresponding to a "table" in TOML.
+pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing table contents...')
+
+	for p.tok.kind != .eof {
+		if p.peek_tok.kind == .lsbr {
+			return
+		}
+		if !p.skip_next {
+			p.next() ?
+		} else {
+			p.skip_next = false
+		}
+
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
+		match p.tok.kind {
+			.hash {
+				c := p.comment()
+				p.ast_root.comments << c
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+			}
+			.whitespace, .tab, .nl, .cr {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
+				continue
+			}
+			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
+				// Peek forward as far as we can skipping over space formatting tokens.
+				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
+
+				if peek_tok.kind == .period {
+					dotted_key, val := p.dotted_key_value() ?
+
+					sub_table, key := p.sub_table_key(dotted_key)
+
+					t := p.find_in_table(mut tbl, sub_table) ?
+					unsafe {
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
+						t[key.str()] = val
+					}
+				} else {
+					p.ignore_while(parser.space_formatting)
+					key, val := p.key_value() ?
+
+					unsafe {
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(tbl)}')
+						key_str := key.str()
+						if _ := tbl[key_str] {
+							return error(@MOD + '.' + @STRUCT + '.' + @FN +
+								' key "$key" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+						}
+						tbl[key_str] = val
+					}
+				}
+				p.peek_for_correct_line_ending_or_fail() ?
+			}
+			.eof {
+				break
+			}
+			else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+			}
+		}
+	}
 }
 
 // inline_table parses next tokens into a map of `ast.Value`s.
@@ -745,6 +873,10 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	if dotted_key.len != 2 {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
+	}
+
+	if !p.explicit_declared_array_of_tables.has(dotted_key) {
+		p.explicit_declared_array_of_tables << dotted_key
 	}
 
 	first := DottedKey([dotted_key[0]]) // The array that holds the entries
