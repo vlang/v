@@ -362,8 +362,9 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	return t
 }
 
-// find_array_in_table returns a reference to an array if found in the root table.
-// If some segments of the state key does not exist find_array_in_table will return an error.
+// find_array_of_tables returns an array if found in the root table based on the parser's
+// last encountered "Array Of Tables" key.
+// If the state key does not exist find_array_in_table will return an error.
 pub fn (mut p Parser) find_array_of_tables() ?[]ast.Value {
 	mut t := unsafe { &p.root_map }
 	mut key := p.last_aot
