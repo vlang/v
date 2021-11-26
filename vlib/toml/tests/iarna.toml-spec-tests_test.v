@@ -6,19 +6,42 @@ import x.json2
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `cd vlib/toml/tests/testdata`
-// `git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test`
+// `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git iarna/toml-test`
 // See also the CI toml tests
 const (
-	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = []string{}
-	invalid_exceptions     = []string{}
+	// Can be set to `true` to skip tests that stress test the parser
+	// by having large data amounts - these pass - but slow down the test run
+	skip_large_files       = false
 
-	valid_value_exceptions = []string{}
-	// BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
-	//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
+	// Kept for easier handling of future updates to the tests
+	valid_exceptions       = [
+		'values/spec-key-value-pair-8.toml',
+		'values/spec-float-3.toml',
+		'values/spec-float-10.toml',
+		'values/spec-float-11.toml',
+		'values/spec-float-12.toml',
+		'values/spec-float-13.toml',
+		'values/spec-float-14.toml',
+		'values/spec-float-15.toml',
+		'values/spec-key-value-pair-6.toml',
+	]
+	invalid_exceptions     = [
+		'errors/table-3.toml',
+		'errors/table-4.toml',
+		'errors/table-invalid-4.toml',
+		'errors/inline-table-imutable-1.toml',
+	]
+
+	valid_value_exceptions = [
+		'values/spec-date-local-1.toml',
+		'values/spec-date-time-local-1.toml',
+		'values/spec-date-time-local-2.toml',
+		'values/spec-time-1.toml',
+		'values/spec-time-2.toml',
+	]
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	compare_work_dir_root  = os.join_path(os.temp_dir(), 'v', 'toml', 'burntsushi')
+	compare_work_dir_root  = os.join_path(os.temp_dir(), 'v', 'toml', 'iarna')
 	// From: https://stackoverflow.com/a/38266731/1904615
 	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -43,22 +66,27 @@ fn run(args []string) ?string {
 	return res.output
 }
 
-// test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
-fn test_burnt_sushi_tomltest() {
+// test_iarna_toml_spec_tests run though 'testdata/iarna/toml-test/*' if found.
+fn test_iarna_toml_spec_tests() {
 	this_file := @FILE
-	test_root := os.join_path(os.dir(this_file), 'testdata', 'burntsushi', 'toml-test',
-		'tests')
+	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
 	if os.is_dir(test_root) {
-		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
+		valid_test_files := os.walk_ext(os.join_path(test_root, 'values'), '.toml')
 		println('Testing $valid_test_files.len valid TOML files...')
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
-			mut relative := valid_test_file.all_after(os.join_path('toml-test', 'tests',
-				'valid')).trim_left(os.path_separator)
+			mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
+
+			if skip_large_files && valid_test_file.contains('qa-') {
+				e++
+				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_exceptions.len]...')
+				continue
+			}
+
 			if relative !in valid_exceptions {
 				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
@@ -70,7 +98,7 @@ fn test_burnt_sushi_tomltest() {
 		}
 		println('$valid/$valid_test_files.len TOML files was parsed correctly')
 		if valid_exceptions.len > 0 {
-			println('TODO Skipped parsing of $valid_exceptions.len valid TOML files...')
+			println('TODO Skipped parsing of $e valid TOML files...')
 		}
 
 		// If the command-line tool `jq` is installed, value tests can be run as well.
@@ -88,10 +116,13 @@ fn test_burnt_sushi_tomltest() {
 			valid = 0
 			e = 0
 			for i, valid_test_file in valid_test_files {
-				mut relative := valid_test_file.all_after(os.join_path('toml-test', 'tests',
-					'valid')).trim_left(os.path_separator)
+				mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
 				$if windows {
 					relative = relative.replace('/', '\\')
+				}
+				if !os.exists(valid_test_file.all_before_last('.') + '.json') {
+					println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					continue
 				}
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
 				if relative !in valid_exceptions && relative !in valid_value_exceptions {
@@ -100,28 +131,27 @@ fn test_burnt_sushi_tomltest() {
 
 					v_toml_json_path := os.join_path(compare_work_dir_root,
 						os.file_name(valid_test_file).all_before_last('.') + '.v.json')
-					bs_toml_json_path := os.join_path(compare_work_dir_root,
+					iarna_toml_json_path := os.join_path(compare_work_dir_root,
 						os.file_name(valid_test_file).all_before_last('.') + '.json')
 
-					os.write_file(v_toml_json_path, to_burntsushi(toml_doc.ast.table)) or {
-						panic(err)
-					}
+					os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table)) or { panic(err) }
 
-					bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json') or {
+					iarna_json := os.read_file(valid_test_file.all_before_last('.') + '.json') or {
 						panic(err)
 					}
-					os.write_file(bs_toml_json_path, bs_json) or { panic(err) }
+					os.write_file(iarna_toml_json_path, iarna_json) or { panic(err) }
 
 					v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
 						contents := os.read_file(v_toml_json_path) or { panic(err) }
 						panic(err.msg + '\n$contents')
 					}
-					bs_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', bs_toml_json_path]) or {
+					iarna_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"',
+						iarna_toml_json_path]) or {
 						contents := os.read_file(v_toml_json_path) or { panic(err) }
 						panic(err.msg + '\n$contents')
 					}
 
-					assert bs_normalized_json == v_normalized_json
+					assert iarna_normalized_json == v_normalized_json
 
 					valid++
 				} else {
@@ -131,17 +161,16 @@ fn test_burnt_sushi_tomltest() {
 			}
 			println('$valid/$valid_test_files.len TOML files was parsed correctly and value checked')
 			if valid_value_exceptions.len > 0 {
-				println('TODO Skipped value checks of $valid_value_exceptions.len valid TOML files...')
+				println('TODO Skipped value checks of $e valid TOML files...')
 			}
 		}
 
-		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
+		invalid_test_files := os.walk_ext(os.join_path(test_root, 'errors'), '.toml')
 		println('Testing $invalid_test_files.len invalid TOML files...')
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
-			mut relative := invalid_test_file.all_after(os.join_path('toml-test', 'tests',
-				'invalid')).trim_left(os.path_separator)
+			mut relative := invalid_test_file.all_after('toml-test').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
@@ -173,8 +202,8 @@ fn test_burnt_sushi_tomltest() {
 	}
 }
 
-// to_burntsushi returns a BurntSushi compatible json string converted from the `value` ast.Value.
-fn to_burntsushi(value ast.Value) string {
+// to_iarna returns a iarna compatible json string converted from the `value` ast.Value.
+fn to_iarna(value ast.Value) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
@@ -230,7 +259,7 @@ fn to_burntsushi(value ast.Value) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_burntsushi(val)},'
+				str += ' "$json_key": ${to_iarna(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -239,7 +268,7 @@ fn to_burntsushi(value ast.Value) string {
 		[]ast.Value {
 			mut str := '[ '
 			for val in value {
-				str += ' ${to_burntsushi(val)},'
+				str += ' ${to_iarna(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' ]\n'
