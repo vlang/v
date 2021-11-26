@@ -3683,12 +3683,10 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 }
 
 pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
-	mut field_names := []string{}
-	mut field_order := []int{}
 	if node.fields.len == 0 {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
-	for i, field in node.fields {
+	for field in node.fields {
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Position{
@@ -3698,11 +3696,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			c.error('duplicate const `$field.name`', name_pos)
 		}
 		c.const_names << field.name
-		field_names << field.name
-		field_order << i
 	}
-	mut needs_order := false
-	mut done_fields := []int{}
 	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
@@ -3714,26 +3708,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 		}
 		node.fields[i].typ = c.table.mktyp(typ)
-		for cd in c.const_deps {
-			for j, f in node.fields {
-				if j != i && cd in field_names && cd == f.name && j !in done_fields {
-					needs_order = true
-					x := field_order[j]
-					field_order[j] = field_order[i]
-					field_order[i] = x
-					break
-				}
-			}
-		}
-		done_fields << i
 		c.const_deps = []
-	}
-	if needs_order {
-		mut ordered_fields := []ast.ConstField{}
-		for order in field_order {
-			ordered_fields << node.fields[order]
-		}
-		node.fields = ordered_fields
 	}
 }
 
