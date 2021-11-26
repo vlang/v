@@ -2,7 +2,7 @@ import os
 import toml
 import toml.to
 
-fn test_large_file() {
+fn test_array_of_tables_edge_case_file() {
 	toml_file :=
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.toml'
