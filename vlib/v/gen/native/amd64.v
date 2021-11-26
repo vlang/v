@@ -204,6 +204,14 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0xc7)
 			g.write8(0xc1)
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0xc7)
+			g.write8(0xc2)
+			g.write32(i32(int(val)))
+			g.println('mov32 $reg, $val')
+			return
+		}
 		.rbx {
 			g.write8(0x48)
 			g.write8(0xc7)
@@ -427,7 +435,8 @@ pub fn (mut g Gen) allocate_string(s string, opsize int) int {
 	g.strings << s
 	str_pos := g.buf.len + opsize
 	g.str_pos << str_pos
-	return 0
+	g.strs << String{s, str_pos}
+	return str_pos
 }
 
 pub fn (mut g Gen) cld_repne_scasb() {
@@ -484,7 +493,45 @@ pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
 	g.syscall()
 }
 
+pub fn (mut g Gen) apicall(s string) {
+	if g.pref.os != .windows {
+		g.n_error('apicalls are only for windows')
+	}
+	g.write8(0xff)
+	g.write8(0x15)
+	delta := match s {
+		'WriteFile' {
+			-(0xbcc + g.buf.len)
+		}
+		'GetStdHandle' {
+			-(0xbcc + g.buf.len + 8)
+		}
+		'ExitProcess' {
+			-(0xbcc + g.buf.len + 16)
+		}
+		else {
+			0
+		}
+	}
+	g.write32(delta)
+}
+
 pub fn (mut g Gen) gen_print(s string, fd int) {
+	if g.pref.os == .windows {
+		g.sub(.rsp, 0x38)
+		g.mov(.rcx, -11)
+		g.apicall('GetStdHandle')
+		g.mov_reg(.rcx, .rax)
+		// g.mov64(.rdx, g.allocate_string(s, 3))
+		g.lea(.rdx, g.allocate_string(s, 3))
+		g.mov(.r8, s.len) // string length
+		g.write([byte(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
+		g.write([byte(0x48), 0xc7, 0x44, 0x24, 0x20])
+		g.write32(0) // mov qword[rsp+0x20], 0
+		// g.mov(.r9, rsp+0x20)
+		g.apicall('WriteFile')
+		return
+	}
 	//
 	// qq := s + '\n'
 	//
@@ -554,8 +601,21 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
-	g.mov(.eax, g.nsyscall_exit())
-	g.syscall()
+	if g.pref.os == .windows {
+		g.mov_reg(.rcx, .rdi)
+		g.apicall('ExitProcess')
+	} else {
+		g.mov(.eax, g.nsyscall_exit())
+		g.syscall()
+	}
+	g.trap() // should never be reached, just in case
+}
+
+fn (mut g Gen) lea(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x8d)
+	g.write8(0x15)
+	g.write32(val)
 }
 
 fn (mut g Gen) mov(reg Register, val int) {
@@ -569,10 +629,15 @@ fn (mut g Gen) mov(reg Register, val int) {
 				return
 			}
 			.rcx {
-				g.write8(0x48)
-				g.write8(0xc7)
-				g.write8(0xc1)
-				g.write32(-1)
+				if val == -1 {
+					g.write8(0x48)
+					g.write8(0xc7)
+					g.write8(0xc1)
+					g.write32(-1)
+				} else {
+					g.write8(0xff)
+					g.write8(0xff) // mov rcx 0xffff5
+				}
 				return
 			}
 			else {
@@ -629,7 +694,16 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0xbf)
 			}
 			.rcx {
+				g.write8(0x48)
 				g.write8(0xc7)
+				g.write8(0xc1)
+			}
+			.r8 {
+				g.write8(0x41)
+				g.write8(0xb8)
+			}
+			.r9 {
+				g.write8(0xb9)
 			}
 			.rdx, .edx {
 				g.write8(0xba)
@@ -738,6 +812,14 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x89)
 		g.write8(0xf8)
+	} else if a == .rcx && b == .rdi {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xf9)
+	} else if a == .rcx && b == .rax {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xc1)
 	} else if a == .rdi && b == .rsi {
 		g.write8(0x48)
 		g.write8(0x89)
@@ -1076,7 +1158,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 
 fn (mut g Gen) trap() {
 	// funnily works on x86 and arm64
-	g.write32(0xcccccccc)
+	if g.pref.arch == .arm64 {
+		g.write32(0xcccccccc)
+	} else {
+		g.write8(0xcc)
+	}
 	g.println('trap')
 }
 
