@@ -208,9 +208,8 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0x48)
 			g.write8(0xc7)
 			g.write8(0xc2)
-			println('RDX')
 			g.write32(i32(int(val)))
-			g.println('mov64 $reg, $val')
+			g.println('mov32 $reg, $val')
 			return
 		}
 		.rbx {
@@ -515,12 +514,6 @@ pub fn (mut g Gen) apicall(s string) {
 		}
 	}
 	g.write32(delta)
-	/*
-	g.write8(0x1f)
-	g.write8(0xf0)
-	g.write8(0xff)
-	g.write8(0xff) // call qword [GetStdHandle]
-	*/
 }
 
 pub fn (mut g Gen) gen_print(s string, fd int) {
@@ -529,16 +522,14 @@ pub fn (mut g Gen) gen_print(s string, fd int) {
 		g.mov(.rcx, -11)
 		g.apicall('GetStdHandle')
 		g.mov_reg(.rcx, .rax)
-		// g.lea(.rdx, hello_world)
-		// g.mov64(.rdx, g.allocate_string('Hello World\n', 3))
-		g.lea(.rdx, g.allocate_string(s, 3)) // 'Hello World\n', 3))
+		// g.mov64(.rdx, g.allocate_string(s, 3))
+		g.lea(.rdx, g.allocate_string(s, 3))
 		g.mov(.r8, s.len) // string length
 		g.write([byte(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
 		g.write([byte(0x48), 0xc7, 0x44, 0x24, 0x20])
 		g.write32(0) // mov qword[rsp+0x20], 0
 		// g.mov(.r9, rsp+0x20)
 		g.apicall('WriteFile')
-		// result in rax
 		return
 	}
 	//
@@ -612,17 +603,12 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 	}
 	if g.pref.os == .windows {
 		g.mov_reg(.rcx, .rdi)
-		// g.warning('exit: not yet implemented for windows')
-		// g.callq('ExitProcess')
-		// g.n_error('native builtin exit not implemented for windows yet')
 		g.apicall('ExitProcess')
-		g.trap()
-		// mov ecx value
-		// `call qword [ExitProcess]`
 	} else {
 		g.mov(.eax, g.nsyscall_exit())
 		g.syscall()
 	}
+	g.trap() // should never be reached, just in case
 }
 
 fn (mut g Gen) lea(reg Register, val int) {
@@ -711,10 +697,6 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0x48)
 				g.write8(0xc7)
 				g.write8(0xc1)
-				/*
-				g.write8(0xf5)
-		g.write8(0xff)
-				*/
 			}
 			.r8 {
 				g.write8(0x41)

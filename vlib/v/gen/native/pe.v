@@ -1,7 +1,12 @@
 module native
 
 enum PeCharacteristics {
-	executable_image = 0x102
+	// 1: relocation info stripped
+	// 2: file is executable
+	// 4: line numbers stripped
+	// 8: local symbols stripped
+	// 20: app can handle > 2GB
+	executable_image = 0x2f
 }
 
 const image_base = i64(0x400000)
@@ -122,8 +127,7 @@ pub fn (mut g Gen) write_pe_header() {
 		0, // number of symbols
 		0,
 		0xf0, // 40 // size of optional header
-		int(0x2f), // PeCharacteristics.executable_image), // c
-		// 0 // optional header magic
+		int(PeCharacteristics.executable_image),
 	]
 	for b in pe_header {
 		g.write16(b)
@@ -215,19 +219,8 @@ fn pad_to(mut buf []byte, len int) {
 	}
 }
 
-fn copy_at(at int, mut b []byte, data []byte) {
-	if b.len - at < data.len {
-		pad_to(mut b, data.len + b.len)
-	}
-	for i := 0; i < data.len; i++ {
-		b[i + at] = data[i]
-	}
-}
-
 pub fn (mut g Gen) generate_pe_footer() {
-	// codesize := g.buf.len - 0x400
-	// TODO: when proper code is generated, uncomment this
-	g.sym_string_table() // stringtablesize
+	g.sym_string_table()
 	pad_to(mut g.buf, 0x600)
 	g.file_size_pos = g.buf.len
 
@@ -236,10 +229,6 @@ pub fn (mut g Gen) generate_pe_footer() {
 		bl_next := u32(0x94000001)
 		g.write32_at(g.code_start_pos, int(bl_next))
 	} else {
-		// amd64
-		// call main function, it's not guaranteed to be the first
-		// we generated call(0) ("e8 0")
-		// now need to replace "0" with a relative address of the main function
 		// +1 is for "e8"
 		// -5 is for "e8 00 00 00 00"
 		g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
