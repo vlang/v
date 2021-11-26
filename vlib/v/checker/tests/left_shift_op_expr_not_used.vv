@@ -28,4 +28,15 @@ fn main() {
 		999
 	}
 	println(d)
+	//
+	x := if true {
+		a << 1
+		999
+	} else {
+		println('---')
+		a << 9999
+		println('---')
+		555
+	}
+	println(x)
 }

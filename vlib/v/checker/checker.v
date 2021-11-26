@@ -90,6 +90,7 @@ mut:
 	// 1 for statements directly at each inner scope level;
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
+	is_last_stmt                     bool
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
@@ -4722,7 +4723,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 				else {}
 			}
-			if c.stmt_level == 1 && !c.pref.is_repl {
+			if !c.pref.is_repl && (c.stmt_level == 1 || (c.stmt_level > 1 && !c.is_last_stmt)) {
 				if node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
 						left_sym := c.table.get_final_type_symbol(node.expr.left_type)
@@ -5321,7 +5322,8 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	}
 	c.expected_type = ast.void_type
 	c.stmt_level++
-	for stmt in stmts {
+	for i, stmt in stmts {
+		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
 				unreachable = stmt.pos
