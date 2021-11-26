@@ -120,9 +120,12 @@ fn test_iarna_toml_spec_test() {
 				$if windows {
 					relative = relative.replace('/', '\\')
 				}
+				if !os.exists(valid_test_file.all_before_last('.') + '.json') {
+					println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					continue
+				}
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
-				if relative !in valid_exceptions && relative !in valid_value_exceptions
-					&& os.exists(valid_test_file.all_before_last('.') + '.json') {
+				if relative !in valid_exceptions && relative !in valid_value_exceptions {
 					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 					toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
 
