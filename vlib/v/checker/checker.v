@@ -2674,22 +2674,33 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	// check for arg (var) of fn type
 	if !found {
-		if v := node.scope.find_var(fn_name) {
-			if v.typ != 0 {
-				generic_vts := c.table.get_type_symbol(v.typ)
-				if generic_vts.kind == .function {
-					info := generic_vts.info as ast.FnType
+		mut typ := 0
+		if obj := node.scope.find(node.name) {
+			match obj {
+				ast.GlobalField {
+					typ = obj.typ
+				}
+				ast.Var {
+					typ = if obj.smartcasts.len != 0 { obj.smartcasts.last() } else { obj.typ }
+				}
+				else {}
+			}
+		}
+
+		if typ != 0 {
+			generic_vts := c.table.get_final_type_symbol(typ)
+			if generic_vts.kind == .function {
+				info := generic_vts.info as ast.FnType
+				func = info.func
+				found = true
+				found_in_args = true
+			} else {
+				vts := c.table.get_type_symbol(c.unwrap_generic(typ))
+				if vts.kind == .function {
+					info := vts.info as ast.FnType
 					func = info.func
 					found = true
 					found_in_args = true
-				} else {
-					vts := c.table.get_type_symbol(c.unwrap_generic(v.typ))
-					if vts.kind == .function {
-						info := vts.info as ast.FnType
-						func = info.func
-						found = true
-						found_in_args = true
-					}
 				}
 			}
 		}

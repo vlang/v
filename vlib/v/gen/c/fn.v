@@ -1180,7 +1180,41 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.writeln(';')
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
-			g.write(g.get_ternary_name(name))
+			mut is_fn_var := false
+			if obj := node.scope.find(node.name) {
+				match obj {
+					ast.Var {
+						if obj.smartcasts.len > 0 {
+							for _ in obj.smartcasts {
+								g.write('(*')
+							}
+							for i, typ in obj.smartcasts {
+								cast_sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+								mut is_ptr := false
+								if i == 0 {
+									g.write(node.name)
+									if obj.orig_type.is_ptr() {
+										is_ptr = true
+									}
+								}
+								dot := if is_ptr { '->' } else { '.' }
+								if mut cast_sym.info is ast.Aggregate {
+									sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
+									g.write('${dot}_$sym.cname')
+								} else {
+									g.write('${dot}_$cast_sym.cname')
+								}
+								g.write(')')
+							}
+							is_fn_var = true
+						}
+					}
+					else {}
+				}
+			}
+			if !is_fn_var {
+				g.write(g.get_ternary_name(name))
+			}
 			if is_interface_call {
 				g.write(')')
 			}
