@@ -4722,7 +4722,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 				else {}
 			}
-			if c.stmt_level == 1 {
+			if c.stmt_level == 1 && !c.pref.is_repl {
 				if node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
 						left_sym := c.table.get_final_type_symbol(node.expr.left_type)
