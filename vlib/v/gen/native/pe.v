@@ -225,9 +225,9 @@ fn copy_at(at int, mut b []byte, data []byte) {
 }
 
 pub fn (mut g Gen) generate_pe_footer() {
-	codesize := g.buf.len - 0x400
+	// codesize := g.buf.len - 0x400
 	// TODO: when proper code is generated, uncomment this
-	stringtablesize := g.sym_string_table()
+	g.sym_string_table() // stringtablesize
 	pad_to(mut g.buf, 0x600)
 	g.file_size_pos = g.buf.len
 
