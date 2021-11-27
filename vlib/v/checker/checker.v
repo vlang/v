@@ -85,6 +85,12 @@ pub mut:
 	fn_level       int    // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	ct_cond_stack  []ast.Expr
 mut:
+	stmt_level int // the nesting level inside each stmts list;
+	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`
+	// 1 for statements directly at each inner scope level;
+	// increases for `x := if cond { statement_list1} else {statement_list2}`;
+	// increases for `x := optfn() or { statement_list3 }`;
+	is_last_stmt                     bool
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
@@ -121,8 +127,40 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	}
 }
 
+fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
+	c.expected_type = ast.void_type
+	c.expected_or_type = ast.void_type
+	c.const_decl = ''
+	c.in_for_count = 0
+	c.returns = false
+	c.scope_returns = false
+	c.mod = ''
+	c.is_builtin_mod = false
+	c.inside_unsafe = false
+	c.inside_const = false
+	c.inside_anon_fn = false
+	c.inside_ref_lit = false
+	c.inside_defer = false
+	c.inside_fn_arg = false
+	c.inside_ct_attr = false
+	c.skip_flags = false
+	c.fn_level = 0
+	c.expr_level = 0
+	c.stmt_level = 0
+	c.inside_sql = false
+	c.cur_orm_ts = ast.TypeSymbol{}
+	c.prevent_sum_type_unwrapping_once = false
+	c.loop_label = ''
+	c.using_new_err_struct = false
+	c.inside_selector_expr = false
+	c.inside_println_arg = false
+	c.inside_decl_rhs = false
+	c.inside_if_guard = false
+}
+
 pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	mut ast_file := ast_file_
+	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		for sym in ast_import.syms {
@@ -139,6 +177,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			}
 		}
 	}
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt in [ast.ConstDecl, ast.ExprStmt] {
 			c.expr_level = 0
@@ -148,6 +187,8 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
 			c.expr_level = 0
@@ -157,6 +198,8 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
@@ -166,6 +209,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
 	c.check_scope_vars(c.file.scope)
 }
 
@@ -4654,7 +4698,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 			c.inside_defer = true
-			c.stmts(node.stmts)
+			c.stmts_list(node.stmts)
 			c.inside_defer = false
 		}
 		ast.EnumDecl {
@@ -4678,6 +4722,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					}
 				}
 				else {}
+			}
+			if !c.pref.is_repl && (c.stmt_level == 1 || (c.stmt_level > 1 && !c.is_last_stmt)) {
+				if node.expr is ast.InfixExpr {
+					if node.expr.op == .left_shift {
+						left_sym := c.table.get_final_type_symbol(node.expr.left_type)
+						if left_sym.kind != .array {
+							c.error('unused expression', node.pos)
+						}
+					}
+				}
 			}
 			c.check_expr_opt_call(node.expr, or_typ)
 			// TODO This should work, even if it's prolly useless .-.
@@ -4757,10 +4811,10 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
 		c.inside_unsafe = true
-		c.stmts(node.stmts)
+		c.stmts_list(node.stmts)
 		c.inside_unsafe = false
 	} else {
-		c.stmts(node.stmts)
+		c.stmts_list(node.stmts)
 	}
 }
 
@@ -4789,7 +4843,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 		c.stmt(node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -4803,7 +4857,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	if node.kind == .fields {
 		c.comptime_fields_type[node.val_var] = node.typ
 	}
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 }
 
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
@@ -4913,7 +4967,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -4949,7 +5003,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	// TODO: update loop var type
 	// how does this work currenly?
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5252,12 +5306,24 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 	}
 }
 
+// stmts_list is the same as .stmts(), but it should be called for top level statements in the inner scope
+fn (mut c Checker) stmts_list(stmts []ast.Stmt) {
+	old_stmt_level := c.stmt_level
+	c.stmt_level = 0
+	c.stmts(stmts)
+	c.stmt_level = old_stmt_level
+}
+
+// stmts processes a list of statements. It can be called even for a list of statements that end with an expression,
+// For example for the or block in `x := opt() or { stmt1 stmt2 ExprStmt }`
 fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	mut unreachable := token.Position{
 		line_nr: -1
 	}
 	c.expected_type = ast.void_type
-	for stmt in stmts {
+	c.stmt_level++
+	for i, stmt in stmts {
+		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
 				unreachable = stmt.pos
@@ -5271,6 +5337,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 			c.scope_returns = false
 		}
 	}
+	c.stmt_level--
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)
 	}
@@ -6171,7 +6238,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
 	for branch in node.branches {
-		c.stmts(branch.stmts)
+		if node.is_expr {
+			c.stmts(branch.stmts)
+		} else {
+			c.stmts_list(branch.stmts)
+		}
 		if node.is_expr {
 			if branch.stmts.len > 0 {
 				// ignore last statement - workaround
@@ -6616,7 +6687,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				}
 			}
 		}
-		c.stmts(branch.stmts)
+		c.stmts_list(branch.stmts)
 	}
 	return ast.bool_type
 }
@@ -6644,7 +6715,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 			c.locked_names << id_name
 		}
 	}
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 	c.rlocked_names = []
 	c.locked_names = []
 	// handle `x := rlock a { a.getval() }`
@@ -6817,7 +6888,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.ct_cond_stack << branch.cond
 			}
 			if !c.skip_flags {
-				c.stmts(branch.stmts)
+				if node_is_expr {
+					c.stmts(branch.stmts)
+				} else {
+					c.stmts_list(branch.stmts)
+				}
 			} else if c.pref.output_cross_c {
 				mut is_freestanding_block := false
 				if branch.cond is ast.Ident {
@@ -6829,7 +6904,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					branch.stmts = []
 					node.branches[i].stmts = []
 				}
-				c.stmts(branch.stmts)
+				if node_is_expr {
+					c.stmts(branch.stmts)
+				} else {
+					c.stmts_list(branch.stmts)
+				}
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
 			}
@@ -6843,7 +6922,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)
-			c.stmts(branch.stmts)
+			if node_is_expr {
+				c.stmts(branch.stmts)
+			} else {
+				c.stmts_list(branch.stmts)
+			}
 		}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
@@ -8107,12 +8190,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	prev_inside_unsafe := c.inside_unsafe
 	prev_inside_anon_fn := c.inside_anon_fn
 	prev_returns := c.returns
+	prev_stmt_level := c.stmt_level
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
 	c.inside_unsafe = false
 	c.returns = false
 	defer {
+		c.stmt_level = prev_stmt_level
 		c.fn_level--
 		c.returns = prev_returns
 		c.inside_anon_fn = prev_inside_anon_fn
@@ -8372,7 +8457,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
-	c.stmts(node.stmts)
+	c.stmts_list(node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
 	c.check_noreturn_fn_decl(mut node)
@@ -8406,7 +8491,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		}
 		var.typ = parent_var.typ
 	}
-	c.stmts(node.decl.stmts)
+	c.stmts_list(node.decl.stmts)
 	c.fn_decl(mut node.decl)
 	return node.typ
 }
