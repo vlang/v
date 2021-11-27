@@ -247,6 +247,12 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						return left_type
 					}
 					moffset := match left_type_final {
+						ast.char_type { 7 }
+						ast.i8_type { 7 }
+						ast.i16_type { 15 }
+						ast.int_type { 31 }
+						ast.i64_type { 63 }
+						//
 						ast.byte_type { 7 }
 						ast.u8_type { 7 }
 						ast.u16_type { 15 }
