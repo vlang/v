@@ -1,4 +1,5 @@
 import toml
+import strconv
 
 fn test_string() {
 	str_value := 'test string'
@@ -89,4 +90,34 @@ test = 42
 	value := toml_doc.value('test')
 	assert value as i64 == 42
 	assert value.i64() == 42
+}
+
+fn test_nan_and_inf_values() {
+	mut toml_doc := toml.parse('nan = nan') or { panic(err) }
+	mut value := toml_doc.value('nan')
+	assert value.string() == 'nan'
+
+	toml_doc = toml.parse('nan = nan#comment') or { panic(err) }
+	value = toml_doc.value('nan')
+	assert value.string() == 'nan'
+
+	toml_doc = toml.parse('nan = -nan') or { panic(err) }
+	value = toml_doc.value('nan')
+	assert value.string() == 'nan'
+
+	toml_doc = toml.parse('nan = +nan') or { panic(err) }
+	value = toml_doc.value('nan')
+	assert value.string() == 'nan'
+
+	toml_doc = toml.parse('inf = inf') or { panic(err) }
+	value = toml_doc.value('inf')
+	assert value.u64() == strconv.double_plus_infinity
+
+	toml_doc = toml.parse('inf = +inf') or { panic(err) }
+	value = toml_doc.value('inf')
+	assert value.u64() == strconv.double_plus_infinity
+
+	toml_doc = toml.parse('inf = -inf') or { panic(err) }
+	value = toml_doc.value('inf')
+	assert value.u64() == strconv.double_minus_infinity
 }

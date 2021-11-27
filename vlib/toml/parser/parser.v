@@ -1232,13 +1232,9 @@ pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
 // value parse and returns an `ast.Value` type.
 // values are the token(s) appearing after an assignment operator (=).
 pub fn (mut p Parser) value() ?ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value...')
-	// println('parsed comment "${p.tok.lit}"')
-
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value from token "$p.tok.kind" "$p.tok.lit"...')
 	mut value := ast.Value(ast.Null{})
 
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
-	// mut value := ast.Value{}
 	if p.tok.kind == .number {
 		number_or_date := p.number_or_date() ?
 		value = number_or_date
@@ -1257,7 +1253,6 @@ pub fn (mut p Parser) value() ?ast.Value {
 				p.ignore_while(parser.space_formatting)
 				mut t := map[string]ast.Value{}
 				p.inline_table(mut t) ?
-				// table[key_str] = ast.Value(t)
 				ast.Value(t)
 			}
 			else {
