@@ -15,7 +15,6 @@ const (
 
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions       = [
-		'values/spec-key-value-pair-8.toml',
 		'values/spec-float-3.toml',
 		'values/spec-float-10.toml',
 		'values/spec-float-11.toml',
@@ -23,7 +22,6 @@ const (
 		'values/spec-float-13.toml',
 		'values/spec-float-14.toml',
 		'values/spec-float-15.toml',
-		'values/spec-key-value-pair-6.toml',
 	]
 	invalid_exceptions     = [
 		'errors/table-3.toml',
