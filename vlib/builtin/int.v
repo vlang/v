@@ -57,7 +57,7 @@ fn (nn int) str_l(max int) string {
 		for n > 0 {
 			n1 := int(n / 100)
 			// calculate the digit_pairs start index
-			d = ((int(n) - (n1 * 100)) << 1)
+			d = int(u32(int(n) - (n1 * 100)) << 1)
 			n = n1
 			buf[index] = digit_pairs.str[d]
 			index--
@@ -182,7 +182,7 @@ pub fn (nn i64) str() string {
 		index--
 		for n > 0 {
 			n1 := n / i64(100)
-			d = ((n - (n1 * i64(100))) << i64(1))
+			d = (u32(n - (n1 * i64(100))) << i64(1))
 			n = n1
 			buf[index] = digit_pairs[d]
 			index--

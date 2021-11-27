@@ -135,7 +135,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType((int(is_atomic) << 1) | int(is_shared))
+	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
 }
 
 pub fn (t Type) share() ShareType {
@@ -183,7 +183,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return int(t) & 0xff00ffff | (nr_muls << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls) << 16)
 }
 
 // increments nr_muls on `t` and return it
@@ -193,7 +193,7 @@ pub fn (t Type) ref() Type {
 	if nr_muls == 255 {
 		panic('ref: nr_muls is already at max of 255')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls + 1) << 16)
 }
 
 // decrement nr_muls on `t` and return it
@@ -203,7 +203,7 @@ pub fn (t Type) deref() Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
 
 // set `flag` on `t` and return `t`
@@ -320,7 +320,7 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
-	return (nr_muls << 16) | u16(idx)
+	return (u32(nr_muls) << 16) | u16(idx)
 }
 
 [inline]
