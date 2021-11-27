@@ -452,7 +452,7 @@ pub fn (mut p Parser) root_table() ? {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
 				continue
 			}
-			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
+			.bare, .quoted, .boolean, .number, .minus, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
 
@@ -645,7 +645,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
 				continue
 			}
-			.bare, .quoted, .boolean, .number, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
+			.bare, .quoted, .boolean, .number, .minus, .underscore { // NOTE .boolean allows for use of "true" and "false" as table keys
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting) ?
 
@@ -728,7 +728,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 				// '}' bracket
 				return
 			}
-			.bare, .quoted, .boolean, .number, .underscore {
+			.bare, .quoted, .boolean, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
 
@@ -829,7 +829,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number, .underscore {
+			.bare, .quoted, .boolean, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
 
@@ -965,7 +965,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 		}
 
 		match p.tok.kind {
-			.bare, .quoted, .boolean, .number, .underscore {
+			.bare, .quoted, .boolean, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ = p.peek_over(1, parser.space_formatting) ?
 
@@ -1148,12 +1148,11 @@ pub fn (mut p Parser) key() ?ast.Key {
 				pos: pos
 			})
 		}
-		// number := p.number() as ast.Number
 		key = ast.Key(p.number())
 	} else {
 		key = match p.tok.kind {
-			.bare, .underscore {
-				ast.Key(p.bare())
+			.bare, .underscore, .minus {
+				ast.Key(p.bare() ?)
 			}
 			.boolean {
 				ast.Key(p.boolean() ?)
@@ -1296,10 +1295,22 @@ pub fn (mut p Parser) number_or_date() ?ast.Value {
 }
 
 // bare parse and returns an `ast.Bare` type.
-pub fn (mut p Parser) bare() ast.Bare {
+pub fn (mut p Parser) bare() ?ast.Bare {
+	mut lits := p.tok.lit
+	pos := p.tok.position()
+	for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr
+		&& p.peek_tok.kind !in parser.space_formatting {
+		p.next() ?
+		if p.tok.kind == .bare || p.tok.kind == .minus || p.tok.kind == .underscore {
+			lits += p.tok.lit
+			continue
+		}
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' bare key expected .bare, .minus, or .underscore but got "$p.tok.kind"')
+	}
 	return ast.Bare{
-		text: p.tok.lit
-		pos: p.tok.position()
+		text: lits
+		pos: pos
 	}
 }
 
