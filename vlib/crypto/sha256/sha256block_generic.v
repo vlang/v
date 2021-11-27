@@ -95,7 +95,7 @@ fn block_generic(mut dig Digest, p_ []byte) {
 			// rounds below if needed for speed.
 			for i in 0 .. 16 {
 				j := i * 4
-				w[i] = u32(p[j] << 24) | u32(p[j + 1] << 16) | u32(p[j + 2] << 8) | u32(p[j + 3])
+				w[i] = u32(p[j]) << 24 | u32(p[j + 1]) << 16 | u32(p[j + 2]) << 8 | u32(p[j + 3])
 			}
 			for i := 16; i < 64; i++ {
 				v1 := w[i - 2]
