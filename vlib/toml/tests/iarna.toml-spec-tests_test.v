@@ -15,7 +15,6 @@ const (
 
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions       = [
-		'values/spec-float-3.toml',
 		'values/spec-float-10.toml',
 		'values/spec-float-11.toml',
 		'values/spec-float-12.toml',
