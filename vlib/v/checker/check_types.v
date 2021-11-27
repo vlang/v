@@ -214,10 +214,27 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 	//	c.note('>>> node.ct_left_value: $node.ct_left_value | node.ct_right_value: $node.ct_right_value', node.pos)
 	// }
 	match node.op {
-		.left_shift {
+		.left_shift, .right_shift, .unsigned_right_shift {
+			// The following code tries to disallow C UBs and IDs at the V level.
+			// From the C++ standart (see https://pvs-studio.com/en/docs/warnings/v610/):
+			// 1. The type of the result is that of the promoted left operand.
+			// The behavior is undefined (UB), if the right operand is negative,
+			// or greater than or equal to the length in bits of the promoted left operand.
+			// 2. The value of E1 << E2 is E1 left-shifted E2 bit positions;
+			// vacated bits are zero-filled. If E1 has an unsigned type,
+			// the value of the result is E1 * 2^E2, reduced modulo one more
+			// than the maximum value representable in the result type.
+			// Otherwise, if E1 has a signed type and non-negative value,
+			// and E1*2^E2 is representable in the result type, then that is
+			// the resulting value; otherwise, the behavior is undefined (UB).
+			// 3. The value of E1 >> E2 is E1 right-shifted E2 bit positions.
+			// If E1 has an unsigned type, or if E1 has a signed type and a
+			// non-negative value, the value of the result is the integral
+			// part of the quotient of E1/2^E2. If E1 has a signed type and
+			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.get_final_type_symbol(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
-			if left_type_final.is_signed() {
+			if node.op == .left_shift && left_type_final.is_signed() {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
 					node.left.position())
 				return left_type
@@ -238,9 +255,17 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						else { 64 }
 					}
 					if ival > moffset {
-						c.note('shift count for type `$left_sym_final.name` is too large (should be a maximum of $moffset bits)',
+						c.error('shift count for type `$left_sym_final.name` too large (maximum: $moffset bits)',
 							node.right.position())
 						return left_type
+					}
+					if node.ct_left_value_evaled {
+						if lval := node.ct_left_value.i64() {
+							if lval < 0 {
+								c.error('invalid bitshift of a negative number', node.left.position())
+								return left_type
+							}
+						}
 					}
 				} else {
 					// c.note('can not evaluate "$node.right" at comptime, err: $err', node.pos)
@@ -248,8 +273,6 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 				}
 			}
 		}
-		.right_shift {}
-		.unsigned_right_shift {}
 		else {
 			c.error('unknown shift operator: $node.op', node.pos)
 			return left_type
