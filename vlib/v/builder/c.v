@@ -6,7 +6,12 @@ import v.util
 import v.gen.c
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
-	b.front_and_middle_stages(v_files) or { return '' }
+	b.front_and_middle_stages(v_files) or {
+		if err.code != 9999 {
+			verror(err.msg)
+		}
+		return ''
+	}
 	// TODO: move gen.cgen() to c.gen()
 	util.timing_start('C GEN')
 	res := c.gen(b.parsed_files, b.table, b.pref)

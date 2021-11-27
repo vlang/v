@@ -2961,6 +2961,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
+	if assign_stmt.right.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.right_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.left_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.left_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+
 	for i, left in assign_stmt.left {
 		mut is_auto_heap := false
 		mut var_type := assign_stmt.left_types[i]
