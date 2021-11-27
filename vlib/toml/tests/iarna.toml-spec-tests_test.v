@@ -188,8 +188,8 @@ fn test_iarna_toml_spec_tests() {
 // to_iarna_time
 fn to_iarna_time(time_str string) string {
 	if time_str.contains('.') {
-		date_and_time := json_text.all_before('.')
-		mut ms := json_text.all_after('.')
+		date_and_time := time_str.all_before('.')
+		mut ms := time_str.all_after('.')
 		z := if ms.contains('Z') { 'Z' } else { '' }
 		ms = ms.replace('Z', '')
 		if ms.len > 3 {
