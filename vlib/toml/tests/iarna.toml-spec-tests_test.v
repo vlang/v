@@ -21,13 +21,7 @@ const (
 		'errors/inline-table-imutable-1.toml',
 	]
 
-	valid_value_exceptions = [
-		'values/spec-date-local-1.toml',
-		'values/spec-date-time-local-1.toml',
-		'values/spec-date-time-local-2.toml',
-		'values/spec-time-1.toml',
-		'values/spec-time-2.toml',
-	]
+	valid_value_exceptions = []string{}
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
 	compare_work_dir_root  = os.join_path(os.temp_dir(), 'v', 'toml', 'iarna')
@@ -191,6 +185,22 @@ fn test_iarna_toml_spec_tests() {
 	}
 }
 
+// to_iarna_time
+fn to_iarna_time(time_str string) string {
+	if time_str.contains('.') {
+		date_and_time := json_text.all_before('.')
+		mut ms := json_text.all_after('.')
+		z := if ms.contains('Z') { 'Z' } else { '' }
+		ms = ms.replace('Z', '')
+		if ms.len > 3 {
+			ms = ms[..3]
+		}
+		return date_and_time + '.' + ms + z
+	} else {
+		return time_str + '.000'
+	}
+}
+
 // to_iarna returns a iarna compatible json string converted from the `value` ast.Value.
 fn to_iarna(value ast.Value) string {
 	match value {
@@ -200,22 +210,29 @@ fn to_iarna(value ast.Value) string {
 		}
 		ast.DateTime {
 			// Normalization for json
-			json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
+			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
+				'T')
 			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
 				'datetime-local'
 			}
+			// NOTE test suite inconsistency.
+			// It seems it's implementation specific how time and
+			// date-time values are represented in detail. For now we follow the BurntSushi format
+			// that expands to 6 digits which is also a valid RFC 3339 representation.
+			json_text = to_iarna_time(json_text)
 			return '{ "type": "$typ", "value": "$json_text" }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "date-local", "value": "$json_text" }'
+			return '{ "type": "date", "value": "$json_text" }'
 		}
 		ast.Time {
-			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "time-local", "value": "$json_text" }'
+			mut json_text := json2.Any(value.text).json_str()
+			json_text = to_iarna_time(json_text)
+			return '{ "type": "time", "value": "$json_text" }'
 		}
 		ast.Bool {
 			json_text := json2.Any(value.text.bool()).json_str()
