@@ -4132,7 +4132,8 @@ and use `v shader` to compile them for all supported target platforms.
 v shader /path/to/project/dir/or/file.v
 ```
 
-Currently you need to include a header and delcare a glue function before using the shader in your code.
+Currently you need to include a header and delcare a glue function before
+using the shader in your code.
 
 ### Profiling
 
