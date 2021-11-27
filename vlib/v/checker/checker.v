@@ -1498,7 +1498,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('cannot push non-reference `$right_sym.name` on `$left_sym.name`',
 						right_pos)
 				}
-				c.stmts(node.or_block.stmts)
+				c.stmts_ending_with_expression(node.or_block.stmts)
 			} else {
 				c.error('cannot push on non-channel `$left_sym.name`', left_pos)
 			}
@@ -1854,7 +1854,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = node.return_type.clear_flag(.optional)
-	c.stmts(node.or_block.stmts)
+	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 	if node.or_block.kind == .propagate && !c.table.cur_fn.return_type.has_flag(.optional)
 		&& !c.inside_const {
@@ -4698,7 +4698,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 			c.inside_defer = true
-			c.stmts_list(node.stmts)
+			c.stmts(node.stmts)
 			c.inside_defer = false
 		}
 		ast.EnumDecl {
@@ -4811,10 +4811,10 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
 		c.inside_unsafe = true
-		c.stmts_list(node.stmts)
+		c.stmts(node.stmts)
 		c.inside_unsafe = false
 	} else {
-		c.stmts_list(node.stmts)
+		c.stmts(node.stmts)
 	}
 }
 
@@ -4843,7 +4843,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 		c.stmt(node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -4857,7 +4857,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	if node.kind == .fields {
 		c.comptime_fields_type[node.val_var] = node.typ
 	}
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 }
 
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
@@ -4967,7 +4967,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5003,7 +5003,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	// TODO: update loop var type
 	// how does this work currenly?
 	c.check_loop_label(node.label, node.pos)
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5306,17 +5306,20 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 	}
 }
 
-// stmts_list is the same as .stmts(), but it should be called for top level statements in the inner scope
-fn (mut c Checker) stmts_list(stmts []ast.Stmt) {
+// stmts should be used for processing normal statement lists (fn bodies, for loop bodies etc).
+fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	old_stmt_level := c.stmt_level
 	c.stmt_level = 0
-	c.stmts(stmts)
+	c.stmts_ending_with_expression(stmts)
 	c.stmt_level = old_stmt_level
 }
 
-// stmts processes a list of statements. It can be called even for a list of statements that end with an expression,
-// For example for the or block in `x := opt() or { stmt1 stmt2 ExprStmt }`
-fn (mut c Checker) stmts(stmts []ast.Stmt) {
+// stmts_ending_with_expression, should be used for processing list of statements, that can end with an expression.
+// Examples for such lists are the bodies of `or` blocks, `if` expressions and `match` expressions:
+//    `x := opt() or { stmt1 stmt2 ExprStmt }`,
+//    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
+//    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
+fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 	mut unreachable := token.Position{
 		line_nr: -1
 	}
@@ -6239,9 +6242,9 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_without_return := 0
 	for branch in node.branches {
 		if node.is_expr {
-			c.stmts(branch.stmts)
+			c.stmts_ending_with_expression(branch.stmts)
 		} else {
-			c.stmts_list(branch.stmts)
+			c.stmts(branch.stmts)
 		}
 		if node.is_expr {
 			if branch.stmts.len > 0 {
@@ -6687,7 +6690,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				}
 			}
 		}
-		c.stmts_list(branch.stmts)
+		c.stmts(branch.stmts)
 	}
 	return ast.bool_type
 }
@@ -6715,7 +6718,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 			c.locked_names << id_name
 		}
 	}
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 	c.rlocked_names = []
 	c.locked_names = []
 	// handle `x := rlock a { a.getval() }`
@@ -6889,9 +6892,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if !c.skip_flags {
 				if node_is_expr {
-					c.stmts(branch.stmts)
+					c.stmts_ending_with_expression(branch.stmts)
 				} else {
-					c.stmts_list(branch.stmts)
+					c.stmts(branch.stmts)
 				}
 			} else if c.pref.output_cross_c {
 				mut is_freestanding_block := false
@@ -6905,9 +6908,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					node.branches[i].stmts = []
 				}
 				if node_is_expr {
-					c.stmts(branch.stmts)
+					c.stmts_ending_with_expression(branch.stmts)
 				} else {
-					c.stmts_list(branch.stmts)
+					c.stmts(branch.stmts)
 				}
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
@@ -6923,9 +6926,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)
 			if node_is_expr {
-				c.stmts(branch.stmts)
+				c.stmts_ending_with_expression(branch.stmts)
 			} else {
-				c.stmts_list(branch.stmts)
+				c.stmts(branch.stmts)
 			}
 		}
 		if expr_required {
@@ -7429,7 +7432,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
-			c.stmts(node.or_block.stmts)
+			c.stmts_ending_with_expression(node.or_block.stmts)
 			return right_sym.chan_info().elem_type
 		}
 		c.error('<- operator can only be used with `chan` types', node.pos)
@@ -7573,7 +7576,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = value_type
 		}
 	}
-	c.stmts(node.or_expr.stmts)
+	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
 }
@@ -8457,7 +8460,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
-	c.stmts_list(node.stmts)
+	c.stmts(node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
 	c.check_noreturn_fn_decl(mut node)
@@ -8491,7 +8494,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		}
 		var.typ = parent_var.typ
 	}
-	c.stmts_list(node.decl.stmts)
+	c.stmts(node.decl.stmts)
 	c.fn_decl(mut node.decl)
 	return node.typ
 }
