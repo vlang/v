@@ -118,8 +118,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (hex, octal and binary) can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
 		}
-		// is_first_digit = byte(lit_sans_sign[0]).is_digit()
-		if lit.len > 1 && lit_sans_sign.starts_with('0') {
+		if lit.len > 1 && lit_sans_sign.starts_with('0') && !lit_sans_sign.starts_with('0.') {
 			ascii = byte(lit_sans_sign[0]).ascii_str()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" can not start with `$ascii` in ...${c.excerpt(num.pos)}...')
