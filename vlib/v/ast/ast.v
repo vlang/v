@@ -767,6 +767,11 @@ pub mut:
 	right_type  Type
 	auto_locked string
 	or_block    OrExpr
+	//
+	ct_left_value_evaled  bool
+	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
+	ct_right_value_evaled bool
+	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
 }
 
 // ++, --

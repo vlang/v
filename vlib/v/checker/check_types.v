@@ -176,24 +176,84 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	return true
 }
 
-[inline]
-fn (mut c Checker) check_shift(left_type ast.Type, right_type ast.Type, left_pos token.Position, right_pos token.Position) ast.Type {
+fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type) ast.Type {
 	if !left_type.is_int() {
+		left_sym := c.table.get_type_symbol(left_type)
 		// maybe it's an int alias? TODO move this to is_int() ?
-		sym := c.table.get_type_symbol(left_type)
-		if sym.kind == .alias && (sym.info as ast.Alias).parent_type.is_int() {
+		if left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.is_int() {
 			return left_type
 		}
 		if c.pref.translated && left_type == ast.bool_type {
 			// allow `bool << 2` in translated C code
 			return ast.int_type
 		}
-		c.error('invalid operation: shift on type `$sym.name`', left_pos)
+		c.error('invalid operation: shift on type `$left_sym.name`', node.left.position())
 		return ast.void_type
-	} else if !right_type.is_int() {
-		c.error('cannot shift non-integer type `${c.table.get_type_symbol(right_type).name}` into type `${c.table.get_type_symbol(left_type).name}`',
-			right_pos)
+	}
+	if !right_type.is_int() {
+		left_sym := c.table.get_type_symbol(left_type)
+		right_sym := c.table.get_type_symbol(right_type)
+		c.error('cannot shift non-integer type `$right_sym.name` into type `$left_sym.name`',
+			node.right.position())
 		return ast.void_type
+	}
+	// At this point, it is guaranteed that we have a `number1 << number2`, or `number1 >> number2`, or `number1 >>> number2`:
+	if !node.ct_left_value_evaled {
+		if lval := c.eval_comptime_const_expr(node.left, 0) {
+			node.ct_left_value_evaled = true
+			node.ct_left_value = lval
+		}
+	}
+	if !node.ct_right_value_evaled {
+		if rval := c.eval_comptime_const_expr(node.right, 0) {
+			node.ct_right_value_evaled = true
+			node.ct_right_value = rval
+		}
+	}
+	// if node.ct_left_value_evaled && node.ct_right_value_evaled {
+	//	c.note('>>> node.ct_left_value: $node.ct_left_value | node.ct_right_value: $node.ct_right_value', node.pos)
+	// }
+	match node.op {
+		.left_shift {
+			left_sym_final := c.table.get_final_type_symbol(left_type)
+			left_type_final := ast.Type(left_sym_final.idx)
+			if left_type_final.is_signed() {
+				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
+					node.left.position())
+				return left_type
+			}
+			if node.ct_right_value_evaled {
+				if node.ct_right_value !is ast.EmptyExpr {
+					ival := node.ct_right_value.i64() or { -999 }
+					if ival < 0 {
+						c.error('invalid negative shift count', node.right.position())
+						return left_type
+					}
+					moffset := match left_type_final {
+						ast.byte_type { 7 }
+						ast.u8_type { 7 }
+						ast.u16_type { 15 }
+						ast.u32_type { 31 }
+						ast.u64_type { 63 }
+						else { 63 }
+					}
+					if ival > moffset {
+						c.note('shift count for type `$left_sym_final.name` is too large (should be a maximum of $moffset bits)',
+							node.right.position())
+						return left_type
+					}
+				} else {
+					// c.note('can not evaluate "$node.right" at comptime, err: $err', node.pos)
+					return left_type
+				}
+			}
+		}
+		.right_shift {}
+		.unsigned_right_shift {}
+		else {
+			c.error('unknown shift operator: $node.op', node.pos)
+			return left_type
+		}
 	}
 	return left_type
 }
@@ -339,7 +399,6 @@ pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
 	}
 }
 
-[inline]
 fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
