@@ -2,8 +2,7 @@ module bcrypt
 
 import encoding.base64
 import crypto.rand
-
-import blowfish
+import crypto.blowfish
 
 pub const (
 	min_cost              = 4
@@ -56,9 +55,7 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 }
 
 pub fn generate_salt() string {
-	randbytes := rand.read(bcrypt.solt_length) or {
-		panic(err)
-	}
+	randbytes := rand.read(bcrypt.solt_length) or { panic(err) }
 	return randbytes.bytestr()
 }
 

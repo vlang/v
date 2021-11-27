@@ -1,5 +1,4 @@
 import crypto.blowfish
-
 import encoding.base64
 
 fn test_crypto_blowfish() {
