@@ -5,8 +5,7 @@ import x.json2
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
-// `cd vlib/toml/tests/testdata`
-// `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git iarna/toml-test`
+// `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git vlib/toml/tests/testdata/iarna/toml-test`
 // See also the CI toml tests
 const (
 	// Can be set to `true` to skip tests that stress test the parser
@@ -14,14 +13,7 @@ const (
 	skip_large_files       = false
 
 	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = [
-		'values/spec-float-10.toml',
-		'values/spec-float-11.toml',
-		'values/spec-float-12.toml',
-		'values/spec-float-13.toml',
-		'values/spec-float-14.toml',
-		'values/spec-float-15.toml',
-	]
+	valid_exceptions       = []string{}
 	invalid_exceptions     = [
 		'errors/table-3.toml',
 		'errors/table-4.toml',
