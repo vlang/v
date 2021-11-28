@@ -119,7 +119,8 @@ fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
 		(bf.s[3][byte(xr)] ^ bf.p[16])
 	xr ^= bf.p[17]
-	return [xl, xr]
+	res := [xl, xr]
+	return res
 }
 
 fn get_next_word(b []byte, pos &int) u32 {

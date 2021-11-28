@@ -8,7 +8,7 @@ pub const (
 	min_cost              = 4
 	max_cost              = 31
 	default_cost          = 10
-	solt_length           = 16
+	salt_length           = 16
 	max_crypted_hash_size = 23
 	encoded_salt_size     = 22
 	encoded_hash_size     = 31
@@ -32,8 +32,8 @@ const magic_cipher_data = [byte(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42,
 
 pub fn generate_from_password(password []byte, cost int) ?string {
 	mut p := new_from_password(password, cost) or { return error('Error: $err') }
-
-	return string(p.hash_byte())
+	x := p.hash_byte()
+	return x.bytestr()
 }
 
 pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
@@ -50,13 +50,13 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 		minor: p.minor
 	}
 
-	if string(p.hash_byte()) != string(other_p.hash_byte()) {
+	if p.hash_byte() != other_p.hash_byte() {
 		return error('mismatched hash and password')
 	}
 }
 
 pub fn generate_salt() string {
-	randbytes := rand.read(bcrypt.solt_length) or { panic(err) }
+	randbytes := rand.read(bcrypt.salt_length) or { panic(err) }
 	return randbytes.bytestr()
 }
 
@@ -65,7 +65,7 @@ fn new_from_password(password []byte, cost int) ?&Hashed {
 	if cost < bcrypt.min_cost {
 		cost_ = bcrypt.default_cost
 	}
-	mut p := Hashed{}
+	mut p := &Hashed{}
 	p.major = bcrypt.major_version
 	p.minor = bcrypt.minor_version
 
@@ -74,10 +74,11 @@ fn new_from_password(password []byte, cost int) ?&Hashed {
 	}
 	p.cost = cost_
 
-	p.salt = base64.encode(generate_salt().bytes()).bytes()
+	salt := generate_salt().bytes()
+	p.salt = base64.encode(salt).bytes()
 	hash := bcrypt(password, p.cost, p.salt) or { return err }
 	p.hash = hash
-	return &p
+	return p
 }
 
 fn new_from_hash(hashed_secret []byte) ?&Hashed {
@@ -86,17 +87,17 @@ fn new_from_hash(hashed_secret []byte) ?&Hashed {
 		return error('hash to short')
 	}
 
-	mut p := Hashed{}
+	mut p := &Hashed{}
 	mut n := p.decode_version(tmp) or { return err }
-	tmp = tmp[n..]
+	tmp = tmp[n..].clone()
 
 	n = p.decode_cost(tmp) or { return err }
-	tmp = tmp[n..]
+	tmp = tmp[n..].clone()
 
 	p.salt = tmp[..bcrypt.encoded_salt_size].clone()
 	p.hash = tmp[bcrypt.encoded_salt_size..].clone()
 
-	return &p
+	return p
 }
 
 fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
@@ -132,7 +133,7 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 }
 
 fn (mut h Hashed) hash_byte() []byte {
-	mut arr := []byte{len: 60, init: 0}
+	mut arr := []byte{len: 65, init: 0}
 	arr[0] = `$`
 	arr[1] = h.major[0]
 	mut n := 2
@@ -150,7 +151,8 @@ fn (mut h Hashed) hash_byte() []byte {
 	n += bcrypt.encoded_salt_size
 	copy(arr[n..], h.hash)
 	n += bcrypt.encoded_hash_size
-	return arr[..n]
+	res := arr[..n].clone()
+	return res
 }
 
 fn (mut h Hashed) decode_version(sbytes []byte) ?int {
