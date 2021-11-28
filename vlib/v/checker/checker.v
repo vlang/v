@@ -893,26 +893,9 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				} else {
 					field_name = field.name
 					mut exists := true
-					field_info = info.find_field(field_name) or {
+					field_info = c.table.find_field_with_embeds(type_sym, field_name) or {
 						exists = false
 						ast.StructField{}
-					}
-					if !exists {
-						for embed in info.embeds {
-							embed_sym := c.table.get_type_symbol(embed)
-							if embed_sym.embed_name() == field_name {
-								exists = true
-								embed_type = embed
-								is_embed = true
-								break
-							}
-							embed_struct_info := embed_sym.info as ast.Struct
-							if embed_field_info := embed_struct_info.find_field(field_name) {
-								exists = true
-								field_info = embed_field_info
-								break
-							}
-						}
 					}
 					if !exists {
 						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`',
@@ -1661,22 +1644,10 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			mut typ_sym := c.table.get_final_type_symbol(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
-					struct_info := typ_sym.info as ast.Struct
 					mut has_field := true
-					mut field_info := struct_info.find_field(expr.field_name) or {
+					mut field_info := c.table.find_field_with_embeds(typ_sym, expr.field_name) or {
 						has_field = false
 						ast.StructField{}
-					}
-					if !has_field {
-						for embed in struct_info.embeds {
-							embed_sym := c.table.get_type_symbol(embed)
-							embed_struct_info := embed_sym.info as ast.Struct
-							if embed_field_info := embed_struct_info.find_field(expr.field_name) {
-								has_field = true
-								field_info = embed_field_info
-								break
-							}
-						}
 					}
 					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
