@@ -380,15 +380,10 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 							}
 						}
 						.plus {
-							return if t.pref.backend == .c {
-								ast.StringLiteral{
-									val: util.smart_quote(left_node.val, left_node.is_raw) +
-										util.smart_quote(right_node.val, right_node.is_raw)
+							return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
+									val: util.smart_quote(left_node.val, left_node.is_raw) + util.smart_quote(right_node.val, right_node.is_raw)
 									pos: pos
-								}
-							} else {
-								node
-							}
+								}) } else { ast.Expr(node) }
 						}
 						else {
 							return node
