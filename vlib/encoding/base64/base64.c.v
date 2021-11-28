@@ -233,7 +233,7 @@ pub fn encode_str(data string) string {
 fn alloc_and_encode(src &byte, len int) string {
 	if len == 0 {
 		return ''
-	}	
+	}
 	size := 4 * ((len + 2) / 3)
 	if size <= 0 {
 		return ''
