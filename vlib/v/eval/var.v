@@ -1,14 +1,13 @@
 module eval
 
 import v.ast
-import v.table
 
 pub struct Var {
 pub mut:
 	val Object
 pub:
 	scope_idx int
-	typ       table.Type
+	typ       ast.Type
 }
 
 pub fn (mut e Eval) open_scope() {
@@ -24,7 +23,7 @@ pub fn (mut e Eval) close_scope() {
 	}
 }
 
-pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ table.Type) {
+pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ ast.Type) {
 	match expr {
 		ast.Ident {
 			if init {
@@ -45,7 +44,7 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ table.Type) {
 			// } else {
 			// 	mut x := (e.local_vars[(expr.left as ast.Ident).name].val)
 			// 	if x is Array {
-			// 		x.val[(e.expr(expr.index, table.int_type_idx) as Int).val] = val
+			// 		x.val[(e.expr(expr.index, ast.int_type_idx) as Int).val] = val
 			// 	}
 			// }
 		}

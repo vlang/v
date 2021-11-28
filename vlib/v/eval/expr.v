@@ -29,18 +29,23 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 								args[2].int_val()), 32}
 						}
 						'calloc' {
-							return Object(vcalloc(int(args[0].int_val() * args[1].int_val())))
+							return Ptr{
+								val: vcalloc(int(args[0].int_val() * args[1].int_val()))
+							}
 						}
 						'getcwd' {
 							unsafe {
-								return Charptr(&char(C.getcwd(charptr(&char(args[0] as Charptr)),
-									args[1].int_val())))
+								return Ptr{
+									val: C.getcwd((args[0] as Ptr).val as &char, args[1].int_val())
+								}
 							}
 						}
 						'memcpy' {
 							unsafe {
-								return Object(voidptr(C.memcpy(args[0].voidptr_val(),
-									args[1].voidptr_val(), args[2].int_val())))
+								return Ptr{
+									val: C.memcpy(args[0] as voidptr, args[1] as voidptr,
+										args[2].int_val())
+								}
 							}
 						}
 						// 'printf' {
@@ -66,13 +71,15 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							e.error('unknown c function: `$expr.name`')
 						}
 					}
-					return {}
 				}
 				.v {
 					// TODO: Anon functions
 					name := expr.name.all_after_last('.')
 					mod := expr.mod
-					mut func := e.mods[mod][name] or { e.mods['builtin'][name] }
+					mut func := e.mods[mod][name] or {
+						e.mods['builtin'][name] or { ast.EmptyStmt{} }
+					}
+
 					if func is ast.FnDecl {
 						e.run_func(func as ast.FnDecl, ...args)
 						if e.return_values.len == 1 {
@@ -179,7 +186,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.IntegerLiteral {
 			// return u64(strconv.parse_uint(expr.val, 0, 64)
-			return i64(strconv.parse_int(expr.val, 0, 64)) // TODO: numbers larger than 2^63 (for u64)
+			return i64(strconv.parse_int(expr.val, 0, 64) or {
+				e.error('invalid integer literal: $expr.val')
+			}) // TODO: numbers larger than 2^63 (for u64)
 		}
 		ast.FloatLiteral {
 			return f64(strconv.atof64(expr.val))
@@ -198,7 +207,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.mods[expr.name.all_before_last('.')]
 					} else {
 						e.mods[e.cur_mod]
-					}[expr.name.all_after_last('.')] as Object
+					}[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
 				}
 				else {
 					e.error('unknown ident kind for `$expr.name`: $expr.kind')
@@ -331,28 +340,39 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 			} else if expr.typ in ast.pointer_type_idxs {
+				y := *(x as Ptr).val
 				if expr.typ == ast.byteptr_type_idx {
-					match x {
-						Charptr, voidptr {
-							return Object(byteptr(x))
+					match y {
+						char, voidptr {
+							unsafe {
+								return Ptr{
+									val: &byte((x as Ptr).val)
+								}
+							}
 						}
 						else {
 							e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 						}
 					}
 				} else if expr.typ == ast.voidptr_type_idx {
-					match x {
-						Charptr, byteptr {
-							return Object(voidptr(x))
+					match y {
+						char, Int {
+							unsafe {
+								return Object(voidptr((x as Ptr).val))
+							}
 						}
 						else {
 							e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 						}
 					}
 				} else if expr.typ == ast.charptr_type_idx {
-					match x {
-						voidptr, byteptr {
-							return Object(Charptr(&i8(x)))
+					match y {
+						voidptr, Int {
+							unsafe {
+								return Ptr{
+									val: &char((x as Ptr).val)
+								}
+							}
 						}
 						else {
 							e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
@@ -372,7 +392,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				string {
 					match expr.field_name {
 						'str' {
-							return Object(exp.str)
+							return Ptr{
+								val: exp.str
+							}
 						}
 						'len' {
 							return Int{exp.len, 32}
@@ -389,16 +411,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 						else {
 							e.error('unknown selector to array: $expr.field_name')
-						}
-					}
-				}
-				byteptr {
-					match expr.field_name {
-						'is_lit' {
-							panic(e.cur_mod)
-						}
-						else {
-							e.error('unknown selector to byteptr: $expr.field_name')
 						}
 					}
 				}

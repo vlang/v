@@ -4877,6 +4877,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.position())
 		}
+		if high_type in [ast.int_type, ast.int_literal_type] {
+			node.val_type = typ
+		} else {
+			node.val_type = high_type
+		}
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {

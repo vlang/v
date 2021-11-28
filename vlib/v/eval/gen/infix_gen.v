@@ -28,7 +28,7 @@ fn(e Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)O
 		'left_shift':  '<<'
 	}
 	compound_types = ['Int', 'Uint', 'Float']
-	literal_types  = ['i64', 'f64', 'Charptr']
+	literal_types  = ['i64', 'f64']
 )
 
 fn main() {
@@ -43,9 +43,6 @@ fn main() {
 				b.write_string('$ct2{return left.val${op}right.val}')
 			}
 			for lt2 in literal_types {
-				if ct == 'Float' && lt2 == 'Charptr' {
-					continue
-				}
 				b.write_string('$lt2{return left.val${op}right}')
 			}
 			b.write_string("else{e.error('invalid operands to $op: $ct and \$right.type_name()')}}}")
@@ -53,15 +50,9 @@ fn main() {
 		for lt in literal_types {
 			b.write_string('$lt {match right{')
 			for ct2 in compound_types {
-				if lt == 'Charptr' && ct2 == 'Float' {
-					continue
-				}
 				b.write_string('$ct2{return left${op}right.val}')
 			}
 			for lt2 in literal_types {
-				if (lt == 'f64' && lt2 == 'Charptr') || (lt == 'Charptr' && lt2 == 'f64') {
-					continue
-				}
 				b.write_string('$lt2{return left${op}right}')
 			}
 			b.write_string("else {e.error('invalid operands to $op: ")
@@ -91,9 +82,6 @@ fn main() {
 				b.write_string(uk_expect_footer)
 			}
 			for lt2 in literal_types {
-				if ct == 'Float' && lt2 == 'Charptr' {
-					continue
-				}
 				if op in ['<<', '>>'] && lt2 == 'f64' {
 					continue
 				}
@@ -111,9 +99,6 @@ fn main() {
 			}
 			b.write_string('$lt{match right{')
 			for ct2 in compound_types {
-				if lt == 'Charptr' && ct2 == 'Float' {
-					continue
-				}
 				if op in ['<<', '>>'] && ct2 == 'Float' {
 					continue
 				}
@@ -125,9 +110,6 @@ fn main() {
 			}
 			for lt2 in literal_types {
 				if op in ['<<', '>>'] && lt2 == 'f64' {
-					continue
-				}
-				if (lt == 'f64' && lt2 == 'Charptr') || (lt == 'Charptr' && lt2 == 'f64') {
 					continue
 				}
 				b.write_string('$lt2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left)+i64(right),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left)+u64(right),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{return i64(i64(left)${op}i64(right))}')

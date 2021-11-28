@@ -14,8 +14,8 @@ pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
 	}
 }
 
-// const is `Object`
-type Symbol = Object | ast.FnDecl
+// const/global is `Object`
+type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
 	pref &pref.Preferences
@@ -33,10 +33,10 @@ pub mut:
 	back_trace             []string
 }
 
-pub fn (mut e Eval) eval(files []ast.File) {
+pub fn (mut e Eval) eval(files []&ast.File) {
 	e.register_symbols(files)
 	// println(files.map(it.path_base))
-	e.run_func(e.mods['main']['main'] as ast.FnDecl)
+	e.run_func(e.mods['main']['main'] or { ast.EmptyStmt{} } as ast.FnDecl)
 }
 
 // first arg is reciever (if method)
@@ -83,16 +83,16 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		// have to do this because of cgen error
 		args__ := if func.is_method { args[1..] } else { args }
 		for i, arg in args__ {
-			e.local_vars[(func.params[i]).name] = {
-				val:       arg
+			e.local_vars[(func.params[i]).name] = Var{
+				val: arg
 				scope_idx: e.scope_idx
 			}
 		}
 		if func.is_method {
 			print(e.back_trace)
 			println(func.receiver.typ - 65536)
-			e.local_vars[func.receiver.name] = {
-				val:       args[0]
+			e.local_vars[func.receiver.name] = Var{
+				val: args[0]
 				scope_idx: e.scope_idx
 			}
 		}
@@ -104,7 +104,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	}
 }
 
-pub fn (mut e Eval) register_symbols(files []ast.File) {
+pub fn (mut e Eval) register_symbols(files []&ast.File) {
 	for file in files {
 		// eprintln('registering file: $file.path_base')
 		mod := file.mod.name
@@ -198,6 +198,4 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 
 fn (e Eval) error(msg string) {
 	util.verror('interpreter', msg)
-	print_backtrace()
-	exit(1)
 }

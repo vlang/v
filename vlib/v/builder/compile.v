@@ -10,8 +10,6 @@ import v.pref
 import v.util
 import v.eval
 import v.checker
-import v.markused
-import v.parser
 
 fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := util.get_vtmp_folder()
@@ -353,25 +351,10 @@ pub fn (v &Builder) get_user_files() []string {
 }
 
 pub fn (mut b Builder) interpret() {
-	mut files := b.get_user_files()
-	files << b.get_builtin_files()
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
 	b.set_module_lookup_paths()
-
-	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(files, b.table, b.pref, b.global_scope)
-	b.parse_imports()
-	util.get_timers().show('SCAN')
-	util.get_timers().show('PARSE')
-	util.get_timers().show_if_exists('PARSE stmt')
-
-	util.timing_start('CHECK')
-	b.checker.check_files(b.parsed_files)
-	util.timing_measure('CHECK')
-
-	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
-	}
-	b.print_warnings_and_errors()
+	b.front_and_middle_stages(files) or { return }
 
 	util.timing_start('INTERPRET')
 	mut e := eval.new_eval(b.table, b.pref)
