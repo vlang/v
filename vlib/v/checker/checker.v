@@ -878,8 +878,6 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			mut inited_fields := []string{}
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
-				mut embed_type := ast.Type(0)
-				mut is_embed := false
 				mut field_name := ''
 				if node.is_short {
 					if i >= info.fields.len {
@@ -910,57 +908,43 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				mut expr_type := ast.Type(0)
 				mut expected_type := ast.Type(0)
-				if is_embed {
-					expected_type = embed_type
-					c.expected_type = expected_type
-					expr_type = c.expr(field.expr)
-					expr_type_sym := c.table.get_type_symbol(expr_type)
-					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(expr_type, embed_type) or {
-							c.error('cannot assign to field `$field_info.name`: $err.msg',
-								field.pos)
-						}
-					}
-					node.fields[i].typ = expr_type
-					node.fields[i].expected_type = embed_type
-				} else {
-					inited_fields << field_name
-					field_type_sym := c.table.get_type_symbol(field_info.typ)
-					expected_type = field_info.typ
-					c.expected_type = expected_type
-					expr_type = c.expr(field.expr)
-					if !field_info.typ.has_flag(.optional) {
-						expr_type = c.check_expr_opt_call(field.expr, expr_type)
-					}
-					expr_type_sym := c.table.get_type_symbol(expr_type)
-					if field_type_sym.kind == .interface_ {
-						if c.type_implements(expr_type, field_info.typ, field.pos) {
-							if !expr_type.is_ptr() && !expr_type.is_pointer()
-								&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
-								c.mark_as_referenced(mut &field.expr, true)
-							}
-						}
-					} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
-						c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
-							c.error('cannot assign to field `$field_info.name`: $err.msg',
-								field.pos)
-						}
-					}
-					if field_info.typ.has_flag(.shared_f) {
-						if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
-							c.error('`shared` field must be initialized with `shared` or value',
-								field.pos)
-						}
-					} else {
-						if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
-							&& !expr_type.is_number() {
-							c.error('reference field must be initialized with reference',
-								field.pos)
-						}
-					}
-					node.fields[i].typ = expr_type
-					node.fields[i].expected_type = field_info.typ
+				inited_fields << field_name
+				field_type_sym := c.table.get_type_symbol(field_info.typ)
+				expected_type = field_info.typ
+				c.expected_type = expected_type
+				expr_type = c.expr(field.expr)
+				if !field_info.typ.has_flag(.optional) {
+					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}
+				expr_type_sym := c.table.get_type_symbol(expr_type)
+				if field_type_sym.kind == .interface_ {
+					if c.type_implements(expr_type, field_info.typ, field.pos) {
+						if !expr_type.is_ptr() && !expr_type.is_pointer()
+							&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
+							c.mark_as_referenced(mut &field.expr, true)
+						}
+					}
+				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
+					c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
+						c.error('cannot assign to field `$field_info.name`: $err.msg',
+							field.pos)
+					}
+				}
+				if field_info.typ.has_flag(.shared_f) {
+					if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
+						c.error('`shared` field must be initialized with `shared` or value',
+							field.pos)
+					}
+				} else {
+					if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+						&& !expr_type.is_number() {
+						c.error('reference field must be initialized with reference',
+							field.pos)
+					}
+				}
+				node.fields[i].typ = expr_type
+				node.fields[i].expected_type = field_info.typ
+
 				if field_info.typ.has_flag(.optional) {
 					c.error('field `$field_info.name` is optional, but initialization of optional fields currently unsupported',
 						field.pos)
