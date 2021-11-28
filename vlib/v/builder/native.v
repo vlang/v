@@ -8,6 +8,10 @@ import os
 pub fn (mut b Builder) build_native(v_files []string, out_file string) {
 	if b.pref.os == .windows {
 		eprintln('Warning: v -native is experimental for Windows')
+		if !b.pref.is_shared && b.pref.build_mode != .build_module
+			&& !b.pref.out_name.ends_with('.exe') {
+			b.pref.out_name += '.exe'
+		}
 	} else if b.pref.os !in [.linux, .macos] {
 		eprintln('Warning: v -native can only generate macOS and Linux binaries for now')
 	}

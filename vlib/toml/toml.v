@@ -134,7 +134,10 @@ pub fn parse_dotted_key(key string) ?[]string {
 		buf += ch.ascii_str()
 		if !in_string && ch == `.` {
 			if buf != '' && buf != ' ' {
-				out << buf[..buf.len - 1]
+				buf = buf[..buf.len - 1]
+				if buf != '' && buf != ' ' {
+					out << buf
+				}
 			}
 			buf = ''
 			continue
@@ -167,7 +170,7 @@ fn parse_array_key(key string) (string, int) {
 
 // to_any converts the `Doc` to toml.Any type.
 pub fn (d Doc) to_any() Any {
-	return d.ast_to_any(d.ast.table)
+	return ast_to_any(d.ast.table)
 }
 
 // value queries a value from the TOML document.
@@ -200,20 +203,20 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 	}
 
 	if key.len <= 1 {
-		return d.ast_to_any(ast_value)
+		return ast_to_any(ast_value)
 	}
 	match ast_value {
 		map[string]ast.Value, []ast.Value {
 			return d.value_(ast_value, key[1..])
 		}
 		else {
-			return d.ast_to_any(value)
+			return ast_to_any(value)
 		}
 	}
 }
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
-pub fn (d Doc) ast_to_any(value ast.Value) Any {
+pub fn ast_to_any(value ast.Value) Any {
 	match value {
 		ast.Date {
 			return Any(Date{value.text})
@@ -228,11 +231,22 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			return Any(value.text)
 		}
 		ast.Number {
-			// if value.text.contains('inf') || value.text.contains('nan') {
-			// return Any() // TODO
-			//}
-			if !value.text.starts_with('0x')
-				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
+			val_text := value.text
+			if val_text == 'inf' || val_text == '+inf' || val_text == '-inf' {
+				// NOTE values taken from strconv
+				if !val_text.starts_with('-') {
+					// strconv.double_plus_infinity
+					return Any(u64(0x7FF0000000000000))
+				} else {
+					// strconv.double_minus_infinity
+					return Any(u64(0xFFF0000000000000))
+				}
+			}
+			if val_text == 'nan' || val_text == '+nan' || val_text == '-nan' {
+				return Any('nan')
+			}
+			if !val_text.starts_with('0x')
+				&& (val_text.contains('.') || val_text.to_lower().contains('e')) {
 				return Any(value.f64())
 			}
 			return Any(value.i64())
@@ -248,7 +262,7 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			m := (value as map[string]ast.Value)
 			mut am := map[string]Any{}
 			for k, v in m {
-				am[k] = d.ast_to_any(v)
+				am[k] = ast_to_any(v)
 			}
 			return am
 			// return d.get_map_value(m, key_split[1..].join('.'))
@@ -257,7 +271,7 @@ pub fn (d Doc) ast_to_any(value ast.Value) Any {
 			a := (value as []ast.Value)
 			mut aa := []Any{}
 			for val in a {
-				aa << d.ast_to_any(val)
+				aa << ast_to_any(val)
 			}
 			return aa
 		}

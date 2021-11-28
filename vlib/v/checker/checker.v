@@ -85,6 +85,12 @@ pub mut:
 	fn_level       int    // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	ct_cond_stack  []ast.Expr
 mut:
+	stmt_level int // the nesting level inside each stmts list;
+	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`
+	// 1 for statements directly at each inner scope level;
+	// increases for `x := if cond { statement_list1} else {statement_list2}`;
+	// increases for `x := optfn() or { statement_list3 }`;
+	is_last_stmt                     bool
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
@@ -121,8 +127,40 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	}
 }
 
+fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
+	c.expected_type = ast.void_type
+	c.expected_or_type = ast.void_type
+	c.const_decl = ''
+	c.in_for_count = 0
+	c.returns = false
+	c.scope_returns = false
+	c.mod = ''
+	c.is_builtin_mod = false
+	c.inside_unsafe = false
+	c.inside_const = false
+	c.inside_anon_fn = false
+	c.inside_ref_lit = false
+	c.inside_defer = false
+	c.inside_fn_arg = false
+	c.inside_ct_attr = false
+	c.skip_flags = false
+	c.fn_level = 0
+	c.expr_level = 0
+	c.stmt_level = 0
+	c.inside_sql = false
+	c.cur_orm_ts = ast.TypeSymbol{}
+	c.prevent_sum_type_unwrapping_once = false
+	c.loop_label = ''
+	c.using_new_err_struct = false
+	c.inside_selector_expr = false
+	c.inside_println_arg = false
+	c.inside_decl_rhs = false
+	c.inside_if_guard = false
+}
+
 pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	mut ast_file := ast_file_
+	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		for sym in ast_import.syms {
@@ -139,6 +177,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			}
 		}
 	}
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt in [ast.ConstDecl, ast.ExprStmt] {
 			c.expr_level = 0
@@ -148,6 +187,8 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
 			c.expr_level = 0
@@ -157,6 +198,8 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
+	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
 			c.expr_level = 0
@@ -166,6 +209,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
+	//
 	c.check_scope_vars(c.file.scope)
 }
 
@@ -1454,7 +1498,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('cannot push non-reference `$right_sym.name` on `$left_sym.name`',
 						right_pos)
 				}
-				c.stmts(node.or_block.stmts)
+				c.stmts_ending_with_expression(node.or_block.stmts)
 			} else {
 				c.error('cannot push on non-channel `$left_sym.name`', left_pos)
 			}
@@ -1810,7 +1854,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = node.return_type.clear_flag(.optional)
-	c.stmts(node.or_block.stmts)
+	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 	if node.or_block.kind == .propagate && !c.table.cur_fn.return_type.has_flag(.optional)
 		&& !c.inside_const {
@@ -2674,22 +2718,33 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	// check for arg (var) of fn type
 	if !found {
-		if v := node.scope.find_var(fn_name) {
-			if v.typ != 0 {
-				generic_vts := c.table.get_type_symbol(v.typ)
-				if generic_vts.kind == .function {
-					info := generic_vts.info as ast.FnType
+		mut typ := 0
+		if obj := node.scope.find(node.name) {
+			match obj {
+				ast.GlobalField {
+					typ = obj.typ
+				}
+				ast.Var {
+					typ = if obj.smartcasts.len != 0 { obj.smartcasts.last() } else { obj.typ }
+				}
+				else {}
+			}
+		}
+
+		if typ != 0 {
+			generic_vts := c.table.get_final_type_symbol(typ)
+			if generic_vts.kind == .function {
+				info := generic_vts.info as ast.FnType
+				func = info.func
+				found = true
+				found_in_args = true
+			} else {
+				vts := c.table.get_type_symbol(c.unwrap_generic(typ))
+				if vts.kind == .function {
+					info := vts.info as ast.FnType
 					func = info.func
 					found = true
 					found_in_args = true
-				} else {
-					vts := c.table.get_type_symbol(c.unwrap_generic(v.typ))
-					if vts.kind == .function {
-						info := vts.info as ast.FnType
-						func = info.func
-						found = true
-						found_in_args = true
-					}
 				}
 			}
 		}
@@ -3672,12 +3727,10 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 }
 
 pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
-	mut field_names := []string{}
-	mut field_order := []int{}
 	if node.fields.len == 0 {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
-	for i, field in node.fields {
+	for field in node.fields {
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Position{
@@ -3687,11 +3740,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			c.error('duplicate const `$field.name`', name_pos)
 		}
 		c.const_names << field.name
-		field_names << field.name
-		field_order << i
 	}
-	mut needs_order := false
-	mut done_fields := []int{}
 	for i, mut field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
@@ -3703,26 +3752,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 		}
 		node.fields[i].typ = c.table.mktyp(typ)
-		for cd in c.const_deps {
-			for j, f in node.fields {
-				if j != i && cd in field_names && cd == f.name && j !in done_fields {
-					needs_order = true
-					x := field_order[j]
-					field_order[j] = field_order[i]
-					field_order[i] = x
-					break
-				}
-			}
-		}
-		done_fields << i
 		c.const_deps = []
-	}
-	if needs_order {
-		mut ordered_fields := []ast.ConstField{}
-		for order in field_order {
-			ordered_fields << node.fields[order]
-		}
-		node.fields = ordered_fields
 	}
 }
 
@@ -4693,6 +4723,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 				else {}
 			}
+			if !c.pref.is_repl && (c.stmt_level == 1 || (c.stmt_level > 1 && !c.is_last_stmt)) {
+				if node.expr is ast.InfixExpr {
+					if node.expr.op == .left_shift {
+						left_sym := c.table.get_final_type_symbol(node.expr.left_type)
+						if left_sym.kind != .array {
+							c.error('unused expression', node.pos)
+						}
+					}
+				}
+			}
 			c.check_expr_opt_call(node.expr, or_typ)
 			// TODO This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_opt_call(node.expr, ast.void_type)
@@ -5266,12 +5306,27 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 	}
 }
 
+// stmts should be used for processing normal statement lists (fn bodies, for loop bodies etc).
 fn (mut c Checker) stmts(stmts []ast.Stmt) {
+	old_stmt_level := c.stmt_level
+	c.stmt_level = 0
+	c.stmts_ending_with_expression(stmts)
+	c.stmt_level = old_stmt_level
+}
+
+// stmts_ending_with_expression, should be used for processing list of statements, that can end with an expression.
+// Examples for such lists are the bodies of `or` blocks, `if` expressions and `match` expressions:
+//    `x := opt() or { stmt1 stmt2 ExprStmt }`,
+//    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
+//    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
+fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 	mut unreachable := token.Position{
 		line_nr: -1
 	}
 	c.expected_type = ast.void_type
-	for stmt in stmts {
+	c.stmt_level++
+	for i, stmt in stmts {
+		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
 				unreachable = stmt.pos
@@ -5285,6 +5340,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 			c.scope_returns = false
 		}
 	}
+	c.stmt_level--
 	if unreachable.line_nr >= 0 {
 		c.error('unreachable code', unreachable)
 	}
@@ -6185,7 +6241,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
 	for branch in node.branches {
-		c.stmts(branch.stmts)
+		if node.is_expr {
+			c.stmts_ending_with_expression(branch.stmts)
+		} else {
+			c.stmts(branch.stmts)
+		}
 		if node.is_expr {
 			if branch.stmts.len > 0 {
 				// ignore last statement - workaround
@@ -6831,7 +6891,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.ct_cond_stack << branch.cond
 			}
 			if !c.skip_flags {
-				c.stmts(branch.stmts)
+				if node_is_expr {
+					c.stmts_ending_with_expression(branch.stmts)
+				} else {
+					c.stmts(branch.stmts)
+				}
 			} else if c.pref.output_cross_c {
 				mut is_freestanding_block := false
 				if branch.cond is ast.Ident {
@@ -6843,7 +6907,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					branch.stmts = []
 					node.branches[i].stmts = []
 				}
-				c.stmts(branch.stmts)
+				if node_is_expr {
+					c.stmts_ending_with_expression(branch.stmts)
+				} else {
+					c.stmts(branch.stmts)
+				}
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
 			}
@@ -6857,7 +6925,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)
-			c.stmts(branch.stmts)
+			if node_is_expr {
+				c.stmts_ending_with_expression(branch.stmts)
+			} else {
+				c.stmts(branch.stmts)
+			}
 		}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
@@ -7360,7 +7432,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
-			c.stmts(node.or_block.stmts)
+			c.stmts_ending_with_expression(node.or_block.stmts)
 			return right_sym.chan_info().elem_type
 		}
 		c.error('<- operator can only be used with `chan` types', node.pos)
@@ -7504,7 +7576,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = value_type
 		}
 	}
-	c.stmts(node.or_expr.stmts)
+	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
 }
@@ -8121,12 +8193,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	prev_inside_unsafe := c.inside_unsafe
 	prev_inside_anon_fn := c.inside_anon_fn
 	prev_returns := c.returns
+	prev_stmt_level := c.stmt_level
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
 	c.inside_unsafe = false
 	c.returns = false
 	defer {
+		c.stmt_level = prev_stmt_level
 		c.fn_level--
 		c.returns = prev_returns
 		c.inside_anon_fn = prev_inside_anon_fn
@@ -8552,4 +8626,271 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 		}
 		else {}
 	}
+}
+
+// comptime const eval
+fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
+	if nlevel > 100 {
+		// protect against a too deep comptime eval recursion
+		return none
+	}
+	match expr {
+		ast.IntegerLiteral {
+			x := expr.val.u64()
+			if x > 9223372036854775807 {
+				return x
+			}
+			return expr.val.i64()
+		}
+		ast.StringLiteral {
+			return expr.val
+		}
+		ast.CharLiteral {
+			runes := expr.val.runes()
+			if runes.len > 0 {
+				return runes[0]
+			}
+			return none
+		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				// an existing constant?
+				return eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
+			}
+		}
+		ast.CastExpr {
+			cast_expr_value := eval_comptime_const_expr(expr.expr, nlevel + 1) or { return none }
+			if expr.typ == ast.i8_type {
+				return cast_expr_value.i8() or { return none }
+			}
+			if expr.typ == ast.i16_type {
+				return cast_expr_value.i16() or { return none }
+			}
+			if expr.typ == ast.int_type {
+				return cast_expr_value.int() or { return none }
+			}
+			if expr.typ == ast.i64_type {
+				return cast_expr_value.i64() or { return none }
+			}
+			//
+			if expr.typ == ast.byte_type {
+				return cast_expr_value.byte() or { return none }
+			}
+			if expr.typ == ast.u16_type {
+				return cast_expr_value.u16() or { return none }
+			}
+			if expr.typ == ast.u32_type {
+				return cast_expr_value.u32() or { return none }
+			}
+			if expr.typ == ast.u64_type {
+				return cast_expr_value.u64() or { return none }
+			}
+			//
+			if expr.typ == ast.f32_type {
+				return cast_expr_value.f32() or { return none }
+			}
+			if expr.typ == ast.f64_type {
+				return cast_expr_value.f64() or { return none }
+			}
+		}
+		ast.InfixExpr {
+			left := eval_comptime_const_expr(expr.left, nlevel + 1) ?
+			right := eval_comptime_const_expr(expr.right, nlevel + 1) ?
+			if left is string && right is string {
+				match expr.op {
+					.plus {
+						return left + right
+					}
+					else {
+						return none
+					}
+				}
+			} else if left is u64 && right is i64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
+				}
+			} else if left is i64 && right is u64 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(left) << i64(right) }
+					.right_shift { return i64(left) >> i64(right) }
+					else { return none }
+				}
+			} else if left is u64 && right is u64 {
+				match expr.op {
+					.plus { return left + right }
+					.minus { return left - right }
+					.mul { return left * right }
+					.div { return left / right }
+					.mod { return left % right }
+					.xor { return left ^ right }
+					.pipe { return left | right }
+					.amp { return left & right }
+					.left_shift { return left << right }
+					.right_shift { return left >> right }
+					else { return none }
+				}
+			} else if left is i64 && right is i64 {
+				match expr.op {
+					.plus { return left + right }
+					.minus { return left - right }
+					.mul { return left * right }
+					.div { return left / right }
+					.mod { return left % right }
+					.xor { return left ^ right }
+					.pipe { return left | right }
+					.amp { return left & right }
+					.left_shift { return left << right }
+					.right_shift { return left >> right }
+					else { return none }
+				}
+			} else if left is byte && right is byte {
+				match expr.op {
+					.plus { return left + right }
+					.minus { return left - right }
+					.mul { return left * right }
+					.div { return left / right }
+					.mod { return left % right }
+					.xor { return left ^ right }
+					.pipe { return left | right }
+					.amp { return left & right }
+					.left_shift { return left << right }
+					.right_shift { return left >> right }
+					else { return none }
+				}
+			}
+		}
+		else {
+			// eprintln('>>> nlevel: $nlevel | another $expr.type_name() | $expr ')
+			return none
+		}
+	}
+	return none
+}
+
+fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
+	if !node.is_noreturn {
+		return
+	}
+	if node.no_body {
+		return
+	}
+	if node.return_type != ast.void_type {
+		c.error('[noreturn] functions cannot have return types', node.pos)
+	}
+	if uses_return_stmt(node.stmts) {
+		c.error('[noreturn] functions cannot use return statements', node.pos)
+	}
+	if node.stmts.len != 0 {
+		mut is_valid_end_of_noreturn_fn := false
+		last_stmt := node.stmts.last()
+		match last_stmt {
+			ast.ExprStmt {
+				if last_stmt.expr is ast.CallExpr {
+					if last_stmt.expr.should_be_skipped {
+						c.error('[noreturn] functions cannot end with a skippable `[if ..]` call',
+							last_stmt.pos)
+						return
+					}
+					if last_stmt.expr.is_noreturn {
+						is_valid_end_of_noreturn_fn = true
+					}
+				}
+			}
+			ast.ForStmt {
+				if last_stmt.is_inf && last_stmt.stmts.len == 0 {
+					is_valid_end_of_noreturn_fn = true
+				}
+			}
+			else {}
+		}
+		if !is_valid_end_of_noreturn_fn {
+			c.error('[noreturn] functions should end with a call to another [noreturn] function, or with an infinite `for {}` loop',
+				last_stmt.pos)
+			return
+		}
+	}
+}
+
+fn uses_return_stmt(stmts []ast.Stmt) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	for stmt in stmts {
+		match stmt {
+			ast.Return {
+				return true
+			}
+			ast.Block {
+				if uses_return_stmt(stmt.stmts) {
+					return true
+				}
+			}
+			ast.ExprStmt {
+				match stmt.expr {
+					ast.CallExpr {
+						if uses_return_stmt(stmt.expr.or_block.stmts) {
+							return true
+						}
+					}
+					ast.MatchExpr {
+						for b in stmt.expr.branches {
+							if uses_return_stmt(b.stmts) {
+								return true
+							}
+						}
+					}
+					ast.SelectExpr {
+						for b in stmt.expr.branches {
+							if uses_return_stmt(b.stmts) {
+								return true
+							}
+						}
+					}
+					ast.IfExpr {
+						for b in stmt.expr.branches {
+							if uses_return_stmt(b.stmts) {
+								return true
+							}
+						}
+					}
+					else {}
+				}
+			}
+			ast.ForStmt {
+				if uses_return_stmt(stmt.stmts) {
+					return true
+				}
+			}
+			ast.ForCStmt {
+				if uses_return_stmt(stmt.stmts) {
+					return true
+				}
+			}
+			ast.ForInStmt {
+				if uses_return_stmt(stmt.stmts) {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }

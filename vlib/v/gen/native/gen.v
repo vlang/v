@@ -47,6 +47,12 @@ mut:
 	size_pos             []int
 	nlines               int
 	callpatches          []CallPatch
+	strs                 []String
+}
+
+struct String {
+	str string
+	pos int
 }
 
 struct CallPatch {
@@ -174,6 +180,12 @@ pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
 
 pub fn (g &Gen) pos() i64 {
 	return g.buf.len
+}
+
+fn (mut g Gen) write(bytes []byte) {
+	for _, b in bytes {
+		g.buf << b
+	}
 }
 
 fn (mut g Gen) write8(n int) {

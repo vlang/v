@@ -12,7 +12,7 @@ type DocOrAny = toml.Any | toml.Doc
 pub fn json(doa DocOrAny) string {
 	match doa {
 		toml.Doc {
-			return any_to_json(doa.ast_to_any(doa.ast.table))
+			return any_to_json(toml.ast_to_any(doa.ast.table))
 		}
 		toml.Any {
 			return any_to_json(doa)

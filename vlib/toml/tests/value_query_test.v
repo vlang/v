@@ -1,4 +1,5 @@
 import toml
+import strconv
 
 const toml_text = '
 modules = [ "ui", "toml" ]
@@ -23,7 +24,10 @@ id = 1
 id = 2
 
 [values]
+nan = nan
+inf = inf
 test = 2
+minus-inf = -inf
 
 [[themes]]
 name = "Ice"
@@ -45,6 +49,7 @@ fn test_value_query_in_array() {
 	assert value == 'toml'
 	value = toml_doc.value('errors[11]').default_to('<none>').string()
 	assert value == '<none>'
+
 	value = toml_doc.value('themes[2].colors[0]').string()
 	assert value == 'blue'
 }
@@ -74,4 +79,16 @@ fn test_any_value_query() {
 	any = toml_doc.value('values')
 	any = any.value('test')
 	assert any.int() == 2
+}
+
+fn test_inf_and_nan_query() {
+	toml_doc := toml.parse(toml_text) or { panic(err) }
+
+	value := toml_doc.value('values.nan').string()
+	assert value == 'nan'
+
+	mut value_u64 := toml_doc.value('values.inf').u64()
+	assert value_u64 == strconv.double_plus_infinity
+	value_u64 = toml_doc.value('values.minus-inf').u64()
+	assert value_u64 == strconv.double_minus_infinity
 }
