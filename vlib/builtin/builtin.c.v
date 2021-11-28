@@ -289,9 +289,9 @@ pub fn malloc(n int) &byte {
 		panic('malloc($n) failed')
 	}
 	$if debug_malloc ? {
-		// Fill in the memory with something != 0, so it is easier to spot
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
 		// when the calling code wrongly relies on it being zeroed.
-		unsafe { C.memset(res, 0x88, n) }
+		unsafe { C.memset(res, 0x4D, n) }
 	}
 	return res
 }
@@ -342,9 +342,9 @@ pub fn malloc_noscan(n int) &byte {
 		panic('malloc_noscan($n) failed')
 	}
 	$if debug_malloc ? {
-		// Fill in the memory with something != 0, so it is easier to spot
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
 		// when the calling code wrongly relies on it being zeroed.
-		unsafe { C.memset(res, 0x88, n) }
+		unsafe { C.memset(res, 0x4D, n) }
 	}
 	return res
 }
