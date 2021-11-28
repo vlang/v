@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_expr_range_low_higher_than_high.vv:5:3: error: start value is higher than end value
+    3 |     value := 10
+    4 |     match value {
+    5 |         20...10 {}
+      |         ~~~~~~~
+    6 |         else {}
+    7 |     }
