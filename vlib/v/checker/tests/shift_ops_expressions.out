@@ -75,6 +75,13 @@ vlib/v/checker/tests/shift_ops_expressions.vv:6:3: error: unused expression
       |         ~~~~~~
     7 |     }
     8 |     c := if true { a << 111 } else { a << 333 }
+vlib/v/checker/tests/shift_ops_expressions.vv:8:22: error: shift count for type `int` too large (maximum: 31 bits)
+    6 |         a << 2
+    7 |     }
+    8 |     c := if true { a << 111 } else { a << 333 }
+      |                         ~~~
+    9 |     println(c)
+   10 |     a << 1
 vlib/v/checker/tests/shift_ops_expressions.vv:10:2: error: unused expression
     8 |     c := if true { a << 111 } else { a << 333 }
     9 |     println(c)
@@ -103,11 +110,11 @@ vlib/v/checker/tests/shift_ops_expressions.vv:33:3: error: unused expression
       |         ~~~~~~
    34 |         999
    35 |     } else {
-vlib/v/checker/tests/shift_ops_expressions.vv:37:3: error: unused expression
+vlib/v/checker/tests/shift_ops_expressions.vv:37:8: error: shift count for type `int` too large (maximum: 31 bits)
    35 |     } else {
    36 |         println('---')
    37 |         a << 9999
-      |         ~~~~~~~~~
+      |              ~~~~
    38 |         println('---')
    39 |         555
 vlib/v/checker/tests/shift_ops_expressions.vv:50:23: error: shift count for type `int` too large (maximum: 31 bits)
