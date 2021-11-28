@@ -27,8 +27,8 @@ mut:
 	minor string
 }
 
-const magic_cipher_data = [byte(0x4f727068), 0x65616e42, 0x65686f6c, 0x64657253, 0x63727944,
-	0x6f756274]
+const magic_cipher_data = [byte(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
+	0x6c, 0x64, 0x65, 0x72, 0x53, 0x63, 0x72, 0x79, 0x44, 0x6f, 0x75, 0x62, 0x74]
 
 pub fn generate_from_password(password []byte, cost int) ?string {
 	mut p := new_from_password(password, cost) or { return error('Error: $err') }
@@ -38,7 +38,8 @@ pub fn generate_from_password(password []byte, cost int) ?string {
 
 pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 	mut p := new_from_hash(hashed_password) or { return error('Error: $err') }
-	p.salt << '=='.bytes()
+	p.salt << `=`
+	p.salt << `=`
 	other_hash := bcrypt(password, p.cost, p.salt) or { return error('err') }
 
 	mut other_p := Hashed{
@@ -132,18 +133,18 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 
 fn (mut h Hashed) hash_byte() []byte {
 	mut arr := []byte{len: 60, init: 0}
-	arr[0] = '$'.bytes()[0]
-	arr[1] = h.major.bytes()[0]
+	arr[0] = `$`
+	arr[1] = h.major[0]
 	mut n := 2
 	if h.minor != '0' {
-		arr[2] = h.minor.bytes()[0]
+		arr[2] = h.minor[0]
 		n = 3
 	}
-	arr[n] = '$'.bytes()[0]
+	arr[n] = `$`
 	n++
 	copy(arr[n..], '${int(h.cost):02}'.bytes())
 	n += 2
-	arr[n] = '$'.bytes()[0]
+	arr[n] = `$`
 	n++
 	copy(arr[n..], h.salt)
 	n += bcrypt.encoded_salt_size
@@ -153,15 +154,15 @@ fn (mut h Hashed) hash_byte() []byte {
 }
 
 fn (mut h Hashed) decode_version(sbytes []byte) ?int {
-	if sbytes[0] != '$'.bytes()[0] {
+	if sbytes[0] != `$` {
 		return error("bcrypt hashes must start with '$'")
 	}
-	if sbytes[1] != bcrypt.major_version.bytes()[0] {
+	if sbytes[1] != bcrypt.major_version[0] {
 		return error('bcrypt algorithm version $bcrypt.major_version')
 	}
 	h.major = sbytes[1].ascii_str()
 	mut n := 3
-	if sbytes[2] != '$'.bytes()[0] {
+	if sbytes[2] != `$` {
 		h.minor = sbytes[2].ascii_str()
 		n++
 	}
@@ -169,7 +170,7 @@ fn (mut h Hashed) decode_version(sbytes []byte) ?int {
 }
 
 fn (mut h Hashed) decode_cost(sbytes []byte) ?int {
-	cost := string(sbytes[0..2]).int()
+	cost := sbytes[0..2].bytestr().int()
 	check_cost(cost) or { return err }
 	h.cost = cost
 	return 3

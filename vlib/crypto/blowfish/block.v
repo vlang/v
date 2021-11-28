@@ -87,37 +87,37 @@ fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
 	mut xr := r
 	xl ^= bf.p[0]
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[1]
+		(bf.s[3][byte(xl)] ^ bf.p[1])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[2]
+		(bf.s[3][byte(xr)] ^ bf.p[2])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[3]
+		(bf.s[3][byte(xl)] ^ bf.p[3])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[4]
+		(bf.s[3][byte(xr)] ^ bf.p[4])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[5]
+		(bf.s[3][byte(xl)] ^ bf.p[5])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[6]
+		(bf.s[3][byte(xr)] ^ bf.p[6])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[7]
+		(bf.s[3][byte(xl)] ^ bf.p[7])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[8]
+		(bf.s[3][byte(xr)] ^ bf.p[8])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[9]
+		(bf.s[3][byte(xl)] ^ bf.p[9])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[10]
+		(bf.s[3][byte(xr)] ^ bf.p[10])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[11]
+		(bf.s[3][byte(xl)] ^ bf.p[11])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[12]
+		(bf.s[3][byte(xr)] ^ bf.p[12])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[13]
+		(bf.s[3][byte(xl)] ^ bf.p[13])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[14]
+		(bf.s[3][byte(xr)] ^ bf.p[14])
 	xr ^= ((bf.s[0][byte(xl >> 24)] + bf.s[1][byte(xl >> 16)]) ^ bf.s[2][byte(xl >> 8)]) +
-		bf.s[3][byte(xl)] ^ bf.p[15]
+		(bf.s[3][byte(xl)] ^ bf.p[15])
 	xl ^= ((bf.s[0][byte(xr >> 24)] + bf.s[1][byte(xr >> 16)]) ^ bf.s[2][byte(xr >> 8)]) +
-		bf.s[3][byte(xr)] ^ bf.p[16]
+		(bf.s[3][byte(xr)] ^ bf.p[16])
 	xr ^= bf.p[17]
 	return [xl, xr]
 }

@@ -7,7 +7,9 @@ pub mut:
 }
 
 pub fn new_cipher(key []byte) ?Blowfish {
-	mut bf := Blowfish{p, s}
+	mut bf := Blowfish{}
+	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
+	unsafe { vmemcpy(&bf.s[0], &s[0], int(sizeof(bf.s))) }
 	if key.len < 1 || key.len > 56 {
 		return error('invalid key')
 	}
@@ -20,7 +22,9 @@ pub fn new_salted_cipher(key []byte, salt []byte) ?Blowfish {
 	if salt.len == 0 {
 		return new_cipher(key)
 	}
-	mut bf := Blowfish{p, s}
+	mut bf := Blowfish{}
+	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
+	unsafe { vmemcpy(&bf.s[0], &s[0], int(sizeof(bf.s))) }
 	if key.len < 1 {
 		return error('invalid key')
 	}
