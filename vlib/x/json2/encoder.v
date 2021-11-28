@@ -19,6 +19,7 @@ fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 }
 
 // str returns the string representation of the `map[string]Any`.
+[manualfree]
 pub fn (flds map[string]Any) str() string {
 	mut wr := strings.new_builder(200)
 	wr.write_b(`{`)
@@ -37,6 +38,7 @@ pub fn (flds map[string]Any) str() string {
 }
 
 // str returns the string representation of the `[]Any`.
+[manualfree]
 pub fn (flds []Any) str() string {
 	mut wr := strings.new_builder(200)
 	wr.write_b(`[`)

@@ -142,6 +142,7 @@ fn (mut p Parser) decode_value() ?Any {
 	return Any(null)
 }
 
+[manualfree]
 fn (mut p Parser) decode_array() ?Any {
 	mut items := []Any{}
 	p.next_with_err() ?
