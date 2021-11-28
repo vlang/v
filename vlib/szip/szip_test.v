@@ -10,9 +10,21 @@ const (
 	fpath2       = os.join_path(test_path, fname2)
 )
 
-fn test_szip_create_temp_files() ? {
+fn cleanup() {
 	os.chdir(os.temp_dir()) or {}
 	os.rmdir_all(test_path) or {}
+	os.rm(test_out_zip) or {}
+}
+
+fn testsuite_begin() ? {
+	cleanup()
+}
+
+fn testsuite_end() ? {
+	cleanup()
+}
+
+fn test_szip_create_temp_files() ? {
 	os.mkdir(test_path) ?
 	os.write_file(fpath1, 'file one') ?
 	os.write_file(fpath2, 'file two') ?
