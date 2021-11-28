@@ -237,7 +237,6 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			if node.op == .left_shift && left_type_final.is_signed() {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
 					node.left.position())
-				return left_type
 			}
 			if node.ct_right_value_evaled {
 				if node.ct_right_value !is ast.EmptyExpr {
