@@ -18,7 +18,6 @@ const (
 		'errors/table-3.toml',
 		'errors/table-4.toml',
 		'errors/table-invalid-4.toml',
-		'errors/inline-table-imutable-1.toml',
 	]
 
 	valid_value_exceptions = []string{}
