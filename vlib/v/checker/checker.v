@@ -5689,18 +5689,26 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if from_type == ast.void_type {
 		c.error('expression does not return a value so it cannot be cast', node.expr.position())
 	}
-	if from_type == ast.byte_type && to_type_sym.kind == .string {
-		c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
-			node.pos)
+	//
+	if to_type == ast.string_type {
+		if from_type in [ast.byte_type, ast.bool_type] {
+			c.error('cannot cast type `$from_type_sym.name` to string, use `${node.expr.str()}.str()` instead.',
+				node.pos)
+		}
+		if from_type.is_real_pointer() {
+			c.error('cannot cast pointer type `$from_type_sym.name` to string, use `&byte($node.expr.str()).vstring()` instead.',
+				node.pos)
+		}
+		if from_type.is_number() {
+			c.error('cannot cast number to string, use `${node.expr.str()}.str()` instead.',
+				node.pos)
+		}
+		if from_type_sym.kind == .alias && from_type_sym_final.name != 'string' {
+			c.error('cannot cast type `$from_type_sym.name` to string, use `x.str()` instead',
+				node.pos)
+		}
 	}
-	if to_type == ast.string_type && from_type.is_real_pointer() {
-		c.error('can not cast pointer type `$from_type_sym.name` to string, use `&byte($node.expr.str()).vstring()` instead.',
-			node.pos)
-	}
-	if to_type == ast.string_type && from_type.is_number() {
-		c.error('can not cast number to string, use `${node.expr.str()}.str()` instead.',
-			node.pos)
-	}
+	//
 	if to_type_sym.kind == .sum_type {
 		if from_type in [ast.int_literal_type, ast.float_literal_type] {
 			xx := if from_type == ast.int_literal_type { ast.int_type } else { ast.f64_type }
@@ -5715,10 +5723,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
-	} else if to_type == ast.string_type && from_type_sym.kind == .alias
-		&& from_type_sym_final.name != 'string' {
-		type_name := c.table.type_to_str(from_type)
-		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
 	} else if to_type != ast.string_type && from_type == ast.string_type
 		&& (!(to_type_sym.kind == .alias && to_type_sym_final.name == 'string')) {
 		mut error_msg := 'cannot cast a string to a type `$to_type_sym_final.name`, that is not an alias of string'
