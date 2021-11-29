@@ -5,15 +5,15 @@ import os
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
-	path  string
-	apath string
 mut:
 	compressed        &byte
 	uncompressed      &byte
 	free_compressed   bool
 	free_uncompressed bool
 pub:
-	len int
+	len   int
+	path  string
+	apath string
 }
 
 pub fn (ed EmbedFileData) str() string {
