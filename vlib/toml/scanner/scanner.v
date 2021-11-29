@@ -93,6 +93,12 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		ascii := byte_c.ascii_str()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'current char "$ascii"')
 
+		if byte_c == byte(0x0) {
+			s.reset()
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' NULL control character `$c.hex()` is not allowed at ($s.line_nr,$s.col) "$ascii" near ...${s.excerpt(s.pos, 5)}...')
+		}
+
 		is_sign := c == `+` || c == `-`
 
 		// (+/-)nan & (+/-)inf
@@ -340,7 +346,7 @@ fn (mut s Scanner) ignore_line() ?string {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()} / $c"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
-			return s.text[start..s.pos]
+			return s.text[start..s.pos + 1]
 		}
 	}
 	return s.text[start..s.pos]
