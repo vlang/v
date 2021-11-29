@@ -71,15 +71,15 @@ pub fn (_rune string) utf32_code() int {
 	// TODO should be
 	// res := int( rune[0] << rune.len)
 	b = b << _rune.len
-	mut res := int(b)
+	mut res := u32(b)
 	mut shift := 6 - _rune.len
 	for i := 1; i < _rune.len; i++ {
-		c := int(_rune[i])
-		res = res << shift
+		c := u32(_rune[i])
+		res = u32(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}
-	return res
+	return int(res)
 }
 
 // Calculate length to read from the first byte

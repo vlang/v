@@ -58,7 +58,7 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 		g.write32(0xd2800020)
 		g.println('mov x0, 1')
 	} else if r >= 0 && r <= 16 {
-		g.write32(0xd2800000 + int(r) + (int(val) << 5))
+		g.write32(int(u32(0xd2800000 + int(r) + int(val)) << 5))
 		g.println('mov x$r, $val')
 	} else {
 		g.n_error('mov_arm unsupported values')
@@ -143,7 +143,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 }
 
 fn (mut g Gen) adr(r Arm64Register, delta int) {
-	g.write32(0x10000000 | int(r) | (delta << 4))
+	g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
 	g.println('adr $r, $delta')
 }
 

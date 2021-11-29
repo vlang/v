@@ -1808,11 +1808,14 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if !p.pref.translated && !p.pref.is_fmt
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
-			if node !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
-				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
-				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
+			if (is_top_level || p.tok.kind != .rcbr) && node !is ast.CallExpr
+				&& node !is ast.PostfixExpr && node !is ast.ComptimeCall
 				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
-				return p.error_with_pos('expression evaluated but not used', node.position())
+				is_complex_infix_expr := node is ast.InfixExpr
+					&& (node as ast.InfixExpr).op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
+				if !is_complex_infix_expr {
+					return p.error_with_pos('expression evaluated but not used', node.position())
+				}
 			}
 		}
 	}

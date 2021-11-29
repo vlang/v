@@ -46,7 +46,7 @@ pub fn get_uchar(s string, index int) int {
 		if ch_len > 1 && ch_len < 5 {
 			mut lword := 0
 			for i := 0; i < ch_len; i++ {
-				lword = (lword << 8) | int(s[index + i])
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
 			// 2 byte utf-8
@@ -416,7 +416,7 @@ fn up_low(s string, upper_flag bool) string {
 			mut lword := 0
 
 			for i := 0; i < ch_len; i++ {
-				lword = (lword << 8) | int(s[index + i])
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
 			// println("#${index} ($lword)")

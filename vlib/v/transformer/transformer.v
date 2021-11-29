@@ -481,7 +481,7 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 						}
 						.left_shift {
 							return ast.IntegerLiteral{
-								val: (left_val << right_val).str()
+								val: (u32(left_val) << right_val).str()
 								pos: pos
 							}
 						}

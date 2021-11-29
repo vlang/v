@@ -2220,7 +2220,7 @@ struct SumtypeCastingFn {
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
-	i := got | (exp << 16)
+	i := got | int(u32(exp) << 16)
 	got_cname, exp_cname := g.table.get_type_symbol(got).cname, g.table.get_type_symbol(exp).cname
 	fn_name := '${got_cname}_to_sumtype_$exp_cname'
 	if got == exp || g.sumtype_definitions[i] {
@@ -2961,6 +2961,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
+	if assign_stmt.right.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.right_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.left_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.left_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+
 	for i, left in assign_stmt.left {
 		mut is_auto_heap := false
 		mut var_type := assign_stmt.left_types[i]

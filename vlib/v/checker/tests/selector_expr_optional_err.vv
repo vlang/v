@@ -1,5 +1,11 @@
-import net.http
+struct HttpResult {
+	status_code int
+}
+
+fn abc() ?HttpResult {
+	return HttpResult{}
+}
 
 fn main() {
-    println(http.get('https://httpbin.org/').status_code)
+	println(abc().status_code)
 }
