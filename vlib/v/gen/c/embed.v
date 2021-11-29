@@ -14,7 +14,12 @@ fn (mut g Gen) embed_file_is_prod_mode() bool {
 fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('(v__embed_file__EmbedFileData){')
 	g.writeln('\t\t.path = ${ctoslit(node.embed_file.rpath)},')
-	g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
+	if g.embed_file_is_prod_mode() {
+		// apath is not needed in production and may leak information
+		g.writeln('\t\t.apath = ${ctoslit('')},')
+	} else {
+		g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
+	}
 	file_size := os.file_size(node.embed_file.apath)
 	if file_size > 5242880 {
 		eprintln('Warning: embedding of files >= ~5MB is currently not supported')

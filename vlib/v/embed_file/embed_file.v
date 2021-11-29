@@ -2,10 +2,13 @@ module embed_file
 
 import os
 
+pub const (
+	is_used = 1
+)
+
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
-	path  string
 	apath string
 mut:
 	compressed        &byte
@@ -13,11 +16,12 @@ mut:
 	free_compressed   bool
 	free_uncompressed bool
 pub:
-	len int
+	len  int
+	path string
 }
 
 pub fn (ed EmbedFileData) str() string {
-	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", path: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
+	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", apath: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
 [unsafe]
