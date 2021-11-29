@@ -17,7 +17,7 @@ pub:
 }
 
 pub fn (ed EmbedFileData) str() string {
-	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", path: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
+	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", apath: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
 [unsafe]
