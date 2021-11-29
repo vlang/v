@@ -259,6 +259,17 @@ fn (mut p Parser) expect(expected_token token.Kind) ? {
 	}
 }
 
+// build_explicitly_declared_key returns the absolute dotted key path.
+fn (p Parser) build_explicitly_declared_key(key DottedKey) DottedKey {
+	if p.root_map_key.len > 0 {
+		mut abs_dotted_key := DottedKey([]string{})
+		abs_dotted_key << p.root_map_key
+		abs_dotted_key << key
+		return abs_dotted_key
+	}
+	return key
+}
+
 // check_explicitly_declared returns an error if `key` has been explicitly declared.
 fn (p Parser) check_explicitly_declared(key DottedKey) ? {
 	if p.explicit_declared.len > 0 && p.explicit_declared.has(key) {
@@ -461,19 +472,23 @@ pub fn (mut p Parser) root_table() ? {
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					// Check for "table injection":
-					// https://github.com/BurntSushi/toml-test/blob/576db8523df1b8705ef18c526b4a6ba9c271bbbc/tests/invalid/table/injection-1.toml
-					// https://github.com/BurntSushi/toml-test/blob/576db8523df1b8705ef18c526b4a6ba9c271bbbc/tests/invalid/table/injection-2.toml
-					// NOTE this is a *relatively* costly check. In general - and by specification,
+					// NOTE these are *relatively* costly checks. In general - and by specification,
 					// TOML documents are expected to be "small" so this shouldn't be a problem. Famous last words.
 					for explicit_key in p.explicit_declared {
+						// Check for key re-defining:
+						// https://github.com/iarna/toml-spec-tests/blob/1880b1a/errors/inline-table-imutable-1.toml
+
+						if p.build_explicitly_declared_key(sub_table) == explicit_key {
+							return error(@MOD + '.' + @STRUCT + '.' + @FN +
+								' key `$sub_table` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+						}
 						if explicit_key.len == 1 || explicit_key == p.root_map_key {
 							continue
 						}
-						mut abs_dotted_key := DottedKey([]string{})
-						abs_dotted_key << p.root_map_key
-						abs_dotted_key << sub_table
-						if abs_dotted_key.starts_with(explicit_key) {
+						// Check for "table injection":
+						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
+						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
+						if p.build_explicitly_declared_key(sub_table).starts_with(explicit_key) {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key `$dotted_key` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 						}
@@ -487,14 +502,6 @@ pub fn (mut p Parser) root_table() ? {
 				} else {
 					p.ignore_while(parser.space_formatting)
 					key, val := p.key_value() ?
-
-					// Check and register explicitly declared arrays
-					if val is []ast.Value {
-						dotted_key := DottedKey([key.str()])
-						// Disallow re-declaring the key
-						p.check_explicitly_declared(dotted_key) ?
-						p.explicit_declared << dotted_key
-					}
 
 					t := p.find_table() ?
 					unsafe {
@@ -587,7 +594,7 @@ pub fn (mut p Parser) root_table() ? {
 					p.check_explicitly_declared(dotted_key) ?
 					p.explicit_declared << dotted_key
 
-					// Check for footgun re-declaration in this odd way:
+					// Check for footgun redeclaration in this odd way:
 					// [[tbl]]
 					// [tbl]
 					if p.last_aot == dotted_key {
@@ -1212,6 +1219,11 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	p.ignore_while(parser.space_formatting)
 	value := p.value() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `$key = $value`')
+
+	p.explicit_declared << p.build_explicitly_declared_key(DottedKey([
+		key.str(),
+	]))
+
 	return key, value
 }
 
@@ -1226,6 +1238,9 @@ pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
 	p.ignore_while(parser.space_formatting)
 	value := p.value() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `$dotted_key = $value`...')
+
+	p.explicit_declared << p.build_explicitly_declared_key(dotted_key)
+
 	return dotted_key, value
 }
 
