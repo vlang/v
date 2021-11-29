@@ -197,10 +197,11 @@ pub fn (mut b Builder) parse_imports() {
 				if name == '' {
 					name = file.mod.short_name
 				}
-				if name != mod {
-					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					b.parsed_files[i].errors << b.error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
-						ast_file.path, imp.pos)
+				sname := name.all_after_last('.')
+				smod := mod.all_after_last('.')
+				if sname != smod {
+					msg := 'bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`'
+					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
 				}
 			}
 			b.parsed_files << parsed_files
