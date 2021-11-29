@@ -2,8 +2,8 @@ import toml
 
 fn test_crlf() {
 	str_value := 'test string'
-	mut toml_txt := 'crlf_string = "test string"
-# Comment with CRLF\r\n'
+	mut toml_txt := 'crlf_string = "test string"\r\n
+# Comment with CRLF is not allowed'
 	toml_doc := toml.parse(toml_txt) or { panic(err) }
 
 	value := toml_doc.value('crlf_string')
