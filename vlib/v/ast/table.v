@@ -362,14 +362,15 @@ pub struct GetEmbedsOptions {
 // the hierarchy of embeds is returned as a list
 pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type {
 	mut embeds := [][]Type{}
-	if sym.info is Struct {
-		for embed in sym.info.embeds {
+	unalias_sym := if sym.info is Alias { t.get_type_symbol(sym.info.parent_type) } else { sym }
+	if unalias_sym.info is Struct {
+		for embed in unalias_sym.info.embeds {
 			embed_sym := t.get_type_symbol(embed)
 			mut preceding := options.preceding
 			preceding << embed
 			embeds << t.get_embeds(embed_sym, preceding: preceding)
 		}
-		if sym.info.embeds.len == 0 && options.preceding.len > 0 {
+		if unalias_sym.info.embeds.len == 0 && options.preceding.len > 0 {
 			embeds << options.preceding
 		}
 	}
@@ -527,6 +528,9 @@ pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name s
 				return field, embed_types
 			}
 		}
+	} else if sym.info is Alias {
+		unalias_sym := t.get_type_symbol(sym.info.parent_type)
+		return t.find_field_from_embeds_recursive(unalias_sym, field_name)
 	}
 	return none
 }
@@ -556,6 +560,9 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(S
 				return field, embed_type
 			}
 		}
+	} else if sym.info is Alias {
+		unalias_sym := t.get_type_symbol(sym.info.parent_type)
+		return t.find_field_from_embeds(unalias_sym, field_name)
 	}
 	return none
 }
@@ -581,7 +588,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 	mut field_map := map[string]StructField{}
 	mut field_usages := map[string]int{}
 	for variant in info.variants {
-		mut v_sym := t.get_type_symbol(variant)
+		mut v_sym := t.get_final_type_symbol(variant)
 		fields := match mut v_sym.info {
 			Struct {
 				t.struct_fields(v_sym)
