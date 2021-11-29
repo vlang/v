@@ -6,6 +6,8 @@ pub mut:
 	s [4][256]u32
 }
 
+// new_cipher creates and returns a Blowfish.
+// The key argument should be the Blowfish key, from 1 to 56 bytes.
 pub fn new_cipher(key []byte) ?Blowfish {
 	mut bf := Blowfish{}
 	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
@@ -18,6 +20,7 @@ pub fn new_cipher(key []byte) ?Blowfish {
 	return bf
 }
 
+// new_salted_cipher creates a returns a Blowfish that folds a salt into its key schedule.
 pub fn new_salted_cipher(key []byte, salt []byte) ?Blowfish {
 	if salt.len == 0 {
 		return new_cipher(key)
@@ -32,6 +35,7 @@ pub fn new_salted_cipher(key []byte, salt []byte) ?Blowfish {
 	return bf
 }
 
+// encrypt encrypts the 8-byte buffer src using the key k and stores the result in dst.
 pub fn (mut bf Blowfish) encrypt(mut dst []byte, src []byte) {
 	l := u32(src[0]) << 24 | u32(src[1]) << 16 | u32(src[2]) << 8 | u32(src[3])
 	r := u32(src[4]) << 24 | u32(src[5]) << 16 | u32(src[6]) << 8 | u32(src[7])

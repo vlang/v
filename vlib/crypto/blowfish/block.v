@@ -1,5 +1,6 @@
 module blowfish
 
+// expand_key performs a key expansion on the given Blowfish.
 pub fn expand_key(key []byte, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
@@ -39,6 +40,7 @@ pub fn expand_key(key []byte, mut bf Blowfish) {
 	}
 }
 
+// expand_key_with_salt folds the salt during the key schedule.
 pub fn expand_key_with_salt(key []byte, salt []byte, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
@@ -82,6 +84,7 @@ pub fn expand_key_with_salt(key []byte, salt []byte, mut bf Blowfish) {
 	}
 }
 
+// encrypt_block sets up the Blowfish's pi and substitution tables.
 fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
 	mut xl := l
 	mut xr := r
@@ -123,6 +126,8 @@ fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
 	return res
 }
 
+// get_next_word returns the next big-endian uint32 value from the byte
+// slice at the given position in a circular manner, updating the position.
 fn get_next_word(b []byte, pos &int) u32 {
 	mut w := u32(0)
 	mut j := 0
