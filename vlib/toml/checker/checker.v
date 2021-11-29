@@ -365,7 +365,6 @@ fn (c Checker) check_time(t ast.Time) ? {
 		check_length++
 	}
 	if hhmmss.len != check_length {
-		println('XXX $hhmmss')
 		starts_with_zero := hhmmss.starts_with('0')
 		if !starts_with_zero {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
