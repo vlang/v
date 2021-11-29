@@ -16,7 +16,7 @@ fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('\t\t.path = ${ctoslit(node.embed_file.rpath)},')
 	if g.embed_file_is_prod_mode() {
 		// apath is not needed in production and may leak information
-		g.writeln('\t\t.apath = ${ctoslit("")},')
+		g.writeln('\t\t.apath = ${ctoslit('')},')
 	} else {
 		g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
 	}
