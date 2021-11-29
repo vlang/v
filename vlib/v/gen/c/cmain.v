@@ -10,6 +10,10 @@ pub fn (mut g Gen) gen_c_main() {
 	if g.pref.is_liveshared {
 		return
 	}
+	if g.pref.is_o {
+		// no main in .o files
+		return
+	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
 
