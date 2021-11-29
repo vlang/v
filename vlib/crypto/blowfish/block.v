@@ -1,6 +1,6 @@
 module blowfish
 
-// expand_key performs a key expansion on the given Blowfish.
+// expand_key performs a key expansion on the given Blowfish cipher.
 pub fn expand_key(key []byte, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
@@ -18,29 +18,29 @@ pub fn expand_key(key []byte, mut bf Blowfish) {
 	mut l := u32(0)
 	mut r := u32(0)
 	for i := 0; i < 18; i += 2 {
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.p[i], bf.p[i + 1] = arr[0], arr[1]
 	}
 
 	for i := 0; i < 256; i += 2 {
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[0][i], bf.s[0][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[1][i], bf.s[1][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[2][i], bf.s[2][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[3][i], bf.s[3][i + 1] = arr[0], arr[1]
 	}
 }
 
-// expand_key_with_salt folds the salt during the key schedule.
+// expand_key_with_salt using salt to expand the key.
 pub fn expand_key_with_salt(key []byte, salt []byte, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
@@ -54,38 +54,38 @@ pub fn expand_key_with_salt(key []byte, salt []byte, mut bf Blowfish) {
 	for i := 0; i < 18; i += 2 {
 		l ^= get_next_word(key, &j)
 		r ^= get_next_word(key, &j)
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.p[i], bf.p[i + 1] = arr[0], arr[1]
 	}
 
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(key, &j)
 		r ^= get_next_word(key, &j)
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[0][i], bf.s[0][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(key, &j)
 		r ^= get_next_word(key, &j)
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[1][i], bf.s[1][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(key, &j)
 		r ^= get_next_word(key, &j)
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[2][i], bf.s[2][i + 1] = arr[0], arr[1]
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(key, &j)
 		r ^= get_next_word(key, &j)
-		arr := encrypt_block(l, r, mut bf)
+		arr := setup_tables(l, r, mut bf)
 		bf.s[3][i], bf.s[3][i + 1] = arr[0], arr[1]
 	}
 }
 
-// encrypt_block sets up the Blowfish's pi and substitution tables.
-fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
+// setup_tables sets up the Blowfish cipher's pi and substitution tables.
+fn setup_tables(l u32, r u32, mut bf Blowfish) []u32 {
 	mut xl := l
 	mut xr := r
 	xl ^= bf.p[0]
@@ -126,7 +126,7 @@ fn encrypt_block(l u32, r u32, mut bf Blowfish) []u32 {
 	return res
 }
 
-// get_next_word returns the next big-endian uint32 value from the byte
+// get_next_word returns the next big-endian u32 value from the byte
 // slice at the given position in a circular manner, updating the position.
 fn get_next_word(b []byte, pos &int) u32 {
 	mut w := u32(0)
