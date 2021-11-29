@@ -664,7 +664,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 	}
-	mut struct_sym := c.table.find_type(node.name) or { ast.TypeSymbol{} }
+	mut struct_sym := c.table.find_type(node.name) or { ast.invalid_type_symbol }
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for embed in node.embeds {
@@ -5657,8 +5657,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
+	from_type_sym_final := c.table.get_final_type_symbol(node.expr_type)
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
-
+	to_type_sym_final := c.table.get_final_type_symbol(node.typ)
+	//
 	if (to_type_sym.is_number() && from_type_sym.name == 'JS.Number')
 		|| (to_type_sym.is_number() && from_type_sym.name == 'JS.BigInt')
 		|| (to_type_sym.is_string() && from_type_sym.name == 'JS.String')
@@ -5698,28 +5700,26 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_type_sym.info is ast.Alias {
 		if !c.check_types(node.expr_type, to_type_sym.info.parent_type) {
-			parent_type_sym := c.table.get_type_symbol(to_type_sym.info.parent_type)
-			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$parent_type_sym.name`)',
+			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
-	} else if node.typ == ast.string_type
-		&& (from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool]
-		|| (from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
+	} else if node.typ == ast.string_type && from_type_sym.kind == .alias
+		&& from_type_sym_final.name != 'string' {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
-	} else if node.expr_type == ast.string_type {
-		if to_type_sym.kind != .alias {
-			mut error_msg := 'cannot cast a string'
-			if mut node.expr is ast.StringLiteral {
-				if node.expr.val.len == 1 {
-					error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
-				}
+	} else if node.expr_type == ast.string_type && node.typ != ast.string_type
+		&& to_type_sym.kind != .alias {
+		mut error_msg := 'cannot cast a string'
+		if mut node.expr is ast.StringLiteral {
+			if node.expr.val.len == 1 {
+				error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
 			}
-			c.error(error_msg, node.pos)
 		}
+		c.error(error_msg, node.pos)
 	} else if to_type_sym.kind == .byte && node.expr_type != ast.voidptr_type
 		&& from_type_sym.kind != .enum_ && !node.expr_type.is_int() && !node.expr_type.is_float()
-		&& node.expr_type != ast.bool_type && !node.expr_type.is_ptr() {
+		&& node.expr_type != ast.bool_type && !node.expr_type.is_ptr()
+		&& from_type_sym.kind == .alias && from_type_sym_final.name != 'byte' {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr()

@@ -13,6 +13,10 @@ pub mut:
 	last_line int // the line number where the ast object ends (used by vfmt)
 }
 
+[unsafe]
+pub fn (mut p Position) free() {
+}
+
 pub fn (pos Position) extend(end Position) Position {
 	return Position{
 		...pos
