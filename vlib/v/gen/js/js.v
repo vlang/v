@@ -1678,25 +1678,11 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 }
 
 fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
-	// TODO Handle joinable expressions
-	// node.is_expr
-	mut name := g.js_name(node.call_expr.name)
-	if node.call_expr.is_method {
-		receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
-		name = receiver_sym.name + '.' + name
-	}
-
 	g.writeln('await new Promise(function(resolve){')
 	g.inc_indent()
-	g.write('${name}(')
-	for i, arg in node.call_expr.args {
-		g.expr(arg.expr)
-		if i < node.call_expr.args.len - 1 {
-			g.write(', ')
-		}
-	}
-	g.writeln(');')
-	g.writeln('resolve();')
+	g.write('resolve(')
+	g.expr(node.call_expr)
+	g.write(');')
 	g.dec_indent()
 	g.writeln('});')
 }
@@ -3207,7 +3193,10 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
-	name := type_sym.name
+	mut name := type_sym.name
+	if name.contains('<') {
+		name = name[0..name.index('<') or { name.len }]
+	}
 	if it.fields.len == 0 && type_sym.kind != .interface_ {
 		if type_sym.kind == .struct_ && type_sym.language == .js {
 			g.write('{}')
