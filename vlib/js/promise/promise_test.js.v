@@ -1,7 +1,9 @@
+module promise
+
 fn test_promise() {
 	// TODO: For some reason compiler errors: "error: unknown function: js.promise.new", fix this
 	/*
-	p := promise.new<int, f64>(fn (resolve_ fn (x int), reject_ fn (x f64)) {
+	p := new<int, f64>(fn (resolve_ fn (x int), reject_ fn (x f64)) {
 		println('Promise code')
 		assert true
 		resolve_(42)
