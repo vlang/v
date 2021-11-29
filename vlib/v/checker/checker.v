@@ -1370,11 +1370,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
 				return ast.void_type
 			} else {
-				return c.check_shift(left_type, right_type, left_pos, right_pos)
+				return c.check_shift(mut node, left_type, right_type)
 			}
 		}
 		.right_shift {
-			return c.check_shift(left_type, right_type, left_pos, right_pos)
+			return c.check_shift(mut node, left_type, right_type)
 		}
 		.unsigned_right_shift {
 			modified_left_type := if !left_type.is_int() {
@@ -1418,7 +1418,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				or_block: node.or_block
 			}
 
-			return c.check_shift(left_type, right_type, left_pos, right_pos)
+			return c.check_shift(mut node, left_type, right_type)
 		}
 		.key_is, .not_is {
 			right_expr := node.right
@@ -3700,7 +3700,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.const_decl = field.name
 		c.const_deps << field.name
 		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
-		if ct_value := eval_comptime_const_expr(field.expr, 0) {
+		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
 			if ct_value is u64 {
 				typ = ast.u64_type
@@ -4539,7 +4539,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if comptime_value := eval_comptime_const_expr(init_expr.obj.expr,
+					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
 						0)
 					{
 						fixed_size = comptime_value.i64() or { fixed_size }
@@ -4549,7 +4549,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			ast.InfixExpr {
-				if comptime_value := eval_comptime_const_expr(init_expr, 0) {
+				if comptime_value := c.eval_comptime_const_expr(init_expr, 0) {
 					fixed_size = comptime_value.i64() or { fixed_size }
 				}
 			}
@@ -5293,6 +5293,9 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 				line_nr: -1
 			}
 			c.scope_returns = false
+		}
+		if c.should_abort {
+			return
 		}
 	}
 	c.stmt_level--
@@ -8590,12 +8593,49 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 }
 
 // comptime const eval
-fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
+fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
 	if nlevel > 100 {
 		// protect against a too deep comptime eval recursion
 		return none
 	}
 	match expr {
+		ast.ParExpr {
+			return c.eval_comptime_const_expr(expr.expr, nlevel + 1)
+		}
+		// ast.EnumVal {
+		//	c.note('>>>>>>>> expr: $expr', expr.pos)
+		//	return expr.val.i64()
+		// }
+		ast.SizeOf {
+			xtype := expr.typ
+			if xtype.is_real_pointer() {
+				if c.pref.m64 {
+					return 8 // 64bit platform
+				}
+				return 4 // 32bit platform
+			}
+			if int(xtype) == xtype.idx() {
+				match xtype {
+					ast.char_type { return 1 }
+					ast.i8_type { return 1 }
+					ast.i16_type { return 2 }
+					ast.int_type { return 4 }
+					ast.i64_type { return 8 }
+					//
+					ast.byte_type { return 1 }
+					ast.u8_type { return 1 }
+					ast.u16_type { return 2 }
+					ast.u32_type { return 4 }
+					ast.u64_type { return 8 }
+					else {}
+				}
+			}
+			return none
+		}
+		ast.FloatLiteral {
+			x := expr.val.f64()
+			return x
+		}
 		ast.IntegerLiteral {
 			x := expr.val.u64()
 			if x > 9223372036854775807 {
@@ -8616,11 +8656,11 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 		ast.Ident {
 			if expr.obj is ast.ConstField {
 				// an existing constant?
-				return eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
+				return c.eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
 			}
 		}
 		ast.CastExpr {
-			cast_expr_value := eval_comptime_const_expr(expr.expr, nlevel + 1) or { return none }
+			cast_expr_value := c.eval_comptime_const_expr(expr.expr, nlevel + 1) or { return none }
 			if expr.typ == ast.i8_type {
 				return cast_expr_value.i8() or { return none }
 			}
@@ -8655,8 +8695,8 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 			}
 		}
 		ast.InfixExpr {
-			left := eval_comptime_const_expr(expr.left, nlevel + 1) ?
-			right := eval_comptime_const_expr(expr.right, nlevel + 1) ?
+			left := c.eval_comptime_const_expr(expr.left, nlevel + 1) ?
+			right := c.eval_comptime_const_expr(expr.right, nlevel + 1) ?
 			if left is string && right is string {
 				match expr.op {
 					.plus {
@@ -8676,8 +8716,9 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
-					.left_shift { return i64(left) << i64(right) }
-					.right_shift { return i64(left) >> i64(right) }
+					.left_shift { return i64(u64(left) << i64(right)) }
+					.right_shift { return i64(u64(left) >> i64(right)) }
+					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
 					else { return none }
 				}
 			} else if left is i64 && right is u64 {
@@ -8690,8 +8731,9 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
-					.left_shift { return i64(left) << i64(right) }
-					.right_shift { return i64(left) >> i64(right) }
+					.left_shift { return i64(u64(left) << i64(right)) }
+					.right_shift { return i64(u64(left) >> i64(right)) }
+					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
 					else { return none }
 				}
 			} else if left is u64 && right is u64 {
@@ -8706,6 +8748,7 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					.amp { return left & right }
 					.left_shift { return left << right }
 					.right_shift { return left >> right }
+					.unsigned_right_shift { return left >>> right }
 					else { return none }
 				}
 			} else if left is i64 && right is i64 {
@@ -8718,8 +8761,9 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					.xor { return left ^ right }
 					.pipe { return left | right }
 					.amp { return left & right }
-					.left_shift { return left << right }
-					.right_shift { return left >> right }
+					.left_shift { return i64(u64(left) << right) }
+					.right_shift { return i64(u64(left) >> right) }
+					.unsigned_right_shift { return i64(u64(left) >>> right) }
 					else { return none }
 				}
 			} else if left is byte && right is byte {
@@ -8734,10 +8778,15 @@ fn eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue 
 					.amp { return left & right }
 					.left_shift { return left << right }
 					.right_shift { return left >> right }
+					.unsigned_right_shift { return left >>> right }
 					else { return none }
 				}
 			}
 		}
+		// ast.ArrayInit {}
+		// ast.PrefixExpr {
+		//	c.note('prefixexpr: $expr', expr.pos)
+		// }
 		else {
 			// eprintln('>>> nlevel: $nlevel | another $expr.type_name() | $expr ')
 			return none

@@ -501,7 +501,7 @@ fn (mut tf TTF_File) get_i8() i8 {
 }
 
 fn (mut tf TTF_File) get_u16() u16 {
-	x := u16(tf.buf[tf.pos] << u16(8)) | u16(tf.buf[tf.pos + 1])
+	x := u16(tf.buf[tf.pos]) << 8 | u16(tf.buf[tf.pos + 1])
 	tf.pos += 2
 	return x
 }

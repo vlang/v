@@ -177,7 +177,7 @@ pub fn (mut ws Client) listen() ? {
 						ws.close(1002, 'close payload cannot be 1 byte') ?
 						return error('close payload cannot be 1 byte')
 					}
-					code := (int(msg.payload[0]) << 8) + int(msg.payload[1])
+					code := u16(msg.payload[0]) << 8 | u16(msg.payload[1])
 					if code in invalid_close_codes {
 						ws.close(1002, 'invalid close code: $code') ?
 						return error('invalid close code: $code')

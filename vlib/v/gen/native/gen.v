@@ -200,7 +200,8 @@ fn (mut g Gen) write16(n int) {
 }
 
 fn (mut g Gen) read32_at(at int) int {
-	return int(g.buf[at] | (g.buf[at + 1] << 8) | (g.buf[at + 2] << 16) | (g.buf[at + 3] << 24))
+	return int(u32(g.buf[at]) | (u32(g.buf[at + 1]) << 8) | (u32(g.buf[at + 2]) << 16) | (u32(g.buf[
+		at + 3]) << 24))
 }
 
 fn (mut g Gen) write32(n int) {

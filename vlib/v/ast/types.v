@@ -135,7 +135,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType((int(is_atomic) << 1) | int(is_shared))
+	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
 }
 
 pub fn (t Type) share() ShareType {
@@ -183,7 +183,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return int(t) & 0xff00ffff | (nr_muls << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls) << 16)
 }
 
 // increments nr_muls on `t` and return it
@@ -193,7 +193,7 @@ pub fn (t Type) ref() Type {
 	if nr_muls == 255 {
 		panic('ref: nr_muls is already at max of 255')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls + 1) << 16)
 }
 
 // decrement nr_muls on `t` and return it
@@ -203,7 +203,7 @@ pub fn (t Type) deref() Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
 
 // set `flag` on `t` and return `t`
@@ -320,7 +320,7 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
-	return (nr_muls << 16) | u16(idx)
+	return (u32(nr_muls) << 16) | u16(idx)
 }
 
 [inline]
@@ -438,14 +438,15 @@ pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
 		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
 		usize_type_idx, int_literal_type_idx, rune_type_idx]
-	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		isize_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx]
+	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
+		i64_type_idx, isize_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx,
+		u64_type_idx, usize_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
-		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
+		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
+		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
+		rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx]
 )

@@ -130,7 +130,7 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 		u64(0x7F) << 9
 	}
 	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
-	base := u64((in_base & 0xf) << 27)
+	base := u64(u32(in_base & 0xf) << 27)
 	res := u64((u64(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31))
 	return res
 }
@@ -147,7 +147,7 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 		u32(0x7F) << 9
 	}
 	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
-	base := u32((in_base & 0xf) << 27)
+	base := u32(u32(in_base & 0xf) << 27)
 	res := u32((u32(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31))
 	return res
 }
