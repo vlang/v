@@ -2,6 +2,10 @@ module embed_file
 
 import os
 
+pub const (
+	is_used = 1
+)
+
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
