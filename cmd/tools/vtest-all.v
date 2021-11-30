@@ -73,7 +73,7 @@ fn get_all_commands() []Command {
 		}
 		$if linux {
 			res << Command{
-				line: '$vexe -b native run examples/native/hello_world.v'
+				line: '$vexe -b native run examples/native/hello_world.v > /dev/null'
 				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
 			}
 		}
