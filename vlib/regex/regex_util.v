@@ -63,7 +63,7 @@ pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
 // get_group_by_id get a group string by its id
 pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 	if group_id < (re.groups.len >> 1) {
-		index := group_id << 1
+		index := group_id * 2
 		start := re.groups[index]
 		end := re.groups[index + 1]
 		if start >= 0 && end > start {
@@ -76,7 +76,7 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 // get_group_by_id get a group boundaries by its id
 pub fn (re RE) get_group_bounds_by_id(group_id int) (int, int) {
 	if group_id < re.group_count {
-		index := group_id << 1
+		index := group_id * 2
 		return re.groups[index], re.groups[index + 1]
 	}
 	return -1, -1
@@ -366,8 +366,8 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			}
 			/*
 			for g_i in 0 .. re.group_count {
-				re.groups[g_i << 1] += i
-				re.groups[(g_i << 1) + 1] += i
+				re.groups[g_i * 2] += i
+				re.groups[(g_i * 2) + 1] += i
 			}
 			*/
 			repl := repl_fn(re, in_txt, s, e)
@@ -428,8 +428,8 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 			}
 			/*
 			for g_i in 0 .. re.group_count {
-				re.groups[g_i << 1] += i
-				re.groups[(g_i << 1) + 1] += i
+				re.groups[g_i * 2] += i
+				re.groups[(g_i * 2) + 1] += i
 			}
 			*/
 			// repl := repl_fn(re, in_txt, s, e)
