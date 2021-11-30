@@ -7295,13 +7295,13 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
-			// if st == ast.voidptr_type {
-			// 	for mname, _ in methodidx {
-			// 		if g.pref.build_mode != .build_module {
-			// 			methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
-			// 		}
-			// 	}
-			// }
+			if st == ast.voidptr_type {
+				for mname, _ in methodidx {
+					if g.pref.build_mode != .build_module {
+						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
+					}
+				}
+			}
 			mut methods := st_sym.methods
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {
@@ -7367,7 +7367,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call += iwpostfix
 				}
-				if g.pref.build_mode != .build_module {
+				if g.pref.build_mode != .build_module && st != ast.voidptr_type {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
