@@ -71,7 +71,13 @@ fn get_all_commands() []Command {
 			line: '$vexe run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
-		//
+		$if linux {
+			res << Command{
+				line: '$vexe -b native run examples/native/hello_world.v > /dev/null'
+				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
+			}
+		}
+		// only compilation:
 		res << Command{
 			line: '$vexe -os linux -b native -o hw.linux examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for linux'
