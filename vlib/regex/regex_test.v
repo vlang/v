@@ -1,5 +1,6 @@
 import regex
 import rand
+import strings
 
 /******************************************************************************
 *
@@ -719,4 +720,43 @@ fn test_errors(){
 		}
 	}
 	assert count == err_query_list.len
+}
+
+
+fn test_long_query() {
+    test_len := 32768
+    mut buf := strings.new_builder(test_len * 3)
+    base_string := rand.string(test_len)
+
+    for c in base_string {
+        buf.write_b(`(`)
+        buf.write_b(c)
+        buf.write_b(`)`)
+    }
+
+    mut query := buf.str()
+    
+    //println(base_string)
+    //println(buf.str())
+
+    // test 1
+    mut re := regex.regex_opt(query) or { panic(err) }
+    mut start, mut end := re.match_string(base_string)
+    //println("$start, $end")
+    assert start >= 0 && end == base_string.len
+
+    // test 2
+    buf.clear()
+    for c in base_string {
+        buf.write_b(`(`)
+        buf.write_b(c)
+    }
+    for _ in 0..base_string.len {
+        buf.write_b(`)`)
+    }
+    query = buf.str()
+    re = regex.regex_opt(query) or { panic(err) }
+    start, end = re.match_string(base_string)
+    //println("$start, $end")
+    assert start >= 0 && end == base_string.len
 }
