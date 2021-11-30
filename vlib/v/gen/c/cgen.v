@@ -688,6 +688,7 @@ pub fn (mut g Gen) init() {
 	}
 	// Obfuscate only functions in the main module for now.
 	// Generate the obf_ast.
+	// TODO: add more obfuscation methods and start with reorganizing
 	if g.pref.obfuscate {
 		mut i := 0
 		// fns
