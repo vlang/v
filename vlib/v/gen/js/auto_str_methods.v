@@ -639,7 +639,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('}')
 }
 
-fn (g &JsGen) type_to_fmt1(typ ast.Type) StrIntpType {
+fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 	if typ == ast.byte_type_idx {
 		return .si_u8
 	}
@@ -713,8 +713,8 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		// manage prefix and quote symbol for the filed
 		/*
 		mut quote_str := ''
-		
-		
+
+
 		if sym.kind == .string {
 			quote_str = "'"
 		} else if field.typ in ast.charptr_types {
@@ -740,7 +740,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			g.get_str_fn(field.typ)
 		}
 
-		mut func := struct_auto_str_func1(mut g, sym, field.typ, field_styp_fn_name, field.name)
+		mut func := struct_auto_str_func(mut g, sym, field.typ, field_styp_fn_name, field.name)
 		if field.typ in ast.cptr_types {
 			func = '(voidptr) it.$field.name'
 		} else if field.typ.is_ptr() {
@@ -775,7 +775,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 	fn_builder.writeln('}')
 }
 
-fn struct_auto_str_func1(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
+fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
 	if sym.kind == .enum_ {
 		return '${fn_name}(it.${g.js_name(field_name)})'
