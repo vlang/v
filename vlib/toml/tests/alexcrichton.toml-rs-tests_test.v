@@ -217,7 +217,7 @@ fn to_alexcrichton_time(time_str string) string {
 	}
 }
 
-// to_alexcrichton returns a iarna compatible json string converted from the `value` ast.Value.
+// to_alexcrichton returns an alexcrichton compatible json string converted from the `value` ast.Value.
 fn to_alexcrichton(value ast.Value, array_type int) string {
 	match value {
 		ast.Quoted {
