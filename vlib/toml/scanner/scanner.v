@@ -125,8 +125,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 
 		if util.is_key_char(byte_c) {
 			key := s.extract_key()
-			key_lower_case := key.to_lower()
-			if key_lower_case == 'true' || key_lower_case == 'false' {
+			if !s.is_left_of_assign && (key == 'true' || key == 'false') {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a boolean "$key" ($key.len)')
 				return s.new_token(.boolean, key, key.len)
 			}
