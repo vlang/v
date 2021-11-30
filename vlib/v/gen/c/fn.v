@@ -197,7 +197,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if is_livefn && !is_livemode {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $node.name .')
 	}
-	//
+	
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
@@ -234,7 +234,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
 		name = node.attrs[0].arg
 	}
-	// add function order randomizer with misc semi funcs callings inside each other
+	// TODO: add function order randomizer with misc semi funcs callings inside each other
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
 		mut key := node.name
@@ -281,8 +281,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
-			// Private functions need to marked as static so that they are not exportable in the
-			// binaries
+			// Private functions need to marked as static so that they are not exportable in the binaries
 			if g.pref.build_mode != .build_module && !g.pref.use_cache {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
@@ -885,7 +884,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			name = 'map_keys'
 		}
 	}
-	// add fake "bloat" code to disrupt pattern detection
+	// TODO: add fake "bloat" code to disrupt pattern detection
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
 		sym := g.table.get_type_symbol(node.receiver_type)
