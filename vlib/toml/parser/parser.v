@@ -271,6 +271,12 @@ fn (p Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 	return key
 }
 
+// todo_msvc_astring2dkey worksaround a MSVC compile error.
+// TODO remove.
+fn todo_msvc_astring2dkey(s []string) DottedKey {
+	return s
+}
+
 // check_explicitly_declared returns an error if `key` has been explicitly declared.
 fn (p Parser) check_explicitly_declared(key DottedKey) ? {
 	if p.explicit_declared.len > 0 && p.explicit_declared.has(key) {
@@ -506,7 +512,7 @@ pub fn (mut p Parser) root_table() ? {
 					// Register implicit declaration
 					mut dotted_key_copy := dotted_key.clone()
 					dotted_key_copy.pop()
-					implicit_keys := DottedKey(dotted_key_copy)
+					implicit_keys := todo_msvc_astring2dkey(dotted_key_copy)
 					mut abs_dotted_key := p.build_abs_dotted_key(implicit_keys)
 					if !p.implicit_declared.has(abs_dotted_key) {
 						p.implicit_declared << abs_dotted_key
