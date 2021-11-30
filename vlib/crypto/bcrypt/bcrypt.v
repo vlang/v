@@ -37,7 +37,7 @@ pub fn generate_from_password(password []byte, cost int) ?string {
 	return x.bytestr()
 }
 
-// compare_hash_and_password compares a bcrypt hashed password with its possible.
+// compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
 pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 	mut p := new_from_hash(hashed_password) or { return error('Error: $err') }
 	p.salt << `=`
@@ -122,7 +122,7 @@ fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
 	return hash.bytes()
 }
 
-// expensive_blowfish_setup generate Blowfish cipher data from key, cost and salt.
+// expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
 fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfish {
 	csalt := base64.decode(salt.bytestr())
 
@@ -139,7 +139,7 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 	return &bf
 }
 
-// hash_byte represents the hash value as []bytes.
+// hash_byte converts the hash value to a byte array.
 fn (mut h Hashed) hash_byte() []byte {
 	mut arr := []byte{len: 65, init: 0}
 	arr[0] = `$`
