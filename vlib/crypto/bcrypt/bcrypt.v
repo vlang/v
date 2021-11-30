@@ -30,12 +30,14 @@ mut:
 const magic_cipher_data = [byte(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
 	0x6c, 0x64, 0x65, 0x72, 0x53, 0x63, 0x72, 0x79, 0x44, 0x6f, 0x75, 0x62, 0x74]
 
+// generate_from_password return a bcrypt string from Hashed struct.
 pub fn generate_from_password(password []byte, cost int) ?string {
 	mut p := new_from_password(password, cost) or { return error('Error: $err') }
 	x := p.hash_byte()
 	return x.bytestr()
 }
 
+// compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
 pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 	mut p := new_from_hash(hashed_password) or { return error('Error: $err') }
 	p.salt << `=`
@@ -55,11 +57,13 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 	}
 }
 
+// generate_salt generate a string to be treated as a salt.
 pub fn generate_salt() string {
 	randbytes := rand.read(bcrypt.salt_length) or { panic(err) }
 	return randbytes.bytestr()
 }
 
+// new_from_password converting from password to a Hashed struct with bcrypt.
 fn new_from_password(password []byte, cost int) ?&Hashed {
 	mut cost_ := cost
 	if cost < bcrypt.min_cost {
@@ -81,6 +85,7 @@ fn new_from_password(password []byte, cost int) ?&Hashed {
 	return p
 }
 
+// new_from_hash converting from hashed data to a Hashed struct.
 fn new_from_hash(hashed_secret []byte) ?&Hashed {
 	mut tmp := hashed_secret.clone()
 	if tmp.len < bcrypt.min_hash_size {
@@ -100,6 +105,7 @@ fn new_from_hash(hashed_secret []byte) ?&Hashed {
 	return p
 }
 
+// bcrypt hashing passwords.
 fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
 	mut cipher_data := []byte{len: 72 - bcrypt.magic_cipher_data.len, init: 0}
 	cipher_data << bcrypt.magic_cipher_data
@@ -112,10 +118,11 @@ fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
 		}
 	}
 
-	hsh := base64.encode(cipher_data[..bcrypt.max_crypted_hash_size])
-	return hsh.bytes()
+	hash := base64.encode(cipher_data[..bcrypt.max_crypted_hash_size])
+	return hash.bytes()
 }
 
+// expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
 fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfish {
 	csalt := base64.decode(salt.bytestr())
 
@@ -132,6 +139,7 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 	return &bf
 }
 
+// hash_byte converts the hash value to a byte array.
 fn (mut h Hashed) hash_byte() []byte {
 	mut arr := []byte{len: 65, init: 0}
 	arr[0] = `$`
@@ -155,6 +163,7 @@ fn (mut h Hashed) hash_byte() []byte {
 	return res
 }
 
+// decode_version decode bcrypt version.
 fn (mut h Hashed) decode_version(sbytes []byte) ?int {
 	if sbytes[0] != `$` {
 		return error("bcrypt hashes must start with '$'")
@@ -171,6 +180,7 @@ fn (mut h Hashed) decode_version(sbytes []byte) ?int {
 	return n
 }
 
+// decode_cost extracts the value of cost and returns the next index in the array.
 fn (mut h Hashed) decode_cost(sbytes []byte) ?int {
 	cost := sbytes[0..2].bytestr().int()
 	check_cost(cost) or { return err }
@@ -178,6 +188,7 @@ fn (mut h Hashed) decode_cost(sbytes []byte) ?int {
 	return 3
 }
 
+// check_cost check for reasonable quantities.
 fn check_cost(cost int) ? {
 	if cost < bcrypt.min_cost || cost > bcrypt.max_cost {
 		return error('invalid cost')
