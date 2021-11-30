@@ -42,9 +42,13 @@ fn test_pint_aliasing() {
 	ok()
 }
 
+fn f(x string) MyString {
+	return x
+}
+
 // strings
 fn test_string_aliasing() {
-	dump(string('abc'))
+	dump(string(f('abc')))
 	dump(string(MyString('abc')))
 	dump(MyString(string(MyString('abc'))))
 	ok()
