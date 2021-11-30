@@ -48,9 +48,7 @@ fn (c Checker) visit(value &ast.Value) ? {
 		ast.Time {
 			c.check_time(value) ?
 		}
-		else {
-			// TODO add more checks to make BurntSushi/toml-test invalid TOML pass
-		}
+		else {}
 	}
 }
 
