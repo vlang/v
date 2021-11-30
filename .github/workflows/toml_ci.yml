@@ -10,7 +10,7 @@ on:
 
 jobs:
   toml-module-pass-external-test-suites:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     timeout-minutes: 10
     env:
       TOML_BS_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
