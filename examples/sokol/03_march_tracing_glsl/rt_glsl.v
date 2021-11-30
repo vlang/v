@@ -7,25 +7,8 @@
 * that can be found in the LICENSE file.
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
-*
-* - compile the .glsl shader with:
-* linux  :  sokol-shdc --input rt_glsl.glsl --output rt_glsl.h --slang glsl330
-* windows:  sokol-shdc.exe --input rt_glsl.glsl --output rt_glsl.h --slang glsl330
-*
-* --slang parameter can be:
-* - glsl330: desktop GL
-* - glsl100: GLES2 / WebGL
-* - glsl300es: GLES3 / WebGL2
-* - hlsl4: D3D11
-* - hlsl5: D3D11
-* - metal_macos: Metal on macOS
-* - metal_ios: Metal on iOS device
-* - metal_sim: Metal on iOS simulator
-* - wgpu: WebGPU
-*
-* you can have multiple platforms at the same time passing parameters like this: --slang glsl330:hlsl5:metal_macos
-* for further infos have a look at the sokol shader tool docs.
+* Run `v shader .` in this directory to compile the shaders.
+* For more info and help with shader compilation see `docs.md` and `v help shader`.
 *
 * TODO:
 * - frame counter
@@ -42,7 +25,7 @@ import time
 // GLSL Include and functions
 
 #flag -I @VMODROOT/.
-#include "rt_glsl.h" #Please use sokol-shdc to generate the necessary rt_glsl.h file from rt_glsl.glsl (see the instructions at the top of this file)
+#include "rt_glsl.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.rt_shader_desc(gfx.Backend) &C.sg_shader_desc
 

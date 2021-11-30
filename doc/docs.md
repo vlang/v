@@ -4132,7 +4132,7 @@ and use `v shader` to compile them for all supported target platforms.
 v shader /path/to/project/dir/or/file.v
 ```
 
-Currently you need to include a header and declare a glue function before
+Currently you need to [include a header and declare a glue function](https://github.com/vlang/v/blob/c14c324/examples/sokol/02_cubes_glsl/cube_glsl.v#L43-L46) before
 using the shader in your code.
 
 ### Profiling
