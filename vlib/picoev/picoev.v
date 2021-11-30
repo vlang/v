@@ -83,6 +83,9 @@ fn setup_sock(fd int) ? {
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
+	if C.fcntl(fd, C.F_SETFL, C.O_NONBLOCK) != 0 {
+		return error('fcntl failed')
+	}
 }
 
 [inline]
@@ -192,21 +195,35 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 }
 
 pub fn new(config Config) &Picoev {
-	mut listener := net.listen_tcp(.ip6, ':$config.port') or { panic(err) }
-	listener.sock.set_option_bool(.reuse_addr, true) or { panic(err) }
+	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
+	assert fd != -1
 
+	// Setting flags for socket
+	flag := 1
+	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
 	$if linux {
-		flag := 1
-		assert C.setsockopt(listener.sock.handle, C.SOL_SOCKET, C.SO_REUSEPORT, &flag,
-			sizeof(int)) == 0
-		assert C.setsockopt(listener.sock.handle, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag,
-			sizeof(int)) == 0
+		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)) == 0
 		timeout := 10
-		assert C.setsockopt(listener.sock.handle, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &timeout,
-			sizeof(int)) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &timeout, sizeof(int)) == 0
 		queue_len := 4096
-		assert C.setsockopt(listener.sock.handle, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len,
-			sizeof(int)) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)) == 0
+	}
+
+	// Setting addr
+	mut addr := C.sockaddr_in{
+		sin_family: byte(C.AF_INET)
+		sin_port: C.htons(config.port)
+		sin_addr: C.htonl(C.INADDR_ANY)
+	}
+	size := sizeof(C.sockaddr_in)
+	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
+	assert bind_res == 0
+	listen_res := C.listen(fd, C.SOMAXCONN)
+	assert listen_res == 0
+	setup_sock(fd) or {
+		config.err_cb(mut config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
+			err)
 	}
 
 	C.picoev_init(picoev.max_fds)
@@ -223,7 +240,7 @@ pub fn new(config Config) &Picoev {
 		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
 
-	C.picoev_add(loop, listener.sock.handle, int(Event.read), 0, accept_callback, pv)
+	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)
 	go update_date(mut pv)
 	return pv
 }
