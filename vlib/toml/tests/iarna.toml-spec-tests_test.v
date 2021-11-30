@@ -14,11 +14,7 @@ const (
 
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions       = []string{}
-	invalid_exceptions     = [
-		'errors/table-3.toml',
-		'errors/table-4.toml',
-		'errors/table-invalid-4.toml',
-	]
+	invalid_exceptions     = []string{}
 
 	valid_value_exceptions = []string{}
 

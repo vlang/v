@@ -62,6 +62,7 @@ mut:
 	root_map_key                      DottedKey
 	explicit_declared                 []DottedKey
 	explicit_declared_array_of_tables []DottedKey
+	implicit_declared                 []DottedKey
 	// Array of Tables state
 	last_aot       DottedKey
 	last_aot_index int
@@ -259,8 +260,8 @@ fn (mut p Parser) expect(expected_token token.Kind) ? {
 	}
 }
 
-// build_explicitly_declared_key returns the absolute dotted key path.
-fn (p Parser) build_explicitly_declared_key(key DottedKey) DottedKey {
+// build_abs_dotted_key returns the absolute dotted key path.
+fn (p Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 	if p.root_map_key.len > 0 {
 		mut abs_dotted_key := DottedKey([]string{})
 		abs_dotted_key << p.root_map_key
@@ -284,6 +285,14 @@ fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ? {
 	if p.explicit_declared_array_of_tables.len > 0 && p.explicit_declared_array_of_tables.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `$key.str()` is already an explicitly declared array of tables. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+	}
+}
+
+// check_implicitly_declared returns an error if `key` has been implicitly declared.
+fn (p Parser) check_implicitly_declared(key DottedKey) ? {
+	if p.implicit_declared.len > 0 && p.implicit_declared.has(key) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' key `$key.str()` is already implicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -478,7 +487,7 @@ pub fn (mut p Parser) root_table() ? {
 						// Check for key re-defining:
 						// https://github.com/iarna/toml-spec-tests/blob/1880b1a/errors/inline-table-imutable-1.toml
 
-						if p.build_explicitly_declared_key(sub_table) == explicit_key {
+						if p.build_abs_dotted_key(sub_table) == explicit_key {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key `$sub_table` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 						}
@@ -488,10 +497,19 @@ pub fn (mut p Parser) root_table() ? {
 						// Check for "table injection":
 						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
 						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
-						if p.build_explicitly_declared_key(sub_table).starts_with(explicit_key) {
+						if p.build_abs_dotted_key(sub_table).starts_with(explicit_key) {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key `$dotted_key` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 						}
+					}
+
+					// Register implicit declaration
+					mut dotted_key_copy := dotted_key.clone()
+					dotted_key_copy.pop()
+					implicit_keys := DottedKey(dotted_key_copy)
+					mut abs_dotted_key := p.build_abs_dotted_key(implicit_keys)
+					if !p.implicit_declared.has(abs_dotted_key) {
+						p.implicit_declared << abs_dotted_key
 					}
 
 					t := p.find_sub_table(sub_table) ?
@@ -578,6 +596,8 @@ pub fn (mut p Parser) root_table() ? {
 					// Disallow re-declaring the key
 					p.check_explicitly_declared(dotted_key) ?
 					p.explicit_declared << dotted_key
+					// ... also check implicitly declared keys
+					p.check_implicitly_declared(dotted_key) ?
 
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
@@ -830,36 +850,8 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
 
-	for p.tok.kind != .eof {
-		p.next() ?
-		p.ignore_while(parser.all_formatting)
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+	p.table_contents(mut tbl) ?
 
-		match p.tok.kind {
-			.bare, .quoted, .number, .minus, .underscore {
-				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
-
-				if peek_tok.kind == .period {
-					dotted_key, val := p.dotted_key_value() ?
-
-					sub_table, key := p.sub_table_key(dotted_key)
-
-					mut t := p.find_in_table(mut tbl, sub_table) ?
-					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
-						t[key.str()] = val
-					}
-				} else {
-					key, val := p.key_value() ?
-					tbl[key.str()] = val
-				}
-			}
-			else {
-				break
-			}
-		}
-	}
 	mut arr := []ast.Value{}
 	arr << tbl
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "$p.tok.kind" "$p.tok.lit"')
@@ -882,6 +874,8 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
 	}
+
+	p.check_explicitly_declared(dotted_key) ?
 
 	if !p.explicit_declared_array_of_tables.has(dotted_key) {
 		p.explicit_declared_array_of_tables << dotted_key
@@ -1024,6 +1018,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'keys are: dotted `$dotted_key`, target `$target_key`, implicit `$implicit_allocation_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.expect(.rsbr) ?
 					p.peek_for_correct_line_ending_or_fail() ?
+					p.explicit_declared << dotted_key
 					continue
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -1220,7 +1215,7 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 	value := p.value() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `$key = $value`')
 
-	p.explicit_declared << p.build_explicitly_declared_key(DottedKey([
+	p.explicit_declared << p.build_abs_dotted_key(DottedKey([
 		key.str(),
 	]))
 
@@ -1239,7 +1234,7 @@ pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
 	value := p.value() ?
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `$dotted_key = $value`...')
 
-	p.explicit_declared << p.build_explicitly_declared_key(dotted_key)
+	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
 
 	return dotted_key, value
 }
