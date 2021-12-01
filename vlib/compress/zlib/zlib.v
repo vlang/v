@@ -3,14 +3,16 @@ module zlib
 #flag -I @VEXEROOT/thirdparty/zip
 #include "miniz.h"
 
-pub const max_size = 1 << 31
+pub const (
+	max_size = 1 << 31
+)
 
 fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
 fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
 
 pub fn compress(data []byte) ?[]byte {
-	if data.len > max_size {
-		return error('data too large ($data.len > $max_size)')
+	if data.len > zlib.max_size {
+		return error('data too large ($data.len > $zlib.max_size)')
 	}
 	mut out_len := usize(0)
 
@@ -19,8 +21,8 @@ pub fn compress(data []byte) ?[]byte {
 	if address == 0 {
 		return error('compression failed')
 	}
-	if out_len > max_size {
-		return error('compressed data is too large ($out_len > $max_size)')
+	if out_len > zlib.max_size {
+		return error('compressed data is too large ($out_len > $zlib.max_size)')
 	}
 	compressed := unsafe {
 		address.vbytes(int(out_len))
@@ -40,8 +42,8 @@ pub fn decompress(data []byte) ?[]byte {
 	if address == 0 {
 		return error('decompression failed')
 	}
-	if out_len > 1 << 31 {
-		return error('decompressed data is too large ($out_len > $max_size)')
+	if out_len > zlib.max_size {
+		return error('decompressed data is too large ($out_len > $zlib.max_size)')
 	}
 	decompressed := unsafe {
 		address.vbytes(int(out_len))
