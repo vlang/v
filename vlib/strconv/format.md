@@ -102,7 +102,7 @@ ch0 := `B`
 f0 := 0.312345
 f1 := 200000.0
 sc0 := 'ciao: [%-08u] %d %hhd [%8s] [%08X] [%-20.4f] [%-20.4f] [%c]'
-temp_s = strconv.v_sprintf(sc0, a0, b0, c0, s0, b0, f0, f1, ch0)
+temp_s := strconv.v_sprintf(sc0, a0, b0, c0, s0, b0, f0, f1, ch0)
 println(temp_s)
 ```
 
@@ -118,7 +118,7 @@ b := i16(13)
 c := 14
 d := i64(15)
 sc1 := '==>%hhd %hd %d %ld'
-temp_s = strconv.v_sprintf(sc1, a, b, c, d)
+temp_s := strconv.v_sprintf(sc1, a, b, c, d)
 println(temp_s)
 ```
 
@@ -134,7 +134,7 @@ b1 := u16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
 sc2 := '%hhu %hu %u %lu'
-temp_s = strconv.v_sprintf(sc2, a1, b1, c1, d1)
+temp_s := strconv.v_sprintf(sc2, a1, b1, c1, d1)
 println(temp_s)
 ```
 
@@ -150,7 +150,7 @@ b1 := i16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
 sc3 := '%hhx %hx %x %lx'
-temp_s = strconv.v_sprintf(sc3, a1, b1, c1, d1)
+temp_s := strconv.v_sprintf(sc3, a1, b1, c1, d1)
 println(temp_s)
 ```
 
@@ -163,7 +163,7 @@ hexadecimal
 ```v oksyntax
 a2 := 125
 sc7 := '[%9x] [%9X] [%-9x] [%-9X] [%09x] [%09X]'
-temp_s = strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
+temp_s := strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
 println(temp_s)
 ```
 
@@ -179,7 +179,7 @@ f1 := 200000.0
 f2 := -1234.300e6
 f3 := 1234.300e-6
 sc4 := '[%-20.3e] [%20.3e] [%-020.3e] [%-020.3E] [%-020.3e] [%-020.3e]'
-temp_s = strconv.v_sprintf(sc4, f0, f1, f1, f1, f2, f3)
+temp_s := strconv.v_sprintf(sc4, f0, f1, f1, f1, f2, f3)
 println(temp_s)
 ```
 
@@ -194,7 +194,7 @@ mut ft := -1e-7
 mut x := 0
 sc8 := '[%20g][%20G]|'
 for x < 12 {
-	temp_s = strconv.v_sprintf(sc8, ft, ft)
+	temp_s := strconv.v_sprintf(sc8, ft, ft)
 	println('$temp_s\n')
 	ft = ft * 10.0
 	x++
