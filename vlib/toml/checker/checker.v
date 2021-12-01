@@ -437,16 +437,23 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 			escape := ch_byte.ascii_str() + next_ch.ascii_str()
 			if is_basic {
 				if q.is_multiline {
-					if next_ch == byte(32) {
-						if s.peek(1) == byte(92) {
-							st := s.state()
-							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' can not escape whitespaces before escapes in multi-line strings (`\\ \\`) at `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
-						}
+					if next_ch == ` ` {
 						if !contains_newlines {
 							st := s.state()
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' can not escape whitespaces in multi-line strings (`\\ `) at `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+						}
+						// Rest of line must only be space chars from this point on
+						for {
+							ch_ := s.next()
+							if ch_ == scanner.end_of_text || ch_ == `\n` {
+								break
+							}
+							if !(ch_ == ` ` || ch_ == `\t`) {
+								st := s.state()
+								return error(@MOD + '.' + @STRUCT + '.' + @FN +
+									' invalid character `${byte(ch_).ascii_str()}` after `$escape` at ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+							}
 						}
 					}
 					if next_ch in [`\t`, `\n`, ` `] {

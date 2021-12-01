@@ -15,9 +15,7 @@ const (
 		'valid/datetime-truncate.toml', // Not considered valid since RFC 3339 doesn't permit > 6 ms digits ??
 		'valid/table-array-nest-no-keys.toml',
 	]
-	invalid_exceptions     = [
-		'invalid/string-bad-line-ending-escape.toml',
-	]
+	invalid_exceptions     = []string{}
 
 	valid_value_exceptions = [
 		'valid/unicode-escape.toml',
