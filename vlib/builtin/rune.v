@@ -53,3 +53,21 @@ pub fn (c rune) repeat(count int) string {
 	res := unsafe { utf32_to_str_no_malloc(u32(c), &buffer[0]) }
 	return res.repeat(count)
 }
+
+pub fn (c rune) length_in_bytes() int {
+	code := u32(c)
+	if code <= 0x7F {
+		return 1
+	} else if code <= 0x7FF {
+		return 2
+	} else if 0xD800 <= code && code <= 0xDFFF {
+		// between min and max for surrogates
+		return -1
+	} else if code <= 0xFFFF {
+		return 3
+	} else if code <= 0x10FFFF {
+		// 0x10FFFF is the maximum valid unicode code point
+		return 4
+	}
+	return -1
+}
