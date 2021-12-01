@@ -7710,6 +7710,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				continue
 			}
 			val := node.vals[i]
+			c.expected_type = key0_type
 			key_type := c.expr(key)
 			c.expected_type = val0_type
 			val_type := c.expr(val)
