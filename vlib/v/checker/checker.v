@@ -5690,25 +5690,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('expression does not return a value so it cannot be cast', node.expr.position())
 	}
 	//
-	if to_type == ast.string_type {
-		if from_type in [ast.byte_type, ast.bool_type] {
-			c.error('cannot cast type `$from_type_sym.name` to string, use `${node.expr.str()}.str()` instead.',
-				node.pos)
-		}
-		if from_type.is_real_pointer() {
-			c.error('cannot cast pointer type `$from_type_sym.name` to string, use `&byte($node.expr.str()).vstring()` instead.',
-				node.pos)
-		}
-		if from_type.is_number() {
-			c.error('cannot cast number to string, use `${node.expr.str()}.str()` instead.',
-				node.pos)
-		}
-		if from_type_sym.kind == .alias && from_type_sym_final.name != 'string' {
-			c.error('cannot cast type `$from_type_sym.name` to string, use `x.str()` instead',
-				node.pos)
-		}
-	}
-	//
 	if to_type_sym.kind == .sum_type {
 		if from_type in [ast.int_literal_type, ast.float_literal_type] {
 			xx := if from_type == ast.int_literal_type { ast.int_type } else { ast.f64_type }
@@ -5723,15 +5704,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
-	} else if to_type != ast.string_type && from_type == ast.string_type
-		&& (!(to_type_sym.kind == .alias && to_type_sym_final.name == 'string')) {
-		mut error_msg := 'cannot cast a string to a type `$to_type_sym_final.name`, that is not an alias of string'
-		if mut node.expr is ast.StringLiteral {
-			if node.expr.val.len == 1 {
-				error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
-			}
-		}
-		c.error(error_msg, node.pos)
 	} else if to_type_sym.kind == .byte && from_type != ast.voidptr_type
 		&& from_type_sym.kind != .enum_ && !from_type.is_int() && !from_type.is_float()
 		&& from_type != ast.bool_type && !from_type.is_ptr() && from_type_sym.kind == .alias
@@ -5770,7 +5742,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if (to_type.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
-			c.error('cannot cast struct `$from_type_name` to `$type_name`', node.pos)
+			snexpr := node.expr.str()
+			c.error('cannot cast struct `$from_type_name` to `$type_name`, use `${snexpr}.str()` instead.',
+				node.pos)
 		}
 	} else if from_type.has_flag(.optional) || from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
@@ -5784,6 +5758,53 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type_sym.kind == .array_fixed && !from_type.is_ptr() {
 		c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 	}
+
+	if to_type == ast.string_type {
+		if from_type in [ast.byte_type, ast.bool_type] {
+			snexpr := node.expr.str()
+			c.error('cannot cast type `$from_type_sym.name` to string, use `${snexpr}.str()` instead.',
+				node.pos)
+		} else if from_type.is_real_pointer() {
+			snexpr := node.expr.str()
+			c.error('cannot cast pointer type `$from_type_sym.name` to string, use `&byte($snexpr).vstring()` or `cstring_to_vstring($snexpr)` instead.',
+				node.pos)
+		} else if from_type.is_number() {
+			snexpr := node.expr.str()
+			c.error('cannot cast number to string, use `${snexpr}.str()` instead.', node.pos)
+		} else if from_type_sym.kind == .alias && from_type_sym_final.name != 'string' {
+			c.error('cannot cast type `$from_type_sym.name` to string, use `x.str()` instead.',
+				node.pos)
+		} else if from_type_sym_final.kind == .array {
+			snexpr := node.expr.str()
+			if from_type_sym_final.name == '[]byte' {
+				c.error('cannot cast []byte to string, use `${snexpr}.bytestr()` or `${snexpr}.str()` instead.',
+					node.pos)
+			} else {
+				first_elem_idx := '[0]'
+				c.error('cannot cast array to string, use `$snexpr${first_elem_idx}.str()` instead.',
+					node.pos)
+			}
+		} else if from_type_sym_final.kind == .enum_ {
+			snexpr := node.expr.str()
+			c.error('cannot cast enum to string, use ${snexpr}.str() instead.', node.pos)
+		} else if from_type_sym_final.kind == .map {
+			c.error('cannot cast map to string.', node.pos)
+		} else if from_type_sym_final.kind == .sum_type {
+			snexpr := node.expr.str()
+			c.error('cannot cast sumtype `$from_type_sym.name` to string, use `${snexpr}.str()` instead.',
+				node.pos)
+		} else if to_type != ast.string_type && from_type == ast.string_type
+			&& (!(to_type_sym.kind == .alias && to_type_sym_final.name == 'string')) {
+			mut error_msg := 'cannot cast a string to a type `$to_type_sym_final.name`, that is not an alias of string'
+			if mut node.expr is ast.StringLiteral {
+				if node.expr.val.len == 1 {
+					error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
+				}
+			}
+			c.error(error_msg, node.pos)
+		}
+	}
+
 	if node.has_arg {
 		c.expr(node.arg)
 	}
