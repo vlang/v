@@ -130,7 +130,7 @@ fn test_iarna_toml_spec_tests() {
 							println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 							continue
 						}
-						if skip_yaml_conversion || relative in yaml_value_exceptions {
+						if skip_yaml_conversion || relative in yaml_value_exceptions || valid_test_file.contains('qa-') {
 							e++
 							println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
 							continue
