@@ -575,8 +575,8 @@ pub fn (mut p Parser) root_table() ? {
 					//
 					// `table.key` now shape shifts into being a *double array of tables* key...
 					// ... but with a different set of rules - making it hard to reuse the code we already have for that ...
-					// See `testdata/array_of_tables_edge_case_1_test.toml` for the type of construct parsed.
-					if p.last_aot.len == 1 && dotted_key.len == 2
+					// See `testdata/array_of_tables_edge_case_<N>_test.toml` for the type of constructs parsed.
+					if p.last_aot.len == 1 && dotted_key.len > 1
 						&& dotted_key[0] == p.last_aot.str() {
 						// Disallow re-declaring the key
 						p.check_explicitly_declared_array_of_tables(dotted_key) ?
@@ -589,7 +589,20 @@ pub fn (mut p Parser) root_table() ? {
 								p.table_contents(mut m) ?
 								unsafe {
 									mut mut_val := &val
-									mut_val[dotted_key[1].str()] = m
+									if dotted_key.len == 2 {
+										// [table.key]
+										mut_val[dotted_key[1].str()] = m
+									} else {
+										// [table.key.key.etc]
+										mut dotted_key_copy := dotted_key.clone()
+										dotted_key_copy.delete(0)
+										new_key := todo_msvc_astring2dkey(dotted_key_copy)
+										sub_table, key := p.sub_table_key(new_key)
+										t := p.find_in_table(mut mut_val, sub_table) ?
+										util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
+											'setting "$key" = $val in table ${ptr_str(t)}')
+										t[new_key.last().str()] = m
+									}
 								}
 							} else {
 								return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -606,6 +619,7 @@ pub fn (mut p Parser) root_table() ? {
 					p.check_implicitly_declared(dotted_key) ?
 
 					p.ignore_while(parser.space_formatting)
+
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key) ?
@@ -627,6 +641,9 @@ pub fn (mut p Parser) root_table() ? {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' key `$dotted_key` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
 					}
+
+					// Allow [ key ]
+					p.ignore_while(parser.space_formatting)
 
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
@@ -805,6 +822,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
 	p.check(.lsbr) ? // '[' bracket
 
+	// Allow [[ key]]
 	p.ignore_while(parser.space_formatting)
 	peek_tok, _ := p.peek_over(1, parser.space_formatting) ?
 	p.ignore_while(parser.space_formatting)
@@ -817,6 +835,10 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 
 	key := p.key() ?
 	p.next() ?
+
+	// Allow [[key ]]
+	p.ignore_while(parser.space_formatting)
+
 	p.check(.rsbr) ?
 	p.peek_for_correct_line_ending_or_fail() ?
 	p.expect(.rsbr) ?
