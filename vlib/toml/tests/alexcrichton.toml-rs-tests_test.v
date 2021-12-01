@@ -2,6 +2,7 @@ import os
 import toml
 import toml.ast
 import x.json2
+import strconv
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
@@ -17,15 +18,12 @@ const (
 	]
 	invalid_exceptions     = [
 		'invalid/string-bad-line-ending-escape.toml',
-		'invalid/float-no-suffix.toml',
 	]
 
 	valid_value_exceptions = [
 		'valid/unicode-escape.toml',
 		// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
 		'valid/example2.toml',
-		// Float
-		'valid/float-exponent.toml',
 	]
 
 	// These have correct values, and should've passed as-is, but the format of arrays changes in the JSON ??
@@ -259,14 +257,17 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			return '{ "type": "null", "value": "$json_text" }'
 		}
 		ast.Number {
-			if value.text.contains('inf') || value.text.contains('nan') {
+			text := value.text
+			if text.contains('inf') || text.contains('nan') {
 				return '{ "type": "float", "value": "$value.text" }'
 			}
-			if !value.text.starts_with('0x')
-				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
-				mut val := '$value.f64()'.replace('.e+', '.0e') // json notation
-				if !val.contains('.') && val != '0' { // json notation
-					val += '.0'
+			if !text.starts_with('0x') && (text.contains('.') || text.to_lower().contains('e')) {
+				mut val := ''
+				if text.to_lower().contains('e') && !text.contains('-') {
+					f64val := value.f64()
+					val = strconv.v_sprintf('%.1f', f64val)
+				} else {
+					val = '$value.f64()'
 				}
 				return '{ "type": "float", "value": "$val" }'
 			}
