@@ -2,7 +2,6 @@ import os
 import toml
 import toml.ast
 import x.json2
-import strconv
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
@@ -264,8 +263,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			if !text.starts_with('0x') && (text.contains('.') || text.to_lower().contains('e')) {
 				mut val := ''
 				if text.to_lower().contains('e') && !text.contains('-') {
-					f64val := value.f64()
-					val = strconv.v_sprintf('%.1f', f64val)
+					val = '${value.f64():.1f}'
 				} else {
 					val = '$value.f64()'
 				}
