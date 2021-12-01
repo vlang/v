@@ -93,7 +93,9 @@ The Type field can be any of:
 
 various types
 
-```v oksyntax
+```v
+import strconv
+
 a0 := u32(10)
 b0 := 200
 c0 := byte(12)
@@ -112,7 +114,9 @@ ciao: [10      ] 200 12 [    ciAo] [000000C8] [0.3123              ] [200000.000
 
 integer
 
-```v oksyntax
+```v
+import strconv
+
 a := byte(12)
 b := i16(13)
 c := 14
@@ -128,7 +132,9 @@ println(temp_s)
 
 unsigned integer
 
-```v oksyntax
+```v
+import strconv
+
 a1 := byte(0xff)
 b1 := u16(0xffff)
 c1 := u32(0xffffffff)
@@ -144,7 +150,9 @@ println(temp_s)
 
 hexadecimal
 
-```v oksyntax
+```v
+import strconv
+
 a1 := byte(0xff)
 b1 := i16(0xffff)
 c1 := u32(0xffffffff)
@@ -160,7 +168,9 @@ ff ffff ffffffff ffffffffffffffff
 
 hexadecimal
 
-```v oksyntax
+```v
+import strconv
+
 a2 := 125
 sc7 := '[%9x] [%9X] [%-9x] [%-9X] [%09x] [%09X]'
 temp_s := strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
@@ -173,7 +183,9 @@ println(temp_s)
 
 floating points
 
-```v oksyntax
+```v
+import strconv
+
 f0 := 0.312345
 f1 := 200000.0
 f2 := -1234.300e6
@@ -189,7 +201,9 @@ println(temp_s)
 
 float automatic notations
 
-```v oksyntax
+```v
+import strconv
+
 mut ft := -1e-7
 mut x := 0
 sc8 := '[%20g][%20G]|'
