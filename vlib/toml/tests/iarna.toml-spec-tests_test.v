@@ -19,9 +19,7 @@ const (
 	valid_exceptions       = []string{}
 	invalid_exceptions     = []string{}
 
-	valid_value_exceptions = [
-		'values/spec-string-basic.toml',
-	]
+	valid_value_exceptions = []string{}
 
 	yaml_value_exceptions  = [
 		'values/spec-float-5.toml', // YAML: "1e6", V: 1000000

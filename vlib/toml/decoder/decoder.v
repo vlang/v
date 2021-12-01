@@ -184,11 +184,9 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 							decoded_s += escape
 							continue
 						}
-						if unicode_val in [0x7F, 0x1F, 0x5C, 0x75] {
-							sequence_length -= 2
-						}
 						decoded_s += decoded
-						s.skip_n(s.text[pos..pos + 2 + sequence_length + 1].len)
+						replacement := s.text[pos..pos + sequence_length + 1]
+						s.skip_n(replacement.len)
 						continue
 					} else {
 						pos := s.state().pos
