@@ -1,4 +1,4 @@
-module miniz
+module zlib
 
 
 fn test_miniz() ? {

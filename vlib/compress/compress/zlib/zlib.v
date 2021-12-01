@@ -1,4 +1,4 @@
-module miniz
+module zlib
 
 #flag -I @VEXEROOT/thirdparty/zip
 #include "miniz.h"
