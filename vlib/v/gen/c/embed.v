@@ -19,33 +19,37 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			panic('unable to read file: "$node.embed_file.rpath')
 		}
 
-		cache_dir := os.join_path(os.vmodules_dir(), 'cache', 'embed_file')
-		cache_key := rand.ulid()
-		// cache_key := md5.hexhash(node.embed_file.apath)
-		if !os.exists(cache_dir) {
-			os.mkdir_all(cache_dir) or { panic(err) }
-		}
-		cache_path := os.join_path(cache_dir, cache_key)
-		
-		vexe := pref.vexe_path()
-		result := os.execute('"$vexe" compress zlib "$node.embed_file.apath" "$cache_path"')
-		if result.exit_code != 0 {
-			eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
+		if node.embed_file.compression_type == 'none' {
 			node.embed_file.bytes = file_bytes
 		} else {
-			compressed_bytes := os.read_bytes(cache_path) or {
-				eprintln('unable to read compressed file')
-				{
-				}
-				[]byte{}
+			cache_dir := os.join_path(os.vmodules_dir(), 'cache', 'embed_file')
+			cache_key := rand.ulid()
+			// cache_key := md5.hexhash(node.embed_file.apath)
+			if !os.exists(cache_dir) {
+				os.mkdir_all(cache_dir) or { panic(err) }
 			}
-			os.rm(cache_path) or {} // clean up
-			node.embed_file.is_compressed = compressed_bytes.len > 0
-				&& compressed_bytes.len < file_bytes.len
-			node.embed_file.bytes = if node.embed_file.is_compressed {
-				compressed_bytes
+			cache_path := os.join_path(cache_dir, cache_key)
+
+			vexe := pref.vexe_path()
+			result := os.execute('"$vexe" compress $node.embed_file.compression_type "$node.embed_file.apath" "$cache_path"')
+			if result.exit_code != 0 {
+				eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
+				node.embed_file.bytes = file_bytes
 			} else {
-				file_bytes
+				compressed_bytes := os.read_bytes(cache_path) or {
+					eprintln('unable to read compressed file')
+					{
+					}
+					[]byte{}
+				}
+				os.rm(cache_path) or {} // clean up
+				node.embed_file.is_compressed = compressed_bytes.len > 0
+					&& compressed_bytes.len < file_bytes.len
+				node.embed_file.bytes = if node.embed_file.is_compressed {
+					compressed_bytes
+				} else {
+					file_bytes
+				}
 			}
 		}
 		if node.embed_file.bytes.len > 5242880 {

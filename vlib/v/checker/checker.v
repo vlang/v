@@ -20,20 +20,21 @@ const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
 
 const (
-	valid_comptime_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'serenity', 'vinix']
-	valid_comptime_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comptime_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
-	valid_comptime_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
-	valid_comptime_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
+	valid_comptime_compression_types = ['none', 'zlib']
+	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
+	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
+	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
-	valid_comptime_not_user_defined = all_valid_comptime_idents()
-	array_builtin_methods           = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
+	valid_comptime_not_user_defined  = all_valid_comptime_idents()
+	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	reserved_type_names             = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
+	reserved_type_names              = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
 		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
-	vroot_is_deprecated_message     = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+	vroot_is_deprecated_message      = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
 fn all_valid_comptime_idents() []string {
@@ -5868,6 +5869,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	if node.is_embed {
 		// c.file.embedded_files << node.embed_file
+		if node.embed_file.compression_type !in checker.valid_comptime_compression_types {
+			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${checker.valid_comptime_compression_types.map('.$it').join(', ')}',
+				node.pos)
+		}
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {

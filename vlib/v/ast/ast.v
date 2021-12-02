@@ -646,8 +646,9 @@ pub mut:
 
 pub struct EmbeddedFile {
 pub:
-	rpath string // used in the source code, as an ID/key to the embed
-	apath string // absolute path during compilation to the resource
+	rpath            string // used in the source code, as an ID/key to the embed
+	apath            string // absolute path during compilation to the resource
+	compression_type string
 pub mut:
 	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool

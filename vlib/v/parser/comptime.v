@@ -95,6 +95,15 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	if !is_html {
 		p.check(.string)
 	}
+	mut embed_compression_type := 'none'
+	if is_embed_file {
+		if p.tok.kind == .comma {
+			p.check(.comma)
+			p.check(.dot)
+			embed_compression_type = p.tok.lit
+			p.check(.name)
+		}
+	}
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
@@ -132,6 +141,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			embed_file: ast.EmbeddedFile{
 				rpath: literal_string_param
 				apath: epath
+				compression_type: embed_compression_type
 			}
 			pos: start_pos.extend(p.prev_tok.position())
 		}
