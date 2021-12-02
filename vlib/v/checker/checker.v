@@ -6265,14 +6265,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					expr_type := c.expr(stmt.expr)
 					if first_iteration {
-						if node.is_expr && !node.expected_type.has_flag(.optional)
-							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
+						if node.is_expr && (node.expected_type.has_flag(.optional)
+							|| c.table.type_kind(node.expected_type) == .sum_type) {
 							ret_type = node.expected_type
 						} else {
 							ret_type = expr_type
 						}
 						stmt.typ = expr_type
-					} else if node.is_expr && ret_type != expr_type {
+					} else if node.is_expr && ret_type.idx() != expr_type.idx() {
 						if !c.check_types(ret_type, expr_type)
 							&& !c.check_types(expr_type, ret_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)

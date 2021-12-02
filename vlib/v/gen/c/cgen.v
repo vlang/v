@@ -104,6 +104,7 @@ mut:
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
+	inside_match_optional  bool
 	loop_depth             int
 	ternary_names          map[string]string
 	ternary_level_names    map[string][]string
@@ -1372,7 +1373,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
-			if g.inside_if_optional {
+			if g.inside_if_optional || g.inside_match_optional {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
@@ -1412,7 +1413,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			}
 		} else {
 			g.stmt(stmt)
-			if g.inside_if_optional && stmt is ast.ExprStmt {
+			if (g.inside_if_optional || g.inside_match_optional) && stmt is ast.ExprStmt {
 				g.writeln(';')
 			}
 		}
@@ -1624,8 +1625,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_postgen()
 			// }
-			if g.inside_ternary == 0 && !g.inside_if_optional && !node.is_expr
-				&& node.expr !is ast.IfExpr {
+			if g.inside_ternary == 0 && !g.inside_if_optional && !g.inside_match_optional
+				&& !node.is_expr && node.expr !is ast.IfExpr {
 				g.writeln(';')
 			}
 		}
@@ -4377,6 +4378,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 		if g.table.type_kind(node.return_type) == .sum_type {
 			return true
 		}
+		if node.return_type.has_flag(.optional) {
+			return true
+		}
 		if sym.kind == .multi_return {
 			return false
 		}
@@ -4417,6 +4421,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	mut cur_line := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary++
+	}
+	if is_expr && node.return_type.has_flag(.optional) {
+		old := g.inside_match_optional
+		defer {
+			g.inside_match_optional = old
+		}
+		g.inside_match_optional = true
 	}
 	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
 		ast.FloatLiteral] {
