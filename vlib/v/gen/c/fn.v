@@ -1141,6 +1141,19 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		if typ != ast.string_type {
 			expr := node.args[0].expr
+			typ_sym := g.table.get_type_symbol(typ)
+			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+				g.write('${c_name(print_method)}(')
+				rec_type_name := util.no_dots(g.cc_type(typ, false))
+				g.write('${c_name(rec_type_name)}_name_table[')
+				g.expr(expr)
+				dot := if typ.is_ptr() { '->' } else { '.' }
+				g.write('${dot}_typ]._method_str(')
+				g.expr(expr)
+				g.write('${dot}_object')
+				g.writeln('));')
+				return
+			}
 			if g.is_autofree && !typ.has_flag(.optional) {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()

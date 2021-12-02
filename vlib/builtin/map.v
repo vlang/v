@@ -363,7 +363,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
 fn (mut m map) set(key voidptr, value voidptr) {
-	load_factor := f32(m.len << 1) / f32(m.even_index)
+	load_factor := f32(u32(m.len) << 1) / f32(m.even_index)
 	if load_factor > max_load_factor {
 		m.expand()
 	}

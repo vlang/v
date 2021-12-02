@@ -99,7 +99,7 @@ But Vwill prevail for sure, V is the way!!
 			txt1.create_texture()
 			r := app.mouse_x % 255
 			g := app.mouse_y % 255
-			color := u32(r << 24) | u32(g << 16) | 0xFF
+			color := u32(r) << 24 | u32(g) << 16 | 0xFF
 			txt1.bmp.color = color
 			txt1.draw_text_bmp(app.gg, app.mouse_x, app.mouse_y)
 		}

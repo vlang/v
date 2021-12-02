@@ -1,4 +1,4 @@
-fn main() {
+fn left_shifts() {
 	mut a := 12
 	mut arr := []int{}
 	a << 1
@@ -39,4 +39,38 @@ fn main() {
 		555
 	}
 	println(x)
+}
+
+fn right_shifts() {
+	mut rr := 12
+	rr >> 1
+	if true {
+		rr >> 2
+	}
+	c := if true { rr >> 111 } else { rr >> 333 }
+	println(c)
+	rr >> 1
+	println(rr)
+	5 >> 9
+	for i in 0 .. 10 {
+		z := i >> 5
+		i >> 5
+		println(z)
+	}
+	//
+	x := if true {
+		rr >> 1
+		999
+	} else {
+		println('---')
+		rr >> 9999
+		println('---')
+		555
+	}
+	println(x)
+}
+
+fn main() {
+	left_shifts()
+	right_shifts()
 }

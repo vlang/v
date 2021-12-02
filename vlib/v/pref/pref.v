@@ -107,6 +107,7 @@ pub mut:
 	is_livemain       bool   // main program that contains live/hot code
 	is_liveshared     bool   // a shared library, that will be used in a -live main program
 	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_o              bool   // building an .o file
 	is_prof           bool   // benchmark every function
 	profile_file      string // the profile results will be stored inside profile_file
 	profile_no_inline bool   // when true, [inline] functions would not be profiled
@@ -556,6 +557,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				if res.out_name.ends_with('.js') {
 					res.backend = .js_node
 					res.output_cross_c = true
+				} else if res.out_name.ends_with('.o') {
+					res.is_o = true
 				}
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)

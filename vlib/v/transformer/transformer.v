@@ -2,6 +2,7 @@ module transformer
 
 import v.pref
 import v.ast
+import v.util
 
 pub struct Transformer {
 	pref &pref.Preferences
@@ -379,10 +380,10 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 							}
 						}
 						.plus {
-							return ast.StringLiteral{
-								val: left_node.val + right_node.val
-								pos: pos
-							}
+							return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
+									val: util.smart_quote(left_node.val, left_node.is_raw) + util.smart_quote(right_node.val, right_node.is_raw)
+									pos: pos
+								}) } else { ast.Expr(node) }
 						}
 						else {
 							return node
@@ -480,7 +481,7 @@ pub fn (t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
 						}
 						.left_shift {
 							return ast.IntegerLiteral{
-								val: (left_val << right_val).str()
+								val: (u32(left_val) << right_val).str()
 								pos: pos
 							}
 						}

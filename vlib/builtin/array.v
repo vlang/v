@@ -506,7 +506,8 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
-	unsafe { free(&byte(a.data) - a.offset) }
+	mblock_ptr := &byte(u64(a.data) - u64(a.offset))
+	unsafe { free(mblock_ptr) }
 }
 
 // filter creates a new array with all elements that pass the test implemented by the provided function

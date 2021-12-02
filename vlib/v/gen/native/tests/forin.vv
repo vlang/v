@@ -1,0 +1,26 @@
+fn main() {
+	mut i := 0
+	for i = 0; i < 3; i++ {
+		println('loop0')
+	}
+	i = 0
+	for i < 3 {
+		println('loop1')
+		i++
+	}
+	for _ in 0 .. 3 {
+		println('loop2')
+	}
+	n := 3
+	for _ in 0 .. n {
+		println('loop3')
+	}
+	for i = 3; i > 0; i-- {
+		println('loop4')
+	}
+	i = 3
+	for i > 0 {
+		println('loop5')
+		i--
+	}
+}

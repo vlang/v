@@ -124,6 +124,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
 	* [Publish package](#publish-package)
@@ -4120,6 +4121,19 @@ It's recommended to set up your editor, so that `v fmt -w` runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
+
+### v shader
+
+You can use GPU shaders with V graphical apps. You write your shaders in an
+[annotated GLSL dialect](https://github.com/vlang/v/blob/1d8ece7/examples/sokol/02_cubes_glsl/cube_glsl.glsl)
+and use `v shader` to compile them for all supported target platforms.
+
+```shell
+v shader /path/to/project/dir/or/file.v
+```
+
+Currently you need to [include a header and declare a glue function](https://github.com/vlang/v/blob/c14c324/examples/sokol/02_cubes_glsl/cube_glsl.v#L43-L46) before
+using the shader in your code.
 
 ### Profiling
 

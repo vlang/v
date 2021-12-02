@@ -378,18 +378,18 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.timers.start('cgen common')
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
-		for idx, typ in g.table.type_symbols {
+		for idx, sym in g.table.type_symbols {
 			if idx == 0 {
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${typ.cname}();')
+			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
 		}
 	} else if g.pref.use_cache {
-		for idx, typ in g.table.type_symbols {
+		for idx, sym in g.table.type_symbols {
 			if idx == 0 {
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
+			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return $idx; };')
 		}
 	}
 	//
@@ -745,43 +745,43 @@ pub fn (mut g Gen) finish() {
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
-	for ityp, typ in g.table.type_symbols {
-		if typ.kind == .sum_type {
-			sum_info := typ.info as ast.SumType
+	for ityp, sym in g.table.type_symbols {
+		if sym.kind == .sum_type {
+			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
 				continue
 			}
-			g.writeln('static char * v_typeof_sumtype_${typ.cname}(int sidx) { /* $typ.name */ ')
+			g.writeln('static char * v_typeof_sumtype_${sym.cname}(int sidx) { /* $sym.name */ ')
 			if g.pref.build_mode == .build_module {
-				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return "${util.strip_main_name(typ.name)}";')
+				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.get_type_symbol(v)
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
-				g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
+				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
-				tidx := g.table.find_type_idx(typ.name)
+				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
-				g.writeln('\t\tcase $tidx: return "${util.strip_main_name(typ.name)}";')
+				g.writeln('\t\tcase $tidx: return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.get_type_symbol(v)
 					g.writeln('\t\tcase $v: return "${util.strip_main_name(subtype.name)}";')
 				}
-				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(typ.name)}";')
+				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
 				g.writeln('\t}')
 			}
 			g.writeln('}')
 			g.writeln('')
-			g.writeln('int v_typeof_sumtype_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
+			g.writeln('int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* $sym.name */ ')
 			if g.pref.build_mode == .build_module {
-				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return ${int(ityp)};')
+				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
 				for v in sum_info.variants {
 					subtype := g.table.get_type_symbol(v)
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${int(v)};')
 				}
 				g.writeln('\treturn ${int(ityp)};')
 			} else {
-				tidx := g.table.find_type_idx(typ.name)
+				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase $tidx: return ${int(ityp)};')
 				for v in sum_info.variants {
@@ -791,27 +791,27 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln('}')
-		} else if typ.kind == .interface_ {
-			if typ.info !is ast.Interface {
+		} else if sym.kind == .interface_ {
+			if sym.info !is ast.Interface {
 				continue
 			}
-			inter_info := typ.info as ast.Interface
+			inter_info := sym.info as ast.Interface
 			if inter_info.is_generic {
 				continue
 			}
-			g.definitions.writeln('static char * v_typeof_interface_${typ.cname}(int sidx);')
-			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
+			g.definitions.writeln('static char * v_typeof_interface_${sym.cname}(int sidx);')
+			g.writeln('static char * v_typeof_interface_${sym.cname}(int sidx) { /* $sym.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
-				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
+				g.writeln('\tif (sidx == _${sym.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
 			}
-			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			g.writeln('}')
 			g.writeln('')
-			g.writeln('static int v_typeof_interface_idx_${typ.cname}(int sidx) { /* $typ.name */ ')
+			g.writeln('static int v_typeof_interface_idx_${sym.cname}(int sidx) { /* $sym.name */ ')
 			for t in inter_info.types {
 				subtype := g.table.get_type_symbol(t)
-				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return ${int(t)};')
+				g.writeln('\tif (sidx == _${sym.cname}_${subtype.cname}_index) return ${int(t)};')
 			}
 			g.writeln('\treturn ${int(ityp)};')
 			g.writeln('}')
@@ -1097,24 +1097,24 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
-	for typ in g.table.type_symbols {
-		if typ.name in c.builtins {
+	for sym in g.table.type_symbols {
+		if sym.name in c.builtins {
 			continue
 		}
-		match typ.kind {
+		match sym.kind {
 			.array {
-				info := typ.info as ast.Array
+				info := sym.info as ast.Array
 				elem_sym := g.table.get_type_symbol(info.elem_type)
 				if elem_sym.kind != .placeholder && !info.elem_type.has_flag(.generic) {
-					g.type_definitions.writeln('typedef array $typ.cname;')
+					g.type_definitions.writeln('typedef array $sym.cname;')
 				}
 			}
 			.array_fixed {
-				info := typ.info as ast.ArrayFixed
+				info := sym.info as ast.ArrayFixed
 				elem_sym := g.table.get_type_symbol(info.elem_type)
 				if elem_sym.is_builtin() {
 					// .array_fixed {
-					styp := typ.cname
+					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
 					mut fixed := styp[12..]
 					len := styp.after('_')
@@ -1135,59 +1135,59 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.chan {
-				if typ.name != 'chan' {
-					g.type_definitions.writeln('typedef chan $typ.cname;')
-					chan_inf := typ.chan_info()
+				if sym.name != 'chan' {
+					g.type_definitions.writeln('typedef chan $sym.cname;')
+					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
 					if !chan_elem_type.has_flag(.generic) {
 						el_stype := g.typ(chan_elem_type)
 						g.channel_definitions.writeln('
-static inline $el_stype __${typ.cname}_popval($typ.cname ch) {
+static inline $el_stype __${sym.cname}_popval($sym.cname ch) {
 	$el_stype val;
 	sync__Channel_try_pop_priv(ch, &val, false);
 	return val;
 }')
 						g.channel_definitions.writeln('
-static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
+static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 	sync__Channel_try_push_priv(ch, &val, false);
 }')
 					}
 				}
 			}
 			.map {
-				g.type_definitions.writeln('typedef map $typ.cname;')
+				g.type_definitions.writeln('typedef map $sym.cname;')
 			}
 			else {
 				continue
 			}
 		}
 	}
-	for typ in g.table.type_symbols {
-		if typ.kind == .alias && typ.name !in c.builtins {
-			g.write_alias_typesymbol_declaration(typ)
+	for sym in g.table.type_symbols {
+		if sym.kind == .alias && sym.name !in c.builtins {
+			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
-	for typ in g.table.type_symbols {
-		if typ.kind == .function && typ.name !in c.builtins {
-			g.write_fn_typesymbol_declaration(typ)
+	for sym in g.table.type_symbols {
+		if sym.kind == .function && sym.name !in c.builtins {
+			g.write_fn_typesymbol_declaration(sym)
 		}
 	}
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
-	for typ in g.table.type_symbols {
-		if typ.kind == .interface_ && typ.name !in c.builtins {
-			g.write_interface_typedef(typ)
+	for sym in g.table.type_symbols {
+		if sym.kind == .interface_ && sym.name !in c.builtins {
+			g.write_interface_typedef(sym)
 		}
 	}
-	for typ in g.table.type_symbols {
-		if typ.kind == .interface_ && typ.name !in c.builtins {
-			g.write_interface_typesymbol_declaration(typ)
+	for sym in g.table.type_symbols {
+		if sym.kind == .interface_ && sym.name !in c.builtins {
+			g.write_interface_typesymbol_declaration(sym)
 		}
 	}
 }
 
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
-	parent := unsafe { &g.table.type_symbols[sym.parent_idx] }
+	parent := g.table.type_symbols[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	mut is_typedef := false
 	if parent.info is ast.Struct {
@@ -2220,7 +2220,7 @@ struct SumtypeCastingFn {
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
-	i := got | (exp << 16)
+	i := got | int(u32(exp) << 16)
 	got_cname, exp_cname := g.table.get_type_symbol(got).cname, g.table.get_type_symbol(exp).cname
 	fn_name := '${got_cname}_to_sumtype_$exp_cname'
 	if got == exp || g.sumtype_definitions[i] {
@@ -2961,6 +2961,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 	}
 	// `a := 1` | `a,b := 1,2`
+	if assign_stmt.right.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.right_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.right_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+	if assign_stmt.left_types.len < assign_stmt.left.len {
+		g.checker_bug('assign_stmt.left_types.len < assign_stmt.left.len', assign_stmt.pos)
+	}
+
 	for i, left in assign_stmt.left {
 		mut is_auto_heap := false
 		mut var_type := assign_stmt.left_types[i]
@@ -3669,9 +3679,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 		}
 		.voidptr {
 			ts := if g.pref.m64 {
-				unsafe { &g.table.type_symbols[ast.u64_type_idx] }
+				unsafe { g.table.get_type_symbol_by_idx(ast.u64_type_idx) }
 			} else {
-				unsafe { &g.table.type_symbols[ast.u32_type_idx] }
+				unsafe { g.table.get_type_symbol_by_idx(ast.u32_type_idx) }
 			}
 			return g.map_fn_ptrs(ts)
 		}
@@ -5092,27 +5102,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	}
 	g.is_amp = false
 	sym := g.table.get_type_symbol(node.typ)
-	if sym.kind == .string && !node.typ.is_ptr() {
-		// `string(x)` needs `tos()`, but not `&string(x)
-		// `tos(str, len)`, `tos2(str)`
-		if node.has_arg {
-			g.write('tos((byteptr)')
-		} else {
-			g.write('tos2((byteptr)')
-		}
-		g.expr(node.expr)
-		expr_sym := g.table.get_type_symbol(node.expr_type)
-		if expr_sym.kind == .array {
-			// if we are casting an array, we need to add `.data`
-			g.write('.data')
-		}
-		if node.has_arg {
-			// len argument
-			g.write(', ')
-			g.expr(node.arg)
-		}
-		g.write(')')
-	} else if sym.kind in [.sum_type, .interface_] {
+	if sym.kind in [.sum_type, .interface_] {
 		g.expr_with_cast(node.expr, node.expr_type, node.typ)
 	} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as ast.Struct).is_typedef {
 		// deprecated, replaced by Struct{...exr}
@@ -6318,11 +6308,11 @@ fn (mut g Gen) write_builtin_types() {
 	if g.pref.no_builtin {
 		return
 	}
-	mut builtin_types := []ast.TypeSymbol{} // builtin types
+	mut builtin_types := []&ast.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
-		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
+		sym := g.table.get_type_symbol_by_idx(g.table.type_idxs[builtin_name])
 		if sym.kind == .interface_ {
 			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
@@ -6337,36 +6327,36 @@ fn (mut g Gen) write_builtin_types() {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
-	mut types := []ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
-	for typ in g.table.type_symbols {
-		if typ.name !in c.builtins {
-			types << typ
+	mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
+	for sym in g.table.type_symbols {
+		if sym.name !in c.builtins {
+			symbols << sym
 		}
 	}
 	// sort structs
-	types_sorted := g.sort_structs(types)
+	sorted_symbols := g.sort_structs(symbols)
 	// Generate C code
 	g.type_definitions.writeln('// builtin types:')
 	g.type_definitions.writeln('//------------------ #endbuiltin')
-	g.write_types(types_sorted)
+	g.write_types(sorted_symbols)
 }
 
-fn (mut g Gen) write_types(types []ast.TypeSymbol) {
-	for typ in types {
-		if typ.name.starts_with('C.') {
+fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
+	for sym in symbols {
+		if sym.name.starts_with('C.') {
 			continue
 		}
-		if typ.kind == .none_ {
+		if sym.kind == .none_ {
 			g.type_definitions.writeln('struct none {')
 			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 			g.type_definitions.writeln('};')
 			g.typedefs2.writeln('typedef struct none none;')
 		}
 		// sym := g.table.get_type_symbol(typ)
-		mut name := typ.cname
-		match mut typ.info {
+		mut name := sym.cname
+		match mut sym.info {
 			ast.Struct {
-				if typ.info.is_generic {
+				if sym.info.is_generic {
 					continue
 				}
 				if name.contains('_T_') {
@@ -6378,7 +6368,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				mut pre_pragma := ''
 				mut post_pragma := ''
 
-				for attr in typ.info.attrs {
+				for attr in sym.info.attrs {
 					match attr.name {
 						'_pack' {
 							pre_pragma += '#pragma pack(push, $attr.arg)\n'
@@ -6390,13 +6380,13 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 
 				g.type_definitions.writeln(pre_pragma)
 
-				if typ.info.is_union {
+				if sym.info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
 					g.type_definitions.writeln('struct $name {')
 				}
-				if typ.info.fields.len > 0 || typ.info.embeds.len > 0 {
-					for field in typ.info.fields {
+				if sym.info.fields.len > 0 || sym.info.embeds.len > 0 {
+					for field in sym.info.fields {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to
@@ -6429,7 +6419,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
-				ti_attrs := if typ.info.attrs.contains('packed') {
+				ti_attrs := if sym.info.attrs.contains('packed') {
 					'__attribute__((__packed__))'
 				} else {
 					''
@@ -6459,26 +6449,26 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if typ.info.is_generic {
+				if sym.info.is_generic {
 					continue
 				}
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
-				for variant in typ.info.variants {
+				for variant in sym.info.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('struct $name {')
 				g.type_definitions.writeln('\tunion {')
-				for variant in typ.info.variants {
+				for variant in sym.info.variants {
 					variant_sym := g.table.get_type_symbol(variant)
 					g.type_definitions.writeln('\t\t${g.typ(variant.ref())} _$variant_sym.cname;')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
-				if typ.info.fields.len > 0 {
+				if sym.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
-					for field in typ.info.fields {
+					for field in sym.info.fields {
 						g.type_definitions.writeln('\t${g.typ(field.typ.ref())} $field.name;')
 					}
 				}
@@ -6486,18 +6476,18 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				g.type_definitions.writeln('')
 			}
 			ast.ArrayFixed {
-				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
-				if !elem_sym.is_builtin() && !typ.info.elem_type.has_flag(.generic) {
+				elem_sym := g.table.get_type_symbol(sym.info.elem_type)
+				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic) {
 					// .array_fixed {
-					styp := typ.cname
+					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
 					// [16]&&&EventListener{} => Array_fixed_main__EventListener_16_ptr3
 					// => typedef main__EventListener*** Array_fixed_main__EventListener_16_ptr3 [16]
-					mut fixed_elem_name := g.typ(typ.info.elem_type.set_nr_muls(0))
-					if typ.info.elem_type.is_ptr() {
-						fixed_elem_name += '*'.repeat(typ.info.elem_type.nr_muls())
+					mut fixed_elem_name := g.typ(sym.info.elem_type.set_nr_muls(0))
+					if sym.info.elem_type.is_ptr() {
+						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
 					}
-					len := typ.info.size
+					len := sym.info.size
 					if fixed_elem_name.starts_with('C__') {
 						fixed_elem_name = fixed_elem_name[3..]
 					}
@@ -6519,7 +6509,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 }
 
 // sort structs by dependant fields
-fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
+fn (g &Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -6527,26 +6517,26 @@ fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
 	mut type_names := []string{}
-	for typ in typesa {
-		type_names << typ.name
+	for sym in typesa {
+		type_names << sym.name
 	}
 	// loop over types
-	for t in typesa {
-		if t.kind == .interface_ {
-			dep_graph.add(t.name, [])
+	for sym in typesa {
+		if sym.kind == .interface_ {
+			dep_graph.add(sym.name, [])
 			continue
 		}
 		// create list of deps
 		mut field_deps := []string{}
-		match mut t.info {
+		match mut sym.info {
 			ast.ArrayFixed {
-				dep := g.table.get_type_symbol(t.info.elem_type).name
+				dep := g.table.get_type_symbol(sym.info.elem_type).name
 				if dep in type_names {
 					field_deps << dep
 				}
 			}
 			ast.Struct {
-				for embed in t.info.embeds {
+				for embed in sym.info.embeds {
 					dep := g.table.get_type_symbol(embed).name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps {
@@ -6554,7 +6544,7 @@ fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
 					}
 					field_deps << dep
 				}
-				for field in t.info.fields {
+				for field in sym.info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
@@ -6567,7 +6557,7 @@ fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
 			else {}
 		}
 		// add type and dependant types to graph
-		dep_graph.add(t.name, field_deps)
+		dep_graph.add(sym.name, field_deps)
 	}
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
@@ -6580,11 +6570,11 @@ fn (g &Gen) sort_structs(typesa []ast.TypeSymbol) []ast.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut types_sorted := []ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
+	mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
 	for node in dep_graph_sorted.nodes {
-		types_sorted << g.table.type_symbols[g.table.type_idxs[node.name]]
+		sorted_symbols << g.table.get_type_symbol_by_idx(g.table.type_idxs[node.name])
 	}
-	return types_sorted
+	return sorted_symbols
 }
 
 [inline]
@@ -7174,19 +7164,19 @@ fn (g Gen) as_cast_name_table() string {
 fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
-	for ityp in g.table.type_symbols {
-		if ityp.kind != .interface_ {
+	for isym in g.table.type_symbols {
+		if isym.kind != .interface_ {
 			continue
 		}
-		if ityp.info !is ast.Interface {
+		if isym.info !is ast.Interface {
 			continue
 		}
-		inter_info := ityp.info as ast.Interface
+		inter_info := isym.info as ast.Interface
 		if inter_info.is_generic {
 			continue
 		}
 		// interface_name is for example Speaker
-		interface_name := ityp.cname
+		interface_name := isym.cname
 		// generate a struct that references interface methods
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
@@ -7233,7 +7223,7 @@ fn (mut g Gen) interface_table() string {
 			cctype := g.cc_type(st, true)
 			$if debug_interface_table ? {
 				eprintln(
-					'>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
+					'>> interface name: $isym.name | concrete type: $st.debug() | st symname: ' +
 					st_sym.name)
 			}
 			// Speaker_Cat_index = 0
@@ -7243,7 +7233,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			if ityp.name != 'vweb.DbInterface' { // TODO remove this
+			if isym.name != 'vweb.DbInterface' { // TODO remove this
 				// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
 				sb.writeln('static $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
 				mut cast_struct := strings.new_builder(100)
@@ -7357,7 +7347,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call += iwpostfix
 				}
-				if g.pref.build_mode != .build_module {
+				if g.pref.build_mode != .build_module && st != ast.voidptr_type {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}

@@ -203,7 +203,7 @@ pub fn (mut f Fmt) no_cur_mod(typename string) string {
 
 // foo.bar.fn() => bar.fn()
 pub fn (mut f Fmt) short_module(name string) string {
-	if !name.contains('.') {
+	if !name.contains('.') || name.starts_with('JS.') {
 		return name
 	}
 	if name in f.mod2alias {
@@ -1613,7 +1613,14 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
-			f.write(f.short_module(f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)))
+			mut name := f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)
+			tsym := f.table.get_type_symbol(concrete_type)
+			if tsym.language != .js && !tsym.name.starts_with('JS.') {
+				name = f.short_module(name)
+			} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
+				name = 'JS.' + name
+			}
+			f.write(name)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}

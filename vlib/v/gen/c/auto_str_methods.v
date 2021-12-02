@@ -731,7 +731,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
+fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	if typ == ast.byte_type_idx {
 		return .si_u8
 	}
@@ -813,7 +813,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_body.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
-		base_fmt := g.type_to_fmt1(g.unwrap_generic(field.typ))
+		base_fmt := g.type_to_fmt(g.unwrap_generic(field.typ))
 
 		// manage prefix and quote symbol for the filed
 		mut quote_str := ''
@@ -852,7 +852,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		}
 
 		mut funcprefix := ''
-		mut func, mut caller_should_free := struct_auto_str_func1(sym, field.typ, field_styp_fn_name,
+		mut func, mut caller_should_free := struct_auto_str_func(sym, field.typ, field_styp_fn_name,
 			field.name, sym_has_str_method, str_method_expects_ptr)
 		if field.typ in ast.cptr_types {
 			func = '(voidptr) it.$field.name'
@@ -895,7 +895,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_body.writeln('\t}));')
 }
 
-fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
+fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}it.${c_name(field_name)})', true

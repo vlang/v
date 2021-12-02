@@ -14,7 +14,12 @@ fn (mut g Gen) embed_file_is_prod_mode() bool {
 fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('(v__embed_file__EmbedFileData){')
 	g.writeln('\t\t.path = ${ctoslit(node.embed_file.rpath)},')
-	g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
+	if g.embed_file_is_prod_mode() {
+		// apath is not needed in production and may leak information
+		g.writeln('\t\t.apath = ${ctoslit('')},')
+	} else {
+		g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
+	}
 	file_size := os.file_size(node.embed_file.apath)
 	if file_size > 5242880 {
 		eprintln('Warning: embedding of files >= ~5MB is currently not supported')
@@ -61,7 +66,7 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len - 1}, .is_lit=1 }, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=$emfile.rpath.len, .is_lit=1 }, _v_embed_blob_$i},')
 	}
 	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')

@@ -210,7 +210,8 @@ pub fn decode_str(data string) string {
 	unsafe {
 		buffer := malloc_noscan(size + 1)
 		buffer[size] = 0
-		return tos(buffer, decode_in_buffer(data, buffer))
+		blen := decode_in_buffer(data, buffer)
+		return tos(buffer, blen)
 	}
 }
 
@@ -230,6 +231,9 @@ pub fn encode_str(data string) string {
 // alloc_and_encode is a private function that allocates and encodes data into a string
 // Used by encode and encode_str
 fn alloc_and_encode(src &byte, len int) string {
+	if len == 0 {
+		return ''
+	}
 	size := 4 * ((len + 2) / 3)
 	if size <= 0 {
 		return ''
@@ -237,6 +241,7 @@ fn alloc_and_encode(src &byte, len int) string {
 	unsafe {
 		buffer := malloc_noscan(size + 1)
 		buffer[size] = 0
-		return tos(buffer, encode_from_buffer(buffer, src, len))
+		blen := encode_from_buffer(buffer, src, len)
+		return tos(buffer, blen)
 	}
 }

@@ -29,6 +29,7 @@ const skip_valgrind_files = [
 	'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
 	'vlib/v/tests/valgrind/option_simple.v',
 	'vlib/v/tests/valgrind/string_plus_string_plus.v',
+	'vlib/v/tests/valgrind/import_x_json2.v',
 ]
 
 fn vprintln(s string) {

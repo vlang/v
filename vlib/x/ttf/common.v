@@ -72,7 +72,7 @@ fn (mut bmp BitMap) format_texture() {
 				x[i + 1] = g
 				x[i + 2] = b
 				// alpha
-				x[i + 3] = byte((a * data) >> 8)
+				x[i + 3] = byte(u16(a * data) >> 8)
 			} else {
 				x[i + 0] = b_r
 				x[i + 1] = b_g

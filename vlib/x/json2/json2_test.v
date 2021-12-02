@@ -16,10 +16,10 @@ pub mut:
 
 fn (e Employee) to_json() string {
 	mut mp := map[string]json2.Any{}
-	mp['name'] = e.name
-	mp['age'] = e.age
-	mp['salary'] = e.salary
-	mp['title'] = int(e.title)
+	mp['name'] = json2.Any(e.name)
+	mp['age'] = json2.Any(e.age)
+	mp['salary'] = json2.Any(e.salary)
+	mp['title'] = json2.Any(int(e.title))
 	/*
 	$for field in Employee.fields {
 		d := e.$(field.name)
@@ -36,10 +36,10 @@ fn (e Employee) to_json() string {
 
 fn (mut e Employee) from_json(any json2.Any) {
 	mp := any.as_map()
-	e.name = mp['name'] or { 0 }.str()
-	e.age = mp['age'] or { 0 }.int()
-	e.salary = mp['salary'] or { 0 }.f32()
-	e.title = JobTitle(mp['title'] or { 0 }.int())
+	e.name = mp['name'] or { json2.Any('') }.str()
+	e.age = mp['age'] or { json2.Any(0) }.int()
+	e.salary = mp['salary'] or { json2.Any(0) }.f32()
+	e.title = JobTitle(mp['title'] or { json2.Any(0) }.int())
 }
 
 fn test_simple() {
@@ -157,10 +157,10 @@ fn (u User) to_json() string {
 		'age': json2.Any(u.age)
 	}
 	mp['nums'] = u.nums.map(json2.Any(it))
-	mp['lastName'] = u.last_name
-	mp['IsRegistered'] = u.is_registered
-	mp['type'] = u.typ
-	mp['pet_animals'] = u.pets
+	mp['lastName'] = json2.Any(u.last_name)
+	mp['IsRegistered'] = json2.Any(u.is_registered)
+	mp['type'] = json2.Any(u.typ)
+	mp['pet_animals'] = json2.Any(u.pets)
 	return mp.str()
 }
 

@@ -271,6 +271,11 @@ pub interface JS.Document {
 	queryCommandState(commandId JS.String) JS.String
 	write(text ...JS.Any)
 	writeln(text ...JS.Any)
+	exitFullscreen() JS.Promise
+	exitPictureInPicture() JS.Promise
+	exitPointerLock()
+	requestPointerLock()
+	requestFullScreen() JS.Promise
 mut:
 	bgColor JS.String
 	fgColor JS.String

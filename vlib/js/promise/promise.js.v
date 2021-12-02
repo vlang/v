@@ -68,12 +68,14 @@ pub fn JS.Promise.all(JS.Array) JS.Promise
 pub fn JS.Promise.allSettled(JS.Array) JS.Promise
 
 /*
+pub type JsAny = JS.Any
+
 // all takes an iterable of promises as an input, and returns a single Promise that resolves to an array of
 // the results of the input promises
-pub fn all(array []JS.Promise) Promise<JS.Array, JS.Any> {
+pub fn all(array []JS.Promise) Promise<JS.Array, js.promise.JsAny> {
 	mut promise := JS.Promise(JS.Any(voidptr(0)))
 	#promise = Promise.all(array.arr.arr);
 
-	return Promise<Array,Any>{promise}
+	return Promise<JS.Array,JsAny>{promise}
 }
 */

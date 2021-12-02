@@ -14,24 +14,6 @@ import picohttpparser
 #flag @VEXEROOT/thirdparty/picoev/picoev.o
 #include "src/picoev.h"
 
-struct C.in_addr {
-mut:
-	s_addr u32
-}
-
-struct C.sockaddr_in {
-mut:
-	sin_family int
-	sin_port   int
-	sin_addr   C.in_addr
-}
-
-struct C.sockaddr_storage {}
-
-fn C.atoi() int
-
-fn C.strncasecmp(s1 &char, s2 &char, n usize) int
-
 [typedef]
 struct C.picoev_loop {}
 
@@ -41,9 +23,9 @@ fn C.picoev_set_timeout(&C.picoev_loop, int, int)
 
 // fn C.picoev_handler(loop &C.picoev_loop, fd int, revents int, cb_arg voidptr)
 // TODO: (sponge) update to C.picoev_handler with C type def update
-type Cpicoev_handler = fn (loop &C.picoev_loop, fd int, revents int, context voidptr)
+type PicoevHandler = fn (loop &C.picoev_loop, fd int, revents int, context voidptr)
 
-fn C.picoev_add(&C.picoev_loop, int, int, int, &Cpicoev_handler, voidptr) int
+fn C.picoev_add(&C.picoev_loop, int, int, int, &PicoevHandler, voidptr) int
 
 fn C.picoev_init(int) int
 
@@ -215,21 +197,26 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 pub fn new(config Config) &Picoev {
 	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
 	assert fd != -1
+
+	// Setting flags for socket
 	flag := 1
 	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
-	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
 	$if linux {
+		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
 		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)) == 0
 		timeout := 10
 		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &timeout, sizeof(int)) == 0
 		queue_len := 4096
 		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)) == 0
 	}
-	mut addr := C.sockaddr_in{}
-	addr.sin_family = C.AF_INET
-	addr.sin_port = C.htons(config.port)
-	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
-	size := 16 // sizeof(C.sockaddr_in)
+
+	// Setting addr
+	mut addr := C.sockaddr_in{
+		sin_family: byte(C.AF_INET)
+		sin_port: C.htons(config.port)
+		sin_addr: C.htonl(C.INADDR_ANY)
+	}
+	size := sizeof(C.sockaddr_in)
 	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
 	assert bind_res == 0
 	listen_res := C.listen(fd, C.SOMAXCONN)
@@ -238,6 +225,7 @@ pub fn new(config Config) &Picoev {
 		config.err_cb(mut config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
+
 	C.picoev_init(picoev.max_fds)
 	loop := C.picoev_create_loop(picoev.max_timeout)
 	mut pv := &Picoev{
@@ -251,6 +239,7 @@ pub fn new(config Config) &Picoev {
 		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
 		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
+
 	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)
 	go update_date(mut pv)
 	return pv

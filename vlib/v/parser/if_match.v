@@ -250,7 +250,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			scope: branch_scope
 		}
 		if is_else && branches.len == 1 {
-			p.warn_with_pos('`match` must have at least one non `else` branch', pos)
+			p.error_with_pos('`match` must have at least one non `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

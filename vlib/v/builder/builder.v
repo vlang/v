@@ -90,7 +90,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 	timers.show('PARSE')
 	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
-		return error('stop_after_parser')
+		return error_with_code('stop_after_parser', 9999)
 	}
 }
 
@@ -104,8 +104,11 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	if b.checker.should_abort {
+		return error('too many errors/warnings/notices')
+	}
 	if b.pref.check_only {
-		return error('stop_after_checker')
+		return error_with_code('stop_after_checker', 9999)
 	}
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
@@ -194,10 +197,11 @@ pub fn (mut b Builder) parse_imports() {
 				if name == '' {
 					name = file.mod.short_name
 				}
-				if name != mod {
-					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					b.parsed_files[i].errors << b.error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
-						ast_file.path, imp.pos)
+				sname := name.all_after_last('.')
+				smod := mod.all_after_last('.')
+				if sname != smod {
+					msg := 'bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`'
+					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
 				}
 			}
 			b.parsed_files << parsed_files
