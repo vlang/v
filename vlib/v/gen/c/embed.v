@@ -69,6 +69,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 	if g.embed_file_is_prod_mode() {
 		// use function generated in Gen.gen_embedded_data()
 		if node.embed_file.is_compressed {
+			g.writeln('\t\t.compression_type = ${ctoslit(node.embed_file.compression_type)},')
 			g.writeln('\t\t.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)})->data,')
 			g.writeln('\t\t.uncompressed = NULL,')
 		} else {

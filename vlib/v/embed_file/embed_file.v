@@ -10,7 +10,8 @@ pub const (
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
-	apath string
+	apath            string
+	compression_type string
 mut:
 	compressed        &byte
 	uncompressed      &byte
@@ -30,6 +31,7 @@ pub fn (mut ed EmbedFileData) free() {
 	unsafe {
 		ed.path.free()
 		ed.apath.free()
+		ed.compression_type.free()
 		if ed.free_compressed {
 			free(ed.compressed)
 			ed.compressed = &byte(0)
@@ -63,8 +65,15 @@ pub fn (mut ed EmbedFileData) data() &byte {
 	}
 	if isnil(ed.uncompressed) && !isnil(ed.compressed) {
 		compressed := unsafe { ed.compressed.vbytes(ed.len) }
-		decompressed := zlib.decompress(compressed) or {
-			panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
+		decompressed := match ed.compression_type {
+			'zlib' {
+				zlib.decompress(compressed) or {
+					panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
+				}
+			}
+			else {
+				panic('EmbedFileData error: unknown compression type: "$ed.compression_type"')
+			}
 		}
 		unsafe {
 			ed.uncompressed = &byte(memdup(decompressed.data, ed.len))
