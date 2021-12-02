@@ -210,6 +210,14 @@ fn (c Checker) check_number(num ast.Number) ? {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' numbers like "$lit" (float) can not have decimal points on either side of the exponent notation in ...${c.excerpt(num.pos)}...')
 		}
+		// Check if it contains other chars than the allowed
+		for r in lit {
+			if r !in [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `.`, `e`, `E`, `-`, `+`,
+				`_`] {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' numbers like "$lit" (float) can not contain `${byte(r).ascii_str()}` in ...${c.excerpt(num.pos)}...')
+			}
+		}
 	} else {
 		if lit.len > 1 && lit.starts_with('0') && lit[1] !in [`b`, `o`, `x`] {
 			ascii = byte(lit[0]).ascii_str()
