@@ -649,7 +649,7 @@ pub:
 	rpath string // used in the source code, as an ID/key to the embed
 	apath string // absolute path during compilation to the resource
 pub mut:
-	// these are set by comptime_call in v/parser/comptime.v
+	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool
 	bytes         []byte
 	len           int
@@ -1547,8 +1547,7 @@ pub:
 	is_vweb   bool
 	vweb_tmpl File
 	//
-	is_embed   bool
-	embed_file EmbeddedFile
+	is_embed bool
 	//
 	is_env  bool
 	env_pos token.Position
@@ -1559,6 +1558,7 @@ pub mut:
 	result_type Type
 	env_value   string
 	args        []CallArg
+	embed_file  EmbeddedFile
 }
 
 pub struct None {

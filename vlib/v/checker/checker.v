@@ -5867,7 +5867,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.string_type
 	}
 	if node.is_embed {
-		c.file.embedded_files << node.embed_file
+		// c.file.embedded_files << node.embed_file
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {

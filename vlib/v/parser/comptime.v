@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module parser
 
-import compress.zlib
 import os
 import v.ast
 import v.pref
@@ -127,31 +126,13 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			}
 		}
 		p.register_auto_import('v.preludes.embed_file')
-		mut embed_file := ast.EmbeddedFile{
-			rpath: literal_string_param
-			apath: epath
-		}
-		if !p.pref.is_fmt
-			&& (p.pref.is_prod || 'debug_embed_file_in_prod' in p.pref.compile_defines) {
-			file_bytes := os.read_bytes(epath) or {
-				p.error_with_pos('"$epath" is not readable: $err', spos)
-				return err_node
-			}
-			compressed_bytes := zlib.compress(file_bytes) or { []byte{} }
-			embed_file.is_compressed = compressed_bytes.len > 0
-				&& compressed_bytes.len < file_bytes.len
-			embed_file.bytes = if embed_file.is_compressed { compressed_bytes } else { file_bytes }
-
-			if embed_file.bytes.len > 5242880 {
-				p.warn_with_pos('embedding of files >= ~5MB is currently not well supported',
-					spos)
-			}
-			embed_file.len = file_bytes.len
-		}
 		return ast.ComptimeCall{
 			scope: 0
 			is_embed: true
-			embed_file: embed_file
+			embed_file: ast.EmbeddedFile{
+				rpath: literal_string_param
+				apath: epath
+			}
 			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}

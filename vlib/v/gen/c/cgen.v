@@ -3828,7 +3828,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.Comment {}
 		ast.ComptimeCall {
-			g.comptime_call(node)
+			g.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
 			g.comptime_selector(node)

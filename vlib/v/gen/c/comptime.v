@@ -28,10 +28,10 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.field_expr)
 }
 
-fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
+fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	if node.is_embed {
 		// $embed_file('/path/to/file')
-		g.gen_embed_file_init(node)
+		g.gen_embed_file_init(mut node)
 		return
 	}
 	if node.method_name == 'env' {
