@@ -25,7 +25,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			os.mkdir_all(cache_dir) or { panic(err) }
 		}
 		cache_path := os.join_path(cache_dir, cache_key)
-		
+
 		result := os.execute('"${@VEXE}" compress zlib "$node.embed_file.apath" "$cache_path"')
 		if result.exit_code != 0 {
 			eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
@@ -33,12 +33,18 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		} else {
 			compressed_bytes := os.read_bytes(cache_path) or {
 				eprintln('unable to read compressed file')
-				{}
+				{
+				}
 				[]byte{}
 			}
 			os.rm(cache_path) or {} // clean up
-			node.embed_file.is_compressed = compressed_bytes.len > 0 && compressed_bytes.len < file_bytes.len
-			node.embed_file.bytes = if node.embed_file.is_compressed { compressed_bytes } else { file_bytes }
+			node.embed_file.is_compressed = compressed_bytes.len > 0
+				&& compressed_bytes.len < file_bytes.len
+			node.embed_file.bytes = if node.embed_file.is_compressed {
+				compressed_bytes
+			} else {
+				file_bytes
+			}
 		}
 		if node.embed_file.bytes.len > 5242880 {
 			eprintln('embedding of files >= ~5MB is currently not well supported')
