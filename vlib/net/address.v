@@ -74,7 +74,7 @@ fn (a Ip) str() string {
 		return '<Unknown>'
 	}
 
-	saddr := buf.bytestr()
+	saddr := unsafe { (&byte(buf.data)).vstring() }
 	port := C.ntohs(a.port)
 
 	return '$saddr:$port'
@@ -89,7 +89,7 @@ fn (a Ip6) str() string {
 		return '<Unknown>'
 	}
 
-	saddr := buf.bytestr()
+	saddr := unsafe { (&byte(buf.data)).vstring() }
 	port := C.ntohs(a.port)
 
 	return '[$saddr]:$port'
