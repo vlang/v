@@ -157,6 +157,11 @@ fn main() {
 		tsession.skip_files << 'vlib/net/udp_test.v'
 	}
 
+	if github_job.contains('tcc') {
+		// TODO: fix these when possible
+		tsession.skip_files << 'vlib/context/onecontext/onecontext_test.v'
+	}
+
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false
