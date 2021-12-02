@@ -36,12 +36,10 @@ fn main() {
 			}
 		}
 	}
-	// cache_key := md5.hexhash(os.abs_path(path))
-	// out_path := os.join_path(os.vmodules_dir(), 'cache', 'embed_file', cache_key)
 	out_path := os.args[4]
 
 	os.write_file(out_path, compressed.bytestr()) or {
-		eprintln('failed to write "$path": $err')
+		eprintln('failed to write "$out_path": $err')
 		exit(1)
 	}
 }
