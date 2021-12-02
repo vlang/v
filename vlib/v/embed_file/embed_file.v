@@ -1,5 +1,6 @@
 module embed_file
 
+import compress.zlib
 import os
 
 pub const (
@@ -59,25 +60,28 @@ pub fn (original &EmbedFileData) to_bytes() []byte {
 pub fn (mut ed EmbedFileData) data() &byte {
 	if !isnil(ed.uncompressed) {
 		return ed.uncompressed
-	} else {
-		if isnil(ed.uncompressed) && !isnil(ed.compressed) {
-			// TODO implement uncompression
-			// See also C Gen.gen_embedded_data() where the compression should occur.
-			ed.uncompressed = ed.compressed
-		} else {
-			mut path := os.resource_abs_path(ed.path)
-			if !os.is_file(path) {
-				path = ed.apath
-				if !os.is_file(path) {
-					panic('EmbedFileData error: files "$ed.path" and "$ed.apath" do not exist')
-				}
-			}
-			bytes := os.read_bytes(path) or {
-				panic('EmbedFileData error: "$path" could not be read: $err')
-			}
-			ed.uncompressed = bytes.data
-			ed.free_uncompressed = true
+	}
+	if isnil(ed.uncompressed) && !isnil(ed.compressed) {
+		compressed := unsafe { ed.compressed.vbytes(ed.len) }
+		decompressed := zlib.decompress(compressed) or {
+			panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
 		}
+		unsafe {
+			ed.uncompressed = &byte(memdup(decompressed.data, ed.len))
+		}
+	} else {
+		mut path := os.resource_abs_path(ed.path)
+		if !os.is_file(path) {
+			path = ed.apath
+			if !os.is_file(path) {
+				panic('EmbedFileData error: files "$ed.path" and "$ed.apath" do not exist')
+			}
+		}
+		bytes := os.read_bytes(path) or {
+			panic('EmbedFileData error: "$path" could not be read: $err')
+		}
+		ed.uncompressed = bytes.data
+		ed.free_uncompressed = true
 	}
 	return ed.uncompressed
 }

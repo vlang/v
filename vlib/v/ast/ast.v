@@ -648,6 +648,11 @@ pub struct EmbeddedFile {
 pub:
 	rpath string // used in the source code, as an ID/key to the embed
 	apath string // absolute path during compilation to the resource
+pub mut:
+	// these are set by comptime_call in v/parser/comptime.v
+	is_compressed bool
+	bytes         []byte
+	len           int
 }
 
 // Each V source file is represented by one File structure.
