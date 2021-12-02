@@ -4,22 +4,22 @@ import compress.zlib
 import os
 
 
-enum CompressionMethod {
+enum CompressionType {
 	zlib
 }
 
 fn main() {
 	if os.args.len != 5 {
-		eprintln('v compress <method> <in> <out>')
-		eprintln('supported methods: zlib')
+		eprintln('v compress <type> <in> <out>')
+		eprintln('supported types: zlib')
 		exit(1)
 	}
-	method := match os.args[2] {
+	compression_type := match os.args[2] {
 		'zlib' {
-			CompressionMethod.zlib
+			CompressionType.zlib
 		}
 		else {
-			eprintln('unsupported method: ${os.args[1]}')
+			eprintln('unsupported type: ${os.args[1]}')
 			exit(1)
 		}
 	}
@@ -28,7 +28,7 @@ fn main() {
 		eprintln('unable to read "$path": $err')
 		exit(1)
 	}
-	compressed := match method {
+	compressed := match compression_type {
 		.zlib {
 			zlib.compress(content) or {
 				eprintln('compression error: $err')
