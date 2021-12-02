@@ -74,11 +74,33 @@ pub fn (s string) runes() []rune {
 	return runes
 }
 
-// tos converts a C string to a V string.
-// String data is reused, not copied.
+// cstring_to_vstring creates a new V string copy of the C style string,
+// pointed by `s`. This function is most likely what you want to use when
+// working with C style pointers to 0 terminated strings (i.e. `char*`).
+// It is recomended to use it, unless you *do* understand the implications of
+// tos/tos2/tos3/tos4/tos5 in terms of memory management and interactions with
+// -autofree and `[manualfree]`.
+// It will panic, if the pointer `s` is 0.
+[unsafe]
+pub fn cstring_to_vstring(s &char) string {
+	return unsafe { tos2(&byte(s)) }.clone()
+}
+
+// tos_clone creates a new V string copy of the C style string, pointed by `s`.
+// See also cstring_to_vstring (it is the same as it, the only difference is,
+// that tos_clone expects `&byte`, while cstring_to_vstring expects &char).
+// It will panic, if the pointer `s` is 0.
+[unsafe]
+pub fn tos_clone(s &byte) string {
+	return unsafe { tos2(s) }.clone()
+}
+
+// tos creates a V string, given a C style pointer to a 0 terminated block.
+// NB: the memory block pointed by s is *reused, not copied*!
+// It will panic, when the pointer `s` is 0.
+// See also `tos_clone`.
 [unsafe]
 pub fn tos(s &byte, len int) string {
-	// This should never happen.
 	if s == 0 {
 		panic('tos(): nil string')
 	}
@@ -88,14 +110,12 @@ pub fn tos(s &byte, len int) string {
 	}
 }
 
-// tos_clone returns a copy of `s`.
-[unsafe]
-pub fn tos_clone(s &byte) string {
-	return unsafe { tos2(s) }.clone()
-}
-
-// tos2 does the same as `tos`, but also calculates the length. Called by `string(bytes)` casts.
-// Used only internally.
+// tos2 creates a V string, given a C style pointer to a 0 terminated block.
+// NB: the memory block pointed by s is *reused, not copied*!
+// It will calculate the length first, thus it is more costly than `tos`.
+// It will panic, when the pointer `s` is 0.
+// It is the same as `tos3`, but for &byte pointers, avoiding callsite casts.
+// See also `tos_clone`.
 [unsafe]
 pub fn tos2(s &byte) string {
 	if s == 0 {
@@ -107,39 +127,63 @@ pub fn tos2(s &byte) string {
 	}
 }
 
-// tos3 does the same as `tos2`, but for char*, to avoid warnings.
+// tos3 creates a V string, given a C style pointer to a 0 terminated block.
+// NB: the memory block pointed by s is *reused, not copied*!
+// It will calculate the length first, so it is more costly than tos.
+// It will panic, when the pointer `s` is 0.
+// It is the same as `tos2`, but for &char pointers, avoiding callsite casts.
+// See also `tos_clone`.
 [unsafe]
 pub fn tos3(s &char) string {
 	if s == 0 {
 		panic('tos3: nil string')
 	}
 	return string{
-		str: &byte(s)
+		str: unsafe { &byte(s) }
 		len: unsafe { vstrlen_char(s) }
 	}
 }
 
-// tos4 does the same as `tos2`, but returns an empty string on nil ptr.
+// tos4 creates a V string, given a C style pointer to a 0 terminated block.
+// NB: the memory block pointed by s is *reused, not copied*!
+// It will calculate the length first, so it is more costly than tos.
+// It returns '', when given a 0 pointer `s`, it does NOT panic.
+// It is the same as `tos5`, but for &byte pointers, avoiding callsite casts.
+// See also `tos_clone`.
 [unsafe]
 pub fn tos4(s &byte) string {
 	if s == 0 {
 		return ''
 	}
-	return unsafe { tos2(s) }
+	return string{
+		str: unsafe { s }
+		len: unsafe { vstrlen(s) }
+	}
 }
 
-// tos5 does the same as `tos4`, but for char*, to avoid warnings.
+// tos5 creates a V string, given a C style pointer to a 0 terminated block.
+// NB: the memory block pointed by s is *reused, not copied*!
+// It will calculate the length first, so it is more costly than tos.
+// It returns '', when given a 0 pointer `s`, it does NOT panic.
+// It is the same as `tos4`, but for &char pointers, avoiding callsite casts.
+// See also `tos_clone`.
 [unsafe]
 pub fn tos5(s &char) string {
 	if s == 0 {
 		return ''
 	}
-	return unsafe { tos3(s) }
+	return string{
+		str: unsafe { &byte(s) }
+		len: unsafe { vstrlen_char(s) }
+	}
 }
 
-// vstring converts a C style string to a V string. NB: the string data is reused, NOT copied.
-// strings returned from this function will be normal V strings beside that (i.e. they would be
-// freed by V's -autofree mechanism, when they are no longer used).
+// vstring converts a C style string to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// NB: instead of `&byte(arr.data).vstring()`, do use `tos_clone(&byte(arr.data))`.
+// Strings returned from this function will be normal V strings beside that,
+// (i.e. they would be freed by V's -autofree mechanism, when they are no longer used).
+// See also `tos_clone`.
 [unsafe]
 pub fn (bp &byte) vstring() string {
 	return string{
@@ -148,8 +192,11 @@ pub fn (bp &byte) vstring() string {
 	}
 }
 
-// vstring_with_len converts a C style string to a V string.
-// NB: the string data is reused, NOT copied.
+// vstring_with_len converts a C style 0 terminated string to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// This method has lower overhead compared to .vstring(), since it
+// does not need to calculate the length of the 0 terminated string.
+// See also `tos_clone`.
 [unsafe]
 pub fn (bp &byte) vstring_with_len(len int) string {
 	return string{
@@ -159,8 +206,13 @@ pub fn (bp &byte) vstring_with_len(len int) string {
 	}
 }
 
-// vstring converts C char* to V string.
-// NB: the string data is reused, NOT copied.
+// vstring converts a C style string to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// Strings returned from this function will be normal V strings beside that,
+// (i.e. they would be freed by V's -autofree mechanism, when they are
+// no longer used).
+// NB: instead of `&byte(a.data).vstring()`, use `tos_clone(&byte(a.data))`.
+// See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring() string {
 	return string{
@@ -170,8 +222,11 @@ pub fn (cp &char) vstring() string {
 	}
 }
 
-// vstring_with_len converts C char* to V string.
-// NB: the string data is reused, NOT copied.
+// vstring_with_len converts a C style 0 terminated string to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// This method has lower overhead compared to .vstring(), since it
+// does not calculate the length of the 0 terminated string.
+// See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring_with_len(len int) string {
 	return string{
@@ -182,12 +237,13 @@ pub fn (cp &char) vstring_with_len(len int) string {
 }
 
 // vstring_literal converts a C style string to a V string.
-// NB: the string data is reused, NOT copied.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
 // NB2: unlike vstring, vstring_literal will mark the string
-// as a literal, so it will not be freed by autofree.
+// as a literal, so it will not be freed by -autofree.
 // This is suitable for readonly strings, C string literals etc,
 // that can be read by the V program, but that should not be
-// managed by it, for example `os.args` is implemented using it.
+// managed/freed by it, for example `os.args` is implemented using it.
+// See also `tos_clone`.
 [unsafe]
 pub fn (bp &byte) vstring_literal() string {
 	return string{
@@ -198,7 +254,10 @@ pub fn (bp &byte) vstring_literal() string {
 }
 
 // vstring_with_len converts a C style string to a V string.
-// NB: the string data is reused, NOT copied.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// This method has lower overhead compared to .vstring_literal(), since it
+// does not need to calculate the length of the 0 terminated string.
+// See also `tos_clone`.
 [unsafe]
 pub fn (bp &byte) vstring_literal_with_len(len int) string {
 	return string{
@@ -208,9 +267,10 @@ pub fn (bp &byte) vstring_literal_with_len(len int) string {
 	}
 }
 
-// vstring_literal converts C char* to V string.
-// See also vstring_literal defined on byteptr for more details.
-// NB: the string data is reused, NOT copied.
+// vstring_literal converts a C style string char* pointer to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// See also `byteptr.vstring_literal` for more details.
+// See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring_literal() string {
 	return string{
@@ -220,9 +280,12 @@ pub fn (cp &char) vstring_literal() string {
 	}
 }
 
-// vstring_literal_with_len converts C char* to V string.
-// See also vstring_literal_with_len defined on byteptr.
-// NB: the string data is reused, NOT copied.
+// vstring_literal_with_len converts a C style string char* pointer,
+// to a V string.
+// NB: the memory block pointed by `bp` is *reused, not copied*!
+// This method has lower overhead compared to .vstring_literal(), since it
+// does not need to calculate the length of the 0 terminated string.
+// See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring_literal_with_len(len int) string {
 	return string{
@@ -252,12 +315,6 @@ pub fn (a string) clone() string {
 		b.str[a.len] = 0
 	}
 	return b
-}
-
-// cstring_to_vstring creates a copy of cstr and turns it into a v string.
-[unsafe]
-pub fn cstring_to_vstring(cstr &char) string {
-	return unsafe { tos_clone(&byte(cstr)) }
 }
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.
