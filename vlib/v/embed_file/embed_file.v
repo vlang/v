@@ -1,6 +1,5 @@
 module embed_file
 
-import compress.zlib
 import os
 
 pub const (
@@ -64,16 +63,12 @@ pub fn (mut ed EmbedFileData) data() &byte {
 		return ed.uncompressed
 	}
 	if isnil(ed.uncompressed) && !isnil(ed.compressed) {
+		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
+			panic('EmbedFileData error: unknown compression of "$ed.path": "$ed.compression_type"')
+		}
 		compressed := unsafe { ed.compressed.vbytes(ed.len) }
-		decompressed := match ed.compression_type {
-			'zlib' {
-				zlib.decompress(compressed) or {
-					panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
-				}
-			}
-			else {
-				panic('EmbedFileData error: unknown compression type: "$ed.compression_type"')
-			}
+		decompressed := decoder.decompress(compressed) or {
+			panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
 		}
 		unsafe {
 			ed.uncompressed = &byte(memdup(decompressed.data, ed.len))
