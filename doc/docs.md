@@ -4983,6 +4983,7 @@ and thus easier to distribute. In this case, `embedded_file.data()` will cause *
 and it will always return the same data.
 
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
+Currently only one compression type is supported: `zlib`
 
 ```v ignore
 import os
