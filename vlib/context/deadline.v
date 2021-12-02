@@ -44,9 +44,10 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
-		return Context(ctx), fn [mut ctx] () {
+		cancel_fn := fn [mut ctx] () {
 			ctx.cancel(true, canceled)
 		}
+		return Context(ctx), CancelFn(cancel_fn)
 	}
 
 	if ctx.err() is none {
@@ -55,9 +56,11 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 			ctx.cancel(true, deadline_exceeded)
 		}(mut ctx, dur)
 	}
-	return Context(ctx), fn [mut ctx] () {
+
+	cancel_fn := fn [mut ctx] () {
 		ctx.cancel(true, canceled)
 	}
+	return Context(ctx), CancelFn(cancel_fn)
 }
 
 // with_timeout returns with_deadline(parent, time.now().add(timeout)).
