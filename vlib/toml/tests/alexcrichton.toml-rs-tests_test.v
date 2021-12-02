@@ -13,7 +13,6 @@ const (
 		'valid/example-v0.3.0.toml',
 		'valid/example-v0.4.0.toml',
 		'valid/datetime-truncate.toml', // Not considered valid since RFC 3339 doesn't permit > 6 ms digits ??
-		'valid/table-array-nest-no-keys.toml',
 	]
 	invalid_exceptions     = [
 		'invalid/string-bad-line-ending-escape.toml',
@@ -31,6 +30,7 @@ const (
 		'valid/table-array-many.toml',
 		'valid/table-array-one.toml',
 		'valid/table-array-nest.toml',
+		'valid/table-array-nest-no-keys.toml',
 	]
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
