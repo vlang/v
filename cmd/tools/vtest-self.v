@@ -8,6 +8,7 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
 		'vlib/pg/pg_orm_test.v' /* pg not installed */,
@@ -104,7 +105,6 @@ const (
 		'vlib/context/deadline_test.v',
 		'vlib/context/empty_test.v',
 		'vlib/context/value_test.v',
-		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/closure_test.v',
@@ -155,11 +155,6 @@ fn main() {
 		// TODO: fix these ASAP
 		tsession.skip_files << 'vlib/net/tcp_test.v'
 		tsession.skip_files << 'vlib/net/udp_test.v'
-	}
-
-	if github_job.contains('tcc') {
-		// TODO: fix these when possible
-		tsession.skip_files << 'vlib/context/onecontext/onecontext_test.v'
 	}
 
 	mut werror := false
