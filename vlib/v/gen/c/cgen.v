@@ -4423,6 +4423,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr && node.return_type.has_flag(.optional) {
+		old := g.inside_match_optional
+		defer {
+			g.inside_match_optional = old
+		}
 		g.inside_match_optional = true
 	}
 	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
@@ -4469,9 +4473,6 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if is_expr && !need_tmp_var {
 		g.write(')')
 		g.decrement_inside_ternary()
-	}
-	if is_expr && node.return_type.has_flag(.optional) {
-		g.inside_match_optional = false
 	}
 }
 
