@@ -217,7 +217,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	mut type_name := g.typ(node.return_type)
 
-	name = g.generic_fn_name(g.cur_concrete_types, name, true)
+	if node.generic_names.len > 0 {
+		name = g.generic_fn_name(g.cur_concrete_types, name, true)
+	}
 
 	if g.pref.translated && node.attrs.contains('c') {
 		// This fixes unknown symbols errors when building separate .c => .v files
