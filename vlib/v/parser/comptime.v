@@ -100,8 +100,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		if p.tok.kind == .comma {
 			p.check(.comma)
 			p.check(.dot)
-			embed_compression_type = p.tok.lit
-			p.check(.name)
+			embed_compression_type = p.check_name()
 		}
 	}
 	p.check(.rpar)
