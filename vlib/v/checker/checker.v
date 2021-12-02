@@ -5870,7 +5870,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.is_embed {
 		// c.file.embedded_files << node.embed_file
 		if node.embed_file.compression_type !in checker.valid_comptime_compression_types {
-			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${checker.valid_comptime_compression_types.map('.$it').join(', ')}',
+			supported := checker.valid_comptime_compression_types.map('.$it').join(', ')
+			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${supported}',
 				node.pos)
 		}
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
