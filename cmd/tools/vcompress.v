@@ -3,7 +3,6 @@ module main
 import compress.zlib
 import os
 
-
 enum CompressionType {
 	zlib
 }
