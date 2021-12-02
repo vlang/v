@@ -3,6 +3,7 @@ module c
 import os
 import rand
 import v.ast
+import v.pref
 
 fn (mut g Gen) embed_file_is_prod_mode() bool {
 	if g.pref.is_prod || 'debug_embed_file_in_prod' in g.pref.compile_defines {
@@ -25,8 +26,9 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			os.mkdir_all(cache_dir) or { panic(err) }
 		}
 		cache_path := os.join_path(cache_dir, cache_key)
-
-		result := os.execute('"${@VEXE}" compress zlib "$node.embed_file.apath" "$cache_path"')
+		
+		vexe := pref.vexe_path()
+		result := os.execute('"$vexe" compress zlib "$node.embed_file.apath" "$cache_path"')
 		if result.exit_code != 0 {
 			eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
 			node.embed_file.bytes = file_bytes
