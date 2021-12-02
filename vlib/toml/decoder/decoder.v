@@ -159,16 +159,20 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 					&& byte(s.peek(3)).is_hex_digit() && byte(s.peek(4)).is_hex_digit()
 
 				if is_valid_short {
-					// is_valid_long := byte(s.peek(5)).is_hex_digit() && byte(s.peek(6)).is_hex_digit() && byte(s.peek(7)).is_hex_digit() && byte(s.peek(8)).is_hex_digit()
-					// Long type Unicode (\UXXXXXXXX) is a maximum of 10 chars: '\' + 'U' + 8 hex characters
+					is_valid_long := byte(s.peek(5)).is_hex_digit()
+						&& byte(s.peek(6)).is_hex_digit() && byte(s.peek(7)).is_hex_digit()
+						&& byte(s.peek(8)).is_hex_digit()
+					// If it's a long type Unicode (\UXXXXXXXX) with a maximum of 10 chars: '\' + 'U' + 8 hex characters
 					// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
 					// of 9 chars plus one extra.
+					// Else it's a short sequence (\uXXXX) with a maximum of 6 chars: '\' + 'U' + 4 hex characters.
 					mut decoded := ''
 					mut sequence_length := 0
 					mut unicode_val := 0
-					if s.remaining() >= 10 {
+					mut slen := if is_valid_long { 10 } else { 6 }
+					if slen <= s.remaining() {
 						pos := s.state().pos
-						sequence := s.text[pos..pos + 11]
+						sequence := s.text[pos..pos + slen + 1]
 
 						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
 							decoded_s += escape
@@ -184,11 +188,9 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 							decoded_s += escape
 							continue
 						}
-						if unicode_val in [0x7F, 0x1F, 0x5C, 0x75] {
-							sequence_length -= 2
-						}
 						decoded_s += decoded
-						s.skip_n(s.text[pos..pos + 2 + sequence_length + 1].len)
+						replacement := s.text[pos..pos + sequence_length + 1]
+						s.skip_n(replacement.len)
 						continue
 					} else {
 						pos := s.state().pos

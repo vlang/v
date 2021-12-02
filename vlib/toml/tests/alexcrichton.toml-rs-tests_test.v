@@ -20,7 +20,6 @@ const (
 	]
 
 	valid_value_exceptions = [
-		'valid/unicode-escape.toml',
 		// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
 		'valid/example2.toml',
 	]
