@@ -14,9 +14,7 @@ const (
 		'valid/example-v0.4.0.toml',
 		'valid/datetime-truncate.toml', // Not considered valid since RFC 3339 doesn't permit > 6 ms digits ??
 	]
-	invalid_exceptions     = [
-		'invalid/string-bad-line-ending-escape.toml',
-	]
+	invalid_exceptions     = []string{}
 
 	valid_value_exceptions = [
 		// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
