@@ -107,4 +107,7 @@ fn test_format() {
 		x++
 		cnt++
 	}
+
+	bin0 := ~6
+	assert '${bin0:08b}' == '-00000111'
 }

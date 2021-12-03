@@ -22,6 +22,14 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	}
 
 	if p.allign == .right {
+		if p.positive {
+			if p.sign_flag {
+				sb.write_b(`+`)
+			}
+		} else {
+			s.replace('-','')
+			sb.write_b(`-`)
+		}
 		for i1 := 0; i1 < dif; i1++ {
 			sb.write_b(p.pad_ch)
 		}
