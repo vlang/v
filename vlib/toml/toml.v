@@ -173,6 +173,8 @@ pub fn (d Doc) to_any() Any {
 	return ast_to_any(d.ast.table)
 }
 
+// reflect returns `T` with `T.<field>`'s value sat to the
+// value of any 1st level TOML key by the same name.
 pub fn (d Doc) reflect<T>() T {
 	return d.to_any().reflect<T>()
 }
