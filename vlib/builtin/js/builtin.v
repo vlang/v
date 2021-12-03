@@ -83,3 +83,9 @@ pub fn error_with_code(message string, code int) IError {
 		code: code
 	}
 }
+
+// free allows for manually freeing memory allocated at the address `ptr`. no-op on JS backend
+[unsafe]
+pub fn free(ptr voidptr) {
+	_ := ptr
+}
