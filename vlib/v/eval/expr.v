@@ -346,7 +346,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						char, voidptr {
 							unsafe {
 								return Ptr{
-									val: &byte((x as Ptr).val)
+									val: (x as Ptr).val
 								}
 							}
 						}
