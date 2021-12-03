@@ -832,11 +832,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					return
 				}
 			}
-		} else if node.left is ast.Ident && g.comptime_var_type_map.len > 0 {
+		} else if node.left is ast.Ident {
 			if node.left.obj is ast.Var {
-				rec_type = node.left.obj.typ
-				g.gen_expr_to_string(node.left, rec_type)
-				return
+				if g.comptime_var_type_map.len > 0 {
+					rec_type = node.left.obj.typ
+					g.gen_expr_to_string(node.left, rec_type)
+					return
+				} else if node.left.obj.smartcasts.len > 0 {
+					cast_sym := g.table.get_type_symbol(node.left.obj.smartcasts.last())
+					if cast_sym.info is ast.Aggregate {
+						rec_type = cast_sym.info.types[g.aggregate_type_idx]
+						g.gen_expr_to_string(node.left, rec_type)
+						return
+					}
+				}
 			}
 		}
 		g.get_str_fn(rec_type)
@@ -1175,6 +1184,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				} else if expr is ast.Ident {
 					if expr.obj is ast.Var {
 						typ = expr.obj.typ
+						if expr.obj.smartcasts.len > 0 {
+							cast_sym := g.table.get_type_symbol(expr.obj.smartcasts.last())
+							if cast_sym.info is ast.Aggregate {
+								typ = cast_sym.info.types[g.aggregate_type_idx]
+							}
+						}
 					}
 				}
 				g.gen_expr_to_string(expr, typ)
