@@ -1039,8 +1039,9 @@ pub:
 	pos           token.Position
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
-	expr          Expr      // the value of current EnumField; 123 in `ename = 123`
 	has_expr      bool      // true, when .expr has a value
+pub mut:
+	expr Expr // the value of current EnumField; 123 in `ename = 123`
 }
 
 // enum declaration

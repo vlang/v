@@ -32,6 +32,20 @@ fn test_enum() {
 	assert color == .green
 }
 
+enum PowerDuration {
+	invulntics = 30 * 35
+	invistics = 60 * 35
+	infratics = 120 * 35
+}
+
+fn test_custom_values() {
+	mut p := PowerDuration.invulntics
+	assert int(p) == 30 * 35
+	p = .invistics
+	assert int(p) == 60 * 35
+	assert int(PowerDuration.infratics) == 120 * 35
+}
+
 fn test_in() {
 	color := Color.red
 	num := 3 // used to be an expr bug before `in`

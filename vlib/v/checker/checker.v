@@ -3711,9 +3711,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 }
 
-pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
+pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
-	mut seen := []i64{}
+	mut seen := []i64{cap: node.fields.len}
 	if node.fields.len == 0 {
 		c.error('enum cannot be empty', node.pos)
 	}
@@ -3722,7 +3722,7 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 		c.error('`builtin` module cannot have enums', node.pos)
 	}
 	*/
-	for i, field in node.fields {
+	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
@@ -3734,20 +3734,28 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr {
+			match mut field.expr {
 				ast.IntegerLiteral {
 					val := field.expr.val.i64()
 					if val < checker.int_min || val > checker.int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !node.is_multi_allowed && i64(val) in seen {
+					} else if !c.pref.translated && !node.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
 					seen << i64(val)
 				}
 				ast.PrefixExpr {}
+				ast.InfixExpr {
+					// Handle `enum Foo { x = 1 + 2 }`
+					c.infix_expr(mut field.expr)
+				}
+				// ast.ParExpr {} // TODO allow `.x = (1+2)`
 				else {
 					if field.expr is ast.Ident {
-						if field.expr.language == .c {
+						x := field.expr as ast.Ident
+						// TODO sum type bug, remove temp var
+						// if field.expr.language == .c {
+						if x.language == .c {
 							continue
 						}
 					}
@@ -3763,7 +3771,7 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 				last := seen[seen.len - 1]
 				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
-				} else if !node.is_multi_allowed && last + 1 in seen {
+				} else if !c.pref.translated && !node.is_multi_allowed && last + 1 in seen {
 					c.error('enum value `${last + 1}` already exists', field.pos)
 				}
 				seen << last + 1
@@ -4657,7 +4665,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_defer = false
 		}
 		ast.EnumDecl {
-			c.enum_decl(node)
+			c.enum_decl(mut node)
 		}
 		ast.ExprStmt {
 			node.typ = c.expr(node.expr)

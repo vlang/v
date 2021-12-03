@@ -485,6 +485,8 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 				if field := ts.info.find_field(name) {
 					return field
 				}
+				// mut info := ts.info as SumType
+				// TODO a more detailed error so that it's easier to fix?
 				return error('field `$name` does not exist or have the same type in all sumtype variants')
 			}
 			else {}
