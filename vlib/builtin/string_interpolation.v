@@ -239,15 +239,16 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			} else if typ == .si_i32 {
 				d = i64(data.d.d_i32)
 			}
-			if d < 0 {
-				bf.positive = false
-			}
+
 			if base == 0 {
 				if width == 0 {
 					d_str := d.str()
 					sb.write_string(d_str)
 					d_str.free()
 					return
+				}
+				if d < 0 {
+					bf.positive = false
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
@@ -264,6 +265,12 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
+					if d < 0 {
+						bf.positive = false
+						tmp := hx
+						hx = hx.replace('-', '')
+						tmp.free()
+					}
 					strconv.format_str_sb(hx, bf, mut sb)
 				}
 				hx.free()
