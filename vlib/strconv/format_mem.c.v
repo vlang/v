@@ -27,7 +27,6 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 				sb.write_b(`+`)
 			}
 		} else {
-			s.replace('-', '')
 			sb.write_b(`-`)
 		}
 		for i1 := 0; i1 < dif; i1++ {
