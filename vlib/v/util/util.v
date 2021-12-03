@@ -282,12 +282,14 @@ pub fn cached_read_source_file(path string) ?string {
 	if isnil(cache) {
 		cache = &SourceCache{}
 	}
+
 	if path.len == 0 {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
 		cache = &SourceCache(0)
 		return error('memory source file cache cleared')
 	}
+
 	// eprintln('>> cached_read_source_file path: $path')
 	if res := cache.sources[path] {
 		// eprintln('>> cached')
@@ -298,26 +300,6 @@ pub fn cached_read_source_file(path string) ?string {
 	res := skip_bom(raw_text)
 	cache.sources[path] = res
 	return res
-}
-
-pub fn read_file(file_path string) ?string {
-	return unsafe { cached_read_source_file(file_path) }
-}
-
-pub fn skip_bom(file_content string) string {
-	mut raw_text := file_content
-	// BOM check
-	if raw_text.len >= 3 {
-		unsafe {
-			c_text := raw_text.str
-			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-				// skip three BOM bytes
-				offset_from_begin := 3
-				raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
-			}
-		}
-	}
-	return raw_text
 }
 
 pub fn replace_op(s string) string {
@@ -527,4 +509,8 @@ pub fn free_caches() {
 		cached_file2sourcelines('')
 		cached_read_source_file('') or { '' }
 	}
+}
+
+pub fn read_file(file_path string) ?string {
+	return unsafe { cached_read_source_file(file_path) }
 }
