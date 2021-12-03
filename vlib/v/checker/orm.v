@@ -115,6 +115,17 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.sym(node.table_expr.typ)
 	c.cur_orm_ts = *table_sym
+
+	if node.object_var_name != '' {
+		object_var := c.fn_scope.find_var(node.object_var_name) or { return ast.void_type }
+
+		if node.table_expr.typ != object_var.typ {
+			c.error('Mismatched types expected `$table_sym.name` but got `${c.table.sym(object_var.typ).name}`',
+				node.pos)
+			return ast.void_type
+		}
+	}
+
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `$table_sym.name`', node.pos)
 		return ast.void_type

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_mismatched_types.vv:18:10: error: Mismatched types expected `Tiddlers` but got `Tiddler`
+   16 |     sql db {
+   17 |         create table Tiddlers
+   18 |         insert tiddler into Tiddlers
+      |                ~~~~~~~
+   19 |     }
+   20 | }
