@@ -4,7 +4,7 @@ const base_digits = '0123456789abcdefghijklmnopqrstuvwxyz'
 
 // format_int returns the string representation of the number n in base `radix`
 // for digit values > 10, this function uses the small latin leters a-z.
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_int(n i64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
@@ -14,22 +14,28 @@ pub fn format_int(n i64, radix int) string {
 			return '0'
 		}
 		mut n_copy := n
-		mut sign := ''
+		mut have_minus := false
 		if n < 0 {
-			sign = '-'
+			have_minus = true
 			n_copy = -n_copy
 		}
 		mut res := ''
 		for n_copy != 0 {
 			tmp_0 := res
-			tmp_1 := strconv.base_digits[n_copy % radix].ascii_str()
+			bdx := int(n_copy % radix)
+			tmp_1 := strconv.base_digits[bdx].ascii_str()
 			res = tmp_1 + res
 			tmp_0.free()
 			tmp_1.free()
 			// res = base_digits[n_copy % radix].ascii_str() + res
 			n_copy /= radix
 		}
-		return '$sign$res'
+		if have_minus {
+			final_res := '-' + res
+			res.free()
+			return final_res
+		}
+		return res
 	}
 }
 
