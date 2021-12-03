@@ -227,7 +227,7 @@ fn (a Any) value_(value Any, key []string) Any {
 	}
 }
 
-// reflect returns `T` with `T.<field>`'s value sat to the
+// reflect returns `T` with `T.<field>`'s value set to the
 // value of any 1st level TOML key by the same name.
 pub fn (a Any) reflect<T>() T {
 	mut reflected := T{}
