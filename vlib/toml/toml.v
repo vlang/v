@@ -173,6 +173,10 @@ pub fn (d Doc) to_any() Any {
 	return ast_to_any(d.ast.table)
 }
 
+pub fn (d Doc) reflect<T>() T {
+	return d.to_any().reflect<T>()
+}
+
 // value queries a value from the TOML document.
 // `key` supports a small query syntax scheme:
 // Maps can be queried in "dotted" form e.g. `a.b.c`.
