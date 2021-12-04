@@ -124,6 +124,7 @@ fn (mut d Digest) write(p_ []byte) ?int {
 	}
 }
 
+// sum returns the SHA256 or SHA224 checksum of digest with the data.
 pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
