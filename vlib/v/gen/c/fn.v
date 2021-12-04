@@ -946,7 +946,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	if node.receiver_type.is_ptr()
 		&& (!node.left_type.is_ptr() || node.left_type.has_flag(.variadic)
-		|| node.from_embed_type != 0
+		|| node.from_embed_types.len != 0
 		|| (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
@@ -960,11 +960,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
-		&& node.from_embed_type == 0 {
+		&& node.from_embed_types.len == 0 {
 		if !node.left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
-	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
+	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
 		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
@@ -996,8 +996,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else {
 			g.expr(node.left)
 		}
-		if node.from_embed_type != 0 {
-			embed_name := typ_sym.embed_name()
+		for embed in node.from_embed_types {
+			embed_sym := g.table.get_type_symbol(embed)
+			embed_name := embed_sym.embed_name()
 			if node.left_type.is_ptr() {
 				g.write('->')
 			} else {

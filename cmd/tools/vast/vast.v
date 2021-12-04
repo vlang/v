@@ -1456,7 +1456,7 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add('concrete_types', t.array_node_type(node.concrete_types))
 	obj.add('or_block', t.or_expr(node.or_block))
 	obj.add('concrete_list_pos', t.position(node.concrete_list_pos))
-	obj.add('from_embed_type', t.type_node(node.from_embed_type))
+	obj.add('from_embed_types', t.array_node_type(node.from_embed_types))
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('pos', t.position(node.pos))
 	obj.add('name_pos', t.position(node.name_pos))
