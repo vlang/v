@@ -197,7 +197,7 @@ pub fn (ctx &Context) text_width(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, &char(s.str), 0, &buf[0])
+	ctx.ft.fons.text_bounds(0, 0, &char(s.str), &char(0), &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
 			ctx.text_width('i') // TODO fix this in fontstash?
@@ -218,7 +218,7 @@ pub fn (ctx &Context) text_height(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, &char(s.str), 0, &buf[0])
+	ctx.ft.fons.text_bounds(0, 0, &char(s.str), &char(0), &buf[0])
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -228,6 +228,6 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 		return 0, 0
 	}
 	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, &char(s.str), 0, &buf[0])
+	ctx.ft.fons.text_bounds(0, 0, &char(s.str), &char(0), &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
 }
