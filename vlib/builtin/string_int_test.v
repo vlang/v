@@ -254,3 +254,60 @@ fn test_binary64() {
 	assert '${i:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
 	assert '${u:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
 }
+
+fn test_interpolation_of_negative_numbers_padding_and_width() {
+	a := -77
+	assert '                 -77' == '${a:20}'
+	assert '                 -77' == '${a:20d}'
+	assert '                 -4d' == '${a:20x}'
+	assert '            -1001101' == '${a:20b}'
+
+	assert '-0000000000000000077' == '${a:020}'
+	assert '-0000000000000000077' == '${a:020d}'
+	assert '-000000000000000004d' == '${a:020x}'
+	assert '-0000000000001001101' == '${a:020b}'
+
+	//
+	assert '     -77' == '${a:8}'
+	assert '     -77' == '${a:8d}'
+	assert '     -4d' == '${a:8x}'
+	assert '-1001101' == '${a:8b}'
+
+	assert '-0000077' == '${a:08}'
+	assert '-0000077' == '${a:08d}'
+	assert '-1001101' == '${a:08b}'
+	assert '-000004d' == '${a:08x}'
+
+	//	
+	assert ' -77' == '${a:4}'
+	assert ' -77' == '${a:4d}'
+	assert '-1001101' == '${a:4b}'
+	assert ' -4d' == '${a:4x}'
+
+	assert '-077' == '${a:04}'
+	assert '-077' == '${a:04d}'
+	assert '-1001101' == '${a:04b}'
+	assert '-04d' == '${a:04x}'
+
+	//
+	assert '-77' == '${a:2}'
+	assert '-77' == '${a:2d}'
+	assert '-1001101' == '${a:2b}'
+	assert '-4d' == '${a:2x}'
+
+	assert '-77' == '${a:02}'
+	assert '-77' == '${a:02d}'
+	assert '-1001101' == '${a:02b}'
+	assert '-4d' == '${a:02x}'
+
+	//
+	bin0 := ~6
+	assert bin0 == -7
+	assert '-0000111' == '${bin0:08b}' // a minimum of 8 characters for the whole number, including the padding and the sign
+	assert '-0000111' == '${~6:08b}'
+	assert '    -111' == '${~6:8b}'
+
+	//
+	assert '-0000110' == '${-6:08b}'
+	assert '    -110' == '${-6:8b}'
+}
