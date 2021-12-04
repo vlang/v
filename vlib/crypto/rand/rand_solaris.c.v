@@ -33,10 +33,3 @@ pub fn read(bytes_needed int) ?[]byte {
 	}
 	return unsafe { buffer.vbytes(bytes_needed) }
 }
-
-fn v_getrandom(bytes_needed int, buffer voidptr) int {
-	if bytes_needed > rand.read_batch_size {
-		panic('getrandom() dont request more than $rand.read_batch_size bytes at once.')
-	}
-	return C.getrandom(buffer, bytes_needed, 0)
-}
