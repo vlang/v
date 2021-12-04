@@ -115,7 +115,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= max_len[penalty_idx] {
 		return false
 	}
 	if f.out[f.out.len - 1] == ` ` {
@@ -1307,7 +1307,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for sum_type_name in sum_type_names {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + sum_type_name.len
-		if line_length > fmt.max_len.last() {
+		if line_length > max_len.last() {
 			separator = '\n\t| '
 			break
 		}
@@ -1402,7 +1402,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.position().len > fmt.max_len[3]
+					|| f.line_len + expr.position().len > max_len[3]
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1424,7 +1424,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			estr := f.node_str(expr)
-			if !is_new_line && !f.buffering && f.line_len + estr.len > fmt.max_len.last() {
+			if !is_new_line && !f.buffering && f.line_len + estr.len > max_len.last() {
 				f.writeln('')
 				is_new_line = true
 				if !inc_indent {
@@ -1785,7 +1785,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					vals := full_name.split('.')
 					mod_prefix := vals[vals.len - 2]
 					const_name := vals[vals.len - 1]
-					if mod_prefix == 'main' {
+					if mod_prefix == 'main' || node.mod == f.file.mod.name {
 						f.write(const_name)
 						return
 					} else {
@@ -1852,7 +1852,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > fmt.max_len.last() && !f.buffering {
+		if is_ternary && f.line_len > max_len.last() && !f.buffering {
 			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
@@ -1924,7 +1924,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > fmt.max_len.last() {
+		if !f.single_line_if && f.line_len > max_len.last() {
 			is_cond := node.op in [.and, .logical_or]
 			f.wrap_infix(start_pos, start_len, is_cond)
 		}
@@ -1988,7 +1988,7 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if f.line_len + c.len < fmt.max_len[penalties[i]] {
+		if f.line_len + c.len < max_len[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
@@ -1996,7 +1996,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 		} else {
 			is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
 			final_len := ((f.indent + 1) * 4) + c.len
-			if final_len > fmt.max_len.last() && is_paren_expr {
+			if final_len > max_len.last() && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
@@ -2105,7 +2105,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
-			if f.line_len + estr.len + 2 > fmt.max_len[5] {
+			if f.line_len + estr.len + 2 > max_len[5] {
 				f.remove_new_line()
 				f.writeln('')
 			}
@@ -2202,7 +2202,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { $str }'
-				if single_line.len + f.line_len <= fmt.max_len.last() {
+				if single_line.len + f.line_len <= max_len.last() {
 					f.write(single_line)
 					return
 				}
@@ -2391,17 +2391,17 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each([
-			"$fmt.bs'",
+		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each([
+			"$bs'",
 			"'",
-			'$fmt.bs"',
+			'$bs"',
 			'"',
 		])
 		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
 			f.write('"$s"')
 		} else {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'"])
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
 			f.write("'$s'")
 		}
 	}
