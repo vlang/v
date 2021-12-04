@@ -503,22 +503,23 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
 	if sym.info is Struct {
 		mut found_fields := []StructField{}
-		mut embeds_of_found_fields := [][]Type{}
+		mut embeds_of_found_fields := []Type{}
 		for embed in sym.info.embeds {
 			embed_sym := t.get_type_symbol(embed)
 			if field := t.find_field(embed_sym, field_name) {
 				found_fields << field
-				embeds_of_found_fields << [embed]
+				embeds_of_found_fields << embed
 			} else {
 				field, types := t.find_field_from_embeds_recursive(embed_sym, field_name) or {
-					StructField{}, []Type{}
+					continue
 				}
 				found_fields << field
+				embeds_of_found_fields << embed
 				embeds_of_found_fields << types
 			}
 		}
 		if found_fields.len == 1 {
-			return found_fields[0], embeds_of_found_fields[0]
+			return found_fields[0], embeds_of_found_fields
 		} else if found_fields.len > 1 {
 			return error('ambiguous field `$field_name`')
 		}
@@ -526,7 +527,7 @@ pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name s
 		for typ in sym.info.types {
 			agg_sym := t.get_type_symbol(typ)
 			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or {
-				return err
+				continue
 			}
 			if embed_types.len > 0 {
 				return field, embed_types
@@ -578,7 +579,7 @@ pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?St
 	} else {
 		// look for embedded field
 		first_err := err
-		field, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
+		field, _ := t.find_field_from_embeds_recursive(sym, field_name) or { return first_err }
 		return field
 	}
 }

@@ -4226,8 +4226,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
-		if node.from_embed_type != 0 {
-			embed_sym := g.table.get_type_symbol(node.from_embed_type)
+		for embed in node.from_embed_types {
+			embed_sym := g.table.get_type_symbol(embed)
 			embed_name := embed_sym.embed_name()
 			if node.expr_type.is_ptr() {
 				g.write('->')
@@ -4237,7 +4237,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
+	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
