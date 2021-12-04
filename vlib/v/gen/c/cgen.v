@@ -2264,7 +2264,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	for field in (exp_sym.info as ast.SumType).fields {
 		mut ptr := 'ptr'
 		mut type_cname := got_cname
-		_, embed_types := g.table.find_field_from_embeds_recursive(got_sym, field.name) or {
+		_, embed_types := g.table.find_field_from_embeds(got_sym, field.name) or {
 			ast.StructField{}, []ast.Type{}
 		}
 		if embed_types.len > 0 {
@@ -3171,7 +3171,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-					method := g.table.type_find_method(left_sym, extracted_op) or {
+					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
 						g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
 							assign_stmt.pos)
@@ -3369,7 +3369,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.InfixExpr {
 			sym := g.table.get_type_symbol(val.left_type)
-			if _ := g.table.type_find_method(sym, val.op.str()) {
+			if _ := g.table.find_method(sym, val.op.str()) {
 				left_styp := g.typ(val.left_type.set_nr_muls(0))
 				g.write(left_styp)
 				g.write('_')

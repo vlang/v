@@ -332,13 +332,13 @@ pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn
 	return new_fn
 }
 
-pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
-	t.type_find_method(s, name) or { return false }
+pub fn (t &Table) has_method(s &TypeSymbol, name string) bool {
+	t.find_method(s, name) or { return false }
 	return true
 }
 
-// type_find_method searches from current type up through each parent looking for method
-pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
+// find_method searches from current type up through each parent looking for method
+pub fn (t &Table) find_method(s &TypeSymbol, name string) ?Fn {
 	mut ts := unsafe { s }
 	for {
 		if method := ts.find_method(name) {
@@ -379,49 +379,17 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	return embeds
 }
 
-pub fn (t &Table) type_find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, Type) {
+pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
 	if sym.info is Struct {
 		mut found_methods := []Fn{}
 		mut embed_of_found_methods := []Type{}
 		for embed in sym.info.embeds {
 			embed_sym := t.get_type_symbol(embed)
-			if m := t.type_find_method(embed_sym, method_name) {
-				found_methods << m
-				embed_of_found_methods << embed
-			}
-		}
-		if found_methods.len == 1 {
-			return found_methods[0], embed_of_found_methods[0]
-		} else if found_methods.len > 1 {
-			return error('ambiguous method `$method_name`')
-		}
-	} else if sym.info is Aggregate {
-		for typ in sym.info.types {
-			agg_sym := t.get_type_symbol(typ)
-			method, embed_type := t.type_find_method_from_embeds(agg_sym, method_name) or {
-				return err
-			}
-			if embed_type != 0 {
-				return method, embed_type
-			}
-		}
-	}
-	return none
-}
-
-pub fn (t &Table) type_find_method_from_embeds_recursive(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
-	if sym.info is Struct {
-		mut found_methods := []Fn{}
-		mut embed_of_found_methods := []Type{}
-		for embed in sym.info.embeds {
-			embed_sym := t.get_type_symbol(embed)
-			if m := t.type_find_method(embed_sym, method_name) {
+			if m := t.find_method(embed_sym, method_name) {
 				found_methods << m
 				embed_of_found_methods << embed
 			} else {
-				method, types := t.type_find_method_from_embeds_recursive(embed_sym, method_name) or {
-					continue
-				}
+				method, types := t.find_method_from_embeds(embed_sym, method_name) or { continue }
 				found_methods << method
 				embed_of_found_methods << embed
 				embed_of_found_methods << types
@@ -435,9 +403,7 @@ pub fn (t &Table) type_find_method_from_embeds_recursive(sym &TypeSymbol, method
 	} else if sym.info is Aggregate {
 		for typ in sym.info.types {
 			agg_sym := t.get_type_symbol(typ)
-			method, embed_types := t.type_find_method_from_embeds_recursive(agg_sym, method_name) or {
-				continue
-			}
+			method, embed_types := t.find_method_from_embeds(agg_sym, method_name) or { continue }
 			if embed_types.len != 0 {
 				return method, embed_types
 			}
@@ -537,7 +503,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 }
 
 // find_field_from_embeds is the same as find_field_from_embeds but also looks into nested embeds
-pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
 	if sym.info is Struct {
 		mut found_fields := []StructField{}
 		mut embeds_of_found_fields := []Type{}
@@ -547,9 +513,7 @@ pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name s
 				found_fields << field
 				embeds_of_found_fields << embed
 			} else {
-				field, types := t.find_field_from_embeds_recursive(embed_sym, field_name) or {
-					continue
-				}
+				field, types := t.find_field_from_embeds(embed_sym, field_name) or { continue }
 				found_fields << field
 				embeds_of_found_fields << embed
 				embeds_of_found_fields << types
@@ -563,43 +527,9 @@ pub fn (t &Table) find_field_from_embeds_recursive(sym &TypeSymbol, field_name s
 	} else if sym.info is Aggregate {
 		for typ in sym.info.types {
 			agg_sym := t.get_type_symbol(typ)
-			field, embed_types := t.find_field_from_embeds_recursive(agg_sym, field_name) or {
-				continue
-			}
+			field, embed_types := t.find_field_from_embeds(agg_sym, field_name) or { continue }
 			if embed_types.len > 0 {
 				return field, embed_types
-			}
-		}
-	} else if sym.info is Alias {
-		unalias_sym := t.get_type_symbol(sym.info.parent_type)
-		return t.find_field_from_embeds_recursive(unalias_sym, field_name)
-	}
-	return none
-}
-
-// find_field_from_embeds finds and returns a field in the embeddings of a struct and the embedding type
-pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, Type) {
-	if sym.info is Struct {
-		mut found_fields := []StructField{}
-		mut embed_of_found_fields := []Type{}
-		for embed in sym.info.embeds {
-			embed_sym := t.get_type_symbol(embed)
-			if field := t.find_field(embed_sym, field_name) {
-				found_fields << field
-				embed_of_found_fields << embed
-			}
-		}
-		if found_fields.len == 1 {
-			return found_fields[0], embed_of_found_fields[0]
-		} else if found_fields.len > 1 {
-			return error('ambiguous field `$field_name`')
-		}
-	} else if sym.info is Aggregate {
-		for typ in sym.info.types {
-			agg_sym := t.get_type_symbol(typ)
-			field, embed_type := t.find_field_from_embeds(agg_sym, field_name) or { return err }
-			if embed_type != 0 {
-				return field, embed_type
 			}
 		}
 	} else if sym.info is Alias {
@@ -616,7 +546,7 @@ pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?St
 	} else {
 		// look for embedded field
 		first_err := err
-		field, _ := t.find_field_from_embeds_recursive(sym, field_name) or { return first_err }
+		field, _ := t.find_field_from_embeds(sym, field_name) or { return first_err }
 		return field
 	}
 }
