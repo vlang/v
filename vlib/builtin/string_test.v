@@ -230,16 +230,15 @@ fn test_split() {
 }
 
 fn test_split_any() {
-	assert "ABC".split_any("") == ['A', 'B', 'C']
-	assert "".split_any(' ') == []
-	assert " ".split_any(' ') == ['']
-	assert "  ".split_any(' ') == ['',  '']
-	assert "Ciao come stai? ".split_any(' ') == ['Ciao', 'come', 'stai?']
-	assert "Ciao+come*stai? ".split_any('+*') == ['Ciao', 'come', 'stai? ']
-	assert "Ciao+come*stai? ".split_any('+* ') == ['Ciao', 'come', 'stai?']
-	assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
+	assert 'ABC'.split_any('') == ['A', 'B', 'C']
+	assert ''.split_any(' ') == []
+	assert ' '.split_any(' ') == ['']
+	assert '  '.split_any(' ') == ['', '']
+	assert 'Ciao come stai? '.split_any(' ') == ['Ciao', 'come', 'stai?']
+	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
+	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
+	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
 }
-
 
 fn test_trim_space() {
 	a := ' a '

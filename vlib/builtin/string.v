@@ -620,8 +620,8 @@ fn (s string) + (a string) string {
 
 // split_any splits the string to an array by any of the `delim` chars.
 // Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
-// Split a string using the chars in the delimiter string as delimiters.
-// If teh delimeter string is empty the `.split()` is used. 
+// Split a string using the chars in the delimiter string as delimiters chars.
+// If the delimiter string is empty the `.split()` is used.
 [direct_array_access]
 pub fn (s string) split_any(delim string) []string {
 	mut res := []string{}
@@ -632,7 +632,7 @@ pub fn (s string) split_any(delim string) []string {
 	}
 	// if empty delimiter string using defautl split
 	if delim.len <= 0 {
-		return s.split("")
+		return s.split('')
 	}
 	for index, ch in s {
 		for delim_ch in delim {
