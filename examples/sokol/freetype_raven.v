@@ -4,7 +4,6 @@ import sokol.gfx
 import sokol.sgl
 import sokol.sfons
 import os
-import time
 
 const (
 	text = '
@@ -109,14 +108,12 @@ fn init(user_data voidptr) {
 }
 
 fn frame(user_data voidptr) {
-	// t := time.ticks()
 	mut state := &AppState(user_data)
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
-	// println('delta ${time.ticks() - t}')
 }
 
 const (
