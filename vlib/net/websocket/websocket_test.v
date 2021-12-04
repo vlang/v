@@ -34,8 +34,7 @@ fn test_ws_ipv6() {
 
 // tests with internal ws servers
 fn test_ws_ipv4() {
-	// TODO: fix client
-	if true || should_skip {
+	if should_skip {
 		return
 	}
 	port := 30000 + rand.intn(1024)
@@ -68,7 +67,7 @@ fn start_server(family net.AddrFamily, listen_port int) ? {
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or {}
+	s.listen() or { panic('websocket server could not listen') }
 }
 
 // ws_test tests connect to the websocket server from websocket client

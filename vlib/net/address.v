@@ -164,8 +164,13 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	if addr[0] == `:` {
-		// Use in6addr_any
-		return [new_ip6(port, net.addr_ip6_any)]
+		if family == .ip6 {
+			// Use in6addr_any
+			return [new_ip6(port, net.addr_ip6_any)]
+		}
+		if family == .ip {
+			return [new_ip(port, net.addr_ip_any)]
+		}
 	}
 
 	mut hints := C.addrinfo{
