@@ -99,19 +99,20 @@ pub fn (mut ed EmbedFileData) data() &byte {
 pub struct EmbedFileIndexEntry {
 	id   int
 	path string
+	algo string
 	data &byte
 }
 
 // find_index_entry_by_path is used internally by the V compiler:
-pub fn find_index_entry_by_path(start voidptr, path string) &EmbedFileIndexEntry {
+pub fn find_index_entry_by_path(start voidptr, path string, algo string) &EmbedFileIndexEntry {
 	mut x := &EmbedFileIndexEntry(start)
-	for !(x.path == path || isnil(x.data)) {
+	for x.id >= 0 && x.data != 0 && (x.algo != algo || x.path != path) {
 		unsafe {
 			x++
 		}
 	}
 	$if debug_embed_file_in_prod ? {
-		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, path: "$path" => ${ptr_str(x)}')
+		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: $x.id, path: "$path", algo: "$algo" => ${ptr_str(x)}')
 	}
 	return x
 }

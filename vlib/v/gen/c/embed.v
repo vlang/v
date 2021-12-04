@@ -70,10 +70,10 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		// use function generated in Gen.gen_embedded_data()
 		if node.embed_file.is_compressed {
 			g.writeln('\t\t.compression_type = ${ctoslit(node.embed_file.compression_type)},')
-			g.writeln('\t\t.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)})->data,')
+			g.writeln('\t\t.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)}, ${ctoslit(node.embed_file.compression_type)})->data,')
 			g.writeln('\t\t.uncompressed = NULL,')
 		} else {
-			g.writeln('\t\t.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)})->data,')
+			g.writeln('\t\t.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)}, ${ctoslit(node.embed_file.compression_type)})->data,')
 		}
 	} else {
 		g.writeln('\t\t.uncompressed = NULL,')
@@ -120,9 +120,9 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=$emfile.rpath.len, .is_lit=1 }, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=$emfile.rpath.len, .is_lit=1 }, { .str=(byteptr)("${cestring(emfile.compression_type)}"), .len=$emfile.compression_type.len, .is_lit=1 }, _v_embed_blob_$i},')
 	}
-	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
+	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')
 	// see vlib/v/embed_file/embed_file.v, find_index_entry_by_id/2 and find_index_entry_by_path/2
 }
