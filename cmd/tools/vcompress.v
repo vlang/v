@@ -37,7 +37,7 @@ fn main() {
 	}
 	out_path := os.args[4]
 
-	os.write_file(out_path, compressed.bytestr()) or {
+	os.write_file_array(out_path, compressed) or {
 		eprintln('failed to write "$out_path": $err')
 		exit(1)
 	}
