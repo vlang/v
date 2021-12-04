@@ -618,6 +618,36 @@ fn (s string) + (a string) string {
 	return res
 }
 
+// split_any splits the string to an array by any of the `delim` chars.
+// Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
+// Split a string using the chars in the delimiter string as delimiters chars.
+// If the delimiter string is empty then `.split()` is used.
+[direct_array_access]
+pub fn (s string) split_any(delim string) []string {
+	mut res := []string{}
+	mut i := 0
+	// check empty source string
+	if s.len > 0 {
+		// if empty delimiter string using defautl split
+		if delim.len <= 0 {
+			return s.split('')
+		}
+		for index, ch in s {
+			for delim_ch in delim {
+				if ch == delim_ch {
+					res << s[i..index]
+					i = index + 1
+					break
+				}
+			}
+		}
+		if i < s.len {
+			res << s[i..]
+		}
+	}
+	return res
+}
+
 // split splits the string to an array by `delim`.
 // Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
