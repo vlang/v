@@ -3460,15 +3460,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		} else {
 			// look for embedded field
 			has_field = true
-			mut embed_type := ast.Type(0)
-			field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+			mut embed_types := []ast.Type{}
+			field, embed_types = c.table.find_field_from_embeds_recursive(sym, field_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
 				has_field = false
-				ast.StructField{}, ast.Type(0)
+				ast.StructField{}, []ast.Type{}
 			}
-			node.from_embed_type = embed_type
+			node.from_embed_types = embed_types
 			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err.msg
 			}
@@ -3489,15 +3489,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			} else {
 				// look for embedded field
 				has_field = true
-				mut embed_type := ast.Type(0)
-				field, embed_type = c.table.find_field_from_embeds(gs, field_name) or {
+				mut embed_types := []ast.Type{}
+				field, embed_types = c.table.find_field_from_embeds_recursive(gs, field_name) or {
 					if err.msg != '' {
 						c.error(err.msg, node.pos)
 					}
 					has_field = false
-					ast.StructField{}, ast.Type(0)
+					ast.StructField{}, []ast.Type{}
 				}
-				node.from_embed_type = embed_type
+				node.from_embed_types = embed_types
 			}
 		}
 	}
