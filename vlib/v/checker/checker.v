@@ -2059,7 +2059,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
-	if m := c.table.type_find_method(left_sym, method_name) {
+	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
 	} else {
@@ -2074,7 +2074,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			if parent_type != 0 {
 				type_sym := c.table.get_type_symbol(parent_type)
-				if m := c.table.type_find_method(type_sym, method_name) {
+				if m := c.table.find_method(type_sym, method_name) {
 					method = m
 					has_method = true
 					is_generic = true
@@ -2084,8 +2084,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !has_method {
 			has_method = true
 			mut embed_types := []ast.Type{}
-			method, embed_types = c.table.type_find_method_from_embeds_recursive(left_sym,
-				method_name) or {
+			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
@@ -3462,7 +3461,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			// look for embedded field
 			has_field = true
 			mut embed_types := []ast.Type{}
-			field, embed_types = c.table.find_field_from_embeds_recursive(sym, field_name) or {
+			field, embed_types = c.table.find_field_from_embeds(sym, field_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
@@ -3491,7 +3490,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				// look for embedded field
 				has_field = true
 				mut embed_types := []ast.Type{}
-				field, embed_types = c.table.find_field_from_embeds_recursive(gs, field_name) or {
+				field, embed_types = c.table.find_field_from_embeds(gs, field_name) or {
 					if err.msg != '' {
 						c.error(err.msg, node.pos)
 					}
