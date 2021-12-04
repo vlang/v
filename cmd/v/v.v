@@ -20,6 +20,7 @@ const (
 		'build-vbinaries',
 		'check-md',
 		'complete',
+		'compress',
 		'doc',
 		'doctor',
 		'fmt',

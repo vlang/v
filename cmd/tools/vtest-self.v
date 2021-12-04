@@ -8,6 +8,7 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
 		'vlib/pg/pg_orm_test.v' /* pg not installed */,

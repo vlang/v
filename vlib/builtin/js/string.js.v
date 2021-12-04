@@ -955,3 +955,23 @@ pub fn tos(jsstr JS.String) string {
 
 	return res
 }
+
+pub fn (s string) compare(a string) int {
+	min_len := if s.len < a.len { s.len } else { a.len }
+	for i in 0 .. min_len {
+		if s[i] < a[i] {
+			return -1
+		}
+		if s[i] > a[i] {
+			return 1
+		}
+	}
+
+	if s.len < a.len {
+		return -1
+	}
+	if s.len > a.len {
+		return 1
+	}
+	return 0
+}

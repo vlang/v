@@ -81,7 +81,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_defined_eq_operator := g.table.type_has_method(left.sym, '==')
+	has_defined_eq_operator := g.table.has_method(left.sym, '==')
 	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
 	if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
 		g.gen_plain_infix_expr(node)
@@ -278,7 +278,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.type_has_method(left.sym, '<')
+	has_operator_overloading := g.table.has_method(left.sym, '<')
 	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
 		if node.op in [.le, .ge] {
 			g.write('!')
@@ -550,7 +550,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else {
-		method := g.table.type_find_method(left.sym, node.op.str()) or {
+		method := g.table.find_method(left.sym, node.op.str()) or {
 			g.gen_plain_infix_expr(node)
 			return
 		}

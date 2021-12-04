@@ -11,3 +11,7 @@ pub fn utf8_str_visible_length(s string) int {
 pub fn utf8_str_len(s string) int {
 	return s.len
 }
+
+pub fn utf8_char_len(b byte) int {
+	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
+}

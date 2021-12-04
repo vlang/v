@@ -492,6 +492,7 @@ pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
 
+// clone clones the byte array, and returns the newly created copy.
 pub fn (b []byte) clone() []byte {
 	mut res := []byte{len: b.len}
 	// mut res := make([]byte, {repeat:b.len})
@@ -501,7 +502,11 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
-// TODO: remove this once runes are implemented
+// bytestr produces a string from *all* the bytes in the array.
+// NB: the returned string will have .len equal to the array.len,
+// even when some of the array bytes were `0`.
+// If you want to get a V string, that contains only the bytes till
+// the first `0` byte, use `tos_clone(&byte(array.data))` instead.
 pub fn (b []byte) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)

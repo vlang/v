@@ -4956,7 +4956,7 @@ Full list of builtin options:
 | `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
 | `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
-| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
+| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | `no_segfault_handler`, `no_backtrace`, `no_main` |
 | `solaris` | | | |
 
 #### `$embed_file`
@@ -4981,6 +4981,17 @@ When you compile with `-prod`, the file *will be embedded inside* your
 executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
+
+`$embed_file` supports compression of the embedded file when compiling with `-prod`.
+Currently only one compression type is supported: `zlib`
+
+```v ignore
+import os
+fn main() {
+	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
+	os.write_file('exported.png', embedded_file.to_string()) ?
+}
+```
 
 #### `$tmpl` for embedding and parsing V template files
 

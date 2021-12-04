@@ -5,8 +5,8 @@ static const unsigned char _v_embed_blob_0[138] = {
 0x66,0x6e,0x20,0x6d,0x61,0x69,0x6e,0x28,0x29,0x20,0x7b,0x0a,0x09,0x6d,0x75,0x74,
 
 const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {
-	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, _v_embed_blob_0},
-	{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}
+	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, _v_embed_blob_0},
+	{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}
 };
 
 typedef struct v__embed_file__EmbedFileData v__embed_file__EmbedFileData;
@@ -18,15 +18,15 @@ struct v__embed_file__EmbedFileIndexEntry {
 string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed);
 void v__embed_file__EmbedFileData_free(v__embed_file__EmbedFileData* ed);
 byte* v__embed_file__EmbedFileData_data(v__embed_file__EmbedFileData* ed);
-v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path);
+v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo);
 
 string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed) {
 string v__embed_file__EmbedFileData_to_string(v__embed_file__EmbedFileData* original) {
-v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path) {
+v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo) {
 
 v__embed_file__EmbedFileData my_source = (v__embed_file__EmbedFileData){
 .path = _SLIT("embed.vv"),
 .apath = _SLIT(""),
-.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _SLIT("embed.vv"))->data,
+.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _SLIT("embed.vv"), _SLIT("none"))->data,
 
 // Initializations for module v.embed_file :

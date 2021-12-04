@@ -154,14 +154,14 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 
 // convert from struct to formated string
 [manualfree]
-fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
+fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
 	typ := StrIntpType(x & 0x1F)
 	allign := int((x >> 5) & 0x01)
-	upper_case := if ((x >> 7) & 0x01) > 0 { true } else { false }
+	upper_case := ((x >> 7) & 0x01) > 0
 	sign := int((x >> 8) & 0x01)
 	precision := int((x >> 9) & 0x7F)
-	tail_zeros := if ((x >> 16) & 0x01) > 0 { true } else { false }
+	tail_zeros := ((x >> 16) & 0x01) > 0
 	width := int(i16((x >> 17) & 0x3FF))
 	mut base := int(x >> 27) & 0xF
 	fmt_pad_ch := byte((x >> 31) & 0xFF)
@@ -187,7 +187,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 
 	len0_set := if width > 0 { width } else { -1 }
 	len1_set := if precision == 0x7F { -1 } else { precision }
-	sign_set := if sign == 1 { true } else { false }
+	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
 		pad_ch: pad_ch // padding char
@@ -256,11 +256,20 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				if base == 3 {
 					base = 2
 				}
-				mut hx := strconv.format_int(d, base)
+				mut absd, mut write_minus := d, false
+				if d < 0 && pad_ch != ` ` {
+					absd = -d
+					write_minus = true
+				}
+				mut hx := strconv.format_int(absd, base)
 				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
 					tmp.free()
+				}
+				if write_minus {
+					sb.write_b(`-`)
+					bf.len0-- // compensate for the `-` above
 				}
 				if width == 0 {
 					sb.write_string(hx)
@@ -651,22 +660,19 @@ pub:
 }
 
 // interpolation function
-[manualfree]
+[direct_array_access; manualfree]
 pub fn str_intp(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
-	unsafe {
-		mut i := 0
-		for i < data_len {
-			data := &StrIntpData(&byte(in_data) + (int(sizeof(StrIntpData)) * i))
-			// avoid empty strings
-			if data.str.len != 0 {
-				res.write_string(data.str)
-			}
-			// skip empty data
-			if data.fmt != 0 {
-				data.get_fmt_format(mut &res)
-			}
-			i++
+	input_base := &StrIntpData(in_data)
+	for i := 0; i < data_len; i++ {
+		data := unsafe { &(input_base[i]) }
+		// avoid empty strings
+		if data.str.len != 0 {
+			res.write_string(data.str)
+		}
+		// skip empty data
+		if data.fmt != 0 {
+			data.process_str_intp_data(mut res)
 		}
 	}
 	ret := res.str()

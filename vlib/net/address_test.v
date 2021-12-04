@@ -96,3 +96,17 @@ fn test_sizes_ipv4() {
 fn test_sizes_unix() {
 	assert sizeof(C.sockaddr_un) == sizeof(Unix) + aoffset
 }
+
+fn test_ip_str() {
+	ip := new_ip(1337, addr_ip_any).str()
+	expected := '0.0.0.0:1337'
+	assert ip.len == expected.len
+	assert ip == expected
+}
+
+fn test_ip6_str() {
+	ip := new_ip6(1337, addr_ip6_any).str()
+	expected := '[::]:1337'
+	assert ip.len == expected.len
+	assert ip == expected
+}

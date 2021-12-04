@@ -104,6 +104,7 @@ mut:
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
+	inside_match_optional  bool
 	loop_depth             int
 	ternary_names          map[string]string
 	ternary_level_names    map[string][]string
@@ -1373,7 +1374,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
-			if g.inside_if_optional {
+			if g.inside_if_optional || g.inside_match_optional {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
@@ -1413,7 +1414,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			}
 		} else {
 			g.stmt(stmt)
-			if g.inside_if_optional && stmt is ast.ExprStmt {
+			if (g.inside_if_optional || g.inside_match_optional) && stmt is ast.ExprStmt {
 				g.writeln(';')
 			}
 		}
@@ -1625,8 +1626,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_postgen()
 			// }
-			if g.inside_ternary == 0 && !g.inside_if_optional && !node.is_expr
-				&& node.expr !is ast.IfExpr {
+			if g.inside_ternary == 0 && !g.inside_if_optional && !g.inside_match_optional
+				&& !node.is_expr && node.expr !is ast.IfExpr {
 				g.writeln(';')
 			}
 		}
@@ -2264,7 +2265,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	for field in (exp_sym.info as ast.SumType).fields {
 		mut ptr := 'ptr'
 		mut type_cname := got_cname
-		_, embed_types := g.table.find_field_from_embeds_recursive(got_sym, field.name) or {
+		_, embed_types := g.table.find_field_from_embeds(got_sym, field.name) or {
 			ast.StructField{}, []ast.Type{}
 		}
 		if embed_types.len > 0 {
@@ -3171,7 +3172,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-					method := g.table.type_find_method(left_sym, extracted_op) or {
+					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
 						g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
 							assign_stmt.pos)
@@ -3369,7 +3370,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.InfixExpr {
 			sym := g.table.get_type_symbol(val.left_type)
-			if _ := g.table.type_find_method(sym, val.op.str()) {
+			if _ := g.table.find_method(sym, val.op.str()) {
 				left_styp := g.typ(val.left_type.set_nr_muls(0))
 				g.write(left_styp)
 				g.write('_')
@@ -3828,7 +3829,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.Comment {}
 		ast.ComptimeCall {
-			g.comptime_call(node)
+			g.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
 			g.comptime_selector(node)
@@ -4226,8 +4227,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
-		if node.from_embed_type != 0 {
-			embed_sym := g.table.get_type_symbol(node.from_embed_type)
+		for embed in node.from_embed_types {
+			embed_sym := g.table.get_type_symbol(embed)
 			embed_name := embed_sym.embed_name()
 			if node.expr_type.is_ptr() {
 				g.write('->')
@@ -4237,7 +4238,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
+	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
@@ -4378,6 +4379,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 		if g.table.type_kind(node.return_type) == .sum_type {
 			return true
 		}
+		if node.return_type.has_flag(.optional) {
+			return true
+		}
 		if sym.kind == .multi_return {
 			return false
 		}
@@ -4418,6 +4422,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	mut cur_line := ''
 	if is_expr && !need_tmp_var {
 		g.inside_ternary++
+	}
+	if is_expr && node.return_type.has_flag(.optional) {
+		old := g.inside_match_optional
+		defer {
+			g.inside_match_optional = old
+		}
+		g.inside_match_optional = true
 	}
 	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
 		ast.FloatLiteral] {
@@ -6232,8 +6243,10 @@ fn (mut g Gen) write_init_function() {
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 
-	// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
-	g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
+	if 'no_segfault_handler' !in g.pref.compile_defines {
+		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
+		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
+	}
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
 	}

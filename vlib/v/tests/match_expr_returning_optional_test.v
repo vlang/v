@@ -34,3 +34,17 @@ fn test_match_expr_returning_optional() {
 	println(ret2)
 	assert ret2 == Any(1)
 }
+
+fn func() ?string {
+	code := 0
+	return match code {
+		0 { 'zero' }
+		else { error('as we are returning an optional') }
+	}
+}
+
+fn test_match_expr_returning_optional_with_error() {
+	ret := func() or { 'error' }
+	println(ret)
+	assert ret == 'zero'
+}

@@ -20,20 +20,21 @@ const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
 
 const (
-	valid_comptime_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'serenity', 'vinix']
-	valid_comptime_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comptime_if_platforms     = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
-	valid_comptime_if_cpu_features  = ['x64', 'x32', 'little_endian', 'big_endian']
-	valid_comptime_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
+	valid_comptime_compression_types = ['none', 'zlib']
+	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
+	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
+	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
-	valid_comptime_not_user_defined = all_valid_comptime_idents()
-	array_builtin_methods           = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
+	valid_comptime_not_user_defined  = all_valid_comptime_idents()
+	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	reserved_type_names             = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
+	reserved_type_names              = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
 		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
-	vroot_is_deprecated_message     = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+	vroot_is_deprecated_message      = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
 fn all_valid_comptime_idents() []string {
@@ -2059,7 +2060,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
-	if m := c.table.type_find_method(left_sym, method_name) {
+	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
 	} else {
@@ -2074,7 +2075,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			if parent_type != 0 {
 				type_sym := c.table.get_type_symbol(parent_type)
-				if m := c.table.type_find_method(type_sym, method_name) {
+				if m := c.table.find_method(type_sym, method_name) {
 					method = m
 					has_method = true
 					is_generic = true
@@ -2083,17 +2084,17 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if !has_method {
 			has_method = true
-			mut embed_type := ast.Type(0)
-			method, embed_type = c.table.type_find_method_from_embeds(left_sym, method_name) or {
+			mut embed_types := []ast.Type{}
+			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
 				has_method = false
-				ast.Fn{}, ast.Type(0)
+				ast.Fn{}, []ast.Type{}
 			}
-			if embed_type != 0 {
+			if embed_types.len != 0 {
 				is_method_from_embed = true
-				node.from_embed_type = embed_type
+				node.from_embed_types = embed_types
 			}
 		}
 		if left_sym.kind == .aggregate {
@@ -2262,7 +2263,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 		}
 		if is_method_from_embed {
-			node.receiver_type = node.from_embed_type.derive(method.params[0].typ)
+			node.receiver_type = node.from_embed_types.last().derive(method.params[0].typ)
 		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
@@ -3460,15 +3461,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		} else {
 			// look for embedded field
 			has_field = true
-			mut embed_type := ast.Type(0)
-			field, embed_type = c.table.find_field_from_embeds(sym, field_name) or {
+			mut embed_types := []ast.Type{}
+			field, embed_types = c.table.find_field_from_embeds(sym, field_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
 				has_field = false
-				ast.StructField{}, ast.Type(0)
+				ast.StructField{}, []ast.Type{}
 			}
-			node.from_embed_type = embed_type
+			node.from_embed_types = embed_types
 			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err.msg
 			}
@@ -3489,15 +3490,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			} else {
 				// look for embedded field
 				has_field = true
-				mut embed_type := ast.Type(0)
-				field, embed_type = c.table.find_field_from_embeds(gs, field_name) or {
+				mut embed_types := []ast.Type{}
+				field, embed_types = c.table.find_field_from_embeds(gs, field_name) or {
 					if err.msg != '' {
 						c.error(err.msg, node.pos)
 					}
 					has_field = false
-					ast.StructField{}, ast.Type(0)
+					ast.StructField{}, []ast.Type{}
 				}
-				node.from_embed_type = embed_type
+				node.from_embed_types = embed_types
 			}
 		}
 	}
@@ -3711,9 +3712,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 }
 
-pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
+pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
-	mut seen := []i64{}
+	mut seen := []i64{cap: node.fields.len}
 	if node.fields.len == 0 {
 		c.error('enum cannot be empty', node.pos)
 	}
@@ -3722,7 +3723,7 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 		c.error('`builtin` module cannot have enums', node.pos)
 	}
 	*/
-	for i, field in node.fields {
+	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
@@ -3734,20 +3735,28 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr {
+			match mut field.expr {
 				ast.IntegerLiteral {
 					val := field.expr.val.i64()
 					if val < checker.int_min || val > checker.int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !node.is_multi_allowed && i64(val) in seen {
+					} else if !c.pref.translated && !node.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
 					seen << i64(val)
 				}
 				ast.PrefixExpr {}
+				ast.InfixExpr {
+					// Handle `enum Foo { x = 1 + 2 }`
+					c.infix_expr(mut field.expr)
+				}
+				// ast.ParExpr {} // TODO allow `.x = (1+2)`
 				else {
 					if field.expr is ast.Ident {
-						if field.expr.language == .c {
+						x := field.expr as ast.Ident
+						// TODO sum type bug, remove temp var
+						// if field.expr.language == .c {
+						if x.language == .c {
 							continue
 						}
 					}
@@ -3763,7 +3772,7 @@ pub fn (mut c Checker) enum_decl(node ast.EnumDecl) {
 				last := seen[seen.len - 1]
 				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
-				} else if !node.is_multi_allowed && last + 1 in seen {
+				} else if !c.pref.translated && !node.is_multi_allowed && last + 1 in seen {
 					c.error('enum value `${last + 1}` already exists', field.pos)
 				}
 				seen << last + 1
@@ -4657,7 +4666,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_defer = false
 		}
 		ast.EnumDecl {
-			c.enum_decl(node)
+			c.enum_decl(mut node)
 		}
 		ast.ExprStmt {
 			node.typ = c.expr(node.expr)
@@ -5858,7 +5867,12 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.string_type
 	}
 	if node.is_embed {
-		c.file.embedded_files << node.embed_file
+		// c.file.embedded_files << node.embed_file
+		if node.embed_file.compression_type !in checker.valid_comptime_compression_types {
+			supported := checker.valid_comptime_compression_types.map('.$it').join(', ')
+			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: $supported',
+				node.pos)
+		}
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {
@@ -6265,14 +6279,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					expr_type := c.expr(stmt.expr)
 					if first_iteration {
-						if node.is_expr && !node.expected_type.has_flag(.optional)
-							&& c.table.get_type_symbol(node.expected_type).kind == .sum_type {
+						if node.is_expr && (node.expected_type.has_flag(.optional)
+							|| c.table.type_kind(node.expected_type) == .sum_type) {
 							ret_type = node.expected_type
 						} else {
 							ret_type = expr_type
 						}
 						stmt.typ = expr_type
-					} else if node.is_expr && ret_type != expr_type {
+					} else if node.is_expr && ret_type.idx() != expr_type.idx() {
 						if !c.check_types(ret_type, expr_type)
 							&& !c.check_types(expr_type, ret_type) {
 							ret_sym := c.table.get_type_symbol(ret_type)

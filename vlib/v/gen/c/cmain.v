@@ -14,6 +14,9 @@ pub fn (mut g Gen) gen_c_main() {
 		// no main in .o files
 		return
 	}
+	if 'no_main' in g.pref.compile_defines {
+		return
+	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
 

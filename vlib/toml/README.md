@@ -1,14 +1,24 @@
 # TOML module
-`toml` is a fully fledged TOML v1.0.0 compatible parser written in pure V.
+`toml` is a fully fledged [TOML v1.0.0](https://toml.io/en/v1.0.0) compatible parser written in pure V.
+The module is tested against the [official compliance tests](https://github.com/toml-lang/compliance).
 
 ## Usage
 
+Parsing files or `string`s containing TOML is easy.
+
+Simply import the `toml` module and do:
+```v ignore
+doc := toml.parse(<file path or string>) or { panic(err) }
+```
+
+## Example
+
+Here we parse the official [TOML example](https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example)
+and print out some values.
+
 ```v
 import toml
-import toml.to
 
-// Complete text from the example in the README.md:
-// https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example
 const toml_text = '# This is a TOML document.
 
 title = "TOML Example"
@@ -49,8 +59,89 @@ fn main() {
 	println('title: "$title"')
 	ip := doc.value('servers.alpha.ip').string()
 	println('Server IP: "$ip"')
-
-	toml_json := to.json(doc)
-	println(toml_json)
 }
+```
+
+## Value retrieval
+
+The `toml` module supports easy retrieval of values from
+TOML documents by using a small and simple query syntax
+as argument to the `value()` function.
+
+Keys in map entries are denoted by `.` and array entries
+uses `[<int>]`. Quoted keys are also supported by using
+the delimiters `"` or `'`.
+
+`doc.value('table.array[0].a."b.c"')`
+
+To query for a value that might not be in the document you
+can use the `.default_to(...)` function to provide a
+default value.
+
+```v
+import toml
+
+const toml_text = '
+val = true
+
+[table]
+array = [
+	{ a = "A" },
+	{ b = "B" }
+]
+'
+
+doc := toml.parse(toml_text) or { panic(err) }
+
+assert doc.value('val').bool() == true
+assert doc.value('table.array[0].a').string() == 'A'
+
+// Provides a default value
+assert doc.value('non.existing').default_to(false).bool() == false
+
+// You can pass parts of the TOML document around
+// and still use .value() to get the values
+arr := doc.value('table.array')
+assert arr.value('[1].b').string() == 'B'
+```
+
+### Conversion
+
+Any TOML value can be converted to a V equivalent type.
+
+TOML values are represented as the `toml.Any` sum-type that
+can be converted to a V type.
+
+|        TOML value          | V conversion (via `toml.Any`) |
+| -------------------------- | ----------------------------- |
+| val = "Basic string"       |   .string()                   |
+| val = 'Literal string'     |   .string()                   |
+| val = true                 |     .bool()                   |
+| val = 1979-05-27T07:32:00Z | .datetime() (toml.DateTime)   |
+| val = 1979-05-27           |     .date() (toml.Date)       |
+| val = 07:32:59             |     .time() (toml.Time)       |
+| val = 3.14                 |      .f32() / .f64()          |
+| val = 100                  |      .int() / .i64() / .u64() |
+
+Read more about values in the [TOML specification](https://toml.io/en/v1.0.0#spec).
+
+## TOML to JSON
+
+The `toml.to` module supports easy serialization of any TOML to JSON.
+
+```v
+import toml
+import toml.to
+
+const toml_text = '
+val = true
+[table]
+array = [
+	{ a = "A" },
+	{ b = "B" }
+]
+'
+
+doc := toml.parse(toml_text) or { panic(err) }
+assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```

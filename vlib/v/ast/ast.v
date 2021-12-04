@@ -223,13 +223,13 @@ pub:
 	mut_pos    token.Position
 	next_token token.Kind
 pub mut:
-	expr            Expr // expr.field_name
-	expr_type       Type // type of `Foo` in `Foo.bar`
-	typ             Type // type of the entire thing (`Foo.bar`)
-	name_type       Type // T in `T.name` or typeof in `typeof(expr).name`
-	gkind_field     GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope           &Scope
-	from_embed_type Type // holds the type of the embed that the method is called from
+	expr             Expr // expr.field_name
+	expr_type        Type // type of `Foo` in `Foo.bar`
+	typ              Type // type of the entire thing (`Foo.bar`)
+	name_type        Type // T in `T.name` or typeof in `typeof(expr).name`
+	gkind_field      GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
+	scope            &Scope
+	from_embed_types []Type // holds the type of the embed that the method is called from
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -529,7 +529,7 @@ pub mut:
 	concrete_list_pos  token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
-	from_embed_type    Type // holds the type of the embed that the method is called from
+	from_embed_types   []Type // holds the type of the embed that the method is called from
 	comments           []Comment
 }
 
@@ -646,8 +646,14 @@ pub mut:
 
 pub struct EmbeddedFile {
 pub:
-	rpath string // used in the source code, as an ID/key to the embed
-	apath string // absolute path during compilation to the resource
+	rpath            string // used in the source code, as an ID/key to the embed
+	apath            string // absolute path during compilation to the resource
+	compression_type string
+pub mut:
+	// these are set by gen_embed_file_init in v/gen/c/embed
+	is_compressed bool
+	bytes         []byte
+	len           int
 }
 
 // Each V source file is represented by one File structure.
@@ -1039,8 +1045,9 @@ pub:
 	pos           token.Position
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
-	expr          Expr      // the value of current EnumField; 123 in `ename = 123`
 	has_expr      bool      // true, when .expr has a value
+pub mut:
+	expr Expr // the value of current EnumField; 123 in `ename = 123`
 }
 
 // enum declaration
@@ -1541,8 +1548,7 @@ pub:
 	is_vweb   bool
 	vweb_tmpl File
 	//
-	is_embed   bool
-	embed_file EmbeddedFile
+	is_embed bool
 	//
 	is_env  bool
 	env_pos token.Position
@@ -1553,6 +1559,7 @@ pub mut:
 	result_type Type
 	env_value   string
 	args        []CallArg
+	embed_file  EmbeddedFile
 }
 
 pub struct None {

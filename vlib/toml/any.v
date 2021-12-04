@@ -226,3 +226,38 @@ fn (a Any) value_(value Any, key []string) Any {
 		}
 	}
 }
+
+// reflect returns `T` with `T.<field>`'s value set to the
+// value of any 1st level TOML key by the same name.
+pub fn (a Any) reflect<T>() T {
+	mut reflected := T{}
+	$for field in T.fields {
+		$if field.typ is string {
+			reflected.$(field.name) = a.value(field.name).default_to('').string()
+		} $else $if field.typ is bool {
+			reflected.$(field.name) = a.value(field.name).default_to(false).bool()
+		} $else $if field.typ is int {
+			reflected.$(field.name) = a.value(field.name).default_to(0).int()
+		} $else $if field.typ is f32 {
+			reflected.$(field.name) = a.value(field.name).default_to(0.0).f32()
+		} $else $if field.typ is f64 {
+			reflected.$(field.name) = a.value(field.name).default_to(0.0).f64()
+		} $else $if field.typ is i64 {
+			reflected.$(field.name) = a.value(field.name).default_to(0).i64()
+		} $else $if field.typ is u64 {
+			reflected.$(field.name) = a.value(field.name).default_to(0).u64()
+		} $else $if field.typ is Any {
+			reflected.$(field.name) = a.value(field.name)
+		} $else $if field.typ is DateTime {
+			dt := DateTime{'0000-00-00T00:00:00.000'}
+			reflected.$(field.name) = a.value(field.name).default_to(dt).datetime()
+		} $else $if field.typ is Date {
+			da := Date{'0000-00-00'}
+			reflected.$(field.name) = a.value(field.name).default_to(da).date()
+		} $else $if field.typ is Time {
+			t := Time{'00:00:00.000'}
+			reflected.$(field.name) = a.value(field.name).default_to(t).time()
+		}
+	}
+	return reflected
+}

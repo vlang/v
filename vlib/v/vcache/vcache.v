@@ -123,7 +123,7 @@ pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
 	return content
 }
 
-[if trace_use_cache ?]
+[if trace_usecache ?]
 pub fn dlog(fname string, s string) {
 	pid := unsafe { mypid() }
 	if fname[0] != `|` {
