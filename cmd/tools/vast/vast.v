@@ -1345,7 +1345,7 @@ fn (t Tree) selector_expr(node ast.SelectorExpr) &Node {
 	obj.add('typ', t.type_node(node.typ))
 	obj.add('name_type', t.type_node(node.name_type))
 	obj.add('gkind_field', t.enum_node(node.gkind_field))
-	obj.add('from_embed_types', t.type_node(node.from_embed_types))
+	obj.add('from_embed_types', t.array_node_type(node.from_embed_types))
 	obj.add('next_token', t.token_node(node.next_token))
 	obj.add('pos', t.position(node.pos))
 	obj.add('scope', t.number_node(int(node.scope)))
