@@ -75,7 +75,7 @@ fn main() {
 		width: win_width
 		height: win_height
 		create_window: true
-		window_title: 'Empty window'
+		window_title: 'Raven text'
 		user_data: app
 		bg_color: bg_color
 		frame_fn: frame
