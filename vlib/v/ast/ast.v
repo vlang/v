@@ -646,8 +646,14 @@ pub mut:
 
 pub struct EmbeddedFile {
 pub:
-	rpath string // used in the source code, as an ID/key to the embed
-	apath string // absolute path during compilation to the resource
+	rpath            string // used in the source code, as an ID/key to the embed
+	apath            string // absolute path during compilation to the resource
+	compression_type string
+pub mut:
+	// these are set by gen_embed_file_init in v/gen/c/embed
+	is_compressed bool
+	bytes         []byte
+	len           int
 }
 
 // Each V source file is represented by one File structure.
@@ -1542,8 +1548,7 @@ pub:
 	is_vweb   bool
 	vweb_tmpl File
 	//
-	is_embed   bool
-	embed_file EmbeddedFile
+	is_embed bool
 	//
 	is_env  bool
 	env_pos token.Position
@@ -1554,6 +1559,7 @@ pub mut:
 	result_type Type
 	env_value   string
 	args        []CallArg
+	embed_file  EmbeddedFile
 }
 
 pub struct None {
