@@ -34,9 +34,13 @@ fn test_out_files() ? {
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
-		print(mm('v run $relpath') + ' == ${mm(out_relpath)} ')
 		pexe := os.join_path(output_path, '${basename}.exe')
-		compilation := os.execute('"$vexe" -o "$pexe" "$path"')
+		//
+		file_options := get_file_options(path)
+		alloptions := '-o "$pexe" $file_options.vflags'
+		print(mm('v $alloptions run $relpath') + ' == ${mm(out_relpath)} ')
+		//
+		compilation := os.execute('"$vexe" $alloptions "$path"')
 		ensure_compilation_succeeded(compilation)
 		res := os.execute(pexe)
 		if res.exit_code < 0 {
