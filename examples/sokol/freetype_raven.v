@@ -109,7 +109,7 @@ fn init(user_data voidptr) {
 }
 
 fn frame(user_data voidptr) {
-	t := time.ticks()
+	// t := time.ticks()
 	mut state := &AppState(user_data)
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
