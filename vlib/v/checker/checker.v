@@ -2083,17 +2083,18 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if !has_method {
 			has_method = true
-			mut embed_type := ast.Type(0)
-			method, embed_type = c.table.type_find_method_from_embeds(left_sym, method_name) or {
+			mut embed_types := []ast.Type{}
+			method, embed_types = c.table.type_find_method_from_embeds_recursive(left_sym,
+				method_name) or {
 				if err.msg != '' {
 					c.error(err.msg, node.pos)
 				}
 				has_method = false
-				ast.Fn{}, ast.Type(0)
+				ast.Fn{}, []ast.Type{}
 			}
-			if embed_type != 0 {
+			if embed_types.len != 0 {
 				is_method_from_embed = true
-				node.from_embed_type = embed_type
+				node.from_embed_types = embed_types
 			}
 		}
 		if left_sym.kind == .aggregate {
@@ -2262,7 +2263,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 		}
 		if is_method_from_embed {
-			node.receiver_type = node.from_embed_type.derive(method.params[0].typ)
+			node.receiver_type = node.from_embed_types.last().derive(method.params[0].typ)
 		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen

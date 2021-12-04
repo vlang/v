@@ -409,6 +409,43 @@ pub fn (t &Table) type_find_method_from_embeds(sym &TypeSymbol, method_name stri
 	return none
 }
 
+pub fn (t &Table) type_find_method_from_embeds_recursive(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
+	if sym.info is Struct {
+		mut found_methods := []Fn{}
+		mut embed_of_found_methods := []Type{}
+		for embed in sym.info.embeds {
+			embed_sym := t.get_type_symbol(embed)
+			if m := t.type_find_method(embed_sym, method_name) {
+				found_methods << m
+				embed_of_found_methods << embed
+			} else {
+				method, types := t.type_find_method_from_embeds_recursive(embed_sym, method_name) or {
+					continue
+				}
+				found_methods << method
+				embed_of_found_methods << embed
+				embed_of_found_methods << types
+			}
+		}
+		if found_methods.len == 1 {
+			return found_methods[0], embed_of_found_methods
+		} else if found_methods.len > 1 {
+			return error('ambiguous method `$method_name`')
+		}
+	} else if sym.info is Aggregate {
+		for typ in sym.info.types {
+			agg_sym := t.get_type_symbol(typ)
+			method, embed_types := t.type_find_method_from_embeds_recursive(agg_sym, method_name) or {
+				continue
+			}
+			if embed_types.len != 0 {
+				return method, embed_types
+			}
+		}
+	}
+	return none
+}
+
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')

@@ -529,7 +529,7 @@ pub mut:
 	concrete_list_pos  token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
-	from_embed_type    Type // holds the type of the embed that the method is called from
+	from_embed_types   []Type // holds the type of the embed that the method is called from
 	comments           []Comment
 }
 
