@@ -4,11 +4,6 @@ import net.websocket
 import time
 import rand
 
-// TODO: fix connecting to ipv4 websockets
-// (the server seems to work with .ip, but
-// Client can not connect, it needs to be passed
-// .ip too?)
-
 struct WebsocketTestResults {
 pub mut:
 	nr_messages      int
