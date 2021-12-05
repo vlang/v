@@ -30,7 +30,7 @@ fn main() {
 		init_fn: init_images
 	)
 	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	app.image = app.gg.create_image(os.resource_abs_path('logo.png'))
+	app.image = app.gg.create_image(logo_path)
 	app.gg.run()
 }
 
