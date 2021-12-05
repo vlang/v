@@ -61,6 +61,7 @@ mut:
 	inited      bool
 }
 
+[console]
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
