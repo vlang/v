@@ -101,7 +101,7 @@ mut:
 	vweb_gen_types                   []ast.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool       // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string     // set when inside a labelled for loop
-	timers                           &util.Timers = util.new_timers(false)
+	timers                           &util.Timers = util.get_timers()
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
 	main_fn_decl_node                ast.FnDecl
@@ -123,7 +123,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	return &Checker{
 		table: table
 		pref: pref
-		timers: util.new_timers(timers_should_print)
+		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 	}
 }

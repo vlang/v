@@ -50,7 +50,7 @@ fn main() {
 	$if time_v ? {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(timers_should_print)
+	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
 	timers.start('v total')
 	defer {
 		timers.show('v total')

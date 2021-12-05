@@ -175,7 +175,7 @@ mut:
 	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
 	infix_left_var_name string // a && if expr
-	timers              &util.Timers = util.new_timers(false)
+	timers              &util.Timers = util.get_timers()
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
@@ -240,7 +240,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
-		timers: util.new_timers(timers_should_print)
+		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		init: strings.new_builder(100)
@@ -525,7 +525,10 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		fn_decl: 0
 		indent: -1
 		module_built: global_g.module_built
-		timers: util.new_timers(global_g.timers_should_print)
+		timers: util.new_timers(
+			should_print: global_g.timers_should_print
+			label: 'cgen_process_one_file_cb idx: $idx, wid: $wid'
+		)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 		array_sort_fn: global_g.array_sort_fn
