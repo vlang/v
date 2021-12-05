@@ -342,18 +342,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
-
-			global_g.inits[file.mod.name].write(global_g.init) or { panic(err) }
-			unsafe { global_g.init.free() }
-			global_g.init = strings.new_builder(100)
-
-			global_g.cleanups[file.mod.name].write(global_g.cleanup) or { panic(err) }
-			unsafe { global_g.cleanup.free() }
-			global_g.cleanup = strings.new_builder(100)
-
-			global_g.global_inits[file.mod.name].write(global_g.global_init) or { panic(err) }
-			unsafe { global_g.global_init.free() }
-			global_g.global_init = strings.new_builder(100)
+			global_g.inits[file.mod.name].drain_builder(mut global_g.init, 100)
+			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
+			global_g.global_inits[file.mod.name].drain_builder(mut global_g.global_init,
+				100)
 		}
 		global_g.timers.start('cgen unification')
 	}
