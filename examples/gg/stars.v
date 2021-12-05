@@ -81,7 +81,8 @@ fn main() {
 }
 
 fn init_images(mut app App) {
-	app.image = app.gg.create_image(os.resource_abs_path('logo.png'))
+	mut logo_path := os.resource_abs_path(os.join_path('../assets/', 'logo.png'))
+	app.image = app.gg.create_image(os.resource_abs_path(logo_path))
 }
 
 fn frame(mut app App) {
