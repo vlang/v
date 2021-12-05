@@ -115,6 +115,7 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
+		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
 	]
 	skip_on_non_windows           = [
