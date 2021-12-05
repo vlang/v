@@ -230,17 +230,23 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 
 fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 	// Invent a sutible local address for this remote addr
-	addr := match raddr.family() {
+	// Appease compiler
+	mut addr := Addr{
+		addr: AddrData{
+			Ip6: Ip6{}
+		}
+	}
+	match raddr.family() {
 		.ip {
 			// Use ip dualstack
-			new_ip(0, addr_ip_any)
+			addr = new_ip(0, addr_ip_any)
 		}
 		.ip6 {
 			// Use ip6 dualstack
-			new_ip6(0, addr_ip6_any)
+			addr = new_ip6(0, addr_ip6_any)
 		}
 		.unix {
-			temp_unix() ?
+			addr = temp_unix() ?
 		}
 		else {
 			panic('Invalid family')
