@@ -271,6 +271,10 @@ fn (t Tree) embed_file(node ast.EmbeddedFile) &Node {
 	obj.add('ast_type', t.string_node('EmbeddedFile'))
 	obj.add('rpath', t.string_node(node.rpath))
 	obj.add('apath', t.string_node(node.apath))
+	obj.add('compression_type', t.string_node(node.compression_type))
+	obj.add('is_compressed', t.bool_node(node.is_compressed))
+	obj.add('len', t.number_node(node.len))
+	obj.add('bytes', t.array_node_byte(node.bytes))
 	return obj
 }
 
@@ -545,6 +549,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('file', t.string_node(node.file))
 	obj.add('has_return', t.bool_node(node.has_return))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
+	obj.add('has_await', t.bool_node(node.has_await))
 	obj.add('return_type', t.type_node(node.return_type))
 	obj.add('source_file', t.number_node(int(node.source_file)))
 	obj.add('scope', t.number_node(int(node.scope)))
@@ -659,6 +664,7 @@ fn (t Tree) interface_decl(node ast.InterfaceDecl) &Node {
 	obj.add('pos', t.position(node.pos))
 	obj.add('are_ifaces_expanded', t.bool_node(node.are_ifaces_expanded))
 	obj.add('ifaces', t.array_node_interface_embedding(node.ifaces))
+	obj.add('attrs', t.array_node_attr(node.attrs))
 	return obj
 }
 
@@ -720,6 +726,7 @@ fn (t Tree) global_decl(node ast.GlobalDecl) &Node {
 	obj.add('is_block', t.bool_node(node.is_block))
 	obj.add('fields', t.array_node_global_field(node.fields))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
+	obj.add('attrs', t.array_node_attr(node.attrs))
 	return obj
 }
 
@@ -1310,6 +1317,10 @@ fn (t Tree) infix_expr(node ast.InfixExpr) &Node {
 	obj.add('auto_locked', t.string_node(node.auto_locked))
 	obj.add('or_block', t.or_expr(node.or_block))
 	obj.add('is_stmt', t.bool_node(node.is_stmt))
+	obj.add('ct_left_value_evaled', t.bool_node(node.ct_left_value_evaled))
+	obj.add('ct_left_value', t.comptime_expr_value(node.ct_left_value))
+	obj.add('ct_right_value_evaled', t.bool_node(node.ct_right_value_evaled))
+	obj.add('ct_right_value', t.comptime_expr_value(node.ct_right_value))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -1448,6 +1459,7 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add('is_method', t.bool_node(node.is_method))
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add('is_noreturn', t.bool_node(node.is_noreturn))
+	obj.add('is_ctor_new', t.bool_node(node.is_ctor_new))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))
