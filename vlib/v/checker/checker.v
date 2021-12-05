@@ -2550,6 +2550,35 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.need_recheck_generic_fns = true
 		}
 	}
+	if fn_name == 'JS.await' {
+		if node.args.len > 1 {
+			c.error('JS.await expects 1 argument, a promise value (e.g `JS.await(fs.read())`',
+				node.pos)
+			return ast.void_type
+		}
+
+		typ := c.expr(node.args[0].expr)
+		tsym := c.table.get_type_symbol(typ)
+
+		if !tsym.name.starts_with('js.promise.Promise<') {
+			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
+			return ast.void_type
+		}
+		c.table.cur_fn.has_await = true
+		match tsym.info {
+			ast.Struct {
+				mut ret_type := tsym.info.concrete_types[0]
+				ret_type = ret_type.set_flag(.optional)
+				node.return_type = ret_type
+				return ret_type
+			}
+			else {
+				c.error('JS.await: Promise must be a struct type', node.pos)
+				return ast.void_type
+			}
+		}
+		panic('unreachable')
+	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && node.args.len > 0 {
 		if node.args.len != 2 {
