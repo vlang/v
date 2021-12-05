@@ -502,7 +502,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	return none
 }
 
-// find_field_from_embeds is the same as find_field_from_embeds but also looks into nested embeds
+// find_field_from_embeds tries to find a field in the nested embeds
 pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
 	if sym.info is Struct {
 		mut found_fields := []StructField{}
