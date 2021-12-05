@@ -22,6 +22,7 @@ fn test_once() {
 	c := chan bool{}
 	n := 10
 
+	// It is executed 10 times, but only once actually.
 	for i := 0; i < n; i++ {
 		go run(mut once, mut o, c)
 	}
