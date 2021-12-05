@@ -280,6 +280,10 @@ fn (t Tree) embed_file(node ast.EmbeddedFile) &Node {
 	obj.add_terse('ast_type', t.string_node('EmbeddedFile'))
 	obj.add_terse('rpath', t.string_node(node.rpath))
 	obj.add('apath', t.string_node(node.apath))
+	obj.add('compression_type', t.string_node(node.compression_type))
+	obj.add('is_compressed', t.bool_node(node.is_compressed))
+	obj.add('len', t.number_node(node.len))
+	obj.add('bytes', t.array_node_byte(node.bytes))
 	return obj
 }
 
@@ -554,6 +558,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('file', t.string_node(node.file))
 	obj.add('has_return', t.bool_node(node.has_return))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
+	obj.add_terse('has_await', t.bool_node(node.has_await))
 	obj.add_terse('return_type', t.type_node(node.return_type))
 	obj.add('source_file', t.number_node(int(node.source_file)))
 	obj.add('scope', t.number_node(int(node.scope)))
@@ -668,6 +673,7 @@ fn (t Tree) interface_decl(node ast.InterfaceDecl) &Node {
 	obj.add('pos', t.position(node.pos))
 	obj.add('are_ifaces_expanded', t.bool_node(node.are_ifaces_expanded))
 	obj.add_terse('ifaces', t.array_node_interface_embedding(node.ifaces))
+	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	return obj
 }
 
@@ -729,6 +735,7 @@ fn (t Tree) global_decl(node ast.GlobalDecl) &Node {
 	obj.add_terse('is_block', t.bool_node(node.is_block))
 	obj.add_terse('fields', t.array_node_global_field(node.fields))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
+	obj.add('attrs', t.array_node_attr(node.attrs))
 	return obj
 }
 
@@ -860,9 +867,9 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add('is_inherited', t.bool_node(node.is_inherited))
 	obj.add('is_auto_heap', t.bool_node(node.is_auto_heap))
 	obj.add('is_stack_obj', t.bool_node(node.is_stack_obj))
-	obj.add('share', t.enum_node(node.share))
+	obj.add_terse('share', t.enum_node(node.share))
 	obj.add('pos', t.position(node.pos))
-	obj.add('smartcasts', t.array_node_type(node.smartcasts))
+	obj.add_terse('smartcasts', t.array_node_type(node.smartcasts))
 	return obj
 }
 
@@ -956,15 +963,15 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('ast_type', t.string_node('ComptimeCall'))
 	obj.add_terse('method_name', t.string_node(node.method_name))
 	obj.add_terse('left', t.expr(node.left))
-	obj.add('is_vweb', t.bool_node(node.is_vweb))
-	obj.add('vweb_tmpl', t.string_node(node.vweb_tmpl.path))
+	obj.add_terse('is_vweb', t.bool_node(node.is_vweb))
+	obj.add_terse('vweb_tmpl', t.string_node(node.vweb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
 	obj.add_terse('sym', t.string_node(node.sym.name))
 	obj.add_terse('has_parens', t.bool_node(node.has_parens))
 	obj.add_terse('is_embed', t.bool_node(node.is_embed))
 	obj.add_terse('embed_file', t.embed_file(node.embed_file))
 	obj.add('method_pos', t.position(node.method_pos))
-	obj.add('result_type', t.type_node(node.result_type))
+	obj.add_terse('result_type', t.type_node(node.result_type))
 	obj.add('scope', t.scope(node.scope))
 	obj.add_terse('env_value', t.string_node(node.env_value))
 	obj.add('pos', t.position(node.pos))
@@ -1319,6 +1326,10 @@ fn (t Tree) infix_expr(node ast.InfixExpr) &Node {
 	obj.add('auto_locked', t.string_node(node.auto_locked))
 	obj.add_terse('or_block', t.or_expr(node.or_block))
 	obj.add_terse('is_stmt', t.bool_node(node.is_stmt))
+	obj.add_terse('ct_left_value_evaled', t.bool_node(node.ct_left_value_evaled))
+	obj.add_terse('ct_left_value', t.comptime_expr_value(node.ct_left_value))
+	obj.add_terse('ct_right_value_evaled', t.bool_node(node.ct_right_value_evaled))
+	obj.add_terse('ct_right_value', t.comptime_expr_value(node.ct_right_value))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -1457,8 +1468,9 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add_terse('is_method', t.bool_node(node.is_method))
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add_terse('is_noreturn', t.bool_node(node.is_noreturn))
+	obj.add_terse('is_ctor_new', t.bool_node(node.is_ctor_new))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
-	obj.add('free_receiver', t.bool_node(node.free_receiver))
+	obj.add_terse('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
 	obj.add_terse('expected_arg_types', t.array_node_type(node.expected_arg_types))

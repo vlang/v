@@ -151,9 +151,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 		g.write(')')
 	} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
-		if expr is ast.Ident && g.comptime_var_type_map.len > 0 {
+		if expr is ast.Ident {
 			if expr.obj is ast.Var {
-				exp_typ = expr.obj.typ
+				if g.comptime_var_type_map.len > 0 {
+					exp_typ = expr.obj.typ
+				} else if expr.obj.smartcasts.len > 0 {
+					cast_sym := g.table.get_type_symbol(expr.obj.smartcasts.last())
+					if cast_sym.info is ast.Aggregate {
+						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
+					}
+				}
 			}
 		}
 		g.gen_expr_to_string(expr, exp_typ)
