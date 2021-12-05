@@ -207,7 +207,18 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	for result := results; !isnil(result); result = result.ai_next {
 		match AddrFamily(result.ai_family) {
-			.ip, .ip6 {
+			.ip {
+				new_addr := Addr{
+					addr: AddrData{
+						Ip: Ip{}
+					}
+				}
+				unsafe {
+					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
+				}
+				addresses << new_addr
+			}
+			.ip6 {
 				new_addr := Addr{
 					addr: AddrData{
 						Ip6: Ip6{}
