@@ -321,6 +321,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	if g.pref.sourcemap {
 		out += g.create_sourcemap()
 	}
+
 	return out
 }
 
@@ -335,7 +336,7 @@ fn (g JsGen) create_sourcemap() string {
 
 pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.enter_namespace('main')
-	g.writeln('function js_main() {  ')
+	g.writeln('async function js_main() {  ')
 	g.inc_indent()
 	all_tfuncs := g.get_all_test_function_names()
 
@@ -351,7 +352,7 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 			g.writeln('main__BenchedTests_testing_step_start(bt,new string("$tcname"))')
 		}
 
-		g.writeln('try { ${tcname}(); } catch (_e) {} ')
+		g.writeln('try { let res = ${tcname}(); if (res instanceof Promise) { await res; } } catch (_e) {} ')
 		if g.pref.is_stats {
 			g.writeln('main__BenchedTests_testing_step_end(bt);')
 		}
