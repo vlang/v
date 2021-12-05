@@ -66,23 +66,35 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
 	call_return_is_optional := it.return_type.has_flag(.optional)
+	is_await := node.name == 'JS.await'
 	if call_return_is_optional {
-		g.writeln('(function () {')
+		if is_await {
+			g.writeln('await (async function () {')
+		} else {
+			g.writeln('(function () {')
+		}
 		g.writeln('try {')
 		g.writeln('let tmp = ')
 	}
 	if it.is_ctor_new {
 		g.write('new ')
 	}
-	g.write('${g.js_mname(it.name)}(')
-	for i, arg in it.args {
-		g.expr(arg.expr)
-		if i != it.args.len - 1 {
-			g.write(', ')
+	if is_await {
+		g.write('await (')
+
+		g.expr(it.args[0].expr)
+		g.write(').promise')
+	} else {
+		g.write('${g.js_mname(it.name)}(')
+		for i, arg in it.args {
+			g.expr(arg.expr)
+			if i != it.args.len - 1 {
+				g.write(', ')
+			}
 		}
+		// end call
+		g.write(')')
 	}
-	// end call
-	g.write(')')
 	if call_return_is_optional {
 		g.write(';\n')
 		g.writeln('if (tmp === null) throw "none";')
@@ -588,18 +600,20 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.writeln('${g.typ(it.receiver.typ)}.prototype.$it.name = ')
 	}
 
-	has_go := fn_has_go(it)
-
+	mut has_go := fn_has_go(it) || it.has_await
+	for attr in it.attrs {
+		if attr.name == 'async' {
+			has_go = true
+			break
+		}
+	}
 	is_main := it.name == 'main.main'
 	g.gen_attrs(it.attrs)
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
-
-		// g.write('(')
-		if has_go {
-			g.write('async ')
-		}
+		// main function is always async
+		g.write('async ')
 		g.write('function js_main(')
 	} else if it.is_anon {
 		g.write('function (')

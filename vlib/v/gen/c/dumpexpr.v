@@ -45,17 +45,16 @@ fn (mut g Gen) dump_expr_definitions() {
 			continue
 		}
 		mut surrounder := util.new_surrounder(3)
-		surrounder.add('string sline = int_str(line);', 'string_free(&sline);')
-		surrounder.add('string value = ${to_string_fn_name}(${deref}dump_arg);', 'string_free(&value);')
+		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
+		surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);', '\tstring_free(&value);')
 		surrounder.add('
-string res;
-strings__Builder sb = strings__new_builder(256);
-',
-			'
-res = strings__Builder_str(&sb);
-eprint(res);
-string_free(&res);
-strings__Builder_free(&sb);
+	strings__Builder sb = strings__new_builder(256);
+', '
+	string res;
+	res = strings__Builder_str(&sb);
+	eprint(res);
+	string_free(&res);
+	strings__Builder_free(&sb);
 ')
 		surrounder.builder_write_befores(mut dump_fns)
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '[');")

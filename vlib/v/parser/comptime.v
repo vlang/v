@@ -95,6 +95,14 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	if !is_html {
 		p.check(.string)
 	}
+	mut embed_compression_type := 'none'
+	if is_embed_file {
+		if p.tok.kind == .comma {
+			p.check(.comma)
+			p.check(.dot)
+			embed_compression_type = p.check_name()
+		}
+	}
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
@@ -126,12 +134,17 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			}
 		}
 		p.register_auto_import('v.preludes.embed_file')
+		if embed_compression_type == 'zlib'
+			&& (p.pref.is_prod || 'debug_embed_file_in_prod' in p.pref.compile_defines) {
+			p.register_auto_import('v.preludes.embed_file.zlib')
+		}
 		return ast.ComptimeCall{
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
 				rpath: literal_string_param
 				apath: epath
+				compression_type: embed_compression_type
 			}
 			pos: start_pos.extend(p.prev_tok.position())
 		}

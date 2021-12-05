@@ -321,6 +321,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	if g.pref.sourcemap {
 		out += g.create_sourcemap()
 	}
+
 	return out
 }
 
@@ -335,7 +336,7 @@ fn (g JsGen) create_sourcemap() string {
 
 pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.enter_namespace('main')
-	g.writeln('function js_main() {  ')
+	g.writeln('async function js_main() {  ')
 	g.inc_indent()
 	all_tfuncs := g.get_all_test_function_names()
 
@@ -351,7 +352,7 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 			g.writeln('main__BenchedTests_testing_step_start(bt,new string("$tcname"))')
 		}
 
-		g.writeln('try { ${tcname}(); } catch (_e) {} ')
+		g.writeln('try { let res = ${tcname}(); if (res instanceof Promise) { await res; } } catch (_e) {} ')
 		if g.pref.is_stats {
 			g.writeln('main__BenchedTests_testing_step_end(bt);')
 		}
@@ -2137,8 +2138,7 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 						g.write(').val')
 					}
 					else {
-						has_operator_overloading := g.table.type_has_method(type_sym,
-							'==')
+						has_operator_overloading := g.table.has_method(type_sym, '==')
 						if has_operator_overloading {
 							left := g.unwrap(node.cond_type)
 							g.write(g.typ(left.unaliased.set_nr_muls(0)))
@@ -2832,7 +2832,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		node := it
 		left := g.unwrap(node.left_type)
 		right := g.unwrap(node.right_type)
-		has_operator_overloading := g.table.type_has_method(left.sym, '==')
+		has_operator_overloading := g.table.has_method(left.sym, '==')
 		if has_operator_overloading
 			|| (l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables) {
 			if node.op == .ne {
@@ -2896,7 +2896,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.gen_deref_ptr(it.left_type)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
-	} else if it.op in [.lt, .gt, .ge, .le] && g.table.type_has_method(l_sym, '<')
+	} else if it.op in [.lt, .gt, .ge, .le] && g.table.has_method(l_sym, '<')
 		&& l_sym.kind == r_sym.kind {
 		if it.op in [.le, .ge] {
 			g.write('!')
@@ -2917,7 +2917,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else {
-		has_operator_overloading := g.table.type_has_method(l_sym, it.op.str())
+		has_operator_overloading := g.table.has_method(l_sym, it.op.str())
 		if has_operator_overloading {
 			g.expr(it.left)
 			g.gen_deref_ptr(it.left_type)

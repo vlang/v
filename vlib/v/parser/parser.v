@@ -360,7 +360,7 @@ fn (mut q Queue) run() {
 }
 */
 pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
-	mut timers := util.new_timers(false)
+	mut timers := util.new_timers(should_print: false, label: 'parse_files: $paths')
 	$if time_parsing ? {
 		timers.should_print = true
 	}

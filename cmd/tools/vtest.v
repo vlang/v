@@ -114,6 +114,9 @@ fn should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('_test.v') {
 		return .test
 	}
+	if path.ends_with('_test.js.v') {
+		return .test
+	}
 	if path.ends_with('.v') && path.count('.') == 2 {
 		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			return .ignore

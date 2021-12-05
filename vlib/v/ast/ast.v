@@ -485,8 +485,9 @@ pub mut:
 	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
 	has_return        bool
 	should_be_skipped bool
+	has_await         bool           // 'true' if this function uses JS.await
 	//
-	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	//
 	source_file &File = 0
@@ -529,7 +530,7 @@ pub mut:
 	concrete_list_pos  token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
-	from_embed_type    Type // holds the type of the embed that the method is called from
+	from_embed_types   []Type // holds the type of the embed that the method is called from
 	comments           []Comment
 }
 
@@ -646,8 +647,14 @@ pub mut:
 
 pub struct EmbeddedFile {
 pub:
-	rpath string // used in the source code, as an ID/key to the embed
-	apath string // absolute path during compilation to the resource
+	rpath            string // used in the source code, as an ID/key to the embed
+	apath            string // absolute path during compilation to the resource
+	compression_type string
+pub mut:
+	// these are set by gen_embed_file_init in v/gen/c/embed
+	is_compressed bool
+	bytes         []byte
+	len           int
 }
 
 // Each V source file is represented by one File structure.
@@ -1542,8 +1549,7 @@ pub:
 	is_vweb   bool
 	vweb_tmpl File
 	//
-	is_embed   bool
-	embed_file EmbeddedFile
+	is_embed bool
 	//
 	is_env  bool
 	env_pos token.Position
@@ -1554,6 +1560,7 @@ pub mut:
 	result_type Type
 	env_value   string
 	args        []CallArg
+	embed_file  EmbeddedFile
 }
 
 pub struct None {

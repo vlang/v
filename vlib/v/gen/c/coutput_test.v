@@ -12,6 +12,8 @@ const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
 
 const diff_cmd = diff.find_working_diff_command() or { '' }
 
+const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
+
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
 }
@@ -34,9 +36,13 @@ fn test_out_files() ? {
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
-		print(mm('v run $relpath') + ' == ${mm(out_relpath)} ')
 		pexe := os.join_path(output_path, '${basename}.exe')
-		compilation := os.execute('"$vexe" -o "$pexe" "$path"')
+		//
+		file_options := get_file_options(path)
+		alloptions := '-o "$pexe" $file_options.vflags'
+		print(mm('v $alloptions run $relpath') + ' == ${mm(out_relpath)} ')
+		//
+		compilation := os.execute('"$vexe" $alloptions "$path"')
 		ensure_compilation_succeeded(compilation)
 		res := os.execute(pexe)
 		if res.exit_code < 0 {
@@ -99,12 +105,14 @@ fn test_c_must_have_files() ? {
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
 	mut total_errors := 0
+	mut failed_descriptions := []string{cap: paths.len}
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		file_options := get_file_options(path)
 		alloptions := '-o - $file_options.vflags'
-		print(mm('v $alloptions $relpath') +
-			' matches all line patterns in ${mm(must_have_relpath)} ')
+		description := mm('v $alloptions $relpath') +
+			' matches all line patterns in ${mm(must_have_relpath)} '
+		print(description)
 		cmd := '$vexe $alloptions $path'
 		compilation := os.execute(cmd)
 		ensure_compilation_succeeded(compilation)
@@ -122,6 +130,9 @@ fn test_c_must_have_files() ? {
 				eprintln('$must_have_path:${idx_expected_line + 1}: expected match error:')
 				eprintln('`$cmd` did NOT produce expected line:')
 				eprintln(term.colorize(term.red, eline))
+				if description !in failed_descriptions {
+					failed_descriptions << description
+				}
 				total_errors++
 				continue
 			}
@@ -129,14 +140,23 @@ fn test_c_must_have_files() ? {
 		if nmatches == expected_lines.len {
 			println(term.green('OK'))
 		} else {
-			eprintln('> ALL lines:')
-			eprintln(compilation.output)
+			if show_compilation_output {
+				eprintln('> ALL lines:')
+				eprintln(compilation.output)
+			}
 			eprintln('--------- failed patterns: -------------------------------------------')
 			for fpattern in failed_patterns {
 				eprintln(fpattern)
 			}
 			eprintln('----------------------------------------------------------------------')
 		}
+	}
+	if failed_descriptions.len > 0 {
+		eprintln('--------- failed commands: -------------------------------------------')
+		for fd in failed_descriptions {
+			eprintln('  > $fd')
+		}
+		eprintln('----------------------------------------------------------------------')
 	}
 	assert total_errors == 0
 }

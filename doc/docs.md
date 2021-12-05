@@ -4982,6 +4982,17 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
+`$embed_file` supports compression of the embedded file when compiling with `-prod`.
+Currently only one compression type is supported: `zlib`
+
+```v ignore
+import os
+fn main() {
+	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
+	os.write_file('exported.png', embedded_file.to_string()) ?
+}
+```
+
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily

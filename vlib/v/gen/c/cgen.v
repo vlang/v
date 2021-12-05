@@ -175,7 +175,7 @@ mut:
 	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
 	infix_left_var_name string // a && if expr
-	timers              &util.Timers = util.new_timers(false)
+	timers              &util.Timers = util.get_timers()
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
@@ -240,7 +240,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
-		timers: util.new_timers(timers_should_print)
+		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		init: strings.new_builder(100)
@@ -342,18 +342,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
-
-			global_g.inits[file.mod.name].write(global_g.init) or { panic(err) }
-			unsafe { global_g.init.free() }
-			global_g.init = strings.new_builder(100)
-
-			global_g.cleanups[file.mod.name].write(global_g.cleanup) or { panic(err) }
-			unsafe { global_g.cleanup.free() }
-			global_g.cleanup = strings.new_builder(100)
-
-			global_g.global_inits[file.mod.name].write(global_g.global_init) or { panic(err) }
-			unsafe { global_g.global_init.free() }
-			global_g.global_init = strings.new_builder(100)
+			global_g.inits[file.mod.name].drain_builder(mut global_g.init, 100)
+			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
+			global_g.global_inits[file.mod.name].drain_builder(mut global_g.global_init,
+				100)
 		}
 		global_g.timers.start('cgen unification')
 	}
@@ -525,7 +517,10 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		fn_decl: 0
 		indent: -1
 		module_built: global_g.module_built
-		timers: util.new_timers(global_g.timers_should_print)
+		timers: util.new_timers(
+			should_print: global_g.timers_should_print
+			label: 'cgen_process_one_file_cb idx: $idx, wid: $wid'
+		)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 		array_sort_fn: global_g.array_sort_fn
@@ -2264,7 +2259,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	for field in (exp_sym.info as ast.SumType).fields {
 		mut ptr := 'ptr'
 		mut type_cname := got_cname
-		_, embed_types := g.table.find_field_from_embeds_recursive(got_sym, field.name) or {
+		_, embed_types := g.table.find_field_from_embeds(got_sym, field.name) or {
 			ast.StructField{}, []ast.Type{}
 		}
 		if embed_types.len > 0 {
@@ -3171,7 +3166,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-					method := g.table.type_find_method(left_sym, extracted_op) or {
+					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
 						g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
 							assign_stmt.pos)
@@ -3369,7 +3364,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.InfixExpr {
 			sym := g.table.get_type_symbol(val.left_type)
-			if _ := g.table.type_find_method(sym, val.op.str()) {
+			if _ := g.table.find_method(sym, val.op.str()) {
 				left_styp := g.typ(val.left_type.set_nr_muls(0))
 				g.write(left_styp)
 				g.write('_')
@@ -3828,7 +3823,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.Comment {}
 		ast.ComptimeCall {
-			g.comptime_call(node)
+			g.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
 			g.comptime_selector(node)

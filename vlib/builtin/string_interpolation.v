@@ -256,11 +256,20 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				if base == 3 {
 					base = 2
 				}
-				mut hx := strconv.format_int(d, base)
+				mut absd, mut write_minus := d, false
+				if d < 0 && pad_ch != ` ` {
+					absd = -d
+					write_minus = true
+				}
+				mut hx := strconv.format_int(absd, base)
 				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
 					tmp.free()
+				}
+				if write_minus {
+					sb.write_b(`-`)
+					bf.len0-- // compensate for the `-` above
 				}
 				if width == 0 {
 					sb.write_string(hx)
