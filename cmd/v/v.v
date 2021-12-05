@@ -13,6 +13,7 @@ import v.builder
 
 const (
 	external_tools                      = [
+		'ast',
 		'bin2v',
 		'bug',
 		'build-examples',
@@ -39,8 +40,7 @@ const (
 		'up',
 		'vet',
 		'wipe-cache',
-		'watch',
-		'ast',
+		'watch'
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
