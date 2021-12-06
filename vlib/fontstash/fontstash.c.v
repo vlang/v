@@ -42,7 +42,7 @@ pub fn (s &C.FONScontext) set_error_callback(callback fn (voidptr, int, int), up
 
 // Returns current atlas size.
 [inline]
-pub fn (s &C.FONScontext) get_atlas_size() (int,int) {
+pub fn (s &C.FONScontext) get_atlas_size() (int, int) {
 	mut width := 0
 	mut height := 0
 	C.fonsGetAtlasSize(s, &width, &height)
@@ -133,7 +133,7 @@ pub fn (s &C.FONScontext) draw_text(x f32, y f32, text string) f32 {
 // Measure text
 [inline]
 pub fn (s &C.FONScontext) text_bounds(x f32, y f32, text string, bounds &f32) f32 {
-	return C.fonsTextBounds(s, x, y, text.str,  &char(0), bounds)
+	return C.fonsTextBounds(s, x, y, text.str, &char(0), bounds)
 }
 
 [inline]
