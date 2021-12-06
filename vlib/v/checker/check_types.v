@@ -117,7 +117,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
+	if c.table.sumtype_has_variant(expected, c.table.mktyp(got), false) {
 		return true
 	}
 	// type alias
