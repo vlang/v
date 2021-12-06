@@ -1,5 +1,5 @@
 // This program displays the fibonacci sequence
-// import os
+import os
 
 fn main() {
 	// Check for user input
@@ -19,9 +19,9 @@ fn main() {
 	}
 
 	// Three consecutive terms of the sequence
-	mut a := 0
-	mut b := 0
-	mut c := 1
+	mut a := i64(0)
+	mut b := i64(0)
+	mut c := i64(1)
 	println(a + c + c)
 	for _ in 0 .. stop {
 		// Set a and b to the next term
