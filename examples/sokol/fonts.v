@@ -2,13 +2,14 @@ import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
+import fontstash
 import sokol.sfons
 import os
 
 struct AppState {
 mut:
 	pass_action C.sg_pass_action
-	fons        &sfons.Context
+	fons        &fontstash.Context
 	font_normal int
 }
 

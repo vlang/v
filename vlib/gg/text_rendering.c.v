@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+import fontstash
 import sokol.sfons
 import sokol.sgl
 import gx
@@ -9,7 +10,7 @@ import os
 
 struct FT {
 pub:
-	fons        &sfons.Context
+	fons        &fontstash.Context
 	font_normal int
 	font_bold   int
 	font_mono   int
