@@ -4547,7 +4547,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, enum_typ ast.TypeSymbol) {
-	cname := '${enum_typ.cname}__'
+	cname := enum_typ.cname + '__'
 	mut covered_enum := []string{cap: (enum_typ.info as ast.Enum).vals.len} // collects missing enum variant branches to avoid cstrict errors
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
@@ -4582,15 +4582,15 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							}
 							g.write('(')
 							if !skip_low {
-								g.write('$cond_var >= ')
+								g.write(cond_var + ' >= ')
 								g.expr(expr.low)
 								g.write(' && ')
 							}
-							g.write('$cond_var <= ')
+							g.write(cond_var + ' <= ')
 							g.expr(expr.high)
 							g.write(')')
 						} else {
-							g.write('$cond_var == (')
+							g.write(cond_var + ' == (')
 							g.expr(expr)
 							g.write(')')
 						}
@@ -4646,15 +4646,15 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					}
 					g.write('(')
 					if !skip_low {
-						g.write('$cond_var >= ')
+						g.write(cond_var + ' >= ')
 						g.expr(expr.low)
 						g.write(' && ')
 					}
-					g.write('$cond_var <= ')
+					g.write(cond_var + ' <= ')
 					g.expr(expr.high)
 					g.write(')')
 				} else {
-					g.write('$cond_var == (')
+					g.write(cond_var + ' == (')
 					g.expr(expr)
 					g.write(')')
 				}
@@ -4750,15 +4750,15 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							}
 							g.write('(')
 							if !skip_low {
-								g.write('$cond_var >= ')
+								g.write(cond_var + ' >= ')
 								g.expr(expr.low)
 								g.write(' && ')
 							}
-							g.write('$cond_var <= ')
+							g.write(cond_var + ' <= ')
 							g.expr(expr.high)
 							g.write(')')
 						} else {
-							g.write('$cond_var == (')
+							g.write(cond_var + ' == (')
 							g.expr(expr)
 							g.write(')')
 						}
