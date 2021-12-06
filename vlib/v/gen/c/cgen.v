@@ -3003,6 +3003,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							left.obj.typ = var_type
 						}
 					}
+				} else if val is ast.ComptimeCall {
+					key_str := '${val.method_name}.return_type'
+					var_type = g.comptime_var_type_map[key_str] or { var_type }
+					left.obj.typ = var_type
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
