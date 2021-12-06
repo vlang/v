@@ -101,7 +101,7 @@ mut:
 	vweb_gen_types                   []ast.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool       // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string     // set when inside a labelled for loop
-	timers                           &util.Timers = util.new_timers(false)
+	timers                           &util.Timers = util.get_timers()
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
 	main_fn_decl_node                ast.FnDecl
@@ -123,7 +123,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	return &Checker{
 		table: table
 		pref: pref
-		timers: util.new_timers(timers_should_print)
+		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 	}
 }
@@ -2550,6 +2550,35 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.need_recheck_generic_fns = true
 		}
 	}
+	if fn_name == 'JS.await' {
+		if node.args.len > 1 {
+			c.error('JS.await expects 1 argument, a promise value (e.g `JS.await(fs.read())`',
+				node.pos)
+			return ast.void_type
+		}
+
+		typ := c.expr(node.args[0].expr)
+		tsym := c.table.get_type_symbol(typ)
+
+		if !tsym.name.starts_with('js.promise.Promise<') {
+			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
+			return ast.void_type
+		}
+		c.table.cur_fn.has_await = true
+		match tsym.info {
+			ast.Struct {
+				mut ret_type := tsym.info.concrete_types[0]
+				ret_type = ret_type.set_flag(.optional)
+				node.return_type = ret_type
+				return ret_type
+			}
+			else {
+				c.error('JS.await: Promise must be a struct type', node.pos)
+				return ast.void_type
+			}
+		}
+		panic('unreachable')
+	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && node.args.len > 0 {
 		if node.args.len != 2 {
@@ -2884,7 +2913,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if call_arg.typ != param.typ
 			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
-			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' {
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
 		}
 		// Handle expected interface
@@ -4598,8 +4627,8 @@ fn (mut c Checker) check_loop_label(label string, pos token.Position) {
 
 fn (mut c Checker) stmt(node ast.Stmt) {
 	$if trace_checker ? {
-		stmt_pos := node.pos
-		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
+		ntype := typeof(node).replace('v.ast.', '')
+		eprintln('checking: ${c.file.path:-30} | pos: ${node.pos.line_str():-39} | node: $ntype | $node')
 	}
 	c.expected_type = ast.void_type
 	match mut node {

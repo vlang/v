@@ -17,6 +17,10 @@ pub mut:
 pub fn (mut p Position) free() {
 }
 
+pub fn (p Position) line_str() string {
+	return '{l: ${p.line_nr + 1:5}, c: ${p.col:3}, p: ${p.pos:5}, ll: ${p.last_line + 1:5}}'
+}
+
 pub fn (pos Position) extend(end Position) Position {
 	return Position{
 		...pos

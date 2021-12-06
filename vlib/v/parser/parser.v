@@ -360,7 +360,7 @@ fn (mut q Queue) run() {
 }
 */
 pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
-	mut timers := util.new_timers(false)
+	mut timers := util.new_timers(should_print: false, label: 'parse_files: $paths')
 	$if time_parsing ? {
 		timers.should_print = true
 	}
@@ -509,11 +509,13 @@ fn (mut p Parser) check_name() string {
 	return name
 }
 
+[if trace_parser ?]
+fn (p &Parser) trace_parser(label string) {
+	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.position().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|$label')
+}
+
 pub fn (mut p Parser) top_stmt() ast.Stmt {
-	$if trace_parser ? {
-		tok_pos := p.tok.position()
-		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | top_stmt')
-	}
+	p.trace_parser('top_stmt')
 	for {
 		match p.tok.kind {
 			.key_pub {
@@ -686,10 +688,7 @@ pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 }
 
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
-	$if trace_parser ? {
-		tok_pos := p.tok.position()
-		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | stmt($is_top_level)')
-	}
+	p.trace_parser('stmt($is_top_level)')
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {

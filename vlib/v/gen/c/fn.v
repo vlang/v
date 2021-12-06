@@ -1146,12 +1146,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	mut print_auto_str := false
-	if is_print && node.args[0].typ != ast.string_type { // && !free_tmp_arg_vars {
+	if is_print && (node.args[0].typ != ast.string_type || g.comptime_for_method.len > 0) { // && !free_tmp_arg_vars {
 		mut typ := node.args[0].typ
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
-		if typ != ast.string_type {
+		if typ != ast.string_type || g.comptime_for_method.len > 0 {
 			expr := node.args[0].expr
 			typ_sym := g.table.get_type_symbol(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {

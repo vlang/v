@@ -175,7 +175,7 @@ mut:
 	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
 	infix_left_var_name string // a && if expr
-	timers              &util.Timers = util.new_timers(false)
+	timers              &util.Timers = util.get_timers()
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
@@ -240,7 +240,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
-		timers: util.new_timers(timers_should_print)
+		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		init: strings.new_builder(100)
@@ -342,18 +342,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
-
-			global_g.inits[file.mod.name].write(global_g.init) or { panic(err) }
-			unsafe { global_g.init.free() }
-			global_g.init = strings.new_builder(100)
-
-			global_g.cleanups[file.mod.name].write(global_g.cleanup) or { panic(err) }
-			unsafe { global_g.cleanup.free() }
-			global_g.cleanup = strings.new_builder(100)
-
-			global_g.global_inits[file.mod.name].write(global_g.global_init) or { panic(err) }
-			unsafe { global_g.global_init.free() }
-			global_g.global_init = strings.new_builder(100)
+			global_g.inits[file.mod.name].drain_builder(mut global_g.init, 100)
+			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
+			global_g.global_inits[file.mod.name].drain_builder(mut global_g.global_init,
+				100)
 		}
 		global_g.timers.start('cgen unification')
 	}
@@ -525,7 +517,10 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		fn_decl: 0
 		indent: -1
 		module_built: global_g.module_built
-		timers: util.new_timers(global_g.timers_should_print)
+		timers: util.new_timers(
+			should_print: global_g.timers_should_print
+			label: 'cgen_process_one_file_cb idx: $idx, wid: $wid'
+		)
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 		array_sort_fn: global_g.array_sort_fn
@@ -3009,6 +3004,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							left.obj.typ = var_type
 						}
 					}
+				} else if val is ast.ComptimeCall {
+					key_str := '${val.method_name}.return_type'
+					var_type = g.comptime_var_type_map[key_str] or { var_type }
+					left.obj.typ = var_type
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}

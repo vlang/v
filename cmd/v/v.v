@@ -13,6 +13,7 @@ import v.builder
 
 const (
 	external_tools                      = [
+		'ast',
 		'bin2v',
 		'bug',
 		'build-examples',
@@ -40,7 +41,6 @@ const (
 		'vet',
 		'wipe-cache',
 		'watch',
-		'ast',
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
@@ -50,7 +50,7 @@ fn main() {
 	$if time_v ? {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(timers_should_print)
+	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
 	timers.start('v total')
 	defer {
 		timers.show('v total')

@@ -485,8 +485,9 @@ pub mut:
 	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
 	has_return        bool
 	should_be_skipped bool
+	has_await         bool           // 'true' if this function uses JS.await
 	//
-	comments      []Comment      // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	//
 	source_file &File = 0

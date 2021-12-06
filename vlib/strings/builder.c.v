@@ -62,6 +62,17 @@ pub fn (mut b Builder) write(data []byte) ?int {
 	return data.len
 }
 
+// drain_builder writes all of the `other` builder content, then re-initialises
+// `other`, so that the `other` strings builder is ready to receive new content.
+[manualfree]
+pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
+	b.write(other) or { panic(err) }
+	unsafe { other.free() }
+	other = new_builder(other_new_cap)
+}
+
+// byte_at returns a byte, located at a given index `i`.
+// NB: it can panic, if there are not enough bytes in the strings builder yet.
 [inline]
 pub fn (b &Builder) byte_at(n int) byte {
 	return unsafe { (&[]byte(b))[n] }
