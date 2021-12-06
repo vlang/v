@@ -51,7 +51,7 @@ fn init(mut state AppState) {
 		'RobotoMono-Regular.ttf')))
 	{
 		println('loaded font: $bytes.len')
-		state.font_normal = state.fons.add_font_mem(c'sans', bytes.data, bytes.len, false)
+		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
 	}
 }
 
@@ -92,22 +92,21 @@ fn (state &AppState) render_font() {
 	dx = sx
 	dy += lh
 	fons.set_color(white)
-	dx = fons.draw_text(dx, dy, c'The quick ', &char(0))
+	dx = fons.draw_text(dx, dy, 'The quick ')
 	fons.set_font(state.font_normal)
 	fons.set_size(48.0)
 	fons.set_color(brown)
-	dx = fons.draw_text(dx, dy, c'brown ', &char(0))
+	dx = fons.draw_text(dx, dy, 'brown ')
 	fons.set_font(state.font_normal)
 	fons.set_size(24.0)
 	fons.set_color(white)
-	dx = fons.draw_text(dx, dy, c'fox ', &char(0))
+	dx = fons.draw_text(dx, dy, 'fox ')
 	dx = sx
 	dy += lh * 1.2
 	fons.set_size(20.0)
 	fons.set_font(state.font_normal)
 	fons.set_color(blue)
-	fons.draw_text(dx, dy, c'Now is the time for all good men to come to the aid of the party.',
-		&char(0))
+	fons.draw_text(dx, dy, 'Now is the time for all good men to come to the aid of the party.')
 	dx = 300
 	dy = 350
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
@@ -116,7 +115,7 @@ fn (state &AppState) render_font() {
 	fons.set_color(white)
 	fons.set_spacing(5.0)
 	fons.set_blur(6.0)
-	fons.draw_text(dx, dy, c'Blurry...', &char(0))
+	fons.draw_text(dx, dy, 'Blurry...')
 	dx = 300
 	dy += 50.0
 	fons.set_size(28.0)
@@ -124,10 +123,10 @@ fn (state &AppState) render_font() {
 	fons.set_color(white)
 	fons.set_spacing(0.0)
 	fons.set_blur(3.0)
-	fons.draw_text(dx, dy + 2, c'DROP SHADOW', &char(0))
+	fons.draw_text(dx, dy + 2, 'DROP SHADOW')
 	fons.set_color(black)
 	fons.set_blur(0)
-	fons.draw_text(dx, dy, c'DROP SHADOW', &char(0))
+	fons.draw_text(dx, dy, 'DROP SHADOW')
 	fons.set_size(18.0)
 	fons.set_font(state.font_normal)
 	fons.set_color(white)
@@ -135,27 +134,27 @@ fn (state &AppState) render_font() {
 	dy = 350
 	line(f32(dx - 10), f32(dy), f32(dx + 250), f32(dy))
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
-	dx = fons.draw_text(dx, dy, c'Top', &char(0))
+	dx = fons.draw_text(dx, dy, 'Top')
 	dx += 10
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_MIDDLE)
-	dx = fons.draw_text(dx, dy, c'Middle', &char(0))
+	dx = fons.draw_text(dx, dy, 'Middle')
 	dx += 10
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	dx = fons.draw_text(dx, dy, c'Baseline', &char(0))
+	dx = fons.draw_text(dx, dy, 'Baseline')
 	dx += 10
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BOTTOM)
-	fons.draw_text(dx, dy, c'Bottom', &char(0))
+	fons.draw_text(dx, dy, 'Bottom')
 	dx = 150
 	dy = 400
 	line(f32(dx), f32(dy - 30), f32(dx), f32(dy + 80.0))
 	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, c'Left', &char(0))
+	fons.draw_text(dx, dy, 'Left')
 	dy += 30
 	fons.set_align(C.FONS_ALIGN_CENTER | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, c'Center', &char(0))
+	fons.draw_text(dx, dy, 'Center')
 	dy += 30
 	fons.set_align(C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, c'Right', &char(0))
+	fons.draw_text(dx, dy, 'Right')
 	C.sfons_flush(fons)
 }
 

@@ -103,7 +103,7 @@ fn init(user_data voidptr) {
 		'RobotoMono-Regular.ttf')))
 	{
 		println('loaded font: $bytes.len')
-		state.font_normal = state.fons.add_font_mem(c'sans', bytes.data, bytes.len, false)
+		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
 	}
 }
 
@@ -138,7 +138,7 @@ fn (mut state AppState) render_font() {
 	}
 
 	for line in lines {
-		fons.draw_text(40, dy, line.str, &char(0))
+		fons.draw_text(40, dy, line)
 		dy += lh
 	}
 	sfons.flush(fons)
