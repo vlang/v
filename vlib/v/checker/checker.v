@@ -2913,7 +2913,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if call_arg.typ != param.typ
 			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
-			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' {
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
 		}
 		// Handle expected interface

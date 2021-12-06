@@ -542,8 +542,11 @@ typedef struct sync__Channel* chan;
 
 #ifndef __cplusplus
 	#ifndef bool
-		//typedef int bool;
-		typedef byte bool;
+		#ifdef CUSTOM_DEFINE_4bytebool
+			typedef int bool;
+		#else
+			typedef byte bool;
+		#endif
 		#define true 1
 		#define false 0
 	#endif
