@@ -75,7 +75,8 @@ fn main() {
 				if op in ['<<', '>>'] && ct2 == 'Float' {
 					continue
 				}
-				b.write_string('$ct2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left.val)+i64(right.val),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left.val)+u64(right.val),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{return i64(i64(left.val)${op}i64(right.val))}')
+				unsafe_start, unsafe_end := if op in ['<<', '>>'] { 'unsafe{', '}' } else { '', '' }
+				b.write_string('$ct2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left.val)+i64(right.val),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left.val)+u64(right.val),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{${unsafe_start}return i64(i64(left.val)${op}i64(right.val))$unsafe_end}')
 				if op !in ['<<', '>>'] {
 					b.write_string('else if expecting in ast.float_type_idxs{return Float{f64(left.val)${op}f64(right.val), i8(e.type_to_size(expecting))}}else if expecting==ast.float_literal_type_idx{return f64(f64(left.val)${op}f64(right.val))}')
 				}
@@ -85,7 +86,8 @@ fn main() {
 				if op in ['<<', '>>'] && lt2 == 'f64' {
 					continue
 				}
-				b.write_string('$lt2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left.val)+i64(right),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left.val)+u64(right),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{return i64(i64(left.val)${op}i64(right))}')
+				unsafe_start, unsafe_end := if op in ['<<', '>>'] { 'unsafe{', '}' } else { '', '' }
+				b.write_string('$lt2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left.val)+i64(right),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left.val)+u64(right),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{${unsafe_start}return i64(i64(left.val)${op}i64(right))$unsafe_end}')
 				if op !in ['<<', '>>'] {
 					b.write_string('else if expecting in ast.float_type_idxs{return Float{f64(left.val)${op}f64(right), i8(e.type_to_size(expecting))}}else if expecting==ast.float_literal_type_idx{return f64(f64(left.val)${op}f64(right))}')
 				}
@@ -102,7 +104,8 @@ fn main() {
 				if op in ['<<', '>>'] && ct2 == 'Float' {
 					continue
 				}
-				b.write_string('$ct2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left)+i64(right.val),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left)+u64(right.val),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{return i64(i64(left)${op}i64(right.val))}')
+				unsafe_start, unsafe_end := if op in ['<<', '>>'] { 'unsafe{', '}' } else { '', '' }
+				b.write_string('$ct2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left)+i64(right.val),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left)+u64(right.val),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{${unsafe_start}return i64(i64(left)${op}i64(right.val))$unsafe_end}')
 				if op !in ['<<', '>>'] {
 					b.write_string('else if expecting in ast.float_type_idxs{return Float{f64(left)${op}f64(right.val), i8(e.type_to_size(expecting))}}else if expecting==ast.float_literal_type_idx{return f64(f64(left)${op}f64(right.val))}')
 				}
@@ -112,7 +115,8 @@ fn main() {
 				if op in ['<<', '>>'] && lt2 == 'f64' {
 					continue
 				}
-				b.write_string('$lt2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left)+i64(right),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left)+u64(right),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{return i64(i64(left)${op}i64(right))}')
+				unsafe_start, unsafe_end := if op in ['<<', '>>'] { 'unsafe{', '}' } else { '', '' }
+				b.write_string('$lt2{if expecting in ast.signed_integer_type_idxs{return Int{i64(left)+i64(right),i8(e.type_to_size(expecting))}}else if expecting in ast.unsigned_integer_type_idxs{return Uint{u64(left)+u64(right),i8(e.type_to_size(expecting))}}else if expecting==ast.int_literal_type_idx{${unsafe_start}return i64(i64(left)${op}i64(right))$unsafe_end}')
 				if op !in ['<<', '>>'] {
 					b.write_string('else if expecting in ast.float_type_idxs{return Float{f64(left)${op}f64(right), i8(e.type_to_size(expecting))}}else if expecting==ast.float_literal_type_idx{return f64(f64(left)${op}f64(right))}')
 				}

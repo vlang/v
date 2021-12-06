@@ -1923,7 +1923,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right.val))
+								unsafe {
+									return i64(i64(left.val) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -1934,7 +1936,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right.val))
+								unsafe {
+									return i64(i64(left.val) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -1945,7 +1949,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right))
+								unsafe {
+									return i64(i64(left.val) >> i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -1963,7 +1969,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right.val))
+								unsafe {
+									return i64(i64(left.val) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -1974,7 +1982,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right.val))
+								unsafe {
+									return i64(i64(left.val) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -1985,7 +1995,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) >> i64(right))
+								unsafe {
+									return i64(i64(left.val) >> i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2003,7 +2015,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) >> i64(right.val))
+								unsafe {
+									return i64(i64(left) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2014,7 +2028,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) >> i64(right.val))
+								unsafe {
+									return i64(i64(left) >> i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2025,7 +2041,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) >> i64(right))
+								unsafe {
+									return i64(i64(left) >> i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2050,7 +2068,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right.val))
+								unsafe {
+									return i64(i64(left.val) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2061,7 +2081,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right.val))
+								unsafe {
+									return i64(i64(left.val) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2072,7 +2094,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right))
+								unsafe {
+									return i64(i64(left.val) << i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2090,7 +2114,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right.val))
+								unsafe {
+									return i64(i64(left.val) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2101,7 +2127,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right.val))
+								unsafe {
+									return i64(i64(left.val) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2112,7 +2140,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left.val) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left.val) << i64(right))
+								unsafe {
+									return i64(i64(left.val) << i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2130,7 +2160,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) << i64(right.val))
+								unsafe {
+									return i64(i64(left) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2141,7 +2173,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right.val), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) << i64(right.val))
+								unsafe {
+									return i64(i64(left) << i64(right.val))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
@@ -2152,7 +2186,9 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting in ast.unsigned_integer_type_idxs {
 								return Uint{u64(left) + u64(right), i8(e.type_to_size(expecting))}
 							} else if expecting == ast.int_literal_type_idx {
-								return i64(i64(left) << i64(right))
+								unsafe {
+									return i64(i64(left) << i64(right))
+								}
 							} else {
 								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
 							}
