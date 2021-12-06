@@ -28,7 +28,7 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: voidptr(0) // &sfons.Context(0)
+		fons: voidptr(0) // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := C.sapp_desc{
