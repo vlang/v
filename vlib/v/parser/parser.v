@@ -1587,6 +1587,12 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		p.next()
 	} else {
 		name = p.check_name()
+		// support dot prefix `module.name: arg`
+		if p.tok.kind == .dot {
+			p.next()
+			name += '.'
+			name += p.check_name()
+		}
 		if p.tok.kind == .colon {
 			has_arg = true
 			p.next()
