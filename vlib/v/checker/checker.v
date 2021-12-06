@@ -5421,8 +5421,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
+				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+					addr := '&'.repeat(node.typ.nr_muls())
+					c.error('cannot cast `$expr_type_sym.name` to `$addr$type_sym.name`',
+						node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos) or {}
@@ -5734,7 +5736,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type) && !to_type.has_flag(.optional) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional) {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {

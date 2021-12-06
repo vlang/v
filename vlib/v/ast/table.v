@@ -1121,7 +1121,7 @@ pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bo
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
+pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) bool {
 	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
@@ -1129,14 +1129,14 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 		if var_sym.kind == .aggregate {
 			var_info := var_sym.info as Aggregate
 			for var_type in var_info.types {
-				if !t.sumtype_has_variant(parent, var_type) {
+				if !t.sumtype_has_variant(parent, var_type, is_as) {
 					return false
 				}
 			}
 			return true
 		} else {
 			for v in parent_info.variants {
-				if v.idx() == variant.idx() {
+				if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
 					return true
 				}
 			}
