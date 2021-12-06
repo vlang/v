@@ -1,12 +1,11 @@
 // This program displays the fibonacci sequence
-import os
+// import os
 
 fn main() {
 	// Check for user input
 	if os.args.len != 2 {
 		println('usage: fibonacci [rank]')
 
-		// Exit
 		return
 	}
 
