@@ -106,7 +106,9 @@ pub fn set_flip_vertically_on_load(val bool) {
 fn C.stbi_flip_vertically_on_write(flag int)
 fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride_in_bytes int)
 fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte)
-
+fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte)
+fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int)
+fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte)
 
 pub fn set_flip_vertically_on_write(val bool) {
 	C.stbi_flip_vertically_on_write(val)
@@ -119,5 +121,20 @@ pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, stride_in_
 
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ?bool {
 	C.stbi_write_bmp(&char(path.str), w , h , comp , buf)
+	return true
+}
+
+pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ?bool {
+	C.stbi_write_tga(&char(path.str), w , h , comp , buf)
+	return true
+}
+
+pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ?bool {
+	C.stbi_write_jpg(&char(path.str), w , h , comp , buf, quality)
+	return true
+}
+
+pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ?bool {
+	C.stbi_write_hdr(&char(path.str), w , h , comp , buf)
 	return true
 }
