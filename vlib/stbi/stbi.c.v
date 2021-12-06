@@ -21,19 +21,44 @@ pub mut:
 
 //-----------------------------------------------------------------------------
 //
+// Configuration functions
+//
+//-----------------------------------------------------------------------------
+fn C.stbi_set_flip_vertically_on_load(should_flip int)
+fn C.stbi_flip_vertically_on_write(flag int)
+
+pub fn set_flip_vertically_on_load(val bool) {
+	C.stbi_set_flip_vertically_on_load(val)
+}
+
+pub fn set_flip_vertically_on_write(val bool) {
+	C.stbi_flip_vertically_on_write(val)
+}
+//-----------------------------------------------------------------------------
+//
+// Utility functions
+//
+//-----------------------------------------------------------------------------
+fn C.stbi_image_free(retval_from_stbi_load &byte)
+
+pub fn (img &Image) free() {
+	C.stbi_image_free(img.data)
+}
+
+/*
+fn init() {
+	set_flip_vertically_on_load(false)
+}
+*/
+
+//-----------------------------------------------------------------------------
+//
 // Load functions
 //
 //-----------------------------------------------------------------------------
 fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 fn C.stbi_load_from_memory(buffer &byte, len int, x &int, y &int, channels_in_file &int, desired_channels int) &byte
-
-fn C.stbi_image_free(retval_from_stbi_load &byte)
-fn C.stbi_set_flip_vertically_on_load(should_flip int)
-
-fn init() {
-	set_flip_vertically_on_load(false)
-}
 
 pub fn load(path string) ?Image {
 	ext := path.all_after_last('.')
@@ -70,71 +95,43 @@ pub fn load_from_memory(buf &byte, bufsize int) ?Image {
 	return res
 }
 
-pub fn (img &Image) free() {
-	C.stbi_image_free(img.data)
-}
-
-/*
-pub fn (img Image) tex_image_2d() {
-	mut rgb_flag := C.GL_RGB
-	if img.ext == 'png' {
-		rgb_flag = C.GL_RGBA
-	}
-	C.glTexImage2D(C.GL_TEXTURE_2D, 0, rgb_flag, img.width, img.height, 0,
-		rgb_flag, C.GL_UNSIGNED_BYTE,	img.data)
-}
-*/
-
-pub fn set_flip_vertically_on_load(val bool) {
-	C.stbi_set_flip_vertically_on_load(val)
-}
-
 //-----------------------------------------------------------------------------
 //
 // Write functions
 //
 //-----------------------------------------------------------------------------
+fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride_in_bytes int) int
+fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte) int
+fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte) int
+fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int) int
+fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int
 
-/*
-    int stbi_write_png(char const *filename, int w, int h, int comp, const void *data, int stride_in_bytes);
-     int stbi_write_bmp(char const *filename, int w, int h, int comp, const void *data);
-     int stbi_write_tga(char const *filename, int w, int h, int comp, const void *data);
-     int stbi_write_jpg(char const *filename, int w, int h, int comp, const void *data, int quality);
-     int stbi_write_hdr(char const *filename, int w, int h, int comp, const float *data);
-*/
-
-fn C.stbi_flip_vertically_on_write(flag int)
-fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride_in_bytes int)
-fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte)
-fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte)
-fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int)
-fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte)
-
-pub fn set_flip_vertically_on_write(val bool) {
-	C.stbi_flip_vertically_on_write(val)
+pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, stride_in_bytes int) ? {
+	if 0 == C.stbi_write_png(&char(path.str), w , h , comp , buf, stride_in_bytes) {
+		return error('stbi_image failed to write png file')
+	}
 }
 
-pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, stride_in_bytes int) ?bool {
-	C.stbi_write_png(&char(path.str), w , h , comp , buf, stride_in_bytes)
-	return true
+pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ? {
+	if 0 == C.stbi_write_bmp(&char(path.str), w , h , comp , buf) {
+		return error('stbi_image failed to write bmp file')
+	}
 }
 
-pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ?bool {
-	C.stbi_write_bmp(&char(path.str), w , h , comp , buf)
-	return true
+pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
+	if 0 == C.stbi_write_tga(&char(path.str), w , h , comp , buf){
+		return error('stbi_image failed to write tga file')
+	}
 }
 
-pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ?bool {
-	C.stbi_write_tga(&char(path.str), w , h , comp , buf)
-	return true
+pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ? {
+	if 0 == C.stbi_write_jpg(&char(path.str), w , h , comp , buf, quality){
+		return error('stbi_image failed to write jpg file')
+	}
 }
 
-pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ?bool {
-	C.stbi_write_jpg(&char(path.str), w , h , comp , buf, quality)
-	return true
-}
-
-pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ?bool {
-	C.stbi_write_hdr(&char(path.str), w , h , comp , buf)
-	return true
+pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ? {
+	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
+		return error('stbi_image failed to write hdr file')
+	}
 }
