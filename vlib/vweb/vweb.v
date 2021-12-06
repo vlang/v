@@ -244,6 +244,7 @@ pub fn (mut ctx Context) json<T>(j T) Result {
 	return Result{}
 }
 
+// Response HTTP_OK with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty<T>(j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
