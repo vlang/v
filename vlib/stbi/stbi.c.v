@@ -6,6 +6,7 @@ module stbi
 
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
+#include "stb_image_write.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
@@ -18,14 +19,16 @@ pub mut:
 	ext         string
 }
 
+//-----------------------------------------------------------------------------
+//
+// Load functions
+//
+//-----------------------------------------------------------------------------
 fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &byte
-
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &byte
-
 fn C.stbi_load_from_memory(buffer &byte, len int, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 
 fn C.stbi_image_free(retval_from_stbi_load &byte)
-
 fn C.stbi_set_flip_vertically_on_load(should_flip int)
 
 fn init() {
@@ -84,4 +87,37 @@ pub fn (img Image) tex_image_2d() {
 
 pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)
+}
+
+//-----------------------------------------------------------------------------
+//
+// Write functions
+//
+//-----------------------------------------------------------------------------
+
+/*
+    int stbi_write_png(char const *filename, int w, int h, int comp, const void *data, int stride_in_bytes);
+     int stbi_write_bmp(char const *filename, int w, int h, int comp, const void *data);
+     int stbi_write_tga(char const *filename, int w, int h, int comp, const void *data);
+     int stbi_write_jpg(char const *filename, int w, int h, int comp, const void *data, int quality);
+     int stbi_write_hdr(char const *filename, int w, int h, int comp, const float *data);
+*/
+
+fn C.stbi_flip_vertically_on_write(flag int)
+fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride_in_bytes int)
+fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte)
+
+
+pub fn set_flip_vertically_on_write(val bool) {
+	C.stbi_flip_vertically_on_write(val)
+}
+
+pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, stride_in_bytes int) ?bool {
+	C.stbi_write_png(&char(path.str), w , h , comp , buf, stride_in_bytes)
+	return true
+}
+
+pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ?bool {
+	C.stbi_write_bmp(&char(path.str), w , h , comp , buf)
+	return true
 }
