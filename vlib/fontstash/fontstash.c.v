@@ -64,7 +64,7 @@ pub fn (s &C.FONScontext) reset_atlas(width int, height int) int {
 // Add fonts
 [inline]
 pub fn (s &C.FONScontext) get_font_by_name(name string) int {
-	return C.fonsGetFontByName(s, name.str)
+	return C.fonsGetFontByName(s, &char(name.str))
 }
 
 [inline]
@@ -74,7 +74,7 @@ pub fn (s &C.FONScontext) add_fallback_font(base int, fallback int) int {
 
 [inline]
 pub fn (s &C.FONScontext) add_font_mem(name string, data []byte, free_data bool) int {
-	return C.fonsAddFontMem(s, name.str, data.data, data.len, int(free_data))
+	return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, int(free_data))
 }
 
 // State handling
@@ -127,13 +127,13 @@ pub fn (s &C.FONScontext) set_font(font int) {
 // Draw text
 [inline]
 pub fn (s &C.FONScontext) draw_text(x f32, y f32, text string) f32 {
-	return C.fonsDrawText(s, x, y, text.str, &char(0))
+	return C.fonsDrawText(s, x, y, &char(text.str), &char(0))
 }
 
 // Measure text
 [inline]
 pub fn (s &C.FONScontext) text_bounds(x f32, y f32, text string, bounds &f32) f32 {
-	return C.fonsTextBounds(s, x, y, text.str, &char(0), bounds)
+	return C.fonsTextBounds(s, x, y, &char(text.str), &char(0), bounds)
 }
 
 [inline]
