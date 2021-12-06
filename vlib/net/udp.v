@@ -237,7 +237,11 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 		}
 	}
 	match raddr.family() {
-		.ip, .ip6 {
+		.ip {
+			// Use ip dualstack
+			addr = new_ip(0, addr_ip_any)
+		}
+		.ip6 {
 			// Use ip6 dualstack
 			addr = new_ip6(0, addr_ip6_any)
 		}

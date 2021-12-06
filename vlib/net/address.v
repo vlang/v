@@ -164,8 +164,15 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	if addr[0] == `:` {
-		// Use in6addr_any
-		return [new_ip6(port, net.addr_ip6_any)]
+		match family {
+			.ip6 {
+				return [new_ip6(port, net.addr_ip6_any)]
+			}
+			.ip, .unspec {
+				return [new_ip(port, net.addr_ip_any)]
+			}
+			else {}
+		}
 	}
 
 	mut hints := C.addrinfo{
@@ -200,7 +207,18 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	for result := results; !isnil(result); result = result.ai_next {
 		match AddrFamily(result.ai_family) {
-			.ip, .ip6 {
+			.ip {
+				new_addr := Addr{
+					addr: AddrData{
+						Ip: Ip{}
+					}
+				}
+				unsafe {
+					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
+				}
+				addresses << new_addr
+			}
+			.ip6 {
 				new_addr := Addr{
 					addr: AddrData{
 						Ip6: Ip6{}
