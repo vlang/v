@@ -723,7 +723,7 @@ fn (mut b Builder) cc_linux_cross() {
 		'-o $b.pref.out_name', '-m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
 		'$sysroot/crt1.o $sysroot/crti.o $obj_file', '-lc', '-lcrypto', '-lssl', '-lpthread',
-		'$sysroot/crtn.o']
+		'$sysroot/crtn.o', '-lm']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
