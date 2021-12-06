@@ -910,7 +910,7 @@ fn (mut app App) showfps() {
 fn main() {
 	mut app := &App{}
 	app.new_game()
-	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}

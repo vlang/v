@@ -12,6 +12,7 @@ mut:
 	font_normal int
 }
 
+[console]
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
@@ -46,7 +47,9 @@ fn init(mut state AppState) {
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
-	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
+	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
+		'RobotoMono-Regular.ttf')))
+	{
 		println('loaded font: $bytes.len')
 		state.font_normal = C.fonsAddFontMem(state.fons, c'sans', bytes.data, bytes.len,
 			false)
