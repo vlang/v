@@ -83,6 +83,7 @@ fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_ch
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 fn C.stbi_load_from_memory(buffer &byte, len int, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 
+// load load an image from a path
 pub fn load(path string) ?Image {
 	ext := path.all_after_last('.')
 	mut res := Image{
@@ -104,6 +105,7 @@ pub fn load(path string) ?Image {
 	return res
 }
 
+// load_from_memory load an image from a memory buffer
 pub fn load_from_memory(buf &byte, bufsize int) ?Image {
 	mut res := Image{
 		ok: true
@@ -138,18 +140,23 @@ pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, row_stride
 	}
 }
 
+// stbi_write_png write on path a BMP file
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write bmp file to "$path"')
 	}
 }
 
+// stbi_write_png write on path a TGA file
 pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write tga file to "$path"')
 	}
 }
 
+// stbi_write_png write on path a JPG file
+// quality select teh compression quality of the JPG
+// quality is between 1 and 100. Higher quality looks better but results in a bigger image.
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ? {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
 		return error('stbi_image failed to write jpg file to "$path"')
