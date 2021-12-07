@@ -973,7 +973,6 @@ pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 		return existing_idx
 	}
 
-	promise := t.find_type('Promise') or { panic('Promise type not found') }
 	promise_type := TypeSymbol{
 		parent_idx: t.type_idxs['Promise']
 		kind: .struct_
