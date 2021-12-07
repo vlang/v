@@ -17,7 +17,7 @@ const (
 		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
 		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
 		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map', 'document']
+		'Array', 'Map', 'document', 'Promise']
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
@@ -1679,13 +1679,13 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 }
 
 fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
-	g.writeln('await new Promise(function(resolve){')
+	g.writeln('new _v_Promise({promise: new Promise(function(resolve){')
 	g.inc_indent()
 	g.write('resolve(')
 	g.expr(node.call_expr)
 	g.write(');')
 	g.dec_indent()
-	g.writeln('});')
+	g.writeln('})});')
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {

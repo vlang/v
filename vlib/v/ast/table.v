@@ -831,6 +831,26 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 }
 
 [inline]
+pub fn (t &Table) promise_name(return_type Type) string {
+	if return_type.idx() == void_type_idx {
+		return 'Promise<JS.Any,JS.Any>'
+	}
+
+	return_type_sym := t.get_type_symbol(return_type)
+	return 'Promise<$return_type_sym.name, JS.Any>'
+}
+
+[inline]
+pub fn (t &Table) promise_cname(return_type Type) string {
+	if return_type == void_type {
+		return 'Promise_Any_Any'
+	}
+
+	return_type_sym := t.get_type_symbol(return_type)
+	return 'Promise_${return_type_sym.name}_Any'
+}
+
+[inline]
 pub fn (t &Table) thread_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
 		if return_type.has_flag(.optional) {
@@ -941,6 +961,31 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 		}
 	}
 	return t.register_type_symbol(thread_typ)
+}
+
+pub fn (mut t Table) find_or_register_promise(return_type Type) int {
+	name := t.promise_name(return_type)
+
+	cname := t.promise_cname(return_type)
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+
+	promise := t.find_type('Promise') or { panic('Promise type not found') }
+	promise_type := TypeSymbol{
+		parent_idx: t.type_idxs['Promise']
+		kind: .struct_
+		name: name
+		cname: cname
+		info: Struct{
+			concrete_types: [return_type, t.type_idxs['JS.Any']]
+		}
+	}
+
+	// register
+	return t.register_type_symbol(promise_type)
 }
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
