@@ -99,7 +99,7 @@ pub fn load(path string) ?Image {
 		res.nr_channels = 4
 	}
 	if isnil(res.data) {
-		return error('stbi image failed to load from "$path"')
+		return error('stbi_image failed to load from "$path"')
 	}
 	return res
 }
@@ -113,7 +113,7 @@ pub fn load_from_memory(buf &byte, bufsize int) ?Image {
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
 		flag)
 	if isnil(res.data) {
-		return error('stbi image failed to load from memory')
+		return error('stbi_image failed to load from memory')
 	}
 	return res
 }
@@ -130,34 +130,36 @@ fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, qualit
 
 // fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
 
+// stbi_write_png write on path a PNG file
+// row_stride_in_bytes is usually equal to: w * comp
 pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, row_stride_in_bytes int) ? {
 	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
-		return error('stbi_image failed to write png file')
+		return error('stbi_image failed to write png file to "$path"')
 	}
 }
 
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
-		return error('stbi_image failed to write bmp file')
+		return error('stbi_image failed to write bmp file to "$path"')
 	}
 }
 
 pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
-		return error('stbi_image failed to write tga file')
+		return error('stbi_image failed to write tga file to "$path"')
 	}
 }
 
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ? {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
-		return error('stbi_image failed to write jpg file')
+		return error('stbi_image failed to write jpg file to "$path"')
 	}
 }
 
 /*
 pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
-		return error('stbi_image failed to write hdr file')
+		return error('stbi_image failed to write hdr file to "$path"')
 	}
 }
 */
