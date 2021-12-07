@@ -26,6 +26,9 @@ pub mut:
 //-----------------------------------------------------------------------------
 fn C.stbi_set_flip_vertically_on_load(should_flip int)
 fn C.stbi_flip_vertically_on_write(flag int)
+fn C.set_png_compression_level(level int)
+fn C.write_force_png_filter(level int)
+fn C.write_tga_with_rle(level int)
 
 pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)
@@ -34,6 +37,32 @@ pub fn set_flip_vertically_on_load(val bool) {
 pub fn set_flip_vertically_on_write(val bool) {
 	C.stbi_flip_vertically_on_write(val)
 }
+
+// set_png_compression_level set the PNG compression level during the writing process
+// defaults to 8; set to higher for more compression
+pub fn set_png_compression_level(level int){
+	C.set_png_compression_level(level)
+}
+
+// write_force_png_filter defaults to -1; set to 0..5 to force a filter mode
+// the filter algorithms that can be applied before compression. The purpose of these filters is to prepare the image data for optimum compression.
+// Type    Name
+//   
+// 0       None
+// 1       Sub
+// 2       Up
+// 3       Average
+// 4       Paeth
+pub fn write_force_png_filter(level int){
+	C.write_force_png_filter(level)
+}
+
+// stbi_write_tga_with_rle enable/disable the TGA RLE during the writing process
+// defaults to true; set to false to disable RLE in tga 
+pub fn write_tga_with_rle(flag bool){
+	C.write_tga_with_rle(if flag {1} else {0})
+}
+
 //-----------------------------------------------------------------------------
 //
 // Utility functions
@@ -44,12 +73,6 @@ fn C.stbi_image_free(retval_from_stbi_load &byte)
 pub fn (img &Image) free() {
 	C.stbi_image_free(img.data)
 }
-
-/*
-fn init() {
-	set_flip_vertically_on_load(false)
-}
-*/
 
 //-----------------------------------------------------------------------------
 //
@@ -104,10 +127,10 @@ fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride
 fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte) int
 fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte) int
 fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int) int
-fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int
+//fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
 
-pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, stride_in_bytes int) ? {
-	if 0 == C.stbi_write_png(&char(path.str), w , h , comp , buf, stride_in_bytes) {
+pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, row_stride_in_bytes int) ? {
+	if 0 == C.stbi_write_png(&char(path.str), w , h , comp , buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file')
 	}
 }
@@ -130,8 +153,10 @@ pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality in
 	}
 }
 
+/*
 pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ? {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
 		return error('stbi_image failed to write hdr file')
 	}
 }
+*/
