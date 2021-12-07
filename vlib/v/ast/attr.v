@@ -9,6 +9,7 @@ pub enum AttrKind {
 	plain // [name]
 	string // ['name']
 	number // [123]
+	bool // [true] || [false]
 	comptime_define // [if name]
 }
 
@@ -41,7 +42,7 @@ pub fn (a Attr) str() string {
 		a.name
 	}
 	s += match a.kind {
-		.plain, .number { arg }
+		.plain, .number, .bool { arg }
 		.string { "'$arg'" }
 		.comptime_define { 'if $arg' }
 	}
