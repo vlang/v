@@ -40,27 +40,27 @@ pub fn set_flip_vertically_on_write(val bool) {
 
 // set_png_compression_level set the PNG compression level during the writing process
 // defaults to 8; set to higher for more compression
-pub fn set_png_compression_level(level int){
+pub fn set_png_compression_level(level int) {
 	C.set_png_compression_level(level)
 }
 
 // write_force_png_filter defaults to -1; set to 0..5 to force a filter mode
 // the filter algorithms that can be applied before compression. The purpose of these filters is to prepare the image data for optimum compression.
 // Type    Name
-//   
+//
 // 0       None
 // 1       Sub
 // 2       Up
 // 3       Average
 // 4       Paeth
-pub fn write_force_png_filter(level int){
+pub fn write_force_png_filter(level int) {
 	C.write_force_png_filter(level)
 }
 
 // stbi_write_tga_with_rle enable/disable the TGA RLE during the writing process
-// defaults to true; set to false to disable RLE in tga 
-pub fn write_tga_with_rle(flag bool){
-	C.write_tga_with_rle(if flag {1} else {0})
+// defaults to true; set to false to disable RLE in tga
+pub fn write_tga_with_rle(flag bool) {
+	C.write_tga_with_rle(if flag { 1 } else { 0 })
 }
 
 //-----------------------------------------------------------------------------
@@ -127,28 +127,29 @@ fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride
 fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte) int
 fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte) int
 fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int) int
-//fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
+
+// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
 
 pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, row_stride_in_bytes int) ? {
-	if 0 == C.stbi_write_png(&char(path.str), w , h , comp , buf, row_stride_in_bytes) {
+	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file')
 	}
 }
 
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ? {
-	if 0 == C.stbi_write_bmp(&char(path.str), w , h , comp , buf) {
+	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write bmp file')
 	}
 }
 
 pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
-	if 0 == C.stbi_write_tga(&char(path.str), w , h , comp , buf){
+	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write tga file')
 	}
 }
 
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ? {
-	if 0 == C.stbi_write_jpg(&char(path.str), w , h , comp , buf, quality){
+	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
 		return error('stbi_image failed to write jpg file')
 	}
 }
