@@ -2560,7 +2560,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		typ := c.expr(node.args[0].expr)
 		tsym := c.table.get_type_symbol(typ)
 
-		if !tsym.name.starts_with('js.promise.Promise<') {
+		if !tsym.name.starts_with('Promise<') {
 			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
 			return ast.void_type
 		}
@@ -5040,7 +5040,12 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
-	return c.table.find_or_register_thread(ret_type)
+
+	if c.pref.backend.is_js() {
+		return c.table.find_or_register_promise(ret_type)
+	} else {
+		return c.table.find_or_register_thread(ret_type)
+	}
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
@@ -5421,8 +5426,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
+				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+					addr := '&'.repeat(node.typ.nr_muls())
+					c.error('cannot cast `$expr_type_sym.name` to `$addr$type_sym.name`',
+						node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos) or {}
@@ -5734,7 +5741,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type) && !to_type.has_flag(.optional) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional) {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {

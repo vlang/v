@@ -1,4 +1,4 @@
-module promise
+module builtin
 
 pub interface JS.Promise {
 	then(onFullfilled JS.Any, onRejected JS.Any)
@@ -19,7 +19,7 @@ mut:
 	promise JS.Promise [noinit]
 }
 
-pub fn new<T, E>(executor fn (resolve fn (T), reject fn (E))) Promise<T, E> {
+pub fn promise_new<T, E>(executor fn (resolve fn (T), reject fn (E))) Promise<T, E> {
 	promise := JS.Promise.prototype.constructor(executor)
 	return Promise<T, E>{promise}
 }
@@ -40,20 +40,20 @@ pub fn (p Promise<T, E>) finally(callback fn ()) Promise<int, int> {
 }
 
 // reject<E> returns promise which was rejected because of specified error
-pub fn reject<E>(error E) Promise<int, E> {
+pub fn promise_reject<E>(error E) Promise<int, E> {
 	promise := JS.Promise.reject(error)
 	return Promise<int, E>{promise}
 }
 
 // resolve<E> returns promise which was resolved with specified value
-pub fn resolve<T>(result T) Promise<T, int> {
+pub fn promise_resolve<T>(result T) Promise<T, int> {
 	promise := JS.Promise.resolve(error)
 	return Promise<T, int>{promise}
 }
 
 // race returns returns a promise that fulfills or rejects as soon as one of
 //  the promises in an iterable fulfills or rejects, with the value or reason from that promise.
-pub fn race<T, E>(promises []Promise<T, E>) Promise<T, E> {
+pub fn promise_race<T, E>(promises []Promise<T, E>) Promise<T, E> {
 	promises_ := JS.Array.prototype.constructor()
 
 	for elem in promises {

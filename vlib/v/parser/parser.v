@@ -1587,20 +1587,29 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		p.next()
 	} else {
 		name = p.check_name()
+		// support dot prefix `module.name: arg`
+		if p.tok.kind == .dot {
+			p.next()
+			name += '.'
+			name += p.check_name()
+		}
 		if p.tok.kind == .colon {
 			has_arg = true
 			p.next()
-			// `name: arg`
-			if p.tok.kind == .name {
+			if p.tok.kind == .name { // `name: arg`
 				kind = .plain
 				arg = p.check_name()
-			} else if p.tok.kind == .number {
+			} else if p.tok.kind == .number { // `name: 123`
 				kind = .number
 				arg = p.tok.lit
 				p.next()
 			} else if p.tok.kind == .string { // `name: 'arg'`
 				kind = .string
 				arg = p.tok.lit
+				p.next()
+			} else if p.tok.kind == .key_true || p.tok.kind == .key_false { // `name: true`
+				kind = .bool
+				arg = p.tok.kind.str()
 				p.next()
 			} else {
 				p.error('unexpected $p.tok, an argument is expected after `:`')
