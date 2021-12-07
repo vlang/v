@@ -2560,7 +2560,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		typ := c.expr(node.args[0].expr)
 		tsym := c.table.get_type_symbol(typ)
 
-		if !tsym.name.starts_with('js.promise.Promise<') {
+		if !tsym.name.starts_with('Promise<') {
 			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
 			return ast.void_type
 		}
@@ -5040,7 +5040,12 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
-	return c.table.find_or_register_thread(ret_type)
+
+	if c.pref.backend.is_js() {
+		return c.table.find_or_register_promise(ret_type)
+	} else {
+		return c.table.find_or_register_thread(ret_type)
+	}
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
