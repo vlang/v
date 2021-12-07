@@ -260,7 +260,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
-      PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
+      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
