@@ -260,6 +260,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
+      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -271,6 +272,7 @@ jobs:
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
           brew install postgresql openssl
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+          echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
       - name: Build V
         run: make -j4 && ./v -cg -cstrict -o v cmd/v
       - name: Run sanitizers

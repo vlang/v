@@ -5,7 +5,8 @@ module openssl
 // openssl from libssl-dev. If there is no local openssl,
 // the next flag is harmless, since it will still use the
 // (older) system openssl.
-#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+#pkgconfig openssl
+#flag linux -L/usr/local/lib
 #flag windows -l libssl -l libcrypto
 #flag -lssl -lcrypto
 #flag linux -ldl -lpthread
