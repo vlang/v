@@ -126,7 +126,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.get_type_symbol(typ)
-	if typ == ast.string_type {
+	if typ == ast.string_type && g.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
 			if expr.is_auto_deref_var() {
@@ -153,7 +153,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
 			if expr.obj is ast.Var {
-				if g.comptime_var_type_map.len > 0 {
+				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
 					exp_typ = expr.obj.typ
 				} else if expr.obj.smartcasts.len > 0 {
 					cast_sym := g.table.get_type_symbol(expr.obj.smartcasts.last())
