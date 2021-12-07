@@ -147,11 +147,21 @@ fn main() {
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
 	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
-	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
+	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
+	all_test_files << test_js_files
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
+
+	if !testing.is_node_present {
+		testroot := vroot + os.path_separator
+		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
+	}
+	testing.find_started_process('mysqld') or {
+		tsession.skip_files << 'vlib/mysql/mysql_orm_test.v'
+	}
+	testing.find_started_process('postgres') or { tsession.skip_files << 'vlib/pg/pg_orm_test.v' }
 
 	if github_job == 'windows-tcc' {
 		// TODO: fix these ASAP
