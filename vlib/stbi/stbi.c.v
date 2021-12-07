@@ -7,6 +7,7 @@ module stbi
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
