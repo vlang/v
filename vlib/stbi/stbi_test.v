@@ -2,7 +2,7 @@ import os
 import stbi
 
 fn test_stbi_read_write() {
-	vroot := @VMODROOT
+	vroot := @VEXEROOT
 	path := os.join_path(vroot, 'examples', 'assets', 'logo.png')
 	println('Source path: $path')
 	d_s := stbi.load(path) or { panic(err) }
