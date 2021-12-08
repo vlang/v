@@ -957,6 +957,7 @@ pub mut:
 	key_type  Type
 	val_type  Type
 	cond_type Type
+	high_type Type
 	kind      Kind   // array/map/string
 	label     string // `label: for {`
 	scope     &Scope
