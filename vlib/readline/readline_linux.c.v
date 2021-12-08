@@ -200,6 +200,9 @@ pub fn read_line(prompt string) ?string {
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
 fn (r Readline) analyse(c int) Action {
+	if c > 255 {
+		return Action.insert_character
+	}
 	match byte(c) {
 		`\0`, 0x3, 0x4, 255 {
 			return .eof
