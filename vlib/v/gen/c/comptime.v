@@ -62,12 +62,12 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 
+		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		if is_html {
 			// return vweb html template
-			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$fn_name); strings__Builder_free(&sb_$fn_name); string_free(&_tmpl_res_$fn_name);')
 		} else {
 			// return $tmpl string
-			fn_name := g.fn_decl.name.replace('.', '__')
 			g.write(cur_line)
 			if g.inside_return {
 				g.write('return ')
