@@ -192,7 +192,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	tmp_fn_name := p.cur_fn_name.replace('.', '__')
+	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
