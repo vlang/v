@@ -36,7 +36,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						'getcwd' {
 							unsafe {
 								return Ptr{
-									val: C.getcwd((args[0] as Ptr).val as &char, args[1].int_val())
+									val: C.getcwd((args[0] as Ptr).val as voidptr, args[1].int_val())
 								}
 							}
 						}
