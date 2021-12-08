@@ -8729,7 +8729,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return expr.val.i64()
 		}
 		ast.StringLiteral {
-			return expr.val
+			return util.smart_quote(expr.val, expr.is_raw)
 		}
 		ast.CharLiteral {
 			runes := expr.val.runes()
