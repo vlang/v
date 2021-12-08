@@ -573,7 +573,7 @@ fn test_generic_detection() {
 	})
 
 	// this final case challenges your scanner :-)
-	assert boring_function<TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>{
+	assert boring_function<TandU<TandU<int, MultiLevel<Empty_>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>{
 		t: TandU<int,MultiLevel<Empty_>>{
 			t: 20
 			u: MultiLevel<Empty_>{
