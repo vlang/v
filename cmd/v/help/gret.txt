@@ -1,0 +1,19 @@
+Usage:
+  v gret [options] PATH [PATH]
+
+Description:
+  Dump and/or compare rendered frames of `gg` based apps
+
+Examples:
+  Generate screenshots to `/tmp/test`
+    v gret /tmp/test
+  Generate and compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
+    v gret /tmp/src /tmp/dst
+  Compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
+    v gret --compare-only /tmp/src /tmp/dst
+
+
+Options:
+  -h, --help                Show this help text.
+  -v, --verbose             Be verbose about the tool's progress.
+  -c, --compare-only        Don't generate screenshots - only compare input directories
