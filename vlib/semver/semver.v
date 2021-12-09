@@ -90,6 +90,16 @@ pub fn (v1 Version) le(v2 Version) bool {
 	return compare_le(v1, v2)
 }
 
+// str returns the `string` representation of the `Version`.
+pub fn (ver Version) str() string {
+	common_string := '${ver.major}.${ver.minor}.$ver.patch'
+
+	prerelease_string := if ver.prerelease.len > 0 { '-$ver.prerelease' } else { '' }
+	metadata_string := if ver.metadata.len > 0 { '+$ver.metadata' } else { '' }
+
+	return '$common_string$prerelease_string$metadata_string'
+}
+
 // * Utilites.
 // coerce converts the `input` version to a `Version` struct.
 // coerce will strip any contents *after* the parsed version string:
