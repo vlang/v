@@ -25,6 +25,7 @@ const (
 		'doc',
 		'doctor',
 		'fmt',
+		'gret',
 		'repl',
 		'self',
 		'setup-freetype',
