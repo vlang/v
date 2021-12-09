@@ -34,32 +34,32 @@ Examples:
 	runtime_os = os.user_os()
 	v_root     = os.real_path(@VMODROOT)
 	build_list = [
-		//'examples/snek/snek.v'
+		//'examples/snek/snek.v' // Inacurrate captures
 		'examples/game_of_life/life_gg.v'
-		//'examples/tetris/tetris.v'
-		//'examples/fireworks/fireworks.v'
+		//'examples/tetris/tetris.v' // Uses random start tile
+		//'examples/fireworks/fireworks.v' // Uses rand for placement
 		'examples/gg/bezier.v',
 		'examples/gg/mandelbrot.v',
 		'examples/gg/rectangles.v',
 		'examples/gg/set_pixels.v'
-		//'examples/gg/random.v'
-		//'examples/gg/stars.v'
+		//'examples/gg/random.v' // Always random
+		//'examples/gg/stars.v' // Uses rand for placement
 		'examples/gg/raven_text_rendering.v',
 		'examples/gg/worker_thread.v',
 		'examples/gg/polygons.v',
 		'examples/gg/bezier_anim.v',
 		'examples/gg/drag_n_drop.v'
-		//'examples/clock/clock.v'
-		//'examples/hot_reload/bounce.v'
-		//'examples/hot_reload/graph.v'
-		//'examples/flappylearning/game.v'
-		//'examples/2048/2048.v'
+		//'examples/clock/clock.v' // Can only be tested on exact points in time :)
+		//'examples/hot_reload/bounce.v' // Inacurrate captures
+		//'examples/hot_reload/graph.v' // Inacurrate captures
+		//'examples/flappylearning/game.v' // Random movement
+		//'examples/2048/2048.v' // Random start tiles
 		'examples/ttf_font/example_ttf.v'
-		//'examples/sokol/06_obj_viewer/show_obj.v'
-		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
-		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
-		//'examples/sokol/02_cubes_glsl/cube_glsl.v'
-		//'examples/sokol/05_instancing_glsl/rt_glsl.v'
+		//'examples/sokol/06_obj_viewer/show_obj.v' // Inacurrate captures
+		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v' // Inacurrate captures
+		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v' // Inacurrate captures
+		//'examples/sokol/02_cubes_glsl/cube_glsl.v' // Inacurrate captures
+		//'examples/sokol/05_instancing_glsl/rt_glsl.v' // Inacurrate captures
 		'examples/sokol/01_cubes/cube.v',
 	]
 )
