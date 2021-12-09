@@ -65,6 +65,7 @@ const (
 		'create',
 		'doctor',
 		'fmt',
+		'gret',
 		'repl',
 		'self',
 		'setup-freetype',
