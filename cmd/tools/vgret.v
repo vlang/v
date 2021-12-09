@@ -236,7 +236,7 @@ fn take_screenshots(opt Options, app string, out_path string) ?[]string {
 		os.setenv('VGG_SCREENSHOT_FRAMES', '5', true)
 		result := os.execute('$v_exe -d gg_record run "$app"')
 		if result.exit_code != 0 {
-			return error('Failed taking screenshot of `$app`')
+			return error('Failed taking screenshot of `$app`:\n$result.output')
 		}
 	}
 	mut screenshots := []string{}
