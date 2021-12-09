@@ -1986,17 +1986,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.position())
 		return ast.void_type
 	}
-	mut has_generic := false // x.foo<T>() instead of x.foo<int>()
 	mut concrete_types := []ast.Type{}
 	for concrete_type in node.concrete_types {
 		if concrete_type.has_flag(.generic) {
-			has_generic = true
 			concrete_types << c.unwrap_generic(concrete_type)
 		} else {
 			concrete_types << concrete_type
 		}
 	}
-	if has_generic {
+	if concrete_types.len > 0 {
 		if c.table.register_fn_concrete_types(node.name, concrete_types) {
 			c.need_recheck_generic_fns = true
 		}
@@ -2539,13 +2537,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			node.pos)
 	}
-	if has_generic {
+	if concrete_types.len > 0 {
 		mut no_exists := true
-		if c.mod != '' && !fn_name.contains('.') {
-			// Need to prepend the module when adding a generic type to a function
-			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
-		} else {
+		if fn_name.contains('.') {
 			no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+		} else {
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
+			// if the generic fn does not exist in the current fn calling module, continue
+			// to look in builtin module
+			if !no_exists {
+				no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+			}
 		}
 		if no_exists {
 			c.need_recheck_generic_fns = true

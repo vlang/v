@@ -1153,8 +1153,12 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
+pub fn (mut t Table) register_fn_generic_types(fn_name string) {
+	t.fn_generic_types[fn_name] = [][]Type{}
+}
+
 pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
-	mut a := t.fn_generic_types[fn_name]
+	mut a := t.fn_generic_types[fn_name] or { return false }
 	if types in a {
 		return false
 	}
