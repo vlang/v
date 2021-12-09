@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 //
 // vgret (V Graphics REgression Tool) aids in generating screenshots of various graphical `gg`
-// based V applications, in structured directory hierarchy, with the intend of either:
+// based V applications, in a structured directory hierarchy, with the intent of either:
 // * Generate a directory structure of screenshots/images to test against
 //   (which, as an example, could later be pushed to a remote git repository)
 // * Test for *visual* differences between two, structurally equal, directories
