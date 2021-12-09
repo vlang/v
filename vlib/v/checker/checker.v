@@ -7463,7 +7463,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
-		if !right_type.is_pointer() {
+		if !right_type.is_pointer() && !c.pref.translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
 		}
