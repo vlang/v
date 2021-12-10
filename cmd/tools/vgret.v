@@ -242,7 +242,9 @@ fn take_screenshots(opt Options, app string, out_path string) ?[]string {
 	mut screenshots := []string{}
 	shots := os.ls(out_path) or { return error('Failed listing dir `$out_path`') }
 	for shot in shots {
-		screenshots << os.join_path(out_path, shot)
+		if shot.starts_with(os.file_name(app).all_before_last('.')) {
+			screenshots << os.join_path(out_path, shot)
+		}
 	}
 	return screenshots
 }
