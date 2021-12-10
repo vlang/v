@@ -41,7 +41,7 @@ Examples:
 		'examples/gg/bezier.v',
 		'examples/gg/mandelbrot.v',
 		'examples/gg/rectangles.v',
-		'examples/gg/set_pixels.v'
+		//'examples/gg/set_pixels.v' // Has problem in CI software render (blank, no pixels sat)
 		//'examples/gg/random.v' // Always random
 		//'examples/gg/stars.v' // Uses rand for placement
 		'examples/gg/raven_text_rendering.v',
@@ -206,7 +206,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 			'.diff.tif')
-		diff_cmd := '$idiff_exe -fail 0.002 -failpercent 1 -warn 0.002 -warnpercent 1 -o "$diff_file" "$src" "$target"'
+		diff_cmd := '$idiff_exe -fail 0.002 -failpercent 1 -warn 0.002 -warnpercent 1 -od -o "$diff_file" -abs "$src" "$target"'
 		result := os.execute(diff_cmd)
 		if opt.verbose && result.exit_code == 0 {
 			eprintln('Running: $diff_cmd')
