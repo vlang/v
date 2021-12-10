@@ -30,6 +30,8 @@
 // You can emulate or test these inaccuracies to some extend locally by simply running the test from a terminal using
 // your physical X11 session display (Usually DISPLAY=:0).
 //
+// Read more about the options of `idiff` here: https://openimageio.readthedocs.io/en/latest/idiff.html
+//
 import os
 import flag
 
