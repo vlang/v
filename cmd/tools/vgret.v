@@ -54,12 +54,12 @@ Examples:
 		//'examples/hot_reload/graph.v' // Inacurrate captures
 		//'examples/flappylearning/game.v' // Random movement
 		//'examples/2048/2048.v' // Random start tiles
-		'examples/ttf_font/example_ttf.v'
-		//'examples/sokol/06_obj_viewer/show_obj.v' // Inacurrate captures
-		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v' // Inacurrate captures
-		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v' // Inacurrate captures
-		//'examples/sokol/02_cubes_glsl/cube_glsl.v' // Inacurrate captures
-		//'examples/sokol/05_instancing_glsl/rt_glsl.v' // Inacurrate captures
+		'examples/ttf_font/example_ttf.v',
+		'examples/sokol/06_obj_viewer/show_obj.v', // Inacurrate captures
+		'examples/sokol/04_multi_shader_glsl/rt_glsl.v', // Inacurrate captures
+		'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
+		'examples/sokol/02_cubes_glsl/cube_glsl.v', // Inacurrate captures
+		'examples/sokol/05_instancing_glsl/rt_glsl.v', // Inacurrate captures
 		'examples/sokol/01_cubes/cube.v',
 	]
 )
@@ -207,7 +207,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 			'.diff.tif')
-		diff_cmd := '$idiff_exe -p -fail 0.002 -failpercent 1.21 -od -o "$diff_file" -abs "$src" "$target"'
+		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 1.21 -od -o "$diff_file" -abs "$src" "$target"'
 		result := os.execute(diff_cmd)
 		if opt.verbose && result.exit_code == 0 {
 			eprintln('Running: $diff_cmd')
