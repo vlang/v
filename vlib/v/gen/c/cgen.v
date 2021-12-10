@@ -7310,6 +7310,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 				}
 				else {}
 			}
+			if st_sym.info is ast.Struct {
+				for embed in st_sym.info.embeds {
+					embed_sym := g.table.get_type_symbol(embed)
+					methods << embed_sym.methods
+				}
+			}
 			for method in methods {
 				mut name := method.name
 				if inter_info.parent_type.has_flag(.generic) {
@@ -7345,7 +7351,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					// hack to mutate typ
 					params[0] = ast.Param{
 						...params[0]
-						typ: params[0].typ.set_nr_muls(1)
+						typ: st.set_nr_muls(1)
 					}
 					fargs, _, _ := g.fn_args(params, voidptr(0))
 					methods_wrapper.write_string(g.out.cut_last(g.out.len - params_start_pos))
@@ -7354,7 +7360,21 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					if method.return_type != ast.void_type {
 						methods_wrapper.write_string('return ')
 					}
-					methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+					_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
+						ast.Fn{}, []ast.Type{}
+					}
+					if embed_types.len > 0 {
+						embed_sym := g.table.get_type_symbol(embed_types.last())
+						method_name := '${embed_sym.cname}_$method.name'
+						methods_wrapper.write_string('${method_name}(${fargs[0]}')
+						for embed in embed_types {
+							esym := g.table.get_type_symbol(embed)
+							methods_wrapper.write_string('->$esym.embed_name()')
+						}
+						methods_wrapper.writeln('${fargs[1..].join(', ')});')
+					} else {
+						methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+					}
 					methods_wrapper.writeln('}')
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call += iwpostfix
