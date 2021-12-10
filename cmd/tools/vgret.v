@@ -59,7 +59,7 @@ Examples:
 		'examples/gg/bezier.v',
 		'examples/gg/mandelbrot.v',
 		'examples/gg/rectangles.v',
-		//'examples/gg/set_pixels.v' // Has problem in CI software render (blank, no pixels sat)
+		//'examples/gg/set_pixels.v' // Has problem in CI software render (blank, no pixels set)
 		//'examples/gg/random.v' // Always random
 		//'examples/gg/stars.v' // Uses rand for placement
 		'examples/gg/raven_text_rendering.v',
