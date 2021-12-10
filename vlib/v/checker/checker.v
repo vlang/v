@@ -2044,6 +2044,16 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.return_type = final_left_sym.info.elem_type
 			return node.return_type
 		}
+	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
+		&& method_name == 'wait' {
+		info := left_sym.info as ast.Struct
+		if node.args.len > 0 {
+			c.error('wait() does not have any arguments', node.args[0].pos)
+		}
+		c.table.cur_fn.has_await = true
+		node.return_type = info.concrete_types[0]
+		node.return_type.set_flag(.optional)
+		return node.return_type
 	} else if left_sym.kind == .thread && method_name == 'wait' {
 		info := left_sym.info as ast.Thread
 		if node.args.len > 0 {
