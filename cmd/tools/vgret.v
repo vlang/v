@@ -14,6 +14,22 @@
 // For developers:
 // For a quick overview of the generated images you can use `montage` from imagemagick to generate a "Contact Sheet":
 // montage -verbose -label '%f' -font Helvetica -pointsize 10 -background '#000000' -fill 'gray' -define jpeg:size=200x200 -geometry 200x200+2+2 -auto-orient $(fd -t f . /path/to/vgret/out/dir) /tmp/montage.jpg
+//
+// To generate the reference images locally - or for uploading to a remote repo like `gg-regression-images`
+// You can do the following:
+// 1. `export DISPLAY=:99`                            # Start all graphical apps on DISPLAY 99
+// 2. `Xvfb $DISPLAY -screen 0 1280x1024x24 &`        # Starts a virtual X11 screen buffer
+// 3. `v gret -v /tmp/gg-regression-images`           # Generate reference images to /tmp/gg-regression-images
+// 4. `v gret -v /tmp/test /tmp/gg-regression-images` # Test if the tests can pass locally by comparing to a fresh images set
+// 5. Visually check the images (you can get an overview by running the `montage` command above)
+// 6. Upload to GitHub or keep locally for more testing/tweaking
+//
+// It's a known factor that the images generated on a local machine won't match the images generated on a remote machine by 100%.
+// They will most likely differ by a small percentage - the comparison tool can be tweaked to accept these subtle changes,
+// at the expense of slightly more inaccurate test results. For non-animated and non-shader apps the percentage should be > 0.01.
+// You can emulate or test these inaccuracies to some extend locally by simply running the test from a terminal using
+// your physical X11 session display (Usually DISPLAY=:0).
+//
 import os
 import flag
 
@@ -55,12 +71,12 @@ Examples:
 		//'examples/flappylearning/game.v' // Random movement
 		//'examples/2048/2048.v' // Random start tiles
 		'examples/ttf_font/example_ttf.v',
-		//'examples/sokol/06_obj_viewer/show_obj.v', // Inacurrate captures
-		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v', // Inacurrate captures
-		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
+		//'examples/sokol/01_cubes/cube.v', // Can pass with a warning and diff at around 1.2%
 		//'examples/sokol/02_cubes_glsl/cube_glsl.v', // Inacurrate captures
+		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
+		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v', // Inacurrate captures
 		//'examples/sokol/05_instancing_glsl/rt_glsl.v', // Inacurrate captures
-		'examples/sokol/01_cubes/cube.v',
+		//'examples/sokol/06_obj_viewer/show_obj.v', // Inacurrate captures
 	]
 )
 
@@ -207,7 +223,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 			'.diff.tif')
-		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 1.21 -od -o "$diff_file" -abs "$src" "$target"'
+		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 0.1 -od -o "$diff_file" -abs "$src" "$target"'
 		result := os.execute(diff_cmd)
 		if opt.verbose && result.exit_code == 0 {
 			eprintln('Running: $diff_cmd')

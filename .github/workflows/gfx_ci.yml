@@ -43,7 +43,7 @@ jobs:
         id: compare
         continue-on-error: true
         run: |
-          Xvfb $DISPLAY -screen 0 1200x1024x24 &
+          Xvfb $DISPLAY -screen 0 1280x1024x24 &
           ./v gret -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
