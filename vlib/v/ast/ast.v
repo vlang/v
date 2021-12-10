@@ -816,6 +816,7 @@ pub mut:
 	is_array  bool
 	is_farray bool
 	is_option bool // IfGuard
+	is_direct bool // Set if the underlying memory can be safely accessed
 }
 
 pub struct IfExpr {
