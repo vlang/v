@@ -194,6 +194,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 	}
 
 	mut fails := map[string]string{}
+	mut warns := map[string]string{}
 	for screenshot in screenshots {
 		relative_screenshot := screenshot.all_after(output_path + os.path_separator)
 
@@ -206,7 +207,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 			'.diff.tif')
-		diff_cmd := '$idiff_exe -fail 0.002 -failpercent 1 -warn 0.002 -warnpercent 1 -od -o "$diff_file" -abs "$src" "$target"'
+		diff_cmd := '$idiff_exe -p -fail 0.002 -failpercent 1.21 -od -o "$diff_file" -abs "$src" "$target"'
 		result := os.execute(diff_cmd)
 		if opt.verbose && result.exit_code == 0 {
 			eprintln('Running: $diff_cmd')
@@ -214,11 +215,23 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 		}
 		if result.exit_code != 0 {
 			eprintln('$result.output')
-			fails[src] = target
+			if result.exit_code == 1 {
+				warns[src] = target
+			} else {
+				fails[src] = target
+			}
 		}
 	}
 
+	if warns.len > 0 {
+		eprintln('--- WARNINGS ---')
+		eprintln('The following files had warnings when compared to their targets')
+		for warn_src, warn_target in warns {
+			eprintln('$warn_src ~= $warn_target')
+		}
+	}
 	if fails.len > 0 {
+		eprintln('--- ERRORS ---')
 		eprintln('The following files did not match their targets')
 		for fail_src, fail_target in fails {
 			eprintln('$fail_src != $fail_target')
