@@ -5,6 +5,7 @@ module checker
 
 import v.ast
 import v.token
+import os
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
 pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
@@ -302,7 +303,8 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.get_final_type_symbol(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
-			if node.op == .left_shift && left_type_final.is_signed() && !c.inside_unsafe {
+			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
+				&& c.file.path.contains(os.join_path('vlib', 'v', 'eval', 'infix.v'))) {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
 					node.left.position())
 			}
