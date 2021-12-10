@@ -204,11 +204,16 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 			eprintln('Comparing `$src` with `$target`')
 		}
 
-		result := os.execute('$idiff_exe "$src" "$target"')
-		if opt.verbose {
+		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
+			'.diff.tif')
+		diff_cmd := '$idiff_exe -fail 0.002 -failpercent 1 -warn 0.002 -warnpercent 1 -o "$diff_file" "$src" "$target"'
+		result := os.execute(diff_cmd)
+		if opt.verbose && result.exit_code == 0 {
+			eprintln('Running: $diff_cmd')
 			eprintln('$result.output')
 		}
 		if result.exit_code != 0 {
+			eprintln('$result.output')
 			fails[src] = target
 		}
 	}
@@ -222,6 +227,12 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 		fail_copy := os.join_path(os.temp_dir(), 'fail.' + first.all_after_last('.'))
 		os.cp(first, fail_copy) or { panic(err) }
 		eprintln('First failed file `$first` is copied to `$fail_copy`')
+
+		diff_file := os.join_path(os.temp_dir(), os.file_name(first).all_before_last('.') +
+			'.diff.tif')
+		diff_copy := os.join_path(os.temp_dir(), 'diff.tif')
+		os.cp(diff_file, diff_copy) or { panic(err) }
+		eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
 		exit(1)
 	}
 }
