@@ -225,7 +225,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 			'.diff.tif')
-		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 0.1 -od -o "$diff_file" -abs "$src" "$target"'
+		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 0.2 -od -o "$diff_file" -abs "$src" "$target"'
 		result := os.execute(diff_cmd)
 		if opt.verbose && result.exit_code == 0 {
 			eprintln('Running: $diff_cmd')
