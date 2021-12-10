@@ -1,4 +1,4 @@
-name: gfx CI
+name: Graphics CI
 
 on:
   push:
