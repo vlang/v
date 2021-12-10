@@ -20,13 +20,13 @@
 // 1. `export DISPLAY=:99`                            # Start all graphical apps on DISPLAY 99
 // 2. `Xvfb $DISPLAY -screen 0 1280x1024x24 &`        # Starts a virtual X11 screen buffer
 // 3. `v gret -v /tmp/gg-regression-images`           # Generate reference images to /tmp/gg-regression-images
-// 4. `v gret -v /tmp/test /tmp/gg-regression-images` # Test if the tests can pass locally by comparing to a fresh images set
+// 4. `v gret -v /tmp/test /tmp/gg-regression-images` # Test if the tests can pass locally by comparing to a fresh imageset
 // 5. Visually check the images (you can get an overview by running the `montage` command above)
 // 6. Upload to GitHub or keep locally for more testing/tweaking
 //
 // It's a known factor that the images generated on a local machine won't match the images generated on a remote machine by 100%.
 // They will most likely differ by a small percentage - the comparison tool can be tweaked to accept these subtle changes,
-// at the expense of slightly more inaccurate test results. For non-animated and non-shader apps the percentage should be > 0.01.
+// at the expense of slightly more inaccurate test results. For non-animated apps the percentage should be > 0.01.
 // You can emulate or test these inaccuracies to some extend locally by simply running the test from a terminal using
 // your physical X11 session display (Usually DISPLAY=:0).
 //
