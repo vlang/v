@@ -9,14 +9,7 @@ on:
       - "**.md"
 
 jobs:
-  no-scheduling:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dont schedule all jobs
-        run: sleep 10
-
   gfx-regressions:
-    needs: no-scheduling
     runs-on: ubuntu-18.04
     timeout-minutes: 10
     env:
@@ -29,14 +22,7 @@ jobs:
           repository: vlang/v
 
       - name: Build local v
-        run: |
-          cd v
-          make -j4
-
-      - uses: openrndr/setup-opengl@v1.1
-      - uses: actions/checkout@v2
-        with:
-          repository: Larpon/gg-regression-images
+        run: make -j4
 
       - name: Setup dependencies
         run: |
@@ -49,12 +35,18 @@ jobs:
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
 
+      - uses: openrndr/setup-opengl@v1.1
+      - uses: actions/checkout@v2
+        with:
+          path: gg-regression-images
+          #repository: Larpon/gg-regression-images
+
       - name: Sample and compare
         id: compare
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 1200x1024x24 &
-          ./v/v gret -v ./gg-sample_images ./gg-regression-images
+          ./v gret -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
