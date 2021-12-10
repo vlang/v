@@ -245,6 +245,10 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	return true
 }
 
+// TODO: remove this exception, by using a more general mechanism for opting out
+// generated code, from warnings/notices, that are targeted at humans:
+const infix_v_exception = os.join_path('vlib', 'v', 'eval', 'infix.v')
+
 fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type) ast.Type {
 	if !left_type.is_int() {
 		left_sym := c.table.get_type_symbol(left_type)
@@ -304,7 +308,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			left_sym_final := c.table.get_final_type_symbol(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
 			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
-				&& c.file.path.contains(os.join_path('vlib', 'v', 'eval', 'infix.v'))) {
+				&& c.file.path.ends_with(checker.infix_v_exception)) {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
 					node.left.position())
 			}
