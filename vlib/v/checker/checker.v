@@ -3222,7 +3222,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	if utyp != ast.voidptr_type {
 		// Verify methods
 		for imethod in imethods {
-			method := typ_sym.find_method(imethod.name) or {
+			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
 					c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
 						pos)
