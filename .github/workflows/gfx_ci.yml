@@ -28,6 +28,11 @@ jobs:
         with:
           repository: vlang/v
 
+      - name: Build local v
+        run: |
+          cd v
+          make -j4
+
       - uses: openrndr/setup-opengl@v1.1
       - uses: actions/checkout@v2
         with:
@@ -44,15 +49,12 @@ jobs:
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
 
-      - name: Build local v
-        run: make -j4
-
       - name: Sample and compare
         id: compare
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 1200x1024x24 &
-          ./v gret -v ./gg-sample_images ./gg-regression-images
+          ./v/v gret -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
