@@ -2365,7 +2365,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			unwrapped_expected_type
 		}
 		got_deref_type := if got_is_ptr { unwrapped_got_type.deref() } else { unwrapped_got_type }
-		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
+		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false) {
 			mut is_already_sum_type := false
 			scope := g.file.scope.innermost(expr.position().pos)
 			if expr is ast.Ident {

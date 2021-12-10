@@ -19,6 +19,10 @@ pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
+pub const is_node_present = os.execute('node --version').exit_code == 0
+
+pub const all_processes = os.execute('ps ax').output.split_any('\r\n')
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -550,4 +554,13 @@ pub fn get_test_details(file string) TestDetails {
 		}
 	}
 	return res
+}
+
+pub fn find_started_process(pname string) ?string {
+	for line in testing.all_processes {
+		if line.contains(pname) {
+			return line
+		}
+	}
+	return error('could not find process matching $pname')
 }

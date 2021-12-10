@@ -25,6 +25,7 @@ const (
 		'doc',
 		'doctor',
 		'fmt',
+		'gret',
 		'repl',
 		'self',
 		'setup-freetype',
@@ -123,7 +124,8 @@ fn main() {
 		}
 		else {}
 	}
-	if command in ['run', 'build', 'build-module'] || command.ends_with('.v') || os.exists(command) {
+	if command in ['run', 'build', 'build-module', 'interpret'] || command.ends_with('.v')
+		|| os.exists(command) {
 		// println('command')
 		// println(prefs.path)
 		builder.compile(command, prefs)

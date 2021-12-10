@@ -86,6 +86,7 @@ fn test_from() {
 		assert ver.patch == item.patch
 		assert ver.metadata == item.metadata
 		assert ver.prerelease == item.prerelease
+		assert ver.str() == item.raw
 	}
 	for ver in invalid_versions_to_test {
 		semver.from(ver) or {

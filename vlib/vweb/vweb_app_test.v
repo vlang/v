@@ -64,3 +64,15 @@ pub fn (mut app App) new_article() vweb.Result {
 fn (mut app App) time() {
 	app.text(time.now().format())
 }
+
+fn (mut app App) time_json() {
+	app.json({
+		'time': time.now().format()
+	})
+}
+
+fn (mut app App) time_json_pretty() {
+	app.json_pretty({
+		'time': time.now().format()
+	})
+}

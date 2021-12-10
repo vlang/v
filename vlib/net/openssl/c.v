@@ -3,9 +3,14 @@ module openssl
 // On Linux, prefer a localy built openssl, because it is
 // much more likely for it to be newer, than the system
 // openssl from libssl-dev. If there is no local openssl,
-// the next flag is harmless, since it will still use the
-// (older) system openssl.
-#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+// the next #pkgconfig flag is harmless, since it will still
+// use the (older) system openssl.
+#flag linux -I/usr/local/include/openssl
+#flag linux -L/usr/local/lib
+$if $pkgconfig('openssl') {
+	#pkgconfig openssl
+}
+
 #flag windows -l libssl -l libcrypto
 #flag -lssl -lcrypto
 #flag linux -ldl -lpthread

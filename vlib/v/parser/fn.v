@@ -40,14 +40,6 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
-		// In case of `foo<T>()`
-		// T is unwrapped and registered in the checker.
-		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic := concrete_types.any(it.has_flag(.generic))
-		if !has_generic {
-			// will be added in checker
-			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
-		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -527,6 +519,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		scope: p.scope
 		label_names: p.label_names
+	}
+	if generic_names.len > 0 {
+		p.table.register_fn_generic_types(name)
 	}
 	p.label_names = []
 	p.close_scope()

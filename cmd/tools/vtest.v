@@ -105,17 +105,34 @@ pub fn should_test_dir(path string, backend string) ([]string, []string) { // re
 }
 
 enum ShouldTestStatus {
-	test // do test
-	skip
-	ignore
+	test // do test, print OK or FAIL, depending on if it passes
+	skip // print SKIP for the test
+	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 
 fn should_test(path string, backend string) ShouldTestStatus {
+	if path.ends_with('mysql_orm_test.v') {
+		testing.find_started_process('mysqld') or { return .skip }
+	}
+	if path.ends_with('pg_orm_test.v') {
+		testing.find_started_process('postgres') or { return .skip }
+	}
+	if path.ends_with('onecontext_test.v') {
+		return .skip
+	}
+	$if tinyc {
+		if path.ends_with('naked_attr_test.amd64.v') {
+			return .skip
+		}
+	}
 	if path.ends_with('_test.v') {
 		return .test
 	}
 	if path.ends_with('_test.js.v') {
-		return .test
+		if testing.is_node_present {
+			return .test
+		}
+		return .skip
 	}
 	if path.ends_with('.v') && path.count('.') == 2 {
 		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {

@@ -8,6 +8,8 @@ import os
 import rand
 import v.pref
 import v.util
+import v.eval
+import v.checker
 
 fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := util.get_vtmp_folder()
@@ -42,6 +44,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.c { b.compile_c() }
 		.js_node, .js_freestanding, .js_browser { b.compile_js() }
 		.native { b.compile_native() }
+		.interpret { b.interpret() }
 	}
 	mut timers := util.get_timers()
 	timers.show_remaining()
@@ -116,7 +119,6 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		panic('Running iOS apps is not supported yet.')
 	}
 	if b.pref.is_verbose {
-		println('============ running $b.pref.out_name ============')
 	}
 	if b.pref.is_test || b.pref.is_run {
 		compiled_file := os.real_path(b.pref.out_name)
@@ -346,4 +348,16 @@ pub fn (v &Builder) get_user_files() []string {
 		v.log('user_files: $user_files')
 	}
 	return user_files
+}
+
+pub fn (mut b Builder) interpret() {
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	b.front_and_middle_stages(files) or { return }
+
+	util.timing_start('INTERPRET')
+	mut e := eval.new_eval(b.table, b.pref)
+	e.eval(b.parsed_files)
+	util.timing_measure('INTERPRET')
 }

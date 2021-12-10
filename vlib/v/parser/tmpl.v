@@ -8,10 +8,6 @@ import v.errors
 import os
 import strings
 
-const tmpl_str_start = "sb.write_string('"
-
-const tmpl_str_end = "')\n"
-
 enum State {
 	html
 	css // <style>
@@ -63,15 +59,17 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	}
 	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
+	tmpl_str_start := "sb_${fn_name}.write_string('"
+	tmpl_str_end := "')\n"
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() string {
-mut sb := strings.new_builder($lstartlength)\n
+	mut sb_$fn_name := strings.new_builder($lstartlength)\n
 
 ')
-	source.write_string(parser.tmpl_str_start)
+	source.write_string(tmpl_str_start)
 	mut state := State.html
 	mut in_span := false
 	mut end_of_line_pos := 0
@@ -172,27 +170,27 @@ mut sb := strings.new_builder($lstartlength)\n
 			source.write_string(line[pos + 6..line.len - 1])
 			source.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
-			source.writeln(parser.tmpl_str_start)
+			source.writeln(tmpl_str_start)
 		} else if line.contains('@end') {
 			// Remove new line byte
 			source.go_back(1)
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			source.writeln('}')
-			source.writeln(parser.tmpl_str_start)
+			source.writeln(tmpl_str_start)
 		} else if line.contains('@else') {
 			// Remove new line byte
 			source.go_back(1)
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			source.writeln(' } else { ')
-			source.writeln(parser.tmpl_str_start)
+			source.writeln(tmpl_str_start)
 		} else if line.contains('@for') {
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
-			source.writeln(parser.tmpl_str_start)
+			source.writeln(tmpl_str_start)
 		} else if state == .html && line.starts_with('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
@@ -228,7 +226,7 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			trailing_bs := parser.tmpl_str_end + 'sb.write_b(92)\n' + parser.tmpl_str_start
+			trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_b(92)\n' + tmpl_str_start
 			round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
 			round2 := [r'$$', r'\@', r'.$', r'.@']
 			rline := line.replace_each(round1).replace_each(round2)
@@ -239,8 +237,8 @@ mut sb := strings.new_builder($lstartlength)\n
 			}
 		}
 	}
-	source.writeln(parser.tmpl_str_end)
-	source.writeln('_tmpl_res_$fn_name := sb.str() ')
+	source.writeln(tmpl_str_end)
+	source.writeln('_tmpl_res_$fn_name := sb_${fn_name}.str() ')
 	source.writeln('return _tmpl_res_$fn_name')
 	source.writeln('}')
 	source.writeln('// === end of vweb html template ===')

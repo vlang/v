@@ -6,6 +6,74 @@ module checker
 import v.ast
 import v.token
 
+// TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
+pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
+	if got == expected {
+		return true
+	}
+	got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
+	if got_is_ptr && exp_is_ptr {
+		if got.nr_muls() != expected.nr_muls() {
+			return false
+		}
+	}
+	exp_idx := expected.idx()
+	got_idx := got.idx()
+	if exp_idx == got_idx {
+		return true
+	}
+	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
+		|| (expected.is_ptr() && expected.deref().idx() == ast.byte_type_idx) {
+		if got.is_ptr() || got.is_pointer() {
+			return true
+		}
+	}
+	// allow direct int-literal assignment for pointers for now
+	// maybe in the future optionals should be used for that
+	if expected.is_real_pointer() {
+		if got == ast.int_literal_type {
+			return true
+		}
+	}
+	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
+		|| (got_idx == ast.byte_type_idx && got.is_ptr()) {
+		if expected.is_ptr() || expected.is_pointer() {
+			return true
+		}
+	}
+	if expected == ast.charptr_type && got == ast.char_type.ref() {
+		return true
+	}
+	if expected.has_flag(.optional) {
+		sym := c.table.get_type_symbol(got)
+		if (sym.kind == .interface_ && sym.name == 'IError')
+			|| got in [ast.none_type, ast.error_type] {
+			return true
+		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+			return false
+		}
+	}
+	if !c.check_basic(got, expected) { // TODO: this should go away...
+		return false
+	}
+	if got.is_number() && expected.is_number() {
+		if got == ast.rune_type && expected == ast.byte_type {
+			return true
+		} else if expected == ast.rune_type && got == ast.byte_type {
+			return true
+		}
+		if c.promote_num(expected, got) != expected {
+			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
+			return false
+		}
+	}
+	if expected.has_flag(.generic) {
+		return false
+	}
+	return true
+}
+
 pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
 	if got == 0 {
 		return error('unexpected 0 type')
@@ -117,7 +185,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
+	if c.table.sumtype_has_variant(expected, c.table.mktyp(got), false) {
 		return true
 	}
 	// type alias
@@ -190,7 +258,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 		c.error('invalid operation: shift on type `$left_sym.name`', node.left.position())
 		return ast.void_type
 	}
-	if !right_type.is_int() {
+	if !right_type.is_int() && !c.pref.translated {
 		left_sym := c.table.get_type_symbol(left_type)
 		right_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot shift non-integer type `$right_sym.name` into type `$left_sym.name`',
@@ -234,7 +302,8 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.get_final_type_symbol(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
-			if node.op == .left_shift && left_type_final.is_signed() {
+			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
+				&& c.file.path.contains('vlib/v/eval/infix.v')) {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
 					node.left.position())
 			}
@@ -259,7 +328,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						ast.u64_type { 63 }
 						else { 64 }
 					}
-					if ival > moffset {
+					if ival > moffset && !c.pref.translated {
 						c.error('shift count for type `$left_sym_final.name` too large (maximum: $moffset bits)',
 							node.right.position())
 						return left_type
@@ -351,74 +420,6 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else {
 		return ast.void_type // conversion signed -> unsigned not allowed
 	}
-}
-
-// TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
-	if got == expected {
-		return true
-	}
-	got_is_ptr := got.is_ptr()
-	exp_is_ptr := expected.is_ptr()
-	if got_is_ptr && exp_is_ptr {
-		if got.nr_muls() != expected.nr_muls() {
-			return false
-		}
-	}
-	exp_idx := expected.idx()
-	got_idx := got.idx()
-	if exp_idx == got_idx {
-		return true
-	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
-		|| (expected.is_ptr() && expected.deref().idx() == ast.byte_type_idx) {
-		if got.is_ptr() || got.is_pointer() {
-			return true
-		}
-	}
-	// allow direct int-literal assignment for pointers for now
-	// maybe in the future optionals should be used for that
-	if expected.is_real_pointer() {
-		if got == ast.int_literal_type {
-			return true
-		}
-	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.byte_type_idx && got.is_ptr()) {
-		if expected.is_ptr() || expected.is_pointer() {
-			return true
-		}
-	}
-	if expected == ast.charptr_type && got == ast.char_type.ref() {
-		return true
-	}
-	if expected.has_flag(.optional) {
-		sym := c.table.get_type_symbol(got)
-		if (sym.kind == .interface_ && sym.name == 'IError')
-			|| got in [ast.none_type, ast.error_type] {
-			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
-			return false
-		}
-	}
-	if !c.check_basic(got, expected) { // TODO: this should go away...
-		return false
-	}
-	if got.is_number() && expected.is_number() {
-		if got == ast.rune_type && expected == ast.byte_type {
-			return true
-		} else if expected == ast.rune_type && got == ast.byte_type {
-			return true
-		}
-		if c.promote_num(expected, got) != expected {
-			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
-			return false
-		}
-	}
-	if expected.has_flag(.generic) {
-		return false
-	}
-	return true
 }
 
 pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {

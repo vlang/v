@@ -1612,7 +1612,7 @@ fn (mut g Gen) is_gui_app() bool {
 			return false
 		}
 		for cf in g.table.cflags {
-			if cf.value == 'gdi32' {
+			if cf.value.to_lower() == 'gdi32' {
 				return true
 			}
 		}

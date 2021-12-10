@@ -161,7 +161,11 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
-		path = os.join_path_single(dir, tmpl_path)
+		if os.is_abs_path(tmpl_path) {
+			path = tmpl_path
+		} else {
+			path = os.join_path_single(dir, tmpl_path)
+		}
 	}
 	if !os.exists(path) {
 		if is_html {
@@ -188,7 +192,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	tmp_fn_name := p.cur_fn_name.replace('.', '__')
+	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}

@@ -106,6 +106,8 @@ fn gg_frame_fn(user_data voidptr) {
 		// return
 	}
 
+	ctx.record_frame()
+
 	if ctx.ui_mode && !ctx.needs_refresh {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
@@ -250,8 +252,8 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	}
 }
 
-pub fn (gg &Context) run() {
-	sapp.run(&gg.window)
+pub fn (ctx &Context) run() {
+	sapp.run(&ctx.window)
 }
 
 // quit closes the context window and exits the event loop for it

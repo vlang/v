@@ -1,3 +1,4 @@
+// vtest retry: 3
 import sync
 import time
 

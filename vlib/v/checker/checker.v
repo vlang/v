@@ -28,7 +28,8 @@ const (
 	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
+		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
+		'interpreter']
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -1985,17 +1986,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.position())
 		return ast.void_type
 	}
-	mut has_generic := false // x.foo<T>() instead of x.foo<int>()
 	mut concrete_types := []ast.Type{}
 	for concrete_type in node.concrete_types {
 		if concrete_type.has_flag(.generic) {
-			has_generic = true
 			concrete_types << c.unwrap_generic(concrete_type)
 		} else {
 			concrete_types << concrete_type
 		}
 	}
-	if has_generic {
+	if concrete_types.len > 0 {
 		if c.table.register_fn_concrete_types(node.name, concrete_types) {
 			c.need_recheck_generic_fns = true
 		}
@@ -2538,13 +2537,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			node.pos)
 	}
-	if has_generic {
+	if concrete_types.len > 0 {
 		mut no_exists := true
-		if c.mod != '' && !fn_name.contains('.') {
-			// Need to prepend the module when adding a generic type to a function
-			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
-		} else {
+		if fn_name.contains('.') {
 			no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+		} else {
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
+			// if the generic fn does not exist in the current fn calling module, continue
+			// to look in builtin module
+			if !no_exists {
+				no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+			}
 		}
 		if no_exists {
 			c.need_recheck_generic_fns = true
@@ -2560,7 +2563,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		typ := c.expr(node.args[0].expr)
 		tsym := c.table.get_type_symbol(typ)
 
-		if !tsym.name.starts_with('js.promise.Promise<') {
+		if !tsym.name.starts_with('Promise<') {
 			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
 			return ast.void_type
 		}
@@ -4881,6 +4884,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else {
 			node.val_type = high_type
 		}
+		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.get_final_type_symbol(typ)
@@ -5040,7 +5044,12 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
-	return c.table.find_or_register_thread(ret_type)
+
+	if c.pref.backend.is_js() {
+		return c.table.find_or_register_promise(ret_type)
+	} else {
+		return c.table.find_or_register_thread(ret_type)
+	}
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
@@ -5421,8 +5430,10 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos) or {}
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
+				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+					addr := '&'.repeat(node.typ.nr_muls())
+					c.error('cannot cast `$expr_type_sym.name` to `$addr$type_sym.name`',
+						node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos) or {}
@@ -5734,7 +5745,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type) && !to_type.has_flag(.optional) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional) {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {
@@ -7201,6 +7212,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cname !in c.pref.compile_defines_all }
 					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
+					'interpreter' { c.pref.backend != .interpret }
 					else { return false }
 				}
 			} else if cname !in c.pref.compile_defines_all {
@@ -7453,7 +7465,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
-		if !right_type.is_pointer() {
+		if !right_type.is_pointer() && !c.pref.translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
 		}
@@ -8722,7 +8734,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return expr.val.i64()
 		}
 		ast.StringLiteral {
-			return expr.val
+			return util.smart_quote(expr.val, expr.is_raw)
 		}
 		ast.CharLiteral {
 			runes := expr.val.runes()
