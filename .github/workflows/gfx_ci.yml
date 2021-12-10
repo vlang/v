@@ -18,8 +18,6 @@ jobs:
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
-        with:
-          repository: vlang/v
 
       - name: Build local v
         run: make -j4
@@ -38,8 +36,8 @@ jobs:
       - uses: openrndr/setup-opengl@v1.1
       - uses: actions/checkout@v2
         with:
+          repository: Larpon/gg-regression-images
           path: gg-regression-images
-          #repository: Larpon/gg-regression-images
 
       - name: Sample and compare
         id: compare
