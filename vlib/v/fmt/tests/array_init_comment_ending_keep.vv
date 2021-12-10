@@ -1,0 +1,22 @@
+import net.http
+
+const (
+	write_set_cookie_tests = [
+		ReadSetCookiesTestCase{
+			header: {
+				'Set-Cookie': ['special-7=","']
+			}
+			cookies: [
+				&http.Cookie{
+				name: 'special-7'
+				value: ','
+				raw: 'special-8=","'
+			}]
+		}
+		// (bradfitz): users have reported seeing this in the
+		// wild, but do browsers handle it? RFC 6265 just says "don't
+		// do that" (section 3) and then never mentions header folding
+		// again.
+		// Header{"Set-Cookie": ["ASP.NET_SessionId=foo; path=/; HttpOnly, .ASPXAUTH=7E3AA; expires=Wed, 07-Mar-2012 14:25:06 GMT; path=/; HttpOnly"]},
+	]
+)

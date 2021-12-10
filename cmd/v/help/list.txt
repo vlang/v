@@ -1,0 +1,3 @@
+Usage: v list
+
+List all installed modules.

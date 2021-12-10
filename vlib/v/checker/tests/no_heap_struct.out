@@ -1,0 +1,21 @@
+vlib/v/checker/tests/no_heap_struct.vv:13:6: error: `x` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `Abc` as `[heap]`.
+   11 | fn f(x &Abc) St {
+   12 |     s := St{
+   13 |         a: x
+      |            ^
+   14 |     }
+   15 |     return s
+vlib/v/checker/tests/no_heap_struct.vv:19:9: error: `x` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `Abc` as `[heap]`.
+   17 | 
+   18 | fn g(mut x Abc) &Abc {
+   19 |     return x
+      |            ^
+   20 | }
+   21 |
+vlib/v/checker/tests/no_heap_struct.vv:23:7: error: `x` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `Abc` as `[heap]`.
+   21 | 
+   22 | fn h(x &Abc) &Abc {
+   23 |     y := x
+      |          ^
+   24 |     return y
+   25 | }

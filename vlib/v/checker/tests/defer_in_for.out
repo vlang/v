@@ -1,0 +1,7 @@
+vlib/v/checker/tests/defer_in_for.vv:4:13: error: `break` is not allowed in defer statements
+    2 |     for true {
+    3 |         defer {
+    4 |             break
+      |             ~~~~~
+    5 |         }
+    6 |     }

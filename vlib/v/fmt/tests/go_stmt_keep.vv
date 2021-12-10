@@ -1,0 +1,9 @@
+import sync
+
+fn go_with_anon_fn() {
+	wg.add(1)
+	go fn (mut wg sync.WaitGroup) {
+		wg.done()
+	}(mut wg)
+	wg.wait()
+}

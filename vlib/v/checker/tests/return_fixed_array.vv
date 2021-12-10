@@ -1,0 +1,7 @@
+fn return_fixed_array() [3]int {
+	return [1, 2, 3]!
+}
+
+fn return_fixed_array_in_multi_return() ([3]int, [3]int) {
+	return [1, 2, 3]!, [4, 5, 6]!
+}

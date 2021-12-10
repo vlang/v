@@ -3,25 +3,27 @@ module main
 import os
 import v.tests.repl.runner
 import benchmark
-import sync
+import sync.pool
+
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.exec(vcmd) or {
-		panic(err)
-	}
-	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
+	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
+	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	vcmd_error := '"$vexec" nonexisting.v'
-	r_error := os.exec(vcmd_error) or {
-		panic(err)
+	r_error := os.execute(vcmd_error)
+	if r_error.exit_code < 0 {
+		panic(r_error.output)
 	}
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
-	assert r_error.output.trim_space() == "builder error: nonexisting.v doesn't exist"
+	actual_error := r_error.output.trim_space()
+	assert actual_error == "builder error: nonexisting.v doesn't exist"
 }
 
 struct Session {
@@ -40,20 +42,18 @@ fn test_all_v_repl_files() {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := sync.new_pool_processor({
-		callback: worker_repl
-	})
+	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
 	pool_repl.set_shared_context(session)
 	$if windows {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items_s(session.options.files)
+	pool_repl.work_on_items<string>(session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
 
-fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	cdir := os.cache_dir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
@@ -63,28 +63,26 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir,'vrepl_tests_$idx')
+	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
-		os.rmdir_all(tfolder)
+		os.rmdir_all(tfolder) or { panic(err) }
 	}
-	os.mkdir(tfolder) or {
-		panic(err)
-	}
-	file := p.get_string_item(idx)
+	os.mkdir(tfolder) or { panic(err) }
+	file := p.get_item<string>(idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 		session.bmark.fail()
 		tls_bench.fail()
-		os.rmdir_all(tfolder)
-		eprintln(tls_bench.step_message_fail(err))
+		os.rmdir_all(tfolder) or { panic(err) }
+		eprintln(tls_bench.step_message_fail(err.msg))
 		assert false
-		return sync.no_result
+		return pool.no_result
 	}
 	session.bmark.ok()
 	tls_bench.ok()
-	os.rmdir_all(tfolder)
+	os.rmdir_all(tfolder) or { panic(err) }
 	println(tls_bench.step_message_ok(fres))
 	assert true
-	return sync.no_result
+	return pool.no_result
 }

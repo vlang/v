@@ -1,0 +1,11 @@
+// Comment line 1
+// Comment line 2
+fn func1() {
+	println('Inside func 1')
+}
+
+fn main() {
+	func1()
+	a = 2
+	println('a is $a')
+}

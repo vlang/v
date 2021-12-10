@@ -1,0 +1,91 @@
+import math { max,
+	min,
+}
+
+import cli { Command }
+import math.complex { complex, Complex }
+import os {
+	input, user_os, file_ext }
+
+import mod {
+	Unused,
+	StructEmbed, StructField, StructRefField
+	StructMapFieldKey, StructMapFieldValue,
+	StructMethodArg,
+	StructMethodArgGeneric,
+	StructMethodRet,
+	StructMethodRetGeneric,
+
+	InterfaceField,
+	InterfaceMethodArg,
+	InterfaceMethodRet,
+
+	FnArg,
+	FnArgGeneric
+	FnArgTypeParam1
+	FnArgTypeParam2
+	FnRet,
+	FnRetGeneric
+	FnRetTypeParam1,
+	FnRetTypeParam2,
+
+	RightOfIs,
+	RightOfAs,
+
+	Enum
+}
+
+struct Struct {
+	StructEmbed
+	v StructField
+	ref &StructRefField
+	map map[StructMapFieldKey]StructMapFieldValue
+}
+
+fn (s Struct) method(v StructMethodArg) StructMethodRet {
+	return StructMethodRet{}
+}
+
+fn (s Struct) method_generic<T>(v StructMethodArgGeneric<T>) StructMethodRetGeneric<T> {
+	return StructMethodRet<T>{}
+}
+
+interface Interface {
+	v InterfaceField
+	f(InterfaceMethodArg) InterfaceMethodRet
+}
+
+fn f(v FnArg) FnRet {
+	if v is RightOfIs {}
+	_ = v as RightOfAs
+
+	println(Enum.val)
+
+	return FnRet{}
+}
+
+fn f2(v Generic<FnArgTypeParam1, FnArgTypeParam2>) Generic<FnRetTypeParam1, FnRetTypeParam2> {}
+
+fn f_generic<T>(v FnArgGeneric<T>) FnRetGeneric<T> {
+	return FnRetGeneric<T>{}
+}
+
+struct App {
+	command &Command
+}
+
+struct MyCommand {
+	Command
+}
+
+fn imaginary(im f64) Complex {
+	return complex(0, im)
+}
+
+fn main() {
+	println(max(0.1, 0.2))
+	println(min(0.1, 0.2))
+	println(user_os())
+	println(file_ext('main.v'))
+	println(imaginary(1))
+}

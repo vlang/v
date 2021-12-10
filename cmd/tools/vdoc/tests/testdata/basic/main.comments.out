@@ -1,0 +1,7 @@
+module main
+
+const (
+	source_root = 'temp'
+)
+fn funky()
+    funky - comment for function below

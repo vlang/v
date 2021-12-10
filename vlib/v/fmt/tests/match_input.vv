@@ -1,22 +1,9 @@
-fn match_expr() {
-	a := 10
-	match a {
-		10 {
-			println('10')
-		}
-		20 {
-			println('20')
-		}
-		else {}
-	}
-}
-
 fn match_expr_assignment() {
     a := 20
 	_ := match a {
 		10 { 10	}
-		5 {	5 }
 		else { 2 }
+		5 {	5 }
 	}
 }
 
@@ -33,4 +20,17 @@ fn match_branch_comment() {
 // do nothing
  }
   }
+}
+
+fn really_long_branch_exprs() {
+	match x {
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit {
+			return expr.pos
+		}
+		InfixExpr {
+			Foo{
+				x: 3
+			}
+		}
+	}
 }

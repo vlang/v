@@ -1,0 +1,16 @@
+[noreturn]
+fn another() {
+	eprintln(@FN)
+}
+
+[noreturn]
+fn abc() {
+	eprintln(@FN)
+	another()
+}
+
+fn main() {
+	eprintln('start')
+	abc()
+	eprintln('done')
+}

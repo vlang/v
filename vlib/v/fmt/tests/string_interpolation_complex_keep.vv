@@ -1,0 +1,9 @@
+struct Container {
+	id string
+}
+
+container := Container{}
+docker_pubkey := '1234657890'
+
+cmd := "docker exec $container.id sh -c 'echo \"$docker_pubkey\" >> ~/.ssh/authorized_keys'"
+println(cmd)

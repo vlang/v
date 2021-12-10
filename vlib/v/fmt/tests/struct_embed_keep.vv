@@ -1,0 +1,20 @@
+struct Foo {
+	x int
+}
+
+struct Test {}
+
+struct Bar {
+	// comment before Fooo
+	Foo // comment for Foo
+	// comment before Test
+	Test // comment for Test
+	// another comment for Test
+	y int
+	z string
+}
+
+struct Baz {
+	Foo // Another comment for Foo
+	Test
+}

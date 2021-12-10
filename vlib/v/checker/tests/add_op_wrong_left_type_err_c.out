@@ -1,6 +1,0 @@
-vlib/v/checker/tests/add_op_wrong_left_type_err_c.v:3:13: error: mismatched types `map_string_int` and `any_int`
-    1 | fn main() {
-    2 |     a := map[string]int
-    3 |     println(a + 10)
-      |             ^
-    4 | }

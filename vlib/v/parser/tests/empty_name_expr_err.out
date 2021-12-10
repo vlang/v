@@ -1,0 +1,5 @@
+vlib/v/parser/tests/empty_name_expr_err.vv:2:9: error: unexpected name `n`
+    1 | fn main() {
+    2 |     return n ?(
+      |            ^
+    3 | }

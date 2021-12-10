@@ -1,0 +1,15 @@
+fn infix_in_multi_assign() {
+	child_width, child_height = child.adj_width + child.margin(.left) + child.margin(.right),
+		child.adj_height + child.margin(.top) + child.margin(.bottom)
+}
+
+fn impostor_infix() {
+	/*
+	String concatiation is an InfixExpr. The second part is so long
+	that it overflows a single line. Therefore the wrapping logic is run.
+	The problem was that `&&` and `||` inside the string were detected as infix operators.
+	Thus causing a totally wrong wrapping and sometimes runtime panics.
+	*/
+	x := 'foo' +
+		'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa || (eeeeeeeeeeeeeeeeee && ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) && bbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+}

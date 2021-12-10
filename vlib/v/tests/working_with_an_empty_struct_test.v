@@ -1,5 +1,9 @@
 struct EmptyStruct {}
-pub fn (f EmptyStruct) str() string { return 'EmptyStruct{}' }
+
+pub fn (f EmptyStruct) str() string {
+	return 'EmptyStruct{}'
+}
+
 fn new_s() EmptyStruct {
 	println('>get_foo')
 	return EmptyStruct{}

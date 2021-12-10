@@ -1,11 +1,11 @@
-vlib/v/checker/tests/if_expr_last_stmt.v:4:7: error: `if` expression requires an expression as the last statement of every branch
+vlib/v/checker/tests/if_expr_last_stmt.vv:4:7: error: `if` expression requires an expression as the last statement of every branch
     2 |     _ = if true {
     3 |         1
     4 |     } else if false {
       |       ~~~~~~~~~~~~~
     5 |     } else {
     6 |     }
-vlib/v/checker/tests/if_expr_last_stmt.v:5:7: error: `if` expression requires an expression as the last statement of every branch
+vlib/v/checker/tests/if_expr_last_stmt.vv:5:7: error: `if` expression requires an expression as the last statement of every branch
     3 |         1
     4 |     } else if false {
     5 |     } else {

@@ -10,4 +10,5 @@ fn foo(a Animal) {}
 
 fn main() {
 	foo(Cat{})
+	_ = Animal(Cat{})
 }

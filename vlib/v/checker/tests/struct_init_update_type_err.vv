@@ -1,0 +1,35 @@
+struct Foo {
+	name string
+	age int
+}
+
+struct Foo2 {b bool}
+
+fn main() {
+	i := 2
+	_ := Foo{
+		...i
+		name: 'f2'
+	}
+	p := &i
+	_ = Foo{
+		...p
+	}
+	f2 := Foo2{}
+	_ = Foo{
+		...f2
+	}
+	_ = Foo{
+		...Foo{}
+	}
+}
+
+struct Empty {}
+
+fn empty() {
+	e := Empty{}
+	_ = Foo{
+		...e
+	}
+}
+

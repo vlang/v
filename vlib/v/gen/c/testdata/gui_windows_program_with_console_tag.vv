@@ -1,0 +1,9 @@
+// vtest vflags: -cc msvc -os windows
+import sokol
+
+const used_import = sokol.used_import
+
+[console]
+fn main() {
+	println('hello world')
+}

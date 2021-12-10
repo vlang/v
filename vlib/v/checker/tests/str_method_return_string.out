@@ -1,4 +1,4 @@
-vlib/v/checker/tests/str_method_return_string.v:5:1: error: .str() methods should return `string` 
+vlib/v/checker/tests/str_method_return_string.vv:5:1: error: .str() methods should return `string` 
     3 | }
     4 | 
     5 | fn (z Zzz) str(x int) int {

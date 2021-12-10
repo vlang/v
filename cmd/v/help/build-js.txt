@@ -1,0 +1,22 @@
+Usage: v -b js [-options] ['run'] <target.v|target_directory> [run options]
+
+This command compiles the given target, along with their dependencies, into an Javascript source file.
+
+For more general build help, see also `v help build`.
+
+# Interfacing the Javascript Backend code generation, passing options to it:
+   -prod
+      Do not create any JS Doc comments
+
+   -sourcemap
+      Create a source map for debugging
+
+   -sourcemap-inline
+      Embed the source map directly into the JavaScript source file 
+      (currently default, external source map files not implemented)
+
+   -sourcemap-src-include
+      Include the orginal V source files into the generated source map 
+      (default false, all files in the source map are currently referenced by their absolute system file path)
+
+      The supported targets for the JS backend are: ES5 strict

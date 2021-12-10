@@ -52,9 +52,7 @@ pub fn from_file(vmod_path string) ?Manifest {
 	if !os.exists(vmod_path) {
 		return error('v.mod: v.mod file not found.')
 	}
-	contents := os.read_file(vmod_path) or {
-		panic('v.mod: cannot parse v.mod')
-	}
+	contents := os.read_file(vmod_path) or { '' }
 	return decode(contents)
 }
 
@@ -89,7 +87,7 @@ fn (mut s Scanner) create_string(q byte) string {
 			str += s.text[s.pos..s.pos + 1]
 			s.pos += 2
 		} else {
-			str += s.text[s.pos].str()
+			str += s.text[s.pos].ascii_str()
 			s.pos++
 		}
 	}
@@ -99,7 +97,7 @@ fn (mut s Scanner) create_string(q byte) string {
 fn (mut s Scanner) create_ident() string {
 	mut text := ''
 	for is_name_alpha(s.text[s.pos]) {
-		text += s.text[s.pos].str()
+		text += s.text[s.pos].ascii_str()
 		s.pos++
 	}
 	return text
@@ -132,7 +130,7 @@ fn (mut s Scanner) scan_all() {
 				continue
 			}
 		}
-		if c in [`\'`, `\"`] && !s.peek_char(`\\`) {
+		if c in [`'`, `\"`] && !s.peek_char(`\\`) {
 			s.pos++
 			str := s.create_string(c)
 			s.tokenize(.str, str)
@@ -140,13 +138,13 @@ fn (mut s Scanner) scan_all() {
 			continue
 		}
 		match c {
-			`{` { s.tokenize(.lcbr, c.str()) }
-			`}` { s.tokenize(.rcbr, c.str()) }
-			`[` { s.tokenize(.labr, c.str()) }
-			`]` { s.tokenize(.rabr, c.str()) }
-			`:` { s.tokenize(.colon, c.str()) }
-			`,` { s.tokenize(.comma, c.str()) }
-			else { s.tokenize(.unknown, c.str()) }
+			`{` { s.tokenize(.lcbr, c.ascii_str()) }
+			`}` { s.tokenize(.rcbr, c.ascii_str()) }
+			`[` { s.tokenize(.labr, c.ascii_str()) }
+			`]` { s.tokenize(.rabr, c.ascii_str()) }
+			`:` { s.tokenize(.colon, c.ascii_str()) }
+			`,` { s.tokenize(.comma, c.ascii_str()) }
+			else { s.tokenize(.unknown, c.ascii_str()) }
 		}
 		s.pos++
 	}
@@ -166,7 +164,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 			.str {
 				vals << tok.val
 				if tokens[idx + 1].typ !in [.comma, .rabr] {
-					return error('vmod: invalid separator "${tokens[idx+1].val}"')
+					return error('vmod: invalid separator "${tokens[idx + 1].val}"')
 				}
 				idx += if tokens[idx + 1].typ == .comma { 2 } else { 1 }
 			}
@@ -191,7 +189,7 @@ fn (mut p Parser) parse() ?Manifest {
 	tokens := p.scanner.tokens
 	mut mn := Manifest{}
 	if tokens[0].typ != .module_keyword {
-		panic('not a valid v.mod')
+		return error('vmod: v.mod files should start with Module')
 	}
 	mut i := 1
 	for i < tokens.len {
@@ -233,18 +231,14 @@ fn (mut p Parser) parse() ?Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1) or {
-							return error(err)
-						}
+						deps, idx := get_array_content(tokens, i + 1) ?
 						mn.dependencies = deps
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1) or {
-								return error(err)
-							}
+							vals, idx := get_array_content(tokens, i + 1) ?
 							mn.unknown[field_name] = vals
 							i = idx
 							continue

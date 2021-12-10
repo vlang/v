@@ -1,6 +1,6 @@
 module hello
 
-import hello.hello1
+import v.gen.js.tests.hello.hello1
 
 pub const (
 	hello = 'Hello'
@@ -25,9 +25,9 @@ pub enum Ccc {
 
 pub fn debugger() string {
 	v := Bbb{}
-	return hello
+	return hello.hello
 }
 
 pub fn excited() string {
-	return "$hello1.nested() $debugger()!"
+	return '$hello1.nested() $debugger()!'
 }

@@ -1,6 +1,6 @@
-import mt19937
 import math
-import rand.util
+import rand.mt19937
+import rand.seed
 
 const (
 	range_limit = 40
@@ -17,7 +17,7 @@ const (
 fn mt19937_basic_test() {
 	mut rng := mt19937.MT19937RNG{}
 	rng.seed([u32(0xdeadbeef)])
-	target := [956529277, 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626,
+	target := [u32(956529277), 3842322136, 3319553134, 1843186657, 2704993644, 595827513, 938518626,
 		1676224337, 3221315650, 1819026461]
 	for i := 0; i < 10; i++ {
 		assert target[i] == rng.u32()
@@ -26,7 +26,7 @@ fn mt19937_basic_test() {
 
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
-	mut randoms := []u64{len:(20)}
+	mut randoms := []u64{len: (20)}
 	mut rnd := mt19937.MT19937RNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
@@ -36,7 +36,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_mt19937_reproducibility() {
-	seed_data := util.time_seed_array(2)
+	seed_data := seed.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
@@ -178,8 +178,8 @@ fn test_mt19937_u64_in_range() {
 }
 
 fn test_mt19937_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)

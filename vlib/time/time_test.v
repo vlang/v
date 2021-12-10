@@ -1,4 +1,5 @@
 import time
+import math
 
 const (
 	time_to_test = time.Time{
@@ -24,10 +25,8 @@ fn test_is_leap_year() {
 	assert time.is_leap_year(2100) == false
 }
 
-fn check_days_in_month(month, year, expected int) bool {
-	res := time.days_in_month(month, year) or {
-		return false
-	}
+fn check_days_in_month(month int, year int, expected int) bool {
+	res := time.days_in_month(month, year) or { return false }
 	return res == expected
 }
 
@@ -89,18 +88,20 @@ fn test_format_ss() {
 }
 
 fn test_format_ss_milli() {
-	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
 fn test_format_ss_micro() {
-	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 }
 
 fn test_smonth() {
-	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-	'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
+		'Dec']
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
@@ -117,7 +118,7 @@ fn test_smonth() {
 }
 
 fn test_day_of_week() {
-	for i in 0..7 {
+	for i in 0 .. 7 {
 		day_of_week := i + 1
 		// 2 Dec 2019 is Monday
 		t := time.Time{
@@ -150,11 +151,26 @@ fn test_weekday_str() {
 	}
 }
 
+fn test_add() {
+	d_seconds := 3
+	d_microseconds := 13
+	duration := time.Duration(d_seconds * time.second + d_microseconds * time.microsecond)
+	t1 := time_to_test
+	t2 := time_to_test.add(duration)
+	assert t2.second == t1.second + d_seconds
+	assert t2.microsecond == t1.microsecond + d_microseconds
+	assert t2.unix == t1.unix + d_seconds
+	t3 := time_to_test.add(-duration)
+	assert t3.second == t1.second - d_seconds
+	assert t3.microsecond == t1.microsecond - d_microseconds
+	assert t3.unix == t1.unix - d_seconds
+}
+
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * u64(num_of_days)
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_str() {
@@ -164,38 +180,35 @@ fn test_str() {
 // not optimal test but will find obvious bugs
 fn test_now() {
 	now := time.now()
-
 	// The year the test was built
-	assert now.year 			>= 2020
-	assert now.month 			> 0
-	assert now.month 			<= 12
-	assert now.minute 			>= 0
-	assert now.minute 			< 60
-	assert now.second 			>=0
-	assert now.second 			<= 60 // <= 60 cause of leap seconds
-	assert now.microsecond 		>= 0
-	assert now.microsecond 		< 1000000
-
+	assert now.year >= 2020
+	assert now.month > 0
+	assert now.month <= 12
+	assert now.minute >= 0
+	assert now.minute < 60
+	assert now.second >= 0
+	assert now.second <= 60 // <= 60 cause of leap seconds
+	assert now.microsecond >= 0
+	assert now.microsecond < 1000000
 }
 
 fn test_utc() {
 	now := time.utc()
-
 	// The year the test was built
-	assert now.year 			>= 2020
-	assert now.month 			> 0
-	assert now.month 			<= 12
-	assert now.minute 			>= 0
-	assert now.minute 			< 60
-	assert now.second 			>=0
-	assert now.second 			<= 60 // <= 60 cause of leap seconds
-	assert now.microsecond 		>= 0
-	assert now.microsecond 		< 1000000
+	assert now.year >= 2020
+	assert now.month > 0
+	assert now.month <= 12
+	assert now.minute >= 0
+	assert now.minute < 60
+	assert now.second >= 0
+	assert now.second <= 60 // <= 60 cause of leap seconds
+	assert now.microsecond >= 0
+	assert now.microsecond < 1000000
 }
 
 fn test_unix_time() {
 	t1 := time.utc()
-	time.sleep_ms(50)
+	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
@@ -203,10 +216,41 @@ fn test_unix_time() {
 	//
 	utm1 := t1.unix_time_milli()
 	utm2 := t2.unix_time_milli()
-	assert (utm1 - u64(ut1)*1000) < 1000
-	assert (utm2 - u64(ut2)*1000) < 1000
+	assert (utm1 - ut1 * 1000) < 1000
+	assert (utm2 - ut2 * 1000) < 1000
 	//
-	//println('utm1: $utm1 | utm2: $utm2')
+	// println('utm1: $utm1 | utm2: $utm2')
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
+}
+
+fn test_offset() {
+	u := time.utc()
+	n := time.now()
+	//
+	mut diff_seconds := 0
+	if u.day != n.day {
+		if u.day > n.day {
+			diff_seconds = int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60)) - 86400
+		} else {
+			diff_seconds = 86400 - int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60))
+		}
+		if math.abs(u.day - n.day) > 1 { // different month
+			diff_seconds = diff_seconds * -1
+		}
+	} else { // same day
+		diff_seconds = ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
+	}
+
+	assert diff_seconds == time.offset()
+}
+
+fn test_since() {
+	t1 := time.now()
+	time.sleep(20 * time.millisecond)
+	d1 := time.since(t1)
+	assert d1 >= 20_000_000
+	time.sleep(20 * time.millisecond)
+	d2 := time.since(t1)
+	assert d2 >= 40_000_000
 }

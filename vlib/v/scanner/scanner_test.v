@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
@@ -45,10 +45,32 @@ fn test_float_conversion_and_reading() {
 	mut e := 1.2E3 * -1e-1
 	assert e == -120.0
 	e = 1.2E3 * 1e-1
+	x := 55.0
 	assert e == 120.0
 	assert 1.23e+10 == 1.23e10
 	assert 1.23e+10 == 1.23e0010
 	assert (-1.23e+10) == (1.23e0010 * -1.0)
+	assert x == 55.0
+}
+
+fn test_float_without_fraction() {
+	mut result := scan_kinds('x := 10.0')
+	assert result.len == 3
+	assert result[0] == .name
+	assert result[1] == .decl_assign
+	assert result[2] == .number
+	result = scan_kinds('return 3.0, 4.0')
+	assert result.len == 4
+	assert result[0] == .key_return
+	assert result[1] == .number
+	assert result[2] == .comma
+	assert result[3] == .number
+	result = scan_kinds('fun(5.0)')
+	assert result.len == 4
+	assert result[0] == .name
+	assert result[1] == .lpar
+	assert result[2] == .number
+	assert result[3] == .rpar
 }
 
 fn test_reference_bools() {
@@ -113,4 +135,9 @@ fn test_ref_ref_array_ref_ref_foo() {
 	assert result[4] == .amp
 	assert result[5] == .amp
 	assert result[6] == .name
+}
+
+fn test_escape_string() {
+	assert '\x61' == 'a'
+	assert '\x62' == 'b'
 }

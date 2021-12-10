@@ -7,8 +7,27 @@ fn test_pointer_arithmetic() {
 		assert 2 == *parr
 		parr++
 		assert 3 == *parr
+		parr_add_one := *(parr + 1)
+		assert parr_add_one == 4
 		assert *(parr + 1) == 4
 	}
+}
+
+struct User {
+mut:
+	name string
+}
+
+fn modify_ptr(mut user User) {
+	user.name = 'Bob'
+}
+
+fn test_mut_ptr() {
+	mut user := &User{'Peter'}
+	assert user.name == 'Peter'
+	modify_ptr(mut user)
+	assert user.name == 'Bob'
+	println(user)
 }
 
 /*

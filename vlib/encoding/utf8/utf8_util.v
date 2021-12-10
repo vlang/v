@@ -1,29 +1,29 @@
 /*
-
 utf-8 util
 
-Copyright (c) 2019 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
 This file contains utilities for utf8 strings
-
 */
 module utf8
 
 /*
-
 Utility functions
-
 */
 
-// len return the leght as number of unicode chars from a string
+// len return the length as number of unicode chars from a string
 pub fn len(s string) int {
+	if s.len == 0 {
+		return 0
+	}
+
 	mut count := 0
 	mut index := 0
 
 	for {
-		ch_len := utf8util_char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 		index += ch_len
 		count++
 		if index >= s.len {
@@ -33,24 +33,20 @@ pub fn len(s string) int {
 	return count
 }
 
-// u_len return the leght as number of unicode chars from a ustring
-pub fn u_len(s ustring) int {
-	return len(s.s)
-}
-
 // get_uchar convert a unicode glyph in string[index] into a int unicode char
 pub fn get_uchar(s string, index int) int {
 	mut res := 0
 	mut ch_len := 0
-	if s.len > 0  {
-		ch_len = utf8util_char_len(s[index])
+	if s.len > 0 {
+		ch_len = utf8_char_len(s[index])
 
 		if ch_len == 1 {
 			return u16(s[index])
-		}if ch_len > 1 && ch_len < 5{
+		}
+		if ch_len > 1 && ch_len < 5 {
 			mut lword := 0
-			for i:=0; i < ch_len ; i++ {
-				lword = (lword << 8 ) | int( s[index + i] )
+			for i := 0; i < ch_len; i++ {
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
 			// 2 byte utf-8
@@ -63,28 +59,60 @@ pub fn get_uchar(s string, index int) int {
 			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 3 {
-				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f )
+				res = (lword & 0x0f0000) >> 4 | (lword & 0x3f00) >> 2 | (lword & 0x3f)
 			}
 			// 4 byte utf-8
 			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 4 {
-				res = (( lword & 0x07000000 ) >> 6)  | (( lword & 0x003f0000 ) >> 4) |
-						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f )
+				res = ((lword & 0x07000000) >> 6) | ((lword & 0x003f0000) >> 4) | ((lword & 0x00003F00) >> 2) | (lword & 0x0000003f)
 			}
-
-
 		}
-
 	}
 	return res
 }
 
+// raw_index - get the raw chracter from the string by the given index value.
+// example: utf8.raw_index('我是V Lang', 1) => '是'
+pub fn raw_index(s string, index int) string {
+	mut r := []rune{}
+
+	for i := 0; i < s.len; i++ {
+		if r.len - 1 == index {
+			break
+		}
+
+		b := s[i]
+		ch_len := ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3)
+
+		r << if ch_len > 0 {
+			i += ch_len
+			rune(get_uchar(s, i - ch_len))
+		} else {
+			rune(b)
+		}
+	}
+
+	return r[index].str()
+}
+
+// reverse - returns a reversed string.
+// example: utf8.reverse('你好世界hello world') => 'dlrow olleh界世好你'.
+pub fn reverse(s string) string {
+	len_s := len(s)
+	if len_s == 0 || len_s == 1 {
+		return s.clone()
+	}
+	mut str_array := []string{}
+	for i in 0 .. len_s {
+		str_array << raw_index(s, i)
+	}
+	str_array = str_array.reverse()
+	return str_array.join('')
+}
 
 /*
-
 Conversion functions
-
 */
 
 // to_upper return an uppercase string from a string
@@ -92,31 +120,16 @@ pub fn to_upper(s string) string {
 	return up_low(s, true)
 }
 
-// u_to_upper return an uppercase string from a ustring
-pub fn u_to_upper(s ustring) ustring {
-	tmp := up_low(s.s, true)
-	return tmp.ustring()
-}
-
 // to_lower return an lowercase string from a string
 pub fn to_lower(s string) string {
 	return up_low(s, false)
 }
 
-// u_to_lower return an lowercase string from a ustring
-pub fn u_to_lower(s ustring) ustring {
-	tmp := up_low(s.s, false)
-	return tmp.ustring()
-}
-
-
 /*
-
 Punctuation functions
 
 The "western" function search on a small table, that is quicker than
 the global unicode table search. **Use only for western chars**.
-
 */
 
 //
@@ -124,13 +137,32 @@ the global unicode table search. **Use only for western chars**.
 //
 
 // is_punct return true if the string[index] byte is the start of a unicode western punctuation
-pub fn is_punct( s string , index int) bool {
+pub fn is_punct(s string, index int) bool {
 	return is_uchar_punct(get_uchar(s, index))
 }
 
+// is_control return true if the rune is control code
+pub fn is_control(r rune) bool {
+	// control codes are all below 0xff
+	if r > max_latin_1 {
+		return false
+	}
+	return props[byte(r)] == 1
+}
+
+// is_letter returns true if the rune is unicode letter or in unicode category L
+pub fn is_letter(r rune) bool {
+	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
+		return true
+	} else if r <= max_latin_1 {
+		return props[byte(r)] & p_l_mask != 0
+	}
+	return is_excluding_latin(letter_table, r)
+}
+
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
-pub fn is_uchar_punct( uchar int ) bool {
-	return find_punct_in_table(uchar, unicode_punct_western ) != 0
+pub fn is_uchar_punct(uchar int) bool {
+	return find_punct_in_table(uchar, utf8.unicode_punct_western) != 0
 }
 
 //
@@ -138,24 +170,223 @@ pub fn is_uchar_punct( uchar int ) bool {
 //
 
 // is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
-pub fn is_global_punct( s string , index int) bool {
+pub fn is_global_punct(s string, index int) bool {
 	return is_uchar_global_punct(get_uchar(s, index))
 }
 
 // is_uchar_global_punct return true if the input unicode is a global unicode punctuation
-pub fn is_uchar_global_punct( uchar int ) bool {
-	return find_punct_in_table( uchar , unicode_punct ) != 0
+pub fn is_uchar_global_punct(uchar int) bool {
+	return find_punct_in_table(uchar, utf8.unicode_punct) != 0
 }
 
-
 /*
-
 Private functions
-
 */
-// utf8util_char_len calculate the length in bytes of a utf8 char
-fn utf8util_char_len(b byte) int {
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
+
+// Raw to_lower utf-8 function
+fn utf8_to_lower(in_cp int) int {
+	mut cp := in_cp
+	if ((0x0041 <= cp) && (0x005a >= cp)) || ((0x00c0 <= cp) && (0x00d6 >= cp))
+		|| ((0x00d8 <= cp) && (0x00de >= cp)) || ((0x0391 <= cp) && (0x03a1 >= cp))
+		|| ((0x03a3 <= cp) && (0x03ab >= cp)) || ((0x0410 <= cp) && (0x042f >= cp)) {
+		cp += 32
+	} else if (0x0400 <= cp) && (0x040f >= cp) {
+		cp += 80
+	} else if ((0x0100 <= cp) && (0x012f >= cp)) || ((0x0132 <= cp) && (0x0137 >= cp))
+		|| ((0x014a <= cp) && (0x0177 >= cp)) || ((0x0182 <= cp) && (0x0185 >= cp))
+		|| ((0x01a0 <= cp) && (0x01a5 >= cp)) || ((0x01de <= cp) && (0x01ef >= cp))
+		|| ((0x01f8 <= cp) && (0x021f >= cp)) || ((0x0222 <= cp) && (0x0233 >= cp))
+		|| ((0x0246 <= cp) && (0x024f >= cp)) || ((0x03d8 <= cp) && (0x03ef >= cp))
+		|| ((0x0460 <= cp) && (0x0481 >= cp)) || ((0x048a <= cp) && (0x04ff >= cp)) {
+		cp |= 0x1
+	} else if ((0x0139 <= cp) && (0x0148 >= cp)) || ((0x0179 <= cp) && (0x017e >= cp))
+		|| ((0x01af <= cp) && (0x01b0 >= cp)) || ((0x01b3 <= cp) && (0x01b6 >= cp))
+		|| ((0x01cd <= cp) && (0x01dc >= cp)) {
+		cp += 1
+		cp &= ~0x1
+	} else if ((0x0531 <= cp) && (0x0556 >= cp)) || ((0x10A0 <= cp) && (0x10C5 >= cp)) {
+		// ARMENIAN or GEORGIAN
+		cp += 0x30
+	} else if (((0x1E00 <= cp) && (0x1E94 >= cp)) || ((0x1EA0 <= cp) && (0x1EF8 >= cp)))
+		&& (cp & 1 == 0) {
+		// LATIN CAPITAL LETTER
+		cp += 1
+	} else if (0x24B6 <= cp) && (0x24CF >= cp) {
+		// CIRCLED LATIN
+		cp += 0x1a
+	} else if (0xFF21 <= cp) && (0xFF3A >= cp) {
+		// FULLWIDTH LATIN CAPITAL
+		cp += 0x19
+	} else if ((0x1F08 <= cp) && (0x1F0F >= cp)) || ((0x1F18 <= cp) && (0x1F1D >= cp))
+		|| ((0x1F28 <= cp) && (0x1F2F >= cp)) || ((0x1F38 <= cp) && (0x1F3F >= cp))
+		|| ((0x1F48 <= cp) && (0x1F4D >= cp)) || ((0x1F68 <= cp) && (0x1F6F >= cp))
+		|| ((0x1F88 <= cp) && (0x1F8F >= cp)) || ((0x1F98 <= cp) && (0x1F9F >= cp))
+		|| ((0x1FA8 <= cp) && (0x1FAF >= cp)) {
+		// GREEK
+		cp -= 8
+	} else {
+		match cp {
+			0x0178 { cp = 0x00ff }
+			0x0243 { cp = 0x0180 }
+			0x018e { cp = 0x01dd }
+			0x023d { cp = 0x019a }
+			0x0220 { cp = 0x019e }
+			0x01b7 { cp = 0x0292 }
+			0x01c4 { cp = 0x01c6 }
+			0x01c7 { cp = 0x01c9 }
+			0x01ca { cp = 0x01cc }
+			0x01f1 { cp = 0x01f3 }
+			0x01f7 { cp = 0x01bf }
+			0x0187 { cp = 0x0188 }
+			0x018b { cp = 0x018c }
+			0x0191 { cp = 0x0192 }
+			0x0198 { cp = 0x0199 }
+			0x01a7 { cp = 0x01a8 }
+			0x01ac { cp = 0x01ad }
+			0x01af { cp = 0x01b0 }
+			0x01b8 { cp = 0x01b9 }
+			0x01bc { cp = 0x01bd }
+			0x01f4 { cp = 0x01f5 }
+			0x023b { cp = 0x023c }
+			0x0241 { cp = 0x0242 }
+			0x03fd { cp = 0x037b }
+			0x03fe { cp = 0x037c }
+			0x03ff { cp = 0x037d }
+			0x037f { cp = 0x03f3 }
+			0x0386 { cp = 0x03ac }
+			0x0388 { cp = 0x03ad }
+			0x0389 { cp = 0x03ae }
+			0x038a { cp = 0x03af }
+			0x038c { cp = 0x03cc }
+			0x038e { cp = 0x03cd }
+			0x038f { cp = 0x03ce }
+			0x0370 { cp = 0x0371 }
+			0x0372 { cp = 0x0373 }
+			0x0376 { cp = 0x0377 }
+			0x03f4 { cp = 0x03b8 }
+			0x03cf { cp = 0x03d7 }
+			0x03f9 { cp = 0x03f2 }
+			0x03f7 { cp = 0x03f8 }
+			0x03fa { cp = 0x03fb }
+			// GREEK
+			0x1F59 { cp = 0x1F51 }
+			0x1F5B { cp = 0x1F53 }
+			0x1F5D { cp = 0x1F55 }
+			0x1F5F { cp = 0x1F57 }
+			0x1FB8 { cp = 0x1FB0 }
+			0x1FB9 { cp = 0x1FB1 }
+			0x1FD8 { cp = 0x1FD0 }
+			0x1FD9 { cp = 0x1FD1 }
+			0x1FE8 { cp = 0x1FE0 }
+			0x1FE9 { cp = 0x1FE1 }
+			else {}
+		}
+	}
+
+	return cp
+}
+
+// Raw to_upper utf-8 function
+fn utf8_to_upper(in_cp int) int {
+	mut cp := in_cp
+	if ((0x0061 <= cp) && (0x007a >= cp)) || ((0x00e0 <= cp) && (0x00f6 >= cp))
+		|| ((0x00f8 <= cp) && (0x00fe >= cp)) || ((0x03b1 <= cp) && (0x03c1 >= cp))
+		|| ((0x03c3 <= cp) && (0x03cb >= cp)) || ((0x0430 <= cp) && (0x044f >= cp)) {
+		cp -= 32
+	} else if (0x0450 <= cp) && (0x045f >= cp) {
+		cp -= 80
+	} else if ((0x0100 <= cp) && (0x012f >= cp)) || ((0x0132 <= cp) && (0x0137 >= cp))
+		|| ((0x014a <= cp) && (0x0177 >= cp)) || ((0x0182 <= cp) && (0x0185 >= cp))
+		|| ((0x01a0 <= cp) && (0x01a5 >= cp)) || ((0x01de <= cp) && (0x01ef >= cp))
+		|| ((0x01f8 <= cp) && (0x021f >= cp)) || ((0x0222 <= cp) && (0x0233 >= cp))
+		|| ((0x0246 <= cp) && (0x024f >= cp)) || ((0x03d8 <= cp) && (0x03ef >= cp))
+		|| ((0x0460 <= cp) && (0x0481 >= cp)) || ((0x048a <= cp) && (0x04ff >= cp)) {
+		cp &= ~0x1
+	} else if ((0x0139 <= cp) && (0x0148 >= cp)) || ((0x0179 <= cp) && (0x017e >= cp))
+		|| ((0x01af <= cp) && (0x01b0 >= cp)) || ((0x01b3 <= cp) && (0x01b6 >= cp))
+		|| ((0x01cd <= cp) && (0x01dc >= cp)) {
+		cp -= 1
+		cp |= 0x1
+	} else if ((0x0561 <= cp) && (0x0586 >= cp)) || ((0x10D0 <= cp) && (0x10F5 >= cp)) {
+		// ARMENIAN or GEORGIAN
+		cp -= 0x30
+	} else if (((0x1E01 <= cp) && (0x1E95 >= cp)) || ((0x1EA1 <= cp) && (0x1EF9 >= cp)))
+		&& (cp & 1 == 1) {
+		// LATIN CAPITAL LETTER
+		cp -= 1
+	} else if (0x24D0 <= cp) && (0x24E9 >= cp) {
+		// CIRCLED LATIN
+		cp -= 0x1a
+	} else if (0xFF41 <= cp) && (0xFF5A >= cp) {
+		// FULLWIDTH LATIN CAPITAL
+		cp -= 0x19
+	} else if ((0x1F00 <= cp) && (0x1F07 >= cp)) || ((0x1F10 <= cp) && (0x1F15 >= cp))
+		|| ((0x1F20 <= cp) && (0x1F27 >= cp)) || ((0x1F30 <= cp) && (0x1F37 >= cp))
+		|| ((0x1F40 <= cp) && (0x1F45 >= cp)) || ((0x1F60 <= cp) && (0x1F67 >= cp))
+		|| ((0x1F80 <= cp) && (0x1F87 >= cp)) || ((0x1F90 <= cp) && (0x1F97 >= cp))
+		|| ((0x1FA0 <= cp) && (0x1FA7 >= cp)) {
+		// GREEK
+		cp += 8
+	} else {
+		match cp {
+			0x00ff { cp = 0x0178 }
+			0x0180 { cp = 0x0243 }
+			0x01dd { cp = 0x018e }
+			0x019a { cp = 0x023d }
+			0x019e { cp = 0x0220 }
+			0x0292 { cp = 0x01b7 }
+			0x01c6 { cp = 0x01c4 }
+			0x01c9 { cp = 0x01c7 }
+			0x01cc { cp = 0x01ca }
+			0x01f3 { cp = 0x01f1 }
+			0x01bf { cp = 0x01f7 }
+			0x0188 { cp = 0x0187 }
+			0x018c { cp = 0x018b }
+			0x0192 { cp = 0x0191 }
+			0x0199 { cp = 0x0198 }
+			0x01a8 { cp = 0x01a7 }
+			0x01ad { cp = 0x01ac }
+			0x01b0 { cp = 0x01af }
+			0x01b9 { cp = 0x01b8 }
+			0x01bd { cp = 0x01bc }
+			0x01f5 { cp = 0x01f4 }
+			0x023c { cp = 0x023b }
+			0x0242 { cp = 0x0241 }
+			0x037b { cp = 0x03fd }
+			0x037c { cp = 0x03fe }
+			0x037d { cp = 0x03ff }
+			0x03f3 { cp = 0x037f }
+			0x03ac { cp = 0x0386 }
+			0x03ad { cp = 0x0388 }
+			0x03ae { cp = 0x0389 }
+			0x03af { cp = 0x038a }
+			0x03cc { cp = 0x038c }
+			0x03cd { cp = 0x038e }
+			0x03ce { cp = 0x038f }
+			0x0371 { cp = 0x0370 }
+			0x0373 { cp = 0x0372 }
+			0x0377 { cp = 0x0376 }
+			0x03d1 { cp = 0x0398 }
+			0x03d7 { cp = 0x03cf }
+			0x03f2 { cp = 0x03f9 }
+			0x03f8 { cp = 0x03f7 }
+			0x03fb { cp = 0x03fa }
+			// GREEK
+			0x1F51 { cp = 0x1F59 }
+			0x1F53 { cp = 0x1F5B }
+			0x1F55 { cp = 0x1F5D }
+			0x1F57 { cp = 0x1F5F }
+			0x1FB0 { cp = 0x1FB8 }
+			0x1FB1 { cp = 0x1FB9 }
+			0x1FD0 { cp = 0x1FD8 }
+			0x1FD1 { cp = 0x1FD9 }
+			0x1FE0 { cp = 0x1FE8 }
+			0x1FE1 { cp = 0x1FE9 }
+			else {}
+		}
+	}
+
+	return cp
 }
 
 //
@@ -165,30 +396,30 @@ fn utf8util_char_len(b byte) int {
 // up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
 	mut index := 0
-	mut str_res := malloc(s.len + 1)
+	mut tab_char := 0
+	mut str_res := unsafe { malloc_noscan(s.len + 1) }
 
 	for {
-		ch_len := utf8util_char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 
 		if ch_len == 1 {
-			if upper_flag==true {
+			if upper_flag == true {
 				unsafe {
 					str_res[index] = byte(C.toupper(s.str[index]))
 				}
-			}else{
+			} else {
 				unsafe {
 					str_res[index] = byte(C.tolower(s.str[index]))
 				}
 			}
-		}
-		else if ch_len > 1 && ch_len < 5{
+		} else if ch_len > 1 && ch_len < 5 {
 			mut lword := 0
 
-			for i:=0; i < ch_len ; i++ {
-				lword = (lword << 8 ) | int( s[index + i] )
+			for i := 0; i < ch_len; i++ {
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
-			//C.printf(" #%d (%x) ", index, lword)
+			// println("#${index} ($lword)")
 
 			mut res := 0
 
@@ -202,76 +433,61 @@ fn up_low(s string, upper_flag bool) string {
 			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 3 {
-				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f )
+				res = (lword & 0x0f0000) >> 4 | (lword & 0x3f00) >> 2 | (lword & 0x3f)
 			}
 			// 4 byte utf-8
 			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 4 {
-				res = (( lword & 0x07000000 ) >> 6)  | (( lword & 0x003f0000 ) >> 4) |
-						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f )
+				res = ((lword & 0x07000000) >> 6) | ((lword & 0x003f0000) >> 4) | ((lword & 0x00003F00) >> 2) | (lword & 0x0000003f)
 			}
 
-			//C.printf("len: %d code: %04x ",ch_len,res)
-			ch_index := find_char_in_table(u16(res), upper_flag)
-			//C.printf(" utf8 index: %d ",ch_index)
+			// println("res: ${res.hex():8}")
 
-			// char not in table, no need of conversion
-			if ch_index == 0 {
-				for i in 0..ch_len {
+			if upper_flag == false {
+				tab_char = utf8_to_lower(res)
+			} else {
+				tab_char = utf8_to_upper(res)
+			}
+
+			if ch_len == 2 {
+				ch0 := byte((tab_char >> 6) & 0x1f) | 0xc0 // 110x xxxx
+				ch1 := byte((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
+				// C.printf("[%02x%02x] \n",ch0,ch1)
+
+				unsafe {
+					str_res[index + 0] = ch0
+					str_res[index + 1] = ch1
+				}
+				//****************************************************************
+				//  BUG: doesn't compile, workaround use shitf to right of 0 bit
+				//****************************************************************
+				// str_res[index + 1 ] = byte( tab_char & 0xbf )	// 1011 1111
+			} else if ch_len == 3 {
+				ch0 := byte((tab_char >> 12) & 0x0f) | 0xe0 // 1110 xxxx
+				ch1 := byte((tab_char >> 6) & 0x3f) | 0x80 // 10xx xxxx
+				ch2 := byte((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
+				// C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
+
+				unsafe {
+					str_res[index + 0] = ch0
+					str_res[index + 1] = ch1
+					str_res[index + 2] = ch2
+				}
+			}
+			// TODO: write if needed
+			else if ch_len == 4 {
+				// place holder!!
+				// at the present time simply copy the utf8 char
+				for i in 0 .. ch_len {
 					unsafe {
 						str_res[index + i] = s[index + i]
 					}
 				}
-				//C.printf("\n")
-			}else{
-				tab_char := unicode_con_table_up_to_low[ch_index]
-				//C.printf("tab_char: %04x ",tab_char)
-
-				if ch_len == 2 {
-					ch0 := byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
-					ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
-					//C.printf("[%02x%02x] \n",ch0,ch1)
-
-					unsafe {
-						str_res[ index + 0 ] = ch0
-						str_res[ index + 1 ] = ch1
-					}
-
-					//****************************************************************
-					//  BUG: doesn't compile, workaround use shitf to right of 0 bit
-					//****************************************************************
-					//str_res[index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
-
-				}
-				else if ch_len == 3 {
-					ch0 := byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
-					ch1 := byte( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
-					ch2 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
-					//C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
-
-					unsafe {
-						str_res[index + 0 ] = ch0
-						str_res[index + 1 ] = ch1
-						str_res[index + 2 ] = ch2
-					}
-				}
-				// TODO: write if needed
-				else if ch_len == 4 {
-					// place holder!!
-					// at the present time simply copy the utf8 char
-					for i in 0..ch_len {
-						unsafe {
-							str_res[index + i] = s[index + i]
-						}
-					}
-				}
 			}
-
-		}
-		// other cases, just copy the string
-		else{
-			for i in 0..ch_len {
+		} else {
+			// other cases, just copy the string
+			for i in 0 .. ch_len {
 				unsafe {
 					str_res[index + i] = s[index + i]
 				}
@@ -289,58 +505,13 @@ fn up_low(s string, upper_flag bool) string {
 	// for c compatibility set the ending 0
 	unsafe {
 		str_res[index] = 0
+		// C.printf("str_res: %s\n--------------\n",str_res)
+		return tos(str_res, s.len)
 	}
-
-	//C.printf("str_res: %s\n--------------\n",str_res)
-
-	return tos(str_res, s.len)
-}
-
-// find_char_in_table utility function for up_low, search utf8 chars in the conversion table
-fn find_char_in_table( in_code u16, upper_flag bool) int {
-	//
-	// We will use a simple binary search
-	//
-
-	mut first_index := 0 										// first index of our utf8 char range
-	mut last_index := (unicode_con_table_up_to_low.len >> 1)		// last+1 index of our utf8 char range
-	mut index := 0
-	mut x := u16(0)
-
-	mut offset:=0 		// up to low
-	mut i_step:=1		// up to low
-	if upper_flag==true {
-		offset=1		// low to up
-		i_step=0		// low to up
-	}
-
-	//C.printf("looking for [%04x] in (%d..%d).\n",in_code,first_index,last_index)
-	for {
-		index = (first_index+last_index) >> 1
-		x = unicode_con_table_up_to_low[ (index<<1)+offset ]
-
-		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,in_code,x)
-
-		if x == in_code {
-			//C.printf(" Found!\n")
-			return ( (index<<1) + i_step)
-		}
-		else if x>in_code {
-			last_index=index
-		}else {
-			first_index=index
-		}
-
-		if (last_index-first_index)<=1 {
-			break
-		}
-	}
-	//C.printf("not found.\n")
-	return 0
 }
 
 // find punct in lockup table
-fn find_punct_in_table( in_code int , in_table []int ) int {
+fn find_punct_in_table(in_code int, in_table []int) int {
 	//
 	// We will use a simple binary search
 	//
@@ -351,1351 +522,656 @@ fn find_punct_in_table( in_code int , in_table []int ) int {
 	mut x := 0
 
 	for {
-		index = (first_index+last_index) >> 1
-		x = in_table[ index ]
-		//C.printf("(%d..%d) index:%d base[%08x]==>[%08x]\n",first_index,last_index,index,in_code,x)
+		index = (first_index + last_index) >> 1
+		x = in_table[index]
+		// C.printf("(%d..%d) index:%d base[%08x]==>[%08x]\n",first_index,last_index,index,in_code,x)
 
 		if x == in_code {
 			return index
-		}
-		else if x>in_code {
-			last_index=index
-		}else {
-			first_index=index
+		} else if x > in_code {
+			last_index = index
+		} else {
+			first_index = index
 		}
 
-		if (last_index-first_index)<=1 {
+		if (last_index - first_index) <= 1 {
 			break
 		}
 	}
-	//C.printf("not found.\n")
+	// C.printf("not found.\n")
 	return 0
 }
 
-
 /*
-
-universal character set 2 level 1 (UCS-2 level-1) between uppercase and lowercase
-[Lowercase code point,	Uppercase code point,	Lowercase character description,	Uppercase character description]
-
-source: https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_73/nls/rbagslowtoupmaptable.htm?view=embed
-term of use: https://www.ibm.com/legal?lnk=flg-tous-usen
-license: not stated, general fair use license applied
-
-regex expresion => replace from html table to V :
-src: ([A-F\d]+)\s+([A-F\d]+)\s+(.*)
-dst: 0x$1, 0x$2, // $3
-
-*/
-
-const(
-
-unicode_con_table_up_to_low=[
-u16(0x0041), 0x0061, //LATIN CAPITAL LETTER A	LATIN SMALL LETTER A
-0x0042, 0x0062, //LATIN CAPITAL LETTER B	LATIN SMALL LETTER B
-0x0043, 0x0063, //LATIN CAPITAL LETTER C	LATIN SMALL LETTER C
-0x0044, 0x0064, //LATIN CAPITAL LETTER D	LATIN SMALL LETTER D
-0x0045, 0x0065, //LATIN CAPITAL LETTER E	LATIN SMALL LETTER E
-0x0046, 0x0066, //LATIN CAPITAL LETTER F	LATIN SMALL LETTER F
-0x0047, 0x0067, //LATIN CAPITAL LETTER G	LATIN SMALL LETTER G
-0x0048, 0x0068, //LATIN CAPITAL LETTER H	LATIN SMALL LETTER H
-0x0049, 0x0069, //LATIN CAPITAL LETTER I	LATIN SMALL LETTER I
-0x004A, 0x006A, //LATIN CAPITAL LETTER J	LATIN SMALL LETTER J
-0x004B, 0x006B, //LATIN CAPITAL LETTER K	LATIN SMALL LETTER K
-0x004C, 0x006C, //LATIN CAPITAL LETTER L	LATIN SMALL LETTER L
-0x004D, 0x006D, //LATIN CAPITAL LETTER M	LATIN SMALL LETTER M
-0x004E, 0x006E, //LATIN CAPITAL LETTER N	LATIN SMALL LETTER N
-0x004F, 0x006F, //LATIN CAPITAL LETTER O	LATIN SMALL LETTER O
-0x0050, 0x0070, //LATIN CAPITAL LETTER P	LATIN SMALL LETTER P
-0x0051, 0x0071, //LATIN CAPITAL LETTER Q	LATIN SMALL LETTER Q
-0x0052, 0x0072, //LATIN CAPITAL LETTER R	LATIN SMALL LETTER R
-0x0053, 0x0073, //LATIN CAPITAL LETTER S	LATIN SMALL LETTER S
-0x0054, 0x0074, //LATIN CAPITAL LETTER T	LATIN SMALL LETTER T
-0x0055, 0x0075, //LATIN CAPITAL LETTER U	LATIN SMALL LETTER U
-0x0056, 0x0076, //LATIN CAPITAL LETTER V	LATIN SMALL LETTER V
-0x0057, 0x0077, //LATIN CAPITAL LETTER W	LATIN SMALL LETTER W
-0x0058, 0x0078, //LATIN CAPITAL LETTER X	LATIN SMALL LETTER X
-0x0059, 0x0079, //LATIN CAPITAL LETTER Y	LATIN SMALL LETTER Y
-0x005A, 0x007A, //LATIN CAPITAL LETTER Z	LATIN SMALL LETTER Z
-0x00C0, 0x00E0, //LATIN CAPITAL LETTER A GRAVE	LATIN SMALL LETTER A GRAVE
-0x00C1, 0x00E1, //LATIN CAPITAL LETTER A ACUTE	LATIN SMALL LETTER A GRAVE
-0x00C2, 0x00E2, //LATIN CAPITAL LETTER A CIRCUMFLEX	LATIN SMALL LETTER A GRAVE
-0x00C3, 0x00E3, //LATIN CAPITAL LETTER A TILDE	LATIN SMALL LETTER A GRAVE
-0x00C4, 0x00E4, //LATIN CAPITAL LETTER A DIAERESIS	LATIN SMALL LETTER A GRAVE
-0x00C5, 0x00E5, //LATIN CAPITAL LETTER A RING	LATIN SMALL LETTER A GRAVE
-0x00C6, 0x00E6, //LATIN CAPITAL LETTER A E	LATIN SMALL LETTER A GRAVE
-0x00C7, 0x00E7, //LATIN CAPITAL LETTER C CEDILLA	LATIN SMALL LETTER A GRAVE
-0x00C8, 0x00E8, //LATIN CAPITAL LETTER E GRAVE	LATIN SMALL LETTER A GRAVE
-0x00C9, 0x00E9, //LATIN CAPITAL LETTER E ACUTE	LATIN SMALL LETTER A GRAVE
-0x00CA, 0x00EA, //LATIN CAPITAL LETTER E CIRCUMFLEX	LATIN SMALL LETTER E CIRCUMFLEX
-0x00CB, 0x00EB, //LATIN CAPITAL LETTER E DIAERESIS	LATIN SMALL LETTER E DIAERESIS
-0x00CC, 0x00EC, //LATIN CAPITAL LETTER I GRAVE	LATIN SMALL LETTER I GRAVE
-0x00CD, 0x00ED, //LATIN CAPITAL LETTER I ACUTE	LATIN SMALL LETTER I ACUTE
-0x00CE, 0x00EE, //LATIN CAPITAL LETTER I CIRCUMFLEX	LATIN SMALL LETTER I CIRCUMFLEX
-0x00CF, 0x00EF, //LATIN CAPITAL LETTER I DIAERESIS	LATIN SMALL LETTER I DIAERESIS
-0x00D0, 0x00F0, //LATIN CAPITAL LETTER ETH	LATIN SMALL LETTER ETH
-0x00D1, 0x00F1, //LATIN CAPITAL LETTER N TILDE	LATIN SMALL LETTER N TILDE
-0x00D2, 0x00F2, //LATIN CAPITAL LETTER O GRAVE	LATIN SMALL LETTER O GRAVE
-0x00D3, 0x00F3, //LATIN CAPITAL LETTER O ACUTE	LATIN SMALL LETTER O ACUTE
-0x00D4, 0x00F4, //LATIN CAPITAL LETTER O CIRCUMFLEX	LATIN SMALL LETTER O CIRCUMFLEX
-0x00D5, 0x00F5, //LATIN CAPITAL LETTER O TILDE	LATIN SMALL LETTER O TILDE
-0x00D6, 0x00F6, //LATIN CAPITAL LETTER O DIAERESIS	LATIN SMALL LETTER O DIAERESIS
-0x00D8, 0x00F8, //LATIN CAPITAL LETTER O SLASH	LATIN SMALL LETTER O SLASH
-0x00D9, 0x00F9, //LATIN CAPITAL LETTER U GRAVE	LATIN SMALL LETTER U GRAVE
-0x00DA, 0x00FA, //LATIN CAPITAL LETTER U ACUTE	LATIN SMALL LETTER U ACUTE
-0x00DB, 0x00FB, //LATIN CAPITAL LETTER U CIRCUMFLEX	LATIN SMALL LETTER U CIRCUMFLEX
-0x00DC, 0x00FC, //LATIN CAPITAL LETTER U DIAERESIS	LATIN SMALL LETTER U DIAERESIS
-0x00DD, 0x00FD, //LATIN CAPITAL LETTER Y ACUTE	LATIN SMALL LETTER Y ACUTE
-0x00DE, 0x00FE, //LATIN CAPITAL LETTER THORN	LATIN SMALL LETTER THORN
-0x0100, 0x0101, //LATIN CAPITAL LETTER A WITH MACRON	LATIN SMALL LETTER A WITH MACRON
-0x0102, 0x0103, //LATIN CAPITAL LETTER A WITH BREVE	LATIN SMALL LETTER A WITH BREVE
-0x0104, 0x0105, //LATIN CAPITAL LETTER A WITH OGONEK	LATIN SMALL LETTER A WITH OGONEK
-0x0106, 0x0107, //LATIN CAPITAL LETTER C WITH ACUTE	LATIN SMALL LETTER C WITH ACUTE
-0x0108, 0x0109, //LATIN CAPITAL LETTER C WITH CIRCUMFLEX	LATIN SMALL LETTER C WITH CIRCUMFLEX
-0x010A, 0x010B, //LATIN CAPITAL LETTER C WITH DOT ABOVE	LATIN SMALL LETTER C WITH DOT ABOVE
-0x010C, 0x010D, //LATIN CAPITAL LETTER C WITH CARON	LATIN SMALL LETTER C WITH CARON
-0x010E, 0x010F, //LATIN CAPITAL LETTER D WITH CARON	LATIN SMALL LETTER D WITH CARON
-0x0110, 0x0111, //LATIN CAPITAL LETTER D WITH STROKE	LATIN SMALL LETTER D WITH STROKE
-0x0112, 0x0113, //LATIN CAPITAL LETTER E WITH MACRON	LATIN SMALL LETTER E WITH MACRON
-0x0114, 0x0115, //LATIN CAPITAL LETTER E WITH BREVE	LATIN SMALL LETTER E WITH BREVE
-0x0116, 0x0117, //LATIN CAPITAL LETTER E WITH DOT ABOVE	LATIN SMALL LETTER E WITH DOT ABOVE
-0x0118, 0x0119, //LATIN CAPITAL LETTER E WITH OGONEK	LATIN SMALL LETTER E WITH OGONEK
-0x011A, 0x011B, //LATIN CAPITAL LETTER E WITH CARON	LATIN SMALL LETTER E WITH CARON
-0x011C, 0x011D, //LATIN CAPITAL LETTER G WITH CIRCUMFLEX	LATIN SMALL LETTER G WITH CIRCUMFLEX
-0x011E, 0x011F, //LATIN CAPITAL LETTER G WITH BREVE	LATIN SMALL LETTER G WITH BREVE
-0x0120, 0x0121, //LATIN CAPITAL LETTER G WITH DOT ABOVE	LATIN SMALL LETTER G WITH DOT ABOVE
-0x0122, 0x0123, //LATIN CAPITAL LETTER G WITH CEDILLA	LATIN SMALL LETTER G WITH CEDILLA
-0x0124, 0x0125, //LATIN CAPITAL LETTER H WITH CIRCUMFLEX	LATIN SMALL LETTER H WITH CIRCUMFLEX
-0x0126, 0x0127, //LATIN CAPITAL LETTER H WITH STROKE	LATIN SMALL LETTER H WITH STROKE
-0x0128, 0x0129, //LATIN CAPITAL LETTER I WITH TILDE	LATIN SMALL LETTER I WITH TILDE
-0x012A, 0x012B, //LATIN CAPITAL LETTER I WITH MACRON	LATIN SMALL LETTER I WITH MACRON
-0x012C, 0x012D, //LATIN CAPITAL LETTER I WITH BREVE	LATIN SMALL LETTER I WITH BREVE
-0x012E, 0x012F, //LATIN CAPITAL LETTER I WITH OGONEK	LATIN SMALL LETTER I WITH OGONEK
-0x0130, 0x0069, //LATIN CAPITAL LETTER I WITH DOT ABOVE	LATIN SMALL LETTER I
-0x0132, 0x0133, //LATIN CAPITAL LIGATURE IJ	LATIN SMALL LIGATURE IJ
-0x0134, 0x0135, //LATIN CAPITAL LETTER J WITH CIRCUMFLEX	LATIN SMALL LETTER J WITH CIRCUMFLEX
-0x0136, 0x0137, //LATIN CAPITAL LETTER K WITH CEDILLA	LATIN SMALL LETTER K WITH CEDILLA
-0x0139, 0x013A, //LATIN CAPITAL LETTER L WITH ACUTE	LATIN SMALL LETTER L WITH ACUTE
-0x013B, 0x013C, //LATIN CAPITAL LETTER L WITH CEDILLA	LATIN SMALL LETTER L WITH CEDILLA
-0x013D, 0x013E, //LATIN CAPITAL LETTER L WITH CARON	LATIN SMALL LETTER L WITH CARON
-0x013F, 0x0140, //LATIN CAPITAL LETTER L WITH MIDDLE DOT	LATIN SMALL LETTER L WITH MIDDLE DOT
-0x0141, 0x0142, //LATIN CAPITAL LETTER L WITH STROKE	LATIN SMALL LETTER L WITH STROKE
-0x0143, 0x0144, //LATIN CAPITAL LETTER N WITH ACUTE	LATIN SMALL LETTER N WITH ACUTE
-0x0145, 0x0146, //LATIN CAPITAL LETTER N WITH CEDILLA	LATIN SMALL LETTER N WITH CEDILLA
-0x0147, 0x0148, //LATIN CAPITAL LETTER N WITH CARON	LATIN SMALL LETTER N WITH CARON
-0x014A, 0x014B, //LATIN CAPITAL LETTER ENG (SAMI)	LATIN SMALL LETTER ENG (SAMI)
-0x014C, 0x014D, //LATIN CAPITAL LETTER O WITH MACRON	LATIN SMALL LETTER O WITH MACRON
-0x014E, 0x014F, //LATIN CAPITAL LETTER O WITH BREVE	LATIN SMALL LETTER O WITH BREVE
-0x0150, 0x0151, //LATIN CAPITAL LETTER O WITH DOUBLE ACUTE	LATIN SMALL LETTER O WITH DOUBLE ACUTE
-0x0152, 0x0153, //LATIN CAPITAL LIGATURE OE	LATIN SMALL LIGATURE OE
-0x0154, 0x0155, //LATIN CAPITAL LETTER R WITH ACUTE	LATIN SMALL LETTER R WITH ACUTE
-0x0156, 0x0157, //LATIN CAPITAL LETTER R WITH CEDILLA	LATIN SMALL LETTER R WITH CEDILLA
-0x0158, 0x0159, //LATIN CAPITAL LETTER R WITH CARON	LATIN SMALL LETTER R WITH CARON
-0x015A, 0x015B, //LATIN CAPITAL LETTER S WITH ACUTE	LATIN SMALL LETTER S WITH ACUTE
-0x015C, 0x015D, //LATIN CAPITAL LETTER S WITH CIRCUMFLEX	LATIN SMALL LETTER S WITH CIRCUMFLEX
-0x015E, 0x015F, //LATIN CAPITAL LETTER S WITH CEDILLA	LATIN SMALL LETTER S WITH CEDILLA
-0x0160, 0x0161, //LATIN CAPITAL LETTER S WITH CARON	LATIN SMALL LETTER S WITH CARON
-0x0162, 0x0163, //LATIN CAPITAL LETTER T WITH CEDILLA	LATIN SMALL LETTER T WITH CEDILLA
-0x0164, 0x0165, //LATIN CAPITAL LETTER T WITH CARON	LATIN SMALL LETTER T WITH CARON
-0x0166, 0x0167, //LATIN CAPITAL LETTER T WITH STROKE	LATIN SMALL LETTER T WITH STROKE
-0x0168, 0x0169, //LATIN CAPITAL LETTER U WITH TILDE	LATIN SMALL LETTER U WITH TILDE
-0x016A, 0x016B, //LATIN CAPITAL LETTER U WITH MACRON	LATIN SMALL LETTER U WITH MACRON
-0x016C, 0x016D, //LATIN CAPITAL LETTER U WITH BREVE	LATIN SMALL LETTER U WITH BREVE
-0x016E, 0x016F, //LATIN CAPITAL LETTER U WITH RING ABOVE	LATIN SMALL LETTER U WITH RING ABOVE
-0x0170, 0x0171, //LATIN CAPITAL LETTER U WITH DOUBLE ACUTE	LATIN SMALL LETTER U WITH DOUBLE ACUTE
-0x0172, 0x0173, //LATIN CAPITAL LETTER U WITH OGONEK	LATIN SMALL LETTER U WITH OGONEK
-0x0174, 0x0175, //LATIN CAPITAL LETTER W WITH CIRCUMFLEX	LATIN SMALL LETTER W WITH CIRCUMFLEX
-0x0176, 0x0177, //LATIN CAPITAL LETTER Y WITH CIRCUMFLEX	LATIN SMALL LETTER Y WITH CIRCUMFLEX
-0x0178, 0x00FF, //LATIN CAPITAL LETTER Y WITH DIAERESIS	LATIN SMALL LETTER Y DIAERESIS
-0x0179, 0x017A, //LATIN CAPITAL LETTER Z WITH ACUTE	LATIN SMALL LETTER Z WITH ACUTE
-0x017B, 0x017C, //LATIN CAPITAL LETTER Z WITH DOT ABOVE	LATIN SMALL LETTER Z WITH DOT ABOVE
-0x017D, 0x017E, //LATIN CAPITAL LETTER Z WITH CARON	LATIN SMALL LETTER Z WITH CARON
-0x0181, 0x0253, //LATIN CAPITAL LETTER B WITH HOOK	LATIN SMALL LETTER B WITH HOOK
-0x0182, 0x0183, //LATIN CAPITAL LETTER B WITH TOPBAR	LATIN SMALL LETTER B WITH TOPBAR
-0x0184, 0x0185, //LATIN CAPITAL LETTER TONE SIX	LATIN SMALL LETTER TONE SIX
-0x0186, 0x0254, //LATIN CAPITAL LETTER OPEN O	LATIN SMALL LETTER OPEN O
-0x0187, 0x0188, //LATIN CAPITAL LETTER C WITH HOOK	LATIN SMALL LETTER C WITH HOOK
-0x018A, 0x0257, //LATIN CAPITAL LETTER D WITH HOOK	LATIN SMALL LETTER D WITH HOOK
-0x018B, 0x018C, //LATIN CAPITAL LETTER D WITH TOPBAR	LATIN SMALL LETTER D WITH TOPBAR
-0x018E, 0x0258, //LATIN CAPITAL LETTER REVERSED E	LATIN SMALL LETTER REVERSED E
-0x018F, 0x0259, //LATIN CAPITAL LETTER SCHWA	LATIN SMALL LETTER SCHWA
-0x0190, 0x025B, //LATIN CAPITAL LETTER OPEN E	LATIN SMALL LETTER OPEN E
-0x0191, 0x0192, //LATIN CAPITAL LETTER F WITH HOOK	LATIN SMALL LETTER F WITH HOOK
-0x0193, 0x0260, //LATIN CAPITAL LETTER G WITH HOOK	LATIN SMALL LETTER G WITH HOOK
-0x0194, 0x0263, //LATIN CAPITAL LETTER GAMMA	LATIN SMALL LETTER GAMMA
-0x0196, 0x0269, //LATIN CAPITAL LETTER IOTA	LATIN SMALL LETTER IOTA
-0x0197, 0x0268, //LATIN CAPITAL LETTER I WITH STROKE	LATIN SMALL LETTER I WITH STROKE
-0x0198, 0x0199, //LATIN CAPITAL LETTER K WITH HOOK	LATIN SMALL LETTER K WITH HOOK
-0x019C, 0x026f, //LATIN CAPITAL LETTER TURNED M	LATIN SMALL LETTER TURNED M
-0x019D, 0x0272, //LATIN CAPITAL LETTER N WITH LEFT HOOK	LATIN SMALL LETTER N WITH LEFT HOOK
-0x019F, 0x0275, //LATIN CAPITAL LETTER O WITH MIDDLE TILDE	LATIN SMALL LETTER BARRED O
-0x01A0, 0x01A1, //LATIN CAPITAL LETTER O WITH HORN	LATIN SMALL LETTER O WITH HORN
-0x01A2, 0x01A3, //LATIN CAPITAL LETTER OI	LATIN SMALL LETTER OI
-0x01A4, 0x01A5, //LATIN CAPITAL LETTER P WITH HOOK	LATIN SMALL LETTER P WITH HOOK
-0x01A7, 0x01A8, //LATIN CAPITAL LETTER TONE TWO	LATIN SMALL LETTER TONE TWO
-0x01A9, 0x0283, //LATIN CAPITAL LETTER ESH	LATIN SMALL LETTER ESH
-0x01AC, 0x01AD, //LATIN CAPITAL LETTER T WITH HOOK	LATIN SMALL LETTER T WITH HOOK
-0x01AE, 0x0288, //LATIN CAPITAL LETTER T WITH RETROFLEX HOOK	LATIN SMALL LETTER T WITH RETROFLEX HOOK
-0x01AF, 0x01B0, //LATIN CAPITAL LETTER U WITH HORN	LATIN SMALL LETTER U WITH HORN
-0x01B1, 0x028A, //LATIN CAPITAL LETTER UPSILON	LATIN SMALL LETTER UPSILON
-0x01B2, 0x028B, //LATIN CAPITAL LETTER V WITH HOOK	LATIN SMALL LETTER V WITH HOOK
-0x01B3, 0x01B4, //LATIN CAPITAL LETTER Y WITH HOOK	LATIN SMALL LETTER Y WITH HOOK
-0x01B5, 0x01B6, //LATIN CAPITAL LETTER Z WITH STROKE	LATIN SMALL LETTER Z WITH STROKE
-0x01B7, 0x0292, //LATIN CAPITAL LETTER EZH	LATIN SMALL LETTER EZH
-0x01B8, 0x01B9, //LATIN CAPITAL LETTER EZH REVERSED	LATIN SMALL LETTER EZH REVERSED
-0x01BC, 0x01BD, //LATIN CAPITAL LETTER TONE FIVE	LATIN SMALL LETTER TONE FIVE
-0x01C4, 0x01C6, //LATIN CAPITAL LETTER DZ WITH CARON	LATIN SMALL LETTER DZ WITH CARON
-0x01C5, 0x01C6, //LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON	LATIN SMALL LETTER DZ WITH CARON
-0x01C7, 0x01C9, //LATIN CAPITAL LETTER LJ	LATIN SMALL LETTER LJ
-0x01C8, 0x01C9, //LATIN CAPITAL LETTER L WITH SMALL LETTER J	LATIN SMALL LETTER LJ
-0x01CA, 0x01CC, //LATIN CAPITAL LETTER NJ	LATIN SMALL LETTER NJ
-0x01CB, 0x01CC, //LATIN CAPITAL LETTER N WITH SMALL LETTER J	LATIN SMALL LETTER NJ
-0x01CD, 0x01CE, //LATIN CAPITAL LETTER A WITH CARON	LATIN SMALL LETTER A WITH CARON
-0x01CF, 0x01D0, //LATIN CAPITAL LETTER I WITH CARON	LATIN SMALL LETTER I WITH CARON
-0x01D1, 0x01D2, //LATIN CAPITAL LETTER O WITH CARON	LATIN SMALL LETTER O WITH CARON
-0x01D3, 0x01D4, //LATIN CAPITAL LETTER U WITH CARON	LATIN SMALL LETTER U WITH CARON
-0x01D5, 0x01D6, //LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON	LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
-0x01D7, 0x01D8, //LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE	LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
-0x01D9, 0x01DA, //LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON	LATIN SMALL LETTER U WITH DIAERESIS AND CARON
-0x01DB, 0x01DC, //LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE	LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
-0x01DE, 0x01DF, //LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON	LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
-0x01E0, 0x01E1, //LATIN CAPITAL LETTER A WITH DOT ABOVE AND MACRON	LATIN SMALL LETTER A WITH DOT ABOVE AND MACRON
-0x01E2, 0x01E3, //LATIN CAPITAL LIGATURE AE WITH MACRON	LATIN SMALL LIGATURE AE WITH MACRON
-0x01E4, 0x01E5, //LATIN CAPITAL LETTER G WITH STROKE	LATIN SMALL LETTER G WITH STROKE
-0x01E6, 0x01E7, //LATIN CAPITAL LETTER G WITH CARON	LATIN SMALL LETTER G WITH CARON
-0x01E8, 0x01E9, //LATIN CAPITAL LETTER K WITH CARON	LATIN SMALL LETTER K WITH CARON
-0x01EA, 0x01EB, //LATIN CAPITAL LETTER O WITH OGONEK	LATIN SMALL LETTER O WITH OGONEK
-0x01EC, 0x01ED, //LATIN CAPITAL LETTER O WITH OGONEK AND MACRON	LATIN SMALL LETTER O WITH OGONEK AND MACRON
-0x01EE, 0x01EF, //LATIN CAPITAL LETTER EZH WITH CARON	LATIN SMALL LETTER EZH WITH CARON
-0x01F1, 0x01F3, //LATIN CAPITAL LETTER DZ	LATIN SMALL LETTER DZ
-0x01F4, 0x01F5, //LATIN CAPITAL LETTER G WITH ACUTE	LATIN SMALL LETTER G WITH ACUTE
-0x01FA, 0x01FB, //LATIN CAPITAL LETTER A WITH RING ABOVE AND ACUTE	LATIN SMALL LETTER A WITH RING ABOVE AND ACUTE
-0x01FC, 0x01FD, //LATIN CAPITAL LIGATURE AE WITH ACUTE	LATIN SMALL LIGATURE AE WITH ACUTE
-0x01FE, 0x01FF, //LATIN CAPITAL LETTER O WITH STROKE AND ACUTE	LATIN SMALL LETTER O WITH STROKE AND ACUTE
-0x0200, 0x0201, //LATIN CAPITAL LETTER A WITH DOUBLE GRAVE	LATIN SMALL LETTER A WITH DOUBLE GRAVE
-0x0202, 0x0203, //LATIN CAPITAL LETTER A WITH INVERTED BREVE	LATIN SMALL LETTER A WITH INVERTED BREVE
-0x0204, 0x0205, //LATIN CAPITAL LETTER E WITH DOUBLE GRAVE	LATIN SMALL LETTER E WITH DOUBLE GRAVE
-0x0206, 0x0207, //LATIN CAPITAL LETTER E WITH INVERTED BREVE	LATIN SMALL LETTER E WITH INVERTED BREVE
-0x0208, 0x0209, //LATIN CAPITAL LETTER I WITH DOUBLE GRAVE	LATIN SMALL LETTER I WITH DOUBLE GRAVE
-0x020A, 0x020B, //LATIN CAPITAL LETTER I WITH INVERTED BREVE	LATIN SMALL LETTER I WITH INVERTED BREVE
-0x020C, 0x020D, //LATIN CAPITAL LETTER O WITH DOUBLE GRAVE	LATIN SMALL LETTER O WITH DOUBLE GRAVE
-0x020E, 0x020F, //LATIN CAPITAL LETTER O WITH INVERTED BREVE	LATIN SMALL LETTER O WITH INVERTED BREVE
-0x0210, 0x0211, //LATIN CAPITAL LETTER R WITH DOUBLE GRAVE	LATIN SMALL LETTER R WITH DOUBLE GRAVE
-0x0212, 0x0213, //LATIN CAPITAL LETTER R WITH INVERTED BREVE	LATIN SMALL LETTER R WITH INVERTED BREVE
-0x0214, 0x0215, //LATIN CAPITAL LETTER U WITH DOUBLE GRAVE	LATIN SMALL LETTER U WITH DOUBLE GRAVE
-0x0216, 0x0217, //LATIN CAPITAL LETTER U WITH INVERTED BREVE	LATIN SMALL LETTER U WITH INVERTED BREVE
-0x0386, 0x03AC, //GREEK CAPITAL LETTER ALPHA WITH TONOS	GREEK SMALL LETTER ALPHA WITH TONOS
-0x0388, 0x03AD, //GREEK CAPITAL LETTER EPSILON WITH TONOS	GREEK SMALL LETTER EPSILON WITH TONOS
-0x0389, 0x03AE, //GREEK CAPITAL LETTER ETA WITH TONOS	GREEK SMALL LETTER ETA WITH TONOS
-0x038A, 0x03AF, //GREEK CAPITAL LETTER IOTA WITH TONOS	GREEK SMALL LETTER IOTA WITH TONOS
-0x038C, 0x03CC, //GREEK CAPITAL LETTER OMICRON WITH TONOS	GREEK SMALL LETTER OMICRON WITH TONOS
-0x038E, 0x03CD, //GREEK CAPITAL LETTER UPSILON WITH TONOS	GREEK SMALL LETTER UPSILON WITH TONOS
-0x038F, 0x03CE, //GREEK CAPITAL LETTER OMEGA WITH TONOS	GREEK SMALL LETTER OMEGA WITH TONOS
-0x0391, 0x03B1, //GREEK CAPITAL LETTER ALPHA	GREEK SMALL LETTER ALPHA
-0x0392, 0x03B2, //GREEK CAPITAL LETTER BETA	GREEK SMALL LETTER BETA
-0x0393, 0x03B3, //GREEK CAPITAL LETTER GAMMA	GREEK SMALL LETTER GAMMA
-0x0394, 0x03B4, //GREEK CAPITAL LETTER DELTA	GREEK SMALL LETTER DELTA
-0x0395, 0x03B5, //GREEK CAPITAL LETTER EPSILON	GREEK SMALL LETTER EPSILON
-0x0396, 0x03B6, //GREEK CAPITAL LETTER ZETA	GREEK SMALL LETTER ZETA
-0x0397, 0x03B7, //GREEK CAPITAL LETTER ETA	GREEK SMALL LETTER ETA
-0x0398, 0x03B8, //GREEK CAPITAL LETTER THETA	GREEK SMALL LETTER THETA
-0x0399, 0x03B9, //GREEK CAPITAL LETTER IOTA	GREEK SMALL LETTER IOTA
-0x039A, 0x03BA, //GREEK CAPITAL LETTER KAPPA	GREEK SMALL LETTER KAPPA
-0x039B, 0x03BB, //GREEK CAPITAL LETTER LAMDA	GREEK SMALL LETTER LAMDA
-0x039C, 0x03BC, //GREEK CAPITAL LETTER MU	GREEK SMALL LETTER MU
-0x039D, 0x03BD, //GREEK CAPITAL LETTER NU	GREEK SMALL LETTER NU
-0x039E, 0x03BE, //GREEK CAPITAL LETTER XI	GREEK SMALL LETTER XI
-0x039F, 0x03BF, //GREEK CAPITAL LETTER OMICRON	GREEK SMALL LETTER OMICRON
-0x03A0, 0x03C0, //GREEK CAPITAL LETTER PI	GREEK SMALL LETTER PI
-0x03A1, 0x03C1, //GREEK CAPITAL LETTER RHO	GREEK SMALL LETTER RHO
-0x03A3, 0x03C3, //GREEK CAPITAL LETTER SIGMA	GREEK SMALL LETTER SIGMA
-0x03A4, 0x03C4, //GREEK CAPITAL LETTER TAU	GREEK SMALL LETTER TAU
-0x03A5, 0x03C5, //GREEK CAPITAL LETTER UPSILON	GREEK SMALL LETTER UPSILON
-0x03A6, 0x03C6, //GREEK CAPITAL LETTER PHI	GREEK SMALL LETTER PHI
-0x03A7, 0x03C7, //GREEK CAPITAL LETTER CHI	GREEK SMALL LETTER CHI
-0x03A8, 0x03C8, //GREEK CAPITAL LETTER PSI	GREEK SMALL LETTER PSI
-0x03A9, 0x03C9, //GREEK CAPITAL LETTER OMEGA	GREEK SMALL LETTER OMEGA
-0x03AA, 0x03CA, //GREEK CAPITAL LETTER IOTA WITH DIALYTIKA	GREEK SMALL LETTER IOTA WITH DIALYTIKA
-0x03AB, 0x03CB, //GREEK CAPITAL LETTER UPSILON WITH DIALYTIKA	GREEK SMALL LETTER UPSILON WITH DIALYTIKA
-0x03E2, 0x03E3, //COPTIC CAPITAL LETTER SHEI	COPTIC SMALL LETTER SHEI
-0x03E4, 0x03E5, //COPTIC CAPITAL LETTER FEI	COPTIC SMALL LETTER FEI
-0x03E6, 0x03E7, //COPTIC CAPITAL LETTER KHEI	COPTIC SMALL LETTER KHEI
-0x03E8, 0x03E9, //COPTIC CAPITAL LETTER HORI	COPTIC SMALL LETTER HORI
-0x03EA, 0x03EB, //COPTIC CAPITAL LETTER GANGIA	COPTIC SMALL LETTER GANGIA
-0x03EC, 0x03ED, //COPTIC CAPITAL LETTER SHIMA	COPTIC SMALL LETTER SHIMA
-0x03EE, 0x03EF, //COPTIC CAPITAL LETTER DEI	COPTIC SMALL LETTER DEI
-0x0401, 0x0451, //CYRILLIC CAPITAL LETTER IO	CYRILLIC SMALL LETTER IO
-0x0402, 0x0452, //CYRILLIC CAPITAL LETTER DJE (SERBOCROATIAN)	CYRILLIC SMALL LETTER DJE (SERBOCROATIAN)
-0x0403, 0x0453, //CYRILLIC CAPITAL LETTER GJE	CYRILLIC SMALL LETTER GJE
-0x0404, 0x0454, //CYRILLIC CAPITAL LETTER UKRAINIAN IE	CYRILLIC SMALL LETTER UKRAINIAN IE
-0x0405, 0x0455, //CYRILLIC CAPITAL LETTER DZE	CYRILLIC SMALL LETTER DZE
-0x0406, 0x0456, //CYRILLIC CAPITAL LETTER BYELORUSSIAN_UKRAINIAN I	CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I
-0x0407, 0x0457, //CYRILLIC CAPITAL LETTER YI (UKRAINIAN)	CYRILLIC SMALL LETTER YI (UKRAINIAN)
-0x0408, 0x0458, //CYRILLIC CAPITAL LETTER JE	CYRILLIC SMALL LETTER JE
-0x0409, 0x0459, //CYRILLIC CAPITAL LETTER LJE	CYRILLIC SMALL LETTER LJE
-0x040A, 0x045A, //CYRILLIC CAPITAL LETTER NJE	CYRILLIC SMALL LETTER NJE
-0x040B, 0x045B, //CYRILLIC CAPITAL LETTER TSHE (SERBOCROATIAN)	CYRILLIC SMALL LETTER TSHE (SERBOCROATIAN)
-0x040C, 0x045C, //CYRILLIC CAPITAL LETTER KJE	CYRILLIC SMALL LETTER KJE
-0x040E, 0x045E, //CYRILLIC CAPITAL LETTER SHORT U (BYELORUSSIAN)	CYRILLIC SMALL LETTER SHORT U (BYELORUSSIAN)
-0x040F, 0x045F, //CYRILLIC CAPITAL LETTER DZHE	CYRILLIC SMALL LETTER DZHE
-0x0410, 0x0430, //CYRILLIC CAPITAL LETTER A	CYRILLIC SMALL LETTER A
-0x0411, 0x0431, //CYRILLIC CAPITAL LETTER BE	CYRILLIC SMALL LETTER BE
-0x0412, 0x0432, //CYRILLIC CAPITAL LETTER VE	CYRILLIC SMALL LETTER VE
-0x0413, 0x0433, //CYRILLIC CAPITAL LETTER GHE	CYRILLIC SMALL LETTER GHE
-0x0414, 0x0434, //CYRILLIC CAPITAL LETTER DE	CYRILLIC SMALL LETTER DE
-0x0415, 0x0435, //CYRILLIC CAPITAL LETTER IE	CYRILLIC SMALL LETTER IE
-0x0416, 0x0436, //CYRILLIC CAPITAL LETTER ZHE	CYRILLIC SMALL LETTER ZHE
-0x0417, 0x0437, //CYRILLIC CAPITAL LETTER ZE	CYRILLIC SMALL LETTER ZE
-0x0418, 0x0438, //CYRILLIC CAPITAL LETTER I	CYRILLIC SMALL LETTER I
-0x0419, 0x0439, //CYRILLIC CAPITAL LETTER SHORT I	CYRILLIC SMALL LETTER SHORT I
-0x041A, 0x043A, //CYRILLIC CAPITAL LETTER KA	CYRILLIC SMALL LETTER KA
-0x041B, 0x043B, //CYRILLIC CAPITAL LETTER EL	CYRILLIC SMALL LETTER EL
-0x041C, 0x043C, //CYRILLIC CAPITAL LETTER EM	CYRILLIC SMALL LETTER EM
-0x041D, 0x043D, //CYRILLIC CAPITAL LETTER EN	CYRILLIC SMALL LETTER EN
-0x041E, 0x043E, //CYRILLIC CAPITAL LETTER O	CYRILLIC SMALL LETTER O
-0x041F, 0x043F, //CYRILLIC CAPITAL LETTER PE	CYRILLIC SMALL LETTER PE
-0x0420, 0x0440, //CYRILLIC CAPITAL LETTER ER	CYRILLIC SMALL LETTER ER
-0x0421, 0x0441, //CYRILLIC CAPITAL LETTER ES	CYRILLIC SMALL LETTER ES
-0x0422, 0x0442, //CYRILLIC CAPITAL LETTER TE	CYRILLIC SMALL LETTER TE
-0x0423, 0x0443, //CYRILLIC CAPITAL LETTER U	CYRILLIC SMALL LETTER U
-0x0424, 0x0444, //CYRILLIC CAPITAL LETTER EF	CYRILLIC SMALL LETTER EF
-0x0425, 0x0445, //CYRILLIC CAPITAL LETTER HA	CYRILLIC SMALL LETTER HA
-0x0426, 0x0446, //CYRILLIC CAPITAL LETTER TSE	CYRILLIC SMALL LETTER TSE
-0x0427, 0x0447, //CYRILLIC CAPITAL LETTER CHE	CYRILLIC SMALL LETTER CHE
-0x0428, 0x0448, //CYRILLIC CAPITAL LETTER SHA	CYRILLIC SMALL LETTER SHA
-0x0429, 0x0449, //CYRILLIC CAPITAL LETTER SHCHA	CYRILLIC SMALL LETTER SHCHA
-0x042A, 0x044A, //CYRILLIC CAPITAL LETTER HARD SIGN	CYRILLIC SMALL LETTER HARD SIGN
-0x042B, 0x044B, //CYRILLIC CAPITAL LETTER YERU	CYRILLIC SMALL LETTER YERU
-0x042C, 0x044C, //CYRILLIC CAPITAL LETTER SOFT SIGN	CYRILLIC SMALL LETTER SOFT SIGN
-0x042D, 0x044D, //CYRILLIC CAPITAL LETTER E	CYRILLIC SMALL LETTER E
-0x042E, 0x044E, //CYRILLIC CAPITAL LETTER YU	CYRILLIC SMALL LETTER YU
-0x042F, 0x044F, //CYRILLIC CAPITAL LETTER YA	CYRILLIC SMALL LETTER YA
-0x0460, 0x0461, //CYRILLIC CAPITAL LETTER OMEGA	CYRILLIC SMALL LETTER OMEGA
-0x0462, 0x0463, //CYRILLIC CAPITAL LETTER YAT	CYRILLIC SMALL LETTER YAT
-0x0464, 0x0465, //CYRILLIC CAPITAL LETTER IOTIFIED E	CYRILLIC SMALL LETTER IOTIFIED E
-0x0466, 0x0467, //CYRILLIC CAPITAL LETTER LITTLE YUS	CYRILLIC SMALL LETTER LITTLE YUS
-0x0468, 0x0469, //CYRILLIC CAPITAL LETTER IOTIFIED LITTLE YUS	CYRILLIC SMALL LETTER IOTIFIED LITTLE YUS
-0x046A, 0x046B, //CYRILLIC CAPITAL LETTER BIG YUS	CYRILLIC SMALL LETTER BIG YUS
-0x046C, 0x046D, //CYRILLIC CAPITAL LETTER IOTIFIED BIG YUS	CYRILLIC SMALL LETTER IOTIFIED BIG YUS
-0x046E, 0x046F, //CYRILLIC CAPITAL LETTER KSI	CYRILLIC SMALL LETTER KSI
-0x0470, 0x0471, //CYRILLIC CAPITAL LETTER PSI	CYRILLIC SMALL LETTER PSI
-0x0472, 0x0473, //CYRILLIC CAPITAL LETTER FITA	CYRILLIC SMALL LETTER FITA
-0x0474, 0x0475, //CYRILLIC CAPITAL LETTER IZHITSA	CYRILLIC SMALL LETTER IZHITSA
-0x0476, 0x0477, //CYRILLIC CAPITAL LETTER IZHITSA WITH DOUBLE GRAVE ACCENT	CYRILLIC SMALL LETTER IZHITSA WITH DOUBLE GRAVE ACCENT
-0x0478, 0x0479, //CYRILLIC CAPITAL LETTER UK	CYRILLIC SMALL LETTER UK
-0x047A, 0x047B, //CYRILLIC CAPITAL LETTER ROUND OMEGA	CYRILLIC SMALL LETTER ROUND OMEGA
-0x047C, 0x047D, //CYRILLIC CAPITAL LETTER OMEGA WITH TITLO	CYRILLIC SMALL LETTER OMEGA WITH TITLO
-0x047E, 0x047F, //CYRILLIC CAPITAL LETTER OT	CYRILLIC SMALL LETTER OT
-0x0480, 0x0481, //CYRILLIC CAPITAL LETTER KOPPA	CYRILLIC SMALL LETTER KOPPA
-0x0490, 0x0491, //CYRILLIC CAPITAL LETTER GHE WITH UPTURN	CYRILLIC SMALL LETTER GHE WITH UPTURN
-0x0492, 0x0493, //CYRILLIC CAPITAL LETTER GHE WITH STROKE	CYRILLIC SMALL LETTER GHE WITH STROKE
-0x0494, 0x0495, //CYRILLIC CAPITAL LETTER GHE WITH MIDDLE HOOK	CYRILLIC SMALL LETTER GHE WITH MIDDLE HOOK
-0x0496, 0x0497, //CYRILLIC CAPITAL LETTER ZHE WITH DESCENDER	CYRILLIC SMALL LETTER ZHE WITH DESCENDER
-0x0498, 0x0499, //CYRILLIC CAPITAL LETTER ZE WITH DESCENDER	CYRILLIC SMALL LETTER ZE WITH DESCENDER
-0x049A, 0x049B, //CYRILLIC CAPITAL LETTER KA WITH DESCENDER	CYRILLIC SMALL LETTER KA WITH DESCENDER
-0x049C, 0x049D, //CYRILLIC CAPITAL LETTER KA WITH VERTICAL STROKE	CYRILLIC SMALL LETTER KA WITH VERTICAL STROKE
-0x049E, 0x049F, //CYRILLIC CAPITAL LETTER KA WITH STROKE	CYRILLIC SMALL LETTER KA WITH STROKE
-0x04A0, 0x04A1, //CYRILLIC CAPITAL LETTER BASHKIR KA	CYRILLIC SMALL LETTER EASHKIR KA
-0x04A2, 0x04A3, //CYRILLIC CAPITAL LETTER EN WITH DESCENDER	CYRILLIC SMALL LETTER EN WITH DESCENDER
-0x04A4, 0x04A5, //CYRILLIC CAPITAL LIGATURE EN GHF	CYRILLIC SMALL LIGATURE EN GHE
-0x04A6, 0x04A7, //CYRILLIC CAPITAL LETTER PE WITH MIDDLE HOOK (ABKHASIAN)	CYRILLIC SMALL LETTER PE WITH MIDDLE HOOK (ABKHASIAN)
-0x04A8, 0x04A9, //CYRILLIC CAPITAL LETTER ABKHASIAN HA	CYRILLIC SMALL LETTER ABKHASIAN HA
-0x04AA, 0x04AB, //CYRILLIC CAPITAL LETTER ES WITH DESCENDER	CYRILLIC SMALL LETTER ES WITH DESCENDER
-0x04AC, 0x04AD, //CYRILLIC CAPITAL LETTER TE WITH DESCENDER	CYRILLIC SMALL LETTER TE WITH DESCENDER
-0x04AE, 0x04AF, //CYRILLIC CAPITAL LETTER STRAIGHT U	CYRILLIC SMALL LETTER STRAIGHT U
-0x04B0, 0x04B1, //CYRILLIC CAPITAL LETTER STRAIGHT U WITH STROKE	CYRILLIC SMALL LETTER STRAIGHT U WITH STROKE
-0x04B2, 0x04B3, //CYRILLIC CAPITAL LETTER HA WITH DESCENDER	CYRILLIC SMALL LETTER HA WITH DESCENDER
-0x04B4, 0x04B5, //CYRILLIC CAPITAL LIGATURE TE TSE (ABKHASIAN)	CYRILLIC SMALL LIGATURE TE TSE (ABKHASIAN)
-0x04B6, 0x04B7, //CYRILLIC CAPITAL LETTER CHE WITH DESCENDER	CYRILLIC SMALL LETTER CHE WITH DESCENDER
-0x04B8, 0x04B9, //CYRILLIC CAPITAL LETTER CHE WITH VERTICAL STROKE	CYRILLIC SMALL LETTER CHE WITH VERTICAL STROKE
-0x04BA, 0x04BB, //CYRILLIC CAPITAL LETTER SHHA	CYRILLIC SMALL LETTER SHHA
-0x04BC, 0x04BD, //CYRILLIC CAPITAL LETTER ABKHASIAN CHE	CYRILLIC SMALL LETTER ABKHASIAN CHE
-0x04BE, 0x04BF, //CYRILLIC CAPITAL LETTER ABKHASIAN CHE WITH DESCENDER	CYRILLIC SMALL LETTER ABKHASIAN CHE WITH DESCENDER
-0x04C1, 0x04C2, //CYRILLIC CAPITAL LETTER ZHE WITH BREVE	CYRILLIC SMALL LETTER ZHE WITH BREVE
-0x04C3, 0x04C4, //CYRILLIC CAPITAL LETTER KA WITH HOOK	CYRILLIC SMALL LETTER KA WITH HOOK
-0x04C7, 0x04C8, //CYRILLIC CAPITAL LETTER EN WITH HOOK	CYRILLIC SMALL LETTER EN WITH HOOK
-0x04CB, 0x04CC, //CYRILLIC CAPITAL LETTER KHAKASSIAN CHE	CYRILLIC SMALL LETTER KHAKASSIAN CHE
-0x04D0, 0x04D1, //CYRILLIC CAPITAL LETTER A WITH BREVE	CYRILLIC SMALL LETTER A WITH BREVE
-0x04D2, 0x04D3, //CYRILLIC CAPITAL LETTER A WITH DIAERESIS	CYRILLIC SMALL LETTER A WITH DIAERESIS
-0x04D4, 0x04D5, //CYRILLIC CAPITAL LIGATURE A IE	CYRILLIC SMALL LIGATURE A IE
-0x04D6, 0x04D7, //CYRILLIC CAPITAL LETTER IE WITH BREVE	CYRILLIC SMALL LETTER IE WITH BREVE
-0x04D8, 0x04D9, //CYRILLIC CAPITAL LETTER SCHWA	CYRILLIC SMALL LETTER SCHWA
-0x04DA, 0x04DB, //CYRILLIC CAPITAL LETTER SCHWA WITH DIAERESIS	CYRILLIC SMALL LETTER SCHWA WITH DIAERESIS
-0x04DC, 0x04DD, //CYRILLIC CAPITAL LETTER ZHE WITH DIAERESIS	CYRILLIC SMALL LETTER ZHE WITH DIAERESIS
-0x04DE, 0x04DF, //CYRILLIC CAPITAL LETTER ZE WITH DIAERESIS	CYRILLIC SMALL LETTER ZE WITH DIAERESIS
-0x04E0, 0x04E1, //CYRILLIC CAPITAL LETTER ABKHASIAN DZE	CYRILLIC SMALL LETTER ABKHASIAN DZE
-0x04E2, 0x04E3, //CYRILLIC CAPITAL LETTER I WITH MACRON	CYRILLIC SMALL LETTER I WITH MACRON
-0x04E4, 0x04E5, //CYRILLIC CAPITAL LETTER I WITH DIAERESIS	CYRILLIC SMALL LETTER I WITH DIAERESIS
-0x04E6, 0x04E7, //CYRILLIC CAPITAL LETTER O WITH DIAERESIS	CYRILLIC SMALL LETTER O WITH DIAERESIS
-0x04E8, 0x04E9, //CYRILLIC CAPITAL LETTER BARRED O	CYRILLIC SMALL LETTER BARRED O
-0x04EA, 0x04EB, //CYRILLIC CAPITAL LETTER BARRED O WITH DIAERESIS	CYRILLIC SMALL LETTER BARRED 0 WITH DIAERESIS
-0x04EE, 0x04EF, //CYRILLIC CAPITAL LETTER U WITH MACRON	CYRILLIC SMALL LETTER U WITH MACRON
-0x04F0, 0x04F1, //CYRILLIC CAPITAL LETTER U WITH DIAERESIS	CYRILLIC SMALL LETTER U WITH DIAERESIS
-0x04F2, 0x04F3, //CYRILLIC CAPITAL LETTER U WITH DOUBLE ACUTE	CYRILLIC SMALL LETTER U WITH DOUBLE ACUTE
-0x04F4, 0x04F5, //CYRILLIC CAPITAL LETTER CHE WITH DIAERESIS	CYRILLIC SMALL LETTER CHE WITH DIAERESIS
-0x04F8, 0x04F9, //CYRILLIC CAPITAL LETTER YERU WITH DIAERESIS	CYRILLIC SMALL LETTER YERU WITH DIAERESIS
-0x0531, 0x0561, //ARMENIAN CAPITAL LETTER AYB	ARMENIAN SMALL LETTER AYB
-0x0532, 0x0562, //ARMENIAN CAPITAL LETTER BEN	ARMENIAN SMALL LETTER BEN
-0x0533, 0x0563, //ARMENIAN CAPITAL LETTER GIM	ARMENIAN SMALL LETTER GIM
-0x0534, 0x0564, //ARMENIAN CAPITAL LETTER DA	ARMENIAN SMALL LETTER DA
-0x0535, 0x0565, //ARMENIAN CAPITAL LETTER ECH	ARMENIAN SMALL LETTER ECH
-0x0536, 0x0566, //ARMENIAN CAPITAL LETTER ZA	ARMENIAN SMALL LETTER ZA
-0x0537, 0x0567, //ARMENIAN CAPITAL LETTER EH	ARMENIAN SMALL LETTER EH
-0x0538, 0x0568, //ARMENIAN CAPITAL LETTER ET	ARMENIAN SMALL LETTER ET
-0x0539, 0x0569, //ARMENIAN CAPITAL LETTER TO	ARMENIAN SMALL LETTER TO
-0x053A, 0x056A, //ARMENIAN CAPITAL LETTER ZHE	ARMENIAN SMALL LETTER ZHE
-0x053B, 0x056B, //ARMENIAN CAPITAL LETTER INI	ARMENIAN SMALL LETTER INI
-0x053C, 0x056C, //ARMENIAN CAPITAL LETTER LIWN	ARMENIAN SMALL LETTER LIWN
-0x053D, 0x056D, //ARMENIAN CAPITAL LETTER XEH	ARMENIAN SMALL LETTER XEH
-0x053E, 0x056E, //ARMENIAN CAPITAL LETTER CA	ARMENIAN SMALL LETTER CA
-0x053F, 0x056F, //ARMENIAN CAPITAL LETTER KEN	ARMENIAN SMALL LETTER KEN
-0x0540, 0x0570, //ARMENIAN CAPITAL LETTER HO	ARMENIAN SMALL LETTER HO
-0x0541, 0x0571, //ARMENIAN CAPITAL LETTER JA	ARMENIAN SMALL LETTER JA
-0x0542, 0x0572, //ARMENIAN CAPITAL LETTER GHAD	ARMENIAN SMALL LETTER GHAD
-0x0543, 0x0573, //ARMENIAN CAPITAL LETTER CHEH	ARMENIAN SMALL LETTER CHEH
-0x0544, 0x0574, //ARMENIAN CAPITAL LETTER MEN	ARMENIAN SMALL LETTER MEN
-0x0545, 0x0575, //ARMENIAN CAPITAL LETTER YI	ARMENIAN SMALL LETTER YI
-0x0546, 0x0576, //ARMENIAN CAPITAL LETTER NOW	ARMENIAN SMALL LETTER NOW
-0x0547, 0x0577, //ARMENIAN CAPITAL LETTER SHA	ARMENIAN SMALL LETTER SNA
-0x0548, 0x0578, //ARMENIAN CAPITAL LETTER VO	ARMENIAN SMALL LETTER VO
-0x0549, 0x0579, //ARMENIAN CAPITAL LETTER CHA	ARMENIAN SMALL LETTER CHA
-0x054A, 0x057A, //ARMENIAN CAPITAL LETTER PEH	ARMENIAN SMALL LETTER PEH
-0x054B, 0x057B, //ARMENIAN CAPITAL LETTER JHEH	ARMENIAN SMALL LETTER JHEH
-0x054C, 0x057C, //ARMENIAN CAPITAL LETTER RA	ARMENIAN SMALL LETTER RA
-0x054D, 0x057D, //ARMENIAN CAPITAL LETTER SEH	ARMENIAN SMALL LETTER SEH
-0x054E, 0x057E, //ARMENIAN CAPITAL LETTER VEW	ARMENIAN SMALL LETTER VEW
-0x054F, 0x057F, //ARMENIAN CAPITAL LETTER TIWN	ARMENIAN SMALL LETTER TIWN
-0x0550, 0x0580, //ARMENIAN CAPITAL LETTER REH	ARMENIAN SMALL LETTER REH
-0x0551, 0x0581, //ARMENIAN CAPITAL LETTER CO	ARMENIAN SMALL LETTER CO
-0x0552, 0x0582, //ARMENIAN CAPITAL LETTER YIWN	ARMENIAN SMALL LETTER YIWN
-0x0553, 0x0583, //ARMENIAN CAPITAL LETTER PIWR	ARMENIAN SMALL LETTER PIWP
-0x0554, 0x0584, //ARMENIAN CAPITAL LETTER KEH	ARMENIAN SMALL LETTER KEH
-0x0555, 0x0585, //ARMENIAN CAPITAL LETTER OH	ARMENIAN SMALL LETTER OH
-0x0556, 0x0586, //ARMENIAN CAPITAL LETTER FEH	ARMENIAN SMALL LETTER FEH
-0x10A0, 0x10D0, //GEORGIAN CAPITAL LETTER AN (KHUTSURI)	GEORGIAN LETTER AN
-0x10A1, 0x10D1, //GEORGIAN CAPITAL LETTER BAN (KHUTSURI)	GEORGIAN LETTER BAN
-0x10A2, 0x10D2, //GEORGIAN CAPITAL LETTER GAN (KHUTSURI)	GEORGIAN LETTER GAN
-0x10A3, 0x10D3, //GEORGIAN CAPITAL LETTER DON (KHUTSURI)	GEORGIAN LETTER DON
-0x10A4, 0x10D4, //GEORGIAN CAPITAL LETTER EN (KHUTSURI)	GEORGIAN LETTER EN
-0x10A5, 0x10D5, //GEORGIAN CAPITAL LETTER VIN (KHUTSURI)	GEORGIAN LETTER VIN
-0x10A6, 0x10D6, //GEORGIAN CAPITAL LETTER ZEN (KHUTSURI)	GEORGIAN LETTER ZEN
-0x10A7, 0x10D7, //GEORGIAN CAPITAL LETTER TAN (KHUTSURI)	GEORGIAN LETTER TAN
-0x10A8, 0x10D8, //GEORGIAN CAPITAL LETTER IN (KHUTSURI)	GEORGIAN LETTER IN
-0x10A9, 0x10D9, //GEORGIAN CAPITAL LETTER KAN (KHUTSURI)	GEORGIAN LETTER KAN
-0x10AA, 0x10DA, //GEORGIAN CAPITAL LETTER LAS (KHUTSURI)	GEORGIAN LETTER LAS
-0x10AB, 0x10DB, //GEORGIAN CAPITAL LETTER MAN (KHUTSURI)	GEORGIAN LETTER MAN
-0x10AC, 0x10DC, //GEORGIAN CAPITAL LETTER NAR (KHUTSURI)	GEORGIAN LETTER NAR
-0x10AD, 0x10DD, //GEORGIAN CAPITAL LETTER ON (KHUTSURI)	GEORGIAN LETTER ON
-0x10AE, 0x10DE, //GEORGIAN CAPITAL LETTER PAR (KHUTSURI)	GEORGIAN LETTER PAR
-0x10AF, 0x10DF, //GEORGIAN CAPITAL LETTER ZHAR (KHUTSURI)	GEORGIAN LETTER ZHAR
-0x10B0, 0x10E0, //GEORGIAN CAPITAL LETTER RAE (KHUTSURI)	GEORGIAN LETTER RAE
-0x10B1, 0x10E1, //GEORGIAN CAPITAL LETTER SAN (KHUTSURI)	GEORGIAN LETTER SAN
-0x10B2, 0x10E2, //GEORGIAN CAPITAL LETTER TAR (KHUTSURI)	GEORGIAN LETTER TAR
-0x10B3, 0x10E3, //GEORGIAN CAPITAL LETTER UN (KHUTSURI)	GEORGIAN LETTER UN
-0x10B4, 0x10E4, //GEORGIAN CAPITAL LETTER PHAR (KHUTSURI)	GEORGIAN LETTER PHAR
-0x10B5, 0x10E5, //GEORGIAN CAPITAL LETTER KHAR (KHUTSURI)	GEORGIAN LETTER KHAR
-0x10B6, 0x10E6, //GEORGIAN CAPITAL LETTER GHAN (KHUTSURI)	GEORGIAN LETTER GHAN
-0x10B7, 0x10E7, //GEORGIAN CAPITAL LETTER QAR (KHUTSURI)	GEORGIAN LETTER QAR
-0x10B8, 0x10E8, //GEORGIAN CAPITAL LETTER SHIN (KHUTSURI)	GEORGIAN LETTER SHIN
-0x10B9, 0x10E9, //GEORGIAN CAPITAL LETTER CHIN (KHUTSURI)	GEORGIAN LETTER CHIN
-0x10BA, 0x10EA, //GEORGIAN CAPITAL LETTER CAN (KHUTSURI)	GEORGIAN LETTER CAN
-0x10BB, 0x10EB, //GEORGIAN CAPITAL LETTER JIL (KHUTSURI)	GEORGIAN LETTER JIL
-0x10BC, 0x10EC, //GEORGIAN CAPITAL LETTER CIL (KHUTSURI)	GEORGIAN LETTER CIL
-0x10BD, 0x10ED, //GEORGIAN CAPITAL LETTER CHAR (KHUTSURI)	GEORGIAN LETTER CHAR
-0x10BE, 0x10EE, //GEORGIAN CAPITAL LETTER XAN (KHUTSURI)	GEORGIAN LETTER XAN
-0x10BF, 0x10EF, //GEORGIAN CAPITAL LETTER JHAN (KHUTSURI)	GEORGIAN LETTER JHAN
-0x10C0, 0x10F0, //GEORGIAN CAPITAL LETTER HAE (KHUTSURI)	GEORGIAN LETTER HAE
-0x10C1, 0x10F1, //GEORGIAN CAPITAL LETTER HE (KHUTSURI)	GEORGIAN LETTER HE
-0x10C2, 0x10F2, //GEORGIAN CAPITAL LETTER HIE (KHUTSURI)	GEORGIAN LETTER HIE
-0x10C3, 0x10F3, //GEORGIAN CAPITAL LETTER WE (KHUTSURI)	GEORGIAN LETTER WE
-0x10C4, 0x10F4, //GEORGIAN CAPITAL LETTER HAR (KHUTSURI)	GEORGIAN LETTER HAR
-0x10C5, 0x10F5, //GEORGIAN CAPITAL LETTER HOE (KHUTSURI)	GEORGIAN LETTER HOE
-0x1E00, 0x1E01, //LATIN CAPITAL LETTER A WITH RING BELOW	LATIN SMALL LETTER A WITH RING BELOW
-0x1E02, 0x1E03, //LATIN CAPITAL LETTER B WITH DOT ABOVE	LATIN SMALL LETTER B WITH DOT ABOVE
-0x1E04, 0x1E05, //LATIN CAPITAL LETTER B WITH DOT BELOW	LATIN SMALL LETTER B WITH DOT BELOW
-0x1E06, 0x1E07, //LATIN CAPITAL LETTER B WITH LINE BELOW	LATIN SMALL LETTER B WITH LINE BELOW
-0x1E08, 0x1E09, //LATIN CAPITAL LETTER C WITH CEDILLA AND ACUTE	LATIN SMALL LETTER C WITH CEDILLA AND ACUTE
-0x1E0A, 0x1E0B, //LATIN CAPITAL LETTER D WITH DOT ABOVE	LATIN SMALL LETTER D WITH DOT ABOVE
-0x1E0C, 0x1E0D, //LATIN CAPITAL LETTER D WITH DOT BELOW	LATIN SMALL LETTER D WITH DOT BELOW
-0x1E0E, 0x1E0F, //LATIN CAPITAL LETTER D WITH LINE BELOW	LATIN SMALL LETTER D WITH LINE BELOW
-0x1E10, 0x1E11, //LATIN CAPITAL LETTER D WITH CEDILLA	LATIN SMALL LETTER D WITH CEDILLA
-0x1E12, 0x1E13, //LATIN CAPITAL LETTER D WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER D WITH CIRCUMFLEX BELOW
-0x1E14, 0x1E15, //LATIN CAPITAL LETTER E WITH MACRON AND GRAVE	LATIN SMALL LETTER E WITH MACRON AND GRAVE
-0x1E16, 0x1E17, //LATIN CAPITAL LETTER E WITH MACRON AND ACUTE	LATIN SMALL LETTER E WITH MACRON AND ACUTE
-0x1E18, 0x1E19, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER E WITH CIRCUMFLEX BELOW
-0x1E1A, 0x1E1B, //LATIN CAPITAL LETTER E WITH TILDE BELOW	LATIN SMALL LETTER E WITH TILDE BELOW
-0x1E1C, 0x1E1D, //LATIN CAPITAL LETTER E WITH CEDILLA AND BREVE	LATIN SMALL LETTER E WITH CEDILLA AND BREVE
-0x1E1E, 0x1E1F, //LATIN CAPITAL LETTER F WITH DOT ABOVE	LATIN SMALL LETTER F WITH DOT ABOVE
-0x1E20, 0x1E21, //LATIN CAPITAL LETTER G WITH MACRON	LATIN SMALL LETTER G WITH MACRON
-0x1E22, 0x1E23, //LATIN CAPITAL LETTER H WITH DOT ABOVE	LATIN SMALL LETTER H WITH DOT ABOVE
-0x1E24, 0x1E25, //LATIN CAPITAL LETTER H WITH DOT BELOW	LATIN SMALL LETTER H WITH DOT BELOW
-0x1E26, 0x1E27, //LATIN CAPITAL LETTER H WITH DIAERESIS	LATIN SMALL LETTER H WITH DIAERESIS
-0x1E28, 0x1E29, //LATIN CAPITAL LETTER H WITH CEDILLA	LATIN SMALL LETTER H WITH CEDILLA
-0x1E2A, 0x1E2B, //LATIN CAPITAL LETTER H WITH BREVE BELOW	LATIN SMALL LETTER H WITH BREVE BELOW
-0x1E2C, 0x1E2D, //LATIN CAPITAL LETTER I WITH TILDE BELOW	LATIN SMALL LETTER I WITH TILDE BELOW
-0x1E2E, 0x1E2F, //LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE	LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
-0x1E30, 0x1E31, //LATIN CAPITAL LETTER K WITH ACUTE	LATIN SMALL LETTER K WITH ACUTE
-0x1E32, 0x1E33, //LATIN CAPITAL LETTER K WITH DOT BELOW	LATIN SMALL LETTER K WITH DOT BELOW
-0x1E34, 0x1E35, //LATIN CAPITAL LETTER K WITH LINE BELOW	LATIN SMALL LETTER K WITH LINE BELOW
-0x1E36, 0x1E37, //LATIN CAPITAL LETTER L WITH DOT BELOW	LATIN SMALL LETTER L WITH DOT BELOW
-0x1E38, 0x1E39, //LATIN CAPITAL LETTER L WITH DOT BELOW AND MACRON	LATIN SMALL LETTER L WITH DOT BELOW AND MACRON
-0x1E3A, 0x1E3B, //LATIN CAPITAL LETTER L WITH LINE BELOW	LATIN SMALL LETTER L WITH LINE BELOW
-0x1E3C, 0x1E3D, //LATIN CAPITAL LETTER L WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER L WITH CIRCUMFLEX BELOW
-0x1E3E, 0x1E3F, //LATIN CAPITAL LETTER M WITH ACUTE	LATIN SMALL LETTER M WITH ACUTE
-0x1E40, 0x1E41, //LATIN CAPITAL LETTER M WITH DOT ABOVE	LATIN SMALL LETTER M WITH DOT ABOVE
-0x1E42, 0x1E43, //LATIN CAPITAL LETTER M WITH DOT BELOW	LATIN SMALL LETTER M WITH DOT BELOW
-0x1E44, 0x1E45, //LATIN CAPITAL LETTER N WITH DOT ABOVE	LATIN SMALL LETTER N WITH DOT ABOVE
-0x1E46, 0x1E47, //LATIN CAPITAL LETTER N WITH DOT BELOW	LATIN SMALL LETTER N WITH DOT BELOW
-0x1E48, 0x1E49, //LATIN CAPITAL LETTER N WITH LINE BELOW	LATIN SMALL LETTER N WITH LINE BELOW
-0x1E4A, 0x1E4B, //LATIN CAPITAL LETTER N WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER N WITH CIRCUMFLEX BELOW
-0x1E4C, 0x1E4D, //LATIN CAPITAL LETTER O WITH TILDE AND ACUTE	LATIN SMALL LETTER O WITH TILDE AND ACUTE
-0x1E4E, 0x1E4F, //LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS	LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
-0x1E50, 0x1E51, //LATIN CAPITAL LETTER O WITH MACRON AND GRAVE	LATIN SMALL LETTER O WITH MACRON AND GRAVE
-0x1E52, 0x1E53, //LATIN CAPITAL LETTER O WITH MACRON AND ACUTE	LATIN SMALL LETTER O WITH MACRON AND ACUTE
-0x1E54, 0x1E55, //LATIN CAPITAL LETTER P WITH ACUTE	LATIN SMALL LETTER P WITH ACUTE
-0x1E56, 0x1E57, //LATIN CAPITAL LETTER P WITH DOT ABOVE	LATIN SMALL LETTER P WITH DOT ABOVE
-0x1E58, 0x1E59, //LATIN CAPITAL LETTER R WITH DOT ABOVE	LATIN SMALL LETTER R WITH DOT ABOVE
-0x1E5A, 0x1E5B, //LATIN CAPITAL LETTER R WITH DOT BELOW	LATIN SMALL LETTER R WITH DOT BELOW
-0x1E5C, 0x1E5D, //LATIN CAPITAL LETTER R WITH DOT BELOW AND MACRON	LATIN SMALL LETTER R WITH DOT BELOW AND MACRON
-0x1E5E, 0x1E5F, //LATIN CAPITAL LETTER R WITH LINE BELOW	LATIN SMALL LETTER R WITH LINE BELOW
-0x1E60, 0x1E61, //LATIN CAPITAL LETTER S WITH DOT ABOVE	LATIN SMALL LETTER S WITH DOT ABOVE
-0x1E62, 0x1E63, //LATIN CAPITAL LETTER S WITH DOT BELOW	LATIN SMALL LETTER S WITH DOT BELOW
-0x1E64, 0x1E65, //LATIN CAPITAL LETTER S WITH ACUTE AND DOT ABOVE	LATIN SMALL LETTER S WITH ACUTE AND DOT ABOVE
-0x1E66, 0x1E67, //LATIN CAPITAL LETTER S WITH CARON AND DOT ABOVE	LATIN SMALL LETTER S WITH CARON AND DOT ABOVE
-0x1E68, 0x1E69, //LATIN CAPITAL LETTER S WITH DOT BELOW AND DOT ABOVE	LATIN SMALL LETTER S WITH DOT BELOW AND DOT ABOVE
-0x1E6A, 0x1E6B, //LATIN CAPITAL LETTER T WITH DOT ABOVE	LATIN SMALL LETTER T WITH DOT ABOVE
-0x1E6C, 0x1E6D, //LATIN CAPITAL LETTER T WITH DOT BELOW	LATIN SMALL LETTER T WITH DOT BELOW
-0x1E6E, 0x1E6F, //LATIN CAPITAL LETTER T WITH LINE BELOW	LATIN SMALL LETTER T WITH LINE BELOW
-0x1E70, 0x1E71, //LATIN CAPITAL LETTER T WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER T WITH CIRCUMFLEX BELOW
-0x1E72, 0x1E73, //LATIN CAPITAL LETTER U WITH DIAERESIS BELOW	LATIN SMALL LETTER U WITH DIAERESIS BELOW
-0x1E74, 0x1E75, //LATIN CAPITAL LETTER U WITH TILDE BELOW	LATIN SMALL LETTER U WITH TILDE BELOW
-0x1E76, 0x1E77, //LATIN CAPITAL LETTER U WITH CIRCUMFLEX BELOW	LATIN SMALL LETTER U WITH CIRCUMFLEX BELOW
-0x1E78, 0x1E79, //LATIN CAPITAL LETTER U WITH TILDE AND ACUTE	LATIN SMALL LETTER U WITH TILDE AND ACUTE
-0x1E7A, 0x1E7B, //LATIN CAPITAL LETTER U WITH MACRON AND DIAERESIS	LATIN SMALL LETTER U WITH MACRON AND DIAERESIS
-0x1E7C, 0x1E7D, //LATIN CAPITAL LETTER V WITH TILDE	LATIN SMALL LETTER V WITH TILDE
-0x1E7E, 0x1E7F, //LATIN CAPITAL LETTER V WITH DOT BELOW	LATIN SMALL LETTER V WITH DOT BELOW
-0x1E80, 0x1E81, //LATIN CAPITAL LETTER W WITH GRAVE	LATIN SMALL LETTER W WITH GRAVE
-0x1E82, 0x1E83, //LATIN CAPITAL LETTER W WITH ACUTE	LATIN SMALL LETTER W WITH ACUTE
-0x1E84, 0x1E85, //LATIN CAPITAL LETTER W WITH DIAERESIS	LATIN SMALL LETTER W WITH DIAERESIS
-0x1E86, 0x1E87, //LATIN CAPITAL LETTER W WITH DOT ABOVE	LATIN SMALL LETTER W WITH DOT ABOVE
-0x1E88, 0x1E89, //LATIN CAPITAL LETTER W WITH DOT BELOW	LATIN SMALL LETTER W WITH DOT BELOW
-0x1E8A, 0x1E8B, //LATIN CAPITAL LETTER X WITH DOT ABOVE	LATIN SMALL LETTER X WITH DOT ABOVE
-0x1E8C, 0x1E8D, //LATIN CAPITAL LETTER X5 WITH DIAERESIS	LATIN SMALL LETTER X WITH DIAERESIS
-0x1E8E, 0x1E8F, //LATIN CAPITAL LETTER Y WITH DOT ABOVE	LATIN SMALL LETTER Y WITH DOT ABOVE
-0x1E90, 0x1E91, //LATIN CAPITAL LETTER Z WITH CIRCUMFLEX	LATIN SMALL LETTER Z WITH CIRCUMFLEX
-0x1E92, 0x1E93, //LATIN CAPITAL LETTER Z WITH DOT BELOW	LATIN SMALL LETTER Z WITH DOT BELOW
-0x1E94, 0x1E95, //LATIN CAPITAL LETTER Z WITH LINE BELOW	LATIN SMALL LETTER Z WITH LINE BELOW
-0x1EA0, 0x1EA1, //LATIN CAPITAL LETTER A WITH DOT BELOW	LATIN SMALL LETTER A WITH DOT BELOW
-0x1EA2, 0x1EA3, //LATIN CAPITAL LETTER A WITH HOOK ABOVE	LATIN SMALL LETTER A WITH HOOK ABOVE
-0x1EA4, 0x1EA5, //LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE	LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
-0x1EA6, 0x1EA7, //LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE	LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
-0x1EA8, 0x1EA9, //LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE	LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-0x1EAA, 0x1EAB, //LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE	LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
-0x1EAC, 0x1EAD, //LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND DOT BELOW	LATIN SMALL LETTER A WITH CIRCUMFLEX AND DOT BELOW
-0x1EAE, 0x1EAF, //LATIN CAPITAL LETTER A WITH BREVE AND ACUTE	LATIN SMALL LETTER A WITH BREVE AND ACUTE
-0x1EB0, 0x1EB1, //LATIN CAPITAL LETTER A WITH BREVE AND GRAVE	LATIN SMALL LETTER A WITH BREVE AND GRAVE
-0x1EB2, 0x1EB3, //LATIN CAPITAL LETTER A WITH BREVE AND HOOK ABOVE	LATIN SMALL LETTER A WITH BREVE AND HOOK ABOVE
-0x1EB4, 0x1EB5, //LATIN CAPITAL LETTER A WITH BREVE AND TILDE	LATIN SMALL LETTER A WITH BREVE AND TILDE
-0x1EB6, 0x1EB7, //LATIN CAPITAL LETTER A WITH BREVE AND DOT BELOW	LATIN SMALL LETTER A WITH BREVE AND DOT BELOW
-0x1EB8, 0x1EB9, //LATIN CAPITAL LETTER E WITH DOT BELOW	LATIN SMALL LETTER E WITH DOT BELOW
-0x1EBA, 0x1EBB, //LATIN CAPITAL LETTER E WITH HOOK ABOVE	LATIN SMALL LETTER E WITH HOOK ABOVE
-0x1EBC, 0x1EBD, //LATIN CAPITAL LETTER E WITH TILDE	LATIN SMALL LETTER E WITH TILDE
-0x1EBE, 0x1EBF, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE	LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
-0x1EC0, 0x1EC1, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE	LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
-0x1EC2, 0x1EC3, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE	LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-0x1EC4, 0x1EC5, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE	LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
-0x1EC6, 0x1EC7, //LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND DOT BELOW	LATIN SMALL LETTER E WITH CIRCUMFLEX AND DOT BELOW
-0x1EC8, 0x1EC9, //LATIN CAPITAL LETTER I WITH HOOK ABOVE	LATIN SMALL LETTER I WITH HOOK ABOVE
-0x1ECA, 0x1ECB, //LATIN CAPITAL LETTER I WITH DOT BELOW	LATIN SMALL LETTER I WITH DOT BELOW
-0x1ECC, 0x1ECD, //LATIN CAPITAL LETTER O WITH DOT BELOW	LATIN SMALL LETTER O WITH DOT BELOW
-0x1ECE, 0x1ECF, //LATIN CAPITAL LETTER O WITH HOOK ABOVE	LATIN SMALL LETTER O WITH HOOK ABOVE
-0x1ED0, 0x1ED1, //LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE	LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
-0x1ED2, 0x1ED3, //LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE	LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
-0x1ED4, 0x1ED5, //LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE	LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-0x1ED6, 0x1ED7, //LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE	LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
-0x1ED8, 0x1ED9, //LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND DOT BELOW	LATIN SMALL LETTER O WITH CIRCUMFLEX AND DOT BELOW
-0x1EDA, 0x1EDB, //LATIN CAPITAL LETTER O WITH HORN AND ACUTE	LATIN SMALL LETTER O WITH HORN AND ACUTE
-0x1EDC, 0x1EDD, //LATIN CAPITAL LETTER O WITH HORN AND GRAVE	LATIN SMALL LETTER O WITH HORN AND GRAVE
-0x1EDE, 0x1EDF, //LATIN CAPITAL LETTER O WITH HORN AND HOOK ABOVE	LATIN SMALL LETTER O WITH HORN AND HOOK ABOVE
-0x1EE0, 0x1EE1, //LATIN CAPITAL LETTER O WITH HORN AND TILDE	LATIN SMALL LETTER O WITH HORN AND TILDE
-0x1EE2, 0x1EE3, //LATIN CAPITAL LETTER O WITH HORN AND DOT BELOW	LATIN SMALL LETTER O WITH HORN AND DOT BELOW
-0x1EE4, 0x1EE5, //LATIN CAPITAL LETTER U WITH DOT BELOW	LATIN SMALL LETTER U WITH DOT BELOW
-0x1EE6, 0x1EE7, //LATIN CAPITAL LETTER U WITH HOOK ABOVE	LATIN SMALL LETTER U WITH HOOK ABOVE
-0x1EE8, 0x1EE9, //LATIN CAPITAL LETTER U WITH HORN AND ACUTE	LATIN SMALL LETTER U WITH HORN AND ACUTE
-0x1EEA, 0x1EEB, //LATIN CAPITAL LETTER U WITH HORN AND GRAVE	LATIN SMALL LETTER U WITH HORN AND GRAVE
-0x1EEC, 0x1EED, //LATIN CAPITAL LETTER U WITH HORN AND HOOK ABOVE	LATIN SMALL LETTER U WITH HORN AND HOOK ABOVE
-0x1EEE, 0x1EEF, //LATIN CAPITAL LETTER U WITH HORN AND TILDE	LATIN SMALL LETTER U WITH HORN AND TILDE
-0x1EF0, 0x1EF1, //LATIN CAPITAL LETTER U WITH HORN AND DOT BELOW	LATIN SMALL LETTER U WITH HORN AND DOT BELOW
-0x1EF2, 0x1EF3, //LATIN CAPITAL LETTER Y WITH GRAVE	LATIN SMALL LETTER Y WITH GRAVE
-0x1EF4, 0x1EF5, //LATIN CAPITAL LETTER Y WITH DOT BELOW	LATIN SMALL LETTER Y WITH DOT BELOW
-0x1EF6, 0x1EF7, //LATIN CAPITAL LETTER Y WITH HOOK ABOVE	LATIN SMALL LETTER Y WITH HOOK ABOVE
-0x1EF8, 0x1EF9, //LATIN CAPITAL LETTER Y WITH TILDE	LATIN SMALL LETTER Y WITH TILDE
-0x1F08, 0x1F00, //GREEK CAPITAL LETTER ALPHA WITH PSILI	GREEK SMALL LETTER ALPHA WITH PSILI
-0x1F09, 0x1F01, //GREEK CAPITAL LETTER ALPHA WITH DASIA	GREEK SMALL LETTER ALPHA WITH DASIA
-0x1F0A, 0x1F02, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND VARIA	GREEK SMALL LETTER ALPHA WITH PSILI AND VARIA
-0x1F0B, 0x1F03, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND VARIA	GREEK SMALL LETTER ALPHA WITH DASIA AND VARIA
-0x1F0C, 0x1F04, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND OXIA	GREEK SMALL LETTER ALPHA WITH PSILI AND OXIA
-0x1F0D, 0x1F05, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND OXIA	GREEK SMALL LETTER ALPHA WITH DASIA AND OXIA
-0x1F0E, 0x1F06, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND PERISPOMENI	GREEK SMALL LETTER ALPHA WITH PSILI AND PERISPOMENI
-0x1F0F, 0x1F07, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND PERISPOMENI	GREEK SMALL LETTER ALPHA WITH DASIA AND PERISPOMENI
-0x1F18, 0x1F10, //GREEK CAPITAL LETTER EPSILON WITH PSILI	GREEK SMALL LETTER EPSILON WITH PSILI
-0x1F19, 0x1F11, //GREEK CAPITAL LETTER EPSILON WITH DASIA	GREEK SMALL LETTER EPSILON WITH DASIA
-0x1F1A, 0x1F12, //GREEK CAPITAL LETTER EPSILON WITH PSILI AND VARIA	GREEK SMALL LETTER EPSILON WITH PSILI AND VARIA
-0x1F1B, 0x1F13, //GREEK CAPITAL LETTER EPSILON WITH DASIA AND VARIA	GREEK SMALL LETTER EPSILON WITH DASIA AND VARIA
-0x1F1C, 0x1F14, //GREEK CAPITAL LETTER EPSILON WITH PSILI AND OXIA	GREEK SMALL LETTER EPSILON WITH PSILI AND OXIA
-0x1F1D, 0x1F15, //GREEK CAPITAL LETTER EPSILON WITH DASIA AND OXIA	GREEK SMALL LETTER EPSILON WITH DASIA AND OXIA
-0x1F28, 0x1F20, //GREEK CAPITAL LETTER ETA WITH PSILI	GREEK SMALL LETTER ETA WITH PSILI
-0x1F29, 0x1F21, //GREEK CAPITAL LETTER ETA WITH DASIA	GREEK SMALL LETTER ETA WITH DASIA
-0x1F2A, 0x1F22, //GREEK CAPITAL LETTER ETA WITH PSILI AND VARIA	GREEK SMALL LETTER ETA WITH PSILI AND VARIA
-0x1F2B, 0x1F23, //GREEK CAPITAL LETTER ETA WITH DASIA AND VARIA	GREEK SMALL LETTER ETA WITH DASIA AND VARIA
-0x1F2C, 0x1F24, //GREEK CAPITAL LETTER ETA WITH PSILI AND OXIA	GREEK SMALL LETTER ETA WITH PSILI AND OXIA
-0x1F2D, 0x1F25, //GREEK CAPITAL LETTER ETA WITH DASIA AND OXIA	GREEK SMALL LETTER ETA WITH DASIA AND OXIA
-0x1F2E, 0x1F26, //GREEK CAPITAL LETTER ETA WITH PSILI AND PERISPOMENI	GREEK SMALL LETTER ETA WITH PSILI AND PERISPOMENI
-0x1F2F, 0x1F27, //GREEK CAPITAL LETTER ETA WITH DASIA AND PERISPOMENI	GREEK SMALL LETTER ETA WITH DASIA AND PERISPOMENI
-0x1F38, 0x1F30, //GREEK CAPITAL LETTER IOTA WITH PSILI	GREEK SMALL LETTER IOTA WITH PSILI
-0x1F39, 0x1F31, //GREEK CAPITAL LETTER IOTA WITH DASIA	GREEK SMALL LETTER IOTA WITH DASIA
-0x1F3A, 0x1F32, //GREEK CAPITAL LETTER IOTA WITH PSILI AND VARIA	GREEK SMALL LETTER IOTA WITH PSILI AND VARIA
-0x1F3B, 0x1F33, //GREEK CAPITAL LETTER IOTA WITH DASIA AND VARIA	GREEK SMALL LETTER IOTA WITH DASIA AND VARIA
-0x1F3C, 0x1F34, //GREEK CAPITAL LETTER IOTA WITH PSILI AND OXIA	GREEK SMALL LETTER IOTA WITH PSILI AND OXIA
-0x1F3D, 0x1F35, //GREEK CAPITAL LETTER IOTA WITH DASIA AND OXIA	GREEK SMALL LETTER IOTA WITH DASIA AND OXIA
-0x1F3E, 0x1F36, //GREEK CAPITAL LETTER IOTA WITH PSILI AND PERISPOMENI	GREEK SMALL LETTER IOTA WITH PSILI AND PERISPOMENI
-0x1F3F, 0x1F37, //GREEK CAPITAL LETTER IOTA WITH DASIA AND PERISPOMENI	GREEK SMALL LETTER IOTA WITH DASIA AND PERISPOMENI
-0x1F48, 0x1F40, //GREEK CAPITAL LETTER OMICRON WITH PSILI	GREEK SMALL LETTER OMICRON WITH PSILI
-0x1F49, 0x1F41, //GREEK CAPITAL LETTER OMICRON WITH DASIA	GREEK SMALL LETTER OMICRON WITH DASIA
-0x1F4A, 0x1F42, //GREEK CAPITAL LETTER OMICRON WITH PSILI AND VARIA	GREEK SMALL LETTER OMICRON WITH PSILI AND VARIA
-0x1F4B, 0x1F43, //GREEK CAPITAL LETTER OMICRON WITH DASIA AND VARIA	GREEK SMALL LETTER OMICRON WITH DASIA AND VARIA
-0x1F4C, 0x1F44, //GREEK CAPITAL LETTER OMICRON WITH PSILI AND OXIA	GREEK SMALL LETTER OMICRON WITH PSILI AND OXIA
-0x1F4D, 0x1F45, //GREEK CAPITAL LETTER OMICRON WITH DASIA AND OXIA	GREEK SMALL LETTER OMICRON WITH DASIA AND OXIA
-0x1F59, 0x1F51, //GREEK CAPITAL LETTER UPSILON WITH OASIS	GREEK SMALL LETTER UPSILON WITH DASIA
-0x1F5B, 0x1F53, //GREEK CAPITAL LETTER UPSILON WITH DASIA AND VARIA	GREEK SMALL LETTER UPSILON WITH DASIA AND VARIA
-0x1F5D, 0x1F55, //GREEK CAPITAL LETTER UPSILON WITH DASIA AND OXIA	GREEK SMALL LETTER UPSILON WITH DASIA AND OXIA
-0x1F5F, 0x1F57, //GREEK CAPITAL LETTER UPSILON WITH DASIA AND PERISPOMENI	GREEK SMALL LETTER UPSILON WITH DASIA AND PERISPOMENI
-0x1F68, 0x1F60, //GREEK CAPITAL LETTER OMEGA WITH PSILI	GREEK SMALL LETTER OMEGA WITH PSILI
-0x1F69, 0x1F61, //GREEK CAPITAL LETTER OMEGA WITH DASIA	GREEK SMALL LETTER OMEGA WITH DASIA
-0x1F6A, 0x1F62, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND VARIA	GREEK SMALL LETTER OMEGA WITH PSILI AND VARIA
-0x1F6B, 0x1F63, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND VARIA	GREEK SMALL LETTER OMEGA WITH DASIA AND VARIA
-0x1F6C, 0x1F64, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND OXIA	GREEK SMALL LETTER OMEGA WITH PSILI AND OXIA
-0x1F6D, 0x1F65, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND OXIA	GREEK SMALL LETTER OMEGA WITH DASIA AND OXIA
-0x1F6E, 0x1F66, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND PERISPOMENI	GREEK SMALL LETTER OMEGA WITH PSILI AND PERISPOMENI
-0x1F6F, 0x1F67, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND PERISPOMENI	GREEK SMALL LETTER OMEGA WITH DASIA AND PERISPOMENI
-0x1F88, 0x1F80, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH PSILI AND YPOGEGRAMMENI
-0x1F89, 0x1F81, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH DASIA AND YPOGEGRAMMENI
-0x1F8A, 0x1F82, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH PSILI AND VARIA AND YPOGEGRAMMENI
-0x1F8B, 0x1F83, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH DASIA AND VARIA AND YPOGEGRAMMENI
-0x1F8C, 0x1F84, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND OXIA AND PROSGEGRAMMEN	GREEK SMALL LETTER ALPHA WITH PSILI AND OXIA AND YPOGEGRAMMENI
-0x1F8D, 0x1F85, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND OXIA AND PROSGEGRAMMEN	GREEK SMALL LETTER ALPHA WITH DASIA AND OXIA AND YPOGEGRAMMENI
-0x1F8E, 0x1F86, //GREEK CAPITAL LETTER ALPHA WITH PSILI AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH PSILI AND PERISPOMENI AND YPOGEGRAMMENI
-0x1F8F, 0x1F87, //GREEK CAPITAL LETTER ALPHA WITH DASIA AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER ALPHA WITH DASIA AND PERISPOMENI AND YPOGEGRAMMENI
-0x1F98, 0x1F90, //GREEK CAPITAL LETTER ETA WITH PSILI AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH PSILI AND YPOGEGRAMMENI
-0x1F99, 0x1F91, //GREEK CAPITAL LETTER ETA WITH DASIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH DASIA AND YPOGEGRAMMENI
-0x1F9A, 0x1F92, //GREEK CAPITAL LETTER ETA WITH PSILI AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH PSILI AND VARIA AND YPOGEGRAMMENI
-0x1F9B, 0x1F93, //GREEK CAPITAL LETTER ETA WITH DASIA AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH DASIA AND VARIA AND YPOGEGRAMMENI
-0x1F9C, 0x1F94, //GREEK CAPITAL LETTER ETA WITH PSILI AND OXIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH PSILI AND OXIA AND YPOGEGRAMMENI
-0x1F9D, 0x1F95, //GREEK CAPITAL LETTER ETA WITH DASIA AND OXIA AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH DASIA AND OXIA AND YPOGEGRAMMENI
-0x1F9E, 0x1F96, //GREEK CAPITAL LETTER ETA WITH PSILI AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH PSILI AND PERISPOMENI AND YPOGEGRAMMENI
-0x1F9F, 0x1F97, //GREEK CAPITAL LETTER ETA WITH DASIA AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER ETA WITH DASIA AND PERISPOMENI AND YPOGEGRAMMENI
-0x1FA8, 0x1FA0, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH PSILI AND YPOGEGRAMMENI
-0x1FA9, 0x1FA1, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH DASIA AND YPOGEGRAMMENI
-0x1FAA, 0x1FA2, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH PSILI AND VARIA AND YPOGEGRAMMENI
-0x1FAB, 0x1FA3, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND VARIA AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH DASIA AND VARIA AND YPOGEGRAMMENI
-0x1FAC, 0x1FA4, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND OXIA AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH PSILI AND OXIA AND YPOGEGRAMMENI
-0x1FAD, 0x1FA5, //GREEK CAPITAL LETTER OMEGA WITH DASIA AND OXIA AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH DASIA AND OXIA AND YPOGEGRAMMENI
-0x1FAE, 0x1FA6, //GREEK CAPITAL LETTER OMEGA WITH PSILI AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH PSILI AND PERISPOMENI AND YPOGEGRAMMENI
-0x1FAF, 0x1FA7, //GREEK CAPITAL LETTER OMECA WITH DASIA AND PERISPOMENI AND PROSGEGRAMMENI	GREEK SMALL LETTER OMEGA WITH DASIA AND PEPISPOMENI AND YPOGEGRAMMENI
-0x1FB8, 0x1FB0, //GREEK CAPITAL LETTER ALPHA WITH VRACHY	GREEK SMALL LETTER ALPHA WITH VRACHY
-0x1FB9, 0x1FB1, //GREEK CAPITAL LETTER ALPHA WITH MACRON	GREEK SMALL LETTER ALPHA WITH MACRON
-0x1FD8, 0x1FD0, //GREEK CAPITAL LETTER IOTA WITH VRACHY	GREEK SMALL LETTER IOTA WITH VRACHY
-0x1FD9, 0x1FD1, //GREEK CAPITAL LETTER IOTA WITH MACRON	GREEK SMALL LETTER IOTA WITH MACRON
-0x1FE8, 0x1FE0, //GREEK CAPITAL LETTER UPSILON WITH VRACHY	GREEK SMALL LETTER UPSILON WITH VRACHY
-0x1FE9, 0x1FE1, //GREEK CAPITAL LETTER UPSILON WITH MACRON	GREEK SMALL LETTER UPSILON WITH MACRON
-0x24B6, 0x24D0, //CIRCLED LATIN CAPITAL LETTER A	CIRCLED LATIN SMALL LETTER A
-0x24B7, 0x24D1, //CIRCLED LATIN CAPITAL LETTER B	CIRCLED LATIN SMALL LETTER B
-0x24B8, 0x24D2, //CIRCLED LATIN CAPITAL LETTER C	CIRCLED LATIN SMALL LETTER C
-0x24B9, 0x24D3, //CIRCLED LATIN CAPITAL LETTER D	CIRCLED LATIN SMALL LETTER D
-0x24BA, 0x24D4, //CIRCLED LATIN CAPITAL LETTER E	CIRCLED LATIN SMALL LETTER E
-0x24BB, 0x24D5, //CIRCLED LATIN CAPITAL LETTER F	CIRCLED LATIN SMALL LETTER F
-0x24BC, 0x24D6, //CIRCLED LATIN CAPITAL LETTER G	CIRCLED LATIN SMALL LETTER G
-0x24BD, 0x24D7, //CIRCLED LATIN CAPITAL LETTER H	CIRCLED LATIN SMALL LETTER H
-0x24BE, 0x24D8, //CIRCLED LATIN CAPITAL LETTER I	CIRCLED LATIN SMALL LETTER I
-0x24BF, 0x24D9, //CIRCLED LATIN CAPITAL LETTER J	CIRCLED LATIN SMALL LETTER J
-0x24C0, 0x24DA, //CIRCLED LATIN CAPITAL LETTER K	CIRCLED LATIN SMALL LETTER K
-0x24C1, 0x24DB, //CIRCLED LATIN CAPITAL LETTER L	CIRCLED LATIN SMALL LETTER L
-0x24C2, 0x24DC, //CIRCLED LATIN CAPITAL LETTER M	CIRCLED LATIN SMALL LETTER M
-0x24C3, 0x24DD, //CIRCLED LATIN CAPITAL LETTER N	CIRCLED LATIN SMALL LETTER N
-0x24C4, 0x24DE, //CIRCLED LATIN CAPITAL LETTER O	CIRCLED LATIN SMALL LETTER O
-0x24C5, 0x24DF, //CIRCLED LATIN CAPITAL LETTER P	CIRCLED LATIN SMALL LETTER P
-0x24C6, 0x24E0, //CIRCLED LATIN CAPITAL LETTER Q	CIRCLED LATIN SMALL LETTER Q
-0x24C7, 0x24E1, //CIRCLED LATIN CAPITAL LETTER R	CIRCLED LATIN SMALL LETTER R
-0x24C8, 0x24E2, //CIRCLED LATIN CAPITAL LETTER S	CIRCLED LATIN SMALL LETTER S
-0x24C9, 0x24E3, //CIRCLED LATIN CAPITAL LETTER T	CIRCLED LATIN SMALL LETTER T
-0x24CA, 0x24E4, //CIRCLED LATIN CAPITAL LETTER U	CIRCLED LATIN SMALL LETTER U
-0x24CB, 0x24E5, //CIRCLED LATIN CAPITAL LETTER V	CIRCLED LATIN SMALL LETTER V
-0x24CC, 0x24E6, //CIRCLED LATIN CAPITAL LETTER W	CIRCLED LATIN SMALL LETTER W
-0x24CD, 0x24E7, //CIRCLED LATIN CAPITAL LETTER X	CIRCLED LATIN SMALL LETTER X
-0x24CE, 0x24E8, //CIRCLED LATIN CAPITAL LETTER Y	CIRCLED LATIN SMALL LETTER Y
-0x24CF, 0x24E9, //CIRCLED LATIN CAPITAL LETTER Z	CIRCLED LATIN SMALL LETTER Z
-0xFF21, 0xFF41, //FULLWIDTH LATIN CAPITAL LETTER A	FULLWIDTH LATIN SMALL LETTER A
-0xFF22, 0xFF42, //FULLWIDTH LATIN CAPITAL LETTER B	FULLWIDTH LATIN SMALL LETTER B
-0xFF23, 0xFF43, //FULLWIDTH LATIN CAPITAL LETTER C	FULLWIDTH LATIN SMALL LETTER C
-0xFF24, 0xFF44, //FULLWIDTH LATIN CAPITAL LETTER D	FULLWIDTH LATIN SMALL LETTER D
-0xFF25, 0xFF45, //FULLWIDTH LATIN CAPITAL LETTER E	FULLWIDTH LATIN SMALL LETTER E
-0xFF26, 0xFF46, //FULLWIDTH LATIN CAPITAL LETTER F	FULLWIDTH LATIN SMALL LETTER F
-0xFF27, 0xFF47, //FULLWIDTH LATIN CAPITAL LETTER G	FULLWIDTH LATIN SMALL LETTER G
-0xFF28, 0xFF48, //FULLWIDTH LATIN CAPITAL LETTER H	FULLWIDTH LATIN SMALL LETTER H
-0xFF29, 0xFF49, //FULLWIDTH LATIN CAPITAL LETTER I	FULLWIDTH LATIN SMALL LETTER I
-0xFF2A, 0xFF4A, //FULLWIDTH LATIN CAPITAL LETTER J	FULLWIDTH LATIN SMALL LETTER J
-0xFF2B, 0xFF4B, //FULLWIDTH LATIN CAPITAL LETTER K	FULLWIDTH LATIN SMALL LETTER K
-0xFF2C, 0xFF4C, //FULLWIDTH LATIN CAPITAL LETTER L	FULLWIDTH LATIN SMALL LETTER L
-0xFF2D, 0xFF4D, //FULLWIDTH LATIN CAPITAL LETTER M	FULLWIDTH LATIN SMALL LETTER M
-0xFF2E, 0xFF4E, //FULLWIDTH LATIN CAPITAL LETTER N	FULLWIDTH LATIN SMALL LETTER N
-0xFF2F, 0xFF4F, //FULLWIDTH LATIN CAPITAL LETTER O	FULLWIDTH LATIN SMALL LETTER O
-0xFF30, 0xFF50, //FULLWIDTH LATIN CAPITAL LETTER P	FULLWIDTH LATIN SMALL LETTER P
-0xFF31, 0xFF51, //FULLWIDTH LATIN CAPITAL LETTER Q	FULLWIDTH LATIN SMALL LETTER Q
-0xFF32, 0xFF52, //FULLWIDTH LATIN CAPITAL LETTER R	FULLWIDTH LATIN SMALL LETTER R
-0xFF33, 0xFF53, //FULLWIDTH LATIN CAPITAL LETTER S	FULLWIDTH LATIN SMALL LETTER S
-0xFF34, 0xFF54, //FULLWIDTH LATIN CAPITAL LETTER T	FULLWIDTH LATIN SMALL LETTER T
-0xFF35, 0xFF55, //FULLWIDTH LATIN CAPITAL LETTER U	FULLWIDTH LATIN SMALL LETTER U
-0xFF36, 0xFF56, //FULLWIDTH LATIN CAPITAL LETTER V	FULLWIDTH LATIN SMALL LETTER V
-0xFF37, 0xFF57, //FULLWIDTH LATIN CAPITAL LETTER W	FULLWIDTH LATIN SMALL LETTER W
-0xFF38, 0xFF58, //FULLWIDTH LATIN CAPITAL LETTER X	FULLWIDTH LATIN SMALL LETTER X
-0xFF39, 0xFF59, //FULLWIDTH LATIN CAPITAL LETTER Y	FULLWIDTH LATIN SMALL LETTER Y
-0xFF3A, 0xFF5A, //FULLWIDTH LATIN CAPITAL LETTER Z	FULLWIDTH LATIN SMALL LETTER Z
-]
-)
-
-/*
-
 Unicode punctuation chars
 
 source: http://www.unicode.org/faq/punctuation_symbols.html
-
 */
-const(
+const (
+	// Western punctuation mark
+	// Character	Name	Browser	Image
+	unicode_punct_western = [
+		0x0021 /* EXCLAMATION MARK	! */,
+		0x0022 /* QUOTATION MARK	" */,
+		0x0027 /* APOSTROPHE	' */,
+		0x002A /* ASTERISK	* */,
+		0x002C /* COMMA	, */,
+		0x002E /* FULL STOP	. */,
+		0x002F /* SOLIDUS	/ */,
+		0x003A /* COLON	: */,
+		0x003B /* SEMICOLON	; */,
+		0x003F /* QUESTION MARK	? */,
+		0x00A1 /* INVERTED EXCLAMATION MARK	¡ */,
+		0x00A7 /* SECTION SIGN	§ */,
+		0x00B6 /* PILCROW SIGN	¶ */,
+		0x00B7 /* MIDDLE DOT	· */,
+		0x00BF /* INVERTED QUESTION MARK	¿ */,
+		0x037E /* GREEK QUESTION MARK	; */,
+		0x0387 /* GREEK ANO TELEIA	· */,
+		0x055A /* ARMENIAN APOSTROPHE	՚ */,
+		0x055B /* ARMENIAN EMPHASIS MARK	՛ */,
+		0x055C /* ARMENIAN EXCLAMATION MARK	՜ */,
+		0x055D /* ARMENIAN COMMA	՝ */,
+		0x055E /* ARMENIAN QUESTION MARK	՞ */,
+		0x055F /* ARMENIAN ABBREVIATION MARK	՟ */,
+		0x0589 /* ARMENIAN FULL STOP	։ */,
+		0x05C0 /* HEBREW PUNCTUATION PASEQ	׀ */,
+		0x05C3 /* HEBREW PUNCTUATION SOF PASUQ	׃ */,
+		0x05C6 /* HEBREW PUNCTUATION NUN HAFUKHA	׆ */,
+		0x05F3 /* HEBREW PUNCTUATION GERESH	׳ */,
+		0x05F4 /* HEBREW PUNCTUATION GERSHAYIM	״ */,
+	]
 
-// Western punctuation mark
-// Character	Name	Browser	Image
-unicode_punct_western=[
-0x0021, // EXCLAMATION MARK	!
-0x0022, // QUOTATION MARK	"
-0x0027, // APOSTROPHE	'
-0x002A, // ASTERISK	*
-0x002C, // COMMA	,
-0x002E, // FULL STOP	.
-0x002F, // SOLIDUS	/
-0x003A, // COLON	:
-0x003B, // SEMICOLON	;
-0x003F, // QUESTION MARK	?
-0x00A1, // INVERTED EXCLAMATION MARK	¡
-0x00A7, // SECTION SIGN	§
-0x00B6, // PILCROW SIGN	¶
-0x00B7, // MIDDLE DOT	·
-0x00BF, // INVERTED QUESTION MARK	¿
-0x037E, // GREEK QUESTION MARK	;
-0x0387, // GREEK ANO TELEIA	·
-0x055A, // ARMENIAN APOSTROPHE	՚
-0x055B, // ARMENIAN EMPHASIS MARK	՛
-0x055C, // ARMENIAN EXCLAMATION MARK	՜
-0x055D, // ARMENIAN COMMA	՝
-0x055E, // ARMENIAN QUESTION MARK	՞
-0x055F, // ARMENIAN ABBREVIATION MARK	՟
-0x0589, // ARMENIAN FULL STOP	։
-0x05C0, // HEBREW PUNCTUATION PASEQ	׀
-0x05C3, // HEBREW PUNCTUATION SOF PASUQ	׃
-0x05C6, // HEBREW PUNCTUATION NUN HAFUKHA	׆
-0x05F3, // HEBREW PUNCTUATION GERESH	׳
-0x05F4, // HEBREW PUNCTUATION GERSHAYIM	״
-]
-
-// Unicode Characters in the 'Punctuation, Other' Category
-// Character	Name	Browser	Image
-unicode_punct=[
-0x0021, // EXCLAMATION MARK	!
-0x0022, // QUOTATION MARK	"
-0x0023, // NUMBER SIGN	#
-0x0025, // PERCENT SIGN	%
-0x0026, // AMPERSAND	&
-0x0027, // APOSTROPHE	'
-0x002A, // ASTERISK	*
-0x002C, // COMMA	,
-0x002E, // FULL STOP	.
-0x002F, // SOLIDUS	/
-0x003A, // COLON	:
-0x003B, // SEMICOLON	;
-0x003F, // QUESTION MARK	?
-0x0040, // COMMERCIAL AT	@
-0x005C, // REVERSE SOLIDUS	\
-0x00A1, // INVERTED EXCLAMATION MARK	¡
-0x00A7, // SECTION SIGN	§
-0x00B6, // PILCROW SIGN	¶
-0x00B7, // MIDDLE DOT	·
-0x00BF, // INVERTED QUESTION MARK	¿
-0x037E, // GREEK QUESTION MARK	;
-0x0387, // GREEK ANO TELEIA	·
-0x055A, // ARMENIAN APOSTROPHE	՚
-0x055B, // ARMENIAN EMPHASIS MARK	՛
-0x055C, // ARMENIAN EXCLAMATION MARK	՜
-0x055D, // ARMENIAN COMMA	՝
-0x055E, // ARMENIAN QUESTION MARK	՞
-0x055F, // ARMENIAN ABBREVIATION MARK	՟
-0x0589, // ARMENIAN FULL STOP	։
-0x05C0, // HEBREW PUNCTUATION PASEQ	׀
-0x05C3, // HEBREW PUNCTUATION SOF PASUQ	׃
-0x05C6, // HEBREW PUNCTUATION NUN HAFUKHA	׆
-0x05F3, // HEBREW PUNCTUATION GERESH	׳
-0x05F4, // HEBREW PUNCTUATION GERSHAYIM	״
-0x0609, // ARABIC-INDIC PER MILLE SIGN	؉
-0x060A, // ARABIC-INDIC PER TEN THOUSAND SIGN	؊
-0x060C, // ARABIC COMMA	،
-0x060D, // ARABIC DATE SEPARATOR	؍
-0x061B, // ARABIC SEMICOLON	؛
-0x061E, // ARABIC TRIPLE DOT PUNCTUATION MARK	؞
-0x061F, // ARABIC QUESTION MARK	؟
-0x066A, // ARABIC PERCENT SIGN	٪
-0x066B, // ARABIC DECIMAL SEPARATOR	٫
-0x066C, // ARABIC THOUSANDS SEPARATOR	٬
-0x066D, // ARABIC FIVE POINTED STAR	٭
-0x06D4, // ARABIC FULL STOP	۔
-0x0700, // SYRIAC END OF PARAGRAPH	܀
-0x0701, // SYRIAC SUPRALINEAR FULL STOP	܁
-0x0702, // SYRIAC SUBLINEAR FULL STOP	܂
-0x0703, // SYRIAC SUPRALINEAR COLON	܃
-0x0704, // SYRIAC SUBLINEAR COLON	܄
-0x0705, // SYRIAC HORIZONTAL COLON	܅
-0x0706, // SYRIAC COLON SKEWED LEFT	܆
-0x0707, // SYRIAC COLON SKEWED RIGHT	܇
-0x0708, // SYRIAC SUPRALINEAR COLON SKEWED LEFT	܈
-0x0709, // SYRIAC SUBLINEAR COLON SKEWED RIGHT	܉
-0x070A, // SYRIAC CONTRACTION	܊
-0x070B, // SYRIAC HARKLEAN OBELUS	܋
-0x070C, // SYRIAC HARKLEAN METOBELUS	܌
-0x070D, // SYRIAC HARKLEAN ASTERISCUS	܍
-0x07F7, // NKO SYMBOL GBAKURUNEN	߷
-0x07F8, // NKO COMMA	߸
-0x07F9, // NKO EXCLAMATION MARK	߹
-0x0830, // SAMARITAN PUNCTUATION NEQUDAA	࠰
-0x0831, // SAMARITAN PUNCTUATION AFSAAQ	࠱
-0x0832, // SAMARITAN PUNCTUATION ANGED	࠲
-0x0833, // SAMARITAN PUNCTUATION BAU	࠳
-0x0834, // SAMARITAN PUNCTUATION ATMAAU	࠴
-0x0835, // SAMARITAN PUNCTUATION SHIYYAALAA	࠵
-0x0836, // SAMARITAN ABBREVIATION MARK	࠶
-0x0837, // SAMARITAN PUNCTUATION MELODIC QITSA	࠷
-0x0838, // SAMARITAN PUNCTUATION ZIQAA	࠸
-0x0839, // SAMARITAN PUNCTUATION QITSA	࠹
-0x083A, // SAMARITAN PUNCTUATION ZAEF	࠺
-0x083B, // SAMARITAN PUNCTUATION TURU	࠻
-0x083C, // SAMARITAN PUNCTUATION ARKAANU	࠼
-0x083D, // SAMARITAN PUNCTUATION SOF MASHFAAT	࠽
-0x083E, // SAMARITAN PUNCTUATION ANNAAU	࠾
-0x085E, // MANDAIC PUNCTUATION	࡞
-0x0964, // DEVANAGARI DANDA	।
-0x0965, // DEVANAGARI DOUBLE DANDA	॥
-0x0970, // DEVANAGARI ABBREVIATION SIGN	॰
-0x09FD, // BENGALI ABBREVIATION SIGN	৽
-0x0A76, // GURMUKHI ABBREVIATION SIGN	੶
-0x0AF0, // GUJARATI ABBREVIATION SIGN	૰
-0x0C77, // TELUGU SIGN SIDDHAM	౷
-0x0C84, // KANNADA SIGN SIDDHAM	಄
-0x0DF4, // SINHALA PUNCTUATION KUNDDALIYA	෴
-0x0E4F, // THAI CHARACTER FONGMAN	๏
-0x0E5A, // THAI CHARACTER ANGKHANKHU	๚
-0x0E5B, // THAI CHARACTER KHOMUT	๛
-0x0F04, // TIBETAN MARK INITIAL YIG MGO MDUN MA	༄
-0x0F05, // TIBETAN MARK CLOSING YIG MGO SGAB MA	༅
-0x0F06, // TIBETAN MARK CARET YIG MGO PHUR SHAD MA	༆
-0x0F07, // TIBETAN MARK YIG MGO TSHEG SHAD MA	༇
-0x0F08, // TIBETAN MARK SBRUL SHAD	༈
-0x0F09, // TIBETAN MARK BSKUR YIG MGO	༉
-0x0F0A, // TIBETAN MARK BKA- SHOG YIG MGO	༊
-0x0F0B, // TIBETAN MARK INTERSYLLABIC TSHEG	་
-0x0F0C, // TIBETAN MARK DELIMITER TSHEG BSTAR	༌
-0x0F0D, // TIBETAN MARK SHAD	།
-0x0F0E, // TIBETAN MARK NYIS SHAD	༎
-0x0F0F, // TIBETAN MARK TSHEG SHAD	༏
-0x0F10, // TIBETAN MARK NYIS TSHEG SHAD	༐
-0x0F11, // TIBETAN MARK RIN CHEN SPUNGS SHAD	༑
-0x0F12, // TIBETAN MARK RGYA GRAM SHAD	༒
-0x0F14, // TIBETAN MARK GTER TSHEG	༔
-0x0F85, // TIBETAN MARK PALUTA	྅
-0x0FD0, // TIBETAN MARK BSKA- SHOG GI MGO RGYAN	࿐
-0x0FD1, // TIBETAN MARK MNYAM YIG GI MGO RGYAN	࿑
-0x0FD2, // TIBETAN MARK NYIS TSHEG	࿒
-0x0FD3, // TIBETAN MARK INITIAL BRDA RNYING YIG MGO MDUN MA	࿓
-0x0FD4, // TIBETAN MARK CLOSING BRDA RNYING YIG MGO SGAB MA	࿔
-0x0FD9, // TIBETAN MARK LEADING MCHAN RTAGS	࿙
-0x0FDA, // TIBETAN MARK TRAILING MCHAN RTAGS	࿚
-0x104A, // MYANMAR SIGN LITTLE SECTION	၊
-0x104B, // MYANMAR SIGN SECTION	။
-0x104C, // MYANMAR SYMBOL LOCATIVE	၌
-0x104D, // MYANMAR SYMBOL COMPLETED	၍
-0x104E, // MYANMAR SYMBOL AFOREMENTIONED	၎
-0x104F, // MYANMAR SYMBOL GENITIVE	၏
-0x10FB, // GEORGIAN PARAGRAPH SEPARATOR	჻
-0x1360, // ETHIOPIC SECTION MARK	፠
-0x1361, // ETHIOPIC WORDSPACE	፡
-0x1362, // ETHIOPIC FULL STOP	።
-0x1363, // ETHIOPIC COMMA	፣
-0x1364, // ETHIOPIC SEMICOLON	፤
-0x1365, // ETHIOPIC COLON	፥
-0x1366, // ETHIOPIC PREFACE COLON	፦
-0x1367, // ETHIOPIC QUESTION MARK	፧
-0x1368, // ETHIOPIC PARAGRAPH SEPARATOR	፨
-0x166E, // CANADIAN SYLLABICS FULL STOP	᙮
-0x16EB, // RUNIC SINGLE PUNCTUATION	᛫
-0x16EC, // RUNIC MULTIPLE PUNCTUATION	᛬
-0x16ED, // RUNIC CROSS PUNCTUATION	᛭
-0x1735, // PHILIPPINE SINGLE PUNCTUATION	᜵
-0x1736, // PHILIPPINE DOUBLE PUNCTUATION	᜶
-0x17D4, // KHMER SIGN KHAN	។
-0x17D5, // KHMER SIGN BARIYOOSAN	៕
-0x17D6, // KHMER SIGN CAMNUC PII KUUH	៖
-0x17D8, // KHMER SIGN BEYYAL	៘
-0x17D9, // KHMER SIGN PHNAEK MUAN	៙
-0x17DA, // KHMER SIGN KOOMUUT	៚
-0x1800, // MONGOLIAN BIRGA	᠀
-0x1801, // MONGOLIAN ELLIPSIS	᠁
-0x1802, // MONGOLIAN COMMA	᠂
-0x1803, // MONGOLIAN FULL STOP	᠃
-0x1804, // MONGOLIAN COLON	᠄
-0x1805, // MONGOLIAN FOUR DOTS	᠅
-0x1807, // MONGOLIAN SIBE SYLLABLE BOUNDARY MARKER	᠇
-0x1808, // MONGOLIAN MANCHU COMMA	᠈
-0x1809, // MONGOLIAN MANCHU FULL STOP	᠉
-0x180A, // MONGOLIAN NIRUGU	᠊
-0x1944, // LIMBU EXCLAMATION MARK	᥄
-0x1945, // LIMBU QUESTION MARK	᥅
-0x1A1E, // BUGINESE PALLAWA	᨞
-0x1A1F, // BUGINESE END OF SECTION	᨟
-0x1AA0, // TAI THAM SIGN WIANG	᪠
-0x1AA1, // TAI THAM SIGN WIANGWAAK	᪡
-0x1AA2, // TAI THAM SIGN SAWAN	᪢
-0x1AA3, // TAI THAM SIGN KEOW	᪣
-0x1AA4, // TAI THAM SIGN HOY	᪤
-0x1AA5, // TAI THAM SIGN DOKMAI	᪥
-0x1AA6, // TAI THAM SIGN REVERSED ROTATED RANA	᪦
-0x1AA8, // TAI THAM SIGN KAAN	᪨
-0x1AA9, // TAI THAM SIGN KAANKUU	᪩
-0x1AAA, // TAI THAM SIGN SATKAAN	᪪
-0x1AAB, // TAI THAM SIGN SATKAANKUU	᪫
-0x1AAC, // TAI THAM SIGN HANG	᪬
-0x1AAD, // TAI THAM SIGN CAANG	᪭
-0x1B5A, // BALINESE PANTI	᭚
-0x1B5B, // BALINESE PAMADA	᭛
-0x1B5C, // BALINESE WINDU	᭜
-0x1B5D, // BALINESE CARIK PAMUNGKAH	᭝
-0x1B5E, // BALINESE CARIK SIKI	᭞
-0x1B5F, // BALINESE CARIK PAREREN	᭟
-0x1B60, // BALINESE PAMENENG	᭠
-0x1BFC, // BATAK SYMBOL BINDU NA METEK	᯼
-0x1BFD, // BATAK SYMBOL BINDU PINARBORAS	᯽
-0x1BFE, // BATAK SYMBOL BINDU JUDUL	᯾
-0x1BFF, // BATAK SYMBOL BINDU PANGOLAT	᯿
-0x1C3B, // LEPCHA PUNCTUATION TA-ROL	᰻
-0x1C3C, // LEPCHA PUNCTUATION NYET THYOOM TA-ROL	᰼
-0x1C3D, // LEPCHA PUNCTUATION CER-WA	᰽
-0x1C3E, // LEPCHA PUNCTUATION TSHOOK CER-WA	᰾
-0x1C3F, // LEPCHA PUNCTUATION TSHOOK	᰿
-0x1C7E, // OL CHIKI PUNCTUATION MUCAAD	᱾
-0x1C7F, // OL CHIKI PUNCTUATION DOUBLE MUCAAD	᱿
-0x1CC0, // SUNDANESE PUNCTUATION BINDU SURYA	᳀
-0x1CC1, // SUNDANESE PUNCTUATION BINDU PANGLONG	᳁
-0x1CC2, // SUNDANESE PUNCTUATION BINDU PURNAMA	᳂
-0x1CC3, // SUNDANESE PUNCTUATION BINDU CAKRA	᳃
-0x1CC4, // SUNDANESE PUNCTUATION BINDU LEU SATANGA	᳄
-0x1CC5, // SUNDANESE PUNCTUATION BINDU KA SATANGA	᳅
-0x1CC6, // SUNDANESE PUNCTUATION BINDU DA SATANGA	᳆
-0x1CC7, // SUNDANESE PUNCTUATION BINDU BA SATANGA	᳇
-0x1CD3, // VEDIC SIGN NIHSHVASA	᳓
-0x2016, // DOUBLE VERTICAL LINE	‖
-0x2017, // DOUBLE LOW LINE	‗
-0x2020, // DAGGER	†
-0x2021, // DOUBLE DAGGER	‡
-0x2022, // BULLET	•
-0x2023, // TRIANGULAR BULLET	‣
-0x2024, // ONE DOT LEADER	․
-0x2025, // TWO DOT LEADER	‥
-0x2026, // HORIZONTAL ELLIPSIS	…
-0x2027, // HYPHENATION POINT	‧
-0x2030, // PER MILLE SIGN	‰
-0x2031, // PER TEN THOUSAND SIGN	‱
-0x2032, // PRIME	′
-0x2033, // DOUBLE PRIME	″
-0x2034, // TRIPLE PRIME	‴
-0x2035, // REVERSED PRIME	‵
-0x2036, // REVERSED DOUBLE PRIME	‶
-0x2037, // REVERSED TRIPLE PRIME	‷
-0x2038, // CARET	‸
-0x203B, // REFERENCE MARK	※
-0x203C, // DOUBLE EXCLAMATION MARK	‼
-0x203D, // INTERROBANG	‽
-0x203E, // OVERLINE	‾
-0x2041, // CARET INSERTION POINT	⁁
-0x2042, // ASTERISM	⁂
-0x2043, // HYPHEN BULLET	⁃
-0x2047, // DOUBLE QUESTION MARK	⁇
-0x2048, // QUESTION EXCLAMATION MARK	⁈
-0x2049, // EXCLAMATION QUESTION MARK	⁉
-0x204A, // TIRONIAN SIGN ET	⁊
-0x204B, // REVERSED PILCROW SIGN	⁋
-0x204C, // BLACK LEFTWARDS BULLET	⁌
-0x204D, // BLACK RIGHTWARDS BULLET	⁍
-0x204E, // LOW ASTERISK	⁎
-0x204F, // REVERSED SEMICOLON	⁏
-0x2050, // CLOSE UP	⁐
-0x2051, // TWO ASTERISKS ALIGNED VERTICALLY	⁑
-0x2053, // SWUNG DASH	⁓
-0x2055, // FLOWER PUNCTUATION MARK	⁕
-0x2056, // THREE DOT PUNCTUATION	⁖
-0x2057, // QUADRUPLE PRIME	⁗
-0x2058, // FOUR DOT PUNCTUATION	⁘
-0x2059, // FIVE DOT PUNCTUATION	⁙
-0x205A, // TWO DOT PUNCTUATION	⁚
-0x205B, // FOUR DOT MARK	⁛
-0x205C, // DOTTED CROSS	⁜
-0x205D, // TRICOLON	⁝
-0x205E, // VERTICAL FOUR DOTS	⁞
-0x2CF9, // COPTIC OLD NUBIAN FULL STOP	⳹
-0x2CFA, // COPTIC OLD NUBIAN DIRECT QUESTION MARK	⳺
-0x2CFB, // COPTIC OLD NUBIAN INDIRECT QUESTION MARK	⳻
-0x2CFC, // COPTIC OLD NUBIAN VERSE DIVIDER	⳼
-0x2CFE, // COPTIC FULL STOP	⳾
-0x2CFF, // COPTIC MORPHOLOGICAL DIVIDER	⳿
-0x2D70, // TIFINAGH SEPARATOR MARK	⵰
-0x2E00, // RIGHT ANGLE SUBSTITUTION MARKER	⸀
-0x2E01, // RIGHT ANGLE DOTTED SUBSTITUTION MARKER	⸁
-0x2E06, // RAISED INTERPOLATION MARKER	⸆
-0x2E07, // RAISED DOTTED INTERPOLATION MARKER	⸇
-0x2E08, // DOTTED TRANSPOSITION MARKER	⸈
-0x2E0B, // RAISED SQUARE	⸋
-0x2E0E, // EDITORIAL CORONIS	⸎
-0x2E0F, // PARAGRAPHOS	⸏
-0x2E10, // FORKED PARAGRAPHOS	⸐
-0x2E11, // REVERSED FORKED PARAGRAPHOS	⸑
-0x2E12, // HYPODIASTOLE	⸒
-0x2E13, // DOTTED OBELOS	⸓
-0x2E14, // DOWNWARDS ANCORA	⸔
-0x2E15, // UPWARDS ANCORA	⸕
-0x2E16, // DOTTED RIGHT-POINTING ANGLE	⸖
-0x2E18, // INVERTED INTERROBANG	⸘
-0x2E19, // PALM BRANCH	⸙
-0x2E1B, // TILDE WITH RING ABOVE	⸛
-0x2E1E, // TILDE WITH DOT ABOVE	⸞
-0x2E1F, // TILDE WITH DOT BELOW	⸟
-0x2E2A, // TWO DOTS OVER ONE DOT PUNCTUATION	⸪
-0x2E2B, // ONE DOT OVER TWO DOTS PUNCTUATION	⸫
-0x2E2C, // SQUARED FOUR DOT PUNCTUATION	⸬
-0x2E2D, // FIVE DOT MARK	⸭
-0x2E2E, // REVERSED QUESTION MARK	⸮
-0x2E30, // RING POINT	⸰
-0x2E31, // WORD SEPARATOR MIDDLE DOT	⸱
-0x2E32, // TURNED COMMA	⸲
-0x2E33, // RAISED DOT	⸳
-0x2E34, // RAISED COMMA	⸴
-0x2E35, // TURNED SEMICOLON	⸵
-0x2E36, // DAGGER WITH LEFT GUARD	⸶
-0x2E37, // DAGGER WITH RIGHT GUARD	⸷
-0x2E38, // TURNED DAGGER	⸸
-0x2E39, // TOP HALF SECTION SIGN	⸹
-0x2E3C, // STENOGRAPHIC FULL STOP	⸼
-0x2E3D, // VERTICAL SIX DOTS	⸽
-0x2E3E, // WIGGLY VERTICAL LINE	⸾
-0x2E3F, // CAPITULUM	⸿
-0x2E41, // REVERSED COMMA	⹁
-0x2E43, // DASH WITH LEFT UPTURN	⹃
-0x2E44, // DOUBLE SUSPENSION MARK	⹄
-0x2E45, // INVERTED LOW KAVYKA	⹅
-0x2E46, // INVERTED LOW KAVYKA WITH KAVYKA ABOVE	⹆
-0x2E47, // LOW KAVYKA	⹇
-0x2E48, // LOW KAVYKA WITH DOT	⹈
-0x2E49, // DOUBLE STACKED COMMA	⹉
-0x2E4A, // DOTTED SOLIDUS	⹊
-0x2E4B, // TRIPLE DAGGER	⹋
-0x2E4C, // MEDIEVAL COMMA	⹌
-0x2E4D, // PARAGRAPHUS MARK	⹍
-0x2E4E, // PUNCTUS ELEVATUS MARK	⹎
-0x2E4F, // CORNISH VERSE DIVIDER	⹏
-0x3001, // IDEOGRAPHIC COMMA	、
-0x3002, // IDEOGRAPHIC FULL STOP	。
-0x3003, // DITTO MARK	〃
-0x303D, // PART ALTERNATION MARK	〽
-0x30FB, // KATAKANA MIDDLE DOT	・
-0xA4FE, // LISU PUNCTUATION COMMA	꓾
-0xA4FF, // LISU PUNCTUATION FULL STOP	꓿
-0xA60D, // VAI COMMA	꘍
-0xA60E, // VAI FULL STOP	꘎
-0xA60F, // VAI QUESTION MARK	꘏
-0xA673, // SLAVONIC ASTERISK	꙳
-0xA67E, // CYRILLIC KAVYKA	꙾
-0xA6F2, // BAMUM NJAEMLI	꛲
-0xA6F3, // BAMUM FULL STOP	꛳
-0xA6F4, // BAMUM COLON	꛴
-0xA6F5, // BAMUM COMMA	꛵
-0xA6F6, // BAMUM SEMICOLON	꛶
-0xA6F7, // BAMUM QUESTION MARK	꛷
-0xA874, // PHAGS-PA SINGLE HEAD MARK	꡴
-0xA875, // PHAGS-PA DOUBLE HEAD MARK	꡵
-0xA876, // PHAGS-PA MARK SHAD	꡶
-0xA877, // PHAGS-PA MARK DOUBLE SHAD	꡷
-0xA8CE, // SAURASHTRA DANDA	꣎
-0xA8CF, // SAURASHTRA DOUBLE DANDA	꣏
-0xA8F8, // DEVANAGARI SIGN PUSHPIKA	꣸
-0xA8F9, // DEVANAGARI GAP FILLER	꣹
-0xA8FA, // DEVANAGARI CARET	꣺
-0xA8FC, // DEVANAGARI SIGN SIDDHAM	꣼
-0xA92E, // KAYAH LI SIGN CWI	꤮
-0xA92F, // KAYAH LI SIGN SHYA	꤯
-0xA95F, // REJANG SECTION MARK	꥟
-0xA9C1, // JAVANESE LEFT RERENGGAN	꧁
-0xA9C2, // JAVANESE RIGHT RERENGGAN	꧂
-0xA9C3, // JAVANESE PADA ANDAP	꧃
-0xA9C4, // JAVANESE PADA MADYA	꧄
-0xA9C5, // JAVANESE PADA LUHUR	꧅
-0xA9C6, // JAVANESE PADA WINDU	꧆
-0xA9C7, // JAVANESE PADA PANGKAT	꧇
-0xA9C8, // JAVANESE PADA LINGSA	꧈
-0xA9C9, // JAVANESE PADA LUNGSI	꧉
-0xA9CA, // JAVANESE PADA ADEG	꧊
-0xA9CB, // JAVANESE PADA ADEG ADEG	꧋
-0xA9CC, // JAVANESE PADA PISELEH	꧌
-0xA9CD, // JAVANESE TURNED PADA PISELEH	꧍
-0xA9DE, // JAVANESE PADA TIRTA TUMETES	꧞
-0xA9DF, // JAVANESE PADA ISEN-ISEN	꧟
-0xAA5C, // CHAM PUNCTUATION SPIRAL	꩜
-0xAA5D, // CHAM PUNCTUATION DANDA	꩝
-0xAA5E, // CHAM PUNCTUATION DOUBLE DANDA	꩞
-0xAA5F, // CHAM PUNCTUATION TRIPLE DANDA	꩟
-0xAADE, // TAI VIET SYMBOL HO HOI	꫞
-0xAADF, // TAI VIET SYMBOL KOI KOI	꫟
-0xAAF0, // MEETEI MAYEK CHEIKHAN	꫰
-0xAAF1, // MEETEI MAYEK AHANG KHUDAM	꫱
-0xABEB, // MEETEI MAYEK CHEIKHEI	꯫
-0xFE10, // PRESENTATION FORM FOR VERTICAL COMMA	︐
-0xFE11, // PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC COMMA	︑
-0xFE12, // PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC FULL STOP	︒
-0xFE13, // PRESENTATION FORM FOR VERTICAL COLON	︓
-0xFE14, // PRESENTATION FORM FOR VERTICAL SEMICOLON	︔
-0xFE15, // PRESENTATION FORM FOR VERTICAL EXCLAMATION MARK	︕
-0xFE16, // PRESENTATION FORM FOR VERTICAL QUESTION MARK	︖
-0xFE19, // PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS	︙
-0xFE30, // PRESENTATION FORM FOR VERTICAL TWO DOT LEADER	︰
-0xFE45, // SESAME DOT	﹅
-0xFE46, // WHITE SESAME DOT	﹆
-0xFE49, // DASHED OVERLINE	﹉
-0xFE4A, // CENTRELINE OVERLINE	﹊
-0xFE4B, // WAVY OVERLINE	﹋
-0xFE4C, // DOUBLE WAVY OVERLINE	﹌
-0xFE50, // SMALL COMMA	﹐
-0xFE51, // SMALL IDEOGRAPHIC COMMA	﹑
-0xFE52, // SMALL FULL STOP	﹒
-0xFE54, // SMALL SEMICOLON	﹔
-0xFE55, // SMALL COLON	﹕
-0xFE56, // SMALL QUESTION MARK	﹖
-0xFE57, // SMALL EXCLAMATION MARK	﹗
-0xFE5F, // SMALL NUMBER SIGN	﹟
-0xFE60, // SMALL AMPERSAND	﹠
-0xFE61, // SMALL ASTERISK	﹡
-0xFE68, // SMALL REVERSE SOLIDUS	﹨
-0xFE6A, // SMALL PERCENT SIGN	﹪
-0xFE6B, // SMALL COMMERCIAL AT	﹫
-0xFF01, // FULLWIDTH EXCLAMATION MARK	！
-0xFF02, // FULLWIDTH QUOTATION MARK	＂
-0xFF03, // FULLWIDTH NUMBER SIGN	＃
-0xFF05, // FULLWIDTH PERCENT SIGN	％
-0xFF06, // FULLWIDTH AMPERSAND	＆
-0xFF07, // FULLWIDTH APOSTROPHE	＇
-0xFF0A, // FULLWIDTH ASTERISK	＊
-0xFF0C, // FULLWIDTH COMMA	，
-0xFF0E, // FULLWIDTH FULL STOP	．
-0xFF0F, // FULLWIDTH SOLIDUS	／
-0xFF1A, // FULLWIDTH COLON	：
-0xFF1B, // FULLWIDTH SEMICOLON	；
-0xFF1F, // FULLWIDTH QUESTION MARK	？
-0xFF20, // FULLWIDTH COMMERCIAL AT	＠
-0xFF3C, // FULLWIDTH REVERSE SOLIDUS	＼
-0xFF61, // HALFWIDTH IDEOGRAPHIC FULL STOP	｡
-0xFF64, // HALFWIDTH IDEOGRAPHIC COMMA	､
-0xFF65, // HALFWIDTH KATAKANA MIDDLE DOT	･
-0x10100, // AEGEAN WORD SEPARATOR LINE	𐄀
-0x10101, // AEGEAN WORD SEPARATOR DOT	𐄁
-0x10102, // AEGEAN CHECK MARK	𐄂
-0x1039F, // UGARITIC WORD DIVIDER	𐎟
-0x103D0, // OLD PERSIAN WORD DIVIDER	𐏐
-0x1056F, // CAUCASIAN ALBANIAN CITATION MARK	𐕯
-0x10857, // IMPERIAL ARAMAIC SECTION SIGN	𐡗
-0x1091F, // PHOENICIAN WORD SEPARATOR	𐤟
-0x1093F, // LYDIAN TRIANGULAR MARK	𐤿
-0x10A50, // KHAROSHTHI PUNCTUATION DOT	𐩐
-0x10A51, // KHAROSHTHI PUNCTUATION SMALL CIRCLE	𐩑
-0x10A52, // KHAROSHTHI PUNCTUATION CIRCLE	𐩒
-0x10A53, // KHAROSHTHI PUNCTUATION CRESCENT BAR	𐩓
-0x10A54, // KHAROSHTHI PUNCTUATION MANGALAM	𐩔
-0x10A55, // KHAROSHTHI PUNCTUATION LOTUS	𐩕
-0x10A56, // KHAROSHTHI PUNCTUATION DANDA	𐩖
-0x10A57, // KHAROSHTHI PUNCTUATION DOUBLE DANDA	𐩗
-0x10A58, // KHAROSHTHI PUNCTUATION LINES	𐩘
-0x10A7F, // OLD SOUTH ARABIAN NUMERIC INDICATOR	𐩿
-0x10AF0, // MANICHAEAN PUNCTUATION STAR	𐫰
-0x10AF1, // MANICHAEAN PUNCTUATION FLEURON	𐫱
-0x10AF2, // MANICHAEAN PUNCTUATION DOUBLE DOT WITHIN DOT	𐫲
-0x10AF3, // MANICHAEAN PUNCTUATION DOT WITHIN DOT	𐫳
-0x10AF4, // MANICHAEAN PUNCTUATION DOT	𐫴
-0x10AF5, // MANICHAEAN PUNCTUATION TWO DOTS	𐫵
-0x10AF6, // MANICHAEAN PUNCTUATION LINE FILLER	𐫶
-0x10B39, // AVESTAN ABBREVIATION MARK	𐬹
-0x10B3A, // TINY TWO DOTS OVER ONE DOT PUNCTUATION	𐬺
-0x10B3B, // SMALL TWO DOTS OVER ONE DOT PUNCTUATION	𐬻
-0x10B3C, // LARGE TWO DOTS OVER ONE DOT PUNCTUATION	𐬼
-0x10B3D, // LARGE ONE DOT OVER TWO DOTS PUNCTUATION	𐬽
-0x10B3E, // LARGE TWO RINGS OVER ONE RING PUNCTUATION	𐬾
-0x10B3F, // LARGE ONE RING OVER TWO RINGS PUNCTUATION	𐬿
-0x10B99, // PSALTER PAHLAVI SECTION MARK	𐮙
-0x10B9A, // PSALTER PAHLAVI TURNED SECTION MARK	𐮚
-0x10B9B, // PSALTER PAHLAVI FOUR DOTS WITH CROSS	𐮛
-0x10B9C, // PSALTER PAHLAVI FOUR DOTS WITH DOT	𐮜
-0x10F55, // SOGDIAN PUNCTUATION TWO VERTICAL BARS	𐽕
-0x10F56, // SOGDIAN PUNCTUATION TWO VERTICAL BARS WITH DOTS	𐽖
-0x10F57, // SOGDIAN PUNCTUATION CIRCLE WITH DOT	𐽗
-0x10F58, // SOGDIAN PUNCTUATION TWO CIRCLES WITH DOTS	𐽘
-0x10F59, // SOGDIAN PUNCTUATION HALF CIRCLE WITH DOT	𐽙
-0x11047, // BRAHMI DANDA	𑁇
-0x11048, // BRAHMI DOUBLE DANDA	𑁈
-0x11049, // BRAHMI PUNCTUATION DOT	𑁉
-0x1104A, // BRAHMI PUNCTUATION DOUBLE DOT	𑁊
-0x1104B, // BRAHMI PUNCTUATION LINE	𑁋
-0x1104C, // BRAHMI PUNCTUATION CRESCENT BAR	𑁌
-0x1104D, // BRAHMI PUNCTUATION LOTUS	𑁍
-0x110BB, // KAITHI ABBREVIATION SIGN	𑂻
-0x110BC, // KAITHI ENUMERATION SIGN	𑂼
-0x110BE, // KAITHI SECTION MARK	𑂾
-0x110BF, // KAITHI DOUBLE SECTION MARK	𑂿
-0x110C0, // KAITHI DANDA	𑃀
-0x110C1, // KAITHI DOUBLE DANDA	𑃁
-0x11140, // CHAKMA SECTION MARK	𑅀
-0x11141, // CHAKMA DANDA	𑅁
-0x11142, // CHAKMA DOUBLE DANDA	𑅂
-0x11143, // CHAKMA QUESTION MARK	𑅃
-0x11174, // MAHAJANI ABBREVIATION SIGN	𑅴
-0x11175, // MAHAJANI SECTION MARK	𑅵
-0x111C5, // SHARADA DANDA	𑇅
-0x111C6, // SHARADA DOUBLE DANDA	𑇆
-0x111C7, // SHARADA ABBREVIATION SIGN	𑇇
-0x111C8, // SHARADA SEPARATOR	𑇈
-0x111CD, // SHARADA SUTRA MARK	𑇍
-0x111DB, // SHARADA SIGN SIDDHAM	𑇛
-0x111DD, // SHARADA CONTINUATION SIGN	𑇝
-0x111DE, // SHARADA SECTION MARK-1	𑇞
-0x111DF, // SHARADA SECTION MARK-2	𑇟
-0x11238, // KHOJKI DANDA	𑈸
-0x11239, // KHOJKI DOUBLE DANDA	𑈹
-0x1123A, // KHOJKI WORD SEPARATOR	𑈺
-0x1123B, // KHOJKI SECTION MARK	𑈻
-0x1123C, // KHOJKI DOUBLE SECTION MARK	𑈼
-0x1123D, // KHOJKI ABBREVIATION SIGN	𑈽
-0x112A9, // MULTANI SECTION MARK	𑊩
-0x1144B, // NEWA DANDA	𑑋
-0x1144C, // NEWA DOUBLE DANDA	𑑌
-0x1144D, // NEWA COMMA	𑑍
-0x1144E, // NEWA GAP FILLER	𑑎
-0x1144F, // NEWA ABBREVIATION SIGN	𑑏
-0x1145B, // NEWA PLACEHOLDER MARK	𑑛
-0x1145D, // NEWA INSERTION SIGN	𑑝
-0x114C6, // TIRHUTA ABBREVIATION SIGN	𑓆
-0x115C1, // SIDDHAM SIGN SIDDHAM	𑗁
-0x115C2, // SIDDHAM DANDA	𑗂
-0x115C3, // SIDDHAM DOUBLE DANDA	𑗃
-0x115C4, // SIDDHAM SEPARATOR DOT	𑗄
-0x115C5, // SIDDHAM SEPARATOR BAR	𑗅
-0x115C6, // SIDDHAM REPETITION MARK-1	𑗆
-0x115C7, // SIDDHAM REPETITION MARK-2	𑗇
-0x115C8, // SIDDHAM REPETITION MARK-3	𑗈
-0x115C9, // SIDDHAM END OF TEXT MARK	𑗉
-0x115CA, // SIDDHAM SECTION MARK WITH TRIDENT AND U-SHAPED ORNAMENTS	𑗊
-0x115CB, // SIDDHAM SECTION MARK WITH TRIDENT AND DOTTED CRESCENTS	𑗋
-0x115CC, // SIDDHAM SECTION MARK WITH RAYS AND DOTTED CRESCENTS	𑗌
-0x115CD, // SIDDHAM SECTION MARK WITH RAYS AND DOTTED DOUBLE CRESCENTS	𑗍
-0x115CE, // SIDDHAM SECTION MARK WITH RAYS AND DOTTED TRIPLE CRESCENTS	𑗎
-0x115CF, // SIDDHAM SECTION MARK DOUBLE RING	𑗏
-0x115D0, // SIDDHAM SECTION MARK DOUBLE RING WITH RAYS	𑗐
-0x115D1, // SIDDHAM SECTION MARK WITH DOUBLE CRESCENTS	𑗑
-0x115D2, // SIDDHAM SECTION MARK WITH TRIPLE CRESCENTS	𑗒
-0x115D3, // SIDDHAM SECTION MARK WITH QUADRUPLE CRESCENTS	𑗓
-0x115D4, // SIDDHAM SECTION MARK WITH SEPTUPLE CRESCENTS	𑗔
-0x115D5, // SIDDHAM SECTION MARK WITH CIRCLES AND RAYS	𑗕
-0x115D6, // SIDDHAM SECTION MARK WITH CIRCLES AND TWO ENCLOSURES	𑗖
-0x115D7, // SIDDHAM SECTION MARK WITH CIRCLES AND FOUR ENCLOSURES	𑗗
-0x11641, // MODI DANDA	𑙁
-0x11642, // MODI DOUBLE DANDA	𑙂
-0x11643, // MODI ABBREVIATION SIGN	𑙃
-0x11660, // MONGOLIAN BIRGA WITH ORNAMENT	𑙠
-0x11661, // MONGOLIAN ROTATED BIRGA	𑙡
-0x11662, // MONGOLIAN DOUBLE BIRGA WITH ORNAMENT	𑙢
-0x11663, // MONGOLIAN TRIPLE BIRGA WITH ORNAMENT	𑙣
-0x11664, // MONGOLIAN BIRGA WITH DOUBLE ORNAMENT	𑙤
-0x11665, // MONGOLIAN ROTATED BIRGA WITH ORNAMENT	𑙥
-0x11666, // MONGOLIAN ROTATED BIRGA WITH DOUBLE ORNAMENT	𑙦
-0x11667, // MONGOLIAN INVERTED BIRGA	𑙧
-0x11668, // MONGOLIAN INVERTED BIRGA WITH DOUBLE ORNAMENT	𑙨
-0x11669, // MONGOLIAN SWIRL BIRGA	𑙩
-0x1166A, // MONGOLIAN SWIRL BIRGA WITH ORNAMENT	𑙪
-0x1166B, // MONGOLIAN SWIRL BIRGA WITH DOUBLE ORNAMENT	𑙫
-0x1166C, // MONGOLIAN TURNED SWIRL BIRGA WITH DOUBLE ORNAMENT	𑙬
-0x1173C, // AHOM SIGN SMALL SECTION	𑜼
-0x1173D, // AHOM SIGN SECTION	𑜽
-0x1173E, // AHOM SIGN RULAI	𑜾
-0x1183B, // DOGRA ABBREVIATION SIGN	𑠻
-0x119E2, // NANDINAGARI SIGN SIDDHAM	𑧢
-0x11A3F, // ZANABAZAR SQUARE INITIAL HEAD MARK	𑨿
-0x11A40, // ZANABAZAR SQUARE CLOSING HEAD MARK	𑩀
-0x11A41, // ZANABAZAR SQUARE MARK TSHEG	𑩁
-0x11A42, // ZANABAZAR SQUARE MARK SHAD	𑩂
-0x11A43, // ZANABAZAR SQUARE MARK DOUBLE SHAD	𑩃
-0x11A44, // ZANABAZAR SQUARE MARK LONG TSHEG	𑩄
-0x11A45, // ZANABAZAR SQUARE INITIAL DOUBLE-LINED HEAD MARK	𑩅
-0x11A46, // ZANABAZAR SQUARE CLOSING DOUBLE-LINED HEAD MARK	𑩆
-0x11A9A, // SOYOMBO MARK TSHEG	𑪚
-0x11A9B, // SOYOMBO MARK SHAD	𑪛
-0x11A9C, // SOYOMBO MARK DOUBLE SHAD	𑪜
-0x11A9E, // SOYOMBO HEAD MARK WITH MOON AND SUN AND TRIPLE FLAME	𑪞
-0x11A9F, // SOYOMBO HEAD MARK WITH MOON AND SUN AND FLAME	𑪟
-0x11AA0, // SOYOMBO HEAD MARK WITH MOON AND SUN	𑪠
-0x11AA1, // SOYOMBO TERMINAL MARK-1	𑪡
-0x11AA2, // SOYOMBO TERMINAL MARK-2	𑪢
-0x11C41, // BHAIKSUKI DANDA	𑱁
-0x11C42, // BHAIKSUKI DOUBLE DANDA	𑱂
-0x11C43, // BHAIKSUKI WORD SEPARATOR	𑱃
-0x11C44, // BHAIKSUKI GAP FILLER-1	𑱄
-0x11C45, // BHAIKSUKI GAP FILLER-2	𑱅
-0x11C70, // MARCHEN HEAD MARK	𑱰
-0x11C71, // MARCHEN MARK SHAD	𑱱
-0x11EF7, // MAKASAR PASSIMBANG	𑻷
-0x11EF8, // MAKASAR END OF SECTION	𑻸
-0x11FFF, // TAMIL PUNCTUATION END OF TEXT	𑿿
-0x12470, // CUNEIFORM PUNCTUATION SIGN OLD ASSYRIAN WORD DIVIDER	𒑰
-0x12471, // CUNEIFORM PUNCTUATION SIGN VERTICAL COLON	𒑱
-0x12472, // CUNEIFORM PUNCTUATION SIGN DIAGONAL COLON	𒑲
-0x12473, // CUNEIFORM PUNCTUATION SIGN DIAGONAL TRICOLON	𒑳
-0x12474, // CUNEIFORM PUNCTUATION SIGN DIAGONAL QUADCOLON	𒑴
-0x16A6E, // MRO DANDA	𖩮
-0x16A6F, // MRO DOUBLE DANDA	𖩯
-0x16AF5, // BASSA VAH FULL STOP	𖫵
-0x16B37, // PAHAWH HMONG SIGN VOS THOM	𖬷
-0x16B38, // PAHAWH HMONG SIGN VOS TSHAB CEEB	𖬸
-0x16B39, // PAHAWH HMONG SIGN CIM CHEEM	𖬹
-0x16B3A, // PAHAWH HMONG SIGN VOS THIAB	𖬺
-0x16B3B, // PAHAWH HMONG SIGN VOS FEEM	𖬻
-0x16B44, // PAHAWH HMONG SIGN XAUS	𖭄
-0x16E97, // MEDEFAIDRIN COMMA	𖺗
-0x16E98, // MEDEFAIDRIN FULL STOP	𖺘
-0x16E99, // MEDEFAIDRIN SYMBOL AIVA	𖺙
-0x16E9A, // MEDEFAIDRIN EXCLAMATION OH	𖺚
-0x16FE2, // OLD CHINESE HOOK MARK	𖿢
-0x1BC9F, // DUPLOYAN PUNCTUATION CHINOOK FULL STOP	𛲟
-0x1DA87, // SIGNWRITING COMMA	𝪇
-0x1DA88, // SIGNWRITING FULL STOP	𝪈
-0x1DA89, // SIGNWRITING SEMICOLON	𝪉
-0x1DA8A, // SIGNWRITING COLON	𝪊
-0x1DA8B, // SIGNWRITING PARENTHESIS	𝪋
-0x1E95E, // ADLAM INITIAL EXCLAMATION MARK	𞥞
-0x1E95F, // ADLAM INITIAL QUESTION MARK
-]
+	// Unicode Characters in the 'Punctuation, Other' Category
+	// Character	Name	Browser	Image
+	unicode_punct         = [
+		0x0021 /* EXCLAMATION MARK	! */,
+		0x0022 /* QUOTATION MARK	" */,
+		0x0023 /* NUMBER SIGN	# */,
+		0x0025 /* PERCENT SIGN	% */,
+		0x0026 /* AMPERSAND	& */,
+		0x0027 /* APOSTROPHE	' */,
+		0x002A /* ASTERISK	* */,
+		0x002C /* COMMA	, */,
+		0x002E /* FULL STOP	. */,
+		0x002F /* SOLIDUS	/ */,
+		0x003A /* COLON	: */,
+		0x003B /* SEMICOLON	; */,
+		0x003F /* QUESTION MARK	? */,
+		0x0040 /* COMMERCIAL AT	@ */,
+		0x005C /* REVERSE SOLIDUS	\ */,
+		0x00A1 /* INVERTED EXCLAMATION MARK	¡ */,
+		0x00A7 /* SECTION SIGN	§ */,
+		0x00B6 /* PILCROW SIGN	¶ */,
+		0x00B7 /* MIDDLE DOT	· */,
+		0x00BF /* INVERTED QUESTION MARK	¿ */,
+		0x037E /* GREEK QUESTION MARK	; */,
+		0x0387 /* GREEK ANO TELEIA	· */,
+		0x055A /* ARMENIAN APOSTROPHE	՚ */,
+		0x055B /* ARMENIAN EMPHASIS MARK	՛ */,
+		0x055C /* ARMENIAN EXCLAMATION MARK	՜ */,
+		0x055D /* ARMENIAN COMMA	՝ */,
+		0x055E /* ARMENIAN QUESTION MARK	՞ */,
+		0x055F /* ARMENIAN ABBREVIATION MARK	՟ */,
+		0x0589 /* ARMENIAN FULL STOP	։ */,
+		0x05C0 /* HEBREW PUNCTUATION PASEQ	׀ */,
+		0x05C3 /* HEBREW PUNCTUATION SOF PASUQ	׃ */,
+		0x05C6 /* HEBREW PUNCTUATION NUN HAFUKHA	׆ */,
+		0x05F3 /* HEBREW PUNCTUATION GERESH	׳ */,
+		0x05F4 /* HEBREW PUNCTUATION GERSHAYIM	״ */,
+		0x0609 /* ARABIC-INDIC PER MILLE SIGN	؉ */,
+		0x060A /* ARABIC-INDIC PER TEN THOUSAND SIGN	؊ */,
+		0x060C /* ARABIC COMMA	، */,
+		0x060D /* ARABIC DATE SEPARATOR	؍ */,
+		0x061B /* ARABIC SEMICOLON	؛ */,
+		0x061E /* ARABIC TRIPLE DOT PUNCTUATION MARK	؞ */,
+		0x061F /* ARABIC QUESTION MARK	؟ */,
+		0x066A /* ARABIC PERCENT SIGN	٪ */,
+		0x066B /* ARABIC DECIMAL SEPARATOR	٫ */,
+		0x066C /* ARABIC THOUSANDS SEPARATOR	٬ */,
+		0x066D /* ARABIC FIVE POINTED STAR	٭ */,
+		0x06D4 /* ARABIC FULL STOP	۔ */,
+		0x0700 /* SYRIAC END OF PARAGRAPH	܀ */,
+		0x0701 /* SYRIAC SUPRALINEAR FULL STOP	܁ */,
+		0x0702 /* SYRIAC SUBLINEAR FULL STOP	܂ */,
+		0x0703 /* SYRIAC SUPRALINEAR COLON	܃ */,
+		0x0704 /* SYRIAC SUBLINEAR COLON	܄ */,
+		0x0705 /* SYRIAC HORIZONTAL COLON	܅ */,
+		0x0706 /* SYRIAC COLON SKEWED LEFT	܆ */,
+		0x0707 /* SYRIAC COLON SKEWED RIGHT	܇ */,
+		0x0708 /* SYRIAC SUPRALINEAR COLON SKEWED LEFT	܈ */,
+		0x0709 /* SYRIAC SUBLINEAR COLON SKEWED RIGHT	܉ */,
+		0x070A /* SYRIAC CONTRACTION	܊ */,
+		0x070B /* SYRIAC HARKLEAN OBELUS	܋ */,
+		0x070C /* SYRIAC HARKLEAN METOBELUS	܌ */,
+		0x070D /* SYRIAC HARKLEAN ASTERISCUS	܍ */,
+		0x07F7 /* NKO SYMBOL GBAKURUNEN	߷ */,
+		0x07F8 /* NKO COMMA	߸ */,
+		0x07F9 /* NKO EXCLAMATION MARK	߹ */,
+		0x0830 /* SAMARITAN PUNCTUATION NEQUDAA	࠰ */,
+		0x0831 /* SAMARITAN PUNCTUATION AFSAAQ	࠱ */,
+		0x0832 /* SAMARITAN PUNCTUATION ANGED	࠲ */,
+		0x0833 /* SAMARITAN PUNCTUATION BAU	࠳ */,
+		0x0834 /* SAMARITAN PUNCTUATION ATMAAU	࠴ */,
+		0x0835 /* SAMARITAN PUNCTUATION SHIYYAALAA	࠵ */,
+		0x0836 /* SAMARITAN ABBREVIATION MARK	࠶ */,
+		0x0837 /* SAMARITAN PUNCTUATION MELODIC QITSA	࠷ */,
+		0x0838 /* SAMARITAN PUNCTUATION ZIQAA	࠸ */,
+		0x0839 /* SAMARITAN PUNCTUATION QITSA	࠹ */,
+		0x083A /* SAMARITAN PUNCTUATION ZAEF	࠺ */,
+		0x083B /* SAMARITAN PUNCTUATION TURU	࠻ */,
+		0x083C /* SAMARITAN PUNCTUATION ARKAANU	࠼ */,
+		0x083D /* SAMARITAN PUNCTUATION SOF MASHFAAT	࠽ */,
+		0x083E /* SAMARITAN PUNCTUATION ANNAAU	࠾ */,
+		0x085E /* MANDAIC PUNCTUATION	࡞ */,
+		0x0964 /* DEVANAGARI DANDA	। */,
+		0x0965 /* DEVANAGARI DOUBLE DANDA	॥ */,
+		0x0970 /* DEVANAGARI ABBREVIATION SIGN	॰ */,
+		0x09FD /* BENGALI ABBREVIATION SIGN	৽ */,
+		0x0A76 /* GURMUKHI ABBREVIATION SIGN	੶ */,
+		0x0AF0 /* GUJARATI ABBREVIATION SIGN	૰ */,
+		0x0C77 /* TELUGU SIGN SIDDHAM	౷ */,
+		0x0C84 /* KANNADA SIGN SIDDHAM	಄ */,
+		0x0DF4 /* SINHALA PUNCTUATION KUNDDALIYA	෴ */,
+		0x0E4F /* THAI CHARACTER FONGMAN	๏ */,
+		0x0E5A /* THAI CHARACTER ANGKHANKHU	๚ */,
+		0x0E5B /* THAI CHARACTER KHOMUT	๛ */,
+		0x0F04 /* TIBETAN MARK INITIAL YIG MGO MDUN MA	༄ */,
+		0x0F05 /* TIBETAN MARK CLOSING YIG MGO SGAB MA	༅ */,
+		0x0F06 /* TIBETAN MARK CARET YIG MGO PHUR SHAD MA	༆ */,
+		0x0F07 /* TIBETAN MARK YIG MGO TSHEG SHAD MA	༇ */,
+		0x0F08 /* TIBETAN MARK SBRUL SHAD	༈ */,
+		0x0F09 /* TIBETAN MARK BSKUR YIG MGO	༉ */,
+		0x0F0A /* TIBETAN MARK BKA- SHOG YIG MGO	༊ */,
+		0x0F0B /* TIBETAN MARK INTERSYLLABIC TSHEG	་ */,
+		0x0F0C /* TIBETAN MARK DELIMITER TSHEG BSTAR	༌ */,
+		0x0F0D /* TIBETAN MARK SHAD	། */,
+		0x0F0E /* TIBETAN MARK NYIS SHAD	༎ */,
+		0x0F0F /* TIBETAN MARK TSHEG SHAD	༏ */,
+		0x0F10 /* TIBETAN MARK NYIS TSHEG SHAD	༐ */,
+		0x0F11 /* TIBETAN MARK RIN CHEN SPUNGS SHAD	༑ */,
+		0x0F12 /* TIBETAN MARK RGYA GRAM SHAD	༒ */,
+		0x0F14 /* TIBETAN MARK GTER TSHEG	༔ */,
+		0x0F85 /* TIBETAN MARK PALUTA	྅ */,
+		0x0FD0 /* TIBETAN MARK BSKA- SHOG GI MGO RGYAN	࿐ */,
+		0x0FD1 /* TIBETAN MARK MNYAM YIG GI MGO RGYAN	࿑ */,
+		0x0FD2 /* TIBETAN MARK NYIS TSHEG	࿒ */,
+		0x0FD3 /* TIBETAN MARK INITIAL BRDA RNYING YIG MGO MDUN MA	࿓ */,
+		0x0FD4 /* TIBETAN MARK CLOSING BRDA RNYING YIG MGO SGAB MA	࿔ */,
+		0x0FD9 /* TIBETAN MARK LEADING MCHAN RTAGS	࿙ */,
+		0x0FDA /* TIBETAN MARK TRAILING MCHAN RTAGS	࿚ */,
+		0x104A /* MYANMAR SIGN LITTLE SECTION	၊ */,
+		0x104B /* MYANMAR SIGN SECTION	။ */,
+		0x104C /* MYANMAR SYMBOL LOCATIVE	၌ */,
+		0x104D /* MYANMAR SYMBOL COMPLETED	၍ */,
+		0x104E /* MYANMAR SYMBOL AFOREMENTIONED	၎ */,
+		0x104F /* MYANMAR SYMBOL GENITIVE	၏ */,
+		0x10FB /* GEORGIAN PARAGRAPH SEPARATOR	჻ */,
+		0x1360 /* ETHIOPIC SECTION MARK	፠ */,
+		0x1361 /* ETHIOPIC WORDSPACE	፡ */,
+		0x1362 /* ETHIOPIC FULL STOP	። */,
+		0x1363 /* ETHIOPIC COMMA	፣ */,
+		0x1364 /* ETHIOPIC SEMICOLON	፤ */,
+		0x1365 /* ETHIOPIC COLON	፥ */,
+		0x1366 /* ETHIOPIC PREFACE COLON	፦ */,
+		0x1367 /* ETHIOPIC QUESTION MARK	፧ */,
+		0x1368 /* ETHIOPIC PARAGRAPH SEPARATOR	፨ */,
+		0x166E /* CANADIAN SYLLABICS FULL STOP	᙮ */,
+		0x16EB /* RUNIC SINGLE PUNCTUATION	᛫ */,
+		0x16EC /* RUNIC MULTIPLE PUNCTUATION	᛬ */,
+		0x16ED /* RUNIC CROSS PUNCTUATION	᛭ */,
+		0x1735 /* PHILIPPINE SINGLE PUNCTUATION	᜵ */,
+		0x1736 /* PHILIPPINE DOUBLE PUNCTUATION	᜶ */,
+		0x17D4 /* KHMER SIGN KHAN	។ */,
+		0x17D5 /* KHMER SIGN BARIYOOSAN	៕ */,
+		0x17D6 /* KHMER SIGN CAMNUC PII KUUH	៖ */,
+		0x17D8 /* KHMER SIGN BEYYAL	៘ */,
+		0x17D9 /* KHMER SIGN PHNAEK MUAN	៙ */,
+		0x17DA /* KHMER SIGN KOOMUUT	៚ */,
+		0x1800 /* MONGOLIAN BIRGA	᠀ */,
+		0x1801 /* MONGOLIAN ELLIPSIS	᠁ */,
+		0x1802 /* MONGOLIAN COMMA	᠂ */,
+		0x1803 /* MONGOLIAN FULL STOP	᠃ */,
+		0x1804 /* MONGOLIAN COLON	᠄ */,
+		0x1805 /* MONGOLIAN FOUR DOTS	᠅ */,
+		0x1807 /* MONGOLIAN SIBE SYLLABLE BOUNDARY MARKER	᠇ */,
+		0x1808 /* MONGOLIAN MANCHU COMMA	᠈ */,
+		0x1809 /* MONGOLIAN MANCHU FULL STOP	᠉ */,
+		0x180A /* MONGOLIAN NIRUGU	᠊ */,
+		0x1944 /* LIMBU EXCLAMATION MARK	᥄ */,
+		0x1945 /* LIMBU QUESTION MARK	᥅ */,
+		0x1A1E /* BUGINESE PALLAWA	᨞ */,
+		0x1A1F /* BUGINESE END OF SECTION	᨟ */,
+		0x1AA0 /* TAI THAM SIGN WIANG	᪠ */,
+		0x1AA1 /* TAI THAM SIGN WIANGWAAK	᪡ */,
+		0x1AA2 /* TAI THAM SIGN SAWAN	᪢ */,
+		0x1AA3 /* TAI THAM SIGN KEOW	᪣ */,
+		0x1AA4 /* TAI THAM SIGN HOY	᪤ */,
+		0x1AA5 /* TAI THAM SIGN DOKMAI	᪥ */,
+		0x1AA6 /* TAI THAM SIGN REVERSED ROTATED RANA	᪦ */,
+		0x1AA8 /* TAI THAM SIGN KAAN	᪨ */,
+		0x1AA9 /* TAI THAM SIGN KAANKUU	᪩ */,
+		0x1AAA /* TAI THAM SIGN SATKAAN	᪪ */,
+		0x1AAB /* TAI THAM SIGN SATKAANKUU	᪫ */,
+		0x1AAC /* TAI THAM SIGN HANG	᪬ */,
+		0x1AAD /* TAI THAM SIGN CAANG	᪭ */,
+		0x1B5A /* BALINESE PANTI	᭚ */,
+		0x1B5B /* BALINESE PAMADA	᭛ */,
+		0x1B5C /* BALINESE WINDU	᭜ */,
+		0x1B5D /* BALINESE CARIK PAMUNGKAH	᭝ */,
+		0x1B5E /* BALINESE CARIK SIKI	᭞ */,
+		0x1B5F /* BALINESE CARIK PAREREN	᭟ */,
+		0x1B60 /* BALINESE PAMENENG	᭠ */,
+		0x1BFC /* BATAK SYMBOL BINDU NA METEK	᯼ */,
+		0x1BFD /* BATAK SYMBOL BINDU PINARBORAS	᯽ */,
+		0x1BFE /* BATAK SYMBOL BINDU JUDUL	᯾ */,
+		0x1BFF /* BATAK SYMBOL BINDU PANGOLAT	᯿ */,
+		0x1C3B /* LEPCHA PUNCTUATION TA-ROL	᰻ */,
+		0x1C3C /* LEPCHA PUNCTUATION NYET THYOOM TA-ROL	᰼ */,
+		0x1C3D /* LEPCHA PUNCTUATION CER-WA	᰽ */,
+		0x1C3E /* LEPCHA PUNCTUATION TSHOOK CER-WA	᰾ */,
+		0x1C3F /* LEPCHA PUNCTUATION TSHOOK	᰿ */,
+		0x1C7E /* OL CHIKI PUNCTUATION MUCAAD	᱾ */,
+		0x1C7F /* OL CHIKI PUNCTUATION DOUBLE MUCAAD	᱿ */,
+		0x1CC0 /* SUNDANESE PUNCTUATION BINDU SURYA	᳀ */,
+		0x1CC1 /* SUNDANESE PUNCTUATION BINDU PANGLONG	᳁ */,
+		0x1CC2 /* SUNDANESE PUNCTUATION BINDU PURNAMA	᳂ */,
+		0x1CC3 /* SUNDANESE PUNCTUATION BINDU CAKRA	᳃ */,
+		0x1CC4 /* SUNDANESE PUNCTUATION BINDU LEU SATANGA	᳄ */,
+		0x1CC5 /* SUNDANESE PUNCTUATION BINDU KA SATANGA	᳅ */,
+		0x1CC6 /* SUNDANESE PUNCTUATION BINDU DA SATANGA	᳆ */,
+		0x1CC7 /* SUNDANESE PUNCTUATION BINDU BA SATANGA	᳇ */,
+		0x1CD3 /* VEDIC SIGN NIHSHVASA	᳓ */,
+		0x2016 /* DOUBLE VERTICAL LINE	‖ */,
+		0x2017 /* DOUBLE LOW LINE	‗ */,
+		0x2020 /* DAGGER	† */,
+		0x2021 /* DOUBLE DAGGER	‡ */,
+		0x2022 /* BULLET	• */,
+		0x2023 /* TRIANGULAR BULLET	‣ */,
+		0x2024 /* ONE DOT LEADER	․ */,
+		0x2025 /* TWO DOT LEADER	‥ */,
+		0x2026 /* HORIZONTAL ELLIPSIS	… */,
+		0x2027 /* HYPHENATION POINT	‧ */,
+		0x2030 /* PER MILLE SIGN	‰ */,
+		0x2031 /* PER TEN THOUSAND SIGN	‱ */,
+		0x2032 /* PRIME	′ */,
+		0x2033 /* DOUBLE PRIME	″ */,
+		0x2034 /* TRIPLE PRIME	‴ */,
+		0x2035 /* REVERSED PRIME	‵ */,
+		0x2036 /* REVERSED DOUBLE PRIME	‶ */,
+		0x2037 /* REVERSED TRIPLE PRIME	‷ */,
+		0x2038 /* CARET	‸ */,
+		0x203B /* REFERENCE MARK	※ */,
+		0x203C /* DOUBLE EXCLAMATION MARK	‼ */,
+		0x203D /* INTERROBANG	‽ */,
+		0x203E /* OVERLINE	‾ */,
+		0x2041 /* CARET INSERTION POINT	⁁ */,
+		0x2042 /* ASTERISM	⁂ */,
+		0x2043 /* HYPHEN BULLET	⁃ */,
+		0x2047 /* DOUBLE QUESTION MARK	⁇ */,
+		0x2048 /* QUESTION EXCLAMATION MARK	⁈ */,
+		0x2049 /* EXCLAMATION QUESTION MARK	⁉ */,
+		0x204A /* TIRONIAN SIGN ET	⁊ */,
+		0x204B /* REVERSED PILCROW SIGN	⁋ */,
+		0x204C /* BLACK LEFTWARDS BULLET	⁌ */,
+		0x204D /* BLACK RIGHTWARDS BULLET	⁍ */,
+		0x204E /* LOW ASTERISK	⁎ */,
+		0x204F /* REVERSED SEMICOLON	⁏ */,
+		0x2050 /* CLOSE UP	⁐ */,
+		0x2051 /* TWO ASTERISKS ALIGNED VERTICALLY	⁑ */,
+		0x2053 /* SWUNG DASH	⁓ */,
+		0x2055 /* FLOWER PUNCTUATION MARK	⁕ */,
+		0x2056 /* THREE DOT PUNCTUATION	⁖ */,
+		0x2057 /* QUADRUPLE PRIME	⁗ */,
+		0x2058 /* FOUR DOT PUNCTUATION	⁘ */,
+		0x2059 /* FIVE DOT PUNCTUATION	⁙ */,
+		0x205A /* TWO DOT PUNCTUATION	⁚ */,
+		0x205B /* FOUR DOT MARK	⁛ */,
+		0x205C /* DOTTED CROSS	⁜ */,
+		0x205D /* TRICOLON	⁝ */,
+		0x205E /* VERTICAL FOUR DOTS	⁞ */,
+		0x2CF9 /* COPTIC OLD NUBIAN FULL STOP	⳹ */,
+		0x2CFA /* COPTIC OLD NUBIAN DIRECT QUESTION MARK	⳺ */,
+		0x2CFB /* COPTIC OLD NUBIAN INDIRECT QUESTION MARK	⳻ */,
+		0x2CFC /* COPTIC OLD NUBIAN VERSE DIVIDER	⳼ */,
+		0x2CFE /* COPTIC FULL STOP	⳾ */,
+		0x2CFF /* COPTIC MORPHOLOGICAL DIVIDER	⳿ */,
+		0x2D70 /* TIFINAGH SEPARATOR MARK	⵰ */,
+		0x2E00 /* RIGHT ANGLE SUBSTITUTION MARKER	⸀ */,
+		0x2E01 /* RIGHT ANGLE DOTTED SUBSTITUTION MARKER	⸁ */,
+		0x2E06 /* RAISED INTERPOLATION MARKER	⸆ */,
+		0x2E07 /* RAISED DOTTED INTERPOLATION MARKER	⸇ */,
+		0x2E08 /* DOTTED TRANSPOSITION MARKER	⸈ */,
+		0x2E0B /* RAISED SQUARE	⸋ */,
+		0x2E0E /* EDITORIAL CORONIS	⸎ */,
+		0x2E0F /* PARAGRAPHOS	⸏ */,
+		0x2E10 /* FORKED PARAGRAPHOS	⸐ */,
+		0x2E11 /* REVERSED FORKED PARAGRAPHOS	⸑ */,
+		0x2E12 /* HYPODIASTOLE	⸒ */,
+		0x2E13 /* DOTTED OBELOS	⸓ */,
+		0x2E14 /* DOWNWARDS ANCORA	⸔ */,
+		0x2E15 /* UPWARDS ANCORA	⸕ */,
+		0x2E16 /* DOTTED RIGHT-POINTING ANGLE	⸖ */,
+		0x2E18 /* INVERTED INTERROBANG	⸘ */,
+		0x2E19 /* PALM BRANCH	⸙ */,
+		0x2E1B /* TILDE WITH RING ABOVE	⸛ */,
+		0x2E1E /* TILDE WITH DOT ABOVE	⸞ */,
+		0x2E1F /* TILDE WITH DOT BELOW	⸟ */,
+		0x2E2A /* TWO DOTS OVER ONE DOT PUNCTUATION	⸪ */,
+		0x2E2B /* ONE DOT OVER TWO DOTS PUNCTUATION	⸫ */,
+		0x2E2C /* SQUARED FOUR DOT PUNCTUATION	⸬ */,
+		0x2E2D /* FIVE DOT MARK	⸭ */,
+		0x2E2E /* REVERSED QUESTION MARK	⸮ */,
+		0x2E30 /* RING POINT	⸰ */,
+		0x2E31 /* WORD SEPARATOR MIDDLE DOT	⸱ */,
+		0x2E32 /* TURNED COMMA	⸲ */,
+		0x2E33 /* RAISED DOT	⸳ */,
+		0x2E34 /* RAISED COMMA	⸴ */,
+		0x2E35 /* TURNED SEMICOLON	⸵ */,
+		0x2E36 /* DAGGER WITH LEFT GUARD	⸶ */,
+		0x2E37 /* DAGGER WITH RIGHT GUARD	⸷ */,
+		0x2E38 /* TURNED DAGGER	⸸ */,
+		0x2E39 /* TOP HALF SECTION SIGN	⸹ */,
+		0x2E3C /* STENOGRAPHIC FULL STOP	⸼ */,
+		0x2E3D /* VERTICAL SIX DOTS	⸽ */,
+		0x2E3E /* WIGGLY VERTICAL LINE	⸾ */,
+		0x2E3F /* CAPITULUM	⸿ */,
+		0x2E41 /* REVERSED COMMA	⹁ */,
+		0x2E43 /* DASH WITH LEFT UPTURN	⹃ */,
+		0x2E44 /* DOUBLE SUSPENSION MARK	⹄ */,
+		0x2E45 /* INVERTED LOW KAVYKA	⹅ */,
+		0x2E46 /* INVERTED LOW KAVYKA WITH KAVYKA ABOVE	⹆ */,
+		0x2E47 /* LOW KAVYKA	⹇ */,
+		0x2E48 /* LOW KAVYKA WITH DOT	⹈ */,
+		0x2E49 /* DOUBLE STACKED COMMA	⹉ */,
+		0x2E4A /* DOTTED SOLIDUS	⹊ */,
+		0x2E4B /* TRIPLE DAGGER	⹋ */,
+		0x2E4C /* MEDIEVAL COMMA	⹌ */,
+		0x2E4D /* PARAGRAPHUS MARK	⹍ */,
+		0x2E4E /* PUNCTUS ELEVATUS MARK	⹎ */,
+		0x2E4F /* CORNISH VERSE DIVIDER	⹏ */,
+		0x3001 /* IDEOGRAPHIC COMMA	、 */,
+		0x3002 /* IDEOGRAPHIC FULL STOP	。 */,
+		0x3003 /* DITTO MARK	〃 */,
+		0x303D /* PART ALTERNATION MARK	〽 */,
+		0x30FB /* KATAKANA MIDDLE DOT	・ */,
+		0xA4FE /* LISU PUNCTUATION COMMA	꓾ */,
+		0xA4FF /* LISU PUNCTUATION FULL STOP	꓿ */,
+		0xA60D /* VAI COMMA	꘍ */,
+		0xA60E /* VAI FULL STOP	꘎ */,
+		0xA60F /* VAI QUESTION MARK	꘏ */,
+		0xA673 /* SLAVONIC ASTERISK	꙳ */,
+		0xA67E /* CYRILLIC KAVYKA	꙾ */,
+		0xA6F2 /* BAMUM NJAEMLI	꛲ */,
+		0xA6F3 /* BAMUM FULL STOP	꛳ */,
+		0xA6F4 /* BAMUM COLON	꛴ */,
+		0xA6F5 /* BAMUM COMMA	꛵ */,
+		0xA6F6 /* BAMUM SEMICOLON	꛶ */,
+		0xA6F7 /* BAMUM QUESTION MARK	꛷ */,
+		0xA874 /* PHAGS-PA SINGLE HEAD MARK	꡴ */,
+		0xA875 /* PHAGS-PA DOUBLE HEAD MARK	꡵ */,
+		0xA876 /* PHAGS-PA MARK SHAD	꡶ */,
+		0xA877 /* PHAGS-PA MARK DOUBLE SHAD	꡷ */,
+		0xA8CE /* SAURASHTRA DANDA	꣎ */,
+		0xA8CF /* SAURASHTRA DOUBLE DANDA	꣏ */,
+		0xA8F8 /* DEVANAGARI SIGN PUSHPIKA	꣸ */,
+		0xA8F9 /* DEVANAGARI GAP FILLER	꣹ */,
+		0xA8FA /* DEVANAGARI CARET	꣺ */,
+		0xA8FC /* DEVANAGARI SIGN SIDDHAM	꣼ */,
+		0xA92E /* KAYAH LI SIGN CWI	꤮ */,
+		0xA92F /* KAYAH LI SIGN SHYA	꤯ */,
+		0xA95F /* REJANG SECTION MARK	꥟ */,
+		0xA9C1 /* JAVANESE LEFT RERENGGAN	꧁ */,
+		0xA9C2 /* JAVANESE RIGHT RERENGGAN	꧂ */,
+		0xA9C3 /* JAVANESE PADA ANDAP	꧃ */,
+		0xA9C4 /* JAVANESE PADA MADYA	꧄ */,
+		0xA9C5 /* JAVANESE PADA LUHUR	꧅ */,
+		0xA9C6 /* JAVANESE PADA WINDU	꧆ */,
+		0xA9C7 /* JAVANESE PADA PANGKAT	꧇ */,
+		0xA9C8 /* JAVANESE PADA LINGSA	꧈ */,
+		0xA9C9 /* JAVANESE PADA LUNGSI	꧉ */,
+		0xA9CA /* JAVANESE PADA ADEG	꧊ */,
+		0xA9CB /* JAVANESE PADA ADEG ADEG	꧋ */,
+		0xA9CC /* JAVANESE PADA PISELEH	꧌ */,
+		0xA9CD /* JAVANESE TURNED PADA PISELEH	꧍ */,
+		0xA9DE /* JAVANESE PADA TIRTA TUMETES	꧞ */,
+		0xA9DF /* JAVANESE PADA ISEN-ISEN	꧟ */,
+		0xAA5C /* CHAM PUNCTUATION SPIRAL	꩜ */,
+		0xAA5D /* CHAM PUNCTUATION DANDA	꩝ */,
+		0xAA5E /* CHAM PUNCTUATION DOUBLE DANDA	꩞ */,
+		0xAA5F /* CHAM PUNCTUATION TRIPLE DANDA	꩟ */,
+		0xAADE /* TAI VIET SYMBOL HO HOI	꫞ */,
+		0xAADF /* TAI VIET SYMBOL KOI KOI	꫟ */,
+		0xAAF0 /* MEETEI MAYEK CHEIKHAN	꫰ */,
+		0xAAF1 /* MEETEI MAYEK AHANG KHUDAM	꫱ */,
+		0xABEB /* MEETEI MAYEK CHEIKHEI	꯫ */,
+		0xFE10 /* PRESENTATION FORM FOR VERTICAL COMMA	︐ */,
+		0xFE11 /* PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC COMMA	︑ */,
+		0xFE12 /* PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC FULL STOP	︒ */,
+		0xFE13 /* PRESENTATION FORM FOR VERTICAL COLON	︓ */,
+		0xFE14 /* PRESENTATION FORM FOR VERTICAL SEMICOLON	︔ */,
+		0xFE15 /* PRESENTATION FORM FOR VERTICAL EXCLAMATION MARK	︕ */,
+		0xFE16 /* PRESENTATION FORM FOR VERTICAL QUESTION MARK	︖ */,
+		0xFE19 /* PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS	︙ */,
+		0xFE30 /* PRESENTATION FORM FOR VERTICAL TWO DOT LEADER	︰ */,
+		0xFE45 /* SESAME DOT	﹅ */,
+		0xFE46 /* WHITE SESAME DOT	﹆ */,
+		0xFE49 /* DASHED OVERLINE	﹉ */,
+		0xFE4A /* CENTRELINE OVERLINE	﹊ */,
+		0xFE4B /* WAVY OVERLINE	﹋ */,
+		0xFE4C /* DOUBLE WAVY OVERLINE	﹌ */,
+		0xFE50 /* SMALL COMMA	﹐ */,
+		0xFE51 /* SMALL IDEOGRAPHIC COMMA	﹑ */,
+		0xFE52 /* SMALL FULL STOP	﹒ */,
+		0xFE54 /* SMALL SEMICOLON	﹔ */,
+		0xFE55 /* SMALL COLON	﹕ */,
+		0xFE56 /* SMALL QUESTION MARK	﹖ */,
+		0xFE57 /* SMALL EXCLAMATION MARK	﹗ */,
+		0xFE5F /* SMALL NUMBER SIGN	﹟ */,
+		0xFE60 /* SMALL AMPERSAND	﹠ */,
+		0xFE61 /* SMALL ASTERISK	﹡ */,
+		0xFE68 /* SMALL REVERSE SOLIDUS	﹨ */,
+		0xFE6A /* SMALL PERCENT SIGN	﹪ */,
+		0xFE6B /* SMALL COMMERCIAL AT	﹫ */,
+		0xFF01 /* FULLWIDTH EXCLAMATION MARK	！ */,
+		0xFF02 /* FULLWIDTH QUOTATION MARK	＂ */,
+		0xFF03 /* FULLWIDTH NUMBER SIGN	＃ */,
+		0xFF05 /* FULLWIDTH PERCENT SIGN	％ */,
+		0xFF06 /* FULLWIDTH AMPERSAND	＆ */,
+		0xFF07 /* FULLWIDTH APOSTROPHE	＇ */,
+		0xFF0A /* FULLWIDTH ASTERISK	＊ */,
+		0xFF0C /* FULLWIDTH COMMA	， */,
+		0xFF0E /* FULLWIDTH FULL STOP	． */,
+		0xFF0F /* FULLWIDTH SOLIDUS	／ */,
+		0xFF1A /* FULLWIDTH COLON	： */,
+		0xFF1B /* FULLWIDTH SEMICOLON	； */,
+		0xFF1F /* FULLWIDTH QUESTION MARK	？ */,
+		0xFF20 /* FULLWIDTH COMMERCIAL AT	＠ */,
+		0xFF3C /* FULLWIDTH REVERSE SOLIDUS	＼ */,
+		0xFF61 /* HALFWIDTH IDEOGRAPHIC FULL STOP	｡ */,
+		0xFF64 /* HALFWIDTH IDEOGRAPHIC COMMA	､ */,
+		0xFF65 /* HALFWIDTH KATAKANA MIDDLE DOT	･ */,
+		0x10100 /* AEGEAN WORD SEPARATOR LINE	𐄀 */,
+		0x10101 /* AEGEAN WORD SEPARATOR DOT	𐄁 */,
+		0x10102 /* AEGEAN CHECK MARK	𐄂 */,
+		0x1039F /* UGARITIC WORD DIVIDER	𐎟 */,
+		0x103D0 /* OLD PERSIAN WORD DIVIDER	𐏐 */,
+		0x1056F /* CAUCASIAN ALBANIAN CITATION MARK	𐕯 */,
+		0x10857 /* IMPERIAL ARAMAIC SECTION SIGN	𐡗 */,
+		0x1091F /* PHOENICIAN WORD SEPARATOR	𐤟 */,
+		0x1093F /* LYDIAN TRIANGULAR MARK	𐤿 */,
+		0x10A50 /* KHAROSHTHI PUNCTUATION DOT	𐩐 */,
+		0x10A51 /* KHAROSHTHI PUNCTUATION SMALL CIRCLE	𐩑 */,
+		0x10A52 /* KHAROSHTHI PUNCTUATION CIRCLE	𐩒 */,
+		0x10A53 /* KHAROSHTHI PUNCTUATION CRESCENT BAR	𐩓 */,
+		0x10A54 /* KHAROSHTHI PUNCTUATION MANGALAM	𐩔 */,
+		0x10A55 /* KHAROSHTHI PUNCTUATION LOTUS	𐩕 */,
+		0x10A56 /* KHAROSHTHI PUNCTUATION DANDA	𐩖 */,
+		0x10A57 /* KHAROSHTHI PUNCTUATION DOUBLE DANDA	𐩗 */,
+		0x10A58 /* KHAROSHTHI PUNCTUATION LINES	𐩘 */,
+		0x10A7F /* OLD SOUTH ARABIAN NUMERIC INDICATOR	𐩿 */,
+		0x10AF0 /* MANICHAEAN PUNCTUATION STAR	𐫰 */,
+		0x10AF1 /* MANICHAEAN PUNCTUATION FLEURON	𐫱 */,
+		0x10AF2 /* MANICHAEAN PUNCTUATION DOUBLE DOT WITHIN DOT	𐫲 */,
+		0x10AF3 /* MANICHAEAN PUNCTUATION DOT WITHIN DOT	𐫳 */,
+		0x10AF4 /* MANICHAEAN PUNCTUATION DOT	𐫴 */,
+		0x10AF5 /* MANICHAEAN PUNCTUATION TWO DOTS	𐫵 */,
+		0x10AF6 /* MANICHAEAN PUNCTUATION LINE FILLER	𐫶 */,
+		0x10B39 /* AVESTAN ABBREVIATION MARK	𐬹 */,
+		0x10B3A /* TINY TWO DOTS OVER ONE DOT PUNCTUATION	𐬺 */,
+		0x10B3B /* SMALL TWO DOTS OVER ONE DOT PUNCTUATION	𐬻 */,
+		0x10B3C /* LARGE TWO DOTS OVER ONE DOT PUNCTUATION	𐬼 */,
+		0x10B3D /* LARGE ONE DOT OVER TWO DOTS PUNCTUATION	𐬽 */,
+		0x10B3E /* LARGE TWO RINGS OVER ONE RING PUNCTUATION	𐬾 */,
+		0x10B3F /* LARGE ONE RING OVER TWO RINGS PUNCTUATION	𐬿 */,
+		0x10B99 /* PSALTER PAHLAVI SECTION MARK	𐮙 */,
+		0x10B9A /* PSALTER PAHLAVI TURNED SECTION MARK	𐮚 */,
+		0x10B9B /* PSALTER PAHLAVI FOUR DOTS WITH CROSS	𐮛 */,
+		0x10B9C /* PSALTER PAHLAVI FOUR DOTS WITH DOT	𐮜 */,
+		0x10F55 /* SOGDIAN PUNCTUATION TWO VERTICAL BARS	𐽕 */,
+		0x10F56 /* SOGDIAN PUNCTUATION TWO VERTICAL BARS WITH DOTS	𐽖 */,
+		0x10F57 /* SOGDIAN PUNCTUATION CIRCLE WITH DOT	𐽗 */,
+		0x10F58 /* SOGDIAN PUNCTUATION TWO CIRCLES WITH DOTS	𐽘 */,
+		0x10F59 /* SOGDIAN PUNCTUATION HALF CIRCLE WITH DOT	𐽙 */,
+		0x11047 /* BRAHMI DANDA	𑁇 */,
+		0x11048 /* BRAHMI DOUBLE DANDA	𑁈 */,
+		0x11049 /* BRAHMI PUNCTUATION DOT	𑁉 */,
+		0x1104A /* BRAHMI PUNCTUATION DOUBLE DOT	𑁊 */,
+		0x1104B /* BRAHMI PUNCTUATION LINE	𑁋 */,
+		0x1104C /* BRAHMI PUNCTUATION CRESCENT BAR	𑁌 */,
+		0x1104D /* BRAHMI PUNCTUATION LOTUS	𑁍 */,
+		0x110BB /* KAITHI ABBREVIATION SIGN	𑂻 */,
+		0x110BC /* KAITHI ENUMERATION SIGN	𑂼 */,
+		0x110BE /* KAITHI SECTION MARK	𑂾 */,
+		0x110BF /* KAITHI DOUBLE SECTION MARK	𑂿 */,
+		0x110C0 /* KAITHI DANDA	𑃀 */,
+		0x110C1 /* KAITHI DOUBLE DANDA	𑃁 */,
+		0x11140 /* CHAKMA SECTION MARK	𑅀 */,
+		0x11141 /* CHAKMA DANDA	𑅁 */,
+		0x11142 /* CHAKMA DOUBLE DANDA	𑅂 */,
+		0x11143 /* CHAKMA QUESTION MARK	𑅃 */,
+		0x11174 /* MAHAJANI ABBREVIATION SIGN	𑅴 */,
+		0x11175 /* MAHAJANI SECTION MARK	𑅵 */,
+		0x111C5 /* SHARADA DANDA	𑇅 */,
+		0x111C6 /* SHARADA DOUBLE DANDA	𑇆 */,
+		0x111C7 /* SHARADA ABBREVIATION SIGN	𑇇 */,
+		0x111C8 /* SHARADA SEPARATOR	𑇈 */,
+		0x111CD /* SHARADA SUTRA MARK	𑇍 */,
+		0x111DB /* SHARADA SIGN SIDDHAM	𑇛 */,
+		0x111DD /* SHARADA CONTINUATION SIGN	𑇝 */,
+		0x111DE /* SHARADA SECTION MARK-1	𑇞 */,
+		0x111DF /* SHARADA SECTION MARK-2	𑇟 */,
+		0x11238 /* KHOJKI DANDA	𑈸 */,
+		0x11239 /* KHOJKI DOUBLE DANDA	𑈹 */,
+		0x1123A /* KHOJKI WORD SEPARATOR	𑈺 */,
+		0x1123B /* KHOJKI SECTION MARK	𑈻 */,
+		0x1123C /* KHOJKI DOUBLE SECTION MARK	𑈼 */,
+		0x1123D /* KHOJKI ABBREVIATION SIGN	𑈽 */,
+		0x112A9 /* MULTANI SECTION MARK	𑊩 */,
+		0x1144B /* NEWA DANDA	𑑋 */,
+		0x1144C /* NEWA DOUBLE DANDA	𑑌 */,
+		0x1144D /* NEWA COMMA	𑑍 */,
+		0x1144E /* NEWA GAP FILLER	𑑎 */,
+		0x1144F /* NEWA ABBREVIATION SIGN	𑑏 */,
+		0x1145B /* NEWA PLACEHOLDER MARK	𑑛 */,
+		0x1145D /* NEWA INSERTION SIGN	𑑝 */,
+		0x114C6 /* TIRHUTA ABBREVIATION SIGN	𑓆 */,
+		0x115C1 /* SIDDHAM SIGN SIDDHAM	𑗁 */,
+		0x115C2 /* SIDDHAM DANDA	𑗂 */,
+		0x115C3 /* SIDDHAM DOUBLE DANDA	𑗃 */,
+		0x115C4 /* SIDDHAM SEPARATOR DOT	𑗄 */,
+		0x115C5 /* SIDDHAM SEPARATOR BAR	𑗅 */,
+		0x115C6 /* SIDDHAM REPETITION MARK-1	𑗆 */,
+		0x115C7 /* SIDDHAM REPETITION MARK-2	𑗇 */,
+		0x115C8 /* SIDDHAM REPETITION MARK-3	𑗈 */,
+		0x115C9 /* SIDDHAM END OF TEXT MARK	𑗉 */,
+		0x115CA /* SIDDHAM SECTION MARK WITH TRIDENT AND U-SHAPED ORNAMENTS	𑗊 */,
+		0x115CB /* SIDDHAM SECTION MARK WITH TRIDENT AND DOTTED CRESCENTS	𑗋 */,
+		0x115CC /* SIDDHAM SECTION MARK WITH RAYS AND DOTTED CRESCENTS	𑗌 */,
+		0x115CD /* SIDDHAM SECTION MARK WITH RAYS AND DOTTED DOUBLE CRESCENTS	𑗍 */,
+		0x115CE /* SIDDHAM SECTION MARK WITH RAYS AND DOTTED TRIPLE CRESCENTS	𑗎 */,
+		0x115CF /* SIDDHAM SECTION MARK DOUBLE RING	𑗏 */,
+		0x115D0 /* SIDDHAM SECTION MARK DOUBLE RING WITH RAYS	𑗐 */,
+		0x115D1 /* SIDDHAM SECTION MARK WITH DOUBLE CRESCENTS	𑗑 */,
+		0x115D2 /* SIDDHAM SECTION MARK WITH TRIPLE CRESCENTS	𑗒 */,
+		0x115D3 /* SIDDHAM SECTION MARK WITH QUADRUPLE CRESCENTS	𑗓 */,
+		0x115D4 /* SIDDHAM SECTION MARK WITH SEPTUPLE CRESCENTS	𑗔 */,
+		0x115D5 /* SIDDHAM SECTION MARK WITH CIRCLES AND RAYS	𑗕 */,
+		0x115D6 /* SIDDHAM SECTION MARK WITH CIRCLES AND TWO ENCLOSURES	𑗖 */,
+		0x115D7 /* SIDDHAM SECTION MARK WITH CIRCLES AND FOUR ENCLOSURES	𑗗 */,
+		0x11641 /* MODI DANDA	𑙁 */,
+		0x11642 /* MODI DOUBLE DANDA	𑙂 */,
+		0x11643 /* MODI ABBREVIATION SIGN	𑙃 */,
+		0x11660 /* MONGOLIAN BIRGA WITH ORNAMENT	𑙠 */,
+		0x11661 /* MONGOLIAN ROTATED BIRGA	𑙡 */,
+		0x11662 /* MONGOLIAN DOUBLE BIRGA WITH ORNAMENT	𑙢 */,
+		0x11663 /* MONGOLIAN TRIPLE BIRGA WITH ORNAMENT	𑙣 */,
+		0x11664 /* MONGOLIAN BIRGA WITH DOUBLE ORNAMENT	𑙤 */,
+		0x11665 /* MONGOLIAN ROTATED BIRGA WITH ORNAMENT	𑙥 */,
+		0x11666 /* MONGOLIAN ROTATED BIRGA WITH DOUBLE ORNAMENT	𑙦 */,
+		0x11667 /* MONGOLIAN INVERTED BIRGA	𑙧 */,
+		0x11668 /* MONGOLIAN INVERTED BIRGA WITH DOUBLE ORNAMENT	𑙨 */,
+		0x11669 /* MONGOLIAN SWIRL BIRGA	𑙩 */,
+		0x1166A /* MONGOLIAN SWIRL BIRGA WITH ORNAMENT	𑙪 */,
+		0x1166B /* MONGOLIAN SWIRL BIRGA WITH DOUBLE ORNAMENT	𑙫 */,
+		0x1166C /* MONGOLIAN TURNED SWIRL BIRGA WITH DOUBLE ORNAMENT	𑙬 */,
+		0x1173C /* AHOM SIGN SMALL SECTION	𑜼 */,
+		0x1173D /* AHOM SIGN SECTION	𑜽 */,
+		0x1173E /* AHOM SIGN RULAI	𑜾 */,
+		0x1183B /* DOGRA ABBREVIATION SIGN	𑠻 */,
+		0x119E2 /* NANDINAGARI SIGN SIDDHAM	𑧢 */,
+		0x11A3F /* ZANABAZAR SQUARE INITIAL HEAD MARK	𑨿 */,
+		0x11A40 /* ZANABAZAR SQUARE CLOSING HEAD MARK	𑩀 */,
+		0x11A41 /* ZANABAZAR SQUARE MARK TSHEG	𑩁 */,
+		0x11A42 /* ZANABAZAR SQUARE MARK SHAD	𑩂 */,
+		0x11A43 /* ZANABAZAR SQUARE MARK DOUBLE SHAD	𑩃 */,
+		0x11A44 /* ZANABAZAR SQUARE MARK LONG TSHEG	𑩄 */,
+		0x11A45 /* ZANABAZAR SQUARE INITIAL DOUBLE-LINED HEAD MARK	𑩅 */,
+		0x11A46 /* ZANABAZAR SQUARE CLOSING DOUBLE-LINED HEAD MARK	𑩆 */,
+		0x11A9A /* SOYOMBO MARK TSHEG	𑪚 */,
+		0x11A9B /* SOYOMBO MARK SHAD	𑪛 */,
+		0x11A9C /* SOYOMBO MARK DOUBLE SHAD	𑪜 */,
+		0x11A9E /* SOYOMBO HEAD MARK WITH MOON AND SUN AND TRIPLE FLAME	𑪞 */,
+		0x11A9F /* SOYOMBO HEAD MARK WITH MOON AND SUN AND FLAME	𑪟 */,
+		0x11AA0 /* SOYOMBO HEAD MARK WITH MOON AND SUN	𑪠 */,
+		0x11AA1 /* SOYOMBO TERMINAL MARK-1	𑪡 */,
+		0x11AA2 /* SOYOMBO TERMINAL MARK-2	𑪢 */,
+		0x11C41 /* BHAIKSUKI DANDA	𑱁 */,
+		0x11C42 /* BHAIKSUKI DOUBLE DANDA	𑱂 */,
+		0x11C43 /* BHAIKSUKI WORD SEPARATOR	𑱃 */,
+		0x11C44 /* BHAIKSUKI GAP FILLER-1	𑱄 */,
+		0x11C45 /* BHAIKSUKI GAP FILLER-2	𑱅 */,
+		0x11C70 /* MARCHEN HEAD MARK	𑱰 */,
+		0x11C71 /* MARCHEN MARK SHAD	𑱱 */,
+		0x11EF7 /* MAKASAR PASSIMBANG	𑻷 */,
+		0x11EF8 /* MAKASAR END OF SECTION	𑻸 */,
+		0x11FFF /* TAMIL PUNCTUATION END OF TEXT	𑿿 */,
+		0x12470 /* CUNEIFORM PUNCTUATION SIGN OLD ASSYRIAN WORD DIVIDER	𒑰 */,
+		0x12471 /* CUNEIFORM PUNCTUATION SIGN VERTICAL COLON	𒑱 */,
+		0x12472 /* CUNEIFORM PUNCTUATION SIGN DIAGONAL COLON	𒑲 */,
+		0x12473 /* CUNEIFORM PUNCTUATION SIGN DIAGONAL TRICOLON	𒑳 */,
+		0x12474 /* CUNEIFORM PUNCTUATION SIGN DIAGONAL QUADCOLON	𒑴 */,
+		0x16A6E /* MRO DANDA	𖩮 */,
+		0x16A6F /* MRO DOUBLE DANDA	𖩯 */,
+		0x16AF5 /* BASSA VAH FULL STOP	𖫵 */,
+		0x16B37 /* PAHAWH HMONG SIGN VOS THOM	𖬷 */,
+		0x16B38 /* PAHAWH HMONG SIGN VOS TSHAB CEEB	𖬸 */,
+		0x16B39 /* PAHAWH HMONG SIGN CIM CHEEM	𖬹 */,
+		0x16B3A /* PAHAWH HMONG SIGN VOS THIAB	𖬺 */,
+		0x16B3B /* PAHAWH HMONG SIGN VOS FEEM	𖬻 */,
+		0x16B44 /* PAHAWH HMONG SIGN XAUS	𖭄 */,
+		0x16E97 /* MEDEFAIDRIN COMMA	𖺗 */,
+		0x16E98 /* MEDEFAIDRIN FULL STOP	𖺘 */,
+		0x16E99 /* MEDEFAIDRIN SYMBOL AIVA	𖺙 */,
+		0x16E9A /* MEDEFAIDRIN EXCLAMATION OH	𖺚 */,
+		0x16FE2 /* OLD CHINESE HOOK MARK	𖿢 */,
+		0x1BC9F /* DUPLOYAN PUNCTUATION CHINOOK FULL STOP	𛲟 */,
+		0x1DA87 /* SIGNWRITING COMMA	𝪇 */,
+		0x1DA88 /* SIGNWRITING FULL STOP	𝪈 */,
+		0x1DA89 /* SIGNWRITING SEMICOLON	𝪉 */,
+		0x1DA8A /* SIGNWRITING COLON	𝪊 */,
+		0x1DA8B /* SIGNWRITING PARENTHESIS	𝪋 */,
+		0x1E95E /* ADLAM INITIAL EXCLAMATION MARK	𞥞 */,
+		0x1E95F /* ADLAM INITIAL QUESTION MARK */,
+	]
 )

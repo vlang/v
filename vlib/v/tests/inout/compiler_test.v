@@ -1,81 +1,64 @@
+// .out file:
+// To test a panic, remove everything after the long `===` line
+// You can also remove the line with 'line:' e.g. for a builtin fn
 import os
+import rand
 import term
-import v.util
+import v.util.diff
+import v.util.vtest
+
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	os.chdir(vroot) or {}
+	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
-	files := os.ls(dir) or {
-		panic(err)
-	}
+	files := os.ls(dir) or { panic(err) }
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
 	}
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
-	mut paths := []string{}
-	for test in tests {
-		path := os.join_path(dir, test).replace('\\', '/')
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if path.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
-		paths << path
-	}
+	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		print(path + ' ')
-		program := path.replace('.vv', '.v')
-		os.cp(path, program) or {
-			panic(err)
-		}
-		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or {
-			panic(err)
+		program := path
+		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		if compilation.exit_code < 0 {
+			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		// os.rm(program)
-		res := os.exec('./test') or {
+		res := os.execute('./test')
+		if res.exit_code < 0 {
 			println('nope')
-			panic(err)
+			panic(res.output)
 		}
 		$if windows {
-			os.rm('./test.exe')
+			os.rm('./test.exe') or {}
 			$if msvc {
-				os.rm('./test.ilk')
-				os.rm('./test.pdb')
+				os.rm('./test.ilk') or {}
+				os.rm('./test.pdb') or {}
 			}
 		} $else {
-			os.rm('./test')
+			os.rm('./test') or {}
 		}
 		// println('============')
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
-			panic(err)
-		}
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
 			n_found := normalize_panic_message(found, vroot)
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
-				if n_found.contains(n_expected) {
+				if n_found.starts_with(n_expected) {
 					println(term.green('OK (panic)'))
 					continue
 				} else {
@@ -95,7 +78,7 @@ fn test_all() {
 			println(found)
 			if diff_cmd != '' {
 				println(term.header('difference:', '-'))
-				println(util.color_compare_strings(diff_cmd, expected, found))
+				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			} else {
 				println(term.h_divider('-'))
 			}
@@ -107,9 +90,12 @@ fn test_all() {
 	assert total_errors == 0
 }
 
-fn normalize_panic_message(message, vroot string) string {
+fn normalize_panic_message(message string, vroot string) string {
 	mut msg := message.all_before('=========================================')
-	msg = msg.replace(vroot + os.path_separator, '')
+	// change windows to nix path
+	s := vroot.replace(os.path_separator, '/')
+	// remove vroot
+	msg = msg.replace(s + '/', '')
 	msg = msg.trim_space()
 	return msg
 }

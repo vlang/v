@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -13,12 +13,13 @@ const (
 	bcrypt_use_system_preferred_rng = 0x00000002
 )
 
+// read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := malloc(bytes_needed)
+	mut buffer := []byte{len: bytes_needed}
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
-	status := C.BCryptGenRandom(0, buffer, bytes_needed, bcrypt_use_system_preferred_rng)
-	if status != status_success {
-		return read_error
+	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, rand.bcrypt_use_system_preferred_rng)
+	if status != rand.status_success {
+		return IError(&ReadError{})
 	}
-	return c_array_to_bytes_tmp(bytes_needed, buffer)
+	return buffer
 }

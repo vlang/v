@@ -1,0 +1,5 @@
+// duplicate interface methods in decleration
+interface Abc {
+	fun()
+	fun()
+}

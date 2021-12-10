@@ -11,34 +11,34 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
-		if fmt !in
-			[`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
-		if node.precisions[i] != 0 && !typ.is_float() {
+		if node.precisions[i] != 987698 && !typ.is_float() {
 			c.error('precision specification only valid for float types', node.fmt_poss[i])
 		}
 		if node.pluss[i] && !typ.is_number() {
 			c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
 		}
-		if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
-			(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
-			(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
-			(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
-			(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
-			(typ.is_string() && fmt != `s`) ||
-			(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
+		if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`])
+			|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`])
+			|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`])
+			|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
+			|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
+			|| (typ.is_string() && fmt != `s`)
+			|| (typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
 			c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 				node.fmt_poss[i])
 		}
 		node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 	}
+
 	return table.string_type
 }
 
-fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) f64 {
-	return a_test * b_test * c_test * d_test +
-		e_test * f_test * a_test * d_test + a_test * b_test * c_test
+fn get_some_val(a_test f64, b_test f64, c_test f64, d_test f64, e_test f64, f_test f64) f64 {
+	return a_test * b_test * c_test * d_test + e_test * f_test * a_test * d_test +
+		a_test * b_test * c_test
 }
 
 fn main() {
@@ -52,14 +52,13 @@ fn main() {
 	println(s)
 	println('this is quite a long string' +
 		' that is followd by an even longer part that should go to another line')
-	if (a == b && b > r) ||
-		(d > r) || (a < b) || (b < d && a + b > r) ||
-		(a + b + d >= 0 && r < 0) || (a > b && d - r < b) {
+	if (a == b && b > r) || (d > r) || (a < b) || (b < d && a + b > r)
+		|| (a + b + d >= 0 && r < 0) || (a > b && d - r < b) {
 		println('ok')
 	}
 }
 
-fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp, str_fn_name string) {
+fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp string, str_fn_name string) {
 	for i, _ in info.types {
 		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 	}
@@ -72,12 +71,33 @@ struct Parser {
 }
 
 fn (mut p Parser) name_expr() {
-	if p.peek_tok.kind == .lpar ||
-		(p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
+	if p.peek_tok.kind == .lpar
+		|| (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
 		println(p.peek_tok.lit)
 	}
 }
 
 fn set_nr_muls(t table.Type, nr_muls int) table.Type {
 	return int(t) & 0xff00ffff | (nr_muls << 16)
+}
+
+// Test what exprs are treated as multiline. The ternary if only functions as a wrapper.
+// When one expr in a branch doesn't fit a single line, the whole if will be unwrapped.
+fn multiline_exprs() {
+	// StructInit with at least one field
+	_ := if true {
+		Foo{}
+	} else {
+		Foo{
+			val: 123
+		}
+	}
+	// ConcatExpr with a multiline child expr
+	_, _ := if true {
+		1, Foo{
+			val: 123
+		}
+	} else {
+		2, Foo{}
+	}
 }

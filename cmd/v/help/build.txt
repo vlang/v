@@ -1,47 +1,54 @@
-Usage: v [build flags] ['build'] <file.v|directory>
+Usage: v [build flags] ['run'] <target.v|target_directory> [run options]
 
 This command compiles the given target, along with their dependencies, into an executable.
 
-When compiling packages, build ignores files that end in '_test.v'.
+Note that these build flags also work with `run` too, but you need to
+pass them *before* `run` . The argument directly after `run` is assumed
+to be a .v source file or folder containing .v source files.
+Everything after that, is assumed to be flags, that V will ignore itself,
+but will pass to the executable after it is compiled.
 
-When compiling a single main package, build writes the resulting executable to an output file
+This enables you to do for example: `v -cc gcc -g myfile.v run -param1 abcde`
+... which means for V: "compile using gcc, produce debugging information,
+then run `./myfile -param1 abcde` and exit with its exit code".
+
+When compiling packages, V ignores files that end in '_test.v'.
+
+When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
-The '.exe' suffix is added when writing a Windows executable.
+The '.exe' suffix is added automatically, when writing a Windows executable.
 By default, the executable is stored in the same directory as the compiled source code.
 
-The -o flag forces build to write the resulting executable or object to the d output file or directory,
+The -o flag forces V to write the resulting executable or object to the d output file or directory,
 instead of the default behavior described in the last two paragraphs.
 
 You can put common options inside an environment variable named VFLAGS, so that
 you don't have to repeat them.
 
-You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
+You can set it like this: `export VFLAGS="-cc clang -g"` on *nix,
 `set VFLAGS=-cc msvc` on Windows.
 
 V respects the TMPDIR environment variable, and will put .tmp.c files in TMPDIR/v/ .
 If you have not set it, a suitable platform specific folder (like /tmp) will be used.
 
-The build flags are shared by the build and run commands:
+NB: the build flags are shared with the run command too:
 
    -b <backend>, -backend <backend>
       Specify the backend to use while building the executable.
       Current list of supported backends:
       * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
       * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
-      * `x64`               - V outputs Linux 64-bit executable directly (highly experimental!).
-      * `v2`/`experimental` - Invokes the experimental AST-powered V compiler that will replace the
-                              current backends when finished
+      * `js_browser`        - V outputs JS source code ready for the browser.
+      * `js_node`           - V outputs JS source code to run with nodejs.
+      * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
+      * `native`            - V outputs native executable (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
 
    -d <flag>[=<value>], -define <flag>[=<value>]
       Define the provided flag.
       If value is not provided, it is assumed to be set to `true`.
       `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
 
-   -e <experiment>, -experiments <experiment>
-      Enable the specified experiment.
-      Currently, the only experiment available is: `prealloc`
-
-   -cg
+   -g
       Compile the executable in debug mode, allowing code to be debugged more easily.
 
    -o <output>, -output <output>
@@ -56,14 +63,17 @@ The build flags are shared by the build and run commands:
       separated by pipes (`|`). In addition to absolute paths, you can
       also use these special strings too:
            @vmodules - replaced with the location of the global ~/.vmodules/ folder
-           (modules installed with `v install` are there).
+                       (modules installed with `v install` are there). You can change
+                       its location by setting the environment variable VMODULES.
            @vlib - replaced with the location of the v's vlib folder.
       Using these, you can arrange for very flexible search orders for you project, for example:
            -path "/v/my_project_private_modules|@vlib|@vmodules"
       By default, -path is just "@vlib|@vmodules" .
 
    -prod
-      Compile the executable in production mode where most optimizations are enabled.
+      Compile the executable in production mode, where most optimizations are enabled.
+      Note that most V warnings turn to errors, if you pass -prod, so you will have
+      to fix them first.
 
    -prof, -profile <file.txt>
       Compile the executable with all functions profiled.
@@ -75,8 +85,22 @@ The build flags are shared by the build and run commands:
          d) the function name
       NB: if you want to output the profile info to stdout, use `-profile -`.
 
+   -message-limit <limit>
+      The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 100).
+      The checker will abort prematurely once this limit has been reached.
+      Setting this to 0 or a negative value, will disable the limit.
+
+   -no-parallel
+      Do not run the compiler in parallel (currently only the cgen stage has parallelization).
+
    -profile-no-inline
       Skip [inline] functions when profiling.
+
+   -skip-unused
+      Skip generating C/JS code for functions, that are provably not used by your project.
+      This speeds up compilation, and reduces the generated output size.
+      It is still experimental, due to historical reasons, but please do try it,
+      and report issues, if compilation breaks with that option for your program.
 
    -stats
       Enable more detailed statistics reporting, while compiling test files.
@@ -92,35 +116,62 @@ The build flags are shared by the build and run commands:
    -v
       Enable verbosity in the V compiler while compiling
 
-   -print_v_files
+   -print-v-files
       Just print the list of all parsed .v files, then stop processing further.
       This is useful for running external processing tools:
-        ./v -print_v_files cmd/v | etags -L -
+        ./v -print-v-files cmd/v | etags -L -
       ... will generate a TAGS file, that emacs can then use to jump
       to the definition of functions used by v itself. For vim:
-        ./v -print_v_files cmd/v | ctags -L -
+        ./v -print-v-files cmd/v | ctags -L -
       ... will generate a simillar tags file, that vi compatible editors can use.
       NB: an useful, although not entirely accurate regexp based Universal Ctags options file
       for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used
       up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
 
    -color, -nocolor
-      Force the use of ANSI colors for the error/warning messages, or disable them completely.
-      By default V tries to show its errors/warnings in ANSI color. The heuristic that it uses
-      to detect whether or not to use ANSI colors may not work in all cases.
+      Force the use of ANSI colors for the V error/warning messages, or disable them completely.
+      By default, the V compiler tries to show its errors/warnings in ANSI color. The heuristic
+      that it uses to detect whether or not to use ANSI colors may not work in all cases.
       These options allow you to override the default detection.
+
+   -check
+      Scans, parses, and checks the files without compiling the program.
 
    -check-syntax
       Only scan and parse the files, but then stop. Useful for very quick syntax checks.
-   
+
    -show-timings
       Print a summary about how long each compiler stage took, for example:
          PARSE: 152ms
          CHECK: 62ms
          C GEN: 103ms
          C tcc: 95ms
-      
+
+      Related to -show-timings, is the ability to compile a special instrumented
+      v compiler with this command:
+      `v -d time_parsing -d time_checking -d time_cgening -d time_v self`
+      The instrumented version will print detailed timing stats while processing
+      each .v file.
+
+   -w
+      Hide all warnings.
+
+   -W
+      Treat *all V warnings* as errors, even in development builds.
+
+   -Wfatal-errors
+      Unconditionally exit with exit(1) after the first error.
+      Useful for scripts/tooling that calls V.
+
+   -Wimpure-v
+      Warn about using C. or JS. symbols in plain .v files.
+      These should be moved in .c.v and .js.v .
+      NB: in the future, this will be turned ON by default,
+      and will become an error, after vlib modules are cleaned up.
+
 For C-specific build flags, use `v help build-c`.
+For JS-specific build flags, use `v help build-js`.
+For Native-specific build flags, use `v help build-native`.
 
 See also:
    `v help run` for documentation regarding `v run`.

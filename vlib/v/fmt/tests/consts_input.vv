@@ -8,9 +8,9 @@ pi=3.14
 phi=1.618
 	//Euler's constant
 eulers=2.7182
-supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
-one_line_supported    = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+supported_platforms = ['windows', 'macos', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
+one_line_supported    = ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
 another_const = ['a', 'b'
 		'c', 'd', 'e'
 		'f'

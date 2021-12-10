@@ -1,0 +1,46 @@
+struct Person {
+mut:
+    name string
+    age int
+}
+
+struct Pet {
+mut:
+    name string
+    color int
+}
+
+struct Programmer {
+mut:
+	pers Person
+	pe shared Pet
+}
+
+struct Pro {
+mut:
+	pers Person
+	pe Pet
+}
+
+fn main() {
+	mut pr := Programmer{
+		pers: Person{
+			name: 'Qwe'
+			age: 44
+		}
+		pe: Pet{
+			name: 'Ghj'
+			color: 7
+		}
+	}
+	pr.pe.color = 3
+	shared y := pr.pe
+	rlock y {
+		println(y.color)
+	}
+	shared g := Pro{}
+	g.pers.age = 42
+	mut h := []shared Pro{len: 3}
+	h[2].pers.age = 42
+	println(h[2].pers.age)
+}

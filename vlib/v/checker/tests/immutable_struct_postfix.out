@@ -1,11 +1,11 @@
-vlib/v/checker/tests/immutable_struct_postfix.v:8:2: error: `a` is immutable, declare it with `mut` to make it mutable
+vlib/v/checker/tests/immutable_struct_postfix.vv:8:2: error: `a` is immutable, declare it with `mut` to make it mutable
     6 | fn main() {
     7 |     a := Aaa{}
     8 |     a.i++
       |     ^
     9 |     a.i--
    10 | }
-vlib/v/checker/tests/immutable_struct_postfix.v:9:2: error: `a` is immutable, declare it with `mut` to make it mutable
+vlib/v/checker/tests/immutable_struct_postfix.vv:9:2: error: `a` is immutable, declare it with `mut` to make it mutable
     7 |     a := Aaa{}
     8 |     a.i++
     9 |     a.i--

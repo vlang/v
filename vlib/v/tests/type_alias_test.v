@@ -1,6 +1,6 @@
-type Myint int
-type Myf32 f32
-type Myf64 f64
+type Myint = int
+type Myf32 = f32
+type Myf64 = f64
 
 fn test_type_alias() {
 	i := Myint(10)
@@ -22,13 +22,18 @@ fn test_type_alias_v2() {
 	assert f + f32(0.6) == f32(8.0)
 	g := Myf64_2(10.4)
 	assert g + 0.5 == 10.9
+	// test ++ on an alias
+	mut x := Myint(10)
+	x++
+	assert x == 11
 }
 
 struct Mystruct {
-	mut:
+mut:
 	i int
 }
-type Mystruct_2 Mystruct
+
+type Mystruct_2 = Mystruct
 
 fn test_type_alias_struct() {
 	mut s := Mystruct_2{}

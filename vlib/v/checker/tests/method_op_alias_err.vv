@@ -1,0 +1,18 @@
+type Foo = string 
+type Foo2 = string
+
+fn (f Foo) + (f1 Foo2) Foo2 {
+    return Foo2(f + f1)
+}
+
+fn (f Foo) * (f1 Foo) Foo {
+    return Foo(f + f1)
+}
+
+fn main() {
+   mut f := Foo('fg')
+   f += 'fg'
+   f *= Foo2('2')
+   f -= Foo('fo') 
+    println(f)
+}

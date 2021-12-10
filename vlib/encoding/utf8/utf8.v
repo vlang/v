@@ -11,10 +11,10 @@ pub fn validate_str(str string) bool {
 	return validate(str.str, str.len)
 }
 
-pub fn validate(data byteptr, len int) bool {
+pub fn validate(data &byte, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
-		s := unsafe {data[i]}
+		s := unsafe { data[i] }
 		if s == 0 {
 			break
 		}
@@ -26,13 +26,12 @@ pub fn validate(data byteptr, len int) bool {
 	return !state.failed && state.subindex <= 0
 }
 
-fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
+fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex == 2) {
 		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
 			s.subindex++
 			return true
 		}
-		goto next
 	} else {
 		s.failed = true
 		if is_tail {
@@ -42,7 +41,6 @@ fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
 		}
 		return true
 	}
-	next:
 	s.index++
 	s.subindex = 0
 	return false

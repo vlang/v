@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -15,9 +15,9 @@ module builtin
 // ous benchmarking but can be changed to any number > 1.
 // `degree` determines the maximum length of each node.
 const (
-	degree = 6
-	mid_index = degree - 1
-	max_len = 2 * degree - 1
+	degree         = 6
+	mid_index      = degree - 1
+	max_len        = 2 * degree - 1
 	children_bytes = sizeof(voidptr) * (max_len + 1)
 )
 
@@ -37,19 +37,19 @@ mut:
 	values   [11]voidptr // TODO: Should use `max_len`
 }
 
-fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`
-	return SortedMap {
+fn new_sorted_map(n int, value_bytes int) SortedMap { // TODO: Remove `n`
+	return SortedMap{
 		value_bytes: value_bytes
 		root: new_node()
 		len: 0
 	}
 }
 
-fn new_sorted_map_init(n, value_bytes int, keys &string, values voidptr) SortedMap {
+fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) SortedMap {
 	mut out := new_sorted_map(n, value_bytes)
 	for i in 0 .. n {
 		unsafe {
-			out.set(keys[i], byteptr(values) + i * value_bytes)
+			out.set(keys[i], &byte(values) + i * value_bytes)
 		}
 	}
 	return out
@@ -59,7 +59,7 @@ fn new_sorted_map_init(n, value_bytes int, keys &string, values voidptr) SortedM
 // avoid having to check whether the root is null for
 // each insertion.
 fn new_node() &mapnode {
-	return &mapnode {
+	return &mapnode{
 		children: 0
 		len: 0
 	}
@@ -80,21 +80,23 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 			parent.split_child(child_index, mut node)
 			if key == parent.keys[child_index] {
 				unsafe {
-					C.memcpy(parent.values[child_index], value, m.value_bytes)
+					vmemcpy(parent.values[child_index], value, m.value_bytes)
 				}
 				return
 			}
 			if key < parent.keys[child_index] {
-				node = unsafe {&mapnode(parent.children[child_index])}
+				node = unsafe { &mapnode(parent.children[child_index]) }
 			} else {
-				node = unsafe {&mapnode(parent.children[child_index + 1])}
+				node = unsafe { &mapnode(parent.children[child_index + 1]) }
 			}
 		}
 		mut i := 0
-		for i < node.len && key > node.keys[i] { i++ }
+		for i < node.len && key > node.keys[i] {
+			i++
+		}
 		if i != node.len && key == node.keys[i] {
 			unsafe {
-				C.memcpy(node.values[i], value, m.value_bytes)
+				vmemcpy(node.values[i], value, m.value_bytes)
 			}
 			return
 		}
@@ -106,9 +108,9 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 				j--
 			}
 			node.keys[j + 1] = key
-			node.values[j + 1] = malloc(m.value_bytes)
 			unsafe {
-				C.memcpy(node.values[j + 1], value, m.value_bytes)
+				node.values[j + 1] = malloc(m.value_bytes)
+				vmemcpy(node.values[j + 1], value, m.value_bytes)
 			}
 			node.len++
 			m.len++
@@ -116,7 +118,7 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 		}
 		parent = node
 		child_index = i
-		node = unsafe {&mapnode(node.children[child_index])}
+		node = unsafe { &mapnode(node.children[child_index]) }
 	}
 }
 
@@ -129,17 +131,17 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 		z.values[j] = y.values[j + degree]
 	}
 	if !isnil(y.children) {
-		z.children = &voidptr(malloc(int(children_bytes)))
+		z.children = unsafe { &voidptr(malloc(int(children_bytes))) }
 		for jj := degree - 1; jj >= 0; jj-- {
 			unsafe {
 				z.children[jj] = y.children[jj + degree]
 			}
 		}
 	}
-	if isnil(n.children) {
-		n.children = &voidptr(malloc(int(children_bytes)))
-	}
 	unsafe {
+		if isnil(n.children) {
+			n.children = &voidptr(malloc(int(children_bytes)))
+		}
 		n.children[n.len + 1] = n.children[n.len]
 	}
 	for j := n.len; j > child_index; j-- {
@@ -162,17 +164,19 @@ fn (m SortedMap) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {
 		mut i := node.len - 1
-		for i >= 0 && key < node.keys[i] { i-- }
+		for i >= 0 && key < node.keys[i] {
+			i--
+		}
 		if i != -1 && key == node.keys[i] {
 			unsafe {
-				C.memcpy(out, node.values[i], m.value_bytes)
+				vmemcpy(out, node.values[i], m.value_bytes)
 			}
 			return true
 		}
 		if isnil(node.children) {
 			break
 		}
-		node = unsafe {&mapnode(node.children[i + 1])}
+		node = unsafe { &mapnode(node.children[i + 1]) }
 	}
 	return false
 }
@@ -184,14 +188,16 @@ fn (m SortedMap) exists(key string) bool {
 	mut node := m.root
 	for {
 		mut i := node.len - 1
-		for i >= 0 && key < node.keys[i] { i-- }
+		for i >= 0 && key < node.keys[i] {
+			i--
+		}
 		if i != -1 && key == node.keys[i] {
 			return true
 		}
 		if isnil(node.children) {
 			break
 		}
-		node = unsafe {&mapnode(node.children[i + 1])}
+		node = unsafe { &mapnode(node.children[i + 1]) }
 	}
 	return false
 }
@@ -217,16 +223,16 @@ fn (mut n mapnode) remove_key(k string) bool {
 		if isnil(n.children) {
 			return false
 		}
-		flag := if idx == n.len {true} else {false}
-		if unsafe {&mapnode(n.children[idx])}.len < degree {
+		flag := if idx == n.len { true } else { false }
+		if unsafe { &mapnode(n.children[idx]) }.len < degree {
 			n.fill(idx)
 		}
 
 		mut node := &mapnode(0)
 		if flag && idx > n.len {
-			node = unsafe {&mapnode(n.children[idx - 1])}
+			node = unsafe { &mapnode(n.children[idx - 1]) }
 		} else {
-			node = unsafe {&mapnode(n.children[idx])}
+			node = unsafe { &mapnode(n.children[idx]) }
 		}
 		return node.remove_key(k)
 	}
@@ -242,37 +248,37 @@ fn (mut n mapnode) remove_from_leaf(idx int) {
 
 fn (mut n mapnode) remove_from_non_leaf(idx int) {
 	k := n.keys[idx]
-	if unsafe {&mapnode(n.children[idx])}.len >= degree {
-		mut current := unsafe {&mapnode(n.children[idx])}
+	if unsafe { &mapnode(n.children[idx]) }.len >= degree {
+		mut current := unsafe { &mapnode(n.children[idx]) }
 		for !isnil(current.children) {
-			current = unsafe {&mapnode(current.children[current.len])}
+			current = unsafe { &mapnode(current.children[current.len]) }
 		}
 		predecessor := current.keys[current.len - 1]
 		n.keys[idx] = predecessor
 		n.values[idx] = current.values[current.len - 1]
-		mut node := unsafe {&mapnode(n.children[idx])}
+		mut node := unsafe { &mapnode(n.children[idx]) }
 		node.remove_key(predecessor)
-	} else if unsafe {&mapnode(n.children[idx + 1])}.len >= degree {
-		mut current := unsafe {&mapnode(n.children[idx + 1])}
+	} else if unsafe { &mapnode(n.children[idx + 1]) }.len >= degree {
+		mut current := unsafe { &mapnode(n.children[idx + 1]) }
 		for !isnil(current.children) {
-			current = unsafe {&mapnode(current.children[0])}
+			current = unsafe { &mapnode(current.children[0]) }
 		}
 		successor := current.keys[0]
 		n.keys[idx] = successor
 		n.values[idx] = current.values[0]
-		mut node := unsafe {&mapnode(n.children[idx + 1])}
+		mut node := unsafe { &mapnode(n.children[idx + 1]) }
 		node.remove_key(successor)
 	} else {
 		n.merge(idx)
-		mut node := unsafe {&mapnode(n.children[idx])}
+		mut node := unsafe { &mapnode(n.children[idx]) }
 		node.remove_key(k)
 	}
 }
 
 fn (mut n mapnode) fill(idx int) {
-	if idx != 0 && unsafe {&mapnode(n.children[idx - 1])}.len >= degree {
+	if idx != 0 && unsafe { &mapnode(n.children[idx - 1]) }.len >= degree {
 		n.borrow_from_prev(idx)
-	} else if idx != n.len && unsafe {&mapnode(n.children[idx + 1])}.len >= degree {
+	} else if idx != n.len && unsafe { &mapnode(n.children[idx + 1]) }.len >= degree {
 		n.borrow_from_next(idx)
 	} else if idx != n.len {
 		n.merge(idx)
@@ -282,8 +288,8 @@ fn (mut n mapnode) fill(idx int) {
 }
 
 fn (mut n mapnode) borrow_from_prev(idx int) {
-	mut child := unsafe {&mapnode(n.children[idx])}
-	mut sibling := unsafe {&mapnode(n.children[idx - 1])}
+	mut child := unsafe { &mapnode(n.children[idx]) }
+	mut sibling := unsafe { &mapnode(n.children[idx - 1]) }
 	for i := child.len - 1; i >= 0; i-- {
 		child.keys[i + 1] = child.keys[i]
 		child.values[i + 1] = child.values[i]
@@ -309,8 +315,8 @@ fn (mut n mapnode) borrow_from_prev(idx int) {
 }
 
 fn (mut n mapnode) borrow_from_next(idx int) {
-	mut child := unsafe {&mapnode(n.children[idx])}
-	mut sibling := unsafe {&mapnode(n.children[idx + 1])}
+	mut child := unsafe { &mapnode(n.children[idx]) }
+	mut sibling := unsafe { &mapnode(n.children[idx + 1]) }
 	child.keys[child.len] = n.keys[idx]
 	child.values[child.len] = n.values[idx]
 	if !isnil(child.children) {
@@ -336,11 +342,11 @@ fn (mut n mapnode) borrow_from_next(idx int) {
 }
 
 fn (mut n mapnode) merge(idx int) {
-	mut child := unsafe {&mapnode(n.children[idx])}
-	sibling := unsafe {&mapnode(n.children[idx + 1])}
+	mut child := unsafe { &mapnode(n.children[idx]) }
+	sibling := unsafe { &mapnode(n.children[idx + 1]) }
 	child.keys[mid_index] = n.keys[idx]
 	child.values[mid_index] = n.values[idx]
-	for i in 0..sibling.len {
+	for i in 0 .. sibling.len {
 		child.keys[i + degree] = sibling.keys[i]
 		child.values[i + degree] = sibling.values[i]
 	}
@@ -380,7 +386,7 @@ pub fn (mut m SortedMap) delete(key string) {
 		if isnil(m.root.children) {
 			return
 		} else {
-			m.root = unsafe {&mapnode(m.root.children[0])}
+			m.root = unsafe { &mapnode(m.root.children[0]) }
 		}
 		// free(tmp)
 	}
@@ -393,18 +399,18 @@ fn (n &mapnode) subkeys(mut keys []string, at int) int {
 	if !isnil(n.children) {
 		// Traverse children and insert
 		// keys inbetween children
-		for i in 0..n.len {
-			child := unsafe {&mapnode(n.children[i])}
+		for i in 0 .. n.len {
+			child := unsafe { &mapnode(n.children[i]) }
 			position += child.subkeys(mut keys, position)
 			keys[position] = n.keys[i]
 			position++
 		}
 		// Insert the keys of the last child
-		child := unsafe {&mapnode(n.children[n.len])}
+		child := unsafe { &mapnode(n.children[n.len]) }
 		position += child.subkeys(mut keys, position)
 	} else {
 		// If leaf, insert keys
-		for i in 0..n.len {
+		for i in 0 .. n.len {
 			keys[position + i] = n.keys[i]
 		}
 		position += n.len
@@ -414,7 +420,7 @@ fn (n &mapnode) subkeys(mut keys []string, at int) int {
 }
 
 pub fn (m &SortedMap) keys() []string {
-	mut keys := []string{len:m.len}
+	mut keys := []string{len: m.len}
 	if isnil(m.root) || m.root.len == 0 {
 		return keys
 	}

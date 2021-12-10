@@ -1,4 +1,4 @@
-vlib/v/checker/tests/void_function_assign_to_string.v:6:4: error: assignment mismatch: 1 variable(s) but `x()` returns 0 value(s)
+vlib/v/checker/tests/void_function_assign_to_string.vv:6:4: error: assignment mismatch: 1 variable(s) but `x()` returns 0 value(s)
     4 | fn main(){
     5 |     mut a := ''
     6 |     a = x(1,2) // hello

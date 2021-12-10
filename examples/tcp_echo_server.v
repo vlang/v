@@ -1,45 +1,40 @@
+import io
 import net
 
 // This file shows how a basic TCP echo server can be implemented using
-// the `net` module. You can connect to the server by using netcat
-// or telnet, in separate shells, for example:
-// `nc 127.0.0.1 12345`
-// `telnet 127.0.0.1 12345`
-fn handle_connection(con net.Socket) {
-	peer_ip := con.peer_ip() or {
-		'0.0.0.0'
-	}
-	eprintln('${peer_ip:16} | new client connected')
-	defer {
-		eprintln('${peer_ip:16} | closing connection...')
-		con.close() or { }
-	}
-	con.send_string("Welcome to V's TCP Echo server.\n") or {
-		return
-	}
+// the net module. You can connect to the server by using netcat or telnet,
+// in separate shells, for example:
+// nc 127.0.0.1 12345
+// or
+// telnet 127.0.0.1 12345
+
+fn main() {
+	mut server := net.listen_tcp(.ip6, ':12345') ?
+	laddr := server.addr() ?
+	eprintln('Listen on $laddr ...')
 	for {
-		line := con.read_line()
-		if line.len == 0 {
-			return
-		}
-		eprintln('${peer_ip:16} | received line: ' + line.trim_space())
-		con.send_string(line) or {
-			return
-		}
+		mut socket := server.accept() ?
+		go handle_client(mut socket)
 	}
 }
 
-fn main() {
-	server_port := 12345
-	eprintln('Starting an echo server, listening on port: $server_port')
-	server := net.listen(server_port) or {
-		panic(err)
+fn handle_client(mut socket net.TcpConn) {
+	defer {
+		socket.close() or { panic(err) }
 	}
+	client_addr := socket.peer_addr() or { return }
+	eprintln('> new client: $client_addr')
+	mut reader := io.new_buffered_reader(reader: socket)
+	defer {
+		reader.free()
+	}
+	socket.write_string('server: hello\n') or { return }
 	for {
-		con := server.accept() or {
-			server.close() or { }
-			panic(err)
+		received_line := reader.read_line() or { return }
+		if received_line == '' {
+			return
 		}
-		go handle_connection(con)
+		println('client $client_addr: $received_line')
+		socket.write_string('server: $received_line\n') or { return }
 	}
 }

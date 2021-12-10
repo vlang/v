@@ -1,0 +1,17 @@
+fn main() {
+	x := 'ab'.runes()[..1]
+	foo_str(1, x)
+
+	foo := Foo<int>{}
+	foo.info(x)
+}
+
+fn foo_str<T>(b T, a string) {
+}
+
+struct Foo<T> {
+	t T
+}
+
+fn (f Foo<T>) info(a string) {
+}

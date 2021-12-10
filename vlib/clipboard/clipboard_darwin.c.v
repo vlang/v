@@ -2,77 +2,69 @@ module clipboard
 
 #include <libkern/OSAtomic.h>
 #include <Cocoa/Cocoa.h>
-
 #flag -framework Cocoa
+#include "@VEXEROOT/vlib/clipboard/clipboard_darwin.m"
 
 pub struct Clipboard {
-    pb voidptr
-    last_cb_serial i64
+	pb             voidptr
+	last_cb_serial i64
 mut:
 	foo int // TODO remove, for mut hack
 }
 
-fn new_clipboard() &Clipboard{
-	pb := voidptr(0)
-	#pb = [NSPasteboard generalPasteboard];
+fn C.darwin_new_pasteboard() voidptr
+
+fn C.darwin_get_pasteboard_text(voidptr) &byte
+
+fn C.darwin_set_pasteboard_text(voidptr, string) bool
+
+fn new_clipboard() &Clipboard {
 	cb := &Clipboard{
-		pb: pb
+		pb: C.darwin_new_pasteboard() // pb
 	}
 	return cb
 }
 
-fn (cb &Clipboard) check_availability() bool {
+pub fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 
-fn (mut cb Clipboard) clear(){
+pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
-	#[cb->pb clearContents];
+	cb.set_text('')
+	//#[cb->pb clearContents];
 }
 
-fn (mut cb Clipboard) free(){
+pub fn (mut cb Clipboard) free() {
 	cb.foo = 0
-	//nothing to free
+	// nothing to free
 }
 
-fn (cb &Clipboard) has_ownership() bool {
-	if cb.last_cb_serial == 0 {return false}
-	#return [cb->pb changeCount] == cb->last_cb_serial;
+pub fn (cb &Clipboard) has_ownership() bool {
+	if cb.last_cb_serial == 0 {
+		return false
+	}
+	//#return [cb->pb changeCount] == cb->last_cb_serial;
 	return false
 }
 
 fn C.OSAtomicCompareAndSwapLong()
 
-fn (mut cb Clipboard) set_text(text string) bool {
-	cb.foo = 0
-	#NSString *ns_clip;
-	ret := false
-
-	#ns_clip = [[ NSString alloc ] initWithBytesNoCopy:text.str length:text.len encoding:NSUTF8StringEncoding freeWhenDone: false];
-	#[cb->pb declareTypes:[NSArray arrayWithObject:NSStringPboardType] owner:nil];
-	#ret = [cb->pb setString:ns_clip forType:NSStringPboardType];
-	#[ns_clip release];
-
-	mut serial := 0
-	#serial = [cb->pb changeCount];
-	C.OSAtomicCompareAndSwapLong(cb.last_cb_serial, serial, &cb.last_cb_serial)
-	return ret
+pub fn (mut cb Clipboard) set_text(text string) bool {
+	return C.darwin_set_pasteboard_text(cb.pb, text)
 }
 
-fn (mut cb Clipboard) get_text() string {
+pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
-	#NSString *ns_clip;
-	utf8_clip := byteptr(0)
-
-	#ns_clip = [cb->pb stringForType:NSStringPboardType]; //NSPasteboardTypeString
-	#if (ns_clip == nil) {
-	#	return tos3(""); //in case clipboard is empty
-	#}
-
-	#utf8_clip = [ns_clip UTF8String];
-	return string(utf8_clip)
+	if isnil(cb.pb) {
+		return ''
+	}
+	utf8_clip := C.darwin_get_pasteboard_text(cb.pb)
+	return unsafe { tos_clone(&byte(utf8_clip)) }
 }
 
+// new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.
+// Please note: new_primary only works on X11 based systems.
 pub fn new_primary() &Clipboard {
 	panic('Primary clipboard is not supported on non-Linux systems.')
 }

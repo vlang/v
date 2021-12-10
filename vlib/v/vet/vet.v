@@ -1,9 +1,36 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module vet
 
-import v.ast
-import v.table
+import v.token
 
-pub fn vet(file ast.File, table &table.Table, is_debug bool) {
+pub enum ErrorKind {
+	error
+	warning
+}
+
+pub enum FixKind {
+	unknown
+	doc
+	vfmt
+}
+
+// ErrorType is used to filter out false positive errors under specific conditions
+pub enum ErrorType {
+	default
+	space_indent
+	trailing_space
+}
+
+pub struct Error {
+pub mut:
+	kind ErrorKind [required]
+pub:
+	// General message
+	message   string         [required]
+	details   string // Details about how to resolve or fix the situation
+	file_path string // file where the error have origin
+	pos       token.Position // position in the file
+	fix       FixKind        [required]
+	typ       ErrorType      [required]
 }

@@ -1,4 +1,6 @@
+import time
 // 1 line comment // 1 line comment
+
 /*
 multi line comment (1)
 multi line comment (2)
@@ -26,7 +28,7 @@ fn myfn4(string)
 
 fn foobar()
 
-fn slopediv(num, den u32) int
+fn slopediv(num u32, den u32) int
 
 type F1 = fn ()
 
@@ -40,7 +42,22 @@ type F5 = fn (int, int) int
 
 type F6 = fn (int, int)
 
-fn C.atoi(byteptr) int
+type F7 = fn (time.Time, int)
+
+type MyTime = time.Time
+type F8 = fn (MyTime)
+
+interface MyInterface {}
+
+type F9 = fn (MyInterface)
+
+fn C.atoi(&byte) int
+fn C.freec(ptr voidptr)
+
+[trusted]
+fn C.exitc(code int)
+
+// above checks attribute doesn't conflict with `freec` return type
 
 fn foo() {
 }

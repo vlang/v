@@ -1,0 +1,12 @@
+fn h() int {
+	a := 1
+	match a {
+		else { println('abc') }
+	}
+	println('hello')
+}
+
+fn main() {
+	d := h()
+	println('h returned: $d')
+}

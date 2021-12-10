@@ -1,4 +1,4 @@
-vlib/v/parser/tests/expr_evaluated_but_not_used_a.v:2:2: error: expression evaluated but not used
+vlib/v/parser/tests/expr_evaluated_but_not_used_a.vv:2:2: error: expression evaluated but not used
     1 | fn main() {
     2 |     'hello'
       |     ~~~~~~~

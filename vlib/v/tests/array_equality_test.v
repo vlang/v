@@ -4,7 +4,9 @@ struct Tester {
 }
 
 enum Color {
-	red green blue
+	red
+	green
+	blue
 }
 
 fn test_array_equality() {
@@ -52,15 +54,15 @@ fn test_nested_array_equality() {
 	a2 := [[[[1]]]]
 	assert a2 == [[[[1]]]]
 	assert a2 != [[[[2]]]]
-	a3 := [[[1,2,3]]]
-	assert a3 == [[[1,2,3]]]
-	assert a3 != [[[1,0,3]]]
+	a3 := [[[1, 2, 3]]]
+	assert a3 == [[[1, 2, 3]]]
+	assert a3 != [[[1, 0, 3]]]
 	a4 := [[1.1], [2.2]]
 	assert a4 == [[1.1], [2.2]]
 	assert a4 != [[2.1], [3.2]]
-	a5 := [[[[1,2], [2,3], [3,4]]]]
-	assert a5 == [[[[1,2], [2,3], [3,4]]]]
-	assert a5 != [[[[2,2], [2,4], [3,4]]]]
+	a5 := [[[[1, 2], [2, 3], [3, 4]]]]
+	assert a5 == [[[[1, 2], [2, 3], [3, 4]]]]
+	assert a5 != [[[[2, 2], [2, 4], [3, 4]]]]
 	a6 := [[['aa', 'bb'], ['cc', 'dd']]]
 	assert a6 == [[['aa', 'bb'], ['cc', 'dd']]]
 	assert a6 != [[['a', 'b'], ['cc', 'dd']]]
@@ -73,4 +75,19 @@ fn test_nested_array_equality() {
 	a9 := [[[u16(22), 11]]]
 	assert a9 == [[[u16(22), 11]]]
 	assert a9 != [[[u16(20), 10]]]
+}
+
+type Literal = string
+
+type Literals = []Literal
+
+fn (l1 Literal) concat(l2 Literal) Literals {
+	return Literals([l1, l2])
+}
+
+fn test_array_of_alias_equality() {
+	mut literals := Literals([]Literal{})
+	literals = Literal('hello').concat(Literal('World'))
+	println(literals)
+	assert literals == Literals([Literal('hello'), Literal('World')])
 }

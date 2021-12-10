@@ -1,6 +1,6 @@
 fn unsafe_fn() {
 	unsafe {
-		malloc(2)
+		_ = malloc(2)
 	}
 }
 

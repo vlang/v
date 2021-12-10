@@ -1,4 +1,4 @@
-import atomic2
+import sync.atomic2
 import sync
 
 const (
@@ -7,7 +7,7 @@ const (
 
 struct Counter {
 mut:
-	counter u64 = 0    
+	counter u64
 }
 
 // without proper syncronization this would fail
@@ -41,49 +41,51 @@ fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
 fn test_count_plus_one_u64() {
 	mut c := u64(0)
 	atomic2.add_u64(&c, 1)
-	assert c == 1
+	assert atomic2.load_u64(&c) == 1
 }
 
 fn test_count_plus_one_i64() {
 	mut c := i64(0)
 	atomic2.add_i64(&c, 1)
-	assert c == 1
+	assert atomic2.load_i64(&c) == 1
 }
 
 fn test_count_plus_greater_than_one_u64() {
 	mut c := u64(0)
 	atomic2.add_u64(&c, 10)
-	assert c == 10
+	assert atomic2.load_u64(&c) == 10
 }
 
 fn test_count_plus_greater_than_one_i64() {
 	mut c := i64(0)
 	atomic2.add_i64(&c, 10)
-	assert c == 10
+	assert atomic2.load_i64(&c) == 10
 }
 
 fn test_count_minus_one_u64() {
 	mut c := u64(1)
 	atomic2.sub_u64(&c, 1)
-	assert c == 0
+	assert atomic2.load_u64(&c) == 0
 }
 
 fn test_count_minus_one_i64() {
 	mut c := i64(0)
 	atomic2.sub_i64(&c, 1)
-	assert c == -1
+	assert atomic2.load_i64(&c) == -1
 }
 
 fn test_count_minus_greater_than_one_u64() {
-	mut c := u64(10)
+	mut c := u64(0)
+	atomic2.store_u64(&c, 10)
 	atomic2.sub_u64(&c, 10)
-	assert c == 0
+	assert atomic2.load_u64(&c) == 0
 }
 
 fn test_count_minus_greater_than_one_i64() {
-	mut c := i64(10)
+	mut c := i64(0)
+	atomic2.store_i64(&c, 10)
 	atomic2.sub_i64(&c, 20)
-	assert c == -10
+	assert atomic2.load_i64(&c) == -10
 }
 
 // count_one_cycle counts the common counter iterations_per_cycle times in thread-safe way

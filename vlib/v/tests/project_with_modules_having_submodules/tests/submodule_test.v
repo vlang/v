@@ -1,5 +1,5 @@
-import mod1
-import mod1.submodule
+import v.tests.project_with_modules_having_submodules.mod1
+import v.tests.project_with_modules_having_submodules.mod1.submodule
 
 fn test_mod1() {
 	assert 1 == mod1.f()

@@ -1,0 +1,41 @@
+vlib/v/checker/tests/array_map_fn_err.vv:2:22: error: function needs exactly 1 argument
+    1 | fn main() {
+    2 |     a1 := [1,2,3,4].map(fn(a int, b int) int {return a + b})
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |     println(a1)
+    4 |
+vlib/v/checker/tests/array_map_fn_err.vv:5:22: error: type mismatch, should use `fn(a int) T {...}`
+    3 |     println(a1)
+    4 |
+    5 |     a2 := [1,2,3,4].map(fn(a string) string { return a })
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     println(a2)
+    7 |
+vlib/v/checker/tests/array_map_fn_err.vv:8:22: error: type mismatch, should use `fn(a int) T {...}`
+    6 |     println(a2)
+    7 |
+    8 |     a3 := [1,2,3,4].map(fn(a string) {})
+      |                         ~~~~~~~~~~~~~~~
+    9 |     println(a3)
+   10 |
+vlib/v/checker/tests/array_map_fn_err.vv:11:18: error: function needs exactly 1 argument
+    9 |     println(a3)
+   10 |
+   11 |     a4 := [1,2,3,4].map(add1)
+      |                     ~~~~~~~~~
+   12 |     println(a4)
+   13 |
+vlib/v/checker/tests/array_map_fn_err.vv:14:22: error: type mismatch, should use `fn(a int) T {...}`
+   12 |     println(a4)
+   13 |
+   14 |     a5 := [1,2,3,4].map(add2)
+      |                         ~~~~
+   15 |     println(a5)
+   16 |
+vlib/v/checker/tests/array_map_fn_err.vv:17:22: error: type mismatch, should use `fn(a int) T {...}`
+   15 |     println(a5)
+   16 |
+   17 |     a6 := [1,2,3,4].map(do_nothing)
+      |                         ~~~~~~~~~~
+   18 |     println(a6)
+   19 | }

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/mut_receiver.vv:5:4: warning: use `(mut f Foo)` instead of `(f mut Foo)`
+    3 |     name string
+    4 | }
+    5 | fn (f mut Foo) info() {
+      |    ~~~~~~~~~~~
+    6 |     f.name = 'foo'
+    7 | }
+vlib/v/checker/tests/mut_receiver.vv:8:4: error: use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`
+    6 |     f.name = 'foo'
+    7 | }
+    8 | fn (mut f &Foo) info2() {
+      |    ~~~~~~~~~~~~
+    9 |     f.name = 'foo'
+   10 | }

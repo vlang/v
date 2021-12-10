@@ -1,0 +1,10 @@
+fn foo<T>(b T) {
+    println(b)
+}
+
+fn main() {
+    foo<bool>(1)
+    foo<bool>(2.2)
+    foo<string>(true)
+    foo<int>('aaa')
+}

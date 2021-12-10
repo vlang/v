@@ -1,0 +1,2 @@
+vlib/v/parser/tests/const_unexpected_eof.vv:2:1: error: unexpected eof, expecting an expression
+    1 | const a =

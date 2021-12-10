@@ -1,0 +1,12 @@
+[flag]
+enum FilePerm {
+	read
+	write
+	exec
+}
+
+fn main() {
+	println(FilePerm.read > FilePerm.write)
+	println(FilePerm.write + FilePerm.exec)
+	println(FilePerm.write && FilePerm.exec)
+}

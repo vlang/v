@@ -1,285 +1,296 @@
 module szip
 
-#flag -I @VROOT/thirdparty/zip
+import os
 
+#flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
 #include "zip.h"
 
-type zip      C.zip_t
-type zip_ptr &zip
+struct C.zip_t {
+}
 
-// Ref - miniz.h
-const (
-    no_compression      = 0
-    best_speed          = 1
-    best_compression    = 9
-    uber_compression    = 10
-    default_level       = 6
-    default_compression = -1
-)
+type Zip = C.zip_t
 
-// Ref - zip.h
-const (
-    default_compression_level = (default_level)
-)
+fn C.zip_open(&char, int, char) &Zip
 
-const (
-    m_write  = 'w'
-    m_ronly  = 'r'
-    m_append = 'a'
-)
+fn C.zip_close(&Zip)
 
-/*
-open opens zip archive with compression level using the given mode.
+fn C.zip_entry_open(&Zip, &byte) int
 
-@param zipname zip archive file name.
-@param level compression level (0-9 are the standard zlib-style levels).
-@param mode file access mode.
-        - 'r': opens a file for reading/extracting (the file must exists).
-        - 'w': creates an empty file for writing.
-        - 'a': appends to an existing archive.
+fn C.zip_entry_openbyindex(&Zip, int) int
 
-@return the zip archive handler or NULL on error
- */
-pub fn open(name string, level int, mode string) ?zip_ptr {
-    mut _nlevel := level
-    if (_nlevel & 0xF) > uber_compression {
-        _nlevel = default_compression_level
-    }
-    n := name.len
-    if n == 0 {
-        return error('szip: name of file empty')
-    }
-    if mode != m_write && mode != m_ronly && mode != m_append {
-        return error('szip: invalid provided open mode')
-    }
-    /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str,
-                                 _nlevel, mode.str))
-    if _p_zip == zip_ptr(0) {
-        return error('szip: cannot open/create/append new zip archive')
-    }
-    return _p_zip
+fn C.zip_entry_close(&Zip) int
+
+fn C.zip_entry_name(&Zip) &byte
+
+fn C.zip_entry_index(&Zip) int
+
+fn C.zip_entry_isdir(&Zip) int
+
+fn C.zip_entry_size(&Zip) u64
+
+fn C.zip_entry_crc32(&Zip) u32
+
+fn C.zip_entry_write(&Zip, voidptr, usize) int
+
+fn C.zip_entry_fwrite(&Zip, &char) int
+
+fn C.zip_entry_read(&Zip, &voidptr, &usize) int
+
+fn C.zip_entry_noallocread(&Zip, voidptr, usize) int
+
+fn C.zip_entry_fread(&Zip, &char) int
+
+fn C.zip_total_entries(&Zip) int
+
+fn C.zip_extract_without_callback(&char, &char) int
+
+// CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
+pub enum CompressionLevel {
+	no_compression = 0
+	best_speed = 1
+	best_compression = 9
+	uber_compression = 10
+	default_level = 6
+	default_compression = -1
+}
+
+// OpenMode lists the opening modes
+// .write: opens a file for reading/extracting (the file must exists).
+// .read_only: creates an empty file for writing.
+// .append: appends to an existing archive.
+pub enum OpenMode {
+	write
+	read_only
+	append
+}
+
+[inline]
+fn (om OpenMode) to_byte() byte {
+	return match om {
+		.write {
+			`w`
+		}
+		.read_only {
+			`r`
+		}
+		.append {
+			`a`
+		}
+	}
+}
+
+// open opens zip archive with compression level using the given mode.
+// name: the name of the zip file to open.
+// level: can be any value of the CompressionLevel enum.
+// mode: can be any value of the OpenMode enum.
+pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
+	if name.len == 0 {
+		return error('szip: name of file empty')
+	}
+	p_zip := &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_byte())))
+	if isnil(p_zip) {
+		return error('szip: cannot open/create/append new zip archive')
+	}
+	return p_zip
+}
+
+// close closes the zip archive, releases resources - always finalize.
+[inline]
+pub fn (mut z Zip) close() {
+	C.zip_close(z)
+}
+
+// open_entry opens an entry by name in the zip archive.
+// For zip archive opened in 'w' or 'a' mode the function will append
+// a new entry. In readonly mode the function tries to locate the entry
+// in global dictionary.
+pub fn (mut zentry Zip) open_entry(name string) ? {
+	res := C.zip_entry_open(zentry, &char(name.str))
+	if res == -1 {
+		return error('szip: cannot open archive entry')
+	}
+}
+
+// open_entry_by_index opens an entry by index in the archive.
+pub fn (mut z Zip) open_entry_by_index(index int) ? {
+	res := C.zip_entry_openbyindex(z, index)
+	if res == -1 {
+		return error('szip: cannot open archive entry at index $index')
+	}
+}
+
+// close_entry closes a zip entry, flushes buffer and releases resources.
+[inline]
+pub fn (mut zentry Zip) close_entry() {
+	C.zip_entry_close(zentry)
+}
+
+// name returns a local name of the current zip entry.
+// The main difference between user's entry name and local entry name
+// is optional relative path.
+// Following .ZIP File Format Specification - the path stored MUST not contain
+// a drive or device letter, or a leading slash.
+// All slashes MUST be forward slashes '/' as opposed to backwards slashes '\'
+// for compatibility with Amiga and UNIX file systems etc.
+pub fn (mut zentry Zip) name() string {
+	name := unsafe { &byte(C.zip_entry_name(zentry)) }
+	if name == 0 {
+		return ''
+	}
+	return unsafe { name.vstring() }
+}
+
+// index returns an index of the current zip entry.
+pub fn (mut zentry Zip) index() ?int {
+	index := int(C.zip_entry_index(zentry))
+	if index == -1 {
+		return error('szip: cannot get current index of zip entry')
+	}
+	return index // must be check for INVALID_VALUE
+}
+
+// is_dir determines if the current zip entry is a directory entry.
+pub fn (mut zentry Zip) is_dir() ?bool {
+	isdir := C.zip_entry_isdir(zentry)
+	if isdir < 0 {
+		return error('szip: cannot check entry type')
+	}
+	return isdir == 1
+}
+
+// size returns an uncompressed size of the current zip entry.
+[inline]
+pub fn (mut zentry Zip) size() u64 {
+	return C.zip_entry_size(zentry)
+}
+
+// crc32 returns CRC-32 checksum of the current zip entry.
+[inline]
+pub fn (mut zentry Zip) crc32() u32 {
+	return C.zip_entry_crc32(zentry)
+}
+
+// write_entry compresses an input buffer for the current zip entry.
+pub fn (mut zentry Zip) write_entry(data []byte) ? {
+	if (data[0] & 0xff) == -1 {
+		return error('szip: cannot write entry')
+	}
+	res := C.zip_entry_write(zentry, data.data, data.len)
+	if res != 0 {
+		return error('szip: failed to write entry')
+	}
+}
+
+// create_entry compresses a file for the current zip entry.
+pub fn (mut zentry Zip) create_entry(name string) ? {
+	res := C.zip_entry_fwrite(zentry, &char(name.str))
+	if res != 0 {
+		return error('szip: failed to create entry')
+	}
+}
+
+// read_entry extracts the current zip entry into output buffer.
+// The function allocates sufficient memory for an output buffer.
+// NOTE: remember to release the memory allocated for an output buffer.
+// for large entries, please take a look at zip_entry_extract function.
+pub fn (mut zentry Zip) read_entry() ?voidptr {
+	mut buf := &byte(0)
+	mut bsize := usize(0)
+	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
+	if res == -1 {
+		return error('szip: cannot read properly data from entry')
+	}
+	return buf
+}
+
+// read_entry_buf extracts the current zip entry into user specified buffer
+pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
+	bsize := usize(in_bsize)
+	res := C.zip_entry_noallocread(zentry, buf, bsize)
+	if res == -1 {
+		return error('szip: cannot read properly data from entry')
+	}
+	return res
+}
+
+// extract_entry extracts the current zip entry into output file.
+pub fn (mut zentry Zip) extract_entry(path string) ? {
+	if !os.is_file(path) {
+		return error('szip: cannot open file for extracting, "$path" not exists')
+	}
+	res := C.zip_entry_fread(zentry, &char(path.str))
+	if res != 0 {
+		return error('szip: failed to extract entry')
+	}
+}
+
+// extract zip file to directory
+pub fn extract_zip_to_dir(file string, dir string) ?bool {
+	if C.access(&char(dir.str), 0) == -1 {
+		return error('szip: cannot open directory for extracting, directory not exists')
+	}
+	res := C.zip_extract_without_callback(&char(file.str), &char(dir.str))
+	return res == 0
+}
+
+// zip files (full path) to zip file
+pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
+	// open or create new zip
+	mut zip := open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+
+	// add all files from the directory to the archive
+	for file in path_to_file {
+		// add file to zip
+		zip.open_entry(os.base(file)) or { panic(err) }
+		file_as_byte := os.read_bytes(file) or { panic(err) }
+		zip.write_entry(file_as_byte) or { panic(err) }
+
+		zip.close_entry()
+	}
+
+	// close zip
+	defer {
+		zip.close()
+	}
 }
 
 /*
-close closes the zip archive, releases resources - always finalize.
+TODO add
+// zip all files in directory to zip file
+pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
 
-@param zip zip archive handler.
- */
-pub fn (mut z zip_ptr) close() {
-    C.zip_close(z)
+	// get list files from directory
+	files := os.ls(path_to_dir) or { panic(err) }
+
+	// open or create new zip
+	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+
+	// add all files from the directory to the archive
+	for file in files {
+		eprintln('Zipping $file to ${path_to_export_zip}...')
+		println(path_to_dir + file)
+
+		// add file to zip
+		zip.open_entry(file) or { panic(err) }
+		file_as_byte := os.read_bytes(path_to_dir + '/'+ file) or { panic(err) }
+        zip.write_entry(file_as_byte) or { panic(err) }
+
+        zip.close_entry()
+	}
+
+	// close zip
+	zip.close()
+
+	eprintln('Successfully')
 }
+*/
 
-/*
-open_entry opens an entry by name in the zip archive.
-
-For zip archive opened in 'w' or 'a' mode the function will append
-a new entry. In readonly mode the function tries to locate the entry
-in global dictionary.
-
-@param zip zip archive handler.
-@param entryname an entry name in local dictionary.
-
-@return the return code - 0 on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) open_entry(name string) /*?*/bool {
-    res := C.zip_entry_open(zentry, name.str)
-    return res != -1
-}
-
-/*
- * close_entry closes a zip entry, flushes buffer and releases resources.
- *
- * @param zip zip archive handler.
- *
- * @return the return code - 0 on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) close_entry() {
-    C.zip_entry_close(zentry)
-}
-
-/*
-name returns a local name of the current zip entry.
-
-The main difference between user's entry name and local entry name
-is optional relative path.
-Following .ZIP File Format Specification - the path stored MUST not contain
-a drive or device letter, or a leading slash.
-All slashes MUST be forward slashes '/' as opposed to backwards slashes '\'
-for compatibility with Amiga and UNIX file systems etc.
-
-@param zip: zip archive handler.
-
-@return the pointer to the current zip entry name, or NULL on error.
- */
-pub fn (mut zentry zip_ptr) name() string {
-    _name := C.zip_entry_name(zentry)
-    if _name == 0 {
-        return ''
-    }
-    return tos_clone(_name)
-}
-
-/*
-index returns an index of the current zip entry.
-
-@param zip zip archive handler.
-
-@return the index on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) index() ?int {
-    _index := int(C.zip_entry_index(zentry))
-    if _index == -1 {
-        return error('szip: cannot get current index of zip entry')
-    }
-    return _index // must be check for INVALID_VALUE
-}
-
-/*
-isdir determines if the current zip entry is a directory entry.
-
-@param zip zip archive handler.
-
-@return the return code - 1 (true), 0 (false), negative number (< 0) on
-         error.
- */
-pub fn (mut zentry zip_ptr) isdir() ?bool {
-    _isdir := C.zip_entry_isdir(zentry)
-    if _isdir == -1 {
-        return error('szip: cannot check entry type')
-    }
-    dir := bool(_isdir) // wtf V , unary lvalue
-    return dir
-}
-
-/*
-size returns an uncompressed size of the current zip entry.
-
-@param zip zip archive handler.
-
-@return the uncompressed size in bytes.
- */
-pub fn (mut zentry zip_ptr) size() i64 {
-    _size := i64(C.zip_entry_size(zentry))
-    return _size
-}
-
-/*
-crc32 returns CRC-32 checksum of the current zip entry.
-
-@param zip zip archive handler.
-
-@return the CRC-32 checksum.
- */
-pub fn (mut zentry zip_ptr) crc32() u32 {
-    _checksum := u32(C.zip_entry_crc32(zentry))
-    return _checksum // 0
-}
-
-/*
- write_entry compresses an input buffer for the current zip entry.
-
-@param zip zip archive handler.
-@param buf input buffer.
-@param bufsize input buffer size (in bytes).
-
-@return the return code - 0 on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) write_entry(data []byte) bool {
-    if (data[0] & 0xff) == -1 {
-        return false
-    }
-    buf := data // alias of data
-    res := C.zip_entry_write(zentry, buf.data, buf.len)
-    return res == 0
-}
-
-/*
-create_entry compresses a file for the current zip entry.
-
-@param zip zip archive handler.
-@param filename input file.
-
-@return the return code - 0 on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) create_entry(name string) bool {
-    res := C.zip_entry_fwrite(zentry, name.str)
-    return res == 0
-}
-
-/*
-read_entry extracts the current zip entry into output buffer.
-
-The function allocates sufficient memory for an output buffer.
-
-@param zip zip archive handler.
-@param buf output buffer.
-@param bufsize output buffer size (in bytes).
-
-@note remember to release the memory allocated for an output buffer.
-for large entries, please take a look at zip_entry_extract function.
-
-@return the return code - the number of bytes actually read on success.
-         Otherwise a -1 on error.
- */
-pub fn (mut zentry zip_ptr) read_entry() ?voidptr {
-    mut _buf := voidptr(0)
-    mut _bsize := i64(0)
-    res := C.zip_entry_read(zentry, &_buf, &_bsize)
-    if res == -1 {
-        return error('szip: cannot read properly data from entry')
-    }
-    return _buf
-}
-
-/*
-extract_entry extracts the current zip entry into output file.
-
-@param zip zip archive handler.
-@param filename output file.
-
-@return the return code - 0 on success, negative number (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) extract_entry(path string) /*?*/bool {
-    if C.access(charptr(path.str), 0) == -1 {
-        return false
-        //return error('Cannot open file for extracting, file not exists')
-    }
-    res := C.zip_entry_fread(zentry, path.str)
-    return res == 0
-}
-
-/*
-extract extracts the current zip entry using a callback function (on_extract).
-
-@param zip zip archive handler.
-@param on_extract callback function.
-@param arg opaque pointer (optional argument, which you can pass to the
-        on_extract callback)
-
-@return the return code - 0 on success, negative number (< 0) on error.
- */
-/*fn (mut zentry zip_ptr) extract(path string) bool {
-    if C.access(path.str, 0) == -1 {
-        return false
-        //return error('Cannot open directory for extracting, directory not exists')
-    }
-    res := C.zip_extract(zentry, path.str, 0, 0)
-    return res == 0
-}*/
-
-/*
-total returns the number of all entries (files and directories) in the zip archive.
-
-@param zip zip archive handler.
-
-@return the return code - the number of entries on success, negative number
-         (< 0) on error.
- */
-pub fn (mut zentry zip_ptr) total() ?int {
-    _tentry := int(C.zip_total_entries(zentry))
-    if _tentry == -1 {
-        return error('szip: cannot count total entries')
-    }
-    return _tentry
+// total returns the number of all entries (files and directories) in the zip archive.
+pub fn (mut zentry Zip) total() ?int {
+	tentry := int(C.zip_total_entries(zentry))
+	if tentry == -1 {
+		return error('szip: cannot count total entries')
+	}
+	return tentry
 }

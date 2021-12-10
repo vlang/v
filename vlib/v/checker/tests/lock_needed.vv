@@ -10,3 +10,22 @@ fn main() {
 	abc.x++
 	println(abc.x)
 }
+
+struct Abc {
+mut:
+	st shared St
+}
+
+fn f() {
+	mut a := Abc{
+		st: St{
+			x: 9
+		}
+	}
+	println(a.st.x)
+}
+
+fn g() {
+	shared a := []f64{len: 10, init: 7.5}
+	println(a[3])
+}

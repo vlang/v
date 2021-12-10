@@ -1,0 +1,4 @@
+type MyFn = fn (int) int
+
+mut arr := []MyFn{}
+arr << MyFn(test)

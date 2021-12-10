@@ -1,9 +1,9 @@
-import strconv
 /**********************************************************************
 *
 * Float to string Test
 *
 **********************************************************************/
+import strconv
 import math
 
 union Ufloat32 {
@@ -21,15 +21,15 @@ mut:
 fn f64_from_bits1(b u64) f64 {
 	mut x := Ufloat64{}
 	x.b = b
-	//C.printf("bin: %016llx\n",x.f)
-	return x.f
+	// C.printf("bin: %016llx\n",x.f)
+	return unsafe { x.f }
 }
 
 fn f32_from_bits1(b u32) f32 {
 	mut x := Ufloat32{}
 	x.b = b
-	//C.printf("bin: %08x\n",x.f)
-	return x.f
+	// C.printf("bin: %08x\n",x.f)
+	return unsafe { x.f }
 }
 
 fn test_float_to_str() {
@@ -53,30 +53,30 @@ fn test_float_to_str() {
 		1e23,
 		f32_from_bits1(0x0080_0000), // smallest float32
 		math.max_f32,
-		383260575764816448,
+		383260575764816448.0,
 	]
 
 	exp_result_f32 := [
-		"0e+00",
-		"-0e+00",
-		"nan",
-		"nan",
-		"+inf",
-		"-inf",
-		"1.e+00",
-		"-1.e+00",
-		"1.e+01",
-		"-1.e+01",
-		"3.e-01",
-		"-3.e-01",
-		"1.e+06",
-		"1.234567e+05",
-		"1.23e+37",
-		"-1.2345e+02",
-		"1.e+23",
-		"1.1754944e-38", // aprox from 1.1754943508 × 10−38,
-		"3.4028235e+38",
-		"3.8326058e+17",
+		'0e+00',
+		'-0e+00',
+		'nan',
+		'nan',
+		'+inf',
+		'-inf',
+		'1.e+00',
+		'-1.e+00',
+		'1.e+01',
+		'-1.e+01',
+		'3.e-01',
+		'-3.e-01',
+		'1.e+06',
+		'1.234567e+05',
+		'1.23e+37',
+		'-1.2345e+02',
+		'1.e+23',
+		'1.1754944e-38', // aprox from 1.1754943508 × 10−38,
+		'3.4028235e+38',
+		'3.8326058e+17',
 	]
 
 	test_cases_f64 := [
@@ -109,64 +109,63 @@ fn test_float_to_str() {
 	]
 
 	exp_result_f64 := [
-		"0e+00",
-		"-0e+00",
-		"nan",
-		"nan",
-		"+inf",
-		"-inf",
-		"1.e+00",
-		"-1.e+00",
-		"1.e+01",
-		"-1.e+01",
-		"3.e-01",
-		"-3.e-01",
-		"1.e+06",
-		"1.234567e+05",
-		"1.23e+47",
-		"-1.2345e+02",
-		"1.e+23",
-		"2.2250738585072014e-308",
-		"3.4028234663852886e+38",
-		"3.8326057576481645e+17",
-		"3.8326057576481645e+17",
-
-		"1.23e+302", // this test is failed from C sprintf!!
-		"1.23e-298",
-		"5.e-324",
-		"-5.e-324",
+		'0e+00',
+		'-0e+00',
+		'nan',
+		'nan',
+		'+inf',
+		'-inf',
+		'1.e+00',
+		'-1.e+00',
+		'1.e+01',
+		'-1.e+01',
+		'3.e-01',
+		'-3.e-01',
+		'1.e+06',
+		'1.234567e+05',
+		'1.23e+47',
+		'-1.2345e+02',
+		'1.e+23',
+		'2.2250738585072014e-308',
+		'3.4028234663852886e+38',
+		'3.8326057576481645e+17',
+		'3.8326057576481645e+17',
+		'1.23e+302', // this test is failed from C sprintf!!
+		'1.23e-298',
+		'5.e-324',
+		'-5.e-324',
 	]
 
 	// test f32
-	for c,x in test_cases_f32 {
+	for c, x in test_cases_f32 {
 		println(x)
-		s  := strconv.f32_to_str(x,8)
+		s := strconv.f32_to_str(x, 8)
 		s1 := exp_result_f32[c]
-		//println("$s1 $s")
+		// println("$s1 $s")
 		assert s == s1
 	}
 
 	// test f64
-	for c,x in test_cases_f64 {
-		s  := strconv.f64_to_str(x,17)
+	for c, x in test_cases_f64 {
+		s := strconv.f64_to_str(x, 17)
 		s1 := exp_result_f64[c]
-		//println("$s1 $s")
+		// println("$s1 $s")
 		assert s == s1
 	}
 
 	// test long format
-	for exp := 1 ; exp < 120 ; exp++ {
-		a := strconv.f64_to_str_l(("1e"+exp.str()).f64())
-		//println(a)
+	for exp := 1; exp < 120; exp++ {
+		a := strconv.f64_to_str_l(('1e' + exp.str()).f64())
+		// println(a)
 		assert a.len == exp + 1
 
-		b := strconv.f64_to_str_l(("1e-"+exp.str()).f64())
-		//println(b)
+		b := strconv.f64_to_str_l(('1e-' + exp.str()).f64())
+		// println(b)
 		assert b.len == exp + 2
 	}
 
 	// test rounding str conversion
-	//println( ftoa.f64_to_str(0.3456789123456, 4) )
-	//assert ftoa.f64_to_str(0.3456789123456, 4)=="3.4568e-01"
-	//assert ftoa.f32_to_str(0.345678, 3)=="3.457e-01"
+	// println( ftoa.f64_to_str(0.3456789123456, 4) )
+	// assert ftoa.f64_to_str(0.3456789123456, 4)=="3.4568e-01"
+	// assert ftoa.f32_to_str(0.345678, 3)=="3.457e-01"
 }

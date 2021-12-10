@@ -1,0 +1,6 @@
+vlib/v/parser/tests/string_invalid_prefix_err.vv:2:12: error: only `c`, `r`, `js` are recognized string prefixes, but you tried to use `w`
+    1 | fn main() {
+    2 |     why := w'why'
+      |            ^
+    3 |     println(why)
+    4 | }

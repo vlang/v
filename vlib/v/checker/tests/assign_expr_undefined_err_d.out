@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_undefined_err_d.v:2:9: error: undefined variable: `s`
+vlib/v/checker/tests/assign_expr_undefined_err_d.vv:2:9: error: undefined variable: `s`
     1 | fn main() {
     2 |     s := '$s'
       |            ^

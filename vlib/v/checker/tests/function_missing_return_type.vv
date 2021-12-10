@@ -1,6 +1,21 @@
 fn h() int {
 }
 
+struct Abc {
+	x int
+}
+
+fn (s Abc) panic(message string) {
+	println('called ${@METHOD} with message: $message')
+}
+
+fn (s Abc) abc() &int {
+	if true {
+		return &s.x
+	}
+	s.panic(@FN)
+}
+
 fn main() {
 	d := h()
 	println('$d')

@@ -60,11 +60,13 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Close socket.
 	if(tls_ctx->socket != INVALID_SOCKET) {
 		closesocket(tls_ctx->socket);
+		tls_ctx->socket = INVALID_SOCKET;
 	}
 	
 	// Close "MY" certificate store.
 	if(tls_ctx->cert_store) {
 		CertCloseStore(tls_ctx->cert_store, 0);
+		tls_ctx->cert_store = NULL;
 	}
 }
 
@@ -507,7 +509,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	// Allocate data buffer.
 	//
 
-	IoBuffer = LocalAlloc(LMEM_FIXED, IO_BUFFER_SIZE);
+	IoBuffer = LocalAlloc(LPTR, IO_BUFFER_SIZE);
 	if(IoBuffer == NULL)
 	{
 		wprintf(L"Out of memory (1)\n");
@@ -630,8 +632,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 
 			if(InBuffers[1].BufferType == SECBUFFER_EXTRA)
 			{
-				pExtraData->pvBuffer = LocalAlloc(LMEM_FIXED, 
-												  InBuffers[1].cbBuffer);
+				pExtraData->pvBuffer = LocalAlloc(LPTR, InBuffers[1].cbBuffer);
 				if(pExtraData->pvBuffer == NULL) {
 					wprintf(L"Out of memory (2)\n");
 					return SEC_E_INTERNAL_ERROR;
@@ -741,7 +742,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 	// size of this plus the header and trailer sizes should be safe enough.
 	cbIoBufferLength = Sizes.cbHeader +  Sizes.cbMaximumMessage + Sizes.cbTrailer;
 
-	pbIoBuffer = LocalAlloc(LMEM_FIXED, cbIoBufferLength);
+	pbIoBuffer = LocalAlloc(LPTR, cbIoBufferLength);
 	if(pbIoBuffer == NULL) {
 		wprintf(L"Out of memory (2)\n");
 		return SEC_E_INTERNAL_ERROR;
@@ -756,7 +757,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 
 	// Build HTTP request. Note that I'm assuming that this is less than
 	// the maximum message size. If it weren't, it would have to be broken up.
-	sprintf(pbMessage,  req);
+	sprintf(pbMessage, "%s", req);
 
 	cbMessage = (DWORD)strlen(pbMessage);
 

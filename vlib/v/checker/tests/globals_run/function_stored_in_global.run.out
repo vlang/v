@@ -1,0 +1,4 @@
+[vlib/v/checker/tests/globals_run/function_stored_in_global.vv:14] voidptr(main.abc) == voidptr(cpu_get_id): true
+[vlib/v/checker/tests/globals_run/function_stored_in_global.vv:15] main.cpu_get_id(): 123
+[vlib/v/checker/tests/globals_run/function_stored_in_global.vv:16] abc(): 123
+[vlib/v/checker/tests/globals_run/function_stored_in_global.vv:17] abc() == main.cpu_get_id(): true

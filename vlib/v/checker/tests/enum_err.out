@@ -1,14 +1,7 @@
-vlib/v/checker/tests/enum_err.v:4:13: error: default value for enum has to be an integer
+vlib/v/checker/tests/enum_err.vv:4:13: error: default value for enum has to be an integer
     2 |
     3 | enum Color {
     4 |     green = 'green'
       |             ~~~~~~~
-    5 |     yellow = 1+1
+    5 |     yellow
     6 |     blue
-vlib/v/checker/tests/enum_err.v:5:14: error: default value for enum has to be an integer
-    3 | enum Color {
-    4 |     green = 'green'
-    5 |     yellow = 1+1
-      |              ~~~
-    6 |     blue
-    7 | }

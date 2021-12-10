@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_call_method.vv:10:14: error: undefined ident: `wrong`
+    8 |     s1 := S1{}
+    9 |     $for method in S1.methods {
+   10 |         s1.$method(wrong)
+      |                    ~~~~~
+   11 |     }
+   12 | }

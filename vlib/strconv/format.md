@@ -6,13 +6,17 @@ These are v implementations of the C language `printf` and `sprintf` functions.
 
 ### v_sprintf
 
-`v_sprintf` has a variable number of parameters. The first is a format string to control the appearance of the final string. Each format specifier (%s, %d, etc.) in the format string is replaced by the textual version of the following parameters.
+`v_sprintf` has a variable number of parameters.
+The first is a format string to control the appearance of the final string.
+Each format specifier (%s, %d, etc.) in the format string
+is replaced by the textual version of the following parameters.
 
 ```v
 import strconv
+
 fn main() {
-	a := "World"
-	s := strconv.v_sprintf("Hello %s!", a)
+	a := 'World'
+	s := strconv.v_sprintf('Hello %s!', a)
 	println(s)
 }
 ```
@@ -23,7 +27,8 @@ Hello World!
 
 ### v_printf
 
-`v_printf` creates the same modified string as `v_sprintf`, using the same format specifiers, but it will immediately print the modified string to stdout instead of returning a string.
+`v_printf` creates the same modified string as `v_sprintf`, using the same format specifiers,
+but it will immediately print the modified string to stdout instead of returning a string.
 
 ### Syntax
 
@@ -45,11 +50,16 @@ The Flags field may be zero or more (in any order) of:
 
 #### Width field
 
-The Width field specifies a *maximum* number of characters to output, and is typically used to pad fixed-width fields in tabulated output, it causes truncation of oversized fields.
+The Width field specifies a *maximum* number of characters to output,
+and is typically used to pad fixed-width fields in tabulated output,
+it causes truncation of oversized fields.
 
-The width field may be omitted, or it may be a numeric integer value, or may also be specified by a parameter when indicated by an asterisk `*`. For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed, with a total width of 5 characters.
+The width field may be omitted, or it may be a numeric integer value,
+or may also be specified by a parameter when indicated by an asterisk `*`.
+For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed,
+with a total width of 5 characters.
 
-#### Length field 
+#### Length field
 
 The Length field can be omitted or be any of:
 
@@ -62,7 +72,7 @@ The Length field can be omitted or be any of:
 |           |                                                              |
 |           |                                                              |
 
-#### Type field 
+#### Type field
 
 The Type field can be any of:
 
@@ -84,15 +94,17 @@ The Type field can be any of:
 various types
 
 ```v
-a0  := u32(10)
-b0  := 200
-c0  := byte(12)
-s0  := "ciAo"
+import strconv
+
+a0 := u32(10)
+b0 := 200
+c0 := byte(12)
+s0 := 'ciAo'
 ch0 := `B`
-f0  := 0.312345
-f1  := 200000.0
-sc0 := "ciao: [%-08u] %d %hhd [%8s] [%08X] [%-20.4f] [%-20.4f] [%c]"
-temp_s = strconv.v_sprintf(sc0    ,a0 ,b0 ,c0 ,s0, b0 ,f0, f1, ch0)
+f0 := 0.312345
+f1 := 200000.0
+sc0 := 'ciao: [%-08u] %d %hhd [%8s] [%08X] [%-20.4f] [%-20.4f] [%c]'
+temp_s := strconv.v_sprintf(sc0, a0, b0, c0, s0, b0, f0, f1, ch0)
 println(temp_s)
 ```
 
@@ -103,12 +115,14 @@ ciao: [10      ] 200 12 [    ciAo] [000000C8] [0.3123              ] [200000.000
 integer
 
 ```v
+import strconv
+
 a := byte(12)
 b := i16(13)
 c := 14
 d := i64(15)
-sc1 := "==>%hhd %hd %d %ld"
-temp_s = strconv.v_sprintf(sc1, a ,b ,c, d)
+sc1 := '==>%hhd %hd %d %ld'
+temp_s := strconv.v_sprintf(sc1, a, b, c, d)
 println(temp_s)
 ```
 
@@ -119,12 +133,14 @@ println(temp_s)
 unsigned integer
 
 ```v
+import strconv
+
 a1 := byte(0xff)
 b1 := u16(0xffff)
-c1 := u32(0xffff_ffff)
+c1 := u32(0xffffffff)
 d1 := u64(-1)
-sc2 := "%hhu %hu %u %lu"
-temp_s = strconv.v_sprintf(sc2, a1 ,b1 ,c1, d1)
+sc2 := '%hhu %hu %u %lu'
+temp_s := strconv.v_sprintf(sc2, a1, b1, c1, d1)
 println(temp_s)
 ```
 
@@ -135,12 +151,14 @@ println(temp_s)
 hexadecimal
 
 ```v
+import strconv
+
 a1 := byte(0xff)
 b1 := i16(0xffff)
-c1 := u32(0xffff_ffff)
+c1 := u32(0xffffffff)
 d1 := u64(-1)
-sc3 := "%hhx %hx %x %lx"
-temp_s = strconv.v_sprintf(sc3, a1 ,b1 ,c1, d1)
+sc3 := '%hhx %hx %x %lx'
+temp_s := strconv.v_sprintf(sc3, a1, b1, c1, d1)
 println(temp_s)
 ```
 
@@ -151,9 +169,11 @@ ff ffff ffffffff ffffffffffffffff
 hexadecimal
 
 ```v
+import strconv
+
 a2 := 125
-sc7 := "[%9x] [%9X] [%-9x] [%-9X] [%09x] [%09X]"
-temp_s = strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
+sc7 := '[%9x] [%9X] [%-9x] [%-9X] [%09x] [%09X]'
+temp_s := strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
 println(temp_s)
 ```
 
@@ -164,12 +184,14 @@ println(temp_s)
 floating points
 
 ```v
-f0  := 0.312345
-f1  := 200000.0
-f2  := -1234.300e6
-f3  := 1234.300e-6
-sc4 := "[%-20.3e] [%20.3e] [%-020.3e] [%-020.3E] [%-020.3e] [%-020.3e]"
-temp_s = strconv.v_sprintf(sc4, f0, f1, f1, f1, f2, f3)
+import strconv
+
+f0 := 0.312345
+f1 := 200000.0
+f2 := -1234.300e6
+f3 := 1234.300e-6
+sc4 := '[%-20.3e] [%20.3e] [%-020.3e] [%-020.3E] [%-020.3e] [%-020.3e]'
+temp_s := strconv.v_sprintf(sc4, f0, f1, f1, f1, f2, f3)
 println(temp_s)
 ```
 
@@ -180,12 +202,14 @@ println(temp_s)
 float automatic notations
 
 ```v
+import strconv
+
 mut ft := -1e-7
-mut x  := 0
-sc8    := "[%20g][%20G]|"
+mut x := 0
+sc8 := '[%20g][%20G]|'
 for x < 12 {
-	temp_s = strconv.v_sprintf(sc8, ft, ft)
-	println("$temp_s\n")
+	temp_s := strconv.v_sprintf(sc8, ft, ft)
+	println('$temp_s\n')
 	ft = ft * 10.0
 	x++
 }
@@ -211,13 +235,13 @@ for x < 12 {
 
 The format module also has some utility functions:
 
-```v
+```v oksyntax nofmt
 // calling struct
 struct BF_param {
   pad_ch       byte       = ` `     // padding char
   len0         int        = -1      // default len for whole the number or string
   len1         int        = 6       // number of decimal digits, if needed
-  positive     bool       = true    // mandatory: the sign of the number passed   
+  positive     bool       = true    // mandatory: the sign of the number passed
   sign_flag    bool       = false   // flag for print sign as prefix in padding
   allign       Align_text = .right  // alignment of the string
   rm_tail_zero bool       = false   // remove the tail zeros from floats
@@ -234,6 +258,7 @@ fn remove_tail_zeros(s string) string
 
 `format_fl` format a float number in normal notation using the parameters in the `BF_param` struct.
 
-`format_es format a float number in scientific notation using the parameters in the `BF_param` struct.
+`format_es format a float number in scientific notation using the parameters in the BF_param`
+struct.
 
-`remove_tail_zeros` removes the tailing zeros from a floating point number as string. 
+`remove_tail_zeros` removes the tailing zeros from a floating point number as string.

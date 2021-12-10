@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_return_or_err.vv:6:17: error: unexpected `or` block, the function `pop` does not return an optional
+    4 |
+    5 | pub fn next(mut v []Typ) Typ {
+    6 |     return v.pop() or { Typ{} }
+      |                    ~~~~~~~~~~~~
+    7 | }
+    8 |

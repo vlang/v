@@ -1,0 +1,13 @@
+type SimpleInt = i64 | int
+type SuperInt = i16 | i64 | i8 | int
+
+fn ret_super(s SuperInt) SimpleInt {
+	match s {
+		i8, i16, int, i64 {
+			return s
+		}
+	}
+}
+
+fn main() {
+}

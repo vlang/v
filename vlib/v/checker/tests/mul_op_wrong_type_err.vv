@@ -1,0 +1,17 @@
+import math
+import math.complex as cmplx
+struct Aaa{}
+fn main() {
+    println(Aaa{} * 10)
+    println(10 * Aaa{})
+    println([1,2,3] * 10)
+    println(10 * [1,2,3])
+	a := map[string]int
+    println(a * 10)
+    println(10 * a)
+	c1 := cmplx.complex(1,-2)
+	c2 := c1 * 2.0
+	println(c2)
+	c3 := 2.0 * c1
+	println(c3)
+}

@@ -2,11 +2,14 @@ name: Periodic
 
 on:
   schedule:
-    - cron:  '31 1,12 * * *'
+    - cron:  '0 */2 * * *'
 
 jobs:
   network-tests-ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+        V_CI_PERIODIC: 1
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -15,15 +18,15 @@ jobs:
       run: make -j4
     - name: Symlink V
       run:  sudo ./v symlink
-    - name: Run network tests
-      run: ./v -d network test-fixed
+##    - name: Run network tests
+##      run: ./v -d network test vlib/net
 
 
   network-tests-macos:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macOS-latest]
+    runs-on: macOS-latest
+    timeout-minutes: 30
+    env:
+        V_CI_PERIODIC: 1
     steps:
     - uses: actions/checkout@v2
     - name: Setup openssl library path
@@ -34,13 +37,15 @@ jobs:
       run:  sudo ./v symlink
     - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
       run:  ./v examples/json.v
-    - name: Run network tests
-      run: ./v -d network test-fixed
+##    - name: Run network tests
+##      run: ./v -d network test vlib/net
 
 
   network-windows-msvc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
+        V_CI_PERIODIC: 1
         VFLAGS: -cc msvc
     steps:
     - uses: actions/checkout@v2
@@ -49,5 +54,5 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
-    - name: Run network tests
-      run: .\v.exe -d network test-fixed
+##    - name: Run network tests
+##      run: .\v.exe -d network test vlib/net

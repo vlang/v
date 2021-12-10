@@ -1,0 +1,7 @@
+fn main() {
+	mut arr := [1, 2, 3]
+	for mut v in arr {
+		v = 2
+	}
+	println(arr)
+}

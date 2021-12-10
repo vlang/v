@@ -1,0 +1,12 @@
+union Uf32 {
+mut:
+	f f32
+	u u32
+}
+
+fn f() f32 {
+	mut u := Uf32{u: 3}
+	u.f = 3.3 // ok
+	_ := u.u
+	return &u.f
+}

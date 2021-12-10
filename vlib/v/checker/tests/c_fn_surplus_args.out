@@ -1,0 +1,42 @@
+vlib/v/checker/tests/c_fn_surplus_args.vv:6:7: error: expected 0 arguments, but got 1
+    4 | 
+    5 | fn main() {
+    6 |     C.no(1) // allowed
+      |          ^
+    7 |     C.y1()
+    8 |     C.y1(1) // ok
+vlib/v/checker/tests/c_fn_surplus_args.vv:7:4: error: expected 1 arguments, but got 0
+    5 | fn main() {
+    6 |     C.no(1) // allowed
+    7 |     C.y1()
+      |       ~~~~
+    8 |     C.y1(1) // ok
+    9 |     C.y1(1, 2)
+vlib/v/checker/tests/c_fn_surplus_args.vv:9:10: error: expected 1 arguments, but got 2
+    7 |     C.y1()
+    8 |     C.y1(1) // ok
+    9 |     C.y1(1, 2)
+      |             ^
+   10 |     C.ret() // ok
+   11 |     C.ret(1)
+vlib/v/checker/tests/c_fn_surplus_args.vv:11:8: error: expected 0 arguments, but got 1
+    9 |     C.y1(1, 2)
+   10 |     C.ret() // ok
+   11 |     C.ret(1)
+      |           ^
+   12 |     // avoid cgen whilst warning, later above should error
+   13 |     main()
+vlib/v/checker/tests/c_fn_surplus_args.vv:13:2: error: the `main` function cannot be called in the program
+   11 |     C.ret(1)
+   12 |     // avoid cgen whilst warning, later above should error
+   13 |     main()
+      |     ~~~~~~
+   14 |     C.af() // ok
+   15 |     C.af(3)
+vlib/v/checker/tests/c_fn_surplus_args.vv:15:7: error: expected 0 arguments, but got 1
+   13 |     main()
+   14 |     C.af() // ok
+   15 |     C.af(3)
+      |          ^
+   16 | }
+   17 |

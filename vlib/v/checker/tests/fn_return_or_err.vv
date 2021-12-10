@@ -1,0 +1,13 @@
+module main
+
+pub struct Typ {}
+
+pub fn next(mut v []Typ) Typ {
+	return v.pop() or { Typ{} }
+}
+
+fn main() {
+	mut v := [Typ{}]
+	last := next(mut v)
+	println('$last')
+}

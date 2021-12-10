@@ -1,0 +1,12 @@
+vlib/v/checker/tests/map_init_invalid_syntax.vv:2:7: error: invalid empty map initialisation syntax, use e.g. map[string]int{} instead
+    1 | fn main() {
+    2 |     a := {}
+      |          ~~
+    3 |     println(a)
+    4 | }
+vlib/v/checker/tests/map_init_invalid_syntax.vv:3:2: error: `println` can not print void expressions
+    1 | fn main() {
+    2 |     a := {}
+    3 |     println(a)
+      |     ~~~~~~~~~~
+    4 | }

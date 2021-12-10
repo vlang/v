@@ -1,17 +1,21 @@
 fn test_invalid_index() {
 	v := 4
 	_ = v[0]
-	
+
 	a := [2]
 	_ = a[a]
+	_ = a[-1]
 }
 
 fn test_invalid_slice() {
 	v := 4
 	_ = v[1..]
 	_ = v[..1]
-	
+
 	a := [2]
 	_ = a[a..]
 	_ = a[..a]
+	_ = a[-1..]
+	_ = a[..-1]
+	_ = a[-1..-2]
 }

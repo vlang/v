@@ -1,27 +1,30 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
 	pos := p.tok.position()
 	p.check_name()
-	db_expr := p.expr(0)
+	db_expr := p.check_expr(0) or {
+		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
+			p.tok.position())
+	}
 	p.check(.lcbr)
 	p.check(.key_select)
 	n := p.check_name()
 	is_count := n == 'count'
-	mut typ := table.void_type
+	mut typ := ast.void_type
 	if is_count {
 		p.check_name() // from
-		typ = table.int_type
+		typ = ast.int_type
 	}
+	table_pos := p.tok.position()
 	table_type := p.parse_type() // `User`
-	mut where_expr := ast.Expr{}
+	mut where_expr := ast.empty_expr()
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
@@ -31,19 +34,18 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if !is_count && where_expr is ast.InfixExpr {
 			e := where_expr as ast.InfixExpr
 			if e.op == .eq && e.left is ast.Ident {
-				ident := e.left as ast.Ident
-				if ident.name == 'id' {
+				if e.left.name == 'id' {
 					query_one = true
 				}
 			}
 		}
 	}
 	mut has_limit := false
-	mut limit_expr := ast.Expr{}
+	mut limit_expr := ast.empty_expr()
 	mut has_offset := false
-	mut offset_expr := ast.Expr{}
+	mut offset_expr := ast.empty_expr()
 	mut has_order := false
-	mut order_expr := ast.Expr{}
+	mut order_expr := ast.empty_expr()
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
@@ -51,7 +53,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if p.tok.kind == .name && p.tok.lit == 'by' {
 			p.check_name() // `by`
 		} else {
-			p.error_with_pos('use `order by` in ORM queries', order_pos)
+			return p.error_with_pos('use `order by` in ORM queries', order_pos)
 		}
 		has_order = true
 		order_expr = p.expr(0)
@@ -76,7 +78,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	if !query_one && !is_count {
 		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
+		typ = ast.new_type(p.table.find_or_register_array(table_type))
 	} else if !is_count {
 		// return a single object
 		// TODO optional
@@ -88,7 +90,6 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		is_count: is_count
 		typ: typ
 		db_expr: db_expr
-		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
 		has_limit: has_limit
@@ -99,46 +100,101 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		order_expr: order_expr
 		has_desc: has_desc
 		is_array: !query_one
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
+		table_expr: ast.TypeNode{
+			typ: table_type
+			pos: table_pos
+		}
 	}
 }
 
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.inside_match = true
 	defer {
 		p.inside_match = false
 	}
 	// `sql db {`
 	p.check_name()
-	db_expr := p.expr(0)
+	db_expr := p.check_expr(0) or {
+		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
+			p.tok.position())
+	}
 	// println(typeof(db_expr))
 	p.check(.lcbr)
-	// kind := ast.SqlExprKind.select_
-	//
+
+	mut lines := []ast.SqlStmtLine{}
+
+	for p.tok.kind != .rcbr {
+		lines << p.parse_sql_stmt_line()
+	}
+
+	p.next()
+	pos.last_line = p.prev_tok.line_nr
+	return ast.SqlStmt{
+		pos: pos.extend(p.prev_tok.position())
+		db_expr: db_expr
+		lines: lines
+	}
+}
+
+fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	mut n := p.check_name() // insert
+	pos := p.tok.position()
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
 		kind = .delete
 	} else if n == 'update' {
 		kind = .update
+	} else if n == 'create' {
+		kind = .create
+		table := p.check_name()
+		if table != 'table' {
+			p.error('expected `table` got `$table`')
+			return ast.SqlStmtLine{}
+		}
+		typ := p.parse_type()
+		typ_pos := p.tok.position()
+		return ast.SqlStmtLine{
+			kind: kind
+			pos: pos.extend(p.prev_tok.position())
+			table_expr: ast.TypeNode{
+				typ: typ
+				pos: typ_pos
+			}
+		}
+	} else if n == 'drop' {
+		kind = .drop
+		table := p.check_name()
+		if table != 'table' {
+			p.error('expected `table` got `$table`')
+			return ast.SqlStmtLine{}
+		}
+		typ := p.parse_type()
+		typ_pos := p.tok.position()
+		return ast.SqlStmtLine{
+			kind: kind
+			pos: pos.extend(p.prev_tok.position())
+			table_expr: ast.TypeNode{
+				typ: typ
+				pos: typ_pos
+			}
+		}
 	}
 	mut inserted_var_name := ''
-	mut table_name := ''
+	mut table_type := ast.Type(0)
 	if kind != .delete {
-		expr := p.expr(0)
-		match expr {
-			ast.Ident {
-				if kind == .insert {
-					inserted_var_name = expr.name
-				} else if kind == .update {
-					table_name = expr.name
-				}
-			}
-			else {
+		if kind == .update {
+			table_type = p.parse_type()
+		} else if kind == .insert {
+			expr := p.expr(0)
+			if expr is ast.Ident {
+				inserted_var_name = expr.name
+			} else {
 				p.error('can only insert variables')
+				return ast.SqlStmtLine{}
 			}
 		}
 	}
@@ -147,9 +203,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut update_exprs := []ast.Expr{cap: 5}
 	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
+		return ast.SqlStmtLine{}
 	} else if kind == .update {
 		if n != 'set' {
 			p.error('expecting `set`')
+			return ast.SqlStmtLine{}
 		}
 		for {
 			column := p.check_name()
@@ -164,35 +222,28 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		}
 	} else if kind == .delete && n != 'from' {
 		p.error('expecting `from`')
+		return ast.SqlStmtLine{}
 	}
-	mut table_type := table.Type(0)
-	mut where_expr := ast.Expr{}
+
+	mut table_pos := p.tok.position()
+	mut where_expr := ast.empty_expr()
 	if kind == .insert {
-		table_type = p.parse_type() // `User`
-		sym := p.table.get_type_symbol(table_type)
-		// info := sym.info as table.Struct
-		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-		table_name = sym.name
+		table_pos = p.tok.position()
+		table_type = p.parse_type()
 	} else if kind == .update {
-		if !p.pref.is_fmt {
-			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(p.prepend_mod(table_name))
-			table_type = table.new_type(idx)
-		}
-		p.check_sql_keyword('where')
+		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
+		table_pos = p.tok.position()
 		table_type = p.parse_type()
-		sym := p.table.get_type_symbol(table_type)
-		table_name = sym.name
-		p.check_sql_keyword('where')
+		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 	}
-	p.check(.rcbr)
-	return ast.SqlStmt{
-		db_expr: db_expr
-		table_name: table_name
-		table_type: table_type
+	return ast.SqlStmtLine{
+		table_expr: ast.TypeNode{
+			typ: table_type
+			pos: table_pos
+		}
 		object_var_name: inserted_var_name
 		pos: pos
 		updated_columns: updated_columns
@@ -202,8 +253,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 }
 
-fn (mut p Parser) check_sql_keyword(name string) {
+fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
 		p.error('orm: expecting `$name`')
+		return none
 	}
+	return true
 }

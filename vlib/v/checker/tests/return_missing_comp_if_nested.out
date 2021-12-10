@@ -1,4 +1,4 @@
-vlib/v/checker/tests/return_missing_comp_if_nested.v:3:1: error: missing return at end of function `foo`
+vlib/v/checker/tests/return_missing_comp_if_nested.vv:3:1: error: missing return at end of function `foo`
     1 | fn main() {}
     2 |
     3 | fn foo() string {

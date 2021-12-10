@@ -8,6 +8,9 @@
 *, body {
 	font-family: Menlo, Monospace, 'Courier New';
 }
+table {
+	width: 1800px;
+}
 table, td {
 	border-collapse: collapse;
 	border: 1px solid #dfdfdf;
@@ -38,18 +41,25 @@ td {
 <h2>Is V still fast?</h2>
 
 Monitoring compilation speed for each commit. <br><br>
-Running on an AWS t2.micro instance (1 vCPU). <br><br>
+Running on a free tier AWS t2.micro instance (1 vCPU). Typical desktop hardware is 2-3 times faster. <br><br>
 Source code: <a target=blank href='https://github.com/vlang/v/blob/master/cmd/tools/fast/fast.v'>fast.v</a> <br><br>
 
 
 
 <table>
 	<tr>
-		<td></td>
-		<td></td>
-		<td style='width:400px'></td>
+		<td style='width:180px'>timestamp</td>
+		<td style='width:85px'>commit</td>
+		<td>commit message</td>
 		<td style='width:120px'>v -o v.c</td>
 		<td style='width:120px'>v -o v</td>
-		<td style='width:130px'>v -x64 1mil.v</td>
+		<td style='width:130px'>v -native 1mil.v</td>
 		<td style='width:120px'>v hello.v</td>
+		<td style='width:85px'>v.c size</td>
+		<td style='width:55px'>parse</td>
+		<td style='width:55px'>check</td>
+		<td style='width:55px'>cgen</td>
+		<td style='width:55px'>scan</td>
+		<td style='width:80px'>V lines</td>
+		<td style='width:95px'>V lines/s</td>
 	</tr>

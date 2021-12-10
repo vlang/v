@@ -1,47 +1,61 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.ast
-import v.table
-import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
 	mut last_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
-	mut array_type := table.void_type
-	mut elem_type := table.void_type
+	mut array_type := ast.void_type
+	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
+	mut ecmnts := [][]ast.Comment{}
+	mut pre_cmnts := []ast.Comment{}
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
+	mut has_default := false
+	mut has_it := false
+	mut default_expr := ast.empty_expr()
 	if p.tok.kind == .rsbr {
+		last_pos = p.tok.position()
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr, .key_shared] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
-			sym := p.table.get_type_symbol(elem_type)
-			// this is set here becasue its a known type, others could be the
+			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1, sym.mod)
-			array_type = table.new_type(idx)
+			idx := p.table.find_or_register_array(elem_type)
+			if elem_type.has_flag(.generic) {
+				array_type = ast.new_type(idx).set_flag(.generic)
+			} else {
+				array_type = ast.new_type(idx)
+			}
 			has_type = true
 		}
+		last_pos = p.tok.position()
 	} else {
 		// [1,2,3] or [const]byte
-		for i := 0; p.tok.kind != .rsbr; i++ {
+		old_inside_array_lit := p.inside_array_lit
+		p.inside_array_lit = true
+		pre_cmnts = p.eat_comments()
+		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
+			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {
 				p.next()
 			}
+			ecmnts.last() << p.eat_comments()
 		}
+		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
 		$if tinyc {
 			// NB: do not remove the next line without testing
@@ -51,33 +65,65 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		last_pos = p.tok.position()
 		p.check(.rsbr)
-		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
+		if exprs.len == 1 && p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			// [100]byte
 			elem_type = p.parse_type()
+			last_pos = p.tok.position()
 			is_fixed = true
-		} else {
-			if p.tok.kind == .not {
-				last_pos = p.tok.position()
+			if p.tok.kind == .lcbr {
 				p.next()
+				if p.tok.kind != .rcbr {
+					pos := p.tok.position()
+					n := p.check_name()
+					if n != 'init' {
+						p.error_with_pos('expected `init:`, not `$n`', pos)
+						return ast.ArrayInit{}
+					}
+					p.check(.colon)
+					p.open_scope()
+					has_default = true
+					p.scope_register_it_as_index()
+					default_expr = p.expr(0)
+					has_it = if var := p.scope.find_var('it') {
+						mut variable := var
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
+					} else {
+						false
+					}
+					p.close_scope()
+				}
+				last_pos = p.tok.position()
+				p.check(.rcbr)
+			} else {
+				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+					first_pos.extend(last_pos))
 			}
-			if p.tok.kind == .not {
+		} else {
+			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
-				p.next()
 				is_fixed = true
 				has_val = true
+				p.next()
+			}
+			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+				last_pos = p.tok.position()
+				p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+				p.next()
 			}
 		}
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', last_pos)
+		if !p.pref.is_fmt {
+			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		}
 	}
 	mut has_len := false
 	mut has_cap := false
-	mut has_default := false
-	mut len_expr := ast.Expr{}
-	mut cap_expr := ast.Expr{}
-	mut default_expr := ast.Expr{}
-	if p.tok.kind == .lcbr && exprs.len == 0 {
+	mut len_expr := ast.empty_expr()
+	mut cap_expr := ast.empty_expr()
+	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {
@@ -93,11 +139,23 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
+					p.open_scope()
 					has_default = true
+					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
+					has_it = if var := p.scope.find_var('it') {
+						mut variable := var
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
+					} else {
+						false
+					}
+					p.close_scope()
 				}
 				else {
 					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					return ast.ArrayInit{}
 				}
 			}
 			if p.tok.kind != .rcbr {
@@ -106,11 +164,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := token.Position{
-		line_nr: first_pos.line_nr
-		pos: first_pos.pos
-		len: last_pos.pos - first_pos.pos + last_pos.len
-	}
+	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val
@@ -118,23 +172,28 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
+		ecmnts: ecmnts
+		pre_cmnts: pre_cmnts
 		pos: pos
 		elem_type_pos: elem_type_pos
 		has_len: has_len
 		len_expr: len_expr
 		has_cap: has_cap
 		has_default: has_default
+		has_it: has_it
 		cap_expr: cap_expr
 		default_expr: default_expr
 	}
 }
 
+// parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
-	pos := p.tok.position()
+	first_pos := p.prev_tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
-	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		// p.check(.str)
+	mut comments := [][]ast.Comment{}
+	pre_cmnts := p.eat_comments()
+	for p.tok.kind !in [.rcbr, .eof] {
 		key := p.expr(0)
 		keys << key
 		p.check(.colon)
@@ -143,10 +202,23 @@ fn (mut p Parser) map_init() ast.MapInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
+		comments << p.eat_comments()
 	}
 	return ast.MapInit{
 		keys: keys
 		vals: vals
-		pos: pos
+		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+		comments: comments
+		pre_cmnts: pre_cmnts
+	}
+}
+
+fn (mut p Parser) scope_register_it_as_index() {
+	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
+		name: 'it'
+		pos: p.tok.position()
+		typ: ast.int_type
+		is_mut: false
+		is_used: false
 	}
 }

@@ -1,0 +1,18 @@
+import time
+
+fn f3_bad(ch1 chan int) {
+	a := 5
+	select {
+		b := <-ch1 {
+			println(b)
+		}
+		else {
+			println("shouldn't get here")
+		}
+		30 * time.millisecond {
+			println('bad')
+		}
+	}
+}
+
+fn main() {}

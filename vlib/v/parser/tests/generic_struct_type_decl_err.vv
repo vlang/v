@@ -1,0 +1,17 @@
+struct GMap<Hashable<K>, V> {
+	map_ map[int]V
+}
+
+fn (t GMap<Hashable<K>, V>) contains(k K) bool {
+	return true // TODO
+}
+
+fn (t GMap<Hashable<K>, V>) set(k K, v V) {
+	// TODO
+}
+
+fn main() {
+	x := GMap<string, string>{}
+	x.set("hello", "world")
+	println(x.contains("hello"))
+}

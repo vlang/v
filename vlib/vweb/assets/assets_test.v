@@ -6,7 +6,7 @@ import os
 // unique cache dirs are needed per test function.
 fn clean_cache_dir(dir string) {
 	if os.is_dir(dir) {
-		os.rmdir_all(dir)
+		os.rmdir_all(dir) or { panic(err) }
 	}
 }
 
@@ -20,15 +20,12 @@ fn cache_dir(test_name string) string {
 
 fn get_test_file_path(file string) string {
 	path := os.join_path(base_cache_dir(), file)
-
-	if ! os.is_dir(base_cache_dir()) {
-		os.mkdir_all(base_cache_dir())
+	if !os.is_dir(base_cache_dir()) {
+		os.mkdir_all(base_cache_dir()) or { panic(err) }
 	}
-
-	if ! os.exists(path) {
-		os.write_file(path, get_test_file_contents(file))
+	if !os.exists(path) {
+		os.write_file(path, get_test_file_contents(file)) or { panic(err) }
 	}
-
 	return path
 }
 
@@ -40,7 +37,6 @@ fn get_test_file_contents(file string) string {
 		'test2.css' { '.two {\n\tcolor: #996633;\n}\n' }
 		else { 'wibble\n' }
 	}
-
 	return contents
 }
 
@@ -80,23 +76,19 @@ fn test_combine_css() {
 	mut am := assets.new_manager()
 	am.cache_dir = cache_dir('test_combine_css')
 	clean_cache_dir(am.cache_dir)
-
 	am.add_css(get_test_file_path('test1.css'))
 	am.add_css(get_test_file_path('test2.css'))
-
 	// TODO: How do I test non-minified, is there a "here doc" format that keeps formatting?
 	am.minify = true
-	expected := '.one { color: #336699; } .two { color: #996633; }'
+	expected := '.one { color: #336699; } .two { color: #996633; } '
 	actual := am.combine_css(false)
-	// assert actual == expected // TODO: Why does this not pass, file/line ending?
+	assert actual == expected
 	assert actual.contains(expected)
-
 	// Test cache path doesn't change when input files and minify setting do not.
 	path1 := am.combine_css(true)
 	clean_cache_dir(am.cache_dir)
 	path2 := am.combine_css(true)
 	assert path1 == path2
-
 	clean_cache_dir(am.cache_dir)
 }
 
@@ -104,32 +96,27 @@ fn test_combine_js() {
 	mut am := assets.new_manager()
 	am.cache_dir = cache_dir('test_combine_js')
 	clean_cache_dir(am.cache_dir)
-
 	am.add_js(get_test_file_path('test1.js'))
 	am.add_js(get_test_file_path('test2.js'))
-
 	expected1 := '{"one": 1}'
 	expected2 := '{"two": 2}'
-	expected := expected1 + '\n' + expected2
+	expected := expected1 + '\n' + expected2 + '\n'
 	actual := am.combine_js(false)
-	// assert actual == expected // TODO: Why does this not pass, file/line ending?
+	assert actual == expected
 	assert actual.contains(expected)
 	assert actual.contains(expected1)
 	assert actual.contains(expected2)
-
 	am.minify = true
 	clean_cache_dir(am.cache_dir)
-	expected3 := expected1 + ' ' + expected2
+	expected3 := expected1 + ' ' + expected2 + ' '
 	actual2 := am.combine_js(false)
-	// assert actual2 == expected3 // TODO: Why does this not pass, file/line ending?
+	assert actual2 == expected3
 	assert actual2.contains(expected3)
-
 	// Test cache path doesn't change when input files and minify setting do not.
 	path1 := am.combine_js(true)
 	clean_cache_dir(am.cache_dir)
 	path2 := am.combine_js(true)
 	assert path1 == path2
-
 	clean_cache_dir(am.cache_dir)
 }
 
@@ -137,33 +124,28 @@ fn test_include_css() {
 	mut am := assets.new_manager()
 	file1 := get_test_file_path('test1.css')
 	am.add_css(file1)
-	expected := '<link rel="stylesheet" href="$file1">'
+	expected := '<link rel="stylesheet" href="$file1">\n'
 	actual := am.include_css(false)
-	// assert actual == expected // TODO: Why does this not pass, file/line ending?
+	assert actual == expected
 	assert actual.contains(expected)
-
 	// Two lines of output.
 	file2 := get_test_file_path('test2.css')
 	am.add_css(file2)
 	am.cache_dir = cache_dir('test_include_css')
 	clean_cache_dir(am.cache_dir)
-
-	expected2 := expected + '\n<link rel="stylesheet" href="$file2">'
+	expected2 := expected + '<link rel="stylesheet" href="$file2">\n'
 	actual2 := am.include_css(false)
-	// assert actual2 == expected2 // TODO: Why does this not pass, file/line ending?
+	assert actual2 == expected2
 	assert actual2.contains(expected2)
-
 	// Combined output.
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_css(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<link rel="stylesheet" href="${am.cache_dir}/') == true
-
+	assert actual3.starts_with('<link rel="stylesheet" href="$am.cache_dir/') == true
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_css(true)
 	assert actual4 == actual3
-
 	clean_cache_dir(am.cache_dir)
 }
 
@@ -171,32 +153,27 @@ fn test_include_js() {
 	mut am := assets.new_manager()
 	file1 := get_test_file_path('test1.js')
 	am.add_js(file1)
-	expected := '<script type="text/javascript" src="$file1"></script>'
+	expected := '<script type="text/javascript" src="$file1"></script>\n'
 	actual := am.include_js(false)
-	// assert actual == expected // TODO: Why does this not pass, file/line ending?
+	assert actual == expected
 	assert actual.contains(expected)
-
 	// Two lines of output.
 	file2 := get_test_file_path('test2.js')
 	am.add_js(file2)
 	am.cache_dir = cache_dir('test_include_js')
 	clean_cache_dir(am.cache_dir)
-
-	expected2 := expected + '\n<script type="text/javascript" src="$file2"></script>'
+	expected2 := expected + '<script type="text/javascript" src="$file2"></script>\n'
 	actual2 := am.include_js(false)
-	// assert actual2 == expected2 // TODO: Why does this not pass, file/line ending?
+	assert actual2 == expected2
 	assert actual2.contains(expected2)
-
 	// Combined output.
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_js(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<script type="text/javascript" src="${am.cache_dir}/')
-
+	assert actual3.starts_with('<script type="text/javascript" src="$am.cache_dir/')
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_js(true)
 	assert actual4 == actual3
-
 	clean_cache_dir(am.cache_dir)
 }

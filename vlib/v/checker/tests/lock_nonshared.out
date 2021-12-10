@@ -1,4 +1,4 @@
-vlib/v/checker/tests/lock_nonshared.v:10:7: error: `a` must be declared `shared` to be locked 
+vlib/v/checker/tests/lock_nonshared.vv:10:7: error: `a` must be declared as `shared` variable to be locked
     8 |         x: 5
     9 |     }
    10 |     lock a {

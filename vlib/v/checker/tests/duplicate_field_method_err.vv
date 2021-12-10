@@ -1,0 +1,10 @@
+struct St{
+	attr fn()
+}
+
+fn (s St) attr() {}
+
+interface Foo {
+	bar fn ()
+	bar()
+}

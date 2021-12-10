@@ -1,0 +1,10 @@
+struct Box {
+mut:
+	value int
+}
+
+fn (mut box Box) set(value int) {
+	box.value = value
+}
+
+Box{}.set(0)

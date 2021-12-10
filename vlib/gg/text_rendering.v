@@ -1,155 +1,146 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import sokol.sfons
-import gx
 import os
+import gx
 
-const (
-	default_font_size = 16
-)
-
-struct FT {
-pub:
-	fons &C.FONScontext
-
-	font_normal int
-	font_bold int
-	font_mono int
-	font_italic int
-	scale f32 = 1.0
+enum FontVariant {
+	normal = 0
+	bold
+	mono
+	italic
 }
 
 struct FTConfig {
-	font_path string
-	scale f32 = 1.0
-	font_size int
+	font_path             string
+	custom_bold_font_path string
+	scale                 f32 = 1.0
+	font_size             int
+	bytes_normal          []byte
+	bytes_bold            []byte
+	bytes_mono            []byte
+	bytes_italic          []byte
 }
 
-fn new_ft(c FTConfig) ?&FT{
-	if c.font_path == '' {
-		// Load default font
-	}
-	if c.font_path == '' || !os.exists(c.font_path) {
-		println('failed to load font "$c.font_path"')
-		return none
-	}
-	bytes := os.read_bytes(c.font_path) or {
-		println('failed to load font "$c.font_path"')
-		return none
-	}
-	bold_path := 'SFNS-bold.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
-	bytes_bold := os.read_bytes(bold_path) or {
-		println('failed to load font "$bold_path"')
-		bytes
-	}
-	mono_path := '/System/Library/Fonts/SFNSMono.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
-	bytes_mono:= os.read_bytes(mono_path) or {
-		println('failed to load font "$mono_path"')
-		bytes
-	}
-	italic_path := '/System/Library/Fonts/SFNSItalic.ttf'
-	bytes_italic:= os.read_bytes(italic_path) or {
-		println('failed to load font "$italic_path"')
-		bytes
-	}
-	fons := sfons.create(512, 512, 1)
-	return &FT{
-		fons : fons
-		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
-		font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len, false)
-		font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len, false)
-		font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len, false)
-		scale: c.scale
-	}
-
+struct StringToRender {
+	x    int
+	y    int
+	text string
+	cfg  gx.TextCfg
 }
 
-pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
-	if !ctx.font_inited {
-		return
+pub fn system_font_path() string {
+	env_font := os.getenv('VUI_FONT')
+	if env_font != '' && os.exists(env_font) {
+		return env_font
 	}
-	//text := text_.trim_space() // TODO remove/optimize
-	mut text := text_
-	if text.contains('\t') {
-		text = text.replace('\t', '    ')
+	$if windows {
+		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
+		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
-	if cfg.bold {
-		ctx.ft.fons.set_font(ctx.ft.font_bold)
+	$if macos {
+		fonts := ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
+			'/Library/Fonts/Arial.ttf']
+		for font in fonts {
+			if os.is_file(font) {
+				debug_font_println('Using font "$font"')
+				return font
+			}
+		}
 	}
-	else if cfg.mono {
-		ctx.ft.fons.set_font(ctx.ft.font_mono)
+	$if android {
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
+			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
+			'/etc/fallback_fonts.xml']
+		font_locations := ['/system/fonts', '/data/fonts']
+		for xml_file in xml_files {
+			if os.is_file(xml_file) && os.is_readable(xml_file) {
+				xml := os.read_file(xml_file) or { continue }
+				lines := xml.split('\n')
+				mut candidate_font := ''
+				for line in lines {
+					if line.contains('<font') {
+						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
+						if candidate_font.contains('.ttf') {
+							for location in font_locations {
+								candidate_path := os.join_path(location, candidate_font)
+								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
+									debug_font_println('Using font "$candidate_path"')
+									return candidate_path
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
-	else if cfg.italic {
-		ctx.ft.fons.set_font(ctx.ft.font_italic)
+	mut fm := os.execute("fc-match --format='%{file}\n' -s")
+	if fm.exit_code == 0 {
+		lines := fm.output.split('\n')
+		for l in lines {
+			if !l.contains('.ttc') {
+				debug_font_println('Using font "$l"')
+				return l
+			}
+		}
+	} else {
+		panic('fc-match failed to fetch system font')
 	}
-	else {
-		ctx.ft.fons.set_font(ctx.ft.font_normal)
-	}
-	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	mut size := if cfg.size == 0 { gg.default_font_size } else { cfg.size }
-	if cfg.mono {
-		size -= 2
-	}
-	ctx.ft.fons.set_size(scale * f32(size))
-	if cfg.align == gx.align_right {
-		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
-	}
-	else {
-		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
-	}
-	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
-	C.fonsSetColor(ctx.ft.fons, color)
-	ascender := f32(0.0)
-	descender := f32(0.0)
-	lh := f32(0.0)
-	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ctx.ft.fons, x*scale, y*scale, text.str, 0) // TODO: check offsets/alignment
+	panic('failed to init the font')
 }
 
-pub fn (ctx &Context) draw_text_def(x, y int, text string) {
-	cfg := gx.TextCfg {
-		color: gx.black
-		size: default_font_size
-		align: gx.align_left
+fn get_font_path_variant(font_path string, variant FontVariant) string {
+	// TODO: find some way to make this shorter and more eye-pleasant
+	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
+	mut file := os.file_name(font_path)
+	mut fpath := font_path.replace(file, '')
+	file = file.replace('.ttf', '')
+
+	match variant {
+		.normal {}
+		.bold {
+			if fpath.ends_with('-Regular') {
+				file = file.replace('-Regular', '-Bold')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Bold'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'bd'
+			} else {
+				file += '-bold'
+			}
+			$if macos {
+				if os.exists('SFNS-bold') {
+					file = 'SFNS-bold'
+				}
+			}
+		}
+		.italic {
+			if file.ends_with('-Regular') {
+				file = file.replace('-Regular', '-Italic')
+			} else if file.starts_with('DejaVuSans') {
+				file += '-Oblique'
+			} else if file.to_lower().starts_with('arial') {
+				file += 'i'
+			} else {
+				file += 'Italic'
+			}
+		}
+		.mono {
+			if !file.ends_with('Mono-Regular') && file.ends_with('-Regular') {
+				file = file.replace('-Regular', 'Mono-Regular')
+			} else if file.to_lower().starts_with('arial') {
+				// Arial has no mono variant
+			} else {
+				file += 'Mono'
+			}
+		}
 	}
-	ctx.draw_text(x, y, text, cfg)
+	return fpath + file + '.ttf'
 }
 
-/*
-pub fn (mut gg FT) init_font() {
+[if debug_font ?]
+fn debug_font_println(s string) {
+	println(s)
 }
-*/
-
-pub fn (ft &FT) flush(){
-	sfons.flush(ft.fons)
-}
-
-pub fn (ctx &Context) text_width(s string) int {
-	if !ctx.font_inited {
-		return 0
-	}
-	mut buf := [4]f32
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
-	return int((buf[2] - buf[0]) / ctx.scale)
-}
-
-pub fn (ctx &Context) text_height(s string) int {
-	if !ctx.font_inited {
-		return 0
-	}
-	mut buf := [4]f32
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
-	return int((buf[3] - buf[1]) / ctx.scale)
-}
-
-pub fn (ctx &Context) text_size(s string) (int, int) {
-	if !ctx.font_inited {
-		return 0,0
-	}
-	mut buf := [4]f32
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
-	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
-}
-

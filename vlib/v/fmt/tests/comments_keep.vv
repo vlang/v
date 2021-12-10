@@ -1,5 +1,17 @@
+import semver // as sv
+
+enum Abc {
+	a
+	b // after a value
+	c
+	// between values
+	d
+}
+
 struct User {
 	name string // name
+	// middle comment
+	age int
 	// last comment
 	// last comment2
 }
@@ -8,11 +20,82 @@ fn main() {
 	u := User{
 		name: 'Peter'
 	}
-	if true {
-	}
-	// some comment after an if without else
 	n := sizeof(User)
 	// else
 	// else {
 	// }
+	_ := User{
+		name: 'Henry' // comment after name
+		// on the next line
+		age: 42
+		// after age line
+		// after line2
+	}
+	_ := User{
+		// Just a comment
+	}
+	//////
+	// /
+	// 123
+	match 0 {
+		0 {
+			0 // comment after an expression inside match
+		}
+		else {}
+	}
+}
+
+fn assign_comments() {
+	a := 123 // comment after assign
+	b := 'foo' // also comment after assign
+	c := true
+	// Between two assigns
+	d := false
+	// at the end
+}
+
+fn linebreaks_in_ascii_art_block_comments() {
+	/*
+	+++
+	*/
+	/*****
+	+++
+	*****/
+	/****
+	+++
+	*/
+	/*
+	+++
+	****/
+}
+
+fn map_comments() {
+	mymap := {
+		// pre
+		`:`: 1
+		`!`: 2 // after
+		// and between
+		`%`: 3
+		// between
+		// between second
+		`$`: 4
+		`&`: 5
+		// post
+	}
+}
+
+fn ifs_comments_and_empty_lines() {
+	if true {
+	}
+	// some comment direct after an if without else
+	if false {
+	} else {
+	}
+	// some comment direct after an else
+	if false {
+	}
+
+	// this is parsed as post_comment of the if but does not really belong there
+	// thereore keep the empty line
+	something_else()
 }

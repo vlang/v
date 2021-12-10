@@ -1,4 +1,3 @@
-import sync
 import time
 
 struct St {
@@ -20,13 +19,13 @@ fn f(shared x St, shared y St, shared z St) {
 }
 
 fn test_shared_lock() {
-	shared x := &St{
+	shared x := St{
 		a: 5
 	}
 	shared y := &St{
 		a: 7
 	}
-	shared z := &St{
+	shared z := St{
 		a: 1
 	}
 	go f(shared x, shared y, shared z)
@@ -45,9 +44,34 @@ fn test_shared_lock() {
 		if finished {
 			break
 		}
-		time.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	rlock x, y {
 		assert x.a == 7 && y.a == 5
 	}
+}
+
+struct App {
+	id string = 'test'
+mut:
+	app_data shared AppData
+}
+
+fn (mut a App) init_server_direct() {
+	lock a.app_data {
+		// a.app_data = AppData{}
+	}
+}
+
+struct AppData {
+	id string = 'foo'
+}
+
+fn test_shared_field_init() {
+	mut app1 := App{}
+	app1.init_server_direct()
+	id := rlock app1.app_data {
+		app1.app_data.id
+	}
+	// assert id == 'foo'
 }

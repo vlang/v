@@ -1,0 +1,6 @@
+1
+================ V panic ================
+   module: builtin
+ function: v_fixed_index()
+  message: fixed array index out of range (index: 2, len: 2)
+     file: vlib/builtin/builtin.c.v

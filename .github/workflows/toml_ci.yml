@@ -1,0 +1,70 @@
+name: toml CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  toml-module-pass-external-test-suites:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 10
+    env:
+      TOML_BS_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
+      TOML_BS_TESTS_PINNED_COMMIT: eb989e5
+      TOML_IARNA_TESTS_PATH: vlib/toml/tests/testdata/iarna/toml-test
+      TOML_IARNA_TESTS_PINNED_COMMIT: 1880b1a
+      TOML_ALEXCRICHTON_TESTS_PATH: vlib/toml/tests/testdata/alexcrichton/toml-test
+      TOML_ALEXCRICHTON_TESTS_PINNED_COMMIT: 499e8c4
+    steps:
+
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y jq
+      - name: Build V
+        run: make -j2 && ./v -cc gcc -o v cmd/v
+
+      - name: Run local TOML tests
+        run: ./v test vlib/toml
+
+        # Tests found at https://github.com/BurntSushi/toml-test
+      - name: Clone BurntSushi/toml-test
+        run: |
+          git clone https://github.com/BurntSushi/toml-test.git $TOML_BS_TESTS_PATH
+          ## TODO: update/remove this pinning once all our skip lists are empty:
+          git -C $TOML_BS_TESTS_PATH checkout $TOML_BS_TESTS_PINNED_COMMIT
+
+      - name: Run BurntSushi TOML tests
+        run: ./v vlib/toml/tests/burntsushi.toml-test_test.v
+
+        # Tests found at gist
+      - name: Get large_toml_file_test.toml
+        run: wget https://gist.githubusercontent.com/Larpon/89b0e3d94c6903851ff15559e5df7a05/raw/62a1f87a4e37bf157f2e0bfb32d85d840c98e422/large_toml_file_test.toml -O vlib/toml/tests/testdata/large_toml_file_test.toml
+
+      - name: Run large TOML file tests
+        run: ./v vlib/toml/tests/large_toml_file_test.v
+
+        # Tests found at https://github.com/iarna/toml-spec-tests
+      - name: Clone iarna/toml-spec-tests
+        run: |
+          git clone https://github.com/iarna/toml-spec-tests.git $TOML_IARNA_TESTS_PATH
+          ## TODO: update/remove this pinning once all our skip lists are empty:
+          git -C $TOML_IARNA_TESTS_PATH checkout $TOML_IARNA_TESTS_PINNED_COMMIT
+
+      - name: Run iarna TOML tests
+        run: ./v vlib/toml/tests/iarna.toml-spec-tests_test.v
+
+        # Tests found at https://github.com/alexcrichton/toml-rs
+      - name: Clone alexcrichton/toml-rs
+        run: |
+          git clone https://github.com/alexcrichton/toml-rs.git $TOML_ALEXCRICHTON_TESTS_PATH
+          ## TODO: update/remove this pinning once all our skip lists are empty:
+          git -C $TOML_ALEXCRICHTON_TESTS_PATH checkout $TOML_ALEXCRICHTON_TESTS_PINNED_COMMIT
+
+      - name: Run alexcrichton TOML tests
+        run: ./v vlib/toml/tests/alexcrichton.toml-rs-tests_test.v

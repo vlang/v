@@ -1,17 +1,32 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json
 
-#flag -I @VROOT/thirdparty/cJSON
-#flag @VROOT/thirdparty/cJSON/cJSON.o
+#flag -I @VEXEROOT/thirdparty/cJSON
+#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
+
 struct C.cJSON {
 	valueint    int
-	valuedouble f32
-	valuestring byteptr
+	valuedouble f64
+	valuestring &char
 }
+
+fn C.cJSON_IsTrue(&C.cJSON) bool
+
+fn C.cJSON_CreateNumber(int) &C.cJSON
+
+fn C.cJSON_CreateBool(bool) &C.cJSON
+
+fn C.cJSON_CreateString(&char) &C.cJSON
+
+fn C.cJSON_Parse(&char) &C.cJSON
+
+fn C.cJSON_PrintUnformatted(&C.cJSON) &char
+
+fn C.cJSON_Print(&C.cJSON) &char
 
 pub fn decode(typ voidptr, s string) ?voidptr {
 	// compiler implementation
@@ -19,6 +34,11 @@ pub fn decode(typ voidptr, s string) ?voidptr {
 }
 
 pub fn encode(x voidptr) string {
+	// compiler implementation
+	return ''
+}
+
+pub fn encode_pretty(x voidptr) string {
 	// compiler implementation
 	return ''
 }
@@ -58,6 +78,13 @@ fn decode_byte(root &C.cJSON) byte {
 	return byte(root.valueint)
 }
 
+fn decode_u8(root &C.cJSON) u8 {
+	if isnil(root) {
+		return byte(0)
+	}
+	return byte(root.valueint)
+}
+
 fn decode_u16(root &C.cJSON) u16 {
 	if isnil(root) {
 		return u16(0)
@@ -76,21 +103,33 @@ fn decode_u64(root &C.cJSON) u64 {
 	if isnil(root) {
 		return u64(0)
 	}
-	return u64(root.valueint)
+	return u64(root.valuedouble)
 }
 
 fn decode_f32(root &C.cJSON) f32 {
 	if isnil(root) {
 		return f32(0)
 	}
-	return root.valuedouble
+	return f32(root.valuedouble)
 }
 
 fn decode_f64(root &C.cJSON) f64 {
 	if isnil(root) {
 		return f64(0)
 	}
-	return f64(root.valuedouble)
+	return root.valuedouble
+}
+
+fn decode_rune(root &C.cJSON) rune {
+	if isnil(root) {
+		return rune(0)
+	}
+	if isnil(root.valuestring) {
+		return rune(0)
+	}
+
+	// TODO: Parse as runes, bypassing string casting...?
+	return unsafe { tos_clone(&byte(root.valuestring)).runes().first() }
 }
 
 fn decode_string(root &C.cJSON) string {
@@ -102,26 +141,8 @@ fn decode_string(root &C.cJSON) string {
 	}
 	// println('decode string valuestring="$root.valuestring"')
 	// return tos(root.valuestring, _strlen(root.valuestring))
-	return tos_clone(root.valuestring) // , _strlen(root.valuestring))
+	return unsafe { tos_clone(&byte(root.valuestring)) } // , _strlen(root.valuestring))
 }
-
-fn C.cJSON_IsTrue() bool
-
-
-fn C.cJSON_CreateNumber() &C.cJSON
-
-
-fn C.cJSON_CreateBool() &C.cJSON
-
-
-fn C.cJSON_CreateString() &C.cJSON
-
-
-fn C.cJSON_Parse() &C.cJSON
-
-
-fn C.cJSON_PrintUnformatted() byteptr
-
 
 fn decode_bool(root &C.cJSON) bool {
 	if isnil(root) {
@@ -151,6 +172,10 @@ fn encode_byte(val byte) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
+fn encode_u8(val u8) &C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
 fn encode_u16(val u16) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
@@ -175,19 +200,29 @@ fn encode_bool(val bool) &C.cJSON {
 	return C.cJSON_CreateBool(val)
 }
 
-fn encode_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(val.str)
+fn encode_rune(val rune) &C.cJSON {
+	return C.cJSON_CreateString(&char(val.str().str))
 }
+
+fn encode_string(val string) &C.cJSON {
+	return C.cJSON_CreateString(&char(val.str))
+}
+
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
 fn json_parse(s string) &C.cJSON {
-	return C.cJSON_Parse(s.str)
+	return C.cJSON_Parse(&char(s.str))
 }
 
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return unsafe { tos(s, C.strlen(s)) }
+	return unsafe { tos(&byte(s), C.strlen(&char(s))) }
+}
+
+fn json_print_pretty(json &C.cJSON) string {
+	s := C.cJSON_Print(json)
+	return unsafe { tos(&byte(s), C.strlen(&char(s))) }
 }
 
 // /  cjson wrappers

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/chan_mut.vv:8:8: error: `v` is immutable, declare it with `mut` to make it mutable
+    6 | fn f(ch chan mut St) {
+    7 |     v := St{}
+    8 |     ch <- v
+      |           ^
+    9 |     mut w := St{}
+   10 |     ch <- w
+vlib/v/checker/tests/chan_mut.vv:10:8: error: cannot push non-reference `St` on `chan mut St`
+    8 |     ch <- v
+    9 |     mut w := St{}
+   10 |     ch <- w
+      |           ^
+   11 |     x := &St{}
+   12 |     ch <- x
+vlib/v/checker/tests/chan_mut.vv:12:8: error: `x` is immutable, declare it with `mut` to make it mutable
+   10 |     ch <- w
+   11 |     x := &St{}
+   12 |     ch <- x
+      |           ^
+   13 |     mut y := St{}
+   14 |     ch <- y
+vlib/v/checker/tests/chan_mut.vv:14:8: error: cannot push non-reference `St` on `chan mut St`
+   12 |     ch <- x
+   13 |     mut y := St{}
+   14 |     ch <- y
+      |           ^
+   15 |     mut z := &St{n: 7}
+   16 |     // this works

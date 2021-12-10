@@ -1,5 +1,1 @@
-type Miscellaneous = Nope | Inexistant | int
-
-fn main() {
-
-}
+type Miscellaneous = Inexistant | Nope | int

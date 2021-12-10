@@ -1,4 +1,5 @@
 import sqlite
+import mymodule { ModDbStruct }
 
 struct Customer {
 	id        int
@@ -14,7 +15,7 @@ fn find_all_customers(db sqlite.DB) []Customer {
 }
 
 fn main() {
-	db := sqlite.connect('customers.db')?
+	db := sqlite.connect('customers.db') ?
 	// select count(*) from Customer
 	nr_customers := sql db {
 		select count from Customer
@@ -33,6 +34,12 @@ fn main() {
 	customer := sql db {
 		select from Customer where id == 1 limit 1
 	}
+	best_customer := sql db {
+		select from Customer order by nr_orders desc limit 1
+	}
+	second_best := sql db {
+		select from UCustomerser order by nr_orders desc limit 1 offset 1
+	}
 	println('$customer.id - $customer.name')
 	// insert a new customer
 	new_customer := Customer{
@@ -41,5 +48,20 @@ fn main() {
 	}
 	sql db {
 		insert new_customer into Customer
+	}
+	// delete a row
+	sql db {
+		delete from Customer where nr_orders == 10 && name == 'Bob'
+	}
+	sql db {
+		update Customer set name = 'Queen Elizabeth II', age = 150, nr_orders = 42, country = 'Great Britain'
+		where id == 5
+	}
+	// DB is a selective import
+	sql db {
+		delete from ModDbStruct where id == 1
+	}
+	_ := sql db {
+		select from ModDbStruct
 	}
 }

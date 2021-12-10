@@ -1,60 +1,60 @@
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:3:16: error: precision specification only valid for float types 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:3:16: error: precision specification only valid for float types 
     1 | fn interpolate_str() string {
     2 |     a := 'hallo'
     3 |     x := '>${a:8.3s}<'
       |                   ^
     4 |     y := '${a:G}'
     5 |     z := '${a:d}'
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:4:12: error: illegal format specifier `G` for type `string` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:4:12: error: illegal format specifier `G` for type `string` 
     2 |     a := 'hallo'
     3 |     x := '>${a:8.3s}<'
     4 |     y := '${a:G}'
       |               ^
     5 |     z := '${a:d}'
     6 |     return x + y + z
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:5:12: error: illegal format specifier `d` for type `string` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:5:12: error: illegal format specifier `d` for type `string` 
     3 |     x := '>${a:8.3s}<'
     4 |     y := '${a:G}'
     5 |     z := '${a:d}'
       |               ^
     6 |     return x + y + z
     7 | }
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:11:15: error: illegal format specifier `s` for type `f64` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:11:15: error: illegal format specifier `s` for type `f64` 
     9 | fn interpolate_f64() string {
    10 |     b := 1367.57
    11 |     x := '>${b:20s}<'
       |                  ^
    12 |     y := '${b:d}'
    13 |     return x + y
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:12:12: error: illegal format specifier `d` for type `f64` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:12:12: error: illegal format specifier `d` for type `f64` 
    10 |     b := 1367.57
    11 |     x := '>${b:20s}<'
    12 |     y := '${b:d}'
       |               ^
    13 |     return x + y
    14 | }
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:19:14: error: illegal format specifier `d` for type `u32` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:19:14: error: illegal format specifier `d` for type `u32` 
    17 |     u := u32(15)
    18 |     s := -12
    19 |     x := '${u:13d}'
       |                 ^
    20 |     y := '${s:04u}'
    21 |     z := '${s:f}'
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:20:14: error: illegal format specifier `u` for type `int` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:20:14: error: illegal format specifier `u` for type `int` 
    18 |     s := -12
    19 |     x := '${u:13d}'
    20 |     y := '${s:04u}'
       |                 ^
    21 |     z := '${s:f}'
    22 |     q := '${u:v}'
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:21:12: error: illegal format specifier `f` for type `int` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:21:12: error: illegal format specifier `f` for type `int` 
    19 |     x := '${u:13d}'
    20 |     y := '${s:04u}'
    21 |     z := '${s:f}'
       |               ^
    22 |     q := '${u:v}'
    23 |     return x + y + z + q
-vlib/v/checker/tests/string_interpolation_wrong_fmt.v:22:12: error: unknown format specifier `v` 
+vlib/v/checker/tests/string_interpolation_wrong_fmt.vv:22:12: error: unknown format specifier `v` 
    20 |     y := '${s:04u}'
    21 |     z := '${s:f}'
    22 |     q := '${u:v}'

@@ -1,0 +1,7 @@
+fn foo<T>(b T) {
+    println(b)
+}
+
+fn main() {
+    foo<bool, int, bool, bool, int>(1)
+}

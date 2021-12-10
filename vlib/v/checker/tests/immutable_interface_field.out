@@ -1,0 +1,7 @@
+vlib/v/checker/tests/immutable_interface_field.vv:10:4: error: field `i1` of interface `&Bbb` is immutable
+    8 | 
+    9 | fn mutate_interface(mut b Bbb) {
+   10 |     b.i1 = 2
+      |       ~~
+   11 | }
+   12 |

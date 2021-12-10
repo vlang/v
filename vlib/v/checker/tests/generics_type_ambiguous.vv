@@ -1,0 +1,8 @@
+fn test<T, B> (a T, b T, c B, d B) {
+    println("$a $b $c $d")
+}
+
+
+fn main() {
+  test(2, 2, "2", 2)
+} 

@@ -14,7 +14,9 @@ fn test_fn_multiple_returns() {
 
 fn fn_mr_get_user() (string, int, []string, UserData) {
 	groups := ['admins', 'users']
-	data := UserData{test: 'Test Data'}
+	data := UserData{
+		test: 'Test Data'
+	}
 	return 'joe', 34, groups, data
 }
 
@@ -30,9 +32,7 @@ fn split_to_two(s string) ?(string, string) {
 }
 
 fn returnable_fail() string {
-	_,_ := split_to_two('bad') or {
-		return 'ok'
-	}
+	_, _ := split_to_two('bad') or { return 'ok' }
 	return 'nok'
 }
 
@@ -41,7 +41,7 @@ fn test_multiple_ret() {
 	assert returnable_fail() == 'ok'
 
 	// good case
-	res1_1, res1_2 := split_to_two("fish house") or {
+	res1_1, res1_2 := split_to_two('fish house') or {
 		assert false
 		return
 	}
@@ -49,9 +49,9 @@ fn test_multiple_ret() {
 	assert res1_2 == 'house'
 
 	// none case
-	wrapper1 := fn()(string, string){
-		res2_1, res2_2 := split_to_two("") or {
-			assert err == ''
+	wrapper1 := fn () (string, string) {
+		res2_1, res2_2 := split_to_two('') or {
+			assert err.msg == ''
 			return 'replaced', 'val'
 		}
 		return res2_1, res2_2
@@ -61,9 +61,9 @@ fn test_multiple_ret() {
 	assert res2_2 == 'val'
 
 	// error case
-	wrapper2 := fn()(string, string){
+	wrapper2 := fn () (string, string) {
 		res3_1, res3_2 := split_to_two('fishhouse') or {
-			assert err == 'error'
+			assert err.msg == 'error'
 			return 'replaced', 'val'
 		}
 		return res3_1, res3_2
@@ -71,4 +71,40 @@ fn test_multiple_ret() {
 	res3_1, res3_2 := wrapper2()
 	assert res3_1 == 'replaced'
 	assert res3_2 == 'val'
+}
+
+fn multi_values() (string, string) {
+	return if 1 > 0 { 'abc', 'def' } else { 'jkl', 'mno' }
+}
+
+fn test_multi_values() {
+	x, y := multi_values()
+	assert x == 'abc'
+	assert y == 'def'
+}
+
+fn match_expr(x bool) (int, int) {
+	return match x {
+		true { 1, 1 }
+		else { 0, 0 }
+	}
+}
+
+fn if_expr(x bool) (int, int) {
+	return if x { 3, 3 } else { 2, 2 }
+}
+
+fn test_multi_return_if_match_expr() {
+	a, b := match_expr(true)
+	c, d := match_expr(false)
+	x, y := if_expr(true)
+	z, w := if_expr(false)
+	assert a == 1
+	assert b == 1
+	assert c == 0
+	assert d == 0
+	assert x == 3
+	assert y == 3
+	assert z == 2
+	assert w == 2
 }

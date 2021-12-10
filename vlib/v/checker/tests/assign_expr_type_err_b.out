@@ -1,6 +1,7 @@
-vlib/v/checker/tests/assign_expr_type_err_b.v:3:9: error: operator %= not defined on right operand type `string`
+vlib/v/checker/tests/assign_expr_type_err_b.vv:3:9: error: operator %= not defined on right operand type `string`
     1 | fn main() {
     2 |     mut foo := 10
     3 |     foo %= 'hello'
       |            ~~~~~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

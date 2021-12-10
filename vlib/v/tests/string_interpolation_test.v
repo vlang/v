@@ -38,11 +38,11 @@ fn test_excape_dollar_in_string() {
 	assert !'(\\$i)'.contains('i') && '(\\$i)'.contains('42') && '(\\$i)'.contains('\\')
 	assert '(\\\$i)'.contains('i') && !'(\\\$i)'.contains('42') && '(\\$i)'.contains('\\')
 	assert !'(\\\\$i)'.contains('i') && '(\\\\$i)'.contains('42') && '(\\\\$i)'.contains('\\\\')
-	assert '(${i})' == '(42)'
+	assert '($i)' == '(42)'
 	assert '(\${i})'.contains('i') && !'(\${i})'.contains('42')
-	assert !'(\\${i})'.contains('i') && '(\\${i})'.contains('42') && '(\\${i})'.contains('\\')
-	assert '(\\\${i})'.contains('i') && !'(\\\${i})'.contains('42') && '(\\${i})'.contains('\\')
-	assert !'(\\\\${i})'.contains('i') && '(\\\\${i})'.contains('42') && '(\\\\${i})'.contains('\\\\')
+	assert !'(\\$i)'.contains('i') && '(\\$i)'.contains('42') && '(\\$i)'.contains('\\')
+	assert '(\\\${i})'.contains('i') && !'(\\\${i})'.contains('42') && '(\\$i)'.contains('\\')
+	assert !'(\\\\$i)'.contains('i') && '(\\\\$i)'.contains('42') && '(\\\\$i)'.contains('\\\\')
 	assert i == 42
 }
 
@@ -80,21 +80,26 @@ fn test_interpolation_string_prefix_expr() {
 	r := 1
 	c := 2
 	js := 1
-	assert '>${3+r}<' == '>4<'
+	assert '>${3 + r}<' == '>4<'
 	assert '${r == js} $js' == 'true 1'
-	assert '>${js+c} ${js+r==c}<' == '>3 true<'
+	assert '>${js + c} ${js + r == c}<' == '>3 true<'
 }
 
 fn test_inttypes_string_interpolation() {
-	c := i8(-103)
-	uc := byte(217)
-	uc2 := byte(13)
-	s := i16(-23456)
-	us := u16(54321)
-	i := -1622999040
-	ui := u32(3421958087)
+	c := i8(-103) // -0x67
+	uc := byte(217) // 0xD9
+	uc2 := byte(13) // 0x0D
+	s := i16(-23456) // -0x5BA0
+	us := u16(54321) // 0xD431
+	i := -1622999040 // -0x60BD 0000
+	ui := u32(3421958087) // 0xCBF6 EFC7
 	vp := voidptr(ui)
-	bp := byteptr(15541149836)
+	mut bp := &byte(0)
+	$if x64 {
+		bp = &byte(15541149836) // 0x3 9E53 208C
+	} $else {
+		bp = &byte(3541149836) // 0xD311 A88C
+	}
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)
 	assert '$s $us' == '-23456 54321'
@@ -103,16 +108,20 @@ fn test_inttypes_string_interpolation() {
 	assert '>${s:11}:${us:-13}<' == '>     -23456:54321        <'
 	assert '0x${ul:-19x}:${l:22d}' == '0xef2b7d4001165bd2   :  -7694555558525237396'
 	assert '${c:5}${uc:-7}x' == ' -103217    x'
-	assert '${c:x}:${uc:x}:${uc2:02X}' == '99:d9:0D'
-	assert '${s:X}:${us:x}:${u16(uc):04x}' == 'A460:d431:00d9'
-	assert '${i:x}:${ui:X}:${int(s):x}' == '9f430000:CBF6EFC7:ffffa460'
-	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
+	assert '${c:x}:${uc:x}:${uc2:02X}' == '-67:d9:0D'
+	assert '${s:X}:${us:x}:${u16(uc):04x}' == '-5BA0:d431:00d9'
+	assert '${i:x}:${ui:X}:${int(s):x}' == '-60bd0000:CBF6EFC7:-5ba0'
+	assert '${l:x}:${ul:X}' == '-6ac88d8352677894:EF2B7D4001165BD2'
 	// default pointer format is platform dependent, so try a few
 	eprintln("platform pointer format: '${vp:p}:$bp'")
-	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
-		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
-		'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
-		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+	$if x64 {
+		assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' || '${vp:p}:$bp' == 'CBF6EFC7:39E53208C'
+			|| '${vp:p}:$bp' == 'cbf6efc7:39e53208c'
+			|| '${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+	} $else {
+		assert '${vp:p}:$bp' == 'CBF6EFC7:D311A88C' || '${vp:p}:$bp' == 'cbf6efc7:d311a88c'
+			|| '${vp:p}:$bp' == '0xcbf6efc7:0xd311a88c'
+	}
 }
 
 fn test_utf8_string_interpolation() {
@@ -141,14 +150,13 @@ struct Sss {
 }
 
 fn (s Sss) str() string {
-	return '[${s.v1}, ${s.v2:.3f}]'
+	return '[$s.v1, ${s.v2:.3f}]'
 }
 
 fn test_string_interpolation_str_evaluation() {
 	mut x := Sss{17, 13.455893}
 	assert '$x' == '[17, 13.456]'
 }
-
 
 fn test_string_interpolation_with_negative_format_width_should_compile_and_run_without_segfaulting() {
 	// discovered during debugging VLS
@@ -179,6 +187,15 @@ fn test_method_interpolation() {
 			a: 2
 		}
 	}
-	assert '>${y.f().a}<' == '>2<'
 	assert '>$y.f().a<' == '>2<'
+	assert '>$y.f().a<' == '>2<'
+}
+
+fn f(i int) int {
+	return i
+}
+
+fn test_call() {
+	s := '${f(4)}'
+	assert s == '4'
 }

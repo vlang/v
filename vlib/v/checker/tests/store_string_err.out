@@ -1,0 +1,6 @@
+vlib/v/checker/tests/store_string_err.vv:5:26: error: wrong return type `IError` in the `or {}` block, expected `int`
+    3 | }
+    4 | 
+    5 | err := return_err() or { err }
+      |                          ~~~
+    6 | eprintln(err)

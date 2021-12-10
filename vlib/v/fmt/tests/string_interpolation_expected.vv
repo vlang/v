@@ -14,7 +14,7 @@ fn (c &Cc) f() int {
 	return c.a[0].xy
 }
 
-fn (c &Cc) g(k, l int) int {
+fn (c &Cc) g(k int, l int) int {
 	return c.a[k].xy + l
 }
 
@@ -27,6 +27,6 @@ fn main() {
 	println('$st.a.xy${ar.a[2].xy}$aa.xy$z')
 	println('${st.a.xy}ya ${ar.a[2].xy}X2 ${aa.xy}.b ${z}3')
 	println('${z:-5} ${z:+5.3} ${z:+09.3f} ${z:-7.2} ${z:+09} ${z:08.3f}')
-	println('$ar.f() ${ar.g(1,2)} ${ar.a}() ${z}(')
-	println('${z>12.3*z-3} ${@VEXE} ${4*5}')
+	println('$ar.f() ${ar.g(1, 2)} ${ar.a}() ${z}(')
+	println('${z > 12.3 * z - 3} ${@VEXE} ${4 * 5}')
 }

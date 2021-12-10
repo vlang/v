@@ -1,17 +1,17 @@
-vlib/v/checker/tests/unnecessary_parenthesis.v:2:2: error: unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.
+vlib/v/checker/tests/unnecessary_parenthesis.vv:2:2: error: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.
     1 | fn main() {
     2 |     if (1 == 1) {
       |     ~~~~~~~~~~~
     3 |         println('yeay')
     4 |     } else if (1 == 2) {
-vlib/v/checker/tests/unnecessary_parenthesis.v:4:4: error: unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.
+vlib/v/checker/tests/unnecessary_parenthesis.vv:4:4: error: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.
     2 |     if (1 == 1) {
     3 |         println('yeay')
     4 |     } else if (1 == 2) {
       |       ~~~~~~~~~~~~~~~~
     5 |         println("oh no :'(")
     6 |     } else if (1 == 3) {
-vlib/v/checker/tests/unnecessary_parenthesis.v:6:4: error: unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.
+vlib/v/checker/tests/unnecessary_parenthesis.vv:6:4: error: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.
     4 |     } else if (1 == 2) {
     5 |         println("oh no :'(")
     6 |     } else if (1 == 3) {

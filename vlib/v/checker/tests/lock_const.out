@@ -1,4 +1,4 @@
-vlib/v/checker/tests/lock_const.v:7:8: error: `a` is not a variable and cannot be locked 
+vlib/v/checker/tests/lock_const.vv:7:8: error: `a` must be declared as `shared` variable to be locked
     5 | fn main() {
     6 |     mut c := 0
     7 |     rlock a {

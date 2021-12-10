@@ -1,7 +1,8 @@
 Module {
-	name: 'V',
-	description: 'The V programming language.',
-	version: '0.1.28',
-	repo_url: 'https://github.com/vlang/v',
+	name: 'V'
+	description: 'The V programming language.'
+	version: '0.2.4'
+	license: 'MIT'
+	repo_url: 'https://github.com/vlang/v'
 	dependencies: []
 }

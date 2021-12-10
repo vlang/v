@@ -12,6 +12,7 @@ for the current state of V***
 	* [Weaknesses](#weaknesses)
 	* [Compatibility](#compatibility)
 	* [Automatic Lock](#automatic-lock)
+	* [Channels](#channels)
 
 ## Concurrency
 
@@ -21,7 +22,7 @@ Objects that are supposed to be used to exchange data between
 coroutines have to be declared with special care. Exactly one of the following
 4 kinds of declaration has to be chosen:
 
-```v
+```v ignore
 a := ...
 mut b := ...
 shared c := ...
@@ -40,14 +41,14 @@ atomic d := ...
   *concurrently*.<sup>2</sup> In order to avoid data races it has to
   be locked before access can occur and unlocked to allow access to
   other coroutines. This is done by one the following block structures:
-  ```v
+  ```v ignore
   lock c {
       // read, modify, write c
       ...
   }
   ```
   
-  ```v
+  ```v ignore
   rlock c {
       // read c
       ...
@@ -73,37 +74,37 @@ different capabilities:
 | structured data types     |     +     |   +   |     +    |          |
 
 ### Strengths
-#### default
+**default**
 - very fast
 - unlimited access from different coroutines
 - easy to handle
 
-#### `mut`
+**`mut`**
 - very fast
 - easy to handle
 
-#### `shared`
+**`shared`**
 - concurrent access from different coroutines
 - data type may be complex structure
 - sophisticated access possible (several statements within one `lock`
   block)
 
-#### `atomic`
+**`atomic`**
 - concurrent access from different coroutines
 - reasonably fast
 
 ### Weaknesses
-#### default
+**default**
 - read only
 
-#### `mut`
+**`mut`**
 - access only from one coroutine at a time
 
-#### `shared`
+**`shared`**
 - lock/unlock are slow
 - moderately difficult to handle (needs `lock` block)
 
-#### `atomic`
+**`atomic`**
 - limited to single (max. 64 bit) integers (and pointers)
 - only a small set of predefined operations possible
 - very difficult to handle correctly
@@ -121,7 +122,7 @@ Outside of `lock`/`rlock` blocks function arguments must in general
 match - with the familiar exception that objects declared `mut` can be
 used to call functions expecting immutable arguments:
 
-```v
+```v ignore
 fn f(x St) {...}
 fn g(mut x St) {...}
 fn h(shared x St) {...}
@@ -130,12 +131,12 @@ fn i(atomic x u64) {...}
 a := St{...}
 f(a)
 
-mut b := &St{...} // reference since transferred to coroutine
+mut b := St{...}
 f(b)
 go g(mut b)
 // `b` should not be accessed here any more
 
-shared c := &St{...}
+shared c := St{...}
 h(shared c)
 
 atomic d &u64
@@ -144,8 +145,8 @@ i(atomic d)
 
 Inside a `lock c {...}` block `c` behaves like a `mut`,
 inside an `rlock c {...}` block like an immutable:
-```v
-shared c := &St{...}
+```v ignore
+shared c := St{...}
 lock c {
     g(mut c)
     f(c)
@@ -164,15 +165,15 @@ object is accessed outside of any corresponding `lock`/`rlock`
 block. However in simple and obvious cases the necessary lock/unlock
 can be generated automatically for `array`/`map` operations:
 
-```v
-shared a []int{...}
+```v ignore
+shared a := []int{cap: 5}
 go h2(shared a)
 a << 3
 // keep in mind that `h2()` could change `a` between these statements
 a << 4
 x := a[1] // not necessarily `4`
 
-shared b map[string]int
+shared b := map[string]int{}
 go h3(shared b)
 b['apple'] = 3
 c['plume'] = 7
@@ -190,3 +191,5 @@ are sometimes surprising. Each statement should be seen as a single
 transaction that is unrelated to the previous or following
 statement. Therefore - but also for performance reasons - it's often
 better to group consecutive coherent statements in an explicit `lock` block.
+
+### Channels

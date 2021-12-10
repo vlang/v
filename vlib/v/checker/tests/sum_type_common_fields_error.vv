@@ -1,0 +1,54 @@
+type Main = Sub1 | Sub2 | Sub3 | Sub4
+
+// NB: all subtypes have a common name field, of the same `string` type
+// but they also have a field `val` that is of a different type in the
+// different subtypes => accessing `m[0].name` is fine, but *not* `m[0].val`
+struct Sub1 {
+mut:
+	val  int
+	name string
+}
+
+struct Sub2 {
+mut:
+	val  f32
+	name string
+}
+
+struct Sub3 {
+mut:
+	val  i64
+	name string
+}
+
+struct Sub4 {
+mut:
+	val  string
+	name string
+}
+
+fn main() {
+	mut m := []Main{}
+	m << Sub1{
+		val: 123
+		name: 'integer'
+	}
+	m << Sub2{
+		val: 3.14
+		name: 'float'
+	}
+	m << Sub3{
+		val: 9_876_543_210
+		name: '64bit integer'
+	}
+	m << Sub4{
+		val: 'abcd'
+		name: 'string'
+	}
+	println(m)
+	assert m[0].name == 'integer'
+	assert m[1].name == 'float'
+	assert m[2].name == '64bit integer'
+	assert m[3].name == 'string'
+	assert m[0].val == 123
+}

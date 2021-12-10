@@ -1,0 +1,7 @@
+abc 0.0.1
+-----------------------------------------------
+Usage: abc [options] [ARGS]
+
+Options:
+  -h, --help                display this help and exit
+  --version                 output version information and exit

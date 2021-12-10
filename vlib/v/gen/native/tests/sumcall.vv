@@ -1,0 +1,18 @@
+fn sumcall(a int, b int) int {
+	r := a + b
+	return r
+}
+
+fn sumcall2(a int, b int) int {
+	return a + b
+}
+
+fn main() {
+	r := sumcall (1,2)
+	assert r == 3
+
+	s := sumcall2 (1,2)
+	assert s == 3
+
+	exit(0)
+}

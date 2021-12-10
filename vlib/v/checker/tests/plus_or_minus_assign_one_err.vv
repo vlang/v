@@ -1,5 +1,0 @@
-fn main() {
-	mut foo := 10
-	foo += 1
-	foo -= 1
-}

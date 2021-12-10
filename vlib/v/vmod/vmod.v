@@ -23,17 +23,17 @@ pub struct ModFileAndFolder {
 pub:
 	// vmod_file contains the full path of the found 'v.mod' file, or ''
 	// if no 'v.mod' file was found in file_path_dir, or in its parent folders.
-	vmod_file   string
+	vmod_file string
 	// vmod_folder contains the file_path_dir, if there is no 'v.mod' file in
 	// *any* of the parent folders, otherwise it is the first parent folder,
 	// where a v.mod file was found.
 	vmod_folder string
 }
 
-[ref_only]
+[heap]
 pub struct ModFileCacher {
 mut:
-	cache        map[string]ModFileAndFolder
+	cache map[string]ModFileAndFolder
 	// folder_files caches os.ls(key)
 	folder_files map[string][]string
 }
@@ -42,7 +42,7 @@ pub fn new_mod_file_cacher() &ModFileCacher {
 	return &ModFileCacher{}
 }
 
-pub fn (mcache &ModFileCacher) dump() {
+pub fn (mcache &ModFileCacher) debug() {
 	$if debug {
 		eprintln('ModFileCacher DUMP:')
 		eprintln('	 ModFileCacher.cache:')
@@ -109,7 +109,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 		if mcache.check_for_stop(cfolder, files) {
 			break
 		}
-		cfolder = os.base_dir(cfolder)
+		cfolder = os.dir(cfolder)
 		folders_so_far << cfolder
 		levels++
 	}
@@ -130,10 +130,7 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	// No need to check these folders anymore,
 	// because their parents do not contain v.mod files
 	for f in folders_so_far {
-		mcache.add(f, ModFileAndFolder{
-			vmod_file: ''
-			vmod_folder: f
-		})
+		mcache.add(f, vmod_file: '', vmod_folder: f)
 	}
 }
 
@@ -142,7 +139,7 @@ const (
 )
 
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in mod_file_stop_paths {
+	for i in vmod.mod_file_stop_paths {
 		if i in files {
 			return true
 		}
@@ -157,7 +154,7 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	mut files := []string{}
 	if os.exists(cfolder) && os.is_dir(cfolder) {
 		if listing := os.ls(cfolder) {
-			files = listing
+			files = listing.clone()
 		}
 	}
 	mcache.folder_files[cfolder] = files
@@ -170,5 +167,5 @@ const (
 )
 
 pub fn get_cache() &ModFileCacher {
-	return private_file_cacher
+	return vmod.private_file_cacher
 }

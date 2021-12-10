@@ -1,0 +1,5 @@
+vlib/v/checker/tests/import_mod_sub_as_sub_err.vv:1:25: error: import alias `encoding.utf8 as utf8` is redundant
+    1 | import encoding.utf8 as utf8
+      |                         ~~~~
+    2 |
+    3 | fn main() {

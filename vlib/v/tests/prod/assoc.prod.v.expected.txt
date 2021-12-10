@@ -1,3 +1,4 @@
-MyStruct {
+MyStruct{
     s: '6'
 }
+prod mode is on

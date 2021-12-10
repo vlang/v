@@ -2,7 +2,6 @@ module assets
 
 // this module provides an AssetManager for combining
 // and caching javascript & css.
-
 import os
 import time
 import crypto.md5
@@ -13,11 +12,11 @@ const (
 
 struct AssetManager {
 mut:
-	css       []Asset
-	js        []Asset
+	css []Asset
+	js  []Asset
 pub mut:
 	// when true assets will be minified
-	minify    bool
+	minify bool
 	// the directory to store the cached/combined files
 	cache_dir string
 }
@@ -78,16 +77,12 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		if to_file {
 			return out_file
 		}
-		cached := os.read_file(out_file) or {
-			return ''
-		}
+		cached := os.read_file(out_file) or { return '' }
 		return cached
 	}
 	// rebuild
 	for asset in am.get_assets(asset_type) {
-		data := os.read_file(asset.file_path) or {
-			return ''
-		}
+		data := os.read_file(asset.file_path) or { return '' }
 		out += data
 	}
 	if am.minify {
@@ -103,17 +98,15 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 	if !os.is_dir(am.cache_dir) {
 		os.mkdir(am.cache_dir) or { panic(err) }
 	}
-	mut file := os.create(out_file) or {
-		panic(err)
-	}
-	file.write(out)
+	mut file := os.create(out_file) or { panic(err) }
+	file.write(out.bytes()) or { panic(err) }
 	file.close()
 	return out_file
 }
 
 fn (am AssetManager) get_cache_key(asset_type string) string {
 	mut files_salt := ''
-	mut latest_modified := u64(0)
+	mut latest_modified := i64(0)
 	for asset in am.get_assets(asset_type) {
 		files_salt += asset.file_path
 		if asset.last_modified.unix > latest_modified {
@@ -150,26 +143,28 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 
 // dont return option until size limit is removed
 // fn (mut am AssetManager) add(asset_type, file string) ?bool {
-fn (mut am AssetManager) add(asset_type, file string) bool {
+fn (mut am AssetManager) add(asset_type string, file string) bool {
 	if !os.exists(file) {
 		// return error('vweb.assets: cannot add asset $file, it does not exist')
 		return false
 	}
 	asset := Asset{
 		file_path: file
-		last_modified: time.Time{unix: u64(os.file_last_mod_unix(file))}
+		last_modified: time.Time{
+			unix: os.file_last_mod_unix(file)
+		}
 	}
 	if asset_type == 'css' {
 		am.css << asset
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$unknown_asset_type_error ($asset_type).')
+		panic('$assets.unknown_asset_type_error ($asset_type).')
 	}
 	return true
 }
 
-fn (am AssetManager) exists(asset_type, file string) bool {
+fn (am AssetManager) exists(asset_type string, file string) bool {
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.file_path == file {
@@ -181,13 +176,9 @@ fn (am AssetManager) exists(asset_type, file string) bool {
 
 fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
-		panic('$unknown_asset_type_error ($asset_type).')
+		panic('$assets.unknown_asset_type_error ($asset_type).')
 	}
-	assets := if asset_type == 'css' {
-		am.css
-	} else {
-		am.js
-	}
+	assets := if asset_type == 'css' { am.css } else { am.js }
 	return assets
 }
 

@@ -1,0 +1,41 @@
+vlib/v/checker/tests/fixed_array_conv.vv:3:3: error: mismatched types `voidptr` and `[2]int`
+    1 | arr := [2,3]!
+    2 | mut p := voidptr(0)
+    3 | p = arr
+      |   ^
+    4 | mut ip := &int(0)
+    5 | ip = arr
+vlib/v/checker/tests/fixed_array_conv.vv:5:4: error: mismatched types `&int` and `[2]int`
+    3 | p = arr
+    4 | mut ip := &int(0)
+    5 | ip = arr
+      |    ^
+    6 | _ = &int(arr)
+    7 | _ = p
+vlib/v/checker/tests/fixed_array_conv.vv:6:5: error: cannot cast a fixed array (use e.g. `&arr[0]` instead)
+    4 | mut ip := &int(0)
+    5 | ip = arr
+    6 | _ = &int(arr)
+      |     ~~~~~~~~~
+    7 | _ = p
+    8 | _ = ip
+vlib/v/checker/tests/fixed_array_conv.vv:11:13: error: cannot use `[2]int` as `voidptr` in argument 1 to `memdup`
+    9 | 
+   10 | unsafe {
+   11 |     _ = memdup(arr, 1)
+      |                ~~~
+   12 |     _ = tos(arr, 1)
+   13 |     fn (p &int){}(arr)
+vlib/v/checker/tests/fixed_array_conv.vv:12:10: error: cannot use `[2]int` as `&byte` in argument 1 to `tos`
+   10 | unsafe {
+   11 |     _ = memdup(arr, 1)
+   12 |     _ = tos(arr, 1)
+      |             ~~~
+   13 |     fn (p &int){}(arr)
+   14 | }
+vlib/v/checker/tests/fixed_array_conv.vv:13:16: error: cannot use `[2]int` as `&int` in argument 1 to `anon`
+   11 |     _ = memdup(arr, 1)
+   12 |     _ = tos(arr, 1)
+   13 |     fn (p &int){}(arr)
+      |                   ~~~
+   14 | }

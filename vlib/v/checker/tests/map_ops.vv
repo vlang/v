@@ -1,0 +1,6 @@
+fn test_map() {
+	mut m := map[int]string
+	_ = m[`!`]
+	m['hi'] = 8
+	m[&m] += 4
+}

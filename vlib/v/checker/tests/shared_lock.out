@@ -1,0 +1,21 @@
+vlib/v/checker/tests/shared_lock.vv:19:5: error: method with `shared` receiver cannot be called inside `lock`/`rlock` block
+   17 |     }
+   18 |     lock x {
+   19 |         x.r(x)
+      |           ~~~~
+   20 |         x.m(x)
+   21 |         f(0, x)
+vlib/v/checker/tests/shared_lock.vv:20:7: error: method with `shared` arguments cannot be called inside `lock`/`rlock` block
+   18 |     lock x {
+   19 |         x.r(x)
+   20 |         x.m(x)
+      |             ^
+   21 |         f(0, x)
+   22 |     }
+vlib/v/checker/tests/shared_lock.vv:21:8: error: function with `shared` arguments cannot be called inside `lock`/`rlock` block
+   19 |         x.r(x)
+   20 |         x.m(x)
+   21 |         f(0, x)
+      |              ^
+   22 |     }
+   23 | }

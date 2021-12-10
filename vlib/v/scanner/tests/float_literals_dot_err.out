@@ -1,0 +1,6 @@
+vlib/v/scanner/tests/float_literals_dot_err.vv:2:9: warning: float literals should have a digit after the decimal point, e.g. `1.0`
+    1 | fn main() {
+    2 |     a := 1.
+      |            ^
+    3 |     println(a)
+    4 | }

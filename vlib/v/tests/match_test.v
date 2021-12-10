@@ -19,7 +19,7 @@ fn test_match_integers() {
 			println('three')
 			b = 3
 		}
-		4 {
+		int(4) {
 			println('four')
 		}
 		else {
@@ -38,6 +38,7 @@ fn test_match_integers() {
 		else { 5 }
 	} == 5
 	assert match 1 {
+		2 { 0 }
 		else { 5 }
 	} == 5
 	a = 0
@@ -69,6 +70,7 @@ fn test_match_integers() {
 	assert a == 6
 	a = 0
 	match 1 {
+		0 {}
 		else { a = -2 }
 	}
 	assert a == -2
@@ -119,6 +121,28 @@ fn test_match_enums() {
 	assert b == .blue
 }
 
+struct Counter {
+mut:
+	val int
+}
+
+fn (mut c Counter) next() int {
+	c.val++
+	return c.val
+}
+
+fn test_method_call() {
+	mut c := Counter{
+		val: 1
+	}
+	assert match c.next() {
+		1 { false }
+		2 { true }
+		3 { false }
+		else { true }
+	}
+}
+
 type Sum = A1 | B1
 
 struct A1 {
@@ -131,7 +155,7 @@ struct B1 {
 
 fn f(s Sum) string {
 	match s {
-		A1 { return typeof(s) }
+		A1 { return typeof(s).name }
 		B1 { return '' }
 	}
 	return ''
@@ -142,4 +166,138 @@ fn test_sum_type_name() {
 		pos: 22
 	}
 	assert f(a) == 'A1'
+}
+
+fn f_else(s Sum) string {
+	match s {
+		A1 { return typeof(s).name }
+		else { return '' }
+	}
+}
+
+fn test_sum_type_else() {
+	a := A1{
+		pos: 22
+	}
+	assert f_else(a) == 'A1'
+}
+
+struct Alfa {
+	char rune = `a`
+}
+
+fn (a Alfa) letter() rune {
+	return a.char
+}
+
+struct Bravo {
+	// A field so that Alfa and Bravo structures aren't the same
+	dummy_field int
+pub mut:
+	// NB: the `char` field is not `pub` or `mut` in all sumtype variants, but using it in aggregates should still work
+	char rune = `b`
+}
+
+fn (b Bravo) letter() rune {
+	return b.char
+}
+
+struct Charlie {
+	char rune = `c`
+}
+
+type NATOAlphabet = Alfa | Bravo | Charlie
+
+fn test_match_sumtype_multiple_types() {
+	a := Alfa{}
+	l := NATOAlphabet(a)
+	match l {
+		Alfa, Bravo {
+			assert l.char == `a`
+			// TODO make methods work
+			// assert l.letter() == `a`
+		}
+		Charlie {
+			assert false
+		}
+	}
+	// test one branch
+	match l {
+		Alfa, Bravo, Charlie {
+			assert l.char == `a`
+		}
+	}
+}
+
+fn test_sub_expression() {
+	b := false && match 1 {
+		0 { true }
+		else { true }
+	}
+	assert !b
+	c := true || match 1 {
+		0 { false }
+		else { false }
+	}
+	assert c
+}
+
+const (
+	one = 'one'
+)
+
+fn test_match_constant_string() {
+	match one {
+		one {
+			assert true
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+type WithArray = []WithArray | int
+
+fn test_sumtype_with_array() {
+	fa := [WithArray(0)]
+	f := WithArray(fa)
+	match f {
+		[]WithArray {
+			assert true
+		}
+		int {
+			assert false
+		}
+	}
+	match f {
+		int {
+			assert false
+		}
+		[]WithArray {
+			assert true
+		}
+	}
+}
+
+fn test_match_expression_add() {
+	a := match true {
+		true { 1 }
+		false { 2 }
+	} + 3
+	assert a == 4
+}
+
+type LeType = int | string
+
+fn test_noreturn() {
+	t := LeType(3)
+	_ := match t {
+		int {
+			'test'
+		}
+		string {
+			exit(0)
+		}
+	}
 }

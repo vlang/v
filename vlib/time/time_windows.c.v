@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -15,29 +15,35 @@ struct C.tm {
 	tm_sec  int
 }
 
-struct C._FILETIME
-
-struct SystemTime {
-  year 			u16
-  month 		u16
-  day_of_week 	u16
-  day  			u16
-  hour 			u16
-  minute 		u16
-  second 		u16
-  millisecond 	u16
+struct C._FILETIME {
+	dwLowDateTime  u32
+	dwHighDateTime u32
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
-fn C.FileTimeToSystemTime()
-fn C.SystemTimeToTzSpecificLocalTime()
-fn C.localtime_s(t &C.time_t, tm &C.tm )
+struct SystemTime {
+	year        u16
+	month       u16
+	day_of_week u16
+	day         u16
+	hour        u16
+	minute      u16
+	second      u16
+	millisecond u16
+}
+
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
+
+fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
+
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime, lpLocalTime &SystemTime)
+
+fn C.localtime_s(t &C.time_t, tm &C.tm)
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time 		 	= init_win_time_start()
-	freq_time  		 	= init_win_time_freq()
-	start_local_time 	= local_as_unix_time()
+	start_time       = init_win_time_start()
+	freq_time        = init_win_time_freq()
+	start_local_time = local_as_unix_time()
 )
 
 // in most systems, these are __quad_t, which is an i64
@@ -46,15 +52,12 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-
-fn C._mkgmtime(&C.tm) time_t
-
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 fn C.QueryPerformanceFrequency(&u64) C.BOOL
 
-fn make_unix_time(t C.tm) int {
-	return int(C._mkgmtime(&t))
+fn make_unix_time(t C.tm) i64 {
+	return portable_timegm(&t)
 }
 
 fn init_win_time_freq() u64 {
@@ -69,10 +72,11 @@ fn init_win_time_start() u64 {
 	return s
 }
 
+// sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return (tm - start_time) * 1_000_000_000 / freq_time
+	return (tm - time.start_time) * 1000000000 / time.freq_time
 }
 
 // NB: vpc_now is used by `v -profile` .
@@ -85,14 +89,14 @@ fn vpc_now() u64 {
 }
 
 // local_as_unix_time returns the current local time as unix time
-fn local_as_unix_time() int {
+fn local_as_unix_time() i64 {
 	t := C.time(0)
 	tm := C.localtime(&t)
-
 	return make_unix_time(tm)
 }
 
-fn to_local_time(t Time) Time {
+// local - return the time `t`, converted to the currently active local timezone
+pub fn (t Time) local() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
 		month: u16(t.month)
@@ -103,17 +107,15 @@ fn to_local_time(t Time) Time {
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
-
-	t_local := Time {
-			year: st_local.year
-			month: st_local.month
-			day: st_local.day
-			hour: st_local.hour
-			minute: st_local.minute
-			second: st_local.second
-			// These are the same
-			microsecond: t.microsecond
-			unix: t.unix
+	t_local := Time{
+		year: st_local.year
+		month: st_local.month
+		day: st_local.day
+		hour: st_local.hour
+		minute: st_local.minute
+		second: st_local.second // These are the same
+		microsecond: st_local.millisecond * 1000
+		unix: st_local.unix_time()
 	}
 	return t_local
 }
@@ -121,60 +123,49 @@ fn to_local_time(t Time) Time {
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precice methods can be implemented in the future
-[inline]
 fn win_now() Time {
-
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
-
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
-
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
-
-	t := Time {
+	t := Time{
 		year: st_local.year
 		month: st_local.month
 		day: st_local.day
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second
-		microsecond: st_local.millisecond*1000
-		unix: u64(st_local.unix_time())
+		microsecond: st_local.millisecond * 1000
+		unix: st_local.unix_time()
 	}
-
 	return t
 }
 
 // win_utc calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
 // other more precice methods can be implemented in the future
-[inline]
 fn win_utc() Time {
-
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
-
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
-
-	t := Time {
+	t := Time{
 		year: st_utc.year
 		month: st_utc.month
 		day: st_utc.day
 		hour: st_utc.hour
 		minute: st_utc.minute
 		second: st_utc.second
-		microsecond: st_utc.millisecond*1000
-		unix: u64(st_utc.unix_time())
+		microsecond: st_utc.millisecond * 1000
+		unix: st_utc.unix_time()
 	}
-
 	return t
 }
 
 // unix_time returns Unix time.
-pub fn (st SystemTime) unix_time() int {
+pub fn (st SystemTime) unix_time() i64 {
 	tt := C.tm{
 		tm_sec: st.second
 		tm_min: st.minute
@@ -201,6 +192,7 @@ pub fn solaris_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
 pub fn darwin_utc() Time {
 	return Time{}
 }
@@ -215,9 +207,25 @@ pub fn solaris_utc() Time {
 	return Time{}
 }
 
-
 // dummy to compile with all compilers
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// some Windows system functions (e.g. `C.WaitForSingleObject()`) accept an `u32`
+// value as *timeout in milliseconds* with the special value `u32(-1)` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() u32 {
+	if d >= u32(-1) * millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
+		return u32(-1)
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return u32(d / millisecond)
+	}
 }

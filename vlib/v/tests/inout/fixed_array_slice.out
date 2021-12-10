@@ -1,0 +1,5 @@
+================ V panic ================
+   module: builtin
+ function: slice()
+  message: array.slice: slice bounds out of range (3 >= 2)
+     file: vlib/builtin/array.v

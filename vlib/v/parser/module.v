@@ -1,7 +1,9 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
+
+import v.ast
 
 // return true if file being parsed imports `mod`
 pub fn (p &Parser) known_import(mod string) bool {
@@ -16,7 +18,7 @@ fn (p &Parser) prepend_mod(name string) string {
 	if p.builtin_mod {
 		return name
 	}
-	return '${p.mod}.$name'
+	return p.mod + '.' + name
 }
 
 fn (p &Parser) is_used_import(alias string) bool {
@@ -27,6 +29,23 @@ fn (mut p Parser) register_used_import(alias string) {
 	if !p.is_used_import(alias) {
 		p.used_imports << alias
 	}
+}
+
+fn (mut p Parser) register_auto_import(alias string) {
+	if alias !in p.imports {
+		p.imports[alias] = alias
+		p.table.imports << alias
+		node := ast.Import{
+			pos: p.tok.position()
+			mod: alias
+			alias: alias
+		}
+		p.ast_imports << node
+	}
+	if alias !in p.auto_imports {
+		p.auto_imports << alias
+	}
+	p.register_used_import(alias)
 }
 
 fn (mut p Parser) check_unused_imports() {
@@ -41,7 +60,7 @@ fn (mut p Parser) check_unused_imports() {
 		mod := import_m.mod
 		if !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.pos)
+			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.mod_pos)
 		}
 	}
 }

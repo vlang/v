@@ -1,10 +1,38 @@
 fn test_goto() {
 	mut i := 0
-	a: b := 1
+	a:
+	b := 1
 	_ = b
 	i++
 	if i < 3 {
-		goto a
+		unsafe {
+			goto a
+		}
 	}
 	assert i == 3
+}
+
+pub fn test_goto_after_return() {
+	a, b, c, d := 4, 5, 6, 7
+	for {
+		for {
+			for {
+				if a == 4 {
+					if b == 5 {
+						if c == 6 {
+							if d == 7 {
+								unsafe {
+									goto finally_ok
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	assert false
+	return
+	finally_ok:
+	assert true
 }

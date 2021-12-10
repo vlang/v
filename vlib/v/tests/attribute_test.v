@@ -10,6 +10,12 @@ pub struct PubStructAttrTest {
 	bar int
 }
 
+struct StructFieldAttrTest {
+	foo string [attr: bar; attr0; attr1: 'foo']
+	bar int    [attr0: 123; attr1: true; attr2: false]
+	baz bool   [prefix.attr0] = false
+}
+
 [testing]
 enum EnumAttrTest {
 	one
@@ -22,9 +28,7 @@ pub enum PubEnumAttrTest {
 	two
 }
 
-
-[attrone]
-[attrtwo]
+[attrone; attrtwo]
 pub enum EnumMultiAttrTest {
 	one
 	two
@@ -40,8 +44,7 @@ pub fn test_pub_fn_attribute() {
 	assert true
 }
 
-[attrone]
-[attrtwo]
+[attrone; attrtwo]
 fn test_fn_multi_attribute() {
 	assert true
 }

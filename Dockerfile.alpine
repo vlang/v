@@ -1,4 +1,4 @@
-FROM alpine:3.11
+FROM alpine:3.12
 
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
@@ -6,15 +6,29 @@ WORKDIR /opt/vlang
 
 ENV VVV  /opt/vlang
 ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV VFLAGS -cc gcc
 
 RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
 
+ARG USE_LOCAL
+
 RUN apk --no-cache add \
-  git make upx gcc \
+  git make upx gcc bash \
   musl-dev \
   openssl-dev sqlite-dev \
   libx11-dev glfw-dev freetype-dev
 
 ## RUN apk --no-cache add --virtual sdl2deps sdl2-dev sdl2_ttf-dev sdl2_mixer-dev sdl2_image-dev
+COPY . /vlang-local
 
-RUN git clone https://github.com/vlang/v /opt/vlang && make && v -version
+RUN if [[ -z "${USE_LOCAL}" ]] ; then \
+      git clone https://github.com/vlang/v/ /opt/vlang && \
+      rm -rf /vlang-local ; \
+    else \
+      mv /vlang-local/* . && \
+      rm -rf /vlang-local ; \
+    fi
+
+RUN make && v -version
+
+CMD ["v"]

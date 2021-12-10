@@ -1,0 +1,6 @@
+vlib/v/checker/tests/enum_cast.vv:6:13: error: 12 does not represents a value of enum Color
+    4 |     println(Color(0))
+    5 |     println(Color(10))
+    6 |     println(Color(12))
+      |             ~~~~~~~~~
+    7 | }

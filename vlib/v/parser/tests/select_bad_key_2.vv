@@ -1,0 +1,13 @@
+fn f3_bad(ch1 chan int) {
+	a := 3.75
+	select {
+		b := <-ch1 {
+			println(b)
+		}
+		a + 7 {
+			println("shouldn't get here")
+		}
+	}
+}
+
+fn main() {}

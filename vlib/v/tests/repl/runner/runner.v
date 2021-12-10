@@ -1,7 +1,7 @@
 module runner
 
 import os
-import v.util
+import v.util.diff
 
 pub struct RunnerOptions {
 pub:
@@ -34,61 +34,59 @@ pub fn full_path_to_v(dirs_in int) string {
 	return vexec
 }
 
-fn diff_files(file_result, file_expected string) string {
-	diffcmd := util.find_working_diff_command() or {
-		return err
-	}
-	return util.color_compare_files(diffcmd, file_result, file_expected)
+fn diff_files(file_result string, file_expected string) string {
+	diffcmd := diff.find_working_diff_command() or { return err.msg }
+	return diff.color_compare_files(diffcmd, file_result, file_expected)
 }
 
-pub fn run_repl_file(wd, vexec, file string) ?string {
+pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	vexec_folder := os.dir(vexec) + os.path_separator
-	fcontent := os.read_file(file) or {
-		return error('Could not read file $file')
-	}
+	fcontent := os.read_file(file) or { return error('Could not read repl file $file') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n').trim_right('\n\r')
 	fname := os.file_name(file)
 	input_temporary_filename := os.real_path(os.join_path(wd, 'input_temporary_filename.txt'))
-	os.write_file(input_temporary_filename, input)
-	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent)
+	os.write_file(input_temporary_filename, input) or { panic(err) }
+	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
-	r := os.exec(rcmd) or {
-		os.rm(input_temporary_filename)
+	r := os.execute(rcmd)
+	if r.exit_code < 0 {
+		os.rm(input_temporary_filename) ?
 		return error('Could not execute: $rcmd')
 	}
-	os.rm(input_temporary_filename)
+	os.rm(input_temporary_filename) ?
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
-		'').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd + os.path_separator, '').replace(vexec_folder,
-		'').replace('\\', '/').trim_right('\n\r')
+		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
+		'/').trim_right('\n\r')
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'
-		os.write_file(file_result, result)
-		os.write_file(file_expected, output)
-		diff := diff_files(file_result, file_expected)
+		os.write_file(file_result, result) or { panic(err) }
+		os.write_file(file_expected, output) or { panic(err) }
+		diff := diff_files(file_expected, file_result)
 		return error('Difference found in REPL file: $file
-====> Got      :
-|$result|
 ====> Expected :
 |$output|
+====> Got      :
+|$result|
 ====> Diff     :
 $diff
 		')
 	} else {
-		return 'Repl file $file is OK'
+		return file.replace('./', '')
 	}
 }
 
-pub fn run_prod_file(wd, vexec, file string) ?string {
+pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
-		return error('Could not read file $file')
+		return error('Could not read expected prod file $file_expected')
 	}
 	expected_content := f_expected_content.replace('\r', '')
 	cmd := '"$vexec" -prod run "$file"'
-	r := os.exec(cmd) or {
+	r := os.execute(cmd)
+	if r.exit_code < 0 {
 		return error('Could not execute: $cmd')
 	}
 	if r.exit_code != 0 {
@@ -97,7 +95,7 @@ pub fn run_prod_file(wd, vexec, file string) ?string {
 	result := r.output.replace('\r', '')
 	if result != expected_content {
 		file_result := '${file}.result.txt'
-		os.write_file(file_result, result)
+		os.write_file(file_result, result) or { panic(err) }
 		diff := diff_files(file_result, file_expected)
 		return error('Difference found in test: $file
 ====> Got      :
@@ -119,7 +117,7 @@ pub fn new_options() RunnerOptions {
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
-		os.chdir(os.dir(vexec))
+		os.chdir(os.dir(vexec)) or {}
 		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}

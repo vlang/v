@@ -1,6 +1,0 @@
-vlib/v/checker/tests/div_op_wrong_right_type_err_c.v:3:18: error: mismatched types `any_int` and `map_string_int`
-    1 | fn main() {
-    2 |     a := map[string]int
-    3 |     println(10 / a)
-      |                  ^
-    4 | }

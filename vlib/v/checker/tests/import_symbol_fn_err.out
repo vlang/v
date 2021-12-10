@@ -1,9 +1,9 @@
-vlib/v/checker/tests/import_symbol_fn_err.v:1:17: error: module `crypto` has no public fn named `userper()`
+vlib/v/checker/tests/import_symbol_fn_err.vv:1:17: error: module `crypto` has no constant or function `userper`
     1 | import crypto { userper }
       |                 ~~~~~~~
     2 | fn main() {
     3 |   usurper()
-vlib/v/checker/tests/import_symbol_fn_err.v:3:3: error: unknown function: usurper
+vlib/v/checker/tests/import_symbol_fn_err.vv:3:3: error: unknown function: usurper
     1 | import crypto { userper }
     2 | fn main() {
     3 |   usurper()

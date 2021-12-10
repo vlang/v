@@ -1,4 +1,4 @@
-vlib/v/checker/tests/str_method_0_arguments.v:5:1: error: .str() methods should have 0 arguments 
+vlib/v/checker/tests/str_method_0_arguments.vv:5:1: error: .str() methods should have 0 arguments 
     3 | }
     4 | 
     5 | fn (z Zzz) str(x int) string {

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/optional_interface_mismatch.vv:11:9: error: mismatched types `?MObject` and `string`
+    9 |
+   10 | fn give_string(line string) ?MObject {
+   11 |     return if true { 'string' } else { 'string' }
+      |            ~~
+   12 | }

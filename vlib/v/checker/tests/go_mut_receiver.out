@@ -1,4 +1,4 @@
-vlib/v/checker/tests/go_mut_receiver.v:14:5: error: method in `go` statement cannot have non-reference mutable receiver 
+vlib/v/checker/tests/go_mut_receiver.vv:14:5: error: method in `go` statement cannot have non-reference mutable receiver 
    12 |         a: 0
    13 |     }
    14 |     go x.change()
