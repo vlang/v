@@ -6020,8 +6020,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 						&& it.name in embed_field_names)
 					used_embed_fields << fields_to_embed.map(it.name)
 					default_init := ast.StructInit{
+						...struct_init
 						typ: embed
-						fields: fields_to_embed
 					}
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
