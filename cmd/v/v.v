@@ -27,6 +27,7 @@ const (
 		'doctor',
 		'fmt',
 		'gret',
+		'interpret',
 		'repl',
 		'self',
 		'setup-freetype',
@@ -61,10 +62,9 @@ fn main() {
 	timers.show('v start')
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
-	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
-		// Running `./v` without args launches repl
 		if args.len == 0 {
+			// Running `./v` without args launches repl
 			if os.is_atty(0) != 0 {
 				cmd_exit := term.highlight_command('exit')
 				cmd_help := term.highlight_command('v help')
@@ -125,11 +125,26 @@ fn main() {
 		}
 		else {}
 	}
-	if command in ['run', 'build', 'build-module', 'interpret'] || command.ends_with('.v')
-		|| os.exists(command) {
+	if command in ['run', 'build', 'build-module'] || command.ends_with('.v') || os.exists(command) {
 		// println('command')
 		// println(prefs.path)
-		builder.compile(command, prefs)
+		backend_cb := match prefs.backend {
+			.c {
+				builder.FnBackend(builder.compile_c)
+			}
+			.js_node, .js_freestanding, .js_browser {
+				builder.compile_js
+			}
+			.native {
+				builder.compile_native
+			}
+			.interpret {
+				eprintln('use `v interpret file.v`')
+				exit(1)
+				builder.compile_c
+			}
+		}
+		builder.compile(command, prefs, backend_cb)
 		return
 	}
 	if prefs.is_help {

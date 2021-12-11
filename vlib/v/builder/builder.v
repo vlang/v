@@ -20,7 +20,6 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path  string
 mut:
-	pref        &pref.Preferences
 	checker     &checker.Checker
 	transformer &transformer.Transformer
 	out_name_c  string
@@ -31,6 +30,7 @@ mut:
 	nr_warnings int // accumulated warning count of scanner, parser, checker, and builder
 	nr_notices  int // accumulated notice count of scanner, parser, checker, and builder
 pub mut:
+	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []&ast.File
 	cached_msvc         MsvcResult

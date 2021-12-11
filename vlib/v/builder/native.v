@@ -5,6 +5,13 @@ import v.util
 import v.gen.native
 import os
 
+pub fn compile_native(mut b Builder) {
+	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
+	files := [b.pref.path]
+	b.set_module_lookup_paths()
+	b.build_native(files, b.pref.out_name)
+}
+
 pub fn (mut b Builder) build_native(v_files []string, out_file string) {
 	if b.pref.os == .windows {
 		eprintln('Warning: v -native is experimental for Windows')
@@ -27,11 +34,4 @@ pub fn (mut b Builder) build_native(v_files []string, out_file string) {
 	util.timing_start('Native GEN')
 	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('Native GEN')
-}
-
-pub fn (mut b Builder) compile_native() {
-	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files := [b.pref.path]
-	b.set_module_lookup_paths()
-	b.build_native(files, b.pref.out_name)
 }

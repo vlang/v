@@ -5,6 +5,21 @@ import v.pref
 import v.util
 import v.gen.js
 
+pub fn compile_js(mut b Builder) {
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	if b.pref.is_verbose {
+		println('all .v files:')
+		println(files)
+	}
+	mut name := b.pref.out_name
+	if !name.ends_with('.js') {
+		name += '.js'
+	}
+	b.build_js(files, name)
+}
+
 pub fn (mut b Builder) gen_js(v_files []string) string {
 	b.front_and_middle_stages(v_files) or { return '' }
 	util.timing_start('JS GEN')
@@ -22,21 +37,6 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 		b.stats_lines = output.count('\n') + 1
 		b.stats_bytes = output.len
 	}
-}
-
-pub fn (mut b Builder) compile_js() {
-	mut files := b.get_builtin_files()
-	files << b.get_user_files()
-	b.set_module_lookup_paths()
-	if b.pref.is_verbose {
-		println('all .v files:')
-		println(files)
-	}
-	mut name := b.pref.out_name
-	if !name.ends_with('.js') {
-		name += '.js'
-	}
-	b.build_js(files, name)
 }
 
 fn (mut b Builder) run_js() {

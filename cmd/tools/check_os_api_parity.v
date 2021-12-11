@@ -98,7 +98,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 	tmpname := '/tmp/${mod_name}_${os_name}.c'
 	prefs, _ := pref.parse_args([], ['-os', os_name, '-o', tmpname, '-shared', mpath])
 	mut b := builder.new_builder(prefs)
-	b.compile_c()
+	builder.compile_c(mut b)
 	mut res := []string{}
 	for f in b.parsed_files {
 		for s in f.stmts {
