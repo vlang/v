@@ -164,7 +164,7 @@ const (
 pub fn erf(a f64) f64 {
 	mut x := a
 	very_tiny := 2.848094538889218e-306 // 0x0080000000000000
-	_small := 1.0 / f64(u64(1) << 28) // 2**-28
+	small_ := 1.0 / f64(u64(1) << 28) // 2**-28
 	if is_nan(x) {
 		return nan()
 	}
@@ -181,7 +181,7 @@ pub fn erf(a f64) f64 {
 	}
 	if x < 0.84375 { // |x| < 0.84375
 		mut temp := 0.0
-		if x < _small { // |x| < 2**-28
+		if x < small_ { // |x| < 2**-28
 			if x < very_tiny {
 				temp = 0.125 * (8.0 * x + math.efx8 * x) // avoid underflow
 			} else {
