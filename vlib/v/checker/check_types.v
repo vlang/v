@@ -12,6 +12,21 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
+	if c.pref.translated {
+		if expected == ast.byteptr_type {
+			return true
+		}
+		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
+			// if true {
+			// return true
+			//}
+			deref := expected.deref()
+			got_sym := c.table.get_type_symbol(got)
+			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
+				return true
+			}
+		}
+	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 	if got_is_ptr && exp_is_ptr {
