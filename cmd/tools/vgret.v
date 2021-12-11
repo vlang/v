@@ -14,6 +14,24 @@
 // For developers:
 // For a quick overview of the generated images you can use `montage` from imagemagick to generate a "Contact Sheet":
 // montage -verbose -label '%f' -font Helvetica -pointsize 10 -background '#000000' -fill 'gray' -define jpeg:size=200x200 -geometry 200x200+2+2 -auto-orient $(fd -t f . /path/to/vgret/out/dir) /tmp/montage.jpg
+//
+// To generate the reference images locally - or for uploading to a remote repo like `gg-regression-images`
+// You can do the following:
+// 1. `export DISPLAY=:99`                            # Start all graphical apps on DISPLAY 99
+// 2. `Xvfb $DISPLAY -screen 0 1280x1024x24 &`        # Starts a virtual X11 screen buffer
+// 3. `v gret -v /tmp/gg-regression-images`           # Generate reference images to /tmp/gg-regression-images
+// 4. `v gret -v /tmp/test /tmp/gg-regression-images` # Test if the tests can pass locally by comparing to a fresh imageset
+// 5. Visually check the images (you can get an overview by running the `montage` command above)
+// 6. Upload to GitHub or keep locally for more testing/tweaking
+//
+// It's a known factor that the images generated on a local machine won't match the images generated on a remote machine by 100%.
+// They will most likely differ by a small percentage - the comparison tool can be tweaked to accept these subtle changes,
+// at the expense of slightly more inaccurate test results. For non-animated apps the percentage should be > 0.01.
+// You can emulate or test these inaccuracies to some extend locally by simply running the test from a terminal using
+// your physical X11 session display (Usually DISPLAY=:0).
+//
+// Read more about the options of `idiff` here: https://openimageio.readthedocs.io/en/latest/idiff.html
+//
 import os
 import flag
 
@@ -41,7 +59,7 @@ Examples:
 		'examples/gg/bezier.v',
 		'examples/gg/mandelbrot.v',
 		'examples/gg/rectangles.v',
-		'examples/gg/set_pixels.v'
+		//'examples/gg/set_pixels.v' // Has problem in CI software render (blank, no pixels set)
 		//'examples/gg/random.v' // Always random
 		//'examples/gg/stars.v' // Uses rand for placement
 		'examples/gg/raven_text_rendering.v',
@@ -54,13 +72,13 @@ Examples:
 		//'examples/hot_reload/graph.v' // Inacurrate captures
 		//'examples/flappylearning/game.v' // Random movement
 		//'examples/2048/2048.v' // Random start tiles
-		'examples/ttf_font/example_ttf.v'
-		//'examples/sokol/06_obj_viewer/show_obj.v' // Inacurrate captures
-		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v' // Inacurrate captures
-		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v' // Inacurrate captures
-		//'examples/sokol/02_cubes_glsl/cube_glsl.v' // Inacurrate captures
-		//'examples/sokol/05_instancing_glsl/rt_glsl.v' // Inacurrate captures
-		'examples/sokol/01_cubes/cube.v',
+		'examples/ttf_font/example_ttf.v',
+		//'examples/sokol/01_cubes/cube.v', // Can pass with a warning and diff at around 1.2%
+		//'examples/sokol/02_cubes_glsl/cube_glsl.v', // Inacurrate captures
+		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
+		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v', // Inacurrate captures
+		//'examples/sokol/05_instancing_glsl/rt_glsl.v', // Inacurrate captures
+		//'examples/sokol/06_obj_viewer/show_obj.v', // Inacurrate captures
 	]
 )
 
@@ -194,6 +212,7 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 	}
 
 	mut fails := map[string]string{}
+	mut warns := map[string]string{}
 	for screenshot in screenshots {
 		relative_screenshot := screenshot.all_after(output_path + os.path_separator)
 
@@ -204,16 +223,33 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 			eprintln('Comparing `$src` with `$target`')
 		}
 
-		result := os.execute('$idiff_exe "$src" "$target"')
-		if opt.verbose {
+		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
+			'.diff.tif')
+		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 0.2 -od -o "$diff_file" -abs "$src" "$target"'
+		result := os.execute(diff_cmd)
+		if opt.verbose && result.exit_code == 0 {
+			eprintln('Running: $diff_cmd')
 			eprintln('$result.output')
 		}
 		if result.exit_code != 0 {
-			fails[src] = target
+			eprintln('$result.output')
+			if result.exit_code == 1 {
+				warns[src] = target
+			} else {
+				fails[src] = target
+			}
 		}
 	}
 
+	if warns.len > 0 {
+		eprintln('--- WARNINGS ---')
+		eprintln('The following files had warnings when compared to their targets')
+		for warn_src, warn_target in warns {
+			eprintln('$warn_src ~= $warn_target')
+		}
+	}
 	if fails.len > 0 {
+		eprintln('--- ERRORS ---')
 		eprintln('The following files did not match their targets')
 		for fail_src, fail_target in fails {
 			eprintln('$fail_src != $fail_target')
@@ -222,6 +258,12 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 		fail_copy := os.join_path(os.temp_dir(), 'fail.' + first.all_after_last('.'))
 		os.cp(first, fail_copy) or { panic(err) }
 		eprintln('First failed file `$first` is copied to `$fail_copy`')
+
+		diff_file := os.join_path(os.temp_dir(), os.file_name(first).all_before_last('.') +
+			'.diff.tif')
+		diff_copy := os.join_path(os.temp_dir(), 'diff.tif')
+		os.cp(diff_file, diff_copy) or { panic(err) }
+		eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
 		exit(1)
 	}
 }
@@ -242,7 +284,9 @@ fn take_screenshots(opt Options, app string, out_path string) ?[]string {
 	mut screenshots := []string{}
 	shots := os.ls(out_path) or { return error('Failed listing dir `$out_path`') }
 	for shot in shots {
-		screenshots << os.join_path(out_path, shot)
+		if shot.starts_with(os.file_name(app).all_before_last('.')) {
+			screenshots << os.join_path(out_path, shot)
+		}
 	}
 	return screenshots
 }
