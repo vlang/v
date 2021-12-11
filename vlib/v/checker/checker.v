@@ -1891,13 +1891,6 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 	}
 }
 
-fn is_noreturn_callexpr(expr ast.Expr) bool {
-	if expr is ast.CallExpr {
-		return expr.is_noreturn
-	}
-	return false
-}
-
 pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
@@ -2075,7 +2068,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	return ast.void_type
 }
 
-// TODO: non deferred
 pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	if node.fields.len == 0 {
 		c.warn('const block must have at least 1 declaration', node.pos)
@@ -2175,30 +2167,6 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			}
 		}
 	}
-}
-
-fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
-	s.register(ast.Var{
-		name: 'it'
-		pos: pos
-		typ: typ
-		is_used: true
-	})
-}
-
-fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ ast.Type) {
-	s.register(ast.Var{
-		name: 'a'
-		pos: pos
-		typ: typ.ref()
-		is_used: true
-	})
-	s.register(ast.Var{
-		name: 'b'
-		pos: pos
-		typ: typ.ref()
-		is_used: true
-	})
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {

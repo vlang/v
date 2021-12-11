@@ -5,6 +5,7 @@ module checker
 import v.ast
 import v.pref
 
+// TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
@@ -306,6 +307,13 @@ fn uses_return_stmt(stmts []ast.Stmt) bool {
 			}
 			else {}
 		}
+	}
+	return false
+}
+
+fn is_noreturn_callexpr(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		return expr.is_noreturn
 	}
 	return false
 }

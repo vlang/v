@@ -800,3 +800,27 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	}
 	return node.return_type
 }
+
+fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
+	s.register(ast.Var{
+		name: 'it'
+		pos: pos
+		typ: typ
+		is_used: true
+	})
+}
+
+fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ ast.Type) {
+	s.register(ast.Var{
+		name: 'a'
+		pos: pos
+		typ: typ.ref()
+		is_used: true
+	})
+	s.register(ast.Var{
+		name: 'b'
+		pos: pos
+		typ: typ.ref()
+		is_used: true
+	})
+}
