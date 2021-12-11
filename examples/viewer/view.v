@@ -12,45 +12,43 @@
 import os
 import gg
 import gx
-
 import sokol.gfx
 import sokol.sgl
 import sokol.sapp
 import stbi
 import szip
-
 import strings
 
 // Help text
 const (
 	help_text_rows = [
-		"Image Viwer 0.9 help.",
-		"",
-		"ESC/q - Quit",
-		"cur. right - Next image",
-		"cur. left  - Previous image",
-		"cur. up    - Next folder",
-		"cur. down  - Previous folder",
-		"F - Toggle full screen",
-		"R - Rotate image of 90 degree",
-		"I - Toggle the info text",
-		""
-		"mouse wheel - next/previous images",
-		"keep pressed left  Mouse button - Pan on the image",
-		"keep pressed rigth Mouse button - Zoom on the image",
+		'Image Viwer 0.9 help.',
+		'',
+		'ESC/q - Quit',
+		'cur. right - Next image',
+		'cur. left  - Previous image',
+		'cur. up    - Next folder',
+		'cur. down  - Previous folder',
+		'F - Toggle full screen',
+		'R - Rotate image of 90 degree',
+		'I - Toggle the info text',
+		'',
+		'mouse wheel - next/previous images',
+		'keep pressed left  Mouse button - Pan on the image',
+		'keep pressed rigth Mouse button - Zoom on the image',
 	]
 )
 
 const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.black
-	pi_2       = 3.14159265359 / 2.0
-	uv         = [f32(0),0,1,0,1,1,0,1]!  // used for zoom icon during rotations
-	
-	text_drop_files = "Drop here some images/folder/zip to navigate in the pics"
-	text_scanning = "Scanning..."
-	text_loading = "Loading..."
+	win_width       = 800
+	win_height      = 800
+	bg_color        = gx.black
+	pi_2            = 3.14159265359 / 2.0
+	uv              = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
+
+	text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
+	text_scanning   = 'Scanning...'
+	text_loading    = 'Loading...'
 )
 
 enum Viewer_state {
@@ -62,63 +60,54 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg             &gg.Context
-	pip_viewer     C.sgl_pipeline
-	texture        C.sg_image
-	init_flag      bool
-	frame_count    int
-	mouse_x        int = -1
-	mouse_y        int = -1
-	scroll_y       int
-	
-	state          Viewer_state = .scanning
-	
+	gg          &gg.Context
+	pip_viewer  C.sgl_pipeline
+	texture     C.sg_image
+	init_flag   bool
+	frame_count int
+	mouse_x     int = -1
+	mouse_y     int = -1
+	scroll_y    int
+
+	state Viewer_state = .scanning
 	// translation
-	tr_flag     bool
-	tr_x        f32 = 0.0
-	tr_y        f32 = 0.0
-	last_tr_x   f32 = 0.0
-	last_tr_y   f32 = 0.0
+	tr_flag   bool
+	tr_x      f32 = 0.0
+	tr_y      f32 = 0.0
+	last_tr_x f32 = 0.0
+	last_tr_y f32 = 0.0
 	// scaling
-	sc_flag     bool
-	scale       f32 = 1.0
-	sc_x        f32 = 0.0
-	sc_y        f32 = 0.0
-	last_sc_x   f32 = 0.0
-	last_sc_y   f32 = 0.0
-	
+	sc_flag   bool
+	scale     f32 = 1.0
+	sc_x      f32 = 0.0
+	sc_y      f32 = 0.0
+	last_sc_x f32 = 0.0
+	last_sc_y f32 = 0.0
 	// loaded image
-	img_w       int
-	img_h       int
-	img_ratio   f32 = 1.0
-	
+	img_w     int
+	img_h     int
+	img_ratio f32 = 1.0
 	// item list
-	item_list   &Item_list
-	
+	item_list &Item_list
 	// Text info and help
 	show_info_flag bool = true
 	show_help_flag bool
-	
-	// zip container 
-	zip          &szip.Zip // pointer to the szip structure
-	zip_index    int = -1  // index of the zip contaire item
-		
+	// zip container
+	zip       &szip.Zip // pointer to the szip structure
+	zip_index int = -1 // index of the zip contaire item
 	// memory buffer
-	mem_buf        voidptr // buffer used to load items from files/containers
-	mem_buf_size int       // size of the buffer
-	
+	mem_buf      voidptr // buffer used to load items from files/containers
+	mem_buf_size int     // size of the buffer
 	// font
-	font_path    string    // path to the temp font file
-	
+	font_path string // path to the temp font file
 	// logo
-	logo_path    string    // path of the temp font logo
+	logo_path    string // path of the temp font logo
 	logo_texture C.sg_image
 	logo_w       int
 	logo_h       int
 	logo_ratio   f32 = 1.0
-
 	// string builder
-	bl           strings.Builder = strings.new_builder(512)
+	bl strings.Builder = strings.new_builder(512)
 }
 
 /******************************************************************************
@@ -174,10 +163,10 @@ fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 fn (mut app App) resize_buf_if_needed(in_size int) {
 	// manage the memory buffer
 	if app.mem_buf_size < in_size {
-		println("Managing FILE memory buffer, allocated [${in_size}]Bytes")
+		println('Managing FILE memory buffer, allocated [$in_size]Bytes')
 		// free previous buffer if any exist
 		if app.mem_buf_size > 0 {
-			unsafe{
+			unsafe {
 				free(app.mem_buf)
 			}
 		}
@@ -198,7 +187,7 @@ fn (mut app App) resize_buf_if_needed(in_size int) {
 [manualfree]
 fn (mut app App) read_bytes(path string) bool {
 	mut fp := os.vfopen(path, 'rb') or {
-		eprintln("ERROR: Can not open the file [$path].")
+		eprintln('ERROR: Can not open the file [$path].')
 		return false
 	}
 	defer {
@@ -206,21 +195,21 @@ fn (mut app App) read_bytes(path string) bool {
 	}
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
-		eprintln("ERROR: Can not seek in the file [$path].")
+		eprintln('ERROR: Can not seek in the file [$path].')
 		return false
 	}
 	fsize := C.ftell(fp)
 	if fsize < 0 {
-		eprintln("ERROR: File [$path] has size is 0.")
+		eprintln('ERROR: File [$path] has size is 0.')
 		return false
 	}
 	C.rewind(fp)
-	
+
 	app.resize_buf_if_needed(int(fsize))
-		
+
 	nr_read_elements := int(C.fread(app.mem_buf, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
-		eprintln("ERROR: Can not read the file [$path] in the memory buffer.")
+		eprintln('ERROR: Can not read the file [$path] in the memory buffer.')
 		return false
 	}
 	return true
@@ -242,7 +231,7 @@ fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (C.sg_image,
 	img := stbi.load_from_memory(buf, buf_len) or {
 		eprintln('ERROR: Can not load image from buffer, file: [${app.item_list.lst[app.item_list.item_index]}].')
 		return app.logo_texture, app.logo_w, app.logo_h
-		//exit(1)
+		// exit(1)
 	}
 	res := create_texture(int(img.width), int(img.height), img.data)
 	unsafe {
@@ -265,13 +254,13 @@ pub fn show_logo(mut app App) {
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = f32(app.img_w) / f32(app.img_h)
-	//app.gg.refresh_ui()
+	// app.gg.refresh_ui()
 }
 
 pub fn load_image(mut app App) {
 	if app.item_list.loaded == false || app.init_flag == false {
-		//show_logo(mut app)
-		//app.state = .show
+		// show_logo(mut app)
+		// app.state = .show
 		return
 	}
 	app.state = .loading
@@ -280,7 +269,7 @@ pub fn load_image(mut app App) {
 	if app.texture != app.logo_texture {
 		destroy_texture(app.texture)
 	}
-	
+
 	// load from .ZIP file
 	if app.item_list.is_inside_a_container() == true {
 		app.texture, app.img_w, app.img_h = app.load_texture_from_zip() or {
@@ -291,7 +280,7 @@ pub fn load_image(mut app App) {
 		}
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
 		app.state = .show
-		//app.gg.refresh_ui()
+		// app.gg.refresh_ui()
 		return
 	}
 
@@ -300,19 +289,19 @@ pub fn load_image(mut app App) {
 		app.zip_index = -1
 		app.zip.close()
 	}
-	
+
 	file_path := app.item_list.get_file_path()
 	if file_path.len > 0 {
-		//println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
+		// println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
 		app.texture, app.img_w, app.img_h = app.load_texture_from_file(file_path)
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
-		//println("texture: [${app.img_w},${app.img_h}] ratio: ${app.img_ratio}")
+		// println("texture: [${app.img_w},${app.img_h}] ratio: ${app.img_ratio}")
 	} else {
 		app.texture = app.logo_texture
 		app.img_w = app.logo_w
 		app.img_h = app.logo_h
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
-		println("texture NOT FOUND: use logo!")
+		println('texture NOT FOUND: use logo!')
 	}
 	app.state = .show
 }
@@ -348,25 +337,25 @@ fn app_init(mut app App) {
 	// load logo
 	app.logo_texture, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
 	app.logo_ratio = f32(app.img_w) / f32(app.img_h)
-	
+
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = app.logo_ratio
 	app.texture = app.logo_texture
-	
-	println("INIT DONE!")
-	
+
+	println('INIT DONE!')
+
 	// init done, load the first image if any
 	load_image(mut app)
 }
 
 fn cleanup(mut app App) {
 	gfx.shutdown()
-	
+
 	// delete temp files
-	os.rm(app.font_path) or {eprintln("ERROR: Can not delete temp font file.")}
-	os.rm(app.logo_path) or {eprintln("ERROR: Can not delete temp logo file.")}
-	println("Cleaning done.")
+	os.rm(app.font_path) or { eprintln('ERROR: Can not delete temp font file.') }
+	os.rm(app.logo_path) or { eprintln('ERROR: Can not delete temp logo file.') }
+	println('Cleaning done.')
 }
 
 /******************************************************************************
@@ -380,36 +369,36 @@ fn frame(mut app App) {
 	if ws.width <= 0 || ws.height <= 0 {
 		return
 	}
-	
+
 	mut ratio := f32(ws.width) / ws.height
 	dw := ws.width
 	dh := ws.height
-	
+
 	app.gg.begin()
 	sgl.defaults()
 
 	// set viewport
 	sgl.viewport(0, 0, dw, dh, true)
-	
+
 	// enable our pipeline
 	sgl.load_pipeline(app.pip_viewer)
 	sgl.enable_texture()
 	sgl.texture(app.texture)
-	
+
 	// translation
 	tr_x := app.tr_x / app.img_w
 	tr_y := -app.tr_y / app.img_h
 	sgl.push_matrix()
 	sgl.translate(tr_x, tr_y, 0.0)
 	// scaling/zoom
-	sgl.scale(2.0 * app.scale, 2.0  * app.scale, 0.0)
+	sgl.scale(2.0 * app.scale, 2.0 * app.scale, 0.0)
 	// roation
 	mut rotation := 0
 	if app.state == .show && app.item_list.n_item > 0 {
 		rotation = app.item_list.lst[app.item_list.item_index].rotation
-		sgl.rotate( pi_2 * f32(rotation) , 0.0, 0.0, -1.0)
+		sgl.rotate(pi_2 * f32(rotation), 0.0, 0.0, -1.0)
 	}
-	
+
 	// draw the image
 	mut w := f32(0.5)
 	mut h := f32(0.5)
@@ -420,11 +409,11 @@ fn frame(mut app App) {
 		tmp := w
 		w = h
 		h = tmp
-		h /= app.img_ratio  * ratio
+		h /= app.img_ratio * ratio
 	} else {
-		h /= app.img_ratio  / ratio
+		h /= app.img_ratio / ratio
 	}
-	
+
 	// manage image overflow in case of strange scales
 	if h > 0.5 {
 		reduction_factor := 0.5 / h
@@ -436,20 +425,20 @@ fn frame(mut app App) {
 		h = h * reduction_factor
 		w = w * reduction_factor
 	}
-	
-	//println("$w,$h")
+
+	// println("$w,$h")
 	// white multiplicator for now
-	mut c := [byte(255),255,255]!
+	mut c := [byte(255), 255, 255]!
 	sgl.begin_quads()
 	sgl.v2f_t2f_c3b(-w, -h, 0, 0, c[0], c[1], c[2])
-	sgl.v2f_t2f_c3b( w, -h, 1, 0, c[0], c[1], c[2])
-	sgl.v2f_t2f_c3b( w,  h, 1, 1, c[0], c[1], c[2])
-	sgl.v2f_t2f_c3b(-w,  h, 0, 1, c[0], c[1], c[2])
+	sgl.v2f_t2f_c3b(w, -h, 1, 0, c[0], c[1], c[2])
+	sgl.v2f_t2f_c3b(w, h, 1, 1, c[0], c[1], c[2])
+	sgl.v2f_t2f_c3b(-w, h, 0, 1, c[0], c[1], c[2])
 	sgl.end()
-	
+
 	// restore all the transformations
 	sgl.pop_matrix()
-	
+
 	// Zoom icon
 	/*
 	if app.show_info_flag == true && app.scale > 1 {
@@ -468,7 +457,7 @@ fn frame(mut app App) {
 		
 		bh_old1 := bh
 		bh *= ratio
-		by += (bh_old1 - bh) 
+		by += (bh_old1 - bh)
 		
 		// draw the zoom icon
 		sgl.begin_quads()
@@ -500,16 +489,15 @@ fn frame(mut app App) {
 	}
 	*/
 	sgl.disable_texture()
-	
-	
+
 	//
 	// Draw info text
 	//
 	x := 10
 	y := 10
-	
+
 	app.gg.begin()
-	
+
 	if app.state in [.scanning, .loading] {
 		if app.state == .scanning {
 			draw_text(mut app, text_scanning, x, y, 20)
@@ -518,7 +506,7 @@ fn frame(mut app App) {
 		}
 	} else if app.state == .show {
 		// print the info text if needed
-		if app.item_list.n_item > 0 && app.show_info_flag == true {		
+		if app.item_list.n_item > 0 && app.show_info_flag == true {
 			/*
 			// waiting for better autofree
 			num := app.item_list.lst[app.item_list.item_index].n_item
@@ -538,15 +526,15 @@ fn frame(mut app App) {
 			// Using string builder to avoid memory leak
 			num := app.item_list.lst[app.item_list.item_index].n_item
 			of_num := app.item_list.n_item
-			x_screen := int(w*2*app.scale*dw)
-			y_screen := int(h*2*app.scale*dw)
+			x_screen := int(w * 2 * app.scale * dw)
+			y_screen := int(h * 2 * app.scale * dw)
 			rotation_angle := 90 * rotation
-			scale_str := "${app.scale:.2}"
+			scale_str := '${app.scale:.2}'
 			app.bl.clear()
-			app.bl.write_string("${num}/${of_num}")
-			app.bl.write_string(" [${app.img_w}x${app.img_h}]=>[${x_screen}x${y_screen}]")
-			app.bl.write_string(" ${app.item_list.lst[app.item_list.item_index].name}")
-			app.bl.write_string(" scale: ${scale_str} rotation: ${rotation_angle}")
+			app.bl.write_string('$num/$of_num')
+			app.bl.write_string(' [${app.img_w}x$app.img_h]=>[${x_screen}x$y_screen]')
+			app.bl.write_string(' ${app.item_list.lst[app.item_list.item_index].name}')
+			app.bl.write_string(' scale: $scale_str rotation: $rotation_angle')
 			draw_text(mut app, app.bl.str(), 10, 10, 20)
 		} else {
 			if app.item_list.n_item <= 0 {
@@ -554,7 +542,7 @@ fn frame(mut app App) {
 			}
 		}
 	}
-	
+
 	//
 	// Draw Help text
 	//
@@ -565,29 +553,26 @@ fn frame(mut app App) {
 			txt_y += 20
 		}
 	}
-	
+
 	app.gg.end()
 	app.frame_count++
 }
-
-
 
 // draw readable text
 fn draw_text(mut app App, in_txt string, in_x int, in_y int, fnt_sz f32) {
 	scale := app.gg.scale
 	font_size := int(fnt_sz * scale)
-	
+
 	mut txt_conf_c0 := gx.TextCfg{
-		color: gx.white //gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
+		color: gx.white // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
 		size: font_size
 	}
 	mut txt_conf_c1 := gx.TextCfg{
-		color: gx.black //gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
+		color: gx.black // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
 		size: font_size
 	}
-	
 
 	x := int(in_x * scale)
 	y := int(in_y * scale)
@@ -602,13 +587,13 @@ fn draw_text(mut app App, in_txt string, in_x int, in_y int, fnt_sz f32) {
 ******************************************************************************/
 fn clear_modifier_params(mut app App) {
 	app.scale = 1.0
-	
+
 	app.sc_flag = false
 	app.sc_x = 0
 	app.sc_y = 0
 	app.last_sc_x = 0
 	app.last_sc_y = 0
-	
+
 	app.tr_flag = false
 	app.tr_x = 0
 	app.tr_y = 0
@@ -620,13 +605,13 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	// navigation using the mouse wheel
 	app.scroll_y = int(ev.scroll_y)
 	if app.scroll_y != 0 {
-		inc := int(-1 * app.scroll_y/4)
+		inc := int(-1 * app.scroll_y / 4)
 		if app.item_list.n_item > 0 {
 			app.item_list.get_next_item(inc)
 			load_image(mut app)
 		}
 	}
-	
+
 	if ev.typ == .mouse_move {
 		app.mouse_x = int(ev.mouse_x)
 		app.mouse_y = int(ev.mouse_y)
@@ -638,40 +623,40 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 			app.mouse_y = int(touch_point.pos_y)
 		}
 	}
-	
+
 	// clear all parameters
 	if ev.typ == .mouse_down && ev.mouse_button == .middle {
 		clear_modifier_params(mut app)
 	}
-	
-	//ws := gg.window_size_real_pixels()
-	//ratio := f32(ws.width) / ws.height
-	//dw := ws.width
-	//dh := ws.height
-	
+
+	// ws := gg.window_size_real_pixels()
+	// ratio := f32(ws.width) / ws.height
+	// dw := ws.width
+	// dh := ws.height
+
 	// --- translate ---
 	if ev.typ == .mouse_down && ev.mouse_button == .left {
 		app.tr_flag = true
 		app.last_tr_x = app.mouse_x
 		app.last_tr_y = app.mouse_y
- 	}
+	}
 	if ev.typ == .mouse_up && ev.mouse_button == .left && app.tr_flag == true {
 		app.tr_flag = false
- 	}
+	}
 	if ev.typ == .mouse_move && app.tr_flag == true {
 		app.tr_x += (app.mouse_x - app.last_tr_x) * 3 * app.gg.scale
 		app.tr_y += (app.mouse_y - app.last_tr_y) * 3 * app.gg.scale
 		app.last_tr_x = app.mouse_x
 		app.last_tr_y = app.mouse_y
-		//println("Translate: ${app.tr_x} ${app.tr_y}")
+		// println("Translate: ${app.tr_x} ${app.tr_y}")
 	}
-	
+
 	// --- scaling ---
 	if ev.typ == .mouse_down && ev.mouse_button == .right && app.sc_flag == false {
 		app.sc_flag = true
 		app.last_sc_x = app.mouse_x
 		app.last_sc_y = app.mouse_y
- 	}
+	}
 	if ev.typ == .mouse_up && ev.mouse_button == .right && app.sc_flag == true {
 		app.sc_flag = false
 	}
@@ -681,19 +666,18 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 		app.last_sc_x = app.mouse_x
 		app.last_sc_y = app.mouse_y
 
-		app.scale += f32(app.sc_x / 100 )
+		app.scale += f32(app.sc_x / 100)
 		if app.scale < 0.1 {
 			app.scale = 0.1
 		}
 		if app.scale > 32 {
 			app.scale = 32
 		}
-		
 	}
-	
+
 	if ev.typ == .key_down {
-		//println(ev.key_code)
-		
+		// println(ev.key_code)
+
 		// Exit using the ESC key or Q key
 		if ev.key_code == .escape || ev.key_code == .q {
 			cleanup(mut app)
@@ -707,7 +691,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 		if ev.key_code == .h {
 			app.show_help_flag = !app.show_help_flag
 		}
-		
+
 		// do actions only if there are items in the list
 		if app.item_list.loaded == true && app.item_list.n_item > 0 {
 			// show previous image
@@ -720,7 +704,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 				app.item_list.get_next_item(1)
 				load_image(mut app)
 			}
-			
+
 			// jump to the next container if possible
 			if ev.key_code == .up {
 				app.item_list.go_to_next_container(1)
@@ -731,38 +715,38 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 				app.item_list.go_to_next_container(-1)
 				load_image(mut app)
 			}
-			
+
 			// rotate the image
 			if ev.key_code == .r {
 				app.item_list.rotate(1)
 			}
-			
+
 			// full screen
 			if ev.key_code == .f {
-				println("Full screen state: ${sapp.is_fullscreen()}")
+				println('Full screen state: $sapp.is_fullscreen()')
 				sapp.toggle_fullscreen()
 			}
 		}
 	}
-	
+
 	// drag&drop
 	if ev.typ == .files_droped {
 		app.state = .scanning
 		// set logo texture during scanning
 		show_logo(mut app)
-		
+
 		num := sapp.get_num_dropped_files()
 		mut file_list := []string{}
-		for i in 0..num {
+		for i in 0 .. num {
 			file_list << sapp.get_dropped_file_path(i)
 		}
-		println("Scanning: ${file_list}")
+		println('Scanning: $file_list')
 		app.item_list = &Item_list{}
 		app.item_list.loaded = false
-		
+
 		// load_image(mut app)
 		// go app.item_list.get_items_list(file_list)
-		
+
 		load_and_show(file_list, mut app)
 	}
 }
@@ -779,36 +763,36 @@ fn load_and_show(file_list []string, mut app App) {
 ******************************************************************************/
 // is needed for easier diagnostics on windows
 [console]
-fn main() {	
-	//mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+fn main() {
+	// mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	font_name := 'RobotoMono-Regular.ttf'
 	font_path := os.join_path(os.temp_dir(), font_name)
-	println("Temporary path for the font file: [$font_path]")
-	
+	println('Temporary path for the font file: [$font_path]')
+
 	// if the font doesn't exist create it from the ebedded one
 	if os.exists(font_path) == false {
-		println("Write font [$font_name] in temp folder.")
+		println('Write font [$font_name] in temp folder.')
 		embedded_file := $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 		os.write_file(font_path, embedded_file.to_string()) or {
-			eprintln("ERROR: not able to write font file to [$font_path]")
+			eprintln('ERROR: not able to write font file to [$font_path]')
 			exit(1)
 		}
 	}
-	
+
 	// logo image
 	logo_name := 'logo.png'
 	logo_path := os.join_path(os.temp_dir(), logo_name)
-	println("Temporary path for the logo: [$logo_path]")
+	println('Temporary path for the logo: [$logo_path]')
 	// if the logo doesn't exist create it from the ebedded one
 	if os.exists(logo_path) == false {
-		println("Write logo [$logo_name] in temp folder.")
+		println('Write logo [$logo_name] in temp folder.')
 		embedded_file := $embed_file('../assets/logo.png')
 		os.write_file(logo_path, embedded_file.to_string()) or {
-			eprintln("ERROR: not able to write logo file to [$logo_path]")
+			eprintln('ERROR: not able to write logo file to [$logo_path]')
 			exit(1)
 		}
 	}
-	
+
 	// App init
 	mut app := &App{
 		gg: 0
@@ -816,16 +800,16 @@ fn main() {
 		zip: 0
 		item_list: 0
 	}
-	
+
 	app.state = .scanning
 	app.logo_path = logo_path
 	app.font_path = font_path
-	
+
 	// Scan all the arguments to find images
 	app.item_list = &Item_list{}
-	//app.item_list.get_items_list(os.args[1..])
+	// app.item_list.get_items_list(os.args[1..])
 	load_and_show(os.args[1..], mut app)
-	
+
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
@@ -841,8 +825,7 @@ fn main() {
 		enable_dragndrop: true
 		max_dropped_files: 64
 		max_dropped_file_path_length: 2048
-		
-		//ui_mode: true
+		// ui_mode: true
 	)
 
 	app.gg.run()
