@@ -492,13 +492,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	} else if node.kind == .fields {
 		// TODO add fields
 		if sym.info is ast.Struct {
-			mut fields := sym.info.fields.filter(it.attrs.len == 0)
-			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
-			fields << fields_with_attrs
-			if fields.len > 0 {
+			if sym.info.fields.len > 0 {
 				g.writeln('\tFieldData $node.val_var = {0};')
 			}
-			for field in fields {
+			for field in sym.info.fields {
 				g.comptime_for_field_var = node.val_var
 				g.comptime_for_field_value = field
 				g.writeln('/* field $i */ {')
