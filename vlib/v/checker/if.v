@@ -123,6 +123,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
 			}
+			if comptime_field_name.len > 0 {
+				c.comptime_fields_type[comptime_field_name] = c.comptime_fields_default_type
+			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
 				c.ct_cond_stack.delete_last()
