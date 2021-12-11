@@ -290,3 +290,6 @@ Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting
 [PatreonUrl]: https://patreon.com/vlang
 [SponsorUrl]: https://github.com/sponsors/medvednikov
 [TwitterUrl]: https://img.shields.io/twitter/follow/v_language.svg?style=flatl&label=Follow&logo=twitter&logoColor=white&color=1da1f2
+
+## License
+Refer to [LICENSE](https://github.com/vlang/v/blob/master/LICENSE) file.
