@@ -1,7 +1,8 @@
 import toml
 import strconv
 
-const toml_text = '
+const (
+	toml_text = '
 modules = [ "ui", "toml" ]
 errors = []
 
@@ -36,6 +37,17 @@ colors = [
 	"white"
 ]
 '
+
+	toml_text_2 = "
+[defaults]
+  run.flags = ['-f 1']
+
+  [[defaults.env]]
+    'RUN_PATH' = '\$OUT_PATH'
+    'RUN_TIME' = 5
+    'TEST_PATH' = '/tmp/test'
+"
+)
 
 fn test_value_query_in_array() {
 	toml_doc := toml.parse(toml_text) or { panic(err) }
@@ -91,4 +103,10 @@ fn test_inf_and_nan_query() {
 	assert value_u64 == strconv.double_plus_infinity
 	value_u64 = toml_doc.value('values.minus-inf').u64()
 	assert value_u64 == strconv.double_minus_infinity
+}
+
+fn test_any_value_query_2() {
+	toml_doc := toml.parse(toml_text_2) or { panic(err) }
+	defaults := toml_doc.value('defaults')
+	assert defaults.value('run.flags[0]').string() == '-f 1'
 }
