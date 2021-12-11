@@ -492,9 +492,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	} else if node.kind == .fields {
 		// TODO add fields
 		if sym.info is ast.Struct {
-			mut fields := sym.info.fields.filter(it.attrs.len == 0)
-			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
-			fields << fields_with_attrs
+			mut fields := sym.info.fields.clone()
 			if fields.len > 0 {
 				g.writeln('\tFieldData $node.val_var = {0};')
 			}

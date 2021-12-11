@@ -43,7 +43,7 @@ fn print_field_values<T>(s T) {
 
 struct Foo {
 	name     string
-	password string
+	password string [this_will_not_change_the_order]
 	email    string
 	age      int
 }
