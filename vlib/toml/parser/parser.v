@@ -928,8 +928,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 					nm = &(table[first.str()] as map[string]ast.Value)
 				} else {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `$first` in dotted key `$dotted_key`.')
-					new := map[string]ast.Value{}
-					nm = &new
+					nm = &map[string]ast.Value{}
 					// We register this implicit allocation as *explicit* to be able to catch
 					// special cases like:
 					// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
