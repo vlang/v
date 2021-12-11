@@ -28,7 +28,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 							fixed_size = const_field.expr.val.int()
 						} else {
 							if const_field.expr is ast.InfixExpr {
-								t := transformer.new_transformer(p.pref)
+								mut t := transformer.new_transformer(p.pref)
 								folded_expr := t.infix_expr(const_field.expr)
 
 								if folded_expr is ast.IntegerLiteral {
