@@ -93,7 +93,7 @@ pub fn gamma(a f64) f64 {
 	for x < 0 {
 		if x > -1e-09 {
 			unsafe {
-				goto small_
+				goto small
 			}
 		}
 		z = z / x
@@ -102,7 +102,7 @@ pub fn gamma(a f64) f64 {
 	for x < 2 {
 		if x < 1e-09 {
 			unsafe {
-				goto small_
+				goto small
 			}
 		}
 		z = z / x
@@ -119,7 +119,7 @@ pub fn gamma(a f64) f64 {
 	if true {
 		return z * p / q
 	}
-	small_:
+	small:
 	if x == 0 {
 		return inf(1)
 	}
