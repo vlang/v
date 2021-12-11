@@ -29,7 +29,7 @@ Examples:
   Upgrade the minor version in sample.v only
     v bump --minor sample.v
 '
-	semver_query = r'\d+\.\d+\.\d+(\-[\w\d]+)?(\+[\w\d]+)?'
+	semver_query = r'((0)|([1-9]\d*)\.){2}(0)|([1-9]\d*)(\-[\w\d\.\-_]+)?(\+[\w\d\.\-_]+)?'
 )
 
 struct Options {
