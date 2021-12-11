@@ -220,12 +220,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 	}
 }
 
-[inline]
-fn (s &Scanner) stext(start int, end int) string {
-	return unsafe { (s.text.str + start).vstring_literal_with_len(end - start) }
-}
-
-[direct_array_access]
+[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
@@ -237,14 +232,14 @@ fn (mut s Scanner) ident_name() string {
 		}
 		break
 	}
-	name := s.stext(start, s.pos)
+	name := s.text[start..s.pos]
 	s.pos--
 	return name
 }
 
 fn (s Scanner) num_lit(start int, end int) string {
 	if s.is_fmt {
-		return s.stext(start, end)
+		return s.text[start..end]
 	}
 	unsafe {
 		txt := s.text.str
@@ -261,7 +256,6 @@ fn (s Scanner) num_lit(start int, end int) string {
 	}
 }
 
-[direct_array_access]
 fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -454,7 +448,7 @@ fn (mut s Scanner) ident_dec_number() string {
 				for i := s.pos - 2; i > 0 && s.text[i - 1].is_digit(); i-- {
 					symbol_length++
 				}
-				float_symbol := s.stext(s.pos - 2 - symbol_length, s.pos - 1)
+				float_symbol := s.text[s.pos - 2 - symbol_length..s.pos - 1]
 				s.warn('float literals should have a digit after the decimal point, e.g. `${float_symbol}.0`')
 			}
 		}
@@ -518,7 +512,7 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[direct_array_access]
+[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
@@ -923,11 +917,11 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.ignore_line()
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
-					comment := s.stext(start - 1, s.pos).trim_space()
+					comment := s.text[start - 1..s.pos].trim_space()
 					// s.fgenln('// shebang line "$s.line_comment"')
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
-				hash := s.stext(start, s.pos).trim_space()
+				hash := s.text[start..s.pos].trim_space()
 				return s.new_token(.hash, hash, hash.len + 2)
 			}
 			`>` {
@@ -944,7 +938,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						// e.g. ...Bar<int, []Foo<int>, Baz_, [20]f64, map[string][]bool>> =>
 						// <int, Baz_, [20]f64, map[string][]bool => int, Baz_, f64, bool
 						is_generic := if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-							typs := s.stext(s.last_lt + 1, s.pos).split(',').map(it.trim_space().trim_right('>').after(']'))
+							typs := s.text[s.last_lt + 1..s.pos].split(',').map(it.trim_space().trim_right('>').after(']'))
 							// if any typ is neither Type nor builtin, then the case is non-generic
 							typs.all(it.len > 0
 								&& ((it[0].is_capital() && it[1..].bytes().all(it.is_alnum()
@@ -1046,7 +1040,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						s.line_nr--
 					}
 					if s.should_parse_comment() {
-						s.line_comment = s.stext(start + 1, comment_line_end)
+						s.line_comment = s.text[start + 1..comment_line_end]
 						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
@@ -1091,7 +1085,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						mut comment := s.stext(start, s.pos - 1).trim(' ')
+						mut comment := s.text[start..(s.pos - 1)].trim(' ')
 						if !comment.contains('\n') {
 							comment = '\x01' + comment
 						}
@@ -1119,7 +1113,7 @@ fn (mut s Scanner) text_scan() token.Token {
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
 	end := mathutil.min(s.pos + len, s.text.len)
-	c := s.stext(s.pos, end)
+	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')
 }
 
@@ -1251,7 +1245,7 @@ fn (mut s Scanner) ident_string() string {
 		end++
 	}
 	if start <= s.pos {
-		mut string_so_far := s.stext(start, end)
+		mut string_so_far := s.text[start..end]
 		if !s.is_fmt && u_escapes_pos.len > 0 {
 			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
 		}
@@ -1301,7 +1295,6 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-[direct_array_access]
 fn (mut s Scanner) ident_char() string {
 	start := s.pos
 	slash := `\\`
@@ -1324,7 +1317,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	len--
-	c := s.stext(start + 1, s.pos)
+	c := s.text[start + 1..s.pos]
 	if len != 1 {
 		u := c.runes()
 		if u.len != 1 {
