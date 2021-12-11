@@ -59,6 +59,7 @@ const (
 		'build-examples',
 		'build-tools',
 		'build-vbinaries',
+		'bump',
 		'check-md',
 		'complete',
 		'compress',
