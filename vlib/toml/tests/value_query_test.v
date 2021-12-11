@@ -109,4 +109,5 @@ fn test_any_value_query_2() {
 	toml_doc := toml.parse(toml_text_2) or { panic(err) }
 	defaults := toml_doc.value('defaults')
 	assert defaults.value('run.flags[0]').string() == '-f 1'
+	assert defaults.value('env[0].RUN_TIME').int() == 5
 }
