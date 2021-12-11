@@ -51,6 +51,7 @@ mut:
 	mod                 string     // current module name
 	is_manualfree       bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
 	has_globals         bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated        bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
 	attrs               []ast.Attr // attributes before next decl stmt
 	expr_mod            string     // for constructing full type names in parse_type()
 	scope               &ast.Scope
@@ -310,6 +311,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		path: p.file_name
 		path_base: p.file_base
 		is_test: p.inside_test_file
+		is_generated: p.is_generated
 		nr_lines: p.scanner.line_nr
 		nr_bytes: p.scanner.text.len
 		mod: module_decl
@@ -1760,6 +1762,9 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	if p.pref.skip_warnings {
 		return
 	}
+	if p.is_generated {
+		return
+	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		ferror := util.formatted_error('notice:', s, p.file_name, pos)
 		eprintln(ferror)
@@ -2843,6 +2848,9 @@ fn (mut p Parser) module_decl() ast.Module {
 			match ma.name {
 				'manualfree' {
 					p.is_manualfree = true
+				}
+				'generated' {
+					p.is_generated = true
 				}
 				'has_globals' {
 					if p.inside_vlib_file {

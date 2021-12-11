@@ -73,6 +73,7 @@ pub mut:
 	scope_returns  bool
 	mod            string // current module name
 	is_builtin_mod bool   // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_generated   bool   // true for `[generated] module xyz` .v files
 	inside_unsafe  bool   // true inside `unsafe {}` blocks
 	inside_const   bool   // true inside `const ( ... )` blocks
 	inside_anon_fn bool   // true inside `fn() { ... }()`
@@ -248,6 +249,7 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.file = unsafe { file }
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
+	c.is_generated = file.is_generated
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
@@ -4705,6 +4707,9 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 pub fn (mut c Checker) note(message string, pos token.Position) {
 	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
 		c.should_abort = true
+		return
+	}
+	if c.is_generated {
 		return
 	}
 	mut details := ''
