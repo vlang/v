@@ -417,10 +417,6 @@ pub fn vlib_should_be_present(parent_dir string) {
 	}
 }
 
-pub fn v_build_failing(zargs string, folder string) bool {
-	return v_build_failing_skipped(zargs, folder, [])
-}
-
 pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
@@ -470,10 +466,13 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	return session
 }
 
-pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
+pub type FnTestSetupCb = fn (mut session TestSession)
+
+pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string, cb FnTestSetupCb) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	mut session := prepare_test_session(zargs, folder, oskipped, main_label)
+	cb(mut session)
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	return session.failed
