@@ -197,6 +197,10 @@ pub mut:
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
+	return parse_args_and_show_errors(known_external_commands, args, false)
+}
+
+pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -374,7 +378,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.is_shared = true
 			}
 			'--enable-globals' {
-				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				eprintln_cond(show_output, '`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
 				res.enable_globals = true
 			}
 			'-enable-globals' {
@@ -642,8 +646,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 		res.parse_define('debug')
 	}
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
-		eprintln("NB: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
-		eprintln('Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+		eprintln_cond(show_output, "NB: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 
 	// res.use_cache = true
@@ -692,14 +696,14 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln_cond(show_output, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
 		res.path = command
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
-		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+		eprintln_cond(show_output, '`-bare-builtin-dir` must be used with `-freestanding`')
 	}
 	if command.ends_with('.vsh') {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
@@ -741,6 +745,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
 	return res, command
+}
+
+pub fn eprintln_cond(condition bool, s string) {
+	if !condition {
+		return
+	}
+	eprintln(s)
 }
 
 pub fn (pref &Preferences) vrun_elog(s string) {

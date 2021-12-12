@@ -76,14 +76,15 @@ fn main() {
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
-				pref.parse_args(external_tools, args_and_flags)
+				pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args(external_tools, args_and_flags)
+	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
+		true)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
