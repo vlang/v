@@ -6,7 +6,7 @@ import v.util
 import v.builder
 
 fn main() {
-	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].filter(it != 'interpret')
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
 	builder.compile('interpret', prefs, v_interpret)
 }

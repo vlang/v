@@ -27,7 +27,6 @@ const (
 		'doctor',
 		'fmt',
 		'gret',
-		'interpret',
 		'repl',
 		'self',
 		'setup-freetype',
@@ -115,6 +114,9 @@ fn main() {
 		'vlib-docs' {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
+		'interpret' {
+			util.launch_tool(prefs.is_verbose, 'vbackends/interpret', os.args[1..])
+		}
 		'get' {
 			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
@@ -133,15 +135,13 @@ fn main() {
 				builder.FnBackend(builder.compile_c)
 			}
 			.js_node, .js_freestanding, .js_browser {
-				builder.compile_js
+				util.launch_tool(prefs.is_verbose, 'vbackends/js', os.args[1..])
 			}
 			.native {
-				builder.compile_native
+				util.launch_tool(prefs.is_verbose, 'vbackends/native', os.args[1..])
 			}
 			.interpret {
-				eprintln('use `v interpret file.v`')
-				exit(1)
-				builder.compile_c
+				util.launch_tool(prefs.is_verbose, 'vbackends/interpret', os.args[1..])
 			}
 		}
 		builder.compile(command, prefs, backend_cb)

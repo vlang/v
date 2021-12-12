@@ -3,7 +3,6 @@ module checker
 import v.ast
 import v.pref
 import time
-import v.gen.native
 import v.util
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
@@ -497,7 +496,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
-		if fn_name in native.builtins {
+		if fn_name in ast.native_builtins {
 			c.table.fns[fn_name].usages++
 			found = true
 			func = c.table.fns[fn_name]
