@@ -76,10 +76,11 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.trace_autofree('// \$method call. sym="$node.sym.name"')
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.left_type))
+	g.trace_autofree('// \$method call. sym="$sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := node.sym.find_method(g.comptime_for_method) or { return }
+		m := sym.find_method(g.comptime_for_method) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])
@@ -99,7 +100,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			// do not generate anything if the argument lengths don't match
-			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
+			g.writeln('/* skipping ${sym.name}.$m.name due to mismatched arguments list */')
 			// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
 			// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
 			//'method.params: $m.params, args: $node.args\n\n')
@@ -107,7 +108,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			return
 		}
 		// TODO: check argument types
-		g.write('${util.no_dots(node.sym.name)}_${g.comptime_for_method}(')
+		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
 
 		// try to see if we need to pass a pointer
 		if node.left is ast.Ident {
@@ -153,7 +154,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		return
 	}
 	mut j := 0
-	for method in node.sym.methods {
+	for method in sym.methods {
 		// if method.return_type != ast.void_type {
 		if method.return_type != node.result_type {
 			continue
@@ -172,7 +173,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 			g.write('if (string__eq($node.method_name, _SLIT("$method.name"))) ')
 		}
-		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
+		g.write('${util.no_dots(sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
 		j++

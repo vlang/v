@@ -10,7 +10,7 @@ import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	sym := c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
-	node.sym = *sym
+	node.left_type = c.expr(node.left)
 	if node.is_env {
 		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
 			c.error(err.msg, node.env_pos)
@@ -91,7 +91,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	} else {
 		c.error('todo: not a string literal', node.method_pos)
 	}
-	f := node.sym.find_method(method_name) or {
+	f := sym.find_method(method_name) or {
 		c.error('could not find method `$method_name`', node.method_pos)
 		return ast.void_type
 	}

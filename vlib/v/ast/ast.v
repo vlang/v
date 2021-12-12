@@ -1559,7 +1559,7 @@ pub:
 	//
 	is_pkgconfig bool
 pub mut:
-	sym         TypeSymbol
+	left_type   Type
 	result_type Type
 	env_value   string
 	args        []CallArg
