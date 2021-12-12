@@ -7182,9 +7182,6 @@ fn (mut g Gen) interface_table() string {
 		if isym.kind != .interface_ {
 			continue
 		}
-		if isym.info !is ast.Interface {
-			continue
-		}
 		inter_info := isym.info as ast.Interface
 		if inter_info.is_generic {
 			continue
