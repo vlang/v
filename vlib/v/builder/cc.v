@@ -10,9 +10,9 @@ import v.util
 import v.vcache
 import term
 
-const (
-	c_verror_message_marker = 'VERROR_MESSAGE '
-	c_error_info            = '
+const c_verror_message_marker = 'VERROR_MESSAGE '
+
+const c_error_info = '
 ==================
 C error. This should never happen.
 
@@ -22,7 +22,8 @@ https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
 '
-	no_compiler_error = '
+
+pub const no_compiler_error = '
 ==================
 Error: no C compiler detected.
 
@@ -37,9 +38,8 @@ You can also use `v doctor`, to see what V knows about your current environment.
 
 You can also seek #help on Discord: https://discord.gg/vlang
 '
-)
 
-fn (mut v Builder) find_win_cc() ? {
+pub fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return
 	}
@@ -443,7 +443,7 @@ fn (mut v Builder) dump_c_options(all_args []string) {
 	}
 }
 
-fn (mut v Builder) cc() {
+pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
 	}
