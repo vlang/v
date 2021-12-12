@@ -1,17 +1,17 @@
-module main
+module interpreterbuilder
 
-import v.pref
 import v.eval
+import v.pref
 import v.util
 import v.builder
 
-fn main() {
-	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].filter(it != 'interpret')
+pub fn start() {
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
-	builder.compile('interpret', prefs, v_interpret)
+	builder.compile('interpret', prefs, interpret_v)
 }
 
-fn v_interpret(mut b builder.Builder) {
+pub fn interpret_v(mut b builder.Builder) {
 	mut files := b.get_builtin_files()
 	files << b.get_user_files()
 	b.set_module_lookup_paths()

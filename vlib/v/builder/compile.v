@@ -66,7 +66,7 @@ pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
 	}
 }
 
-fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
+pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := util.get_vtmp_folder()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {

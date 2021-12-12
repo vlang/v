@@ -19,17 +19,16 @@ pub struct Builder {
 pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path  string
-mut:
-	checker     &checker.Checker
-	transformer &transformer.Transformer
-	out_name_c  string
-	out_name_js string
-	stats_lines int // size of backend generated source code in lines
-	stats_bytes int // size of backend generated source code in bytes
-	nr_errors   int // accumulated error count of scanner, parser, checker, and builder
-	nr_warnings int // accumulated warning count of scanner, parser, checker, and builder
-	nr_notices  int // accumulated notice count of scanner, parser, checker, and builder
 pub mut:
+	checker             &checker.Checker
+	transformer         &transformer.Transformer
+	out_name_c          string
+	out_name_js         string
+	stats_lines         int // size of backend generated source code in lines
+	stats_bytes         int // size of backend generated source code in bytes
+	nr_errors           int // accumulated error count of scanner, parser, checker, and builder
+	nr_warnings         int // accumulated warning count of scanner, parser, checker, and builder
+	nr_notices          int // accumulated notice count of scanner, parser, checker, and builder
 	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []&ast.File
@@ -319,7 +318,7 @@ pub fn (b Builder) info(s string) {
 }
 
 [inline]
-fn module_path(mod string) string {
+pub fn module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
 }
@@ -377,7 +376,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
-fn (b &Builder) show_total_warns_and_errors_stats() {
+pub fn (b &Builder) show_total_warns_and_errors_stats() {
 	if b.nr_errors == 0 && b.nr_warnings == 0 && b.nr_notices == 0 {
 		return
 	}
@@ -404,7 +403,7 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 	}
 }
 
-fn (mut b Builder) print_warnings_and_errors() {
+pub fn (mut b Builder) print_warnings_and_errors() {
 	defer {
 		b.show_total_warns_and_errors_stats()
 	}
@@ -578,7 +577,7 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
+pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
 	if !b.pref.check_only {
 		ferror := util.formatted_error('builder error:', s, fpath, pos)
 		eprintln(ferror)
@@ -594,6 +593,6 @@ fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) error
 }
 
 [noreturn]
-fn verror(s string) {
+pub fn verror(s string) {
 	util.verror('builder error', s)
 }
