@@ -266,6 +266,20 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 		f32(c.a) / 255.0)
 }
 
+pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.end()
+}
+
 [inline]
 pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
 	ctx.draw_rect(x, y, s, s, c)
