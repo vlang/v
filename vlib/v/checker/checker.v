@@ -101,6 +101,7 @@ mut:
 	prevent_sum_type_unwrapping_once bool       // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string     // set when inside a labelled for loop
 	timers                           &util.Timers = util.get_timers()
+	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
 	main_fn_decl_node                ast.FnDecl
@@ -2596,6 +2597,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	}
 	if node.kind == .fields {
 		c.comptime_fields_type[node.val_var] = node.typ
+		c.comptime_fields_default_type = node.typ
 	}
 	c.stmts(node.stmts)
 }
