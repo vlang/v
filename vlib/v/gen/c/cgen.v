@@ -6023,6 +6023,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					default_init := ast.StructInit{
 						...struct_init
 						typ: embed
+						fields: init_fields_to_embed
 					}
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
