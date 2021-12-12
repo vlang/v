@@ -1,10 +1,16 @@
-module cbackend
+module cbuilder
 
 import os
 import v.pref
 import v.util
 import v.builder
 import v.gen.c
+
+pub fn start() {
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
+	prefs, _ := pref.parse_args([], args_and_flags)
+	builder.compile('build', prefs, compile_c)
+}
 
 pub fn compile_c(mut b builder.Builder) {
 	if b.pref.is_verbose {

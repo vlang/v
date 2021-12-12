@@ -1,4 +1,4 @@
-module main
+module nativebuilder
 
 import os
 import v.pref
@@ -6,7 +6,7 @@ import v.util
 import v.builder
 import v.gen.native
 
-fn main() {
+pub fn start() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
 	builder.compile('build', prefs, compile_native)
