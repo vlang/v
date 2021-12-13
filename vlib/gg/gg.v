@@ -529,6 +529,53 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.pop_matrix()
 }
 
+pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
+	if start_angle == end_angle || outer_r <= 0.0 {
+		return
+	}
+
+	mut r1 := inner_r
+	mut r2 := outer_r
+	mut a1 := start_angle
+	mut a2 := end_angle
+
+	// TODO: Maybe this does not make since inner_r and outer_r is actually integers?
+	if outer_r < inner_r {
+		r1, r2 = r2, r1
+
+		if r2 <= 0.0 {
+			r2 = 0.1
+		}
+	}
+
+	if a2 < a1 {
+		a1, a2 = a2, a1
+	}
+
+	if r1 <= 0.0 {
+		ctx.draw_arc(x, y, int(r2), a1, a2, segments, color)
+		return
+	}
+
+	mut step_length := (a2 - a1) / f32(segments)
+	mut angle := a1
+
+	sgl.begin_quads()
+	sgl.c4b(color.r, color.g, color.b, color.a)
+	for _ in 0 .. segments {
+		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
+		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y + f32(math.cos(angle +
+			step_length) * r2))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y + f32(math.cos(angle +
+			step_length) * r1))
+
+		angle += step_length
+	}
+	sgl.end()
+}
+
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
 	sgl.c4b(color.r, color.g, color.b, color.a)
 	sgl.begin_triangle_strip()
