@@ -34,6 +34,7 @@
 //
 import os
 import flag
+import toml
 
 const (
 	tool_name        = os.file_name(os.executable())
@@ -51,35 +52,6 @@ Examples:
 	tmp_dir    = os.join_path(os.temp_dir(), 'v', tool_name)
 	runtime_os = os.user_os()
 	v_root     = os.real_path(@VMODROOT)
-	build_list = [
-		//'examples/snek/snek.v' // Inacurrate captures
-		'examples/game_of_life/life_gg.v'
-		//'examples/tetris/tetris.v' // Uses random start tile
-		//'examples/fireworks/fireworks.v' // Uses rand for placement
-		'examples/gg/bezier.v',
-		'examples/gg/mandelbrot.v',
-		'examples/gg/rectangles.v',
-		//'examples/gg/set_pixels.v' // Has problem in CI software render (blank, no pixels set)
-		//'examples/gg/random.v' // Always random
-		//'examples/gg/stars.v' // Uses rand for placement
-		'examples/gg/raven_text_rendering.v',
-		'examples/gg/worker_thread.v',
-		'examples/gg/polygons.v',
-		'examples/gg/bezier_anim.v',
-		'examples/gg/drag_n_drop.v'
-		//'examples/clock/clock.v' // Can only be tested on exact points in time :)
-		//'examples/hot_reload/bounce.v' // Inacurrate captures
-		//'examples/hot_reload/graph.v' // Inacurrate captures
-		//'examples/flappylearning/game.v' // Random movement
-		//'examples/2048/2048.v' // Random start tiles
-		'examples/ttf_font/example_ttf.v',
-		//'examples/sokol/01_cubes/cube.v', // Can pass with a warning and diff at around 1.2%
-		//'examples/sokol/02_cubes_glsl/cube_glsl.v', // Inacurrate captures
-		//'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
-		//'examples/sokol/04_multi_shader_glsl/rt_glsl.v', // Inacurrate captures
-		//'examples/sokol/05_instancing_glsl/rt_glsl.v', // Inacurrate captures
-		//'examples/sokol/06_obj_viewer/show_obj.v', // Inacurrate captures
-	]
 )
 
 const (
@@ -89,10 +61,46 @@ const (
 	idiff_exe       = os.find_abs_path_of_executable('idiff') or { '' }
 )
 
+const (
+	embedded_toml    = $embed_file('vgret.defaults.toml', .zlib)
+	default_toml     = embedded_toml.to_string()
+	empty_toml_array = []toml.Any{}
+	empty_toml_map   = map[string]toml.Any{}
+)
+
+struct Config {
+	path string
+mut:
+	apps []AppConfig
+}
+
+struct CompareOptions {
+	method string = 'idiff'
+	flags  []string
+}
+
+struct CaptureOptions {
+	method string = 'gg_record'
+	flags  []string
+	env    map[string]string
+}
+
+struct AppConfig {
+	compare  CompareOptions
+	capture  CaptureOptions
+	path     string
+	abs_path string
+mut:
+	screenshots_path string
+	screenshots      []string
+}
+
 struct Options {
-	show_help    bool
 	verbose      bool
 	compare_only bool
+	root_path    string
+mut:
+	config Config
 }
 
 fn main() {
@@ -106,16 +114,21 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('PATH [PATH]')
 	fp.skip_executable()
-	// Collect tool options
-	opt := Options{
-		show_help: fp.bool('help', `h`, false, 'Show this help text.')
-		verbose: fp.bool('verbose', `v`, false, "Be verbose about the tool's progress.")
-		compare_only: fp.bool('compare-only', `c`, false, "Don't generate screenshots - only compare input directories")
-	}
-	if opt.show_help {
+
+	show_help := fp.bool('help', `h`, false, 'Show this help text.')
+	if show_help {
 		println(fp.usage())
 		exit(0)
 	}
+
+	// Collect tool options
+	mut opt := Options{
+		verbose: fp.bool('verbose', `v`, false, "Be verbose about the tool's progress.")
+		compare_only: fp.bool('compare-only', `c`, false, "Don't generate screenshots - only compare input directories")
+		root_path: fp.string('root-path', `r`, v_root, 'Root path of the comparison')
+	}
+
+	toml_conf := fp.string('toml-config', `t`, default_toml, 'Path or string with TOML configuration')
 
 	ensure_env(opt) or { panic(err) }
 
@@ -123,19 +136,34 @@ fn main() {
 
 	if arg_paths.len == 0 {
 		println(fp.usage())
-		println('Error missing arguments')
+		println('\nError missing arguments')
 		exit(1)
 	}
-	if arg_paths.len == 1 {
-		generate_screenshots(opt, v_root, arg_paths[0]) ?
-	} else if arg_paths.len > 1 {
-		compare_screenshots(opt, v_root, arg_paths[0], arg_paths[1]) or { panic(err) }
+
+	opt.config = new_config(opt.root_path, toml_conf) ?
+
+	gen_in_path := arg_paths[0]
+	if arg_paths.len >= 1 {
+		generate_screenshots(mut opt, gen_in_path) ?
+	}
+	if arg_paths.len > 1 {
+		target_path := arg_paths[1]
+		path := opt.config.path
+		all_paths_in_use := [path, gen_in_path, target_path]
+		for path_in_use in all_paths_in_use {
+			if !os.is_dir(path_in_use) {
+				panic('`$path_in_use` is not a directory')
+			}
+		}
+		if path == target_path || gen_in_path == target_path || gen_in_path == path {
+			panic('Compare paths can not be the same directory `$path`/`$target_path`/`$gen_in_path`')
+		}
+		compare_screenshots(opt, gen_in_path, target_path) or { panic(err) }
 	}
 }
 
-fn generate_screenshots(opt Options, base_path string, output_path string) ?[]string {
-	mut path := os.real_path(base_path)
-	path = path.trim_right('/')
+fn generate_screenshots(mut opt Options, output_path string) ? {
+	path := opt.config.path
 
 	dst_path := output_path.trim_right('/')
 
@@ -143,16 +171,15 @@ fn generate_screenshots(opt Options, base_path string, output_path string) ?[]st
 		return error('`$path` is not a directory')
 	}
 
-	mut screenshots := []string{}
-
-	for file in build_list {
-		app_path := os.join_path(path, file).trim_right('/')
+	for mut app_config in opt.config.apps {
+		file := app_config.path
+		app_path := app_config.abs_path
 
 		mut rel_out_path := ''
 		if os.is_file(app_path) {
-			rel_out_path = os.dir(file.trim_right('/'))
+			rel_out_path = os.dir(file)
 		} else {
-			rel_out_path = file.trim_right('/')
+			rel_out_path = file
 		}
 
 		if opt.verbose {
@@ -180,63 +207,52 @@ fn generate_screenshots(opt Options, base_path string, output_path string) ?[]st
 			}
 		}
 
-		screenshots << take_screenshots(opt, app_path, screenshot_path) or {
-			return error('Failed taking screenshot of `$app_path`:\n$err.msg')
+		app_config.screenshots_path = screenshot_path
+		app_config.screenshots = take_screenshots(opt, app_config) or {
+			return error('Failed taking screenshots of `$app_path`:\n$err.msg')
 		}
 	}
-	return screenshots
 }
 
-fn compare_screenshots(opt Options, base_path string, output_path string, target_path string) ? {
-	if idiff_exe == '' {
-		return error('$tool_name need the `idiff` tool installed. It can be installed on Ubuntu with `sudo apt install openimageio-tools`')
-	}
-
-	mut path := os.real_path(base_path)
-	path = path.trim_right('/')
-
-	if !os.is_dir(path) {
-		return error('`$path` is not a directory')
-	}
-	if !os.is_dir(target_path) {
-		return error('`$target_path` is not a directory')
-	}
-	if path == target_path {
-		return error('Compare paths can not be the same directory `$path`')
-	}
-
-	screenshots := generate_screenshots(opt, path, output_path) ?
-
-	if opt.verbose {
-		eprintln('Comparing $screenshots.len screenshots in `$output_path` with `$target_path`')
-	}
-
+fn compare_screenshots(opt Options, output_path string, target_path string) ? {
 	mut fails := map[string]string{}
 	mut warns := map[string]string{}
-	for screenshot in screenshots {
-		relative_screenshot := screenshot.all_after(output_path + os.path_separator)
-
-		src := screenshot
-		target := os.join_path(target_path, relative_screenshot)
-
+	for app_config in opt.config.apps {
+		screenshots := app_config.screenshots
 		if opt.verbose {
-			eprintln('Comparing `$src` with `$target`')
+			eprintln('Comparing $screenshots.len screenshots in `$output_path` with `$target_path`')
 		}
+		for screenshot in screenshots {
+			relative_screenshot := screenshot.all_after(output_path + os.path_separator)
 
-		diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
-			'.diff.tif')
-		diff_cmd := '$idiff_exe -p -fail 0.001 -failpercent 0.2 -od -o "$diff_file" -abs "$src" "$target"'
-		result := os.execute(diff_cmd)
-		if opt.verbose && result.exit_code == 0 {
-			eprintln('Running: $diff_cmd')
-			eprintln('$result.output')
-		}
-		if result.exit_code != 0 {
-			eprintln('$result.output')
-			if result.exit_code == 1 {
-				warns[src] = target
-			} else {
-				fails[src] = target
+			src := screenshot
+			target := os.join_path(target_path, relative_screenshot)
+
+			if opt.verbose {
+				eprintln('Comparing `$src` with `$target` with $app_config.compare.method')
+			}
+
+			if app_config.compare.method == 'idiff' {
+				if idiff_exe == '' {
+					return error('$tool_name need the `idiff` tool installed. It can be installed on Ubuntu with `sudo apt install openimageio-tools`')
+				}
+				diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
+					'.diff.tif')
+				flags := app_config.compare.flags.join(' ')
+				diff_cmd := '$idiff_exe $flags -od -o "$diff_file" -abs "$src" "$target"'
+				result := os.execute(diff_cmd)
+				if opt.verbose && result.exit_code == 0 {
+					eprintln('Running: $diff_cmd')
+					eprintln('$result.output')
+				}
+				if result.exit_code != 0 {
+					eprintln('$result.output')
+					if result.exit_code == 1 {
+						warns[src] = target
+					} else {
+						fails[src] = target
+					}
+				}
 			}
 		}
 	}
@@ -262,29 +278,45 @@ fn compare_screenshots(opt Options, base_path string, output_path string, target
 		diff_file := os.join_path(os.temp_dir(), os.file_name(first).all_before_last('.') +
 			'.diff.tif')
 		diff_copy := os.join_path(os.temp_dir(), 'diff.tif')
-		os.cp(diff_file, diff_copy) or { panic(err) }
-		eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
+		if os.is_file(diff_file) {
+			os.cp(diff_file, diff_copy) or { panic(err) }
+			eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
+		}
 		exit(1)
 	}
 }
 
-fn take_screenshots(opt Options, app string, out_path string) ?[]string {
+fn take_screenshots(opt Options, app AppConfig) ?[]string {
+	out_path := app.screenshots_path
 	if !opt.compare_only {
 		if opt.verbose {
-			eprintln('Taking screenshot(s) of `$app` to `$out_path`')
+			eprintln('Taking screenshot(s) of `$app.path` to `$out_path`')
 		}
-		os.setenv('VGG_STOP_AT_FRAME', '8', true)
-		os.setenv('VGG_SCREENSHOT_FOLDER', out_path, true)
-		os.setenv('VGG_SCREENSHOT_FRAMES', '5', true)
-		result := os.execute('$v_exe -d gg_record run "$app"')
-		if result.exit_code != 0 {
-			return error('Failed taking screenshot of `$app`:\n$result.output')
+
+		if app.capture.method == 'gg_record' {
+			for k, v in app.capture.env {
+				rv := v.replace('\$OUT_PATH', out_path)
+				if opt.verbose {
+					eprintln('Setting ENV `$k` = $rv ...')
+				}
+				os.setenv('$k', rv, true)
+			}
+
+			mut flags := app.capture.flags.join(' ')
+			v_cmd := '$v_exe $flags -d gg_record run "$app.abs_path"'
+			if opt.verbose {
+				eprintln('Running `$v_cmd`')
+			}
+			result := os.execute('$v_cmd')
+			if result.exit_code != 0 {
+				return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
+			}
 		}
 	}
 	mut screenshots := []string{}
 	shots := os.ls(out_path) or { return error('Failed listing dir `$out_path`') }
 	for shot in shots {
-		if shot.starts_with(os.file_name(app).all_before_last('.')) {
+		if shot.starts_with(os.file_name(app.path).all_before_last('.')) {
 			screenshots << os.join_path(out_path, shot)
 		}
 	}
@@ -313,4 +345,48 @@ fn vexe() string {
 		exe = os.real_path(possible_symlink)
 	}
 	return exe
+}
+
+fn new_config(root_path string, toml_config string) ?Config {
+	doc := toml.parse(toml_config) ?
+
+	path := os.real_path(root_path).trim_right('/')
+
+	compare_method := doc.value('compare.method').default_to('idiff').string()
+	compare_flags := doc.value('compare.flags').default_to(empty_toml_array).array().as_strings()
+	default_compare := CompareOptions{
+		method: compare_method
+		flags: compare_flags
+	}
+	capture_method := doc.value('capture.method').default_to('gg_record').string()
+	capture_flags := doc.value('capture.flags').default_to(empty_toml_array).array().as_strings()
+	capture_env := doc.value('capture.env').default_to(empty_toml_map).as_map()
+
+	mut env_map := map[string]string{}
+	for k, v in capture_env {
+		env_map[k] = v.string()
+	}
+	default_capture := CaptureOptions{
+		method: capture_method
+		flags: capture_flags
+		env: env_map
+	}
+
+	apps_any := doc.value('apps').default_to(empty_toml_array).array()
+	mut apps := []AppConfig{cap: apps_any.len}
+	for app_any in apps_any {
+		rel_path := app_any.value('path').string().trim_right('/')
+		app_config := AppConfig{
+			compare: default_compare
+			capture: default_capture
+			path: rel_path
+			abs_path: os.join_path(path, rel_path).trim_right('/')
+		}
+		apps << app_config
+	}
+
+	return Config{
+		apps: apps
+		path: path
+	}
 }
