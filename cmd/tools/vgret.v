@@ -35,6 +35,7 @@
 import os
 import flag
 import toml
+import toml.to
 
 const (
 	tool_name        = os.file_name(os.executable())
@@ -379,31 +380,36 @@ fn new_config(root_path string, toml_config string) ?Config {
 		rel_path := app_any.value('path').string().trim_right('/')
 
 		// Merge, per app, overwrites
-		mut final_compare := default_compare
-		final_compare.method = app_any.value('compare.method').default_to(default_compare.method).string()
-		final_compare_flags := app_any.value('compare.flags').default_to(empty_toml_array).array().as_strings()
-		if final_compare_flags.len > 0 {
-			final_compare.flags = final_compare_flags
+		mut merged_compare := CompareOptions{}
+		merged_compare.method = app_any.value('compare.method').default_to(default_compare.method).string()
+		merged_compare_flags := app_any.value('compare.flags').default_to(empty_toml_array).array().as_strings()
+		if merged_compare_flags.len > 0 {
+			merged_compare.flags = merged_compare_flags
+		} else {
+			merged_compare.flags = default_compare.flags
 		}
 
-		mut final_capture := default_capture
-		final_capture.method = app_any.value('capture.method').default_to(default_capture.method).string()
-		final_capture_flags := app_any.value('capture.flags').default_to(empty_toml_array).array().as_strings()
-		if final_capture_flags.len > 0 {
-			final_capture.flags = final_capture_flags
+		mut merged_capture := CaptureOptions{}
+		merged_capture.method = app_any.value('capture.method').default_to(default_capture.method).string()
+		merged_capture_flags := app_any.value('capture.flags').default_to(empty_toml_array).array().as_strings()
+		if merged_capture_flags.len > 0 {
+			merged_capture.flags = merged_capture_flags
+		} else {
+			merged_capture.flags = default_capture.flags
 		}
+
 		merge_capture_env := app_any.value('capture.env').default_to(empty_toml_map).as_map()
-		mut merge_env_map := map[string]string{}
+		mut merge_env_map := default_capture.env.clone()
 		for k, v in merge_capture_env {
 			merge_env_map[k] = v.string()
 		}
 		for k, v in merge_env_map {
-			final_capture.env[k] = v
+			merged_capture.env[k] = v
 		}
 
 		app_config := AppConfig{
-			compare: default_compare
-			capture: default_capture
+			compare: merged_compare
+			capture: merged_capture
 			path: rel_path
 			abs_path: os.join_path(path, rel_path).trim_right('/')
 		}
