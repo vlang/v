@@ -871,6 +871,12 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 	return g.out.cut_to(pos).trim_space()
 }
 
+fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
+	pos := g.out.len
+	g.expr_with_cast(expr, typ, exp)
+	return g.out.cut_to(pos).trim_space()
+}
+
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
 // (and create a statement)
 fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string) string {
@@ -6801,7 +6807,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
-							expr_str := g.expr_string(field.default_expr)
+							expr_str := g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
+								field.typ)
 							init_str += '.$field_name = $expr_str,'
 						} else {
 							init_str += '.$field_name = ${g.type_default(field.typ)},'
