@@ -94,6 +94,10 @@ pub fn (mut p Process) stdin_write(s string) {
 	#p.val.pid.stdin.write(s)
 }
 
+pub fn (mut p Process) stdin_resume() {
+	#p.val.pid.stdin.resume()
+}
+
 // todo(playX): probably does not work
 
 // will read from stdout pipe, will only return when EOF (end of file) or data
