@@ -539,7 +539,7 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_an
 	mut a1 := start_angle
 	mut a2 := end_angle
 
-	// TODO: Maybe this does not make since inner_r and outer_r is actually integers.
+	// TODO: Maybe this does not make since inner_r and outer_r is actually integers?
 	if outer_r < inner_r {
 		r1, r2 = r2, r1
 
@@ -560,20 +560,16 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_an
 	mut step_length := (a2 - a1) / f32(segments)
 	mut angle := a1
 
-	// TODO: draw_arc() accepts radians, so should draw_ring() to improve consistency
-	//   - This would also remove unnecessary function calls in the calculations below
 	sgl.begin_quads()
 	sgl.c4b(color.r, color.g, color.b, color.a)
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * r1, y +
-			f32(math.cos(angle) * r1))
-		sgl.v2f(x + f32(math.sin(angle)) * r2, y +
-			f32(math.cos(angle) * r2))
+		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
+		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
 
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y +
-			f32(math.cos(angle + step_length) * r2))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y +
-			f32(math.cos(angle + step_length) * r1))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y + f32(math.cos(angle +
+			step_length) * r2))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y + f32(math.cos(angle +
+			step_length) * r1))
 
 		angle += step_length
 	}
