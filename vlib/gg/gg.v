@@ -406,7 +406,7 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 }
 
 // Draws a circle slice/pie.
-pub fn (ctx &Context) draw_slice(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -416,8 +416,8 @@ pub fn (ctx &Context) draw_slice(x f32, y f32, r int, start_angle f32, arc_angle
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
-	mut xx := f32(r * math.cosf(start_angle))
-	mut yy := f32(r * math.sinf(start_angle))
+	mut xx := r * math.cosf(start_angle)
+	mut yy := r * math.sinf(start_angle)
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
@@ -433,7 +433,7 @@ pub fn (ctx &Context) draw_slice(x f32, y f32, r int, start_angle f32, arc_angle
 }
 
 // Draws the outline of a circle slice/pie.
-pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -443,8 +443,8 @@ pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r int, start_angle f32, arc
 	rad_factor := math.cosf(theta)
 	nx := x * ctx.scale
 	ny := y * ctx.scale
-	mut xx := f32(r * math.cosf(start_angle))
-	mut yy := f32(r * math.sinf(start_angle))
+	mut xx := r * math.cosf(start_angle)
+	mut yy := r * math.sinf(start_angle)
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
