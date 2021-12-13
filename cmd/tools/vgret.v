@@ -35,7 +35,6 @@
 import os
 import flag
 import toml
-import toml.to
 
 const (
 	tool_name        = os.file_name(os.executable())
