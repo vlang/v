@@ -75,11 +75,13 @@ mut:
 }
 
 struct CompareOptions {
+mut:
 	method string = 'idiff'
 	flags  []string
 }
 
 struct CaptureOptions {
+mut:
 	method string = 'gg_record'
 	flags  []string
 	env    map[string]string
@@ -361,7 +363,6 @@ fn new_config(root_path string, toml_config string) ?Config {
 	capture_method := doc.value('capture.method').default_to('gg_record').string()
 	capture_flags := doc.value('capture.flags').default_to(empty_toml_array).array().as_strings()
 	capture_env := doc.value('capture.env').default_to(empty_toml_map).as_map()
-
 	mut env_map := map[string]string{}
 	for k, v in capture_env {
 		env_map[k] = v.string()
@@ -376,6 +377,30 @@ fn new_config(root_path string, toml_config string) ?Config {
 	mut apps := []AppConfig{cap: apps_any.len}
 	for app_any in apps_any {
 		rel_path := app_any.value('path').string().trim_right('/')
+
+		// Merge, per app, overwrites
+		mut final_compare := default_compare
+		final_compare.method = app_any.value('compare.method').default_to(default_compare.method).string()
+		final_compare_flags := app_any.value('compare.flags').default_to(empty_toml_array).array().as_strings()
+		if final_compare_flags.len > 0 {
+			final_compare.flags = final_compare_flags
+		}
+
+		mut final_capture := default_capture
+		final_capture.method = app_any.value('capture.method').default_to(default_capture.method).string()
+		final_capture_flags := app_any.value('capture.flags').default_to(empty_toml_array).array().as_strings()
+		if final_capture_flags.len > 0 {
+			final_capture.flags = final_capture_flags
+		}
+		merge_capture_env := app_any.value('capture.env').default_to(empty_toml_map).as_map()
+		mut merge_env_map := map[string]string{}
+		for k, v in merge_capture_env {
+			merge_env_map[k] = v.string()
+		}
+		for k, v in merge_env_map {
+			final_capture.env[k] = v
+		}
+
 		app_config := AppConfig{
 			compare: default_compare
 			capture: default_capture
