@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 1280x1024x24 &
-          ./v gret -v ./gg-sample_images ./gg-regression-images
+          ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'

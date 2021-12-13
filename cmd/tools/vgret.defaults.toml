@@ -1,0 +1,74 @@
+# Defaults
+[compare]
+  method = 'idiff'
+  flags = ['-p','-fail 0.001','-failpercent 0.2']
+
+[capture]
+  method = 'gg_record'
+  flags = [] # ['-prod','-d ...'] etc.
+
+[capture.env]
+  VGG_STOP_AT_FRAME = '8'
+  VGG_SCREENSHOT_FOLDER = '$OUT_PATH'
+  VGG_SCREENSHOT_FRAMES = '5'
+
+# List of apps to run and capture
+[[apps]]
+  path = 'examples/game_of_life/life_gg.v'
+
+[[apps]]
+  path = 'examples/gg/bezier.v'
+
+[[apps]]
+  path = 'examples/gg/mandelbrot.v'
+
+[[apps]]
+  path = 'examples/gg/rectangles.v'
+
+[[apps]]
+  path = 'examples/gg/raven_text_rendering.v'
+
+[[apps]]
+  path = 'examples/gg/worker_thread.v'
+
+[[apps]]
+  path = 'examples/gg/polygons.v'
+
+[[apps]]
+  path = 'examples/gg/bezier_anim.v'
+
+[[apps]]
+  path = 'examples/gg/drag_n_drop.v'
+
+[[apps]]
+  path = 'examples/ttf_font/example_ttf.v'
+
+# Reasons for ex- or inclusion:
+#
+# 'examples/snek/snek.v'                // Inacurrate captures
+# 'examples/game_of_life/life_gg.v'     // OK
+# 'examples/tetris/tetris.v'            // Uses random start block
+# 'examples/fireworks/fireworks.v'      // Uses rand for placement
+# 'examples/gg/bezier.v',               // OK
+# 'examples/gg/mandelbrot.v',           // OK
+# 'examples/gg/rectangles.v',           // OK
+# 'examples/gg/set_pixels.v'            // Has problem in CI software render (blank, no pixels set)
+# 'examples/gg/random.v'                // Always random
+# 'examples/gg/stars.v'                 // Uses rand for placement
+# 'examples/gg/raven_text_rendering.v', // OK
+# 'examples/gg/worker_thread.v',        // OK
+# 'examples/gg/polygons.v',             // OK
+# 'examples/gg/bezier_anim.v',          // OK
+# 'examples/gg/drag_n_drop.v'           // OK
+# 'examples/2048/2048.v'                // Random start tiles
+# 'examples/clock/clock.v'              // Can only be tested on exact points in time :)
+# 'examples/flappylearning/game.v'      // Random movement
+# 'examples/hot_reload/bounce.v'        // Inacurrate captures
+# 'examples/hot_reload/graph.v'         // Inacurrate captures
+# 'examples/ttf_font/example_ttf.v',    // OK
+# 'examples/sokol/01_cubes/cube.v',     // Can pass with a warning and diff at around 1.2%
+# 'examples/sokol/02_cubes_glsl/cube_glsl.v',       // Inacurrate captures
+# 'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inacurrate captures
+# 'examples/sokol/04_multi_shader_glsl/rt_glsl.v',  // Inacurrate captures
+# 'examples/sokol/05_instancing_glsl/rt_glsl.v',    // Inacurrate captures
+# 'examples/sokol/06_obj_viewer/show_obj.v',        // Inacurrate captures
