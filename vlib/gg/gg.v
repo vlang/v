@@ -544,7 +544,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 }
 
 // Draws an arc
-pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
+pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
@@ -568,7 +568,7 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_slice(x, y, int(r2), a1, a2, segments, color)
+		ctx.draw_slice(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
@@ -576,7 +576,7 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 	mut angle := a1
 
 	sgl.begin_quads()
-	sgl.c4b(color.r, color.g, color.b, color.a)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	for _ in 0 .. segments {
 		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
 		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
@@ -592,8 +592,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 }
 
 // Draws a filled rounded rectangle
-pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
-	sgl.c4b(color.r, color.g, color.b, color.a)
+pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_triangle_strip()
 	mut theta := f32(0)
 	mut xx := f32(0)
@@ -661,7 +661,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 }
 
 // Draws the outline of a rounded rectangle
-pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, border_color gx.Color) {
+pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
@@ -676,7 +676,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	lb := int(rb + segdiv)
 	lt := int(lb + segdiv)
 	rt := int(lt + segdiv)
-	sgl.c4b(border_color.r, border_color.g, border_color.b, border_color.a)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	// left top
 	lx := nx + r
