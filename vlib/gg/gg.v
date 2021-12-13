@@ -529,13 +529,13 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.pop_matrix()
 }
 
-pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_angle f32, end_angle f32, segments int, color gx.Color) {
-	if start_angle == end_angle {
+pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
+	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
 
-	mut r1 := f32(inner_r)
-	mut r2 := f32(outer_r)
+	mut r1 := inner_r
+	mut r2 := outer_r
 	mut a1 := start_angle
 	mut a2 := end_angle
 
