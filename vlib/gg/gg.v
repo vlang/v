@@ -553,7 +553,7 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_an
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_arc(x, y, 20, a1, a2, segments, color)
+		ctx.draw_arc(x, y, r2, a1, a2, segments, color)
 		return
 	}
 
