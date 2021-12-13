@@ -266,25 +266,6 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 		f32(c.a) / 255.0)
 }
 
-pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.end()
-}
-
-[inline]
-pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_rect(x, y, s, s, c)
-}
-
 [inline]
 pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
 	if c.a != 255 {
@@ -327,6 +308,30 @@ pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32
 	sgl.end()
 }
 
+pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.end()
+}
+
+[inline]
+pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_rect(x, y, s, s, c)
+}
+
+[inline]
+pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_empty_rect(x, y, s, s, c)
+}
+
 pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -339,11 +344,6 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
 	sgl.v2f(x * ctx.scale, (y - 1) * ctx.scale)
 	sgl.end()
-}
-
-[inline]
-pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_empty_rect(x, y, s, s, c)
 }
 
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
@@ -372,32 +372,7 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc_line(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	theta := f32(arc_angle / f32(segments))
-	tan_factor := math.tanf(theta)
-	rad_factor := math.cosf(theta)
-	nx := x * ctx.scale
-	ny := y * ctx.scale
-	mut xx := f32(r * math.cosf(start_angle))
-	mut yy := f32(r * math.sinf(start_angle))
-	sgl.begin_line_strip()
-	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + nx, yy + ny)
-		tx := -yy
-		ty := xx
-		xx += tx * tan_factor
-		yy += ty * tan_factor
-		xx *= rad_factor
-		yy *= rad_factor
-	}
-	sgl.end()
-}
-
-pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -413,6 +388,31 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
 		sgl.v2f(nx, ny)
+		tx := -yy
+		ty := xx
+		xx += tx * tan_factor
+		yy += ty * tan_factor
+		xx *= rad_factor
+		yy *= rad_factor
+	}
+	sgl.end()
+}
+
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	theta := f32(arc_angle / f32(segments))
+	tan_factor := math.tanf(theta)
+	rad_factor := math.cosf(theta)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	mut xx := f32(r * math.cosf(start_angle))
+	mut yy := f32(r * math.sinf(start_angle))
+	sgl.begin_line_strip()
+	for i := 0; i < segments + 1; i++ {
+		sgl.v2f(xx + nx, yy + ny)
 		tx := -yy
 		ty := xx
 		xx += tx * tan_factor
@@ -529,7 +529,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.pop_matrix()
 }
 
-pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
+pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
@@ -553,7 +553,7 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_an
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_arc(x, y, int(r2), a1, a2, segments, color)
+		ctx.draw_slice(x, y, int(r2), a1, a2, segments, color)
 		return
 	}
 
