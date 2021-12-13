@@ -552,12 +552,10 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_an
 		a1, a2 = a2, a1
 	}
 
-	// TODO: Draw arc instead
-	/*
 	if r1 <= 0.0 {
-		ctx.draw_arc(x, y, int(r2), a1, a2, segments, c)
+		ctx.draw_arc(x, y, 20, a1, a2, segments, color)
+		return
 	}
-	*/
 
 	mut step_length := (a2 - a1) / f32(segments)
 	mut angle := a1
@@ -567,15 +565,15 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r int, outer_r int, start_an
 	sgl.begin_quads()
 	sgl.c4b(color.r, color.g, color.b, color.a)
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(math.radians(angle))) * r1, y +
-			f32(math.cos(math.radians(angle)) * r1))
-		sgl.v2f(x + f32(math.sin(math.radians(angle))) * r2, y +
-			f32(math.cos(math.radians(angle)) * r2))
+		sgl.v2f(x + f32(math.sin(angle)) * r1, y +
+			f32(math.cos(angle) * r1))
+		sgl.v2f(x + f32(math.sin(angle)) * r2, y +
+			f32(math.cos(angle) * r2))
 
-		sgl.v2f(x + f32(math.sin(math.radians(angle + step_length))) * r2, y +
-			f32(math.cos(math.radians(angle + step_length)) * r2))
-		sgl.v2f(x + f32(math.sin(math.radians(angle + step_length))) * r1, y +
-			f32(math.cos(math.radians(angle + step_length)) * r1))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y +
+			f32(math.cos(angle + step_length) * r2))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y +
+			f32(math.cos(angle + step_length) * r1))
 
 		angle += step_length
 	}
