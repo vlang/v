@@ -458,7 +458,6 @@ pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc
 	sgl.end()
 }
 
-
 // Resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
