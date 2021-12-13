@@ -14,46 +14,46 @@ pub fn JS.Promise.race(JS.Array) JS.Promise
 
 // The Promise object represents the eventual completion (or failure)
 // of an asynchronous operation and its resulting value.
-pub struct Promise<T, E> {
+pub struct Promise<T> {
 mut:
 	promise JS.Promise [noinit]
 }
 
-pub fn promise_new<T, E>(executor fn (resolve fn (T), reject fn (E))) Promise<T, E> {
+pub fn promise_new<T>(executor fn (resolve fn (T), reject fn (JS.Any))) Promise<T> {
 	promise := JS.Promise.prototype.constructor(executor)
-	return Promise<T, E>{promise}
+	return Promise<T>{promise}
 }
 
-pub fn (p Promise<T, E>) then(on_fullfilled fn (T), on_rejected fn (E)) {
+pub fn (p Promise<T>) then(on_fullfilled fn (T), on_rejected fn (JS.Any)) {
 	p.promise.then(on_fullfilled, on_rejected)
 }
 
 // catch method returns a Promise and deals with rejected cases only.
-pub fn (p Promise<T, E>) catch(callback fn (error JS.Any)) Promise<T, E> {
+pub fn (p Promise<T>) catch(callback fn (error JS.Any)) Promise<T> {
 	promise := p.promise.catch(callback)
-	return Promise<T, E>{promise}
+	return Promise<T>{promise}
 }
 
-pub fn (p Promise<T, E>) finally(callback fn ()) Promise<int, int> {
+pub fn (p Promise<T>) finally<U>(callback fn ()) Promise<JS.Any> {
 	promise := p.promise.finally(callback)
-	return Promise<int, int>{promise}
+	return Promise<JS.Any>{promise}
 }
 
 // reject<E> returns promise which was rejected because of specified error
-pub fn promise_reject<E>(error E) Promise<int, E> {
+pub fn promise_reject(error JS.Any) Promise<JS.Any> {
 	promise := JS.Promise.reject(error)
-	return Promise<int, E>{promise}
+	return Promise<JS.Any>{promise}
 }
 
 // resolve<E> returns promise which was resolved with specified value
-pub fn promise_resolve<T>(result T) Promise<T, int> {
-	promise := JS.Promise.resolve(error)
-	return Promise<T, int>{promise}
+pub fn promise_resolve<T>(result T) Promise<T> {
+	promise := JS.Promise.resolve(result)
+	return Promise<T>{promise}
 }
 
 // race returns returns a promise that fulfills or rejects as soon as one of
 //  the promises in an iterable fulfills or rejects, with the value or reason from that promise.
-pub fn promise_race<T, E>(promises []Promise<T, E>) Promise<T, E> {
+pub fn promise_race<T>(promises []Promise<T>) Promise<T> {
 	promises_ := JS.Array.prototype.constructor()
 
 	for elem in promises {
@@ -61,7 +61,7 @@ pub fn promise_race<T, E>(promises []Promise<T, E>) Promise<T, E> {
 	}
 
 	promise := JS.Promise.race(promises_)
-	return Promise<T, E>{promise}
+	return Promise<T>{promise}
 }
 
 pub fn JS.Promise.all(JS.Array) JS.Promise

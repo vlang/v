@@ -513,35 +513,23 @@ pub fn (a &array) free() {
 // filter creates a new array with all elements that pass the test implemented by the provided function
 pub fn (a array) filter(predicate fn (voidptr) bool) array
 
-struct ZZZTmp1 {}
-
 // any tests whether at least one element in the array passes the test implemented by the
 // provided function. It returns true if, in the array, it finds an element for which the provided
 // function returns true; otherwise it returns false. It doesn't modify the array
 pub fn (a array) any(predicate fn (voidptr) bool) bool
 
-struct ZZZTmp2 {}
-
 // all tests whether all elements in the array pass the test implemented by the provided function
 pub fn (a array) all(predicate fn (voidptr) bool) bool
-
-struct ZZZTmp3 {}
 
 // map creates a new array populated with the results of calling a provided function
 // on every element in the calling array
 pub fn (a array) map(callback fn (voidptr) voidptr) array
 
-struct ZZZTmp4 {}
-
 // sort sorts an array in place in ascending order.
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
-struct ZZZTmp5 {}
-
 // contains determines whether an array includes a certain value among its entries
 pub fn (a array) contains(val voidptr) bool
-
-struct ZZZTmp6 {}
 
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.

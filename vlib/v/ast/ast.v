@@ -668,6 +668,7 @@ pub:
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 	is_test      bool // true for _test.v files
+	is_generated bool // true for `[generated] module xyz` files; turn off notices
 pub mut:
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
@@ -816,6 +817,7 @@ pub mut:
 	is_array  bool
 	is_farray bool
 	is_option bool // IfGuard
+	is_direct bool // Set if the underlying memory can be safely accessed
 }
 
 pub struct IfExpr {
@@ -1557,7 +1559,7 @@ pub:
 	//
 	is_pkgconfig bool
 pub mut:
-	sym         TypeSymbol
+	left_type   Type
 	result_type Type
 	env_value   string
 	args        []CallArg

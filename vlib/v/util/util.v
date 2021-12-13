@@ -115,6 +115,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 // V itself. That mechanism can be disabled by package managers by creating/touching a small
 // `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
 // in cmd/tools to be < 1024 seconds (in unix time).
+[noreturn]
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -125,7 +126,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	mut tool_exe := ''
 	mut tool_source := ''
 	if os.is_dir(tool_basename) {
-		tool_exe = path_of_executable(os.join_path_single(tool_basename, tool_name))
+		tool_exe = path_of_executable(os.join_path_single(tool_basename, os.file_name(tool_name)))
 		tool_source = tool_basename
 	} else {
 		tool_exe = path_of_executable(tool_basename)
@@ -177,6 +178,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	} $else {
 		os.execvp(tool_exe, args) or { panic(err) }
 	}
+	exit(2)
 }
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution

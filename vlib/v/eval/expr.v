@@ -380,8 +380,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 			} else if e.table.get_type_symbol(expr.typ).kind in [.interface_, .sum_type] {
-				eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
-					e.cur_file, expr.pos))
+				if e.pref.is_verbose {
+					eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
+						e.cur_file, expr.pos))
+				}
 			} else {
 				e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 			}

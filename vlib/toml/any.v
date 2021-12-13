@@ -171,6 +171,16 @@ pub fn (m map[string]Any) value(key string) Any {
 	return Any(m).value(key)
 }
 
+// as_strings returns the contents of the map
+// as `map[string]string`
+pub fn (m map[string]Any) as_strings() map[string]string {
+	mut result := map[string]string{}
+	for k, v in m {
+		result[k] = v.string()
+	}
+	return result
+}
+
 // value queries a value from the array.
 // `key` supports a small query syntax scheme:
 // The array can be queried with `[0].b[1].[2]`.
@@ -180,6 +190,8 @@ pub fn (a []Any) value(key string) Any {
 	return Any(a).value(key)
 }
 
+// as_strings returns the contents of the array
+// as `[]string`
 pub fn (a []Any) as_strings() []string {
 	mut sa := []string{}
 	for any in a {

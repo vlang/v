@@ -5,7 +5,8 @@ import strings
 import os
 
 const (
-	header = 'module eval
+	header = '[generated]
+module eval
 import v.token
 import v.ast
 fn(e Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)Object{match op{'

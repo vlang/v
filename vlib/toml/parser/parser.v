@@ -888,7 +888,7 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables of arrays "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "$p.tok.kind" "$p.tok.lit"')
 
 	dotted_key := p.dotted_key() ?
 	p.ignore_while(parser.space_formatting)
@@ -918,16 +918,23 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 	unsafe {
 		// NOTE this is starting to get EVEN uglier. TOML is not *at all* simple at this point...
 		if first != p.last_aot {
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '$first != $p.last_aot')
 			// Implicit allocation
 			if p.last_aot.len == 0 {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of array for dotted key `$dotted_key`.')
 				p.last_aot = first
-				// We register this implicit allocation as *explicit* to be able to catch
-				// special cases like:
-				// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
-				p.explicit_declared << first
+				mut nm := &p.root_map
+				if first.str() in table.keys() {
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'adding to existing table entry at `$first`.')
+					nm = &(table[first.str()] as map[string]ast.Value)
+				} else {
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `$first` in dotted key `$dotted_key`.')
+					nm = &map[string]ast.Value{}
+					// We register this implicit allocation as *explicit* to be able to catch
+					// special cases like:
+					// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+					p.explicit_declared << first
+				}
 
-				mut nm := map[string]ast.Value{}
 				nm[last.str()] = []ast.Value{}
 				table[first.str()] = ast.Value(nm)
 

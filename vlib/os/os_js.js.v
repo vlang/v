@@ -136,3 +136,7 @@ pub fn getuid() int {
 pub fn execvp(cmd string, args []string) ? {
 	panic('os.execvp() is not available on JS backend')
 }
+
+pub fn stdin_resume() {
+	#$process.stdin.resume();
+}

@@ -18,7 +18,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+			is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 			if is_direct_array_access {
 				g.expr(node.left)
 				g.write('.str[ ')
@@ -128,7 +128,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	is_selector := node.left is ast.SelectorExpr
 	if g.is_assign_lhs && !is_selector && node.is_setter {
-		is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		array_ptr_type_str := match elem_typ.kind {
 			.function { 'voidptr*' }
@@ -195,7 +195,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 		array_ptr_type_str := match elem_typ.kind {
 			.function { 'voidptr*' }
 			else { '$elem_type_str*' }

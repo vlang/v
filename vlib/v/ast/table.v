@@ -412,6 +412,18 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 	return none
 }
 
+// find_method_with_embeds searches for a given method, also looking through embedded fields
+pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) ?Fn {
+	if func := t.find_method(sym, method_name) {
+		return func
+	} else {
+		// look for embedded field
+		first_err := err
+		func, _ := t.find_method_from_embeds(sym, method_name) or { return first_err }
+		return func
+	}
+}
+
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
