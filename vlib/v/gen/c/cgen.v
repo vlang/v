@@ -6821,7 +6821,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 								if field_sym.info is ast.Struct {
 									if field_sym.info.fields.len == 0
 										&& field_sym.info.embeds.len == 0 {
-										zero_str = '{}'
+										zero_str = '{0}'
 									}
 								}
 							}
