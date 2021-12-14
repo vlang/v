@@ -12,86 +12,93 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       CC: gcc
+      ZIPNAME: v_linux.zip
     steps:
       - uses: actions/checkout@v1
       - name: Compile
         run: |
-           make -j4
-           ./v -cc $CC -o v -prod cmd/v
-           ./v -prod cmd/tools/vup.v
-           ./v -prod cmd/tools/vdoctor.v
+          make -j4
+          ./v -cc $CC -prod -o v cmd/v
+          ./v -cc $CC -prod cmd/tools/vup.v
+          ./v -cc $CC -prod cmd/tools/vdoctor.v
+      - name: Remove excluded
+        run: |
+           rm -rf .git
+           rm -rf vc/
+           rm -rf v_old
+      - name: Create ZIP archive
+        run: |
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v2
         with:
           name: linux
-          path: |
-            .
-            ./cmd/tools/vup
-            ./cmd/tools/vdoctor
-            !./.git
-            !./vc
-            !./v_old
-      - name: Create binary only artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: linux-binary
-          path: ./v
+          path: v_linux.zip
 
   build-macos:
     runs-on: macos-latest
+    env:
+      CC: clang
+      ZIPNAME: v_macos.zip
     steps:
       - uses: actions/checkout@v1
       - name: Compile
-        env:
-          CC: clang
         run: |
           make -j4
-          ./v -cc $CC -o v -prod cmd/v
-          ./v -prod cmd/tools/vup.v
-          ./v -prod cmd/tools/vdoctor.v
+          ./v -cc $CC -prod -o v cmd/v
+          ./v -cc $CC -prod cmd/tools/vup.v
+          ./v -cc $CC -prod cmd/tools/vdoctor.v
+      - name: Remove excluded
+        run: |
+           rm -rf .git
+           rm -rf vc/
+           rm -rf v_old
+      - name: Create ZIP archive
+        run: |
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v2
         with:
           name: macos
-          path: |
-            .
-            ./cmd/tools/vup
-            ./cmd/tools/vdoctor
-            !./.git
-            !./vc
-            !./v_old
-      - name: Create binary only artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: macos-binary
-          path: ./v
+          path: v_macos.zip
 
   build-windows:
     runs-on: windows-latest
+    env:
+      CC: msvc
+      ZIPNAME: v_windows.zip
     steps:
       - uses: actions/checkout@v1
       - uses: msys2/setup-msys2@v2
       - name: Compile
         run: |
-          .\make.bat
+          .\make.bat -tcc
           .\v.exe cmd\tools\vup.v
           .\v.exe cmd\tools\vdoctor.v
+      - name: Remove excluded
+        shell: msys2 {0}
+        run: |
+           rm -rf .git
+           rm -rf vc/
+           rm -rf v_old.exe
+      - name: Create archive
+        shell: msys2 {0}
+        run: |
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v2
         with:
           name: windows
-          path: |
-            .
-            ./cmd/tools/vup.exe
-            ./cmd/tools/vdoctor.exe
-            !./.git
-            !./vc
-            !./v_old.exe
-      - name: Create binary only artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: windows-binary
-          path: ./v.exe
+          path: v_windows.zip
 
   release:
     name: Create Github Release
@@ -128,23 +135,6 @@ jobs:
         with:
           name: ${{ matrix.version }}
           path: ./${{ matrix.version }}
-      - name: Build Zip Archives
-        run: |
-          mkdir -p workdir/
-          mv ${{ matrix.version }}/ workdir/v/
-          cd workdir/v/
-          chmod 755 v || true
-          chmod 755 v.exe || true
-          chmod 755 thirdparty/tcc/tcc.exe || true
-          chmod 755 cmd/tools/vup || true
-          chmod 755 cmd/tools/vup.exe || true
-          chmod 755 cmd/tools/vdoctor || true
-          chmod 755 cmd/tools/vdoctor.exe || true
-          rm -rf v_old v_old.exe
-          cd ..
-          zip -r9 --symlinks ../v_${{ matrix.version }}.zip v/*
-          cd ..
-          rm -rf workdir/
       - name: Get short tag name
         uses: jungwinter/split@v1
         id: split
@@ -165,6 +155,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-          asset_path: ./v_${{ matrix.version }}.zip
+          asset_path: ${{ matrix.version }}/v_${{ matrix.version }}.zip
           asset_name: v_${{ matrix.version }}.zip
           asset_content_type: application/zip
