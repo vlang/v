@@ -6807,11 +6807,25 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
-							expr_str := g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
-								field.typ)
+							mut expr_str := ''
+							if g.table.get_type_symbol(field.typ).kind in [.sum_type, .interface_] {
+								expr_str = g.expr_string_with_cast(field.default_expr,
+									field.default_expr_typ, field.typ)
+							} else {
+								expr_str = g.expr_string(field.default_expr)
+							}
 							init_str += '.$field_name = $expr_str,'
 						} else {
-							init_str += '.$field_name = ${g.type_default(field.typ)},'
+							mut zero_str := g.type_default(field.typ)
+							if zero_str == '{0}' {
+								if field_sym.info is ast.Struct {
+									if field_sym.info.fields.len == 0
+										&& field_sym.info.embeds.len == 0 {
+										zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
+									}
+								}
+							}
+							init_str += '.$field_name = $zero_str,'
 						}
 						has_none_zero = true
 					}
