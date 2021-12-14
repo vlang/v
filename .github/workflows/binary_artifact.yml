@@ -91,9 +91,12 @@ jobs:
         shell: msys2 {0}
         run: |
            cd ..
-           zip -r9 --symlinks $ZIPNAME v/
+           powershell Compress-Archive v $ZIPNAME
            mv $ZIPNAME v/
            cd v/
+# NB: the powershell Compress-Archive line is from:
+# https://superuser.com/a/1336434/194881
+# It is needed, because `zip` is not installed by default :-|
       - name: Create artifact
         uses: actions/upload-artifact@v2
         with:
