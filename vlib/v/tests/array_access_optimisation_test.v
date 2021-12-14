@@ -25,7 +25,8 @@ fn access(line string) {
 }
 
 fn test_array_optimisation() {
-	mut args := []string{cap: 3}
+	mut args := []string{cap: 4}
+	args << '-prod'
 	args << test
 	args << '-o'
 	args << '-'

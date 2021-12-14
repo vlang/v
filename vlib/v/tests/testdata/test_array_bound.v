@@ -93,6 +93,8 @@ fn check_for_c_init_1(a []byte) {
 	for access_it := a[34]; a[34] == 0; {
 		direct(a[34])
 		access(a[35])
+		// work around https://github.com/vlang/v/issues/12832
+		println(access_it)
 		return
 	}
 }
