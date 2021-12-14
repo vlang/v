@@ -114,6 +114,49 @@ jobs:
       - name: Build cmd/tools/fast
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
 
+  ubuntu-tcc-arm64:
+    needs: no-scheduling
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v2
+      - uses: uraimo/run-on-arch-action@v2.0.5
+        name: Run commands
+        id: runcmd
+        with:
+          arch: aarch64
+          distro: ubuntu20.04
+          env: |
+            VFLAGS: -cc tcc -no-retry-compilation -g
+
+          run: |
+            # - name: Install dependencies
+            apt-get update -y
+            apt-get install --quiet -y build-essential git
+
+            ## -name:  Build v
+            make
+            ./v -d debug_malloc -d debug_realloc -o v cmd/v
+            ./v -cg -cstrict -o v cmd/v
+            # Test v -realloc arena allocation
+            ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
+            #Test v->c
+            thirdparty/tcc/tcc.exe -version
+            ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+
+            # - name: v self compilation
+            ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+
+            # - name: v self compilation with -skip-unused
+            ./v -skip-unused -o v2 cmd/v && ./v2 -skip-unused -o v3 cmd/v && ./v3 -skip-unused -o v4 cmd/v
+
+            # - name: v doctor
+            ./v doctor
+
+            # TODO: run the full V test suite
+            # qemu is very slow, and it also sometimes produces failures that do not occur on real CPUs
+
+
   ubuntu-tcc-boehm-gc:
     needs: no-scheduling
     runs-on: ubuntu-20.04
