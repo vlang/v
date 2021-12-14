@@ -21,8 +21,8 @@ fn test_json_string() {
 	assert integer.json_str() == '-5'
 	u64integer := json2.Any(u64(5000))
 	assert u64integer.json_str() == '5000'
-	i64integer := json2.Any(i64(-5000))
-	assert i64integer.json_str() == '-5000'
+	i64integer := json2.Any(i64(-17))
+	assert i64integer.json_str() == '-17'
 }
 
 fn test_json_string_emoji() {
