@@ -287,7 +287,8 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 	name := node.left
 	match index {
 		ast.IntegerLiteral {
-			node.is_direct = t.index.safe_access(name.str(), index.val.int())
+			is_direct := t.index.safe_access(name.str(), index.val.int())
+			node.is_direct = is_direct
 		}
 		ast.RangeExpr {
 			if index.has_high {
