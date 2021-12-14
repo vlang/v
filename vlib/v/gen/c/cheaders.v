@@ -170,8 +170,6 @@ const c_common_macros = '
 #endif
 #ifdef __clang__
 	#undef __V_GCC__
-	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 #ifdef _MSC_VER
 	#undef __V_GCC__
