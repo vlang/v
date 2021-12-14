@@ -6816,7 +6816,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							}
 							init_str += '.$field_name = $expr_str,'
 						} else {
-							init_str += '.$field_name = ${g.type_default(field.typ)},'
+							mut zero_str := g.type_default(field.typ)
+							if zero_str == '{0}' {
+								zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
+							}
+							init_str += '.$field_name = $zero_str,'
 						}
 						has_none_zero = true
 					}
