@@ -2,6 +2,12 @@ Usage: v -b js [-options] ['run'] <target.v|target_directory> [run options]
 
 This command compiles the given target, along with their dependencies, into an Javascript source file.
 
+Note that `js` defaults to the `node` codegen backend but it's also possible to pick another:
+
+* `js_browser`        - V outputs JS source code ready for the browser.
+* `js_node`           - V outputs JS source code to run with nodejs.
+* `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
+
 For more general build help, see also `v help build`.
 
 # Interfacing the Javascript Backend code generation, passing options to it:
