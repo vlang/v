@@ -30,6 +30,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	if node.is_vweb {
 		// TODO assoc parser bug
+		save_cur_fn := c.table.cur_fn
 		pref_ := *c.pref
 		pref2 := &pref.Preferences{
 			...pref_
@@ -56,6 +57,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.nr_warnings += c2.nr_warnings
 		c.nr_errors += c2.nr_errors
 		c.nr_notices += c2.nr_notices
+
+		c.table.cur_fn = save_cur_fn
 	}
 	if node.method_name == 'html' {
 		rtyp := c.table.find_type_idx('vweb.Result')
