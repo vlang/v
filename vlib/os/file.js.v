@@ -11,19 +11,19 @@ pub mut:
 
 // todo(playX):   __as_cast is broken here
 /*
-pub struct ErrFileNotOpened {
+pub struct FileNotOpenedError {
 	msg  string = 'os: file not opened'
 	code int
 }
-pub struct ErrSizeOfTypeIs0 {
+pub struct SizeOfTypeIs0Error {
 	msg  string = 'os: size of type is 0'
 	code int
 }
 fn error_file_not_opened() IError {
-	return IError(&ErrFileNotOpened{})
+	return IError(&FileNotOpenedError{})
 }
 fn error_size_of_type_0() IError {
-	return IError(&ErrSizeOfTypeIs0{})
+	return IError(&SizeOfTypeIs0Error{})
 }
 */
 pub fn open_file(path string, mode string, options ...int) ?File {

@@ -1051,8 +1051,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 }
 
 struct UnsupportedAssertCtempTransform {
-	msg  string
-	code int
+	Error
 }
 
 const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})

@@ -22,7 +22,6 @@ fn (b Baz) get() int {
 	return 42
 }
 
-
 fn test_interface_method_with_struct_embed() {
 	foo := Foo{11}
 	bar := Bar{Foo{22}}

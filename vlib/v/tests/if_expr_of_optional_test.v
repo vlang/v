@@ -26,7 +26,7 @@ fn test_if_expr_of_optional() {
 	if _ := foo3() {
 		assert false
 	} else {
-		assert err.msg == 'foo3 error'
+		assert err.msg() == 'foo3 error'
 	}
 
 	a4 := foo4() or { panic('error') }

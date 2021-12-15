@@ -20,13 +20,15 @@ pub enum Increment {
 }
 
 struct EmptyInputError {
-	msg  string = 'Empty input'
-	code int
+	BaseError
+}
+
+fn (err EmptyInputError) msg() string {
+	return 'Empty input'
 }
 
 struct InvalidVersionFormatError {
-	msg  string
-	code int
+	Error
 }
 
 // * Constructor.

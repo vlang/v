@@ -26,7 +26,7 @@ fn main() {
 		// The user just wants an independent copy of v, and so we are done.
 		return
 	}
-	backup_old_version_and_rename_newer() or { panic(err.msg) }
+	backup_old_version_and_rename_newer() or { panic(err) }
 	println('V built successfully!')
 }
 
@@ -67,17 +67,17 @@ fn backup_old_version_and_rename_newer() ?bool {
 
 	list_folder('before:', 'removing $bak_file ...')
 	if os.exists(bak_file) {
-		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
+		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg()' }
 	}
 
 	list_folder('', 'moving $v_file to $bak_file ...')
-	os.mv(v_file, bak_file) or { errors << err.msg }
+	os.mv(v_file, bak_file) or { errors << err.msg() }
 
 	list_folder('', 'removing $v_file ...')
 	os.rm(v_file) or {}
 
 	list_folder('', 'moving $v2_file to $v_file ...')
-	os.mv_by_cp(v2_file, v_file) or { panic(err.msg) }
+	os.mv_by_cp(v2_file, v_file) or { panic(err) }
 
 	list_folder('after:', '')
 

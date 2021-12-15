@@ -135,12 +135,12 @@ fn test_alexcrichton_toml_rs() {
 
 					v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
 						contents := os.read_file(v_toml_json_path) or { panic(err) }
-						panic(err.msg + '\n$contents')
+						panic(err.msg() + '\n$contents')
 					}
 					alexcrichton_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"',
 						alexcrichton_toml_json_path]) or {
 						contents := os.read_file(v_toml_json_path) or { panic(err) }
-						panic(err.msg + '\n$contents')
+						panic(err.msg() + '\n$contents')
 					}
 
 					assert alexcrichton_normalized_json == v_normalized_json
@@ -176,7 +176,7 @@ fn test_alexcrichton_toml_rs() {
 					println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
 					assert false
 				} else {
-					println('     $err.msg')
+					println('     $err.msg()')
 					assert true
 				}
 				invalid++

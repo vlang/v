@@ -572,7 +572,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							}
 						}
 					} else {
-						c.error('incompatible initializer for field `$field.name`: $err.msg',
+						c.error('incompatible initializer for field `$field.name`: $err.msg()',
 							field.default_expr.position())
 					}
 				}
@@ -769,7 +769,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					}
 				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 					c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
-						c.error('cannot assign to field `$field_info.name`: $err.msg',
+						c.error('cannot assign to field `$field_info.name`: $err.msg()',
 							field.pos)
 					}
 				}
@@ -979,7 +979,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if left_sym.kind !in [.sum_type, .interface_] {
 						elem_type := right_final.array_info().elem_type
 						c.check_expected(left_type, elem_type) or {
-							c.error('left operand to `$node.op` does not match the array element type: $err.msg',
+							c.error('left operand to `$node.op` does not match the array element type: $err.msg()',
 								left_right_pos)
 						}
 					}
@@ -987,7 +987,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				.map {
 					map_info := right_final.map_info()
 					c.check_expected(left_type, map_info.key_type) or {
-						c.error('left operand to `$node.op` does not match the map key type: $err.msg',
+						c.error('left operand to `$node.op` does not match the map key type: $err.msg()',
 							left_right_pos)
 					}
 					node.left_type = map_info.key_type
@@ -2003,15 +2003,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			has_field = true
 			mut embed_types := []ast.Type{}
 			field, embed_types = c.table.find_field_from_embeds(sym, field_name) or {
-				if err.msg != '' {
-					c.error(err.msg, node.pos)
+				if err.msg() != '' {
+					c.error(err.msg(), node.pos)
 				}
 				has_field = false
 				ast.StructField{}, []ast.Type{}
 			}
 			node.from_embed_types = embed_types
 			if sym.kind in [.aggregate, .sum_type] {
-				unknown_field_msg = err.msg
+				unknown_field_msg = err.msg()
 			}
 		}
 		if !c.inside_unsafe {
@@ -2032,8 +2032,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				has_field = true
 				mut embed_types := []ast.Type{}
 				field, embed_types = c.table.find_field_from_embeds(gs, field_name) or {
-					if err.msg != '' {
-						c.error(err.msg, node.pos)
+					if err.msg() != '' {
+						c.error(err.msg(), node.pos)
 					}
 					has_field = false
 					ast.StructField{}, []ast.Type{}
@@ -2204,7 +2204,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			default_expr := node.default_expr
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			c.check_expected(default_typ, node.elem_type) or {
-				c.error(err.msg, default_expr.position())
+				c.error(err.msg(), default_expr.position())
 			}
 		}
 		if node.has_len {
@@ -2296,7 +2296,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			if expr !is ast.TypeNode {
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg', expr.position())
+					c.error('invalid array element: $err.msg()', expr.position())
 				}
 			}
 		}
@@ -2924,7 +2924,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				vroot := util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.val = 'include $vroot'
@@ -2939,7 +2939,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VMODROOT') {
 				vroot := util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.val = 'include $vroot'
@@ -2948,7 +2948,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('\$env(') {
 				env := util.resolve_env_value(flag, true) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.main = env
@@ -2967,15 +2967,15 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				'--cflags --libs $node.main'.split(' ')
 			}
 			mut m := pkgconfig.main(args) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 			cflags := m.run() or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 			c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 		}
@@ -2985,7 +2985,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
@@ -2995,13 +2995,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VMODROOT') {
 				flag = util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
 			if flag.contains('\$env(') {
 				flag = util.resolve_env_value(flag, true) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
@@ -3015,7 +3015,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			// println('adding flag "$flag"')
 			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 			}
 		}
 		else {
@@ -3775,14 +3775,14 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == ast.error_type && c.expected_type == ast.string_type
-						&& !c.using_new_err_struct && !c.inside_selector_expr
-						&& !c.inside_println_arg && !c.file.mod.name.contains('v.')
-						&& !c.is_builtin_mod {
-						//                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
-						c.warn('string errors are deprecated; use `err.msg` instead',
-							node.pos)
-					}
+					// if typ == ast.error_type && c.expected_type == ast.string_type
+					// 	&& !c.using_new_err_struct && !c.inside_selector_expr
+					// 	&& !c.inside_println_arg && !c.file.mod.name.contains('v.')
+					// 	&& !c.is_builtin_mod {
+					// 	//                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
+					// 	c.warn('string errors are deprecated; use `err.msg()` instead',
+					// 		node.pos)
+					// }
 					// if typ == ast.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)
 					// println('IDENT T unresolved $node.name typ=$sym.name')

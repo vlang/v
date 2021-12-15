@@ -77,7 +77,7 @@ fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
 	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
-	fbytes := os.read_bytes(file) or { return error('Error: $err.msg') }
+	fbytes := os.read_bytes(file) or { return error('Error: $err.msg()') }
 	return byte_name, fbytes
 }
 
@@ -108,7 +108,7 @@ fn main() {
 		exit(0)
 	}
 	files := fp.finalize() or {
-		eprintln('Error: $err.msg')
+		eprintln('Error: $err.msg()')
 		exit(1)
 	}
 	real_files := files.filter(it != 'bin2v')
@@ -123,7 +123,7 @@ fn main() {
 	mut file_byte_map := map[string][]byte{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
-			eprintln(err.msg)
+			eprintln(err.msg())
 			exit(1)
 		}
 		file_byte_map[bname] = fbytes

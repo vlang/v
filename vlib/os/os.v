@@ -139,12 +139,12 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err.msg }
+			rmdir_all(fullpath) or { ret_err = err.msg() }
 		} else {
-			rm(fullpath) or { ret_err = err.msg }
+			rm(fullpath) or { ret_err = err.msg() }
 		}
 	}
-	rmdir(path) or { ret_err = err.msg }
+	rmdir(path) or { ret_err = err.msg() }
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}
@@ -394,8 +394,11 @@ fn executable_fallback() string {
 }
 
 pub struct ErrExecutableNotFound {
-	msg  string = 'os: failed to find executable'
-	code int
+	BaseError
+}
+
+fn (err ErrExecutableNotFound) msg() string {
+	return 'os: failed to find executable'
 }
 
 fn error_failed_to_find_executable() IError {

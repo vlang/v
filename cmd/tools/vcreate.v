@@ -82,7 +82,7 @@ fn gen_gitignore(name string) string {
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
 	mut vmod := os.create(vmod_path) or {
-		cerror(err.msg)
+		cerror(err.msg())
 		exit(1)
 	}
 	vmod.write_string(vmod_content(c)) or { panic(err) }
@@ -95,7 +95,7 @@ fn (c &Create) write_main(new bool) {
 	}
 	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
 	mut mainfile := os.create(main_path) or {
-		cerror(err.msg)
+		cerror(err.msg())
 		exit(2)
 	}
 	mainfile.write_string(main_content()) or { panic(err) }

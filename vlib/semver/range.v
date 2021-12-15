@@ -30,13 +30,11 @@ struct Range {
 }
 
 struct InvalidComparatorCountError {
-	msg  string
-	code int
+	Error
 }
 
 struct InvalidComparatorFormatError {
-	msg  string
-	code int
+	Error
 }
 
 fn (r Range) satisfies(ver Version) bool {

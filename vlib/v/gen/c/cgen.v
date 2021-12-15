@@ -6034,8 +6034,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						typ: embed
 						fields: init_fields_to_embed
 					}
+					inside_cast_in_heap := g.inside_cast_in_heap
+					g.inside_cast_in_heap = 0 // prevent use of pointer for struct_init
+
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
+
+					g.inside_cast_in_heap = inside_cast_in_heap // restore value
 					if is_multiline {
 						g.writeln(',')
 					} else {
@@ -6690,11 +6695,12 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
+			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *${cvar_name}.err.msg );')
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 			} else {
-				g.writeln('\tpanic_optional_not_set(*${cvar_name}.err.msg);')
+				g.writeln('\tpanic_optional_not_set($err_msg);')
 			}
 		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)

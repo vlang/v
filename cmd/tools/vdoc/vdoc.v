@@ -224,8 +224,8 @@ fn (vd VDoc) get_readme(path string) string {
 
 fn (vd VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
-	mut err_msg := err.msg
-	if err.code == 1 {
+	mut err_msg := err.msg()
+	if err.code() == 1 {
 		mod_list := get_modules_list(cfg.input_path, []string{})
 		println('Available modules:\n==================')
 		for mod in mod_list {
@@ -441,7 +441,7 @@ fn parse_arguments(args []string) Config {
 					exit(1)
 				}
 				selected_platform := doc.platform_from_string(platform_str) or {
-					eprintln(err.msg)
+					eprintln(err.msg())
 					exit(1)
 				}
 				cfg.platform = selected_platform

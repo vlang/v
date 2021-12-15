@@ -255,7 +255,7 @@ pub fn (mut ctx Context) json_pretty<T>(j T) Result {
 pub fn (mut ctx Context) file(f_path string) Result {
 	ext := os.file_ext(f_path)
 	data := os.read_file(f_path) or {
-		eprint(err.msg)
+		eprint(err.msg())
 		ctx.server_error(500)
 		return Result{}
 	}
@@ -379,13 +379,13 @@ interface DbInterface {
 // run_app
 [manualfree]
 pub fn run<T>(global_app &T, port int) {
-	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code $err') }
+	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code() $err.msg()') }
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-			eprintln('error parsing method attributes: $err')
+			eprintln('error parsing method attributes: $err.msg()')
 			return
 		}
 
@@ -411,7 +411,7 @@ pub fn run<T>(global_app &T, port int) {
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg')
+			eprintln('accept() failed with error: $err.msg()')
 			continue
 		}
 		go handle_conn<T>(mut conn, mut request_app, routes)

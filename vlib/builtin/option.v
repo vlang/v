@@ -5,35 +5,69 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
-	msg string
-	code int
+	msg() string
+	code() int
 }
 
-// Error is the default implementation of IError, that is returned by e.g. `error()`
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg() }
+		else { '$err.type_name(): $err.msg()' }
+	}
+}
+
+// BaseError is an empty implementation of the IError interface, it is used to make custom error types simpler
+pub struct BaseError {}
+
+[inline]
+pub fn (err BaseError) msg() string {
+	return ''
+}
+
+[inline]
+pub fn (err BaseError) code() int {
+	return 0
+}
+
+// Error is the default implementation of IError with `msg` and `code` fields, that is returned by e.g. `error()`
 pub struct Error {
 pub:
 	msg  string
 	code int
 }
 
-pub fn (err IError) str() string {
-	return match err {
-		None__ { 'none' }
-		Error { err.msg }
-		else { '$err.type_name(): $err.msg' }
-	}
+[inline]
+pub fn (err Error) msg() string {
+	return err.msg
 }
 
-const none__ = IError(&None__{})
+[inline]
+pub fn (err Error) code() int {
+	return err.code
+}
 
+// None__ must contain `msg` and `code` fields because currently some compiler magic depends on it.
 struct None__ {
 	msg  string
 	code int
 }
 
-fn (_ None__) str() string {
+[inline]
+fn (n None__) msg() string {
+	return n.msg
+}
+
+[inline]
+fn (n None__) code() int {
+	return n.code
+}
+
+fn (n None__) str() string {
 	return 'none'
 }
+
+const none__ = IError(&None__{})
 
 [if trace_error ?]
 fn trace_error(x string) {

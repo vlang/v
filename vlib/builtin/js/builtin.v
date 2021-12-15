@@ -14,8 +14,29 @@ pub fn panic(s string) {
 
 // IError holds information about an error instance
 pub interface IError {
-	msg string
-	code int
+	msg() string
+	code() int
+}
+
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg() }
+		else { 'Error: $err.msg()' }
+	}
+}
+
+// BaseError is an empty implementation of the IError interface, it is used to make custom error types simpler
+pub struct BaseError {}
+
+[inline]
+pub fn (err BaseError) msg() string {
+	return ''
+}
+
+[inline]
+pub fn (err BaseError) code() int {
+	return 0
 }
 
 // Error is the default implementation of IError, that is returned by e.g. `error()`
@@ -25,28 +46,36 @@ pub:
 	code int
 }
 
+pub fn (err Error) msg() string {
+	return err.msg
+}
+
+pub fn (err Error) code() int {
+	return err.code
+}
+
 struct None__ {
 	msg  string
 	code int
+}
+
+fn (n None__) msg() string {
+	return n.str()
+}
+
+fn (_ None__) code() int {
+	return 0
 }
 
 fn (_ None__) str() string {
 	return 'none'
 }
 
-pub const none__ = IError(None__{'', 0})
+pub const none__ = IError(None__{})
 
 pub struct Option {
 	state byte
 	err   IError = none__
-}
-
-pub fn (err IError) str() string {
-	return match err {
-		None__ { 'none' }
-		Error { err.msg }
-		else { 'Error: $err.msg' }
-	}
 }
 
 pub fn (o Option) str() string {

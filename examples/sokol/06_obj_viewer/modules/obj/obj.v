@@ -564,7 +564,7 @@ pub fn tst() {
 	//fname := "Orange Robot 3D ObjPart.obj"
 	
 	mut obj := ObjPart{}
-	buf := os.read_lines(fname) or { panic(err.msg) }
+	buf := os.read_lines(fname) or { panic(err) }
 	obj.parse_obj_buffer(buf)
 	obj.summary()
 	*/

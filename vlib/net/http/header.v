@@ -633,6 +633,16 @@ struct HeaderKeyError {
 	invalid_char byte
 }
 
+// FIXME shouldn't be required once `Error` embedding works correctly
+fn (err HeaderKeyError) msg() string {
+	return err.msg
+}
+
+// FIXME shouldn't be required once `Error` embedding works correctly
+fn (err HeaderKeyError) code() int {
+	return err.code
+}
+
 // is_valid checks if the header token contains all valid bytes
 fn is_valid(header string) ? {
 	for _, c in header {

@@ -35,7 +35,8 @@ fn test_open_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err.msg == 'No such file or directory'
+		msg := err.msg() // FIXME: `err.msg()` should not require a special variable
+		assert msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
@@ -51,8 +52,8 @@ fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err.msg == 'No such file or directory'
-		os.File{}
+		msg := err.msg() // FIXME: `err.msg()` should not require a special variable
+		assert msg == 'No such file or directory'
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()

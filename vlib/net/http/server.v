@@ -48,7 +48,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 			break
 		}
 		mut conn := s.listener.accept() or {
-			if err.msg != 'net: op timed out' {
+			if err.msg() != 'net: op timed out' {
 				eprintln('accept() failed: $err; skipping')
 			}
 			continue

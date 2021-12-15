@@ -252,15 +252,23 @@ pub:
 }
 
 pub struct UnexpectedExtraAttributeError {
-pub:
-	msg  string
-	code int
+	Error
+}
+
+fn (err UnexpectedExtraAttributeError) msg() string {
+	return err.msg
+}
+
+fn (err UnexpectedExtraAttributeError) code() int {
+	return err.code
 }
 
 pub struct MultiplePathAttributesError {
-pub:
-	msg  string = 'Expected at most one path attribute'
-	code int
+	BaseError
+}
+
+fn (err MultiplePathAttributesError) msg() string {
+	return 'Expected at most one path attribute'
 }
 
 // multipart_form_body converts form and file data into a multipart/form

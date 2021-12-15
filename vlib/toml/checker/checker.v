@@ -477,14 +477,14 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 					c.check_unicode_escape(s.text[pos..pos + 11]) or {
 						st := s.state()
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+							' escaped Unicode is invalid. $err.msg().capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
 					}
 				} else {
 					pos := s.state().pos
 					c.check_unicode_escape(s.text[pos..]) or {
 						st := s.state()
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg.capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+							' escaped Unicode is invalid. $err.msg().capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
 					}
 				}
 			}

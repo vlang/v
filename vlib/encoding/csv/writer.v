@@ -23,7 +23,7 @@ pub fn new_writer() &Writer {
 // write writes a single record
 pub fn (mut w Writer) write(record []string) ?bool {
 	if !valid_delim(w.delimiter) {
-		return IError(&ErrInvalidDelimiter{})
+		return IError(&InvalidDelimiterError{})
 	}
 	le := if w.use_crlf { '\r\n' } else { '\n' }
 	for n, field_ in record {

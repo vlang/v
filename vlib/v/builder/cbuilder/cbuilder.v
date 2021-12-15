@@ -36,8 +36,8 @@ pub fn compile_c(mut b builder.Builder) {
 
 pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	b.front_and_middle_stages(v_files) or {
-		if err.code != 9999 {
-			builder.verror(err.msg)
+		if err.code() != 9999 {
+			builder.verror(err.msg())
 		}
 		return ''
 	}

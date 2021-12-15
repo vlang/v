@@ -20,8 +20,10 @@ fn test_signal_opt_invalid_argument() {
 		assert false
 	}
 	os.signal_opt(.kill, default_handler) or {
-		assert err.msg == 'Invalid argument'
-		assert err.code == 22
+		msg := err.msg() // FIXME: `err.msg()` should not require a special variable
+		code := err.code() // FIXME: `err.code()` should not require a special variable
+		assert msg == 'Invalid argument'
+		assert code == 22
 	}
 }
 

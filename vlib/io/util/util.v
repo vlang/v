@@ -24,7 +24,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 			' could not create temporary file in "$d". Please ensure write permissions.')
 	}
 	d = d.trim_right(os.path_separator)
-	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err.msg) }
+	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err.msg()) }
 	for retry := 0; retry < util.retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		mut mode := 'rw+'
@@ -57,7 +57,7 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 			' could not create temporary directory "$d". Please ensure write permissions.')
 	}
 	d = d.trim_right(os.path_separator)
-	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err.msg) }
+	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err.msg()) }
 	for retry := 0; retry < util.retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		os.mkdir_all(path) or { continue }

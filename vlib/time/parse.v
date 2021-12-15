@@ -4,13 +4,20 @@
 module time
 
 pub struct TimeParseError {
-	msg  string
+	BaseError
 	code int
+}
+
+fn (err TimeParseError) msg() string {
+	return 'Invalid time format code: $err.code'
+}
+
+fn (err TimeParseError) code() int {
+	return err.code
 }
 
 fn error_invalid_time(code int) IError {
 	return TimeParseError{
-		msg: 'Invalid time format code: $code'
 		code: code
 	}
 }
