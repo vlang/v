@@ -3592,24 +3592,30 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 			if enum_decl := c.table.enum_decls[to_type_sym.name] {
 				mut in_range := false
-				mut enum_val := 0
+				if enum_decl.is_flag {
+					// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
+					max_val := (1 << enum_decl.fields.len) - 1
+					in_range = node_val >= 0 && node_val <= max_val
+				} else {
+					mut enum_val := 0
 
-				for enum_field in enum_decl.fields {
-					// check if the field of the enum value is an integer literal
-					if enum_field.expr is ast.IntegerLiteral {
-						enum_val = enum_field.expr.val.int()
+					for enum_field in enum_decl.fields {
+						// check if the field of the enum value is an integer literal
+						if enum_field.expr is ast.IntegerLiteral {
+							enum_val = enum_field.expr.val.int()
+						}
+
+						if node_val == enum_val {
+							in_range = true
+							break
+						}
+
+						enum_val += 1
 					}
-
-					if node_val == enum_val {
-						in_range = true
-						break
-					}
-
-					enum_val += 1
 				}
 
 				if !in_range {
-					c.warn('$node_val does not represents a value of enum $enum_typ_name',
+					c.warn('$node_val does not represent a value of enum $enum_typ_name',
 						node.pos)
 				}
 			}
