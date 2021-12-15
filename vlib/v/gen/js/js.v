@@ -151,7 +151,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(Object.keys(this.map).length);}, set: function(l) { } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.length);}, set: function(l) { } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
@@ -1298,6 +1298,8 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					array_set = true
 
 					if g.table.get_type_symbol(left.left_type).kind == .map {
+						g.writeln('.length++;')
+						g.expr(left.left)
 						g.write('.map[')
 						map_set = true
 					} else {
@@ -1668,22 +1670,40 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
 		tmp := g.new_tmp_var()
 		tmp2 := g.new_tmp_var()
-		tmp3 := g.new_tmp_var()
-		g.write('let $tmp2 = ')
-		g.expr(it.cond)
-		if it.cond_type.is_ptr() {
-			g.write('.valueOf()')
+		if g.pref.output_es5 {
+			tmp3 := g.new_tmp_var()
+			g.write('let $tmp2 = ')
+			g.expr(it.cond)
+			if it.cond_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.writeln(';')
+
+			g.write('for (var $tmp3 = 0; $tmp3 < Object.keys(${tmp2}.map).length; $tmp3++) ')
+			g.write('{')
+			g.writeln('\tlet $tmp = Object.keys(${tmp2}.map)')
+			g.writeln('\tlet $key = $tmp[$tmp3];')
+			g.writeln('\tlet $val = ${tmp2}.map[$tmp[$tmp3]];')
+			g.inc_indent()
+			g.stmts(it.stmts)
+			g.dec_indent()
+			g.writeln('}')
+		} else {
+			g.write('let $tmp = ')
+			g.expr(it.cond)
+			if it.cond_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.writeln(';')
+			g.writeln('for (var $tmp2 in ${tmp}.map) {')
+
+			g.inc_indent()
+			g.writeln('let $val = ${tmp}.map[$tmp2];')
+			g.writeln('let $key = $tmp2;')
+			g.stmts(it.stmts)
+			g.dec_indent()
+			g.writeln('}')
 		}
-		g.writeln(';')
-		g.writeln('let $tmp = Object.keys($tmp2);')
-		g.write('for (var $tmp3 = 0; $tmp3 < ${tmp}.length; $tmp3++) ')
-		g.write('{')
-		g.writeln('\tlet $key = $tmp[$tmp3];')
-		g.writeln('\tlet $val = $tmp2[$tmp[$tmp3]];')
-		g.inc_indent()
-		g.stmts(it.stmts)
-		g.dec_indent()
-		g.writeln('}')
 	}
 }
 
