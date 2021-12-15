@@ -7,7 +7,9 @@ fn main() {
     println(Color(0))
     println(Color(10))
     println(Color(12))
+    println(Color(-10))
 
     println(Permissions(0b101))
     println(Permissions(0b1010))
+    println(Permissions(-1))
 }

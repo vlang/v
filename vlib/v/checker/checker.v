@@ -3595,7 +3595,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				if enum_decl.is_flag {
 					// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
 					max_val := (1 << enum_decl.fields.len) - 1
-					in_range = node_val <= max_val
+					in_range = node_val >= 0 && node_val <= max_val
 				} else {
 					mut enum_val := 0
 
