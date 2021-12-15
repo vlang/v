@@ -1691,6 +1691,10 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 }
 
 fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
+	if g.pref.output_es5 {
+		verror('No support for goroutines on ES5 output')
+		return
+	}
 	g.writeln('new _v_Promise({promise: new Promise(function(resolve){')
 	g.inc_indent()
 	g.write('resolve(')
