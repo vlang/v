@@ -142,7 +142,8 @@ fn test_complex_angle() {
 	c = cmplx.complex(-1, -1)
 	assert c.angle() * 180 / math.pi == -135
 	cc := c.conjugate()
-	assert cc.angle() + c.angle() == 0
+	a := cc.angle()
+	assert a + c.angle() == 0
 }
 
 fn test_complex_addinv() {

@@ -131,7 +131,15 @@ const (
 		'do_not_remove',
 	]
 	skip_on_non_amd64             = [
-		'vlib/v/tests/closure_test.v' /* not implemented yet */,
+		// closures aren't implemented yet:
+		'vlib/v/tests/closure_test.v',
+		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
+		'vlib/context/empty_test.v',
+		'vlib/context/value_test.v',
+		'vlib/context/onecontext/onecontext_test.v',
+		'vlib/sync/once_test.v',
+		'vlib/sync/many_times_test.v',
 		'do_not_remove',
 	]
 )
