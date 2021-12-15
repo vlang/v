@@ -7262,9 +7262,7 @@ fn (mut g Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st, true)
 			$if debug_interface_table ? {
-				eprintln(
-					'>> interface name: $isym.name | concrete type: $st.debug() | st symname: ' +
-					st_sym.name)
+				eprintln('>> interface name: $isym.name | concrete type: $st.debug() | st symname: $st_sym.name')
 			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
@@ -7396,7 +7394,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
 						ast.Fn{}, []ast.Type{}
 					}
-					if embed_types.len > 0 {
+					if embed_types.len > 0 && !g.table.has_method(st_sym, method.name) {
 						embed_sym := g.table.get_type_symbol(embed_types.last())
 						method_name := '${embed_sym.cname}_$method.name'
 						methods_wrapper.write_string('${method_name}(${fargs[0]}')

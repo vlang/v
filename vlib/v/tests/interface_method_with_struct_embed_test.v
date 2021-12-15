@@ -1,3 +1,7 @@
+interface Getter {
+	get() int
+}
+
 struct Foo {
 	x int
 }
@@ -10,26 +14,21 @@ struct Bar {
 	Foo
 }
 
-interface Getter {
-	get() int
+struct Baz {
+	Foo
 }
 
+fn (b Baz) get() int {
+	return 42
+}
+
+
 fn test_interface_method_with_struct_embed() {
-	mut getter := []Getter{}
+	foo := Foo{11}
+	bar := Bar{Foo{22}}
+	baz := Baz{Foo{33}}
 
-	foo := Foo{22}
-	getter << foo
-
-	bar := Bar{Foo{11}}
-	getter << bar
-
-	assert getter.len == 2
-
-	println(foo)
-	println(getter[0])
-	assert getter[0].get() == 22
-
-	println(bar)
-	println(getter[1])
-	assert getter[1].get() == 11
+	assert Getter(foo).get() == 11
+	assert Getter(bar).get() == 22
+	assert Getter(baz).get() == 42
 }
