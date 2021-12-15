@@ -439,29 +439,16 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				)
 			}
 			'map' {
-				if g.pref.output_es5 {
-					g.gen_builtin_prototype(
-						typ_name: typ_name
-						val_name: 'map'
-						default_value: 'new map({})'
-						constructor: 'this.map = map; this.length = 0;'
-						value_of: 'this'
-						to_string: 'this.map.toString()'
-						eq: 'new bool(vEq(self, other))'
-						to_jsval: 'this.map'
-					)
-				} else {
-					g.gen_builtin_prototype(
-						typ_name: typ_name
-						val_name: 'map'
-						default_value: 'new map(new Map())'
-						constructor: 'this.map = map'
-						value_of: 'this'
-						to_string: 'this.map.toString()'
-						eq: 'new bool(vEq(self, other))'
-						to_jsval: 'this.map'
-					)
-				}
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					val_name: 'map'
+					default_value: 'new map({})'
+					constructor: 'this.map = map; this.length = 0;'
+					value_of: 'this'
+					to_string: 'this.map.toString()'
+					eq: 'new bool(vEq(self, other))'
+					to_jsval: 'this.map'
+				)
 			}
 			'array' {
 				g.gen_builtin_prototype(

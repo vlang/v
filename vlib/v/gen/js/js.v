@@ -151,7 +151,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.size);}, set: function(l) { this.map.size = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(Object.keys(this.map).length);}, set: function(l) { } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
@@ -1305,7 +1305,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					}
 					if map_set {
 						g.expr(left.index)
-						g.write('.\$toJS(),')
+						g.write('.\$toJS()] = ')
 					} else {
 						g.write('new int(')
 						g.cast_stack << ast.int_type_idx
@@ -1458,7 +1458,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write(')')
 				}
 			}
-			if array_set {
+			if array_set && !map_set {
 				g.write(')')
 			}
 			if semicolon {
@@ -3059,25 +3059,24 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	g.writeln('new map(')
 	g.inc_indent()
 	if it.vals.len > 0 {
-		g.writeln('new Map([')
+		g.writeln('{')
 		g.inc_indent()
 		for i, key in it.keys {
 			val := it.vals[i]
 			g.write('[')
 			g.expr(key)
-			g.write('.\$toJS()')
-			g.write(', ')
+			g.write('.\$toJS()]')
+			g.write(': ')
 			g.expr(val)
-			g.write(']')
 			if i < it.keys.len - 1 {
 				g.write(',')
 			}
 			g.writeln('')
 		}
 		g.dec_indent()
-		g.write('])')
+		g.write('}')
 	} else {
-		g.write('new Map()')
+		g.write('{}')
 	}
 	g.dec_indent()
 	g.write(')')
