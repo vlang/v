@@ -598,7 +598,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('function ${str_fn_name}(m) { return indent_${str_fn_name}(m, 0);}')
 
 	g.definitions.writeln('function indent_${str_fn_name}(m, indent_count) { /* gen_str_for_map */')
-	g.definitions.writeln('\tlet sb = strings__new_builder(m.map.length*10);')
+	g.definitions.writeln('\tlet sb = strings__new_builder(m.length*10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("{"));')
 	g.definitions.writeln('\tlet i = 0;')
 	g.definitions.writeln('\tfor (let [key,value] of m.map) {')

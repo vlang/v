@@ -11,7 +11,8 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 	cast_ty := if greater_typ == it.left_type { l_sym.cname } else { r_sym.cname }
 	g.write('new ${g.js_name(cast_ty)}( ')
 	g.cast_stack << greater_typ
-	if (l_sym.kind == .i64 || l_sym.kind == .u64) || (r_sym.kind == .i64 || r_sym.kind == .u64) {
+	if !g.pref.output_es5 && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		g.write('BigInt(')
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)

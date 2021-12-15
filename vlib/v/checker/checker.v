@@ -26,7 +26,7 @@ const (
 	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-		'interpreter']
+		'interpreter', 'es5']
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']

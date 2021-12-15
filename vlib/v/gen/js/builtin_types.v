@@ -341,26 +341,50 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 			}
 			// u64 and i64 are so big that their values do not fit into JS number so we use BigInt.
 			'u64' {
-				g.gen_builtin_prototype(
-					typ_name: typ_name
-					default_value: 'BigInt(0)'
-					constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
-					value_of: 'this.val'
-					to_string: 'this.val.toString()'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: 'this.val'
-				)
+				if g.pref.output_es5 {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						default_value: '0'
+						constructor: 'this.val =val.floor() >> 0'
+						value_of: 'this.val'
+						to_string: 'this.val.toString()'
+						eq: 'new bool(self.valueOf() === other.valueOf())'
+						to_jsval: 'this.val'
+					)
+				} else {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						default_value: 'BigInt(0)'
+						constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
+						value_of: 'this.val'
+						to_string: 'this.val.toString()'
+						eq: 'new bool(self.valueOf() === other.valueOf())'
+						to_jsval: 'this.val'
+					)
+				}
 			}
 			'i64' {
-				g.gen_builtin_prototype(
-					typ_name: typ_name
-					default_value: 'BigInt(0)'
-					constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
-					value_of: 'this.val'
-					to_string: 'this.val.toString()'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: 'this.val'
-				)
+				if g.pref.output_es5 {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						default_value: '0'
+						constructor: 'this.val =val.floor() >> 0'
+						value_of: 'this.val'
+						to_string: 'this.val.toString()'
+						eq: 'new bool(self.valueOf() === other.valueOf())'
+						to_jsval: 'this.val'
+					)
+				} else {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						default_value: 'BigInt(0)'
+						constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
+						value_of: 'this.val'
+						to_string: 'this.val.toString()'
+						eq: 'new bool(self.valueOf() === other.valueOf())'
+						to_jsval: 'this.val'
+					)
+				}
 			}
 			'byte' {
 				g.gen_builtin_prototype(
@@ -415,16 +439,29 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 				)
 			}
 			'map' {
-				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'map'
-					default_value: 'new map(new Map())'
-					constructor: 'this.map = map'
-					value_of: 'this'
-					to_string: 'this.map.toString()'
-					eq: 'new bool(vEq(self, other))'
-					to_jsval: 'this.map'
-				)
+				if g.pref.output_es5 {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						val_name: 'map'
+						default_value: 'new map({})'
+						constructor: 'this.map = map; this.length = 0;'
+						value_of: 'this'
+						to_string: 'this.map.toString()'
+						eq: 'new bool(vEq(self, other))'
+						to_jsval: 'this.map'
+					)
+				} else {
+					g.gen_builtin_prototype(
+						typ_name: typ_name
+						val_name: 'map'
+						default_value: 'new map(new Map())'
+						constructor: 'this.map = map'
+						value_of: 'this'
+						to_string: 'this.map.toString()'
+						eq: 'new bool(vEq(self, other))'
+						to_jsval: 'this.map'
+					)
+				}
 			}
 			'array' {
 				g.gen_builtin_prototype(

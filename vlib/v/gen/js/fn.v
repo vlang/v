@@ -617,6 +617,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	mut has_go := fn_has_go(it) || it.has_await
 	for attr in it.attrs {
 		if attr.name == 'async' {
+			if g.pref.output_es5 {
+				verror('Cannot use [async] attribute when outputing ES5 source code')
+			}
 			has_go = true
 			break
 		}
@@ -626,8 +629,10 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
-		// main function is always async
-		g.write('async ')
+		if g.pref.output_es5 {
+			// main function is always async
+			g.write('async ')
+		}
 		g.write('function js_main(')
 	} else if it.is_anon {
 		g.write('function (')
@@ -639,7 +644,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		// type_name := g.typ(it.return_type)
 		// generate jsdoc for the function
 		g.doc.gen_fn(it)
-		if has_go {
+		if has_go && !g.pref.output_es5 {
 			g.write('async ')
 		}
 

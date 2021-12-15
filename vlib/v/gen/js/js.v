@@ -234,7 +234,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 
 	if !g.pref.is_shared {
-		g.write('loadRoutine().then(_ => js_main());')
+		if g.pref.output_es5 {
+			g.write('js_main();')
+		} else {
+			g.write('loadRoutine().then(_ => js_main());')
+		}
 	}
 	g.escape_namespace()
 	// resolve imports
@@ -242,29 +246,32 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
-	out += '\nlet wasmExportObject;\n'
-	out += 'const loadRoutine = async () => {\n'
-	for mod, functions in g.wasm_import {
-		if g.pref.backend == .js_browser {
-			out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
-			out += 'WebAssembly.instantiate(bytes,'
-			exports := g.wasm_export[mod]
-			out += '{ imports: { \n'
-			for i, exp in exports {
-				out += g.js_name(exp) + ':' + '\$wasm' + g.js_name(exp)
-				if i != exports.len - 1 {
-					out += ',\n'
+	if !g.pref.output_es5 {
+		out += '\nlet wasmExportObject;\n'
+
+		out += 'const loadRoutine = async () => {\n'
+		for mod, functions in g.wasm_import {
+			if g.pref.backend == .js_browser {
+				out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
+				out += 'WebAssembly.instantiate(bytes,'
+				exports := g.wasm_export[mod]
+				out += '{ imports: { \n'
+				for i, exp in exports {
+					out += g.js_name(exp) + ':' + '\$wasm' + g.js_name(exp)
+					if i != exports.len - 1 {
+						out += ',\n'
+					}
 				}
+				out += '}})).then(obj => wasmExportObject = obj.instance.exports);\n'
+				for fun in functions {
+					out += 'globalThis.${g.js_name(fun)} = wasmExportObject.${g.js_name(fun)};\n'
+				}
+			} else {
+				verror('WebAssembly export is supported only for browser backend at the moment')
 			}
-			out += '}})).then(obj => wasmExportObject = obj.instance.exports);\n'
-			for fun in functions {
-				out += 'globalThis.${g.js_name(fun)} = wasmExportObject.${g.js_name(fun)};\n'
-			}
-		} else {
-			verror('WebAssembly export is supported only for browser backend at the moment')
 		}
+		out += '}\n'
 	}
-	out += '}\n'
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -336,7 +343,10 @@ fn (g JsGen) create_sourcemap() string {
 
 pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.enter_namespace('main')
-	g.writeln('async function js_main() {  ')
+	if !g.pref.output_es5 {
+		g.write('async ')
+	}
+	g.writeln('function js_main() {  ')
 	g.inc_indent()
 	all_tfuncs := g.get_all_test_function_names()
 
@@ -442,6 +452,9 @@ pub fn (mut g JsGen) init() {
 	// g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
+	if g.pref.output_es5 {
+		g.definitions.writeln('globalThis = \$global;')
+	}
 	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
 	if g.pref.backend != .js_node {
@@ -1285,7 +1298,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					array_set = true
 
 					if g.table.get_type_symbol(left.left_type).kind == .map {
-						g.write('.map.set(')
+						g.write('.map[')
 						map_set = true
 					} else {
 						g.write('.arr.set(')
@@ -1314,12 +1327,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 			if false && g.inside_map_set && op == .assign {
 				g.inside_map_set = false
-				g.write(', ')
+				g.write('] = ')
 				g.expr(val)
 				if is_ptr {
 					g.write('.val')
 				}
-				g.write(')')
 			} else {
 				if is_assign && array_set {
 					g.write('new ${styp}(')
@@ -2792,7 +2804,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod, .right_shift, .left_shift,
 		.amp, .pipe, .xor]
 
-	if is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+	if !g.pref.output_es5 && is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		// if left or right is i64 or u64 we convert them to bigint to perform operation.
 		greater_typ := if l_sym.kind == .i64 || l_sym.kind == .u64 {
@@ -3275,7 +3287,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
 	// Skip cast if type is the same as the parrent caster
 	tsym := g.table.get_final_type_symbol(typ_)
-	if tsym.kind == .i64 || tsym.kind == .u64 {
+	if !g.pref.output_es5 && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
 		g.write('$tsym.kind.str()')
@@ -3346,7 +3358,8 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		g.expr(it.expr)
 		return
 	}
-	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
+	if !g.pref.output_es5 && it.expr is ast.IntegerLiteral
+		&& (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
 		g.write('$tsym.kind.str()')
