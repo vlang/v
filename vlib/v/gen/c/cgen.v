@@ -7338,7 +7338,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 			if st_sym.info is ast.Struct {
 				for embed in st_sym.info.embeds {
 					embed_sym := g.table.get_type_symbol(embed)
-					methods << embed_sym.methods
+					method_names := methods.map(it.name)
+					for embed_method in embed_sym.methods {
+						if embed_method.name !in method_names {
+							methods << embed_method
+						}
+					}
 				}
 			}
 			for method in methods {
