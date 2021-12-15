@@ -776,6 +776,7 @@ mut:
 }
 
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}

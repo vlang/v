@@ -336,6 +336,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		pref: pref
 	}
 	// println( all_fns.keys() )
+	walker.mark_markused_fns() // tagged with `[markused]`
+	walker.mark_markused_consts() // tagged with `[markused]`
+	walker.mark_markused_globals() // tagged with `[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 

@@ -180,6 +180,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_noreturn := false
 	mut is_ctor_new := false
 	mut is_c2v_variadic := false
+	mut is_markused := false
 	for fna in p.attrs {
 		match fna.name {
 			'noreturn' { is_noreturn = true }
@@ -193,6 +194,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'trusted' { is_trusted = true }
 			'c2v_variadic' { is_c2v_variadic = true }
 			'use_new' { is_ctor_new = true }
+			'markused' { is_markused = true }
 			else {}
 		}
 	}
@@ -496,6 +498,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_test: is_test
 		is_keep_alive: is_keep_alive
 		is_unsafe: is_unsafe
+		is_markused: is_markused
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != -1

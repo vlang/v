@@ -13,9 +13,7 @@ import v.errors
 import os
 import hash.fnv1a
 
-pub const (
-	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
-)
+pub const builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
 
 pub struct Parser {
 	pref &pref.Preferences
@@ -3009,6 +3007,18 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_start()
+	mut attrs := []ast.Attr{}
+	if p.attrs.len > 0 {
+		attrs = p.attrs
+		p.attrs = []
+	}
+	mut is_markused := false
+	for ga in attrs {
+		match ga.name {
+			'markused' { is_markused = true }
+			else {}
+		}
+	}
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -3055,6 +3065,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			expr: expr
 			pos: pos.extend(expr.position())
 			comments: comments
+			is_markused: is_markused
 		}
 		fields << field
 		p.table.global_scope.register(field)
@@ -3073,6 +3084,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_pub: is_pub
 		end_comments: comments
 		is_block: is_block
+		attrs: attrs
 	}
 }
 
@@ -3105,6 +3117,15 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		attrs = p.attrs
 		p.attrs = []
 	}
+
+	mut is_markused := false
+	for ga in attrs {
+		match ga.name {
+			'markused' { is_markused = true }
+			else {}
+		}
+	}
+
 	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
 		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
@@ -3180,6 +3201,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			typ_pos: typ_pos
 			typ: typ
 			comments: comments
+			is_markused: is_markused
 		}
 		fields << field
 		p.table.global_scope.register(field)
