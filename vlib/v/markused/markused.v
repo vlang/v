@@ -260,6 +260,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		if isym.kind != .interface_ {
 			continue
 		}
+		if isym.info !is ast.Interface {
+			// Do not remove this check, isym.info could be &IError.
+			continue
+		}
 		interface_info := isym.info as ast.Interface
 		if interface_info.methods.len == 0 {
 			continue
