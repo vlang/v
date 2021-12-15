@@ -1679,7 +1679,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.write('for (var $tmp3 = 0; $tmp3 < ${tmp}.length; $tmp3++) ')
 		g.write('{')
 		g.writeln('\tlet $key = $tmp[$tmp3];')
-		g.writeln('\tlet $val = $tmp2[$key];')
+		g.writeln('\tlet $val = $tmp2[$tmp[$tmp3]];')
 		g.inc_indent()
 		g.stmts(it.stmts)
 		g.dec_indent()
