@@ -10,10 +10,10 @@ vlib/v/checker/tests/enum_cast.vv:10:13: warning: -10 does not represent a value
     9 |     println(Color(12))
    10 |     println(Color(-10))
       |             ~~~~~~~~~~
-   11 |
+   11 | 
    12 |     println(Permissions(0b101))
 vlib/v/checker/tests/enum_cast.vv:13:13: warning: 10 does not represent a value of enum Permissions
-   11 |
+   11 | 
    12 |     println(Permissions(0b101))
    13 |     println(Permissions(0b1010))
       |             ~~~~~~~~~~~~~~~~~~~
@@ -24,3 +24,4 @@ vlib/v/checker/tests/enum_cast.vv:14:13: warning: -1 does not represent a value 
    13 |     println(Permissions(0b1010))
    14 |     println(Permissions(-1))
       |             ~~~~~~~~~~~~~~~
+   15 | }
