@@ -1666,13 +1666,23 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		// val_styp := g.typ(it.val_type)
 		key := if it.key_var in ['', '_'] { '' } else { it.key_var }
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
-		g.write('for (let [$key, $val] of ')
+		tmp := g.new_tmp_var()
+		tmp2 := g.new_tmp_var()
+		tmp3 := g.new_tmp_var()
+		g.write('let $tmp2 = ')
 		g.expr(it.cond)
 		if it.cond_type.is_ptr() {
 			g.write('.valueOf()')
 		}
-		g.writeln(') {')
+		g.writeln(';')
+		g.writeln('let $tmp = Object.keys($tmp2);')
+		g.write('for (var $tmp3 = 0; $tmp3 < ${tmp}.length; $tmp3++) ')
+		g.write('{')
+		g.writeln('\tlet $key = $tmp[$tmp3];')
+		g.writeln('\tlet $val = $tmp2[$key];')
+		g.inc_indent()
 		g.stmts(it.stmts)
+		g.dec_indent()
 		g.writeln('}')
 	}
 }
@@ -2736,7 +2746,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.inside_map_set = true
 			g.write('.getOrSet(')
 		} else {
-			g.write('.map.get(')
+			g.write('.get(')
 		}
 		g.expr(expr.index)
 		g.write('.\$toJS()')

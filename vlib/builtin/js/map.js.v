@@ -22,7 +22,7 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 fn (mut m map) internal_get(key JS.Any) JS.Any {
 	mut val := JS.Any(voidptr(0))
 	//$if es5 {
-	#if ('$toJS' in key) key = key.$toJS();
+	#if (typeof key != "string" && '$toJS' in key) key = key.$toJS();
 	#val =  m.val.map[key]
 	/*} $else {
 		# if ('$toJS' in key) key = key.$toJS();
@@ -32,6 +32,9 @@ fn (mut m map) internal_get(key JS.Any) JS.Any {
 	return val
 }
 
+#map.prototype.get = function (key) { return map_internal_get(this,key); }
+#map.prototype.set = function(key,val) { map_internal_set(this,key,val); }
+#map.prototype.has = function (key) { if (typeof key != "string" && '$toJS' in key) { key = key.$toJS() } return key in this.map; }
 // Removes the mapping of a particular key from the map.
 [unsafe]
 pub fn (mut m map) delete(key JS.Any) {
@@ -44,9 +47,6 @@ pub fn (mut m map) delete(key JS.Any) {
 
 pub fn (m &map) free() {}
 
-$if !es5 {
-	#map.prototype[Symbol.iterator] = function () { return this.map[Symbol.iterator](); }
-}
 //#Object.defineProperty(map.prototype,"len",{get: function() { return this.map.size; }})
 #map.prototype.toString = function () {
 #function fmtKey(key) { return typeof key == 'string' ? '\'' + key + '\'' : key}

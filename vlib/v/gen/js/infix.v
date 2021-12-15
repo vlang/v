@@ -298,7 +298,7 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 	} else if r_sym.unaliased_sym.kind == .map {
 		g.expr(node.right)
 		g.gen_deref_ptr(node.right_type)
-		g.write('.map.has(')
+		g.write('.has(')
 		g.expr(node.left)
 		/*
 		if l_sym.sym.kind == .string {
