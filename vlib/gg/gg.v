@@ -256,6 +256,30 @@ pub fn (ctx &Context) run() {
 	sapp.run(&ctx.window)
 }
 
+// Prepares the context for drawing
+pub fn (gg &Context) begin() {
+	if gg.render_text && gg.font_inited {
+		gg.ft.flush()
+	}
+	sgl.defaults()
+	sgl.matrix_mode_projection()
+	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+}
+
+// Finishes drawing for the context
+pub fn (gg &Context) end() {
+	gfx.begin_default_pass(gg.clear_pass, sapp.width(), sapp.height())
+	sgl.draw()
+	gfx.end_pass()
+	gfx.commit()
+	/*
+	if gg.config.wait_events {
+		// println('gg: waiting')
+		wait_events()
+	}
+	*/
+}
+
 // quit closes the context window and exits the event loop for it
 pub fn (ctx &Context) quit() {
 	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
@@ -266,25 +290,7 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 		f32(c.a) / 255.0)
 }
 
-pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.end()
-}
-
-[inline]
-pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_rect(x, y, s, s, c)
-}
-
+// Sets a pixel
 [inline]
 pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
 	if c.a != 255 {
@@ -297,6 +303,7 @@ pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
 	sgl.end()
 }
 
+// Sets pixels from an array of points [x, y, x2, y2, etc...]
 [direct_array_access; inline]
 pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
 	assert points.len % 2 == 0
@@ -315,6 +322,7 @@ pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
 	sgl.end()
 }
 
+// Draws a filled triangle
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -327,6 +335,34 @@ pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32
 	sgl.end()
 }
 
+// Draws the outline of a triangle
+pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.end()
+}
+
+// Draws a filled square
+[inline]
+pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_rect(x, y, s, s, c)
+}
+
+// Draws the outline of a square
+[inline]
+pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_empty_rect(x, y, s, s, c)
+}
+
+// Draws the outline of a rectangle
 pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -341,15 +377,12 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-[inline]
-pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_empty_rect(x, y, s, s, c)
-}
-
+// Draws a circle
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
 	ctx.draw_circle_with_segments(x, y, r, 10, c)
 }
 
+// Draws a circle with a specific number of segments (affects how smooth/round the circle is)
 pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -372,32 +405,8 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc_line(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	theta := f32(arc_angle / f32(segments))
-	tan_factor := math.tanf(theta)
-	rad_factor := math.cosf(theta)
-	nx := x * ctx.scale
-	ny := y * ctx.scale
-	mut xx := f32(r * math.cosf(start_angle))
-	mut yy := f32(r * math.sinf(start_angle))
-	sgl.begin_line_strip()
-	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + nx, yy + ny)
-		tx := -yy
-		ty := xx
-		xx += tx * tan_factor
-		yy += ty * tan_factor
-		xx *= rad_factor
-		yy *= rad_factor
-	}
-	sgl.end()
-}
-
-pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+// Draws a circle slice/pie.
+pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -407,8 +416,8 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
-	mut xx := f32(r * math.cosf(start_angle))
-	mut yy := f32(r * math.sinf(start_angle))
+	mut xx := r * math.cosf(start_angle)
+	mut yy := r * math.sinf(start_angle)
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
@@ -423,36 +432,40 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f
 	sgl.end()
 }
 
-pub fn (gg &Context) begin() {
-	if gg.render_text && gg.font_inited {
-		gg.ft.flush()
+// Draws the outline of a circle slice/pie.
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
 	}
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	theta := f32(arc_angle / f32(segments))
+	tan_factor := math.tanf(theta)
+	rad_factor := math.cosf(theta)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	mut xx := r * math.cosf(start_angle)
+	mut yy := r * math.sinf(start_angle)
+	sgl.begin_line_strip()
+	for i := 0; i < segments + 1; i++ {
+		sgl.v2f(xx + nx, yy + ny)
+		tx := -yy
+		ty := xx
+		xx += tx * tan_factor
+		yy += ty * tan_factor
+		xx *= rad_factor
+		yy *= rad_factor
+	}
+	sgl.end()
 }
 
-pub fn (gg &Context) end() {
-	gfx.begin_default_pass(gg.clear_pass, sapp.width(), sapp.height())
-	sgl.draw()
-	gfx.end_pass()
-	gfx.commit()
-	/*
-	if gg.config.wait_events {
-		// println('gg: waiting')
-		wait_events()
-	}
-	*/
-}
-
-// resize the context's Window
+// Resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
 	// C.sapp_resize_window(width, height)
 }
 
-// draw_line draws a line between the points provided
+// Draws a line between the points provided
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
@@ -478,7 +491,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-// draw_line_with_config draws a line between the points provided with the PenConfig
+// Draws a line between the points provided with the PenConfig
 pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
 	if config.color.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -529,7 +542,8 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.pop_matrix()
 }
 
-pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, color gx.Color) {
+// Draws an arc
+pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
@@ -553,7 +567,7 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_an
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_arc(x, y, int(r2), a1, a2, segments, color)
+		ctx.draw_slice(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
@@ -561,7 +575,7 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_an
 	mut angle := a1
 
 	sgl.begin_quads()
-	sgl.c4b(color.r, color.g, color.b, color.a)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	for _ in 0 .. segments {
 		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
 		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
@@ -576,8 +590,9 @@ pub fn (ctx &Context) draw_ring(x f32, y f32, inner_r f32, outer_r f32, start_an
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
-	sgl.c4b(color.r, color.g, color.b, color.a)
+// Draws a filled rounded rectangle
+pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_triangle_strip()
 	mut theta := f32(0)
 	mut xx := f32(0)
@@ -644,7 +659,8 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, border_color gx.Color) {
+// Draws the outline of a rounded rectangle
+pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
@@ -659,7 +675,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	lb := int(rb + segdiv)
 	lt := int(lb + segdiv)
 	rt := int(lt + segdiv)
-	sgl.c4b(border_color.r, border_color.g, border_color.b, border_color.a)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	// left top
 	lx := nx + r
