@@ -225,6 +225,13 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?s
 				return 'false'
 			}
 		}
+		'es5' {
+			if g.pref.output_es5 {
+				return 'true'
+			} else {
+				return 'false'
+			}
+		}
 		//
 		'js' {
 			return 'true'

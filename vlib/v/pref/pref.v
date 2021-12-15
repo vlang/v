@@ -154,6 +154,7 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path      []string
 	output_cross_c   bool // true, when the user passed `-os cross`
+	output_es5       bool
 	prealloc         bool
 	vroot            string
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
@@ -579,6 +580,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				res.backend = b
 				i++
+			}
+			'-es5' {
+				res.output_es5 = true
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')

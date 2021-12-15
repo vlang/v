@@ -151,7 +151,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.map.size);}, set: function(l) { this.map.size = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.length);}, set: function(l) { } }); ')
 			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
@@ -234,7 +234,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 
 	if !g.pref.is_shared {
-		g.write('loadRoutine().then(_ => js_main());')
+		if g.pref.output_es5 {
+			g.write('js_main();')
+		} else {
+			g.write('loadRoutine().then(_ => js_main());')
+		}
 	}
 	g.escape_namespace()
 	// resolve imports
@@ -242,29 +246,32 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// nodes := deps_resolved.nodes
 
 	mut out := g.definitions.str() + g.hashes()
-	out += '\nlet wasmExportObject;\n'
-	out += 'const loadRoutine = async () => {\n'
-	for mod, functions in g.wasm_import {
-		if g.pref.backend == .js_browser {
-			out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
-			out += 'WebAssembly.instantiate(bytes,'
-			exports := g.wasm_export[mod]
-			out += '{ imports: { \n'
-			for i, exp in exports {
-				out += g.js_name(exp) + ':' + '\$wasm' + g.js_name(exp)
-				if i != exports.len - 1 {
-					out += ',\n'
+	if !g.pref.output_es5 {
+		out += '\nlet wasmExportObject;\n'
+
+		out += 'const loadRoutine = async () => {\n'
+		for mod, functions in g.wasm_import {
+			if g.pref.backend == .js_browser {
+				out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
+				out += 'WebAssembly.instantiate(bytes,'
+				exports := g.wasm_export[mod]
+				out += '{ imports: { \n'
+				for i, exp in exports {
+					out += g.js_name(exp) + ':' + '\$wasm' + g.js_name(exp)
+					if i != exports.len - 1 {
+						out += ',\n'
+					}
 				}
+				out += '}})).then(obj => wasmExportObject = obj.instance.exports);\n'
+				for fun in functions {
+					out += 'globalThis.${g.js_name(fun)} = wasmExportObject.${g.js_name(fun)};\n'
+				}
+			} else {
+				verror('WebAssembly export is supported only for browser backend at the moment')
 			}
-			out += '}})).then(obj => wasmExportObject = obj.instance.exports);\n'
-			for fun in functions {
-				out += 'globalThis.${g.js_name(fun)} = wasmExportObject.${g.js_name(fun)};\n'
-			}
-		} else {
-			verror('WebAssembly export is supported only for browser backend at the moment')
 		}
+		out += '}\n'
 	}
-	out += '}\n'
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
 	// unsafe {
@@ -336,7 +343,10 @@ fn (g JsGen) create_sourcemap() string {
 
 pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.enter_namespace('main')
-	g.writeln('async function js_main() {  ')
+	if !g.pref.output_es5 {
+		g.write('async ')
+	}
+	g.writeln('function js_main() {  ')
 	g.inc_indent()
 	all_tfuncs := g.get_all_test_function_names()
 
@@ -442,6 +452,9 @@ pub fn (mut g JsGen) init() {
 	// g.definitions.writeln('"use strict";')
 	g.definitions.writeln('')
 	g.definitions.writeln('var \$global = (new Function("return this"))();')
+	if g.pref.output_es5 {
+		g.definitions.writeln('globalThis = \$global;')
+	}
 	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
 	if g.pref.backend != .js_node {
@@ -1285,14 +1298,16 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					array_set = true
 
 					if g.table.get_type_symbol(left.left_type).kind == .map {
-						g.write('.map.set(')
+						g.writeln('.length++;')
+						g.expr(left.left)
+						g.write('.map[')
 						map_set = true
 					} else {
 						g.write('.arr.set(')
 					}
 					if map_set {
 						g.expr(left.index)
-						g.write('.\$toJS(),')
+						g.write('.\$toJS()] = ')
 					} else {
 						g.write('new int(')
 						g.cast_stack << ast.int_type_idx
@@ -1314,12 +1329,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 			if false && g.inside_map_set && op == .assign {
 				g.inside_map_set = false
-				g.write(', ')
+				g.write('] = ')
 				g.expr(val)
 				if is_ptr {
 					g.write('.val')
 				}
-				g.write(')')
 			} else {
 				if is_assign && array_set {
 					g.write('new ${styp}(')
@@ -1446,7 +1460,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.write(')')
 				}
 			}
-			if array_set {
+			if array_set && !map_set {
 				g.write(')')
 			}
 			if semicolon {
@@ -1654,14 +1668,42 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		// val_styp := g.typ(it.val_type)
 		key := if it.key_var in ['', '_'] { '' } else { it.key_var }
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
-		g.write('for (let [$key, $val] of ')
-		g.expr(it.cond)
-		if it.cond_type.is_ptr() {
-			g.write('.valueOf()')
+		tmp := g.new_tmp_var()
+		tmp2 := g.new_tmp_var()
+		if g.pref.output_es5 {
+			tmp3 := g.new_tmp_var()
+			g.write('let $tmp2 = ')
+			g.expr(it.cond)
+			if it.cond_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.writeln(';')
+
+			g.write('for (var $tmp3 = 0; $tmp3 < Object.keys(${tmp2}.map).length; $tmp3++) ')
+			g.write('{')
+			g.writeln('\tlet $tmp = Object.keys(${tmp2}.map)')
+			g.writeln('\tlet $key = $tmp[$tmp3];')
+			g.writeln('\tlet $val = ${tmp2}.map[$tmp[$tmp3]];')
+			g.inc_indent()
+			g.stmts(it.stmts)
+			g.dec_indent()
+			g.writeln('}')
+		} else {
+			g.write('let $tmp = ')
+			g.expr(it.cond)
+			if it.cond_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.writeln(';')
+			g.writeln('for (var $tmp2 in ${tmp}.map) {')
+
+			g.inc_indent()
+			g.writeln('let $val = ${tmp}.map[$tmp2];')
+			g.writeln('let $key = $tmp2;')
+			g.stmts(it.stmts)
+			g.dec_indent()
+			g.writeln('}')
 		}
-		g.writeln(') {')
-		g.stmts(it.stmts)
-		g.writeln('}')
 	}
 }
 
@@ -1679,6 +1721,10 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 }
 
 fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
+	if g.pref.output_es5 {
+		verror('No support for goroutines on ES5 output')
+		return
+	}
 	g.writeln('new _v_Promise({promise: new Promise(function(resolve){')
 	g.inc_indent()
 	g.write('resolve(')
@@ -2720,7 +2766,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.inside_map_set = true
 			g.write('.getOrSet(')
 		} else {
-			g.write('.map.get(')
+			g.write('.get(')
 		}
 		g.expr(expr.index)
 		g.write('.\$toJS()')
@@ -2792,7 +2838,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod, .right_shift, .left_shift,
 		.amp, .pipe, .xor]
 
-	if is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+	if !g.pref.output_es5 && is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		// if left or right is i64 or u64 we convert them to bigint to perform operation.
 		greater_typ := if l_sym.kind == .i64 || l_sym.kind == .u64 {
@@ -3043,25 +3089,24 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	g.writeln('new map(')
 	g.inc_indent()
 	if it.vals.len > 0 {
-		g.writeln('new Map([')
+		g.writeln('{')
 		g.inc_indent()
 		for i, key in it.keys {
 			val := it.vals[i]
 			g.write('[')
 			g.expr(key)
-			g.write('.\$toJS()')
-			g.write(', ')
+			g.write('.\$toJS()]')
+			g.write(': ')
 			g.expr(val)
-			g.write(']')
 			if i < it.keys.len - 1 {
 				g.write(',')
 			}
 			g.writeln('')
 		}
 		g.dec_indent()
-		g.write('])')
+		g.write('}')
 	} else {
-		g.write('new Map()')
+		g.write('{}')
 	}
 	g.dec_indent()
 	g.write(')')
@@ -3275,7 +3320,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
 	// Skip cast if type is the same as the parrent caster
 	tsym := g.table.get_final_type_symbol(typ_)
-	if tsym.kind == .i64 || tsym.kind == .u64 {
+	if !g.pref.output_es5 && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
 		g.write('$tsym.kind.str()')
@@ -3346,7 +3391,8 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		g.expr(it.expr)
 		return
 	}
-	if it.expr is ast.IntegerLiteral && (tsym.kind == .i64 || tsym.kind == .u64) {
+	if !g.pref.output_es5 && it.expr is ast.IntegerLiteral
+		&& (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
 		g.write('$tsym.kind.str()')

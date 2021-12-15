@@ -18,7 +18,7 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('function ${ptr_styp}_sumtype_eq(a,b) {')
 	fn_builder.writeln('\tlet aProto = Object.getPrototypeOf(a);')
 	fn_builder.writeln('\tlet bProto = Object.getPrototypeOf(b);')
-	fn_builder.writeln('\tif (aProto !== bProto) { return new booL(false); }')
+	fn_builder.writeln('\tif (aProto !== bProto) { return new bool(false); }')
 	for typ in info.variants {
 		variant := g.unwrap(typ)
 		fn_builder.writeln('\tif (aProto == ${g.js_name(variant.sym.name)}) {')
@@ -281,12 +281,14 @@ fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 		g.definitions.writeln(fn_builder.str())
 	}
 	fn_builder.writeln('function ${ptr_styp}_map_eq(a,b) {')
-	fn_builder.writeln('\tif (a.map.size != b.map.size) {')
+	fn_builder.writeln('\tif (Object.keys(a.map).length != Object.keys(b.map).length) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (let [key,value] of a.map) {')
-	fn_builder.writeln('\t\tif (!b.map.has(key)) { return new bool(false); }')
-	fn_builder.writeln('\t\tlet x = value; let y = b.map.get(key);')
+	fn_builder.writeln('\tlet keys = Object.keys(a.map);')
+	fn_builder.writeln('\tfor (let i = 0;i < keys.length;i++) {')
+	fn_builder.writeln('\t\tlet key = keys[i]; let value = a.map[key];')
+	fn_builder.writeln('\t\tif (!(key in b.map)) { return new bool(false); }')
+	fn_builder.writeln('\t\tlet x = value; let y = b.map[key];')
 	kind := g.table.type_kind(value.typ)
 	if kind == .string {
 		fn_builder.writeln('\t\tif (x.str != y.str) {')
