@@ -36,3 +36,19 @@ pub fn test_goto_after_return() {
 	finally_ok:
 	assert true
 }
+
+fn test_goto_with_comptime_tmpl() {
+	a := 22
+	_ := $tmpl('./tmpl/a.txt')
+	println('before goto')
+
+	unsafe {
+		goto label
+	}
+	println('failed goto')
+	assert false
+
+	label:
+	println('goto label')
+	assert true
+}
