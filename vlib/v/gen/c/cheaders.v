@@ -65,7 +65,7 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 	if pref.os == .windows {
 		verror('closures are not implemented on Windows yet')
 	}
-	if pref.arch != .amd64 {
+	if pref.arch !in [.amd64, .arm64] {
 		verror('closures are not implemented on this architecture yet: $pref.arch')
 	}
 	mut builder := strings.new_builder(2048)
@@ -93,6 +93,25 @@ static unsigned char __closure_thunk[6][13] = {
     }, {
         0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
         0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    },
+};
+')
+	} else if pref.arch == .arm64 {
+		bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
+		builder.write_string('
+static unsigned char __closure_thunk[6][12] = {
+    {
+        ${bytes.replace('<REG>', '0')}
+    }, {
+        ${bytes.replace('<REG>', '1')}
+    }, {
+        ${bytes.replace('<REG>', '2')}
+    }, {
+        ${bytes.replace('<REG>', '3')}
+    }, {
+        ${bytes.replace('<REG>', '4')}
+    }, {
+        ${bytes.replace('<REG>', '5')}
     },
 };
 ')
