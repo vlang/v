@@ -6,7 +6,10 @@ import os {
 	user_os,
 }
 import mod {
+	AliasTarget,
 	Enum,
+	FnAliasParam,
+	FnAliasRet,
 	FnArg,
 	FnArgGeneric,
 	FnArgTypeParam1,
@@ -29,7 +32,13 @@ import mod {
 	StructMethodRet,
 	StructMethodRetGeneric,
 	StructRefField,
+	SumVariant1,
+	SumVariant2,
 }
+
+type Alias = AliasTarget
+type SumType = SumVariant1 | SumVariant2
+type Fn = fn (FnAliasParam) FnAliasRet
 
 struct Struct {
 	StructEmbed

@@ -32,8 +32,16 @@ import mod {
 	RightOfIs,
 	RightOfAs,
 
+	AliasTarget,
+	SumVariant1, SumVariant2,
+	FnAliasParam, FnAliasRet
+
 	Enum
 }
+
+type Alias = AliasTarget
+type SumType = SumVariant1 | SumVariant2
+type Fn = fn(FnAliasParam) FnAliasRet
 
 struct Struct {
 	StructEmbed
