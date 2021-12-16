@@ -1,7 +1,8 @@
 freebsd_instance:
   image_family: freebsd-13-0
 
-task:
+freebsd_task:
+  name: Code CI / freebsd
   install_script: pkg install -y git
   script: |
     echo 'Building V'
