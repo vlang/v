@@ -5,7 +5,7 @@ fn vroot_path(relpath string) string {
 }
 
 fn vexecute(relpath string) os.Result {
-	return os.execute('${@VEXE} ' + vroot_path(relpath))
+	return os.execute('${@VEXE} -test-runner normal ' + vroot_path(relpath))
 }
 
 fn testsuite_begin() {

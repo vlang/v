@@ -271,7 +271,24 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'tests_assertions.v')
+		user_files << os.join_path(preludes_path, 'test_runner.v')
+		//
+		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
+		if v.pref.test_runner != '' {
+			v_test_runner_prelude = v.pref.test_runner
+		}
+		if v_test_runner_prelude == '' {
+			v_test_runner_prelude = 'normal'
+		}
+		if !v_test_runner_prelude.contains('/') && !v_test_runner_prelude.contains('\\')
+			&& !v_test_runner_prelude.ends_with('.v') {
+			v_test_runner_prelude = os.join_path(preludes_path, 'test_runner_${v_test_runner_prelude}.v')
+		}
+		if !os.is_file(v_test_runner_prelude) || !os.is_readable(v_test_runner_prelude) {
+			eprintln('test runner error: File $v_test_runner_prelude should be readable.')
+			verror('supported test runners are: tap, json, simple, normal')
+		}
+		user_files << v_test_runner_prelude
 	}
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')

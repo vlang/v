@@ -29,10 +29,10 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
-	if !g.is_used_by_main(node) {
+	if node.should_be_skipped {
 		return
 	}
-	if node.should_be_skipped {
+	if !g.is_used_by_main(node) {
 		return
 	}
 	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.name == 'malloc' {

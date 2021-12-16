@@ -1,8 +1,6 @@
 import rand
 
-const (
-	strings = unique_strings(20000, 10)
-)
+const strings = unique_strings(7000, 10)
 
 fn unique_strings(arr_len int, str_len int) []string {
 	mut arr := []string{cap: arr_len}
@@ -448,7 +446,7 @@ fn test_map_in() {
 		'Foo': 'bar'
 	}
 	if 'foo'.capitalize() in m {
-		println('ok')
+		assert true
 	} else {
 		assert false
 	}

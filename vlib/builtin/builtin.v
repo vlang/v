@@ -41,8 +41,8 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	return obj
 }
 
-// VAssertMetaInfo is used during assertions. An instance of it
-// is filled in by compile time generated code, when an assertion fails.
+// VAssertMetaInfo is used during assertions. An instance of it is filled in by
+// compile time generated code, when an assertion fails.
 pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
@@ -56,9 +56,8 @@ pub:
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
 
-// free is used to free the memory occupied by the assertion meta data.
-// It is called by cb_assertion_failed, and cb_assertion_ok in the preludes,
-// once they are done with reporting/formatting the meta data.
+// free frees the memory occupied by the assertion meta data. It is called automatically by
+// the code, that V's test framework generates, after all other callbacks have been called.
 [manualfree; unsafe]
 pub fn (ami &VAssertMetaInfo) free() {
 	unsafe {

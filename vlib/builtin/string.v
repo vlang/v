@@ -1444,6 +1444,7 @@ pub fn (s &string) free() {
 		return
 	}
 	unsafe {
+		// C.printf(c's: %x %s\n', s.str, s.str)
 		free(s.str)
 	}
 	s.is_lit = -98761234
@@ -1712,8 +1713,8 @@ pub fn (s string) strip_margin() string {
 pub fn (s string) strip_margin_custom(del byte) string {
 	mut sep := del
 	if sep.is_space() {
-		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
-		eprintln('    Defaulting to `|`')
+		println('Warning: `strip_margin` cannot use white-space as a delimiter')
+		println('    Defaulting to `|`')
 		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it

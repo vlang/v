@@ -17,8 +17,9 @@ const (
 struct BenchedTests {
 mut:
 	bench          benchmark.Benchmark
-	oks            int
-	fails          int
+	oks            u64
+	fails          u64
+	fn_fails       u64
 	test_suit_file string
 	step_func_name string
 }
@@ -38,17 +39,19 @@ fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 // Called before each test_ function, defined in file_test.v
 fn (mut b BenchedTests) testing_step_start(stepfunc string) {
 	b.step_func_name = stepfunc.replace('main.', '').replace('__', '.')
-	b.oks = C.g_test_oks
-	b.fails = C.g_test_fails
+	b.oks = test_runner.total_assert_passes
+	b.fails = test_runner.total_assert_fails
+	b.fn_fails = test_runner.fn_fails
 	b.bench.step()
 }
 
 // Called after each test_ function, defined in file_test.v
 fn (mut b BenchedTests) testing_step_end() {
-	ok_diff := C.g_test_oks - b.oks
-	fail_diff := C.g_test_fails - b.fails
+	ok_diff := int(test_runner.total_assert_passes - b.oks)
+	fail_diff := int(test_runner.total_assert_fails - b.fails)
+	fn_fail_diff := int(test_runner.fn_fails - b.fn_fails)
 	// ////////////////////////////////////////////////////////////////
-	if ok_diff == 0 && fail_diff == 0 {
+	if ok_diff == 0 && fn_fail_diff == 0 {
 		b.bench.neither_fail_nor_ok()
 		println(inner_indent + b.bench.step_message_ok('   NO asserts | ') + b.fn_name())
 		return
@@ -57,16 +60,18 @@ fn (mut b BenchedTests) testing_step_end() {
 	if ok_diff > 0 {
 		b.bench.ok_many(ok_diff)
 	}
-	if fail_diff > 0 {
-		b.bench.fail_many(fail_diff)
+	if fn_fail_diff > 0 {
+		b.bench.fail_many(fn_fail_diff)
 	}
 	// ////////////////////////////////////////////////////////////////
-	if ok_diff > 0 && fail_diff == 0 {
-		println(inner_indent + b.bench.step_message_ok(nasserts(ok_diff)) + b.fn_name())
+	if fn_fail_diff > 0 {
+		sfail_diff := nasserts(ok_diff + fail_diff)
+		println(inner_indent + b.bench.step_message_fail(sfail_diff) + b.fn_name())
 		return
 	}
-	if fail_diff > 0 {
-		println(inner_indent + b.bench.step_message_fail(nasserts(fail_diff)) + b.fn_name())
+	if ok_diff > 0 {
+		sok_diff := nasserts(ok_diff)
+		println(inner_indent + b.bench.step_message_ok(sok_diff) + b.fn_name())
 		return
 	}
 }
@@ -78,8 +83,10 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
-	println(inner_indent + b.bench.total_message('running V tests in "' +
-		os.file_name(b.test_suit_file) + '"'))
+	fname := os.file_name(b.test_suit_file)
+	msg := 'running V tests in "$fname"'
+	final := inner_indent + b.bench.total_message(msg)
+	println(final)
 }
 
 // ///////////////////////////////////////////////////////////////////

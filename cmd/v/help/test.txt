@@ -11,8 +11,23 @@ and then you can perform:
 ... to run all the module's '_test.v' files.
 
 NB 2: V builtin testing requires you to name your files with a _test.v
-suffix, and to name your test functions with test_ prefix. Each 'test_'
-function in a '_test.v' file will be called automatically by the test
-framework. You can use `assert condition` inside each 'test_' function.
-If the asserted condition fails, then v will record that and produce a
-more detailed error message about where the failure was.
+suffix, and to name your test functions with test_ prefix. Each function,
+that starts with 'fn test_', and that is in a '_test.v' file will be called
+automatically by the test framework.
+
+NB 3: You can use `assert condition` inside each 'test_' function. If the
+asserted condition fails, then v will record that, and produce a more detailed
+error message, about where the failure was.
+
+NB 4: Alternative test runners (for IDE integrations):
+You can use several alternative test result formats, using `-test-runner name`,
+or by setting VTEST_RUNNER (the command line option has higher priority).
+
+The names of the available test runners are:
+	`simple` Fastest, does not import additional modules, does no processing.
+	`tap`    Format the output as required by the Test Anything Protocol (TAP).
+	`normal` Supports color output, nicest/most human readable, the default.
+
+You can also implement your own custom test runner, by providing the path to
+your .v file, that implements it to this option. For example, see:
+vlib/v/preludes/test_runner_tap.v .
