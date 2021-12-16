@@ -1627,8 +1627,19 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 }
 
-pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Position) {
+pub fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Position) {
 	upcase_language := language.str().to_upper()
+	p.error_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
+		pos)
+}
+
+pub fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Position) {
+	upcase_language := language.str().to_upper()
+	p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
+		pos)
+}
+
+pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Position) {
 	if language == .v {
 		// pure V code is always allowed everywhere
 		return
@@ -1636,14 +1647,14 @@ pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Positi
 		match p.file_backend_mode {
 			.c {
 				if language != .c {
-					p.error_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
-						pos)
+					p.language_not_allowed_error(language, pos)
+					return
 				}
 			}
 			.js {
 				if language != .js {
-					p.error_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
-						pos)
+					p.language_not_allowed_error(language, pos)
+					return
 				}
 			}
 			else {}
@@ -1655,8 +1666,7 @@ pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Positi
 	}
 	if p.file_backend_mode != language {
 		if p.file_backend_mode == .v {
-			p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
-				pos)
+			p.language_not_allowed_warning(language, pos)
 			return
 		}
 	}
