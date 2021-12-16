@@ -1,9 +1,16 @@
+[has_globals]
+module main
+
+__global fcall_count = int(0)
+
 fn f1() {
 	println(1)
+	fcall_count++
 }
 
 fn f2() {
 	println(2)
+	fcall_count++
 }
 
 fn f3(f fn ()) {
@@ -26,4 +33,5 @@ fn func_defer() {
 
 fn test_defer_with_fn_var() {
 	func_defer()
+	assert fcall_count == 2
 }
