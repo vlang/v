@@ -10,6 +10,7 @@ const (
 		'/usr/local/lib/pkgconfig',
 		'/usr/local/share/pkgconfig',
 		'/usr/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/lib/aarch64-linux-gnu/pkgconfig',
 		'/usr/lib64/pkgconfig',
 		'/usr/lib/pkgconfig',
 		'/usr/share/pkgconfig',
