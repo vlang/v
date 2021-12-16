@@ -13,3 +13,9 @@ import v.tests.project_with_modules_having_submodules.mod1.mod14
 pub fn f() int {
 	return 1000 + mod11.f() + mod12.f() + mod13.f() + mod14.f()
 }
+
+pub const my_version = get_version()
+
+fn get_version() string {
+	return '0.0.1'
+}

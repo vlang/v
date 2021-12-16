@@ -3818,9 +3818,13 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					mut typ := obj.typ
 					if typ == 0 {
+						old_c_mod := c.mod
+						c.mod = obj.mod
 						c.inside_const = true
 						typ = c.expr(obj.expr)
 						c.inside_const = false
+						c.mod = old_c_mod
+
 						if obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
