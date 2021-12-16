@@ -242,7 +242,7 @@ fn main() {
 		tsession.skip_files << skip_on_amd64
 	}
 	$if arm64 {
-		tsession.skip_files << skip_on_amd64
+		tsession.skip_files << skip_on_arm64
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux
