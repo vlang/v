@@ -210,7 +210,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_$tnumber = _SLIT("$tcname");')
 		g.writeln('\tstring tcmod_$tnumber  = _SLIT("$testfn.mod");')
-		g.writeln('\tstring tcfile_$tnumber = _SLIT("$testfn.file");')
+		g.writeln('\tstring tcfile_$tnumber = ${ctoslit(testfn.file)};')
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_$tnumber, tcmod_$tnumber, tcfile_$tnumber, $lnum);')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
