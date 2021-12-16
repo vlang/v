@@ -4593,8 +4593,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
-		node.key_type = c.unwrap_generic(info.key_type)
-		node.value_type = c.unwrap_generic(info.value_type)
+		node.key_type = info.key_type
+		node.value_type = info.value_type
 		return node.typ
 	}
 	if node.keys.len > 0 && node.vals.len > 0 {

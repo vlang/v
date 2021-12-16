@@ -4794,10 +4794,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) map_init(node ast.MapInit) {
-	key_typ_str := g.typ(node.key_type)
-	value_typ_str := g.typ(node.value_type)
-	value_typ := g.table.get_type_symbol(node.value_type)
-	key_typ := g.table.get_final_type_symbol(node.key_type)
+	unwrap_key_typ := g.unwrap_generic(node.key_type)
+	unwrap_val_typ := g.unwrap_generic(node.value_type)
+	key_typ_str := g.typ(unwrap_key_typ)
+	value_typ_str := g.typ(unwrap_val_typ)
+	value_typ := g.table.get_type_symbol(unwrap_val_typ)
+	key_typ := g.table.get_final_type_symbol(unwrap_key_typ)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
 	size := node.vals.len
 	mut shared_styp := '' // only needed for shared &[]{...}
