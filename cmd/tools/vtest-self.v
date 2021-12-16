@@ -130,7 +130,10 @@ const (
 	skip_on_amd64                 = [
 		'do_not_remove',
 	]
-	skip_on_non_amd64             = [
+	skip_on_arm64                 = [
+		'do_not_remove',
+	]
+	skip_on_non_amd64_or_arm64    = [
 		// closures aren't implemented yet:
 		'vlib/v/tests/closure_test.v',
 		'vlib/context/cancel_test.v',
@@ -232,11 +235,14 @@ fn main() {
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
-	$if !amd64 {
+	$if !amd64 && !arm64 {
 		tsession.skip_files << skip_on_non_amd64
 	}
 	$if amd64 {
 		tsession.skip_files << skip_on_amd64
+	}
+	$if arm64 {
+		tsession.skip_files << skip_on_arm64
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux
