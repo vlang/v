@@ -1029,3 +1029,38 @@ pub fn dpi_scale() f32 {
 	}
 	return s
 }
+
+// Draws an ellipse
+pub fn (ctx &Context) draw_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_triangle_strip()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x, y)
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * r_horizontal, y +
+			math.cosf(f32(math.radians(i))) * r_vertical)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * r_horizontal, y +
+			math.cosf(f32(math.radians(i + 10))) * r_vertical)
+	}
+	sgl.end()
+}
+
+// Draws the outline of an ellipse
+pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * r_horizontal, y +
+			math.cosf(f32(math.radians(i))) * r_vertical)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * r_horizontal, y +
+			math.cosf(f32(math.radians(i + 10))) * r_vertical)
+	}
+	sgl.end()
+}
