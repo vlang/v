@@ -345,7 +345,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 						}
 					}
 					info := var.obj as ast.Var
-					g.writeln('${g.typ(info.typ)}$deref $var.name;')
+					if g.table.get_type_symbol(info.typ).kind != .function {
+						g.writeln('${g.typ(info.typ)}$deref $var.name;')
+					}
 				}
 			}
 		}
