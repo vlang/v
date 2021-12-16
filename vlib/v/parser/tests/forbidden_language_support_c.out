@@ -1,3 +1,0 @@
-v\vlib\v\tests\inout\forbidden_language_support_c.c.vv:1:4: error: JS code is not allowed in .c.v files, please move it to a .js.v file
-    1 | fn JS.a() int
-      |
