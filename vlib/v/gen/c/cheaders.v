@@ -58,6 +58,15 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
+fn arm_bytes(nargs int) string {
+	// start:
+	// ldr  x16, start-0x08
+	// ldr  x<REG>, start-0x10
+	// br  x16
+	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
+	return bytes.replace('<REG>', nargs.str())
+}
+
 // Heavily based on Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
@@ -97,25 +106,20 @@ static unsigned char __closure_thunk[6][13] = {
 };
 ')
 	} else if pref.arch == .arm64 {
-		// start:
-		// ldr  x16, start-0x08
-		// ldr  x0, start-0x10
-		// br  x16
-		bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
 		builder.write_string('
 static unsigned char __closure_thunk[6][12] = {
     {
-        ${bytes.replace('<REG>', '0')}
+        ${arm_bytes(0)}
     }, {
-        ${bytes.replace('<REG>', '1')}
+        ${arm_bytes(1)}
     }, {
-        ${bytes.replace('<REG>', '2')}
+        ${arm_bytes(2)}
     }, {
-        ${bytes.replace('<REG>', '3')}
+        ${arm_bytes(3)}
     }, {
-        ${bytes.replace('<REG>', '4')}
+        ${arm_bytes(4)}
     }, {
-        ${bytes.replace('<REG>', '5')}
+        ${arm_bytes(5)}
     },
 };
 ')
