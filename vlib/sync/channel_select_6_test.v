@@ -1,3 +1,5 @@
+// vtest retry: 4
+
 // This test case runs concurrent 3 instances of `do_select` that
 // communicate with 6 other threads doing send and receive operations.
 // There are buffered and unbuffered channels - handled by one or two
