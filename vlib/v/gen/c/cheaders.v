@@ -97,6 +97,10 @@ static unsigned char __closure_thunk[6][13] = {
 };
 ')
 	} else if pref.arch == .arm64 {
+		// start:
+		// ldr  x16, start-0x08
+		// ldr  x0, start-0x10
+		// br  x16
 		bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
 		builder.write_string('
 static unsigned char __closure_thunk[6][12] = {
