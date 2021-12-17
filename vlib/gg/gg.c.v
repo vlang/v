@@ -1049,7 +1049,7 @@ pub fn (ctx &Context) draw_ellipse(x f32, y f32, r_horizontal f32, r_vertical f3
 }
 
 // Draws the outline of an ellipse
-pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
