@@ -5332,10 +5332,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									is_auto_heap = v.is_auto_heap
 								}
 							}
+							left_var_name := c_name(branch.cond.var_name)
 							if is_auto_heap {
-								g.writeln('\t$base_type* $branch.cond.var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
+								g.writeln('\t$base_type* $left_var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
 							} else {
-								g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+								g.writeln('\t$base_type $left_var_name = *($base_type*)${var_name}.data;')
 							}
 						}
 					}
