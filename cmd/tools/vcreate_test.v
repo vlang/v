@@ -12,7 +12,7 @@ fn init_and_check() ? {
 		"	println('Hello World!')",
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 
 	assert os.read_file('v.mod') ? == [
 		'Module {',
@@ -23,7 +23,7 @@ fn init_and_check() ? {
 		'	dependencies: []',
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 
 	assert os.read_file('.gitignore') ? == [
 		'# Binaries for programs and plugins',
@@ -36,7 +36,13 @@ fn init_and_check() ? {
 		'*.dll',
 		'vls.log',
 		'',
-	].join('\n')
+	].join_lines()
+
+	assert os.read_file('.gitattributes') ? == [
+		'*.v linguist-language=V text=auto eol=lf',
+		'*.vv linguist-language=V text=auto eol=lf',
+		'',
+	].join_lines()
 }
 
 fn test_v_init() ? {
