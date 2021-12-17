@@ -6034,8 +6034,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						typ: embed
 						fields: init_fields_to_embed
 					}
+					inside_cast_in_heap := g.inside_cast_in_heap
+					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
+
 					g.write('.$embed_name = ')
 					g.struct_init(default_init)
+
+					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
 					if is_multiline {
 						g.writeln(',')
 					} else {
@@ -7262,9 +7267,7 @@ fn (mut g Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st, true)
 			$if debug_interface_table ? {
-				eprintln(
-					'>> interface name: $isym.name | concrete type: $st.debug() | st symname: ' +
-					st_sym.name)
+				eprintln('>> interface name: $isym.name | concrete type: $st.debug() | st symname: $st_sym.name')
 			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
@@ -7323,6 +7326,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 				}
 			}
 			mut methods := st_sym.methods
+			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {
 					if st_sym.info.parent_type.has_flag(.generic) {
@@ -7341,7 +7345,6 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 			if st_sym.info is ast.Struct {
 				for embed in st_sym.info.embeds {
 					embed_sym := g.table.get_type_symbol(embed)
-					method_names := methods.map(it.name)
 					for embed_method in embed_sym.methods {
 						if embed_method.name !in method_names {
 							methods << embed_method
@@ -7396,7 +7399,7 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 					_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
 						ast.Fn{}, []ast.Type{}
 					}
-					if embed_types.len > 0 {
+					if embed_types.len > 0 && method.name !in method_names {
 						embed_sym := g.table.get_type_symbol(embed_types.last())
 						method_name := '${embed_sym.cname}_$method.name'
 						methods_wrapper.write_string('${method_name}(${fargs[0]}')
