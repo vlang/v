@@ -1030,8 +1030,8 @@ pub fn dpi_scale() f32 {
 	return s
 }
 
-// Draws an ellipse
-pub fn (ctx &Context) draw_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+// draw_ellipse_filled draws an opaque elipse, with a center at x,y , filled with the color `c`
+pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -1048,7 +1048,7 @@ pub fn (ctx &Context) draw_ellipse(x f32, y f32, r_horizontal f32, r_vertical f3
 	sgl.end()
 }
 
-// Draws the outline of an ellipse
+// draw_ellipse_empty draws the outline of an ellipse, with a center at x,y
 pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)

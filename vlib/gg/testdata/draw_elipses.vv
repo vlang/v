@@ -15,7 +15,7 @@ fn main() {
 
 fn frame(mut ctx gg.Context) {
 	ctx.begin()
-	ctx.draw_ellipse(100, 100, 100, 50, gx.red)
+	ctx.draw_ellipse_filled(100, 100, 100, 50, gx.red)
 	ctx.draw_ellipse_empty(100, 100, 50, 25, gx.black)
 	ctx.end()
 }
