@@ -236,6 +236,9 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
+		eq_fn := g.gen_interface_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
