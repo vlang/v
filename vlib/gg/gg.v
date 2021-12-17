@@ -658,7 +658,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 
 	sgl.begin_line_strip()
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	
+
 	// Outer circle
 	for _ in 0 .. segments {
 		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
@@ -671,12 +671,12 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 	// Inner circle
 	for _ in 0 .. segments {
 		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
-		sgl.v2f(x + f32(math.sin(angle - step_length)) * r1, y + f32(math.cos(angle -
-			step_length) * r1))
+		sgl.v2f(x + f32(math.sin(angle - step_length)) * r1, y +
+			f32(math.cos(angle - step_length) * r1))
 
 		angle -= step_length
 	}
-	
+
 	// Closing end
 	sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
 	sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
