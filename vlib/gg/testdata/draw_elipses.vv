@@ -1,0 +1,21 @@
+module main
+
+import gg
+import gx
+
+fn main() {
+	mut context := gg.new_context(
+		width: 200
+		height: 200
+		window_title: 'Elipses'
+		frame_fn: frame
+	)
+	context.run()
+}
+
+fn frame(mut ctx gg.Context) {
+	ctx.begin()
+	ctx.draw_ellipse(100, 100, 100, 50, gx.red)
+	ctx.draw_empty_ellipse(100, 100, 50, 25, gx.black)
+	ctx.end()
+}
