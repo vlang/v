@@ -32,3 +32,15 @@ fn test_map_of_map_to_struct() {
 	foos['zza']['zzb'].name = 'baz'
 	assert foos['zza']['zzb'].name == 'baz'
 }
+
+fn test_map_of_map_key_plus_assign() {
+	m := {
+		'a': 'x'
+	}
+	mut n := {
+		'x': 1
+	}
+	n[m['a']] += 2
+	println(n)
+	assert n['x'] == 3
+}
