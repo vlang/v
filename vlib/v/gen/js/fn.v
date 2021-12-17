@@ -629,7 +629,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
-		if g.pref.output_es5 {
+		if !g.pref.output_es5 {
 			// main function is always async
 			g.write('async ')
 		}
