@@ -626,7 +626,7 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 
 // Draws the outline of an arc
 // TODO: Should be possible to simplify the code below quite heavily
-pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
