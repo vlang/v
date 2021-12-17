@@ -588,7 +588,6 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 	mut a1 := start_angle
 	mut a2 := end_angle
 
-	// TODO: Maybe this does not make since inner_r and outer_r is actually integers?
 	if outer_r < inner_r {
 		r1, r2 = r2, r1
 
@@ -624,6 +623,83 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 	}
 	sgl.end()
 }
+
+// Draws the outline of an arc
+// TODO: Should be possible to simplify the code below quite heavily
+pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	if start_angle == end_angle || outer_r <= 0.0 {
+		return
+	}
+
+	mut r1 := inner_r
+	mut r2 := outer_r
+	mut a1 := start_angle
+	mut a2 := end_angle
+
+	if outer_r < inner_r {
+		r1, r2 = r2, r1
+
+		if r2 <= 0.0 {
+			r2 = 0.1
+		}
+	}
+
+	if a2 < a1 {
+		a1, a2 = a2, a1
+	}
+
+	if r1 <= 0.0 {
+		ctx.draw_empty_slice(x, y, int(r2), a1, a2, segments, c)
+		return
+	}
+
+	mut step_length := (a2 - a1) / f32(segments)
+	mut angle := a1
+
+	// Outer circle
+	sgl.begin_line_strip()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	for _ in 0 .. segments {
+		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y + f32(math.cos(angle +
+			step_length) * r2))
+
+		angle += step_length
+	}
+	sgl.end()
+	
+	// Inner circle
+	angle = 0
+	sgl.begin_line_strip()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	for _ in 0 .. segments {
+		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y + f32(math.cos(angle +
+			step_length) * r1))
+
+		angle += step_length
+	}
+	sgl.end()
+	
+	// First end
+	sgl.begin_line_strip()
+	sgl.c4b(c.r, c.g, c.b, c.a)	
+	angle = 0
+	
+	sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
+	sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+	sgl.end()
+	
+	// Second end
+	sgl.begin_line_strip()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	angle = segments * step_length
+	sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
+	sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+
+	sgl.end()
+}
+
 
 // Draws a filled rounded rectangle
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
